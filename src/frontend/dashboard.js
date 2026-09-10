@@ -9859,16 +9859,16 @@ function renderBilling() {
   }
   if (typeof window._fpDoUpgrade !== 'function') {
     window._fpDoUpgrade = async function(plan) {
-      // Set suppression record: plan name + timestamp, valid 30 seconds.
-      // The SSE handler (billing:plan_updated) checks this to avoid double toast.
-      window._fpPlanUpgradeRecord = { plan: plan, ts: Date.now() };
+      // Typed action record lets SSE distinguish a plan change from a genuine
+      // add-on activation while the server provisions plan-included features.
+      fpMarkPlanChangeAction(plan);
       showToast('info', fpT('Mise à jour du plan en cours…'));
       try {
         const r = await apiAction('POST', '/api/billing/upgrade', { plan });
         if (r && r.downgrade) {
           const _date = r.effectiveDate || 'la prochaine échéance';
           const _when = r.trialDowngrade ? 'à la fin de votre essai' : 'à la prochaine échéance';
-          showToast('success', 'Downgrade programmé ' + _when + ' (' + _date + ')');
+          showToast('success', fpPlanChangeScheduledMessage(plan, _when, _date));
           if (STATE.billing) { STATE.billing.pendingPlan = plan; STATE.billing.pendingPlanDate = _date; }
           try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
           _apiFetchCache.clear(); _apiFetchInFlight.clear();
@@ -9877,11 +9877,7 @@ function renderBilling() {
         }
         if (r && r.upgraded) {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
-          const _msg = r.reactivated
-            ? 'Abonnement repris → ' + _planLabel + ' ✓'
-            : r.noSubDowngrade
-              ? 'Plan changé vers ' + _planLabel + ' ✓'
-              : 'Plan mis à jour → ' + _planLabel + ' ✓';
+          const _msg = fpPlanChangeSuccessMessage(plan, !!r.reactivated);
           showToast('success', _msg);
           // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           if (STATE.me) STATE.me.plan = _planLabel;
@@ -9893,13 +9889,15 @@ function renderBilling() {
           return;
         }
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
-        if (r && r.noSubscription) { showToast('info', fpT('Abonnement introuvable — redirection vers les plans…')); navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); return; }
-        if (r && r.error === 'plan_already_active') { showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
+        if (r && r.noSubscription) { window._fpPlanUpgradeRecord = null; showToast('info', fpT('Abonnement introuvable — redirection vers les plans…')); navigate('billing'); setTimeout(function(){ navigateSub('plans'); }, 100); return; }
+        if (r && r.error === 'plan_already_active') { window._fpPlanUpgradeRecord = null; showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
         // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
+        window._fpPlanUpgradeRecord = null;
         showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
         window._fpResyncBillingState();
       } catch(e) {
         // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
+        window._fpPlanUpgradeRecord = null;
         const _rawMsg = (e && e.message) || '';
         const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
         if (e && e.code === 'plan_already_active') { showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.'); return; }
@@ -10224,13 +10222,14 @@ function renderBilling() {
       window._fpDoUpgrade(_targetPlan);
     };
     window._fpDoUpgrade = async function(plan) {
+      fpMarkPlanChangeAction(plan);
       showToast('info', fpT('Mise à jour du plan en cours…'));
       try {
         const r = await apiAction('POST', '/api/billing/upgrade', { plan });
         if (r && r.downgrade) {
           const _date = r.effectiveDate || 'la prochaine échéance';
           const _when = r.trialDowngrade ? 'à la fin de votre essai' : 'à la prochaine échéance';
-          showToast('success', 'Downgrade programmé ' + _when + ' (' + _date + ')');
+          showToast('success', fpPlanChangeScheduledMessage(plan, _when, _date));
           // Persist pending state locally so the banner renders immediately,
           // then reload from the server so billing data is authoritative.
           if (STATE.billing) {
@@ -10252,11 +10251,7 @@ function renderBilling() {
         if (r && r.upgraded) {
           const _planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
           // noSubDowngrade = immediate DB-only downgrade (trial, no Stripe sub)
-          const _msg = r.reactivated
-            ? 'Abonnement repris → ' + _planLabel + ' ✓'
-            : r.noSubDowngrade
-              ? 'Plan changé vers ' + _planLabel + ' ✓'
-              : 'Plan mis à jour → ' + _planLabel + ' ✓';
+          const _msg = fpPlanChangeSuccessMessage(plan, !!r.reactivated);
           showToast('success', _msg);
           // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
           // ── Immediate optimistic STATE update (before loadData completes) ──
@@ -10287,6 +10282,7 @@ function renderBilling() {
         }
         if (r && r.reactivation && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
         if (r && r.noSubscription) {
+          window._fpPlanUpgradeRecord = null;
           // Server found no active Stripe subscription — navigate within dashboard to billing/plans
           // so the user can start a fresh subscription. Never redirect to pricing.html here
           // to avoid a race condition when STATE.billing hasn't loaded yet.
@@ -10295,14 +10291,16 @@ function renderBilling() {
           setTimeout(function() { navigateSub('plans'); }, 100);
           return;
         }
-        if (r && r.error === 'plan_already_active') { showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
+        if (r && r.error === 'plan_already_active') { window._fpPlanUpgradeRecord = null; showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
         // ── Failure with a recognized-but-non-success shape ──
         // The server always returns a specific `error` string on failure now;
         // surface it verbatim. Never leave optimistic state behind — re-fetch
         // the authoritative billing state so every page stays consistent.
+        window._fpPlanUpgradeRecord = null;
         showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
         _fpResyncBillingState();
       } catch (e) {
+        window._fpPlanUpgradeRecord = null;
         // Non-2xx responses throw from apiFetch BEFORE the r.* checks above can
         // run. err.code carries the machine token, e.message the French prose.
         // Never surface a machine token to the user: if the message is exactly a
@@ -15733,9 +15731,40 @@ function _getPlanLimits(planName) {
   return map[id] || map.pro;
 }
 
+function fpPlanLabel(plan) {
+  const normalized = String(plan || '').trim().toLowerCase();
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : '';
+}
+
+function fpPlanChangeSuccessMessage(plan, reactivated) {
+  const label = fpPlanLabel(plan);
+  return reactivated
+    ? `Votre abonnement est maintenant sur le plan ${label}.`
+    : `Vous êtes passé au plan ${label}.`;
+}
+
+function fpPlanChangeScheduledMessage(plan, when, effectiveDate) {
+  return `Votre abonnement passera au plan ${fpPlanLabel(plan)} ${when} (${effectiveDate}).`;
+}
+
+function fpMarkPlanChangeAction(plan) {
+  window._fpPlanUpgradeRecord = {
+    actionType: 'plan_change',
+    plan: String(plan || '').toLowerCase(),
+    ts: Date.now(),
+  };
+}
+
+function fpHasRecentPlanChangeAction(plan) {
+  const record = window._fpPlanUpgradeRecord;
+  if (!record || record.actionType !== 'plan_change' || (Date.now() - (record.ts || 0)) >= 30000) return false;
+  return !plan || String(record.plan || '').toLowerCase() === String(plan).toLowerCase();
+}
+
 function changePlan(newPlan) {
   // Close dropdown first
   document.getElementById('fp-plan-switcher-dd')?.remove();
+  fpMarkPlanChangeAction(newPlan);
   // Route through the proper upgrade/checkout flow — never change plan locally only
   if (typeof window.fpUpgradeOrCheckout === 'function') {
     window.fpUpgradeOrCheckout(newPlan);
@@ -15746,13 +15775,16 @@ function changePlan(newPlan) {
       .then((r) => {
         if (r && r.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
         if (r && (r.upgraded || r.downgrade || r.reactivated)) {
-          showToast('success', fpT('Plan mis à jour'));
+          showToast('success', fpPlanChangeSuccessMessage(newPlan, !!r.reactivated));
           loadData().then(() => { navigate('billing'); navigateSub('plans'); });
           return;
         }
         throw new Error((r && (r.message || r.error)) || 'Le changement de plan a échoué.');
       })
-      .catch((e) => showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.'));
+      .catch((e) => {
+        window._fpPlanUpgradeRecord = null;
+        showToast('error', (e && e.message) || 'Le changement de plan a échoué. Réessayez.');
+      });
   }
 }
 
@@ -17502,16 +17534,20 @@ function bindSectionEvents() {
             const plan = checkBtn.dataset.checkoutPlan;
             checkBtn.disabled = true;
             checkBtn.textContent = 'Mise à jour…';
+            fpMarkPlanChangeAction(plan);
             try {
               // Direct plan change via Stripe subscription update — no pricing redirect
               const r = await apiFetch('/api/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan }) });
               if (r && r.url) { window.location.href = r.url; return; } // reactivation/checkout needed
               if (r && r.error) throw new Error(r.message || r.error);
-              showToast('success', 'Plan mis à jour : ' + plan.charAt(0).toUpperCase() + plan.slice(1) + (r && r.scheduled ? ' (appliqué en fin de période)' : ''));
+              showToast('success', r && r.scheduled
+                ? fpPlanChangeScheduledMessage(plan, 'à la prochaine échéance', r.effectiveDate || 'date à confirmer')
+                : fpPlanChangeSuccessMessage(plan, !!(r && r.reactivated)));
               closeFloatPanel();
               try { const me = await apiFetch('/api/me'); if (me) STATE.me = me; } catch(_) {}
               render();
             } catch(e) {
+              window._fpPlanUpgradeRecord = null;
               showToast('error', 'Changement de plan impossible : ' + (e && e.message ? e.message : 'réessayez'));
               checkBtn.disabled = false;
               checkBtn.textContent = 'Choisir';
@@ -48107,7 +48143,9 @@ async function init() {
       if (newPlan.toLowerCase() !== oldPlan.toLowerCase()) {
         STATE.me.plan = newPlan;
         if (STATE.billing) STATE.billing.plan = newPlan.toLowerCase();
-        showToast('success', 'Plan mis à jour : ' + newPlan + ' ✓');
+        if (!fpHasRecentPlanChangeAction(newPlan)) {
+          showToast('success', fpPlanChangeSuccessMessage(newPlan, false));
+        }
         try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
         _apiFetchCache && _apiFetchCache.clear();
         loadData({ forceSessionRestore: true }).catch(function() {});
@@ -48147,12 +48185,9 @@ async function init() {
               // Deduplicate: skip SSE toast if this session just triggered the upgrade
               // (within the last 30 seconds for the same plan). This is deterministic:
               // it compares plan identity + a 30-second time window, never a fragile boolean.
-              const _rec = window._fpPlanUpgradeRecord;
-              const _sseToastSuppressed = _rec &&
-                _rec.plan && _rec.plan.toLowerCase() === newPlan.toLowerCase() &&
-                (Date.now() - (_rec.ts || 0)) < 30000;
+              const _sseToastSuppressed = fpHasRecentPlanChangeAction(newPlan);
               if (prev.toLowerCase() !== newPlan.toLowerCase() && !_sseToastSuppressed) {
-                showToast('success', `Plan mis à jour : ${newPlan} ✓`);
+                showToast('success', fpPlanChangeSuccessMessage(newPlan, false));
               }
               // Immediately update me.limits from local plan definitions so the
               // sidebar quota bars reflect the new plan without waiting for loadData().
@@ -48206,7 +48241,12 @@ async function init() {
                 STATE.addons[addonKey] = true;
                 if (STATE.billing && STATE.billing.addons) STATE.billing.addons[addonKey] = true;
               }
-              showToast('success', fpT('Add-on activé ✓'));
+              // A plan upgrade provisions bundled features through activateAddon().
+              // Keep the data sync, but do not mislabel those technical grants as
+              // a user-initiated add-on purchase.
+              if (!fpHasRecentPlanChangeAction()) {
+                showToast('success', fpT('Add-on activé ✓'));
+              }
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
               _apiFetchCache && _apiFetchCache.clear();
               loadData().catch(() => {});
@@ -48228,7 +48268,9 @@ async function init() {
               _apiFetchCache && _apiFetchCache.clear();
               (async function() {
                 try { await loadData(); } catch(_) {}
-                showToast('success', fpT('Add-on activé ✓'));
+                if (!fpHasRecentPlanChangeAction()) {
+                  showToast('success', fpT('Add-on activé ✓'));
+                }
                 render();
               })();
             // ── Payment succeeded (invoice renewal) ────────────────────────────────

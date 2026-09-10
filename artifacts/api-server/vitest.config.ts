@@ -116,6 +116,7 @@ export default defineConfig({
       "src/tests/billing-resubscription-same-customer.test.ts",
       // Browser account isolation + dashboard/Stripe reactivation source contracts
       "src/tests/session-dashboard-billing-reactivation.test.ts",
+       "src/tests/dashboard-plan-notification.test.ts",
       // finalize-checkout Path C: PI/SI metadata pre_register_token recovery
       "src/tests/finalize-checkout-path-c.test.ts",
       "src/tests/onboarding-frontend.test.ts",
