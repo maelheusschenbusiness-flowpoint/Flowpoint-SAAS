@@ -64051,7 +64051,7 @@ function _fpFunnelStepRow(idx, step) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:12px;font-weight:700;color:var(--fp-text-muted);width:22px;text-align:center">${pos}</span>
       <input class="fp-input" style="flex:1" placeholder="Nom de l'étape" value="${_fpFunnelEsc(name)}" data-field="step-name-${idx}">
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;flex-shrink:0" onclick="window._fpFunnelRemoveStep(this)" data-idx="${idx}">✕</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;flex-shrink:0" onclick="window._fpFunnelRemoveStep(this)" data-idx="${idx}" aria-label="Supprimer l'étape" title="Supprimer l'étape">✕</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <select class="fp-input" style="width:auto;font-size:12px" data-field="step-ctype-${idx}" onchange="window._fpFunnelToggleCtype(this)">
