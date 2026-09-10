@@ -53706,7 +53706,7 @@ function renderGrowthObjectives() {
               '<div style="font-size:11px;color:var(--fp-text-faint)">📅 '+dl+'</div>' +
               (o.next ? '<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">→ '+escHtml(o.next)+'</div>' : '') +
             '</div>' +
-            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" data-goal-id="'+escHtml(String(o.id||''))+'" onclick="(async function(b){var gid=b.dataset.goalId;if(!gid)return;window._fpDelGoal&&window._fpDelGoal(gid);})(this)">✕</button>' +
+            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" aria-label="Supprimer l\'objectif" title="Supprimer l\'objectif" data-goal-id="'+escHtml(String(o.id||''))+'" onclick="(async function(b){var gid=b.dataset.goalId;if(!gid)return;window._fpDelGoal&&window._fpDelGoal(gid);})(this)">✕</button>' +
           '</div>';
         }).join('')}
       </div>
