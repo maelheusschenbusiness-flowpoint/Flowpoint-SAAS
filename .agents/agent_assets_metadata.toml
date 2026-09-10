@@ -185,13 +185,13 @@ id = "9qDcT_jIvV4obRLrz7tuE"
 uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
 type = "video"
 title = "FlowPoint onboarding — V1 corrigée"
-description = "Pilote V1 finalisé en 1920×1080, 30 fps, H.264, 40,4 secondes, avec données Overview/Audits enrichies, Inter, callouts et zooms continus."
+description = "Vidéo V1 finale — 1920×1080, 30 fps, H.264, 40,4 secondes."
 logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
 content_hash = "sha256:a25bed3024150e2d5e7c5dc57d27a085b3d8278c2f9d68ceb53be6fd15159900"
 size = 3763662
 mtime_ms = 1789064081675
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/c7c4ef84-9eeb-4a6e-b600-b618f09ce268"
-storage_version_token = "1789064120930436"
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/e6438b94-8303-4426-986e-c20b51a8b8f3"
+storage_version_token = "1789064625573727"
 content_type = "video/mp4"
 
 [[outputs]]
