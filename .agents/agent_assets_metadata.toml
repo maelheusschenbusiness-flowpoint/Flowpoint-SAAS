@@ -241,13 +241,13 @@ id = "R2gIs_1BQ9u_4urBEnCix"
 uri = "file://FlowPoint-onboarding-videos-V1-V6.zip"
 type = "unspecified"
 title = "FlowPoint onboarding — vidéos V1 à V6"
-description = "Archive contenant les six vidéos finales d’onboarding FlowPoint, de V1 à V6."
+description = "Archive unique contenant les six vidéos actuelles, dont la V1 corrigée en 1920×1080 avec Inter et zooms continus."
 logical_id = "1a3814c4-0e78-401c-b8d4-2947f30675d1"
-content_hash = "sha256:791c4c524cfee2267cc3819dfa8a03c29867382ac51b6c5384097beb6b2b87ff"
-size = 8376404
-mtime_ms = 1789060989299
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/1a3814c4-0e78-401c-b8d4-2947f30675d1/1b36edd5-23c9-45cc-ab2b-2f4b63d84856"
-storage_version_token = "1789061001423820"
+content_hash = "sha256:50300e33538ffbd88d2a16d7ae981d9915c7d39847d4026a3e88ddbb69f9c30d"
+size = 11586396
+mtime_ms = 1789063161007
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/1a3814c4-0e78-401c-b8d4-2947f30675d1/7ec28756-865d-4eab-beb8-cac6c834f32a"
+storage_version_token = "1789063173415719"
 content_type = "application/octet-stream"
 
 [[outputs]]
