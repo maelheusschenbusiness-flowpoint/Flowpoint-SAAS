@@ -149,3 +149,4 @@
 - [Clean reset AI schema bootstrap](clean-reset-ai-schema.md) — AI billing tables must be created before strict migration checks or a fresh database cannot boot
 - [Render/Stripe historical purge boundary](render-stripe-historical-purge.md) — app.flowpoint.pro may use a separate Render DB; scan deleted Stripe Customers through subscription metadata, not only current DB links
 - [FFmpeg still-image zoompan duration](ffmpeg-zoompan-duration.md) — with looped still inputs, zoompan d must stay 1 or each source frame is duplicated and short clips become extremely long.
+- [Plan vs add-on notifications](plan-addon-notification-separation.md) — bundled plan entitlements reuse add-on activation events; typed plan actions must suppress only their technical add-on toasts.
