@@ -2309,24 +2309,30 @@ async function loadData(options = {}) {
 
   // ── Fix 5: Real streak from /api/me/streak ───────────────────────────────────
   // Always fetch the authoritative streak from the backend — never compute client-side.
+  let _streakApiResolved = false;
   await apiFetch('/api/me/streak').then(function(r) {
     if (r && typeof r === 'object') {
       if (typeof r.current === 'number') STATE.streak = r.current;
       if (typeof r.best === 'number') STATE.streakBest = r.best;
+      _streakApiResolved = typeof r.current === 'number';
     }
   }).catch(function() {});
+  // The sidebar is outside #fp-page and is not rebuilt by render().
+  // Keep its streak chrome synchronized as soon as the authoritative API value arrives.
+  try { renderSidebarStatus(); } catch(_) {}
 
   // ── Fix 4: Progression & achievements from /api/progression ─────────────────
   await apiFetch('/api/progression').then(function(r) {
     if (r && typeof r === 'object') {
       STATE.progression = r;
       // Sync counts from real API into derived STATE fields if not already set
-      if (typeof r.streak === 'object' && r.streak) {
+      if (!_streakApiResolved && typeof r.streak === 'object' && r.streak) {
         if (typeof r.streak.current === 'number') STATE.streak = r.streak.current;
         if (typeof r.streak.best === 'number') STATE.streakBest = r.streak.best;
       }
     }
   }).catch(function() {});
+  try { renderSidebarStatus(); } catch(_) {}
 
   // Apply pinned state
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
@@ -57855,6 +57861,11 @@ function renderActivityFeed() {
       const nm = t.name || t.email || 'Membre';
       const id = String(t.id || t.userId || t.user_id || '');
       const email = String(t.email || '').toLowerCase();
+        const _isOwner = String(t.role || '').toLowerCase() === 'owner'
+          || !!(STATE.me && (
+            (id && id === String(STATE.me.id || STATE.me.userId || ''))
+            || (email && email === String(STATE.me.email || '').toLowerCase())
+          ));
       const contrib = (STATE.teamContributions && (
         (id && STATE.teamContributions[id]) ||
         (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
@@ -57870,10 +57881,12 @@ function renderActivityFeed() {
         actions: contrib ? audits + missions + reports : null,
         score: null, trend: '—',
         contribs: contrib ? { audits, missions, reports } : null,
-        streak: (STATE.teamStreaks && (
+        streak: _isOwner
+          ? { current: Number.isFinite(Number(STATE.streak)) ? Number(STATE.streak) : 0 }
+          : ((STATE.teamStreaks && (
           (id && STATE.teamStreaks[id]) ||
           (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
-        )) || null,
+        )) || null),
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -62028,7 +62041,10 @@ function renderTeamPerformance() {
     const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
     const memberId = t.id || t.userId || '';
     const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
-    const streakVal = memberStreak ? memberStreak.current : (isOwner ? (STATE.streak || 0) : '—');
+    const ownStreak = Number(STATE.streak);
+    const streakVal = isOwner
+      ? (Number.isFinite(ownStreak) && ownStreak >= 0 ? ownStreak : 0)
+      : (memberStreak ? memberStreak.current : '—');
     const _uid = t.id || t.userId || t.email || '';
     const _contrib = (STATE.teamContributions && _uid && STATE.teamContributions[_uid]) ? STATE.teamContributions[_uid] : null;
     return {
