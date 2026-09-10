@@ -212,15 +212,28 @@ router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<voi
       { id: "demo_a2", url: "https://restaurant-lesoleil.com", score: 61, status: "warn", speed: 64, issues: 11, origin: "manual" },
       { id: "demo_a3", url: "https://coiffeur-lyon.com",      score: 75, status: "ok",    speed: 91, issues: 5,  origin: "scheduled" },
       { id: "demo_a4", url: "https://pharmacie-centre.fr",    score: 55, status: "warn",  speed: 58, issues: 14, origin: "manual" },
+      { id: "demo_a5", url: "https://plombier-paris.fr",      score: 43, status: "error", speed: 47, issues: 22, origin: "manual" },
+      { id: "demo_a6", url: "https://garage-auto-nice.com",   score: 90, status: "ok",    speed: 95, issues: 1,  origin: "scheduled" },
     ];
-    for (const a of auditRows) {
-      try {
-        await client.query(
-          `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
-          [a.id, a.url, a.score, a.status, a.speed, now, a.issues, a.origin]
-        );
-      } catch { /* skip if already exists */ }
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL ROLE app_user");
+      await client.query("SELECT set_config('app.current_org_id', $1, true)", [orgId]);
+      for (const a of auditRows) {
+        try {
+          await client.query(
+            `INSERT INTO audits (id, org_id, url, score, status, speed, date, issues, origin, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()) ON CONFLICT (id) DO NOTHING`,
+            [a.id, orgId, a.url, a.score, a.status, a.speed, now, a.issues, a.origin]
+          );
+        } catch (err) {
+          console.warn(`[Admin] demo audit ${a.id} skipped: ${safeErrMsg(err)}`);
+        }
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.warn(`[Admin] demo audit seed failed: ${safeErrMsg(err)}`);
     }
     inserted.audits = auditRows.length;
 
@@ -250,9 +263,9 @@ router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<voi
     for (const c of compRows) {
       try {
         await client.query(
-          `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,0,NOW()) ON CONFLICT (id) DO NOTHING`,
-          [c.id, c.name, c.url, c.domain_rating, c.keywords, c.traffic, c.threat_level]
+          `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id, data_status, data_provider, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,'available','demo',NOW()) ON CONFLICT (id) DO NOTHING`,
+          [c.id, c.name, c.url, c.domain_rating, c.keywords, c.traffic, c.threat_level, orgId]
         );
       } catch { /* skip */ }
     }

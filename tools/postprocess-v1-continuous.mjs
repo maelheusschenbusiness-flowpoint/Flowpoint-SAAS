@@ -18,9 +18,10 @@ const H = 1080;
 const { skipMs, marks } = JSON.parse(readFileSync(join(OUT, "marks.json"), "utf8"));
 const trimStart = Math.max(0, (skipMs - 600) / 1000);
 const mark = (name) => (marks[name] ?? 0) + 0.6;
-const duration = parseFloat(spawnSync("ffprobe", [
+const sourceDuration = parseFloat(spawnSync("ffprobe", [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", WEBM,
 ], { stdio: "pipe" }).stdout.toString().trim()) - trimStart;
+const duration = Math.min(sourceDuration, mark("final") + 2.8);
 
 const kpiStart = Math.max(0.5, mark("kpi_score_focus") - 0.5);
 const kpiEnd = Math.min(duration, mark("kpi_score_done") + 0.8);
@@ -79,6 +80,7 @@ const result = spawnSync("ffmpeg", [
   "-y",
   "-ss", trimStart.toFixed(3),
   "-i", WEBM,
+  "-t", duration.toFixed(3),
   "-vf", vf,
   "-c:v", "libx264",
   "-crf", "18",

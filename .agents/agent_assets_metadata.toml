@@ -184,14 +184,14 @@ content_type = "application/octet-stream"
 id = "9qDcT_jIvV4obRLrz7tuE"
 uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
 type = "video"
-title = "V1 corrigée — FlowPoint onboarding (Inter + zooms continus)"
-description = "V1 pilote finale pour validation visuelle : 1920×1080, 52,97 s, H.264, 30 fps, Inter officielle, fade entrée/sortie uniquement, sans micro-fades noirs entre les zooms."
+title = "FlowPoint onboarding — V1 corrigée"
+description = "Pilote V1 finalisé en 1920×1080, 30 fps, H.264, 40,4 secondes, avec données Overview/Audits enrichies, Inter, callouts et zooms continus."
 logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
-content_hash = "sha256:fb66f42d61daf291a1c8f150613da9a2c7cb1f5cfa1dfc5a53deca5cb0311c85"
-size = 4941304
-mtime_ms = 1789062788400
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/7605dd0e-1767-4561-a76a-5d0bb5f6c879"
-storage_version_token = "1789062874334448"
+content_hash = "sha256:a25bed3024150e2d5e7c5dc57d27a085b3d8278c2f9d68ceb53be6fd15159900"
+size = 3763662
+mtime_ms = 1789064081675
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/c7c4ef84-9eeb-4a6e-b600-b618f09ce268"
+storage_version_token = "1789064120930436"
 content_type = "video/mp4"
 
 [[outputs]]
