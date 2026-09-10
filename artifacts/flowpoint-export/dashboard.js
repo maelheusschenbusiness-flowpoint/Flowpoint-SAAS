@@ -72443,7 +72443,7 @@ function renderGA4ClientMode() {
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           ${wlEnabled
             ? `<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">
-                ${wlBranding.logoUrl ? `<img src="${escHtml(wlBranding.logoUrl)}" style="height:36px;max-width:80px;border-radius:6px;object-fit:contain" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:8px;background:${wlBranding.primaryColor||'#2563EB'};display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:14px">${(wlBranding.agencyName||'A').charAt(0).toUpperCase()}</div>`}
+                ${wlBranding.logoUrl ? `<img src="${escHtml(wlBranding.logoUrl)}" alt="Logo ${escHtml(wlBranding.agencyName || 'de votre agence')}" style="height:36px;max-width:80px;border-radius:6px;object-fit:contain" onerror="this.style.display='none'">` : `<div style="width:36px;height:36px;border-radius:8px;background:${wlBranding.primaryColor||'#2563EB'};display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:14px">${(wlBranding.agencyName||'A').charAt(0).toUpperCase()}</div>`}
                 <div>
                   <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(wlBranding.agencyName || 'Votre agence')}</div>
                   <div style="font-size:11px;color:var(--fp-text-muted)">${wlBranding.primaryColor || '#2563EB'} · White-label actif</div>
