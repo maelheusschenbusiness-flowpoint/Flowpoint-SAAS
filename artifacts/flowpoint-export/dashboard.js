@@ -9580,7 +9580,7 @@ function renderTeam() {
         <div class="fp-card-title" style="margin-bottom:0">${fpT("Activité récente de l'équipe")}</div>
         <button class="fp-link-btn" onclick="navigateSub('activity')">${fpT('Voir tout →')}</button>
       </div>
-      <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+      <div class="fp-team-activity-grid" style="display:flex;flex-direction:column;gap:8px">
         ${(STATE.activityEvents && STATE.activityEvents.length > 0)
           ? STATE.activityEvents.slice(0,6).map(e => {
               const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
@@ -9592,14 +9592,14 @@ function renderTeam() {
               const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
               const c = colors[it.type] || '#2563EB';
               return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
-                <div class="fp-activity-icon" style="background:${c}18">${svgIcon(it.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
+                <div class="fp-activity-icon" style="background:${c}18;width:28px;height:28px;min-width:28px">${svgIcon(it.icon,'14').replace('stroke="currentColor"',`stroke="${c}"`)}</div>
                 <div style="flex:1;min-width:0">
-                  <div class="fp-activity-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.title)}</div>
-                  <div class="fp-activity-time">Il y a ${it.time}</div>
+                  <div class="fp-activity-title" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.title)}</div>
+                  <div class="fp-activity-time" style="font-size:11px">Il y a ${it.time}</div>
                 </div>
               </div>`;
             }).join('')
-          : `<div style="grid-column:1/-1;text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">${fpT("Aucune activité d'équipe récente.")}</div>`
+          : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">${fpT("Aucune activité d'équipe récente.")}</div>`
         }
       </div>
     </div>
@@ -10505,7 +10505,7 @@ function renderBilling() {
           const borderColor = (inc || a.active) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
           const bgColor     = _addonDark ? 'rgba(8,13,27,0.92)' : cardAccent + '08';
           return `
-          <div onclick="window.fpShowAddonDetail(${_i})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
+          <div onclick="window.fpShowAddonDetail(${_i})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;display:flex;flex-direction:column" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
             ${(inc || a.active) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div style="font-size:20px;flex-shrink:0">${a.icon}</div>
@@ -10520,7 +10520,7 @@ function renderBilling() {
             </div>
             <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
             <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
-            <div style="display:flex;align-items:center;justify-content:space-between" onclick="event.stopPropagation()">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:6px" onclick="event.stopPropagation()">
               <span style="font-size:12px;font-weight:800;color:${(inc || a.active) ? cardAccent : 'var(--fp-text)'}">${inc && a.availability === 'coming_soon' ? 'Inclus ✓ · ⏳' : inc && a.availability === 'beta' ? '🧪 Bêta — Inclus ✓' : inc ? 'Inclus ✓' : escHtml(a.price)}</span>
               ${inc
                 ? a.availability === 'coming_soon'
@@ -14035,7 +14035,7 @@ function renderAI() {
           <label for="ai-file-input" title="${fpT('Joindre un fichier')}" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted);box-sizing:border-box" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <textarea class="fp-ai-input" id="ai-input" placeholder="${escHtml(fpT('Posez votre question… (moniteurs, SEO, conversions, rapports…)'))}" rows="1" style="resize:none;overflow-y:hidden;line-height:1.5;height:38px;max-height:120px;padding-right:8px;flex:1 1 auto;min-width:0"></textarea>
           <button class="fp-ai-send" id="ai-send" style="flex:0 0 auto;width:38px;height:38px;padding:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="20"').replace('height="14"','height="20"')}</button>
-          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+          <button id="ai-stop" title="${fpT('Arrêter la génération')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()"><span style="display:block;width:13px;height:13px;background:#fff;border-radius:2px;flex-shrink:0"></span></button>
         </div>
         <!-- Progress hint: shows server-side step name (e.g. "Identification des informations…")
              while waiting for the first AI token. Hidden when real text arrives. -->
@@ -15476,7 +15476,7 @@ function renderAIPanelContent() {
     <div class="fp-ai-input-row">
       <textarea class="fp-ai-input" id="ai-panel-input" placeholder="${fpT('Posez votre question…')}" rows="1" style="font-size:11px;resize:none;min-height:38px;height:38px;max-height:120px;overflow-y:hidden;line-height:1.4;flex:1 1 auto;min-width:0"></textarea>
       <button class="fp-ai-send" id="ai-panel-send" style="flex:0 0 auto;width:38px;height:38px;padding:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center">${svgIcon('send').replace('width="14"','width="20"').replace('height="14"','height="20"')}</button>
-      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;font-size:16px;line-height:1;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()">⏹</button>
+      <button id="ai-panel-stop" title="${fpT('Arrêter')}" style="display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:var(--fp-danger,#ef4444);color:#fff;border:none;cursor:pointer;flex-shrink:0" onclick="window.fpAiStop && window.fpAiStop()"><span style="display:block;width:13px;height:13px;background:#fff;border-radius:2px;flex-shrink:0"></span></button>
     </div>
   `;
 }
@@ -61758,6 +61758,8 @@ function renderCompetitorsMap() {
           <option value="5000" selected>5 km</option>
           <option value="10000">10 km</option>
           <option value="20000">20 km</option>
+          <option value="50000">50 km</option>
+          <option value="100000">100 km</option>
         </select>
         <input id="fp-comp-keyword" type="text" placeholder="Secteur d\'activité" value="${escHtml(defKeyword)}"
           style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:160px"
@@ -61809,7 +61811,7 @@ function renderCompetitorsMap() {
         </div>
 
         <!-- Legend overlay — elevated above Google attribution bar -->
-        <div style="position:absolute;bottom:50px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
+        <div style="position:absolute;bottom:50px;left:12px;background:var(--fp-surface);border:1px solid var(--fp-border);border-radius:10px;padding:10px 14px;z-index:5;box-shadow:0 2px 12px rgba(0,0,0,0.15)">
           <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">LÉGENDE</div>
           ${[
             {c:'#ef4444',l:'Critique — score > 75'},
@@ -61817,7 +61819,7 @@ function renderCompetitorsMap() {
             {c:'#2563EB',l:'Moyen — score 35-54'},
             {c:'#22c55e',l:'Faible — score < 35'},
             {c:'#8b5cf6',l:'Votre établissement'},
-          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text-muted)">${x.l}</span></div>`).join('')}
+          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text)">${x.l}</span></div>`).join('')}
         </div>
       </div>
 
@@ -70987,11 +70989,11 @@ function renderLocalCompetitorMap() {
 
     <!-- INTERACTIVE COMPETITORS GOOGLE MAP (FP_MAPS_API auto-init via MutationObserver) -->
     <div class="fp-card fp-mb-16" style="padding:0;overflow:hidden;position:relative;min-height:540px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
-        <div class="fp-card-title" style="margin-bottom:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">🏴 Carte des concurrents</div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
+        <div class="fp-card-title" style="margin-bottom:0">🏴 Carte des concurrents</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <input id="fp-comp-keyword" type="text" placeholder="Secteur d'activité" value="${escHtml(_cKeyword)}"
-            style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:150px"
+            style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;flex:1;min-width:100px"
             onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',this.value)">
           <select id="fp-comp-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-competitors-map',parseInt(this.value))"
             style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
@@ -70999,6 +71001,8 @@ function renderLocalCompetitorMap() {
             <option value="5000" selected>5 km</option>
             <option value="10000">10 km</option>
             <option value="20000">20 km</option>
+            <option value="50000">50 km</option>
+            <option value="100000">100 km</option>
           </select>
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',document.getElementById('fp-comp-keyword')?.value||'')">🔍 Analyser</button>
         </div>
@@ -71013,7 +71017,7 @@ function renderLocalCompetitorMap() {
           data-lat="${_cLat}" data-lng="${_cLng}" data-radius="5000" data-keyword="${escHtml(_cKeyword)}"
           data-mode="competitors"></div>
         <!-- Legend overlay — elevated above Google attribution bar -->
-        <div style="position:absolute;bottom:50px;left:12px;background:rgba(10,14,27,0.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;z-index:5">
+        <div style="position:absolute;bottom:50px;left:12px;background:var(--fp-surface);border:1px solid var(--fp-border);border-radius:10px;padding:10px 14px;z-index:5;box-shadow:0 2px 12px rgba(0,0,0,0.15)">
           <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">LÉGENDE</div>
           ${[
             {c:'#ef4444',l:'Critique — score > 75'},
@@ -71021,7 +71025,7 @@ function renderLocalCompetitorMap() {
             {c:'#2563EB',l:'Moyen — score 35-54'},
             {c:'#22c55e',l:'Faible — score < 35'},
             {c:'#8b5cf6',l:'Votre établissement'},
-          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text-muted)">${x.l}</span></div>`).join('')}
+          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text)">${x.l}</span></div>`).join('')}
         </div>
       </div>
     </div>
