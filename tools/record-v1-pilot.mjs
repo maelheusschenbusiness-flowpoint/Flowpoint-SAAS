@@ -25,7 +25,7 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const BASE      = 'https://app.flowpoint.pro';
+const BASE      = process.env.FLOWPOINT_RECORD_BASE || 'http://127.0.0.1:8081';
 const ADMIN_KEY = process.env.ADMIN_KEY;
 const QA_ORG   = '10000000-0000-4000-8000-000000000002';
 const OUT_DIR  = '/tmp/fp-v1pilot';
@@ -127,9 +127,9 @@ async function nav(page, route, waitSel = null) {
     if (window.navigate) window.navigate(r);
     else window.location.hash = r;
   }, route);
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(1700);
   if (waitSel) await page.waitForSelector(waitSel, { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(350);
   await injectCursor(page);
 }
 
@@ -160,7 +160,7 @@ async function v1(page, token) {
   } catch {
     await page.waitForSelector('h1,h2', { timeout: 10000 }).catch(() => {});
   }
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(1000);
 
   // Dismiss onboarding modal if shown
   for (const s of ['button:has-text("Passer la visite")', 'button:has-text("Ignorer")', 'button:has-text("Skip")']) {
@@ -179,15 +179,15 @@ async function v1(page, token) {
     if (window.navigate) window.navigate('overview');
     else window.location.hash = 'overview';
   });
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(1800);
   await page.waitForSelector('h1,.fp-kpi-card,.kpi-card,.metric-card', { timeout: 10000 }).catch(() => {});
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(400);
 
   // Position cursor at center, inject custom cursor
   await page.mouse.move(W / 2, H / 2);
   await page.evaluate(() => { window._cx = 960; window._cy = 540; });
   await injectCursor(page);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(300);
 
   const skipMs = Date.now() - bootT0;
   _skipMs = skipMs;
@@ -195,17 +195,17 @@ async function v1(page, token) {
 
   // ── STEP 1: Vue générale — hover sidebar items (without clicking) ─────────
   // Wait 1.2s on Overview so viewer sees the full dashboard
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(800);
   mark('overview_start');
 
   // Gentle hover along sidebar nav items (just movement, no click)
-  await dwell(page, 120, 200, 200, 350); // sidebar item 1
-  await dwell(page, 120, 248, 200, 280);
-  await dwell(page, 120, 296, 200, 280);
-  await dwell(page, 120, 344, 200, 280);
+  await dwell(page, 120, 200, 100, 260); // sidebar item 1
+  await dwell(page, 120, 248, 100, 220);
+  await dwell(page, 120, 296, 100, 220);
+  await dwell(page, 120, 344, 100, 220);
   // Move to main content area
-  await go(page, 700, 300, 500);
-  await page.waitForTimeout(400);
+  await go(page, 700, 300, 300);
+  await page.waitForTimeout(250);
   mark('sidebar_done');
 
   // ── STEP 2: Hover KPI cards left to right ────────────────────────────────
@@ -225,26 +225,26 @@ async function v1(page, token) {
   const kpiTargets = kpiPositions.length >= 2 ? kpiPositions : kpiFallback;
 
   mark('kpi_hover_start');
-  for (const { x, y } of kpiTargets) {
-    await dwell(page, x, y, 320, 380);
+  for (const { x, y } of kpiTargets.slice(0, 3)) {
+    await dwell(page, x, y, 180, 300);
   }
   // Park cursor near score card (first or second KPI)
   const scorePos = kpiTargets[0] || { x: 340, y: 200 };
-  await go(page, scorePos.x, scorePos.y, 400);
-  await page.waitForTimeout(300);
+  await go(page, scorePos.x, scorePos.y, 280);
+  await page.waitForTimeout(250);
   mark('kpi_score_focus');
 
   // Linger on score for viewer to read
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(850);
   mark('kpi_score_done');
 
   // ── STEP 3: Move to insights / priorities section ─────────────────────────
-  await go(page, W / 2, H / 2, 500);
-  await page.waitForTimeout(300);
+  await go(page, W / 2, H / 2, 300);
+  await page.waitForTimeout(250);
 
   // Scroll down gently to reveal insights/opportunities
-  await scroll(page, 220, 700);
-  await page.waitForTimeout(400);
+  await scroll(page, 220, 500);
+  await page.waitForTimeout(200);
 
   // Find insights cards
   const insightPos = await page.evaluate(() => {
@@ -256,11 +256,11 @@ async function v1(page, token) {
   });
 
   if (insightPos) {
-    await dwell(page, insightPos.x, insightPos.y, 350, 450);
+    await dwell(page, insightPos.x, insightPos.y, 220, 350);
   } else {
     // Fallback: hover middle of visible area
-    await dwell(page, 800, 500, 350, 400);
-    await dwell(page, 1100, 480, 300, 380);
+    await dwell(page, 800, 500, 220, 350);
+    await dwell(page, 1100, 480, 180, 320);
   }
   mark('insights_done');
 
@@ -272,19 +272,19 @@ async function v1(page, token) {
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
   });
   if (insightPos2 && insightPos2.y > 0 && insightPos2.y < H) {
-    await dwell(page, insightPos2.x, insightPos2.y, 300, 380);
+    await dwell(page, insightPos2.x, insightPos2.y, 180, 300);
   }
 
   // Scroll back to top
-  await scroll(page, -220, 600);
-  await page.waitForTimeout(400);
+  await scroll(page, -220, 450);
+  await page.waitForTimeout(200);
   mark('scroll_top');
 
   // ── STEP 4: Navigate to Audits SEO ───────────────────────────────────────
   // Move cursor to sidebar Audits nav item (no click — use window.navigate)
   // First, hover the sidebar to make it visible
-  await go(page, 120, 248, 500); // approximate Audits nav position
-  await page.waitForTimeout(400);
+  await go(page, 120, 248, 300); // approximate Audits nav position
+  await page.waitForTimeout(200);
   await injectCursor(page);
 
   // Navigate
@@ -302,12 +302,12 @@ async function v1(page, token) {
   });
 
   if (auditStats.length >= 2) {
-    for (const { x, y } of auditStats.slice(0, 3)) {
-      if (y > 0 && y < H) await dwell(page, x, y, 280, 360);
+    for (const { x, y } of auditStats.slice(0, 2)) {
+      if (y > 0 && y < H) await dwell(page, x, y, 180, 280);
     }
   } else {
     for (const [x, y] of [[340, 175], [640, 175], [940, 175], [1240, 175]]) {
-      await dwell(page, x, y, 260, 340);
+      await dwell(page, x, y, 200, 340);
     }
   }
   mark('audit_stats_done');
@@ -323,33 +323,33 @@ async function v1(page, token) {
 
   if (auditRows.length >= 1) {
     for (const { x, y } of auditRows) {
-      if (x > 150 && y > 0 && y < H) await dwell(page, x, y, 300, 370);
+      if (x > 150 && y > 0 && y < H) await dwell(page, x, y, 180, 300);
     }
   } else {
-    await dwell(page, 700, 320, 300, 380);
-    await dwell(page, 700, 380, 280, 300);
-    await dwell(page, 700, 440, 260, 280);
+      await dwell(page, 700, 320, 180, 320);
+      await dwell(page, 700, 380, 170, 260);
+      await dwell(page, 700, 440, 160, 240);
   }
   mark('audit_rows_done');
 
   // Linger — let viewer read
-  await go(page, W * 0.55, H * 0.45, 400);
-  await page.waitForTimeout(1400);
+  await go(page, W * 0.55, H * 0.45, 300);
+  await page.waitForTimeout(500);
   mark('audit_linger_done');
 
   // ── STEP 6: Return to Overview ────────────────────────────────────────────
-  await go(page, 120, 200, 500); // hover Overview in sidebar
-  await page.waitForTimeout(350);
+  await go(page, 120, 200, 300); // hover Overview in sidebar
+  await page.waitForTimeout(200);
   await nav(page, 'overview', 'h1,.fp-kpi-card,.kpi-card');
   mark('back_overview');
 
   // Final wide-shot dwell — slow pan across KPI cards
-  for (const { x, y } of kpiTargets) {
-    await go(page, x, y, 500);
-    await page.waitForTimeout(280);
+  for (const { x, y } of kpiTargets.slice(0, 3)) {
+    await go(page, x, y, 300);
+    await page.waitForTimeout(180);
   }
-  await go(page, W * 0.6, H * 0.55, 500);
-  await page.waitForTimeout(1000);
+  await go(page, W * 0.6, H * 0.55, 300);
+  await page.waitForTimeout(450);
   mark('final');
 
   return skipMs;
@@ -621,6 +621,11 @@ console.log('  Token ok\n');
 
 console.log('▶ Recording V1 at 1920×1080…');
 const { webm, skipMs } = await record(v1, token);
+
+if (process.env.SKIP_LEGACY_POSTPROCESS === '1') {
+  console.log(`\n✓ Raw recording ready: ${webm}`);
+  process.exit(0);
+}
 
 console.log('\n▶ Post-processing (zooms + callouts + fades)…');
 const finalMp4 = postProcess(webm, skipMs);
