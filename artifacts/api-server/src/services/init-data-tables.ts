@@ -3501,7 +3501,7 @@ export async function initDataTables(): Promise<void> {
         stripe_payment_intent_id    TEXT,
         plan                        TEXT NOT NULL,
         eligible_amount_cents       INTEGER NOT NULL DEFAULT 0,
-        commission_rate_bps         INTEGER NOT NULL DEFAULT 3500,
+        commission_rate_bps         INTEGER NOT NULL DEFAULT 3700,
         commission_amount_cents     INTEGER NOT NULL DEFAULT 0,
         currency                    TEXT NOT NULL DEFAULT 'eur',
         status                      TEXT NOT NULL DEFAULT 'pending',
@@ -3527,26 +3527,24 @@ export async function initDataTables(): Promise<void> {
     // and the IF NOT EXISTS on CREATE POLICY.
     await run(client, `ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE public.seller_commissions ENABLE ROW LEVEL SECURITY`);
+    // Seller data is admin/service-only. The old USING (true) policies exposed
+    // every seller and commission row to any session that could SET ROLE app_user.
+    // Keep explicit deny policies so the intended boundary remains inspectable
+    // and self-heals existing databases that already have the old policies.
     await run(client, `
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_policies
-          WHERE schemaname='public' AND tablename='sellers' AND policyname='sellers_app_user_all'
-        ) THEN
-          CREATE POLICY sellers_app_user_all ON public.sellers
-            FOR ALL TO app_user USING (true) WITH CHECK (true);
-        END IF;
-      END $$`);
+      DROP POLICY IF EXISTS sellers_app_user_all ON public.sellers;
+      CREATE POLICY sellers_app_user_deny ON public.sellers
+        FOR ALL TO app_user USING (false) WITH CHECK (false)
+    `);
     await run(client, `
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_policies
-          WHERE schemaname='public' AND tablename='seller_commissions' AND policyname='seller_commissions_app_user_all'
-        ) THEN
-          CREATE POLICY seller_commissions_app_user_all ON public.seller_commissions
-            FOR ALL TO app_user USING (true) WITH CHECK (true);
-        END IF;
-      END $$`);
+      DROP POLICY IF EXISTS seller_commissions_app_user_all ON public.seller_commissions;
+      CREATE POLICY seller_commissions_app_user_deny ON public.seller_commissions
+        FOR ALL TO app_user USING (false) WITH CHECK (false)
+    `);
+    await run(client, `
+      ALTER TABLE public.seller_commissions
+        ALTER COLUMN commission_rate_bps SET DEFAULT 3700
+    `);
 
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {

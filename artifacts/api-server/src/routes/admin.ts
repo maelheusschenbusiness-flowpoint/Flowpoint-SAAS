@@ -2598,10 +2598,11 @@ router.post("/admin/sellers", async (req: Request, res: Response): Promise<void>
       res.status(409).json({ ok: false, error: "A seller with this code already exists" });
       return;
     }
+    const appBaseUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
     res.status(201).json({
       ok:     true,
       seller: r.rows[0],
-      link:   `https://app.flowpoint.pro/pricing.html?ref=${r.rows[0].seller_code}`,
+      link:   `${appBaseUrl.replace(/\/+$/, "")}/pricing.html?ref=${r.rows[0].seller_code}`,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -2624,11 +2625,12 @@ router.get("/admin/sellers", async (req: Request, res: Response): Promise<void> 
         GROUP BY s.id
         ORDER BY s.created_at DESC`
     );
+    const appBaseUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
     res.json({
       ok:      true,
       sellers: r.rows.map(s => ({
         ...s,
-        link: `https://app.flowpoint.pro/pricing.html?ref=${s.seller_code}`,
+        link: `${appBaseUrl.replace(/\/+$/, "")}/pricing.html?ref=${s.seller_code}`,
       })),
     });
   } catch (err) {
@@ -2657,10 +2659,11 @@ router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promis
       [code, name ?? null, email ?? null, status ?? null]
     );
     if (!r.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
+    const appBaseUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
     res.json({
       ok:     true,
       seller: r.rows[0],
-      link:   `https://app.flowpoint.pro/pricing.html?ref=${(r.rows[0] as { seller_code: string }).seller_code}`,
+      link:   `${appBaseUrl.replace(/\/+$/, "")}/pricing.html?ref=${(r.rows[0] as { seller_code: string }).seller_code}`,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });

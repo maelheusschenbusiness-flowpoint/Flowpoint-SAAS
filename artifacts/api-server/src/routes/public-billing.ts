@@ -12,6 +12,12 @@ const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
 const router = Router();
 
+function getPublicStripeKey(stripeKey: string): string {
+  return stripeKey.startsWith("sk_test_")
+    ? (process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "")
+    : (process.env["PUBLIC_STRIPE_API_KEY"] || "");
+}
+
 // ── GET /api/billing/plans ────────────────────────────────────────────────────
 // Public endpoint — returns the full plan catalog + add-on catalog.
 // When an authenticated orgId is present on the request (set by auth middleware
@@ -283,7 +289,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
-  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  const publishableKey = getPublicStripeKey(stripeKey);
 
   /* No key in dev → mock */
   if (!stripeKey) {
@@ -852,7 +858,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     country:     typeof _rawAddr.country     === "string" ? _rawAddr.country.trim().toUpperCase() : "",
   } : null;
   const stripeKey      = getStripeKey();
-  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  const publishableKey = getPublicStripeKey(stripeKey);
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {

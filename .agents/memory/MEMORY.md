@@ -151,3 +151,4 @@
 - [FFmpeg still-image zoompan duration](ffmpeg-zoompan-duration.md) — with looped still inputs, zoompan d must stay 1 or each source frame is duplicated and short clips become extremely long.
 - [Plan vs add-on notifications](plan-addon-notification-separation.md) — bundled plan entitlements reuse add-on activation events; typed plan actions must suppress only their technical add-on toasts.
 - [Continuous FFmpeg zooms](ffmpeg-continuous-zoom.md) — animate scale with eval=frame and crop to output size; segment fades cause visible black flashes.
+- [Stripe TEST public key and return](stripe-test-key-and-return.md) — TEST must return pk_test matching sk_test; confirmSetup/confirmPayment may succeed without redirect.
