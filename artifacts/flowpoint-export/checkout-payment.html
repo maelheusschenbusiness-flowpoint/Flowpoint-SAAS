@@ -477,8 +477,29 @@
         setLoading(false, mode === 'payment'
           ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
           : 'Démarrer l\'essai gratuit →');
+        return;
       }
-      /* En cas de succès Stripe redirige vers checkout-return.html */
+
+      /*
+       * Stripe does not redirect for every successful card confirmation.
+       * In particular, confirmSetup() resolves with a succeeded SetupIntent
+       * when no 3DS/authentication step is needed. Continue the same return
+       * flow explicitly so the account is finalized instead of leaving the
+       * user on a disabled-looking payment page.
+       */
+      var confirmedIntent = mode === 'payment' ? result.paymentIntent : result.setupIntent;
+      if (confirmedIntent && confirmedIntent.id) {
+        var returnParams = new URLSearchParams();
+        returnParams.set(mode === 'payment' ? 'payment_intent' : 'setup_intent', confirmedIntent.id);
+        returnParams.set('redirect_status', confirmedIntent.status || 'succeeded');
+        window.location.href = returnUrl + '?' + returnParams.toString();
+        return;
+      }
+
+      showAlert('La confirmation Stripe est incomplète. Réessayez ou contactez le support.');
+      setLoading(false, mode === 'payment'
+        ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
+        : 'Démarrer l\'essai gratuit →');
     } catch (err) {
       console.error('[FlowPoint Payment]', err);
       showAlert('Une erreur est survenue. Réessayez ou contactez le support.');

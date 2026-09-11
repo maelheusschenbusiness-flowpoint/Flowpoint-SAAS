@@ -5,7 +5,7 @@
  *   A-C  frontend ?ref= capture / persistence / first-touch
  *   D-F  signup propagation chain
  *   G-I  Stripe metadata
- *   J-L  commission 35 % + idempotency
+ *   J-L  commission 37 % + idempotency
  *   M-N  exclusions (addon / no-seller)
  *   O    invalid code
  *   P    mark-paid
@@ -72,7 +72,7 @@ const _mockPool = {
       const orgId     = params[1];
       const plan      = params[8];
       const eligible  = Number(params[9] ?? 0);
-      const bps       = Number(params[10] ?? 3500);
+      const bps       = Number(params[10] ?? 3700);
       const commCents = Number(params[11] ?? 0);
       const attrib    = params[13];
       const existing  = _dbRows.seller_commissions.find(r => r.org_id === orgId);
@@ -227,13 +227,13 @@ describe("G–I  Stripe metadata (structural)", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTION J-L — Commission 35 % + idempotency
+// SECTION J-L — Commission 37 % + idempotency
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("J–L  Commission 35 % lifecycle", () => {
+describe("J–L  Commission 37 % lifecycle", () => {
   beforeEach(() => { _dbReset(); vi.clearAllMocks(); });
 
-  it("J — first subscription payment → commission = 35 % of eligible amount", async () => {
+  it("J — first subscription payment → commission = 37 % of eligible amount", async () => {
     _dbRows.sellers.push({ id: "s1", seller_code: "SELLER-0042", status: "active" });
     await recordCommission({
       sellerId:            "s1",
@@ -246,9 +246,9 @@ describe("J–L  Commission 35 % lifecycle", () => {
     });
     const comm = _dbRows.seller_commissions.find(c => c.org_id === "org_j");
     expect(comm).toBeDefined();
-    expect(comm?.commission_rate_bps).toBe(3500);
-    // 35 % of 4900 = 1715
-    expect(comm?.commission_amount_cents).toBe(1715);
+    expect(comm?.commission_rate_bps).toBe(3700);
+    // 37 % of 4900 = 1813
+    expect(comm?.commission_amount_cents).toBe(1813);
     expect(comm?.eligible_amount_cents).toBe(4900);
     expect(comm?.status).toBe("pending");
     expect(comm?.earned_at).not.toBeNull();
@@ -412,13 +412,13 @@ describe("R  Billing non-regression — seller does not affect billing", () => {
     expect(stripeCall).toBeUndefined();
   });
 
-  it("R2 — commission_rate_bps is always 3500, never derived from billing params", async () => {
+  it("R2 — commission_rate_bps is always 3700, never derived from billing params", async () => {
     _dbRows.sellers.push({ id: "s1", seller_code: "SELLER-0042", status: "active" });
     await recordCommission({
       sellerId: "s1", orgId: "org_r2", customerEmail: "r@test.com",
       plan: "ultra", eligibleAmountCents: 29900, currency: "eur", attributionMethod: "ref_link",
     });
-    expect(_dbRows.seller_commissions[0]?.commission_rate_bps).toBe(3500);
+    expect(_dbRows.seller_commissions[0]?.commission_rate_bps).toBe(3700);
   });
 
   it("R3 — trial payment (amount=0) → commission earned_at is null", async () => {
@@ -429,7 +429,7 @@ describe("R  Billing non-regression — seller does not affect billing", () => {
     });
     const comm = _dbRows.seller_commissions.find(c => c.org_id === "org_r3");
     expect(comm?.earned_at).toBeNull();
-    expect(comm?.commission_amount_cents).toBe(0); // 35% of 0
+    expect(comm?.commission_amount_cents).toBe(0); // 37% of 0
   });
 
   it("R4 — two different orgs from same seller each get their own commission", async () => {

@@ -184,14 +184,14 @@ content_type = "application/octet-stream"
 id = "9qDcT_jIvV4obRLrz7tuE"
 uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
 type = "video"
-title = "Onboarding 1 — Interface FlowPoint"
-description = "Vidéo réelle de l’interface FlowPoint."
+title = "FlowPoint onboarding — V1 corrigée"
+description = "Vidéo V1 finale — 1920×1080, 30 fps, H.264, 40,4 secondes."
 logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
-content_hash = "sha256:5b36110024f27289e4468c55ac7713008ebcd79d9ea93f52f744aaadd1c5739b"
-size = 565111
-mtime_ms = 1788973624077
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/ae2f9fab-ff45-47d0-b3b9-90f0e093a871"
-storage_version_token = "1788977033221647"
+content_hash = "sha256:a25bed3024150e2d5e7c5dc57d27a085b3d8278c2f9d68ceb53be6fd15159900"
+size = 3763662
+mtime_ms = 1789064081675
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/e6438b94-8303-4426-986e-c20b51a8b8f3"
+storage_version_token = "1789064625573727"
 content_type = "video/mp4"
 
 [[outputs]]
@@ -235,3 +235,129 @@ mtime_ms = 1788973632697
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/ae96f023-379d-44c6-a24b-b63b8506432c/3f2294c2-4df2-4bf2-9bc2-d94f2316006e"
 storage_version_token = "1788977038864551"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "R2gIs_1BQ9u_4urBEnCix"
+uri = "file://FlowPoint-onboarding-videos-V1-V6.zip"
+type = "unspecified"
+title = "FlowPoint onboarding — vidéos V1 à V6"
+description = "Archive ZIP contenant les six vidéos d’onboarding FlowPoint, V1 à V6."
+logical_id = "1a3814c4-0e78-401c-b8d4-2947f30675d1"
+content_hash = "sha256:82616dc20f8eedef8a296c433e8c6768c4965d49f4bf11b2b77f8942cbf82edb"
+size = 10409473
+mtime_ms = 1789064666422
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/1a3814c4-0e78-401c-b8d4-2947f30675d1/62a3d1dc-dc0d-4ede-8ff1-56b120ef3346"
+storage_version_token = "1789064672323425"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "56_HSC7ZzJW8YbzrYaMmp"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_0.5s-overview.jpg"
+type = "image"
+title = "t=0.5s — Vue générale Overview"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "f9f1b687-e2aa-4b2c-8397-1adc5e799a76"
+content_hash = "sha256:93c8cd2349a973061200fed79d5ad15d90f10846d6b3e111429d03f50501f74f"
+size = 48375
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/f9f1b687-e2aa-4b2c-8397-1adc5e799a76/b28d516e-fa18-44a5-9f1f-1ac150513ca8"
+storage_version_token = "1789062282710136"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "CwgPgLd-ASJUtIYbhrkit"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_kpi-hover.jpg"
+type = "image"
+title = "t=13.6s — Hover KPI cards (avant zoom)"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "2ee2f66a-74a1-401a-8548-bddacea9b831"
+content_hash = "sha256:161c69faf01fcc7223d397c33f7fe83d1ba8a1ad83688ee6553659787c556e89"
+size = 10730
+mtime_ms = 1789062269133
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/2ee2f66a-74a1-401a-8548-bddacea9b831/d6150ebb-b910-42a7-a0d1-69860fd3e4f3"
+storage_version_token = "1789062284759417"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Q-h5X-4fhyFVF8BEQlppn"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_kpi-zoom-callout.jpg"
+type = "image"
+title = "t=14.9s — Zoom ×1.28 + callout \"Votre score SEO\""
+description = "Capture V1 pilot 1920×1080"
+logical_id = "0cb0897c-7b45-496f-8779-1f47b92b4575"
+content_hash = "sha256:bdc69ed897fe5fabc623ea08d03e9f7255c08afb1e3bdf8cf43a0d45632bc974"
+size = 60311
+mtime_ms = 1789062269133
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/0cb0897c-7b45-496f-8779-1f47b92b4575/d474fe08-ed31-4690-a6f3-a4437ac9b367"
+storage_version_token = "1789062286756054"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "KiD7ck2g_NYrvmX2xeQmV"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_insights-callout.jpg"
+type = "image"
+title = "t=19.6s — Section insights + callout priorités"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "0355df8d-abf0-4b3a-b31d-f8b150e11797"
+content_hash = "sha256:a2ac7ed23189ee6d1f38d0b95628b3d805b3b7c10adf828d508b93e0fa3fb881"
+size = 71656
+mtime_ms = 1789062269133
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/0355df8d-abf0-4b3a-b31d-f8b150e11797/aa3ce42e-7df2-449b-8ea5-4fa19ea08806"
+storage_version_token = "1789062288349810"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "eNXk5QyfLtY6a341Sg-Rs"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_audits-overview.jpg"
+type = "image"
+title = "t=28.9s — Arrivée sur Audits SEO"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "3ec156a3-12d1-42b8-9fbd-1379ce14bae1"
+content_hash = "sha256:e08cb7bdba804441169176936ce9c8a57bf057aa9a93e9d7f4911f6bdf3542cb"
+size = 43913
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/3ec156a3-12d1-42b8-9fbd-1379ce14bae1/df22c39e-4471-4781-b4dd-37890aa821b7"
+storage_version_token = "1789062290240475"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "i4fjxMN_8kBxbtN2GzMO2"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_audits-zoom-callout.jpg"
+type = "image"
+title = "t=30.9s — Zoom ×1.22 table + callout"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "3c2ee05a-3bcc-43ea-b298-79a6c55020f3"
+content_hash = "sha256:82231fe3d886adccffa8a4839fb9e828045078c06aec1030b5c386d565008ed2"
+size = 49224
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/3c2ee05a-3bcc-43ea-b298-79a6c55020f3/07e95d72-761f-4deb-8a96-09e6bb1a8081"
+storage_version_token = "1789062292827916"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "OSncVqe3X74rsf_ElOQRk"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_back-overview-final.jpg"
+type = "image"
+title = "t=44.5s — Retour Overview — callout final"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "91b1a900-7abb-4947-a685-55719f243f51"
+content_hash = "sha256:e63b815fe975aaff76f4b11ed3b27fef8a9129233ef2607947e8ba76147794b9"
+size = 71212
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/91b1a900-7abb-4947-a685-55719f243f51/fd5b7d60-a158-48f6-abac-6ab640fb8c89"
+storage_version_token = "1789062294551202"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "sX-1Q841_GMnffZATaM3n"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames-final/transitions-contact-sheet.jpg"
+type = "image"
+title = "V1 — contrôle transitions zooms"
+description = "Planche de contrôle avant / pendant / après les zooms KPI et Audits : aucune transition noire intermédiaire."
+logical_id = "76eb192b-7c2c-4e35-9681-4c318c460a33"
+content_hash = "sha256:3168eb7eee70fd839288c001c6a49ce88fe54ca2848414617b99fff7bcb378d7"
+size = 610379
+mtime_ms = 1789062807857
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/76eb192b-7c2c-4e35-9681-4c318c460a33/ccb1e99d-e081-470e-aafc-dc3da5a88090"
+storage_version_token = "1789062876574857"
+content_type = "image/jpeg"
