@@ -2602,7 +2602,7 @@ router.post("/admin/sellers", async (req: Request, res: Response): Promise<void>
     res.status(201).json({
       ok:     true,
       seller: r.rows[0],
-      link:   `${appBaseUrl.replace(/\/+$/, "")}/pricing.html?ref=${r.rows[0].seller_code}`,
+      link:   `${appBaseUrl.replace(/\/+$/, "")}/signin.html?fp_ref=${encodeURIComponent(r.rows[0].seller_code)}`,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -2630,7 +2630,7 @@ router.get("/admin/sellers", async (req: Request, res: Response): Promise<void> 
       ok:      true,
       sellers: r.rows.map(s => ({
         ...s,
-        link: `${appBaseUrl.replace(/\/+$/, "")}/pricing.html?ref=${s.seller_code}`,
+        link: `${appBaseUrl.replace(/\/+$/, "")}/signin.html?fp_ref=${encodeURIComponent(s.seller_code)}`,
       })),
     });
   } catch (err) {

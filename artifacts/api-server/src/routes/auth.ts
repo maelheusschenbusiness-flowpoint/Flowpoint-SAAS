@@ -1897,6 +1897,8 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   const selectedPlan = ["standard","pro","ultra"].includes(rawPlan) ? rawPlan : null;
   const rawRedirect = String(req.query["redirect_to"] ?? "");
   const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : null;
+  const rawSellerCode = String(req.query["seller_code"] ?? "").trim().toUpperCase();
+  const sellerCode = /^SELLER-[A-Z0-9]{1,20}$/.test(rawSellerCode) ? rawSellerCode : null;
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -1905,7 +1907,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo })).toString("base64"),
+    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode })).toString("base64"),
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -1965,10 +1967,15 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Apply plan & redirect from OAuth state if present
     let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
     let planFromState: string | null = null;
+    let sellerIdFromState: string | null = null;
     try {
       const rawState = String(req.query["state"] ?? "");
       if (rawState) {
-        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as { plan?: string; redirect_to?: string | null };
+        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as {
+          plan?: string;
+          redirect_to?: string | null;
+          seller_code?: string | null;
+        };
         if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
           planFromState = stateObj.plan;
           logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
@@ -1976,6 +1983,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         if (stateObj.redirect_to && stateObj.redirect_to.startsWith("/")) {
           redirectAfterLogin = `${publicUrl}${stateObj.redirect_to}`;
           logger.info({ redirect: redirectAfterLogin }, "[Auth] Google login — redirect after login set from OAuth state");
+        }
+        if (stateObj.seller_code) {
+          const { validateSellerCode } = await import("../services/seller-attribution.js");
+          sellerIdFromState = (await validateSellerCode(stateObj.seller_code))?.id ?? null;
         }
       }
     } catch { /* state parse error — ignore */ }
@@ -2065,11 +2076,11 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               googlePreRegToken = generateToken();
               await _gpClient.query(
                 `INSERT INTO pending_signups
-                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',NOW(),NOW() + INTERVAL '2 hours')
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, created_at, expires_at)
+                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,NOW(),NOW() + INTERVAL '2 hours')
                  ON CONFLICT (token) DO NOTHING`,
                 // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, ""],
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState],
               );
               logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
             } finally {
