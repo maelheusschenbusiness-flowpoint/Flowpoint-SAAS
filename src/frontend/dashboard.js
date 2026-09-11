@@ -61245,7 +61245,7 @@ function renderGrowthKeywords() {
                     <td class="fp-col-hide-sm" style="text-align:center">
                       <div style="display:flex;gap:5px;justify-content:center">
                         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._kwHistory('${escHtml(k.id||'')}','${escHtml(k.keyword||k.kw||'')}')">📈 Historique</button>
-                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._kwDelete('${escHtml(k.id||'')}')">✕</button>
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" aria-label="Supprimer le mot-clé" title="Supprimer le mot-clé" onclick="window._kwDelete('${escHtml(k.id||'')}')">✕</button>
                       </div>
                     </td>
                   </tr>
