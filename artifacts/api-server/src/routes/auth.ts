@@ -14,6 +14,7 @@ import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
+import { getStripeKey } from "../services/stripe-factory.js";
 
 const router = Router();
 
@@ -1841,11 +1842,15 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
 
   // Fire-and-forget: ensure Stripe customer (non-blocking, after response sent)
   (async () => {
-    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
+    // Use the same mode-aware selector as the billing routes. In TEST mode,
+    // using the LIVE key here can race the checkout request through the shared
+    // ensureStripeCustomer in-flight map and make a valid test Customer look
+    // missing.
+    const stripeKey = getStripeKey();
     if (!stripeKey) return;
     try {
       const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
-      await ensureStripeCustomer(sessionOrgId);
+      await ensureStripeCustomer(sessionOrgId, undefined, stripeKey);
     } catch (stripeErr) {
       logger.warn({ err: stripeErr instanceof Error ? stripeErr.message : String(stripeErr) }, "login-verify: ensureStripeCustomer failed (non-fatal)");
     }
