@@ -4,11 +4,16 @@
  * All routes are protected by the ADMIN_KEY environment variable.
  * Clients must supply:  x-admin-key: <value of ADMIN_KEY>
  *
+ * Exception, scoped: the four seller-management routes (POST/GET /admin/sellers,
+ * PATCH /admin/sellers/:code, GET /admin/sellers/:code/report) also accept
+ * x-seller-admin-key: <value of SELLER_ADMIN_KEY>. See requireSellerAdminKey.
+ *
  * These routes are intentionally NOT gated by user session auth so that
  * they can be called from ops scripts / CI pipelines.
  */
 
 import { Router, type Request, type Response } from "express";
+import { timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 
@@ -39,6 +44,73 @@ function requireAdminKey(req: Request, res: Response): boolean {
   }
   return true;
 }
+
+// ── Seller management: scoped key ─────────────────────────────────────────────
+// The four seller-management routes (create, list, update, report) also accept
+// SELLER_ADMIN_KEY, sent in its own header, x-seller-admin-key. It unlocks nothing
+// else: every other admin route still calls requireAdminKey, which only ever
+// compares against ADMIN_KEY. ADMIN_KEY in x-admin-key keeps working on the four
+// seller routes exactly as before.
+const SELLER_ADMIN_KEY_MIN_LEN = 32;
+
+function keysEqual(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided), b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function requireSellerAdminKey(req: Request, res: Response): boolean {
+  const provided = req.headers["x-seller-admin-key"];
+  // No scoped header, or an x-admin-key present: the full admin check, unchanged.
+  if (provided === undefined || req.headers["x-admin-key"] !== undefined) {
+    return requireAdminKey(req, res);
+  }
+  const key = process.env["SELLER_ADMIN_KEY"];
+  if (!key || key.length < SELLER_ADMIN_KEY_MIN_LEN) {
+    res.status(503).json({
+      ok: false,
+      error: `SELLER_ADMIN_KEY is not configured on this server (minimum ${SELLER_ADMIN_KEY_MIN_LEN} chars)`,
+    });
+    return false;
+  }
+  if (key === process.env["ADMIN_KEY"]) {
+    // A scoped key equal to the full admin key would scope nothing.
+    res.status(503).json({ ok: false, error: "SELLER_ADMIN_KEY must differ from ADMIN_KEY" });
+    return false;
+  }
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
+    res.status(403).json({ ok: false, error: "Invalid x-seller-admin-key header" });
+    return false;
+  }
+  return true;
+}
+
+/** Canonical seller link: the signin page reads fp_ref and carries the attribution. */
+export const SELLER_LINK_BASE = "https://app.flowpoint.pro/signin.html";
+export const sellerLink = (code: string): string =>
+  `${SELLER_LINK_BASE}?fp_ref=${encodeURIComponent(code)}`;
+
+/**
+ * Seller list with per-seller totals. Organizations and commissions are aggregated
+ * separately, then joined: joining both tables to sellers before grouping multiplied
+ * every commission by the seller's number of organizations.
+ */
+export const SELLERS_LIST_SQL = `SELECT s.id, s.seller_code, s.name, s.email, s.status, s.created_at,
+              COALESCE(o.org_count, 0)::int        AS org_count,
+              COALESCE(c.commission_count, 0)::int AS commission_count,
+              COALESCE(c.paid_cents, 0)::int       AS paid_cents,
+              COALESCE(c.pending_cents, 0)::int    AS pending_cents
+         FROM sellers s
+         LEFT JOIN (SELECT seller_id, COUNT(*) AS org_count
+                      FROM organizations
+                     WHERE seller_id IS NOT NULL
+                     GROUP BY seller_id) o ON o.seller_id = s.id
+         LEFT JOIN (SELECT seller_id,
+                           COUNT(*) AS commission_count,
+                           SUM(commission_amount_cents) FILTER (WHERE status = 'paid')    AS paid_cents,
+                           SUM(commission_amount_cents) FILTER (WHERE status = 'pending') AS pending_cents
+                      FROM seller_commissions
+                     GROUP BY seller_id) c ON c.seller_id = s.id
+        ORDER BY s.created_at DESC`;
 
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
 router.get("/admin/stats", async (req: Request, res: Response): Promise<void> => {
@@ -2558,7 +2630,7 @@ router.post("/admin/create-report-api", async (req: Request, res: Response): Pro
 
 // ── POST /api/admin/sellers — create a seller ─────────────────────────────────
 router.post("/admin/sellers", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
+  if (!requireSellerAdminKey(req, res)) return;
   const { name, email, code: rawCode } = req.body as Record<string, string | undefined>;
   try {
     let sellerCode: string;
@@ -2588,7 +2660,7 @@ router.post("/admin/sellers", async (req: Request, res: Response): Promise<void>
     res.status(201).json({
       ok:     true,
       seller: r.rows[0],
-      link:   `https://app.flowpoint.pro/pricing.html?ref=${r.rows[0].seller_code}`,
+      link:   sellerLink(r.rows[0].seller_code),
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -2597,25 +2669,14 @@ router.post("/admin/sellers", async (req: Request, res: Response): Promise<void>
 
 // ── GET /api/admin/sellers — list all sellers ──────────────────────────────────
 router.get("/admin/sellers", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
+  if (!requireSellerAdminKey(req, res)) return;
   try {
-    const r = await pool.query(
-      `SELECT s.id, s.seller_code, s.name, s.email, s.status, s.created_at,
-              COUNT(DISTINCT o.id)::int                                                          AS org_count,
-              COUNT(sc.id)::int                                                                   AS commission_count,
-              COALESCE(SUM(sc.commission_amount_cents) FILTER (WHERE sc.status = 'paid'),   0)::int AS paid_cents,
-              COALESCE(SUM(sc.commission_amount_cents) FILTER (WHERE sc.status = 'pending'),0)::int AS pending_cents
-         FROM sellers s
-         LEFT JOIN organizations o ON o.seller_id = s.id
-         LEFT JOIN seller_commissions sc ON sc.seller_id = s.id
-        GROUP BY s.id
-        ORDER BY s.created_at DESC`
-    );
+    const r = await pool.query(SELLERS_LIST_SQL);
     res.json({
       ok:      true,
       sellers: r.rows.map(s => ({
         ...s,
-        link: `https://app.flowpoint.pro/pricing.html?ref=${s.seller_code}`,
+        link: sellerLink(s.seller_code),
       })),
     });
   } catch (err) {
@@ -2625,7 +2686,7 @@ router.get("/admin/sellers", async (req: Request, res: Response): Promise<void> 
 
 // ── PATCH /api/admin/sellers/:code — update seller (name / email / status) ────
 router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
+  if (!requireSellerAdminKey(req, res)) return;
   const code   = String(req.params["code"] ?? "").trim().toUpperCase();
   const { name, email, status } = req.body as Record<string, string | undefined>;
   if (status && !["active", "inactive"].includes(status)) {
@@ -2647,7 +2708,7 @@ router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promis
     res.json({
       ok:     true,
       seller: r.rows[0],
-      link:   `https://app.flowpoint.pro/pricing.html?ref=${(r.rows[0] as { seller_code: string }).seller_code}`,
+      link:   sellerLink((r.rows[0] as { seller_code: string }).seller_code),
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
@@ -2769,7 +2830,7 @@ router.post("/admin/seller-attributions", async (req: Request, res: Response): P
 
 // ── GET /admin/sellers/:code/report — read all orgs + commissions for a seller ─
 router.get("/admin/sellers/:code/report", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
+  if (!requireSellerAdminKey(req, res)) return;
   const code = String(req.params["code"] ?? "").trim().toUpperCase();
   try {
     const sellerR = await pool.query(
