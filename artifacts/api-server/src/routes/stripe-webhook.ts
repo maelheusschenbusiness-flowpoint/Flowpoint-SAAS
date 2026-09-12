@@ -718,6 +718,44 @@ export async function activateNewSignup(opts: {
   }
 }
 
+// ── Pending-signup activation barrier ─────────────────────────────────────
+// For a new pre-registered signup, finalize-checkout creates the Stripe
+// subscription BEFORE it commits the canonical UUID organization (FC-4).
+// Stripe can deliver customer.subscription.* inside that window, while the
+// customer still resolves to the pre-registration key (email, via
+// org_settings). The subscription handler writes organizations.id (UUID), so
+// instead of failing with 22P02 and depending on a Stripe retry, wait for the
+// in-flight activation to commit and use the canonical organizations.id.
+// Org and pending signup are read in ONE statement: FC-4 creates the org and
+// consumes the signup in the same transaction, so the snapshot is consistent.
+const PENDING_ACTIVATION_WAIT_MS = 5000;
+const PENDING_ACTIVATION_POLL_MS = 250;
+
+export async function awaitPendingSignupActivation(
+  email: string,
+  opts: { timeoutMs?: number; pollMs?: number } = {},
+): Promise<{ status: "activated"; orgId: string } | { status: "no_pending_signup" } | { status: "timeout" }> {
+  const timeoutMs = opts.timeoutMs ?? PENDING_ACTIVATION_WAIT_MS;
+  const pollMs    = opts.pollMs    ?? PENDING_ACTIVATION_POLL_MS;
+  const { pool: pgPool } = await import("@workspace/db");
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const r = await pgPool.query<{ org_id: string | null; pending: boolean }>(
+      `SELECT
+         (SELECT id::text FROM organizations
+           WHERE lower(owner_email) = lower($1) ORDER BY created_at DESC LIMIT 1) AS org_id,
+         EXISTS (SELECT 1 FROM pending_signups
+           WHERE lower(email) = lower($1) AND consumed_at IS NULL AND expires_at > NOW()) AS pending`,
+      [email]
+    );
+    const row = r.rows[0];
+    if (row?.org_id) return { status: "activated", orgId: row.org_id };
+    if (!row?.pending) return { status: "no_pending_signup" };
+    if (Date.now() >= deadline) return { status: "timeout" };
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripeKey = getStripeKey();
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
@@ -858,6 +896,26 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       } finally { cc.release(); }
     } catch (canonErr) {
       logger.warn({ canonErr }, "[Webhook] orgId canonicalization failed — using raw orgId");
+    }
+  }
+
+  // ── Subscription event for a signup whose UUID org is still being activated ──
+  // See awaitPendingSignupActivation. Resolve canonically BEFORE any UUID query,
+  // idempotency claim or write; if activation does not commit in time, answer
+  // 503 without touching the DB so the event is delivered again intact.
+  if (orgId && !UUID_RE_WH.test(orgId) &&
+      (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated")) {
+    const activation = await awaitPendingSignupActivation(orgId);
+    if (activation.status === "activated") {
+      logger.info({ from: orgId.includes("@") ? "email" : "non-uuid", to: activation.orgId, resolvedVia, type: event.type },
+        "[Webhook] orgId canonicalized after pending signup activation committed");
+      orgId = activation.orgId;
+      resolvedVia += "+pending_signup_activation";
+    } else if (activation.status === "timeout") {
+      logger.error({ type: event.type, eventId: (event as unknown as { id?: string }).id, resolvedVia },
+        "[Webhook] canonical organization still pending activation — returning 503, no DB writes performed");
+      res.status(503).json({ received: false, error: "Organization activation pending" });
+      return;
     }
   }
 
