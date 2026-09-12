@@ -47,6 +47,7 @@ function pgUuidError(): Error {
 
 async function fakeQuery(sql: string, params: unknown[] = []) {
   const s = sql.replace(/\s+/g, " ");
+  if (process.env.DBG) console.log("SQL", s.slice(0, 90), JSON.stringify(params).slice(0, 80));
 
   // organizations.id is UUID in production: any `WHERE id = $1` on organizations
   // with a non-UUID parameter raises 22P02 (string_to_uuid).
@@ -367,5 +368,75 @@ describe("awaitPendingSignupActivation", () => {
     const { awaitPendingSignupActivation } = await import("../routes/stripe-webhook.js");
     await expect(awaitPendingSignupActivation(EMAIL, { timeoutMs: 100, pollMs: 20 }))
       .resolves.toEqual({ status: "timeout" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INVOICE_TRIAL_STATUS — a €0 invoice (trial start, add-on trial month) must not
+// flip subscription_status to "active": Stripe keeps the subscription trialing
+// and customer.subscription.* events own that state. Only a real payment does.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("INVOICE_TRIAL_STATUS — invoice.payment_succeeded and €0 trial invoices", () => {
+  const invoice = (id: string, o: Record<string, unknown>) => ({
+    id, type: "invoice.payment_succeeded",
+    data: { object: { id: `in_${id}`, customer: CUS, subscription: SUB, currency: "eur", subscription_details: { metadata: {} }, ...o } },
+  });
+  const statusWrites = () => persistCalls.filter((c) => c.fields["subscriptionStatus"] !== undefined);
+
+  it("REPRO: €0 subscription_create invoice on the canonical org does not write active (stays trialing)", async () => {
+    commitActivation();
+    orgSellerId = "11111111-2222-4333-8444-555555555555";
+    const res = await deliver(invoice("evt_INV_TRIAL0", { amount_paid: 0, billing_reason: "subscription_create" }));
+    expect(res.statusCode).toBe(200);
+    expect(statusWrites()).toEqual([]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(commissionCalls).toHaveLength(0);
+  });
+
+  it("€0 invoice inside the activation window writes nothing on the email key", async () => {
+    const res = await deliver(invoice("evt_INV_WINDOW0", { amount_paid: 0, billing_reason: "subscription_create" }));
+    expect(res.statusCode).toBe(200);
+    expect(statusWrites()).toEqual([]);
+  });
+
+  it("€0 add-on subscription trial invoice does not flip the plan status", async () => {
+    commitActivation();
+    const res = await deliver(invoice("evt_INV_ADDON0", {
+      amount_paid: 0, billing_reason: "subscription_create", subscription_details: { metadata: { addonSub: "true" } },
+    }));
+    expect(res.statusCode).toBe(200);
+    expect(statusWrites()).toEqual([]);
+  });
+
+  it("first real payment after trial (subscription_cycle, €29) → active on the UUID org + one commission on 2900", async () => {
+    commitActivation();
+    orgSellerId = "11111111-2222-4333-8444-555555555555";
+    const res = await deliver(invoice("evt_INV_FIRSTPAID", { amount_paid: 2900, billing_reason: "subscription_cycle" }));
+    expect(res.statusCode).toBe(200);
+    expect(statusWrites()).toEqual([{ orgId: ORG_UUID, fields: { subscriptionStatus: "active" } }]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(commissionCalls).toHaveLength(1);
+    expect(commissionCalls[0]).toMatchObject({ orgId: ORG_UUID, eligibleAmountCents: 2900 });
+  });
+
+  it("replay of an already-processed paid invoice: duplicate no-op, no write, no second commission", async () => {
+    // Seed the idempotency row as a completed first delivery. (Driving two real
+    // deliveries here trips a vitest mock race between the commission task's and
+    // markEventStatus' concurrent `import("@workspace/db")` — test-harness only.)
+    commitActivation();
+    orgSellerId = "11111111-2222-4333-8444-555555555555";
+    billingEvents.set("evt_INV_REPLAY", { status: "processed", orgId: ORG_UUID });
+    const res = await deliver(invoice("evt_INV_REPLAY", { amount_paid: 2900, billing_reason: "subscription_cycle" }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(res.body).toEqual({ received: true, duplicate: true });
+    expect(persistCalls).toEqual([]);
+    expect(commissionCalls).toHaveLength(0);
+  });
+
+  it("paid recovery / renewal (amount > 0) still marks the subscription active", async () => {
+    commitActivation();
+    const res = await deliver(invoice("evt_INV_RECOVERY", { amount_paid: 2900, billing_reason: "manual" }));
+    expect(res.statusCode).toBe(200);
+    expect(statusWrites()).toEqual([{ orgId: ORG_UUID, fields: { subscriptionStatus: "active" } }]);
   });
 });

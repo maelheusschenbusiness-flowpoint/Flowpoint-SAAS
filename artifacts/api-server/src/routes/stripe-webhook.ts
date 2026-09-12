@@ -1802,7 +1802,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       // P0-1 + P0-3: persist to DB, no store.me mutation
-      await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
+      // A €0 invoice (trial start, add-on trial month) does not mean the
+      // subscription is active: Stripe keeps it `trialing` and the
+      // customer.subscription.* events own that state. Only a real payment
+      // (first charge after trial, renewal, past_due recovery) confirms `active`.
+      const _invAmountPaid  = Number(obj["amount_paid"] || 0);
+      if (_invAmountPaid > 0) {
+        await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
+      } else {
+        logger.info({ orgId, billingReason: obj["billing_reason"] },
+          "[Webhook] invoice.payment_succeeded: €0 invoice — subscription status left to customer.subscription.* events");
+      }
       store.broadcast({ type: "payment_succeeded" }, orgId);
 
       // Persist active add-ons from subscription (if subscription is in the event).
@@ -1820,7 +1830,6 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       //   • Only once per org (ON CONFLICT DO NOTHING)
       //   • Triggers on billing_reason=subscription_create (direct paid) OR
       //     subscription_cycle (first payment after trial end)
-      const _invAmountPaid  = Number(obj["amount_paid"] || 0);
       const _invBillingReason = String(obj["billing_reason"] || "");
       const _isFirstPaymentTrigger =
         (_invBillingReason === "subscription_create" || _invBillingReason === "subscription_cycle")
