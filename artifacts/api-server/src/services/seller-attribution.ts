@@ -34,7 +34,7 @@ export interface CommissionOpts {
   attributionMethod:      "ref_link" | "manual";
 }
 
-const COMMISSION_RATE_BPS = 3700; // 37 % non-récurrent — snapshotted per commission row
+const COMMISSION_RATE_BPS = 3500; // 35 % non-récurrent — snapshotted per commission row
 
 // ── Seller validation ─────────────────────────────────────────────────────────
 
