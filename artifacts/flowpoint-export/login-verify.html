@@ -101,7 +101,12 @@
       <div class="fp-icon">❌</div>
       <h1>Lien invalide</h1>
       <p id="fp-error-msg">Ce lien de connexion est invalide ou a expiré.</p>
-      <a href="/login" class="fp-btn">Retour à la connexion</a>
+      <!-- fp-retry-btn is shown by login-verify.js when the server returns canRetry:true
+           (expired / already_used / not_found).  Hidden by default. -->
+      <button id="fp-retry-btn" class="fp-btn" style="display:none;margin-top:12px;">
+        Demander un nouveau lien
+      </button>
+      <a href="/login.html" class="fp-btn" style="margin-top:8px;">Retour à la connexion</a>
     </div>
   </div>
   <script src="fp-config.js"></script>

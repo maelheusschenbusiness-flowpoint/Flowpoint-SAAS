@@ -7,12 +7,14 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
+import { getStripeKey } from "../services/stripe-factory.js";
 
 const router = Router();
 
@@ -32,7 +34,11 @@ function generateToken(): string {
 // ── PostgreSQL-backed magic link tokens ───────────────────────────────────────
 
 async function storeMagicToken(token: string, email: string): Promise<void> {
-  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  // 1 h is the TTL for manually-requested magic links (login-request).
+  // Webhook-generated tokens (new signup) use 24 h via inline SQL in stripe-webhook.ts.
+  // Previously 15 min — too short; users checking email on mobile after a meeting
+  // would arrive to find the link already expired.
+  const expiresAt = new Date(Date.now() + 60 * 60_000); // 1 hour
   const client = await pool.connect();
   try {
     await client.query(
@@ -114,6 +120,68 @@ async function resolveOrCreateLegacyOrg({
           [freshUuid, email, authProvider],
         );
         resolvedUserUuid = freshUuid;
+      }
+    }
+
+    // ── Step A2: guard against guest users getting a new org ─────────────────
+    // Before checking if this email OWNS an org (Step B), verify the user is
+    // not exclusively a team member of someone else's org.  A guest who lands
+    // here (no organization_members row) MUST NOT reach Step C (org creation).
+    // Check team_members: if found, return that org instead of creating one.
+    // IMPORTANT: wrap in try/catch — if team_members table is absent in prod,
+    // skip the check (non-fatal) rather than aborting the whole login flow.
+    let guestMember: { rows: { org_id: string; role: string }[] } = { rows: [] };
+    try {
+      guestMember = await client.query<{ org_id: string; role: string }>(
+        `SELECT org_id, COALESCE(role, 'member') AS role
+         FROM team_members
+         WHERE (LOWER(email) = LOWER($1) OR (user_id IS NOT NULL AND user_id = $2))
+           AND status = 'active'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [email, resolvedUserUuid ?? ""],
+      );
+    } catch (teamMembersErr) {
+      logger.warn({ err: teamMembersErr }, "[Auth] resolveOrCreateLegacyOrg — team_members query failed (table may not exist in prod), continuing");
+    }
+    if (guestMember.rows.length > 0) {
+      const guestOrgId = guestMember.rows[0].org_id;
+      const guestRole  = guestMember.rows[0].role;
+
+      // ── Stale-row guard: verify the org actually exists and is not deleted ──
+      // A purged account leaves team_members rows pointing to a UUID that no
+      // longer exists in organizations.  Using that ghost UUID as sessionOrgId
+      // causes /api/me to return 503 BILLING_DATA_UNAVAILABLE on every login.
+      // If the org is absent, fall through to Step B (organizations check by
+      // owner_email) which will find or create the correct UUID org.
+      let _guestOrgValid = false;
+      try {
+        const _orgCheck = await client.query<{ exists: number }>(
+          `SELECT 1 AS exists FROM organizations
+           WHERE id::text = $1 AND status != 'deleted' LIMIT 1`,
+          [guestOrgId],
+        );
+        _guestOrgValid = _orgCheck.rows.length > 0;
+      } catch { /* non-fatal — treat as invalid */ }
+
+      if (!_guestOrgValid) {
+        // Ghost team_members row — org doesn't exist.  Log and fall through.
+        logger.warn(
+          { guestOrgId, email, resolvedUserUuid },
+          "[Auth] resolveOrCreateLegacyOrg — team_members org_id not found in organizations (stale row after purge), falling through to owner check",
+        );
+      } else {
+        // Org exists — back-fill organization_members and return.
+        try {
+          await client.query(
+            `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+             VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+             ON CONFLICT (organization_id, user_id) DO NOTHING`,
+            [guestOrgId, resolvedUserUuid, guestRole],
+          );
+        } catch { /* non-fatal */ }
+        await client.query("COMMIT");
+        return { orgId: guestOrgId, userUuid: resolvedUserUuid! };
       }
     }
 
@@ -349,11 +417,13 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
     throw new Error("EMAIL_TRANSPORT_MISSING");
   }
 
-  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var
+  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var.
+  // Do NOT fall back to ALERT_EMAIL_FROM: that variable may hold a domain that is
+  // not verified in Resend, causing a synchronous "Invalid from field" error.
   const fromEmail =
     process.env["RESEND_FROM"] ||
     process.env["SMTP_FROM"] ||
-    `FlowPoint <${process.env["ALERT_EMAIL_FROM"] || "noreply@flowpoint.pro"}>`;
+    "FlowPoint <noreply@flowpoint.pro>";
 
   logger.info({
     email,
@@ -820,14 +890,16 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   // store.me is a global singleton — writing user-specific data here causes cross-user
   // data leakage when /api/me falls back to the in-memory store.
 
-  // Log activity
+  // Log activity — actor is the new user themselves (signup)
   store.logActivity({
     type: "account",
     label: `Compte créé : ${fn} ${ln} (${company})`,
     targetId: normalizedEmail,
     targetType: "user",
     metadata: { country: country ?? null, companySize: companySize ?? null, objective: objective ?? null },
-      orgId,
+    orgId,
+    userId: normalizedEmail,
+    userName: `${fn} ${ln}`.trim() || normalizedEmail,
   }).catch(err => logger.error({ err }, "[auth] logActivity failed"));
 
   logger.info(
@@ -923,6 +995,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     firstName, lastName, email, companyName,
     country, address, city, postalCode,
     phone, vat,
+    seller_code: _rawSellerCode,
   } = req.body as Record<string, string | undefined>;
 
   // Honeypot — bots fill hidden fields, humans don't
@@ -973,10 +1046,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // pricing plan screen when they should land on the dashboard.
   try {
     const _activeUser = await pool.query<{ id: string; status: string }>(
-      `SELECT id, status FROM users WHERE email = $1 LIMIT 1`,
+      `SELECT id, status FROM users WHERE lower(email) = $1 LIMIT 1`,
       [normalizedEmail]
     );
-    if (_activeUser.rows.length > 0 && _activeUser.rows[0]?.status === "active") {
+    if (_activeUser.rows.length > 0) {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
         redirectTo: "/login.html",
@@ -999,7 +1072,9 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       return;
     }
   } catch (_activeCheckErr) {
-    logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] active-user guard failed (non-fatal)");
+    logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] account guard failed");
+    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    return;
   }
 
   // ── Guard: reject if account already exists in org_settings (legacy) ──────
@@ -1008,109 +1083,128 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // status is a stale pre-registration shell — it must not block a fresh attempt.
   try {
     const { loadOrgSettings: _dupCheck } = await import("../services/org-settings.js");
-    const _dup = await _dupCheck(normalizedEmail).catch(() => undefined);
-    const _dupStatus = _dup?.subscriptionStatus ?? _dup?.subscription_status ?? "";
-    const _isActiveAccount = ["active", "trialing", "past_due"].includes(_dupStatus);
-    if (_dup?.orgId && _isActiveAccount) {
-      res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter sur /login.html.",
-        redirectTo: "/login.html",
-      });
+    const _dup = await _dupCheck(normalizedEmail);
+    const _dupStatus = _dup?.subscriptionStatus ?? "";
+    const _isExistingAccount = !!_dup?.stripeCustomerId ||
+      ["active", "trialing", "past_due", "canceled", "ended", "expired", "unpaid"].includes(_dupStatus);
+    const ownedOrg = await pool.query(
+      `SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
+    if ((_dup?.orgId && _isExistingAccount) || ownedOrg.rows.length) {
+      res.status(409).json({ error: "Un compte existe déjà. Connectez-vous pour gérer votre abonnement.", redirectTo: "/login.html" });
       return;
     }
-    // Non-active org_settings shell (pending_billing / none / canceled / etc.) left by old
-    // server code or a failed activation — clean it up so it never blocks a fresh attempt.
-    if (_dup?.orgId && !_isActiveAccount) {
-      pool.query(
-        `DELETE FROM org_settings WHERE lower(org_id::text) = lower($1)`,
-        [normalizedEmail]
-      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup (guard) failed (non-fatal)"));
-    }
+    // Never erase billing identity as a side effect of public pre-registration.
   } catch (_dupErr) {
-    logger.warn({ err: _dupErr, email: normalizedEmail }, "[Auth/PreRegister] duplicate check failed (non-fatal)");
+    logger.warn({ err: _dupErr }, "[Auth/PreRegister] duplicate check unavailable");
+    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    return;
   }
 
-  // ── Guard: handle existing pending checkout ──────────────────────────────────
-  // Two distinct cases:
-  //   A) Account already created (org_settings exists) → redirect to login.
-  //   B) Pending signup exists but checkout was never completed (no org_settings)
-  //      → invalidate the stale token so the user can retry immediately.
-  //      This handles: browser closed mid-checkout, Stripe page didn't load, etc.
-  {
-    const _pendClient = await pool.connect();
-    try {
-      const _pend = await _pendClient.query(
-        `SELECT token, stripe_customer_id FROM pending_signups
-         WHERE email = $1 AND expires_at > NOW() AND consumed_at IS NULL
-         LIMIT 1`,
-        [normalizedEmail]
-      );
-      if (_pend.rows.length > 0) {
-        // Check if the account was actually activated (pending_billing = not yet activated)
-        const { loadOrgSettings: _orgCheck } = await import("../services/org-settings.js");
-        const _org = await _orgCheck(normalizedEmail).catch(() => undefined);
-        const _orgStatus = _org?.subscriptionStatus ?? _org?.subscription_status ?? "";
-        if (_org?.orgId && ["active", "trialing", "past_due"].includes(_orgStatus)) {
-          // Case A: real active account exists → login
-          res.status(409).json({
-            error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
-            redirectTo: "/login.html",
-          });
-          return;
-        }
-        // Case B: checkout was abandoned — invalidate stale token, allow retry
-        const _staleCustomerId = (_pend.rows[0] as { token: string; stripe_customer_id: string | null })?.stripe_customer_id ?? null;
-        await _pendClient.query(
-          `UPDATE pending_signups SET consumed_at = NOW()
-           WHERE email = $1 AND consumed_at IS NULL`,
-          [normalizedEmail]
-        );
-        // Clean up any stale org_settings rows left by old server versions
-        // (e.g. pending_billing shell created by older Render code). Non-fatal.
-        await _pendClient.query(
-          `DELETE FROM org_settings
-           WHERE lower(org_id::text) = lower($1)
-             AND (subscription_status IS NULL
-               OR subscription_status = ''
-               OR subscription_status = 'pending_billing'
-               OR subscription_status = 'none')`,
-          [normalizedEmail]
-        ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
-        // Fire-and-forget: delete orphaned Stripe customer from the abandoned checkout
-        if (_staleCustomerId) {
-          (async () => {
-            try {
-              const { createStripeClient: _csClient } = await import("../services/stripe-factory.js");
-              await _csClient().customers.del(_staleCustomerId);
-              logger.info({ customerId: _staleCustomerId }, "[Auth/PreRegister] Stale Stripe customer deleted");
-            } catch (e) {
-              logger.warn({ customerId: _staleCustomerId, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)");
-            }
-          })();
-        }
-        logger.info({ email: normalizedEmail }, "[Auth/PreRegister] stale pending signup invalidated — user may retry");
-      }
-    } finally {
-      _pendClient.release();
-    }
-  }
-
-  // Store in pending_signups (no account created yet)
+  // ── Atomic cleanup + insert in a single serialized transaction ───────────────
+  // DELETE all non-consumed rows for this email (including expired ones) then
+  // INSERT the new row.  Expired rows have consumed_at IS NULL but
+  // expires_at < NOW(); they are unusable yet block the unique index.  Removing
+  // them unconditionally avoids the window where the index prevents a legitimate
+  // retry while the cleanup cron hasn't fired yet.
+  //
+  // If a concurrent request races to INSERT at the same moment, PostgreSQL
+  // returns error code 23505 (unique_violation).  We catch it and return a
+  // controlled 409 so the frontend can prompt the user to wait a moment and retry
+  // rather than showing a generic 500.
   const preToken = generateToken();
   const client = await pool.connect();
   try {
+    await client.query("BEGIN");
+
+    // DELETE all non-consumed rows for this email (expired or abandoned checkouts).
+    // RETURNING lets us collect Stripe customer IDs for async cleanup.
+    const _cleaned = await client.query<{ stripe_customer_id: string | null }>(
+      `DELETE FROM pending_signups
+       WHERE lower(email) = lower($1) AND consumed_at IS NULL
+       RETURNING stripe_customer_id`,
+      [normalizedEmail]
+    );
+    const _staleCustomerIds = (_cleaned.rows as { stripe_customer_id: string | null }[])
+      .map(r => r.stripe_customer_id)
+      .filter((id): id is string => Boolean(id));
+
+    if (_staleCustomerIds.length > 0 || _cleaned.rowCount) {
+      logger.info(
+        { email: normalizedEmail, deletedRows: _cleaned.rowCount },
+        "[Auth/PreRegister] stale pending signups deleted — user retrying or first signup after expired attempt"
+      );
+      // Non-fatal: remove any stale org_settings shell (pending_billing) left by old Render code.
+      await client.query(
+        `DELETE FROM org_settings
+         WHERE lower(org_id::text) = lower($1)
+           AND (subscription_status IS NULL
+             OR subscription_status = ''
+             OR subscription_status = 'pending_billing'
+             OR subscription_status = 'none')`,
+        [normalizedEmail]
+      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
+    }
+
+    // Seller attribution (beta): validate seller_code server-side — never trust raw code from caller.
+    let _preRegSellerId: string | null = null;
+    if (_rawSellerCode) {
+      try {
+        const { validateSellerCode: _vsCode } = await import("../services/seller-attribution.js");
+        const _seller = await _vsCode(_rawSellerCode);
+        _preRegSellerId = _seller?.id ?? null;
+        if (!_preRegSellerId) {
+          logger.info({ code: _rawSellerCode }, "[Auth/PreRegister] seller_code invalid or inactive — stored NULL");
+        }
+      } catch (_se) {
+        logger.warn({ _se }, "[Auth/PreRegister] seller_code lookup failed (non-fatal)");
+      }
+    }
+
     await client.query(
       `INSERT INTO pending_signups
-         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW() + INTERVAL '2 hours')
-       ON CONFLICT (token) DO NOTHING`,
+         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW() + INTERVAL '2 hours')`,
       [
         preToken, normalizedEmail, fn, ln, company,
         countryVal, addressVal, cityVal, postalVal,
         String(phone || "").trim() || null,
         String(vat   || "").trim() || null,
+        _preRegSellerId,
       ]
     );
+
+    await client.query("COMMIT");
+
+    // Fire-and-forget: delete any orphaned Stripe customers from abandoned checkouts.
+    if (_staleCustomerIds.length > 0) {
+      (async () => {
+        try {
+          const { createStripeClient: _csClient, getStripeKey: _getKey } = await import("../services/stripe-factory.js");
+          const _stripe = await _csClient(_getKey());
+          for (const cid of _staleCustomerIds) {
+            await _stripe.customers.del(cid).catch((e: unknown) =>
+              logger.warn({ customerId: cid, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)")
+            );
+          }
+        } catch (e) {
+          logger.warn({ err: e }, "[Auth/PreRegister] Stale Stripe customers batch cleanup failed (non-fatal)");
+        }
+      })();
+    }
+  } catch (_insertErr) {
+    await client.query("ROLLBACK").catch(() => {});
+    // 23505 = unique_violation: two concurrent requests for the same email
+    // managed to both DELETE 0 existing rows and both attempt INSERT simultaneously.
+    // Safe to ask the user to wait a moment — no data loss, just a retry signal.
+    if ((_insertErr as { code?: string }).code === "23505") {
+      logger.warn({ email: normalizedEmail }, "[Auth/PreRegister] concurrent signup race (23505) — user asked to retry");
+      res.status(409).json({
+        error: "Une inscription est déjà en cours pour cet email. Patientez quelques secondes puis réessayez.",
+        code: "CONCURRENT_SIGNUP",
+      });
+      return;
+    }
+    throw _insertErr;
   } finally {
     client.release();
   }
@@ -1183,6 +1277,12 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     return;
   }
 
+  const _ccTransport = process.env["RESEND_API_KEY"]
+    ? "resend-sdk"
+    : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+  logger.info({ sessionId, transport: _ccTransport, step: "CC-0-start" },
+    "[Auth/CheckoutComplete] ML-0: received checkout-complete request");
+
   try {
     const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
     if (!stripeKey) {
@@ -1209,24 +1309,161 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     }
 
     const meta = (session.metadata as Record<string, string>) ?? {};
-    const orgId = meta["orgId"] ?? "";
-    const email = orgId || (session.customer_details?.email ?? "");
+    const metaOrgId = meta["orgId"] ?? "";
+    // customer_details.email is the most reliable source — it's what the customer
+    // typed during checkout.  meta.orgId may be a UUID (post-migration orgs) or an
+    // email (legacy orgs); use it only as a last resort.
+    const email = session.customer_details?.email
+      || meta["email"]
+      || (metaOrgId.includes("@") ? metaOrgId : "");
 
-    logger.info({ sessionId, orgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — awaiting webhook");
+    logger.info({ sessionId, metaOrgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — checking activation status");
+
+    if (!email) {
+      logger.error({ sessionId, meta }, "[Auth/CheckoutComplete] No email found in session — cannot send magic link");
+      res.status(400).json({ error: "Email introuvable dans la session de paiement." });
+      return;
+    }
+
+    // ── Check if the webhook already activated the account ──────────────────────
+    // The checkout.session.completed webhook creates the user, org, and magic link.
+    // If it has already run, a valid magic_link_token will exist for this email.
+    // If it hasn't run yet, return 202 so the frontend retries after a short delay.
+    const { pool: _ccPool } = await import("@workspace/db");
+
+    // Check for existing unused token (webhook already fired)
+    const _tokenCheck = await _ccPool.query<{ token: string }>(
+      `SELECT token FROM magic_link_tokens
+       WHERE email = $1 AND used = FALSE AND expires_at > NOW()
+       ORDER BY expires_at DESC LIMIT 1`,
+      [email]
+    );
+
+    // Also check if the user was created (webhook committed the user/org)
+    const _userCheck = await _ccPool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [email]
+    );
+
+    const userCreated = (_userCheck.rowCount ?? 0) > 0;
+    const hasToken    = (_tokenCheck.rowCount ?? 0) > 0;
+
+    if (!userCreated) {
+      // Webhook not yet processed — tell the frontend to retry.
+      // 402 matches the retry guard in checkout-return.html's runCheckoutComplete().
+      logger.info({ sessionId, email }, "[Auth/CheckoutComplete] User not yet created — webhook pending, returning 402");
+      res.status(402).json({
+        pending: true,
+        message: "Activation en cours. Veuillez patienter quelques secondes.",
+      });
+      return;
+    }
+
+    let emailSent = false;
+    let emailId: string | undefined;
+
+    if (hasToken) {
+      // Webhook token exists — re-send the email using THAT token so the user
+      // always receives a working link even when the webhook's own email send
+      // failed silently (Resend transient error, DNS hiccup, etc.).
+      // Reusing the existing token avoids generating a second valid link:
+      // the user receives exactly one email and one working URL.
+      const existingToken = _tokenCheck.rows[0]?.token;
+      if (existingToken) {
+        const publicUrl    = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+        const magicLinkUrl = `${publicUrl}/login-verify.html?token=${existingToken}`;
+        const { mailer: _ccMailerFwd } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+        if (_ccMailerFwd) {
+          const fwdResult = await _ccMailerFwd.sendActivationMagicLink({
+            to:         email,
+            name:       email.split("@")[0],
+            plan:       meta["plan"] || "standard",
+            magicLinkUrl,
+            isTrial:    false,
+          }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
+          emailSent = !!fwdResult?.ok;
+          emailId   = (fwdResult as { id?: string })?.id;
+          logger.info({ sessionId, email, emailSent, step: "CC-fwd-existing-token" },
+            "[Auth/CheckoutComplete] Re-sent existing webhook token via checkout-complete");
+        } else {
+          // Mailer unavailable — cannot deliver the token; flag as failed so the
+          // frontend shows the "Connectez-vous directement" fallback instead of
+          // the misleading "Vérifiez vos emails" message.
+          emailSent = false;
+          logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: mailer unavailable — cannot re-send existing token");
+        }
+      } else {
+        // hasToken=true but no valid token row — should not happen; treat as failed.
+        emailSent = false;
+        logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: hasToken=true but no valid token row found — cannot send");
+      }
+    } else {
+      // User exists but no token — webhook ran but email failed, or token was consumed.
+      // Generate and send a fresh magic link directly.
+      const magicToken = generateToken();
+      try {
+        await _ccPool.query(
+          `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+           VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+           ON CONFLICT (token) DO NOTHING`,
+          [magicToken, email]
+        );
+      } catch (tokErr) {
+        logger.error({ err: tokErr, email }, "[Auth/CheckoutComplete] magic_link_tokens insert failed");
+      }
+      const publicUrl    = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+      const magicLinkUrl = `${publicUrl}/login-verify.html?token=${magicToken}`;
+
+      const transport = process.env["RESEND_API_KEY"]
+        ? "resend-sdk"
+        : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+      logger.info({ email, transport, step: "CC-ML-send" }, "[Auth/CheckoutComplete] Sending magic link directly");
+
+      const { mailer: _ccMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+      if (_ccMailer) {
+        const mailResult = await _ccMailer.sendActivationMagicLink({
+          to:          email,
+          name:        email.split("@")[0],
+          plan:        meta["plan"] || "standard",
+          magicLinkUrl,
+          isTrial:     false,
+        }).catch((mailErr: unknown) => ({ ok: false as const, error: String(mailErr) }));
+
+        emailSent = !!mailResult?.ok;
+        emailId   = (mailResult as { id?: string })?.id;
+        logger.info({ email, emailSent, emailId, error: (mailResult as { error?: string })?.error, step: "CC-ML-result" },
+          "[Auth/CheckoutComplete] Magic link send result");
+      } else {
+        logger.error({ email }, "[Auth/CheckoutComplete] Mailer unavailable");
+      }
+    }
 
     store.logActivity({
       type: "account",
-      label: `Paiement confirmé — activation en cours : ${email || orgId}`,
-      targetId: orgId || email,
+      label: `Paiement confirmé — ${emailSent ? "magic link envoyé" : "email échoué"} : ${email}`,
+      targetId: metaOrgId || email,
       targetType: "user",
-      orgId: orgId || undefined,
+      orgId: metaOrgId || undefined,
+      userId: email || undefined,
+      userName: email || undefined,
     }).catch(() => {});
 
-    // Return immediately — the webhook will send the magic link email.
-    // No session is created here.
+    if (!emailSent) {
+      // Account was activated but email couldn't be sent — surface the error clearly.
+      res.status(200).json({
+        ok: true,
+        emailSent: false,
+        emailFailed: true,
+        isNewSignup: true,
+        message: "Compte activé mais l'envoi de l'email a échoué. Connectez-vous depuis la page de connexion.",
+      });
+      return;
+    }
+
     res.json({
       ok: true,
       emailSent: true,
+      isNewSignup: true,
       message: "Votre paiement est confirmé. Un lien de connexion vous a été envoyé par email. Vérifiez votre boîte de réception (et vos spams).",
     });
   } catch (err) {
@@ -1248,6 +1485,8 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
 
 /** Shared handler — called by both GET and POST /auth/login-verify */
 async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res: Response): Promise<void> {
+  // ── ML-6: Token consumption entry ────────────────────────────────────────
+  logger.info({ step: "ML-6", tokenPrefix: typeof tokenRaw === "string" ? tokenRaw.trim().slice(0, 8) : "(none)" }, "[ML] step-6: login-verify called — token consumption attempt");
   // ── S0: Token guard ───────────────────────────────────────────────────────
   if (!tokenRaw || typeof tokenRaw !== "string" || !tokenRaw.trim()) {
     res.status(400).json({ error: "Token manquant" });
@@ -1266,15 +1505,34 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   }
 
   if (!peeked.ok) {
+    // Diagnostic: log every failure with token prefix so we can match it
+    // against the email send logs in BetterStack to understand why the token
+    // can't be found (e.g. race condition, cleanup job, RLS, duplicate send).
+    logger.warn(
+      { reason: peeked.reason, tokenPrefix: token.slice(0, 8), step: "S1-fail" },
+      "[ML] peekToken failed — token not usable"
+    );
     switch (peeked.reason) {
       case "already_used":
-        res.status(410).json({ error: "Ce lien a déjà été utilisé. Demandez un nouveau lien si nécessaire." });
+        res.status(410).json({
+          error: "Ce lien a déjà été utilisé.",
+          hint:  "Demandez un nouveau lien depuis la page de connexion.",
+          canRetry: true,
+        });
         return;
       case "expired":
-        res.status(401).json({ error: "Ce lien a expiré. Demandez un nouveau lien de connexion." });
+        res.status(401).json({
+          error:    "Ce lien a expiré.",
+          hint:     "Les liens de connexion expirent après 1 heure. Demandez un nouveau lien.",
+          canRetry: true,
+        });
         return;
       default:
-        res.status(401).json({ error: "Lien invalide ou expiré." });
+        res.status(401).json({
+          error:    "Lien invalide ou introuvable.",
+          hint:     "Le lien n'existe pas en base de données. Demandez un nouveau lien depuis la page de connexion.",
+          canRetry: true,
+        });
         return;
     }
   }
@@ -1382,7 +1640,82 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         // That endpoint runs a locked transaction with the RLS GUC correctly set.
         // If the user somehow has an active users row but no membership, they must
         // re-click their invitation link.
-        // S6-fallback: user exists but no org_members row — try org_settings (legacy owners)
+        // ── S6-team-members: check legacy team_members table BEFORE touching org_settings ──
+        // A guest/invited user has a users row + active team_members row but NO
+        // organization_members row (this happens when the invitation was created via the
+        // old team_members path and the user completed their email verification but the
+        // organization_members row was never back-filled, or when the session was created
+        // before the org_members migration).  We MUST find their existing org here;
+        // falling straight through to resolveOrCreateLegacyOrg would create a fresh
+        // Standard workspace for them — a critical isolation breach.
+        let s6GuestOrgId: string | null = null;
+        let s6GuestRole: string = "member";
+        try {
+          const tmRow = await pool.query<{ org_id: string; role: string }>(
+            `SELECT org_id, COALESCE(role, 'member') AS role
+             FROM team_members
+             WHERE (LOWER(email) = LOWER($1) OR user_id = $2)
+               AND status = 'active'
+             ORDER BY created_at ASC
+             LIMIT 1`,
+            [email, user.id]
+          );
+          if (tmRow.rows.length > 0) {
+            s6GuestOrgId = tmRow.rows[0].org_id;
+            s6GuestRole  = tmRow.rows[0].role || "member";
+            logger.info(
+              { email, userId: user.id, guestOrgId: s6GuestOrgId, role: s6GuestRole, source: "team_members" },
+              "[AUTH CONTEXT DEBUG] S6: guest resolved via team_members — skipping org creation"
+            );
+          }
+        } catch (_tmErr) {
+          logger.warn({ err: String(_tmErr) }, "login-verify: S6-team-members lookup failed (non-fatal)");
+        }
+
+        // ── Stale-row guard (mirrors resolveOrCreateLegacyOrg Step A2) ──────────
+        // A purged account leaves a team_members row pointing to an org UUID
+        // that no longer exists in organizations.  Using that ghost UUID as
+        // sessionOrgId causes /api/me → 503 BILLING_DATA_UNAVAILABLE.
+        // If the org is absent, fall through to the org_settings path below.
+        if (s6GuestOrgId) {
+          let _s6OrgValid = false;
+          try {
+            const _s6OrgCheck = await pool.query<{ exists: number }>(
+              `SELECT 1 AS exists FROM organizations
+               WHERE id::text = $1 AND status != 'deleted' LIMIT 1`,
+              [s6GuestOrgId],
+            );
+            _s6OrgValid = _s6OrgCheck.rows.length > 0;
+          } catch { /* non-fatal — treat as invalid */ }
+
+          if (!_s6OrgValid) {
+            logger.warn(
+              { s6GuestOrgId, email, userId: user.id },
+              "[AUTH] S6: team_members org_id not in organizations (stale after purge) — falling through to org_settings",
+            );
+            s6GuestOrgId = null; // clear so we fall through to org_settings below
+          }
+        }
+
+        if (s6GuestOrgId) {
+          // Guest belongs to an existing org via team_members — use it directly.
+          // Attempt to back-fill organization_members so future logins use the canonical path.
+          try {
+            await pool.query(
+              `INSERT INTO organization_members (id, organization_id, user_id, role, status, joined_at)
+               VALUES (gen_random_uuid(), $1, $2::uuid, $3, 'active', NOW())
+               ON CONFLICT (organization_id, user_id) DO NOTHING`,
+              [s6GuestOrgId, user.id, s6GuestRole]
+            );
+          } catch (_backfill) {
+            // Non-fatal — the session still works without the organization_members row.
+            logger.warn({ err: String(_backfill) }, "login-verify: S6 org_members backfill failed (non-fatal)");
+          }
+          sessionOrgId    = s6GuestOrgId;
+          sessionRole     = s6GuestRole;
+          sessionUserUuid = user.id;
+        } else {
+        // S6-fallback: user exists but no org_members row AND no team_members row — try org_settings (legacy owners)
         let orgFallback: Awaited<ReturnType<typeof loadOrgSettings>> | null;
         try {
           orgFallback = await loadOrgSettings(email).catch(() => null);
@@ -1411,6 +1744,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
         sessionOrgId    = s6Result.orgId;
         sessionRole     = "owner";
         sessionUserUuid = s6Result.userUuid;
+        } // end else (no team_members row found)
 
       } else {
         const member = memberRow.rows[0]!;
@@ -1453,6 +1787,16 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: invalidateAllSessions failed (non-fatal)");
   });
 
+  // ── ML-6-ok: Token consumed ──────────────────────────────────────────────
+  logger.info({ step: "ML-6-ok", email, orgIdPrefix: sessionOrgId?.slice(0, 8) }, "[ML] step-6-ok: token consumed — proceeding to session creation");
+  logger.info({
+    userId:    sessionUserUuid?.slice(0, 8) ?? "(none)",
+    email,
+    orgId:     sessionOrgId?.slice(0, 8),
+    role:      sessionRole,
+    source:    "login-verify",
+  }, "[AUTH CONTEXT DEBUG]");
+
   // ── S10: Create session ───────────────────────────────────────────────────
   let sessionToken: string;
   try {
@@ -1475,6 +1819,9 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   pool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email])
     .catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: last_login_at update failed"));
 
+  // ── ML-7: Session created ────────────────────────────────────────────────
+  logger.info({ step: "ML-7", email, orgIdPrefix: sessionOrgId?.slice(0, 8), tokenPrefix: sessionToken.slice(0, 8) }, "[ML] step-7: session created successfully");
+
   // ── S11: Set cookie ───────────────────────────────────────────────────────
   const isProd = isDeployedProd();
   res.cookie("fp_token", sessionToken, {
@@ -1485,6 +1832,8 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     path: "/",
   });
 
+  // ── ML-8: Success response ───────────────────────────────────────────────
+  logger.info({ step: "ML-8", email, cookieSet: true }, "[ML] step-8: cookie set + JSON response — login complete, dashboard redirect expected");
   // ── S12: Send success response ────────────────────────────────────────────
   // Return the session token in the body so the frontend can store it
   // in sessionStorage (per-tab isolation) — prevents cross-user contamination
@@ -1493,15 +1842,33 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
 
   // Fire-and-forget: ensure Stripe customer (non-blocking, after response sent)
   (async () => {
-    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
+    // Use the same mode-aware selector as the billing routes. In TEST mode,
+    // using the LIVE key here can race the checkout request through the shared
+    // ensureStripeCustomer in-flight map and make a valid test Customer look
+    // missing.
+    const stripeKey = getStripeKey();
     if (!stripeKey) return;
     try {
       const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
-      await ensureStripeCustomer(sessionOrgId);
+      await ensureStripeCustomer(sessionOrgId, undefined, stripeKey);
     } catch (stripeErr) {
       logger.warn({ err: stripeErr instanceof Error ? stripeErr.message : String(stripeErr) }, "login-verify: ensureStripeCustomer failed (non-fatal)");
     }
   })();
+
+  // Reactivation on login has been intentionally removed.
+  // A canceled account is left as-is; the user is presented with a clear
+  // re-subscription flow in the dashboard (Billing → Plans → Stripe Checkout)
+  // so reactivation is always an explicit, consent-driven action.
+
+  // NOTE: Address backfill from pending_signups was removed.
+  // A safe implementation requires a durable org_id column on the consumed
+  // pending_signups row so the query can be scoped to the correct organisation.
+  // Until that column is added and populated at activation, an email-only
+  // lookup risks writing one org's signup address into a different org's
+  // settings when multiple orgs share an email address.
+  // TODO: add pending_signups.org_id (FK organizations.id), populate it in
+  // stripe-webhook.ts at activation, then restore the self-heal keyed by org_id.
 }
 
 // GET — kept for backward compatibility (existing email links point to login-verify.html?token=...
@@ -1535,6 +1902,8 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   const selectedPlan = ["standard","pro","ultra"].includes(rawPlan) ? rawPlan : null;
   const rawRedirect = String(req.query["redirect_to"] ?? "");
   const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : null;
+  const rawSellerCode = String(req.query["seller_code"] ?? "").trim().toUpperCase();
+  const sellerCode = /^SELLER-[A-Z0-9]{1,20}$/.test(rawSellerCode) ? rawSellerCode : null;
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -1543,7 +1912,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo })).toString("base64"),
+    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode })).toString("base64"),
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -1578,7 +1947,18 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { "Authorization": `Bearer ${tokens.access_token}` },
     });
-    const user = await userRes.json() as { sub?: string; email?: string; name?: string; picture?: string };
+    // Google userinfo v3 fields available with scopes: openid email profile
+    // Docs: https://developers.google.com/identity/openid-connect/openid-connect#obtaininguserprofileinformation
+    const user = await userRes.json() as {
+      sub?:           string;   // Google user ID (unique, stable)
+      email?:         string;   // email address
+      email_verified?: boolean; // whether Google has verified the email
+      name?:          string;   // full display name (e.g. "Jean Dupont")
+      given_name?:    string;   // first name (preferred — reliable for all locales)
+      family_name?:   string;   // last name
+      picture?:       string;   // avatar URL (profile photo)
+      locale?:        string;   // user locale (e.g. "fr", "en")
+    };
 
     const resolvedEmail = user.email ?? user.sub ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
@@ -1592,10 +1972,15 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Apply plan & redirect from OAuth state if present
     let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
     let planFromState: string | null = null;
+    let sellerIdFromState: string | null = null;
     try {
       const rawState = String(req.query["state"] ?? "");
       if (rawState) {
-        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as { plan?: string; redirect_to?: string | null };
+        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as {
+          plan?: string;
+          redirect_to?: string | null;
+          seller_code?: string | null;
+        };
         if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
           planFromState = stateObj.plan;
           logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
@@ -1603,6 +1988,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         if (stateObj.redirect_to && stateObj.redirect_to.startsWith("/")) {
           redirectAfterLogin = `${publicUrl}${stateObj.redirect_to}`;
           logger.info({ redirect: redirectAfterLogin }, "[Auth] Google login — redirect after login set from OAuth state");
+        }
+        if (stateObj.seller_code) {
+          const { validateSellerCode } = await import("../services/seller-attribution.js");
+          sellerIdFromState = (await validateSellerCode(stateObj.seller_code))?.id ?? null;
         }
       }
     } catch { /* state parse error — ignore */ }
@@ -1612,89 +2001,124 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // orgContext correctly rejects legacy email-as-orgId sessions.
     let googleIdentity: { orgId: string; userUuid: string };
     try {
-      const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
-      const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
-      if (_existingGoogleOrg) {
-        // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
-        await upsertOrgSettings(resolvedEmail, {
-          email: resolvedEmail,
-          firstName: _existingGoogleOrg.firstName || (user.name ? user.name.split(" ")[0] : undefined),
-          plan: planFromState ? planFromState : (_existingGoogleOrg.plan ?? "standard"),
-        });
-        logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
-      } else {
-        // New account — pending billing until Checkout activates it.
-        await upsertOrgSettings(resolvedEmail, {
-          email: resolvedEmail,
-          firstName: user.name ? user.name.split(" ")[0] : undefined,
-          plan: planFromState ?? "standard",
-          subscriptionStatus: "pending_billing",
-          orgName: user.email ?? undefined,
-        });
-        logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
-      }
+      // ── Fast-path: check organizations table first (new auth system post-migration) ──
+      // Users who signed up via magic link only exist in `organizations`/`users`, not in
+      // `org_settings`. Without this check, they are treated as new signups: a fresh
+      // pending_billing entry is written to org_settings and they are routed to the plan
+      // selection screen — creating a duplicate Stripe customer.
+      const _googleOrgQuery = await pool.query<{ id: string; subscription_status: string | null }>(
+        `SELECT id, subscription_status FROM organizations
+          WHERE owner_email = $1 AND status != 'deleted'
+          LIMIT 1`,
+        [resolvedEmail],
+      );
+      const _googleOrgRow = _googleOrgQuery.rows[0] ?? null;
+      const _googleIsActivated = _googleOrgRow !== null &&
+        _googleOrgRow.subscription_status !== null &&
+        _googleOrgRow.subscription_status !== "" &&
+        _googleOrgRow.subscription_status !== "pending_billing";
 
-      // Preserve the billing gate: an OAuth signup may create its identity, but
-      // it must complete Checkout before a valid dashboard session is issued.
-      const googleOrgSettings = await _loadGoogleOrg(resolvedEmail);
-      if (googleOrgSettings?.subscriptionStatus === "pending_billing") {
-        // Create a pending_signups record so checkout.html / checkout-payment.html
-        // can complete the Stripe flow identically to the email signup path.
-        // First, invalidate any stale pending token for this email.
-        const googleFirstName = user.name ? user.name.split(" ")[0] : "Google";
-        const googleLastName  = user.name && user.name.split(" ").length > 1
-          ? user.name.split(" ").slice(1).join(" ")
-          : "User";
-        let googlePreRegToken = "";
-        try {
-          const _gpClient = await pool.connect();
-          try {
-            // Invalidate any existing non-consumed pending signup for this email
-            await _gpClient.query(
-              `UPDATE pending_signups SET consumed_at = NOW()
-               WHERE email = $1 AND consumed_at IS NULL`,
-              [resolvedEmail],
-            );
-            // Insert a fresh pending_signups row
-            googlePreRegToken = generateToken();
-            await _gpClient.query(
-              `INSERT INTO pending_signups
-                 (token, email, first_name, last_name, company_name, country, address, city, postal_code, created_at, expires_at)
-               VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',NOW(),NOW() + INTERVAL '2 hours')
-               ON CONFLICT (token) DO NOTHING`,
-              [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, resolvedEmail],
-            );
-            logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
-          } finally {
-            _gpClient.release();
-          }
-        } catch (preRegErr) {
-          logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
-          res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
-          return;
-        }
-        if (!googlePreRegToken) {
-          logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
-          res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
-          return;
-        }
-        const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
-        const emailParam = encodeURIComponent(resolvedEmail);
-        const firstParam = encodeURIComponent(googleFirstName);
-        const lastParam  = encodeURIComponent(googleLastName);
-        const tokenParam = encodeURIComponent(googlePreRegToken);
-        res.redirect(
-          `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+      if (_googleIsActivated) {
+        // Existing activated org — resolve identity directly, no pending_billing redirect.
+        logger.info(
+          { email: resolvedEmail, status: _googleOrgRow!.subscription_status },
+          "[Auth] Google login — existing activated org found, bypassing signup flow",
         );
-        return;
-      }
+        googleIdentity = await resolveOrCreateLegacyOrg({
+          email: resolvedEmail,
+          userUuid: undefined,
+          orgSettings: null,
+          authProvider: "google",
+        });
+      } else {
+        // ── Legacy / new-signup path: check org_settings, then apply pending_billing gate ──
+        const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
+        const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+        if (_existingGoogleOrg) {
+          // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
+          await upsertOrgSettings(resolvedEmail, {
+            email: resolvedEmail,
+            // Prefer given_name (Google-provided, locale-aware); fall back to splitting name
+            firstName: _existingGoogleOrg.firstName || user.given_name || (user.name ? user.name.split(" ")[0] : undefined),
+            plan: planFromState ? planFromState : (_existingGoogleOrg.plan ?? "standard"),
+          });
+          logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
+        } else {
+          // New account — pending billing until Checkout activates it.
+          await upsertOrgSettings(resolvedEmail, {
+            email: resolvedEmail,
+            // Prefer Google's dedicated given_name/family_name fields (locale-aware and reliable)
+            firstName: user.given_name ?? (user.name ? user.name.split(" ")[0] : undefined),
+            lastName:  user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : undefined),
+            // orgName intentionally omitted — Google profile (openid email profile) does not expose company name
+            plan: planFromState ?? "standard",
+            subscriptionStatus: "pending_billing",
+          });
+          logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
+        }
 
-      googleIdentity = await resolveOrCreateLegacyOrg({
-        email: resolvedEmail,
-        userUuid: undefined,
-        orgSettings: googleOrgSettings,
-        authProvider: "google",
-      });
+        // Preserve the billing gate: an OAuth signup may create its identity, but
+        // it must complete Checkout before a valid dashboard session is issued.
+        const googleOrgSettings = await _loadGoogleOrg(resolvedEmail);
+        if (googleOrgSettings?.subscriptionStatus === "pending_billing") {
+          // Create a pending_signups record so checkout.html / checkout-payment.html
+          // can complete the Stripe flow identically to the email signup path.
+          // First, invalidate any stale pending token for this email.
+          // Use Google's dedicated fields (locale-aware); fall back to splitting the full name
+          const googleFirstName = user.given_name ?? (user.name ? user.name.split(" ")[0] : "");
+          const googleLastName  = user.family_name ?? (user.name && user.name.includes(" ") ? user.name.split(" ").slice(1).join(" ") : "");
+          let googlePreRegToken = "";
+          try {
+            const _gpClient = await pool.connect();
+            try {
+              // Invalidate any existing non-consumed pending signup for this email
+              await _gpClient.query(
+                `UPDATE pending_signups SET consumed_at = NOW()
+                 WHERE email = $1 AND consumed_at IS NULL`,
+                [resolvedEmail],
+              );
+              // Insert a fresh pending_signups row
+              googlePreRegToken = generateToken();
+              await _gpClient.query(
+                `INSERT INTO pending_signups
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, created_at, expires_at)
+                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,NOW(),NOW() + INTERVAL '2 hours')
+                 ON CONFLICT (token) DO NOTHING`,
+                // company_name left blank — Google signup carries no company information
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState],
+              );
+              logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
+            } finally {
+              _gpClient.release();
+            }
+          } catch (preRegErr) {
+            logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
+            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            return;
+          }
+          if (!googlePreRegToken) {
+            logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
+            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            return;
+          }
+          const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
+          const emailParam = encodeURIComponent(resolvedEmail);
+          const firstParam = encodeURIComponent(googleFirstName);
+          const lastParam  = encodeURIComponent(googleLastName);
+          const tokenParam = encodeURIComponent(googlePreRegToken);
+          res.redirect(
+            `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+          );
+          return;
+        }
+
+        googleIdentity = await resolveOrCreateLegacyOrg({
+          email: resolvedEmail,
+          userUuid: undefined,
+          orgSettings: googleOrgSettings,
+          authProvider: "google",
+        });
+      }
     } catch (err) {
       logger.error({ err }, "[Auth] Google login — identity provisioning failed");
       res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
@@ -1711,11 +2135,18 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
        ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
+
+    // Reactivation on login intentionally removed — see magic-link comment above.
+
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      // SameSite=Lax: compatible with iOS Safari ITP while still allowing
+      // same-site API requests. SameSite=None caused intermittent rejection
+      // of cookies set during cross-site (Google→ours) redirect responses
+      // on iOS Safari 16.4+ with Intelligent Tracking Prevention active.
+      sameSite: "lax",
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
@@ -1853,27 +2284,54 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
       ? authHeader.slice(7).trim()
       : undefined;
   // Resolution order:
-  //   1. Bearer token (per-tab sessionStorage) — validate it first.
-  //   2. Cookie (fp_token) — fallback when Bearer is absent or stale.
-  //      This is the critical recovery path: a hard refresh may still have
-  //      a valid cookie even when the Bearer in sessionStorage has gone stale
-  //      (e.g. after re-login from another tab invalidated the old session).
-  //      Without this fallback the client gets an immediate 401 and bounces to login.
+  //   1. Bearer present → validate Bearer first.
+  //      If it is stale, try the HttpOnly cookie as the recovery path. This is
+  //      required after a re-login in another tab invalidates the old
+  //      sessionStorage token while the browser cookie still holds a valid
+  //      session for the same account.
+  //   2. No Bearer → cookie-only path (hard refresh, new tab from bookmark).
+  //
+  // A valid Bearer remains authoritative. Cookie fallback is only reached when
+  // the explicit Bearer no longer exists in user_sessions.
   let session = null;
   let provided: string | undefined;
 
+  const restoreLogBase = {
+    hasCookie: !!cookieToken,
+    hasBearer: !!bearerToken,
+    cookiePrefix: cookieToken ? cookieToken.slice(0, 8) : null,
+    bearerPrefix: bearerToken ? bearerToken.slice(0, 8) : null,
+  };
+  logger.debug(restoreLogBase, "[Auth/session-restore] Attempting session lookup");
+
   if (bearerToken) {
+    // Bearer is preferred, but a stale per-tab token must not destroy a valid
+    // HttpOnly cookie during refresh/re-login recovery.
     session = await getSession(bearerToken);
     if (session) {
       provided = bearerToken;
+      logger.debug({ ...restoreLogBase, via: "bearer", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Resolved via Bearer");
     } else if (cookieToken && cookieToken !== bearerToken) {
-      // Bearer stale — try cookie as fallback
       session = await getSession(cookieToken);
-      if (session) provided = cookieToken;
+      if (session) {
+        provided = cookieToken;
+        logger.info({ ...restoreLogBase, via: "cookie-fallback", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Bearer stale — recovered via HttpOnly cookie");
+      } else {
+        logger.warn({ ...restoreLogBase, via: "bearer-and-cookie-invalid" }, "[Auth/session-restore] Bearer and cookie are invalid");
+      }
+    } else {
+      logger.warn({ ...restoreLogBase, via: "bearer-invalid" }, "[Auth/session-restore] Bearer invalid/stale — no distinct cookie available");
     }
   } else if (cookieToken) {
     session = await getSession(cookieToken);
-    if (session) provided = cookieToken;
+    if (session) {
+      provided = cookieToken;
+      logger.debug({ ...restoreLogBase, via: "cookie-only", orgId: session.orgId?.slice(0, 8) }, "[Auth/session-restore] Resolved via cookie (hard refresh path)");
+    } else {
+      logger.warn({ ...restoreLogBase, via: "cookie-only-failed" }, "[Auth/session-restore] Cookie present but getSession returned null — DB row missing or expired");
+    }
+  } else {
+    logger.warn({ ...restoreLogBase }, "[Auth/session-restore] No Bearer and no cookie — anonymous request");
   }
 
   if (!session || !provided) {
@@ -1890,6 +2348,21 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     res.status(401).json({ error: "session_expired" });
     return;
   }
+  // If the valid token is not already in the fp_token cookie, set it now.
+  // This allows a Bearer-only session (e.g. QA provisioning) to gain the cookie
+  // required by the HTML middleware that protects /dashboard.html, using exactly
+  // the same cookie attributes as the normal login flow.
+  const isProd = isDeployedProd();
+  if (provided && provided !== cookieToken) {
+    res.cookie("fp_token", provided, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: SESSION_TTL_MS,
+      path: "/",
+    });
+  }
+
   // Return the canonical valid token so the client can (re)store it in sessionStorage.
   // If the Bearer was stale and the cookie was used, the client receives the cookie's
   // token and updates sessionStorage — recovering silently without a login redirect.
@@ -1897,22 +2370,46 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
 });
 
 router.post("/auth/logout", async (req: Request, res: Response) => {
-  // Resolve the session token from cookie first (primary), then Bearer header
-  // (fallback for API clients and test harnesses that cannot set HttpOnly cookies).
+  // Resolve both tokens so we can nuke every session for this user, regardless
+  // of which tab/token the client is currently using.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cookieToken: string = (req as any).cookies?.fp_token ?? "";
   const authHeader  = req.headers["authorization"] ?? "";
   const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
     ? authHeader.slice(7).trim()
     : "";
-  // Prefer the per-tab Bearer token. The HttpOnly cookie is shared by all tabs,
-  // while Bearer is the session selected by this specific dashboard tab.
-  const sessionToken = bearerToken || cookieToken;
-  if (sessionToken) {
-    await deleteSession(sessionToken);   // must await — response must not return before DB delete
-    logger.info("[Auth] Session revoked on logout");
+
+  // Resolve the canonical session (Bearer preferred; cookie as fallback) to
+  // get the userId so we can nuke ALL sessions for this account — not just the
+  // current tab's token.  This is the critical path: if logout only deleted the
+  // Bearer session while the cookie session remained live, navigating to login.html
+  // would immediately redirect back to dashboard via the still-valid cookie.
+  const primaryToken = bearerToken || cookieToken;
+  let nukedByUserId = false;
+  if (primaryToken) {
+    const session = await getSession(primaryToken);
+    if (session?.userId) {
+      await invalidateAllSessions(session.userId);
+      nukedByUserId = true;
+      logger.info({ userId: session.userId.slice(0, 8), via: bearerToken ? "bearer" : "cookie" },
+        "[Auth] All sessions revoked on logout (invalidateAllSessions)");
+    }
+  }
+  // Belt-and-suspenders: if we couldn't resolve a userId (e.g. DB hiccup),
+  // fall back to deleting each token individually so the tokens at least become
+  // invalid in the DB.
+  if (!nukedByUserId) {
+    const delPromises: Promise<void>[] = [];
+    if (bearerToken) delPromises.push(deleteSession(bearerToken));
+    if (cookieToken && cookieToken !== bearerToken) delPromises.push(deleteSession(cookieToken));
+    if (delPromises.length) {
+      await Promise.allSettled(delPromises);
+      logger.info("[Auth] Session(s) revoked on logout (fallback individual delete)");
+    }
   }
 
+  // Always clear the HttpOnly cookie, even when the DB delete failed, so the
+  // browser does not keep sending a now-invalid token.
   const isProd = isDeployedProd();
   res.clearCookie("fp_token", {
     httpOnly: true,

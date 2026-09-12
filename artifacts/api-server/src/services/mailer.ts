@@ -318,6 +318,9 @@ async function sendTrialStarted(opts: {
   name: string;
   plan: string;
   trialEndsAt: string;
+  /** Magic-link URL to embed in the CTA button. When provided this email becomes
+   *  the sole first-login path for trial signups — no separate activation email. */
+  magicLinkUrl?: string;
 }): Promise<MailResult> {
   const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
   const endDate = new Date(opts.trialEndsAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
@@ -338,7 +341,7 @@ async function sendTrialStarted(opts: {
                <li style="margin-bottom:6px;">Rapports white-label</li>
              </ul>
              <p style="margin:0;">Tu seras notifié 3 jours avant la fin de l'essai.</p>`,
-       cta: { label: "Explorer FlowPoint →", url: APP_LINKS.dashboard },
+       cta: { label: opts.magicLinkUrl ? "Accéder à FlowPoint →" : "Explorer FlowPoint →", url: opts.magicLinkUrl ?? APP_LINKS.dashboard },
       note: "Aucune carte bancaire requise pendant l'essai. Tu peux upgrader à tout moment.",
     }),
   });
@@ -391,8 +394,10 @@ async function sendPaymentSucceeded(opts: {
   const eyebrow = isAddon ? "Add-on activé" : "Renouvellement confirmé";
   const title   = isAddon ? "Ton option est active" : "Ton abonnement est renouvelé";
   const body    = isAddon
-    ? `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton option FlowPoint${amount ? ` (${amount})` : ""} a bien été ajoutée à ton compte.</p>
-       <p style="margin:0;">Tu peux retrouver tous tes add-ons actifs depuis la section Facturation de ton dashboard.</p>`
+    ? `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton option FlowPoint${amount ? ` (${amount})` : ""} a bien été ajoutée à ton compte et est maintenant active.</p>
+       <p style="margin:0 0 16px;">Tu peux l'utiliser immédiatement depuis ton espace FlowPoint. Les limites ou fonctionnalités associées à cette option sont automatiquement prises en compte dans ton abonnement.</p>
+       <p style="margin:0 0 16px;">Tu peux retrouver à tout moment tes add-ons actifs, leurs quantités et leurs détails depuis la section Facturation de ton dashboard.</p>
+       <p style="margin:0;">Si tu modifies ou désactives une option, les changements seront également visibles depuis cette section.</p>`
     : `<p style="margin:0 0 16px;">Merci ${opts.name} ! Ton abonnement <strong>FlowPoint ${planLabel}</strong>${amount ? ` (${amount})` : ""} a été renouvelé avec succès.</p>
        ${period ? `<p style="margin:0 0 16px;">Prochaine facturation : <strong>${period}</strong>.</p>` : ""}
        <p style="margin:0;">Tu peux gérer ta facturation (factures, changement de moyen de paiement, annulation) depuis le portail client.</p>`;

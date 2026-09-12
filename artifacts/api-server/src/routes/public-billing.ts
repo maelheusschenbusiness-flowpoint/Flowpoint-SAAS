@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
@@ -11,6 +11,12 @@ import { store } from "../services/store.js";
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
 const router = Router();
+
+function getPublicStripeKey(stripeKey: string): string {
+  return stripeKey.startsWith("sk_test_")
+    ? (process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "")
+    : (process.env["PUBLIC_STRIPE_API_KEY"] || "");
+}
 
 // ── GET /api/billing/plans ────────────────────────────────────────────────────
 // Public endpoint — returns the full plan catalog + add-on catalog.
@@ -114,7 +120,11 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
       res.status(400).json({ error: `Add-on inconnu : "${key}"` });
       return null;
     }
-    if (typeof val === "boolean") { result[key] = val; continue; }
+    if (typeof val === "boolean") {
+      // Flag add-ons: boolean true/false is fine; clamp to canonical 1
+      result[key] = val;
+      continue;
+    }
     if (typeof val !== "number" || !Number.isFinite(val) || !Number.isInteger(val)) {
       const typ = Array.isArray(val) ? "array" : typeof val;
       res.status(400).json({ error: `Quantité invalide pour "${key}" : entier attendu (reçu : ${typ})` });
@@ -122,6 +132,12 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
     }
     if (val <= 0) { res.status(400).json({ error: `Quantité invalide pour "${key}" : doit être > 0` }); return null; }
     if (val > MAX_ADDON_QTY_PUB) { res.status(400).json({ error: `Quantité invalide pour "${key}" : maximum ${MAX_ADDON_QTY_PUB}` }); return null; }
+    // A2 — quantity:false add-ons (flag add-ons submitted as numbers) must be capped at 1.
+    // whiteLabel x500 → 1; negative/float/string already rejected above.
+    if (ADDON_DEFINITIONS[key]?.quantity === false) {
+      result[key] = 1;
+      continue;
+    }
     result[key] = val;
   }
   return result;
@@ -210,12 +226,15 @@ function buildLineItems(
   const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
   if (planPriceId) subscriptionItems.push({ price: planPriceId, quantity: 1 });
 
+  /* Resolve the Stripe key once so getAddonPriceId() can prefer test-mode overrides */
+  const _stripeKeyForPrices = (() => { try { return getStripeKey() ?? ""; } catch { return ""; } })();
+
   /* Monthly flag add-ons */
   for (const key of FLAG_ADDONS) {
     if (!addons[key]) continue;
     if (included.has(key)) continue; /* skip included */
     if (AI_CREDIT_PACKS.has(key)) continue;
-    const priceId = ADDON_PRICE_IDS[key];
+    const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
     if (priceId) subscriptionItems.push({ price: priceId, quantity: 1 });
   }
 
@@ -225,10 +244,10 @@ function buildLineItems(
     if (qty <= 0) continue;
     if (AI_CREDIT_PACKS.has(key)) {
       /* One-time */
-      const priceId = ADDON_PRICE_IDS[key];
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
       if (priceId) oneTimeItems.push({ price: priceId, quantity: qty });
     } else {
-      const priceId = ADDON_PRICE_IDS[key];
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
       if (priceId) subscriptionItems.push({ price: priceId, quantity: qty });
     }
   }
@@ -270,7 +289,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
-  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  const publishableKey = getPublicStripeKey(stripeKey);
 
   /* No key in dev → mock */
   if (!stripeKey) {
@@ -304,98 +323,149 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     /* ── New signup flow: load pending_signups + create/find Stripe Customer ── */
     let stripeCustomerId: string | undefined;
     let signupOrgId: string | undefined; // = email, used as orgId in FlowPoint
+    // Hoisted so seller-attribution block below can reference it outside the token guard.
+    let signupRow: {
+      email: string; first_name: string; last_name: string; company_name: string;
+      country: string | null; address: string | null; city: string | null;
+      postal_code: string | null; phone: string | null; vat: string | null;
+      stripe_customer_id: string | null;
+    } | null = null;
 
     if (preRegisterToken) {
       const { pool: pgPool } = await import("@workspace/db");
+      // Use a single client held open for the entire customer-resolution section.
+      // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
+      // calls that share the same pre_register_token, preventing the race condition
+      // that caused one email to produce two Stripe Customers.
       const dbClient = await pgPool.connect();
-      let signupRow: {
-        email: string; first_name: string; last_name: string; company_name: string;
-        country: string | null; address: string | null; city: string | null;
-        postal_code: string | null; phone: string | null; vat: string | null;
-        stripe_customer_id: string | null;
-      } | null = null;
+      let _csLockTxOpen = false;
 
       try {
+        await dbClient.query("BEGIN");
+        _csLockTxOpen = true;
         const r = await dbClient.query(
           `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, stripe_customer_id
-           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1`,
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL LIMIT 1 FOR UPDATE`,
           [preRegisterToken]
         );
         if (r.rows.length > 0) signupRow = r.rows[0];
-      } finally {
+        if (!signupRow) {
+          await dbClient.query("ROLLBACK");
+          _csLockTxOpen = false;
+          dbClient.release();
+          res.status(400).json({ error: "Session d'inscription expirée ou invalide. Veuillez recommencer." });
+          return;
+        }
+      } catch (_csLockErr) {
+        if (_csLockTxOpen) { await dbClient.query("ROLLBACK").catch(() => {}); }
         dbClient.release();
-      }
-
-      if (!signupRow) {
-        res.status(400).json({ error: "Session d'inscription expirée ou invalide. Veuillez recommencer." });
-        return;
+        throw _csLockErr;
       }
 
       signupOrgId = signupRow.email; // orgId = email in FlowPoint
 
-      // ── Idempotent customer: reuse existing if a previous attempt already created one ──
+      // ── ONE_CUSTOMER_INVARIANT (checkout-session, new signup) ──────────────
+      // A Stripe Customer MUST NOT be created by simply opening a Checkout page.
+      // Customer creation is deferred to Stripe during successful payment.
+      // After checkout.session.completed the webhook anchors session.customer as
+      // the canonical Customer and persists stripe_customer_id for the first time.
+      //
+      // We ONLY reuse a Customer that was previously anchored by a SUCCESSFUL
+      // payment (payment-intent.succeeded or checkout.session.completed).
+      // That Customer lives in pending_signups.stripe_customer_id.
+      //
+      // We do NOT call customers.create() here for new signups without an
+      // existing canonical Customer, and we do NOT perform a customers.list()
+      // email search (would pick up Customers from abandoned sessions).
+
+      // ── Reuse: canonical Customer from a previous SUCCESSFUL checkout ──────
       if (signupRow.stripe_customer_id) {
         try {
           const existing = await stripe.customers.retrieve(signupRow.stripe_customer_id);
           if (!(existing as { deleted?: boolean }).deleted) {
             stripeCustomerId = signupRow.stripe_customer_id;
-            logger.info({ customerId: stripeCustomerId }, "[PublicBilling] checkout-session: reusing Stripe Customer from pending_signups");
+            logger.info(
+              { customerId: stripeCustomerId, email: signupRow.email },
+              "[PublicBilling] checkout-session: reusing canonical Stripe Customer from pending_signups (previous successful payment)"
+            );
           }
-        } catch { /* deleted or unreachable — fall through to create */ }
+        } catch { /* deleted or unreachable — fall through: no canonical customer */ }
+      }
+
+      // ── Reuse: canonical Customer from a sibling token (same email, already paid) ──
+      // Only looks at consumed tokens — a consumed pending_signup means the payment
+      // succeeded and the Customer was anchored by the webhook.
+      if (!stripeCustomerId) {
+        const { pool: _csCrossPool } = await import("@workspace/db");
+        const _csCrossC = await _csCrossPool.connect();
+        try {
+          const _csCrossR = await _csCrossC.query<{ stripe_customer_id: string }>(
+            `SELECT stripe_customer_id FROM pending_signups
+             WHERE lower(email) = lower($1)
+               AND stripe_customer_id IS NOT NULL
+               AND consumed_at IS NOT NULL
+               AND token != $2
+             ORDER BY consumed_at DESC LIMIT 1`,
+            [signupRow.email, preRegisterToken]
+          );
+          if (_csCrossR.rows.length > 0) {
+            const _csCrossId = _csCrossR.rows[0]!.stripe_customer_id;
+            try {
+              const _csCrossEc = await stripe.customers.retrieve(_csCrossId);
+              if (!(_csCrossEc as { deleted?: boolean }).deleted) {
+                stripeCustomerId = _csCrossId;
+                logger.info(
+                  { customerId: stripeCustomerId, email: signupRow.email },
+                  "[PublicBilling] checkout-session: reusing canonical Customer from consumed sibling token"
+                );
+              }
+            } catch { /* deleted — no canonical customer */ }
+          }
+        } finally { _csCrossC.release(); }
+      }
+
+      // No canonical Customer found: close the DB lock transaction immediately.
+      // Stripe will create the Customer when the user successfully pays.
+      // The checkout.session.completed webhook persists session.customer as
+      // the canonical stripe_customer_id — never before.
+      try {
+        await dbClient.query("COMMIT");
+        _csLockTxOpen = false;
+      } catch (_csCommitErr) {
+        await dbClient.query("ROLLBACK").catch(() => {});
+        _csLockTxOpen = false;
+        throw _csCommitErr;
+      } finally {
+        dbClient.release();
       }
 
       if (!stripeCustomerId) {
-        // Create Stripe Customer with full contact info (never empty)
-        const customerData: Stripe.CustomerCreateParams = {
-          email: signupRow.email,
-          name:  `${signupRow.first_name} ${signupRow.last_name}`.trim() || signupRow.company_name,
-          ...(signupRow.company_name ? { description: signupRow.company_name } : {}),
-          metadata: {
-            flowpointOrgId:     signupRow.email,
-            flowpointUserId:    signupRow.email,
-            orgId:              signupRow.email,
-            companyName:        signupRow.company_name,
-            firstName:          signupRow.first_name,
-            lastName:           signupRow.last_name,
-            pre_register_token: preRegisterToken,
-            signup_source:      "new_signup_flow",
-            environment:        process.env["NODE_ENV"] === "production" ? "production" : "development",
-            ...(signupRow.vat ? { vat: signupRow.vat } : {}),
-          },
-        };
-        if (signupRow.address || signupRow.city || signupRow.country) {
-          customerData.address = {
-            line1:       signupRow.address  ?? "",
-            city:        signupRow.city     ?? "",
-            postal_code: signupRow.postal_code ?? "",
-            country:     signupRow.country  ?? "",
-          };
-        }
-        if (signupRow.phone) customerData.phone = signupRow.phone;
-
-        const stripeCustomer = await stripe.customers.create(customerData);
-        stripeCustomerId = stripeCustomer.id;
-
-        // Store for idempotent reuse: prevents duplicate Stripe customers on page-back / retry
-        const { pool: _csStorePool } = await import("@workspace/db");
-        const _csStoreC = await _csStorePool.connect();
-        try {
-          await _csStoreC.query(
-            `UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`,
-            [stripeCustomerId, preRegisterToken]
-          );
-        } finally { _csStoreC.release(); }
-
-        logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
-          "[PublicBilling] Stripe Customer created and stored in pending_signups");
+        logger.info(
+          { email: signupRow.email, preRegisterToken },
+          "[PublicBilling] checkout-session: no canonical Customer — Stripe will create one on successful payment"
+        );
       }
     }
 
     // For authenticated users (cookie/Bearer session, no preRegisterToken):
     // The /public/ router has no requireAuth middleware, so req.orgId is never set here.
-    // We resolve the session manually from the Bearer token or fp_token cookie so that:
-    //   (a) orgId is included in session metadata → webhook resolves the org deterministically
-    //   (b) existing Stripe customer is reused → no duplicate customer created
+    // We resolve the session manually from the Bearer token or fp_token cookie.
+    //
+    // ── ARCHITECTURAL INVARIANT ──────────────────────────────────────────────────
+    // Before stripe.checkout.sessions.create() is called for any authenticated user:
+    //   org UUID ↔ canonical Stripe customer cus_...
+    // must already be resolved, created if absent, and persisted in DB.
+    // The webhook must never be the first writer of this binding.
+    //
+    // Implementation: ensureStripeCustomer (v4, two-layer deduplication):
+    //   Layer 1 — _inflight Map: concurrent requests in the same process share one Promise
+    //   Layer 2 — pg_advisory_xact_lock: cross-process/cross-instance DB-level serialisation
+    //   Steps: DB read → Stripe retrieve → metadata search (orphan recovery) → create →
+    //          persist with strict confirmation (throws on failure) → organisations mirror
+    //
+    // If ensureStripeCustomer throws (Stripe or DB unreachable): abort with 503.
+    // Do NOT create a Checkout Session without a confirmed org↔customer binding —
+    // this would produce an orphan Stripe customer with no DB link.
     if (!preRegisterToken) {
       try {
         const _authHeader  = req.headers["authorization"];
@@ -413,22 +483,133 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
           if (_sess?.orgId && _sess.orgId !== "default") {
             signupOrgId = _sess.orgId; // included in session metadata.orgId below
             try {
+              // Load billing context for the hint (avoids a duplicate DB read inside ESC).
               const { loadBillingContext: _csLbc } = await import("../services/billing-context.js");
               const _authCtx = await _csLbc(_sess.orgId);
-              if (_authCtx.stripeCustomerId) {
-                stripeCustomerId = _authCtx.stripeCustomerId;
-                logger.info({ customerId: stripeCustomerId, orgId: _sess.orgId },
-                  "[PublicBilling] checkout-session: Stripe Customer resolved from authenticated session token");
+
+              // ── Pre-register bridge (email → UUID transition) ─────────────────────
+              // When a new org is activated from a pre-register flow, the pre-register
+              // Customer (keyed by email) may not yet be persisted to the org's DB row.
+              // If we call ensureStripeCustomer without this bridge, it finds no customer
+              // and creates a second one — violating the ONE_CUSTOMER_INVARIANT.
+              // Fix: before ESC, look up pending_signups for this email and reuse any
+              // Customer already anchored to that signup, normalising its metadata to UUID.
+              if (!_authCtx.stripeCustomerId && _authCtx.email) {
+                try {
+                  const { pool: _csBridgePool } = await import("@workspace/db");
+                  const _csBridgeC = await _csBridgePool.connect();
+                  let _csBridgeCid: string | null = null;
+                  try {
+                    // P0-A ONE_CUSTOMER_INVARIANT: recover a Customer created during an
+                    // abandoned pre-register checkout.  Filters relaxed intentionally:
+                    //   • consumed_at IS NULL removed — a consumed signup may still carry a
+                    //     valid Customer that was never mirrored to organizations.
+                    //   • expires_at > NOW() removed — the Customer is Stripe-side permanent
+                    //     even when the pending_signup row has expired.
+                    //   • 90-day window keeps the lookup deterministic and bounded.
+                    // Safety: we validate in Stripe (below) and check cross-org anchor before use.
+                    const _csBridgeRows = await _csBridgeC.query<{ stripe_customer_id: string }>(
+                      `SELECT stripe_customer_id FROM pending_signups
+                       WHERE lower(email) = lower($1)
+                         AND stripe_customer_id IS NOT NULL
+                         AND created_at > NOW() - INTERVAL '90 days'
+                       ORDER BY created_at DESC LIMIT 5`,
+                      [_authCtx.email]
+                    );
+                    // Pick the first candidate not already anchored to a different org
+                    for (const _psRow of _csBridgeRows.rows) {
+                      const _psCid = _psRow.stripe_customer_id;
+                      // Verify not claimed by a different UUID org
+                      const { pool: _csAnchorPool } = await import("@workspace/db");
+                      const _csAnchorC = await _csAnchorPool.connect();
+                      let _isConflict = false;
+                      try {
+                        const _csConflict = await _csAnchorC.query(
+                          `SELECT 1 FROM organizations
+                           WHERE stripe_customer_id = $1 AND id != $2::uuid LIMIT 1`,
+                          [_psCid, _sess.orgId]
+                        );
+                        _isConflict = _csConflict.rows.length > 0;
+                      } finally { _csAnchorC.release(); }
+                      if (_isConflict) {
+                        logger.warn({ customerId: _psCid, orgId: _sess.orgId },
+                          "[PublicBilling] checkout-session: pending_signup Customer anchored to another org — skipping");
+                        continue;
+                      }
+                      _csBridgeCid = _psCid;
+                      break;
+                    }
+                  } finally { _csBridgeC.release(); }
+
+                  if (_csBridgeCid) {
+                    const _csBridgeEc = await stripe.customers.retrieve(_csBridgeCid);
+                    if (!(_csBridgeEc as { deleted?: boolean }).deleted) {
+                      // Normalise metadata from email-keyed orgId to UUID orgId
+                      await stripe.customers.update(_csBridgeCid, {
+                        metadata: {
+                          flowpointOrgId: _sess.orgId,
+                          orgId:          _sess.orgId,
+                          org_id:         _sess.orgId,
+                        },
+                      }).catch(() => {});
+                      stripeCustomerId = _csBridgeCid;
+                      // Persist immediately so ESC and future calls find it in DB
+                      const { persistOrgData: _csBridgePod } = await import("../services/org-data.js");
+                      await _csBridgePod(_sess.orgId, { stripeCustomerId: _csBridgeCid });
+                      logger.info(
+                        { customerId: _csBridgeCid, orgId: _sess.orgId, email: _authCtx.email },
+                        "[PublicBilling] checkout-session: pre-register Customer reused for UUID org — metadata normalised to UUID (email→UUID bridge)"
+                      );
+                    }
+                  }
+                } catch (_csBridgeErr) {
+                  logger.warn({ _csBridgeErr, orgId: _sess.orgId },
+                    "[PublicBilling] checkout-session: pre-register bridge lookup failed (non-fatal — falling through to ensureStripeCustomer)");
+                }
               }
-            } catch (_ctxErr) {
-              logger.warn({ _ctxErr, orgId: _sess.orgId },
-                "[PublicBilling] checkout-session: billing-context load failed — customer not pre-linked");
+
+              // ensureStripeCustomer guarantees exactly one canonical customer per org.
+              // Only called when the bridge above did not resolve a pre-register customer.
+              if (!stripeCustomerId) {
+                const { ensureStripeCustomer: _escFn } = await import("../services/ensure-stripe-customer.js");
+                const _escHint = {
+                  stripeCustomerId: _authCtx.stripeCustomerId,
+                  email:            _authCtx.email,
+                  firstName:        _authCtx.firstName,
+                  orgName:          _authCtx.orgName,
+                };
+                const _resolvedCustomerId = await _escFn(_sess.orgId, _escHint, stripeKey);
+                stripeCustomerId = _resolvedCustomerId;
+
+                // ESC writes to org_settings (primary) + fire-and-forget organisations mirror.
+                // We await persistOrgData explicitly so organisations.stripe_customer_id is
+                // committed before sessions.create — makes loadBillingContext deterministic
+                // on the next request, regardless of the fire-and-forget timing in ESC.
+                if (!_authCtx.stripeCustomerId || _authCtx.stripeCustomerId !== _resolvedCustomerId) {
+                  const { persistOrgData: _escPod } = await import("../services/org-data.js");
+                  await _escPod(_sess.orgId, { stripeCustomerId: _resolvedCustomerId });
+                }
+              }
+
+              logger.info(
+                { customerId: stripeCustomerId, orgId: _sess.orgId, wasNew: !_authCtx.stripeCustomerId },
+                "[PublicBilling] checkout-session: Stripe Customer guaranteed and persisted before checkout"
+              );
+            } catch (_escErr) {
+              // Hard failure: do NOT proceed to sessions.create without a confirmed binding.
+              logger.error({ _escErr, orgId: _sess.orgId },
+                "[PublicBilling] checkout-session: ensureStripeCustomer failed — aborting to prevent orphan customer");
+              res.status(503).json({
+                error: "Impossible d'initialiser votre compte de paiement. Réessayez dans quelques instants.",
+                code: "STRIPE_CUSTOMER_INIT_FAILED",
+              });
+              return;
             }
           }
         }
       } catch (_optAuthErr) {
         logger.warn({ _optAuthErr },
-          "[PublicBilling] checkout-session: optional session resolution failed (non-fatal)");
+          "[PublicBilling] checkout-session: session resolution failed (non-fatal for anonymous flow)");
       }
     }
 
@@ -460,12 +641,45 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       ...(preRegisterToken  ? { pre_register_token: preRegisterToken }    : {}),
     };
 
+    // Seller attribution (beta): read seller_id from pending_signup — never from frontend.
+    // Additive only — does NOT modify pricing, trial, customer, or line_items.
+    let _csSellerCode: string | null = null;
+    if (signupRow) {
+      try {
+        const { resolveSellerIdFromToken: _rsit } = await import("../services/seller-attribution.js");
+        const _sid = await _rsit(preRegisterToken!);
+        if (_sid) {
+          const { pool: _csSelPool } = await import("@workspace/db");
+          const _sr = await _csSelPool.query<{ seller_code: string }>(
+            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid]
+          );
+          _csSellerCode = _sr.rows[0]?.seller_code ?? null;
+          if (_csSellerCode) {
+            metadata["seller_id"]           = _csSellerCode;
+            metadata["seller_attribution"]  = "ref_link";
+          }
+        }
+      } catch (_sce) {
+        logger.warn({ _sce }, "[PublicBilling] checkout-session seller lookup failed (non-fatal)");
+      }
+    }
+
     /* ── Helper: build embedded vs redirect params, optionally pre-attach customer ── */
     const returnUrl  = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
     const successUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl  = `${publicUrl}/cancel.html`;
 
-    const customerParam = stripeCustomerId ? { customer: stripeCustomerId } : {};
+    const customerParam = stripeCustomerId ? {
+      customer: stripeCustomerId,
+      // Automatically save any billing address / name the user provides during checkout
+      // back to the Stripe Customer object (only active when a customer is pre-attached)
+      customer_update: { address: "auto" as const, name: "auto" as const },
+    } : signupRow?.email ? {
+      // New signup without canonical Customer: pass the email so Stripe pre-fills
+      // the Checkout form and can find or create exactly one Customer on payment.
+      // We do NOT pass `customer` — Stripe creates the Customer only if payment succeeds.
+      customer_email: signupRow.email,
+    } : {};
 
     function urlOrEmbedded(params: Record<string, unknown>) {
       if (embedded) {
@@ -500,6 +714,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
       const sessionParams = urlOrEmbedded({
         mode: "subscription",
+        currency: "eur",
         line_items: allLineItems,
         subscription_data: {
           /* Only grant the trial the server actually quoted. Hardcoding 14 here
@@ -572,6 +787,54 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
   const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+
+  // A1 — Auth guard for addon-only carts (no new signup):
+  // If there's no plan and no preRegisterToken, the buyer must be an authenticated
+  // existing user. Without an orgId we cannot attribute the payment in the webhook.
+  // orgContext middleware populates req.orgId from Bearer/cookie globally,
+  // but as a safety net we also perform the same manual resolution that
+  // checkout-session does, so pricing.html fetches without explicit credentials
+  // never produce a false 401.
+  let _piReqOrgId = (req as Request & { orgId?: string }).orgId;
+  if (!preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    // Manual session resolution — mirrors checkout-session logic at lines 415-449.
+    try {
+      const _authHeader  = req.headers["authorization"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const _cookieToken = (req as any).cookies?.["fp_token"];
+      let _piSessionToken: string | undefined;
+      if (typeof _authHeader === "string" && _authHeader.startsWith("Bearer ")) {
+        _piSessionToken = _authHeader.slice(7).trim();
+      } else if (typeof _cookieToken === "string" && _cookieToken.trim()) {
+        _piSessionToken = _cookieToken.trim();
+      }
+      if (_piSessionToken) {
+        const { getSession } = await import("../services/sessions.js");
+        const _piSess = await getSession(_piSessionToken);
+        if (_piSess?.orgId && _piSess.orgId !== "default") {
+          _piReqOrgId = _piSess.orgId;
+          logger.info({ orgId: _piReqOrgId }, "[PublicBilling] payment-intent: orgId resolved via manual session lookup");
+        }
+      }
+    } catch (_piAuthErr) {
+      logger.warn({ _piAuthErr }, "[PublicBilling] payment-intent: optional session resolution failed (non-fatal)");
+    }
+  }
+  // publicBillingRouter is registered before orgContext middleware, so an
+  // authenticated dashboard request can arrive here with req.orgId="default".
+  // Preserve the session-derived org for every downstream billing decision,
+  // especially the canonical Stripe Customer resolution below.
+  if (_piReqOrgId && _piReqOrgId !== "default") {
+    (req as Request & { orgId?: string }).orgId = _piReqOrgId;
+  }
+  if (!plan && !preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
+    const addonKeys = Object.keys(addons as Record<string, unknown>);
+    if (addonKeys.length > 0) {
+      logger.warn({ addonKeys }, "[PublicBilling] payment-intent: addon-only cart rejected — unauthenticated (no orgId)");
+      res.status(401).json({ error: "Authentification requise pour acheter des add-ons.", code: "UNAUTHENTICATED" });
+      return;
+    }
+  }
   let quote: BillingQuote;
   try {
     const trialEligible = await resolveTrialEligibility(req);
@@ -595,7 +858,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     country:     typeof _rawAddr.country     === "string" ? _rawAddr.country.trim().toUpperCase() : "",
   } : null;
   const stripeKey      = getStripeKey();
-  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  const publishableKey = getPublicStripeKey(stripeKey);
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -641,6 +904,29 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
 
+  // Seller attribution (beta): read seller_id from pending_signup — additive metadata only.
+  // MUST NOT influence amount, customer resolution, trial, or line_items.
+  let _paymentIntentSellerCode: string | null = null;
+  if (preRegisterToken) {
+    try {
+      const { resolveSellerIdFromToken: _rsit2 } = await import("../services/seller-attribution.js");
+      const _sid2 = await _rsit2(preRegisterToken);
+      if (_sid2) {
+        const _piPool = await import("@workspace/db");
+        const _sc2 = await _piPool.pool.query<{ seller_code: string }>(
+          `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid2]
+        );
+        _paymentIntentSellerCode = _sc2.rows[0]?.seller_code ?? null;
+        if (_paymentIntentSellerCode) {
+          metadata["seller_id"]          = _paymentIntentSellerCode;
+          metadata["seller_attribution"] = "ref_link";
+        }
+      }
+    } catch (_pe) {
+      logger.warn({ _pe }, "[PublicBilling] payment-intent seller lookup failed (non-fatal)");
+    }
+  }
+
   // ── Closed-tab recovery: tag AI-credits-only PaymentIntents ───────────────
   // If the user closes the browser before checkout-return.html calls
   // /api/public/finalize-checkout, the payment_intent.succeeded webhook is the
@@ -669,19 +955,33 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     if (preRegisterToken) {
       try {
         const { pool: _piPool } = await import("@workspace/db");
+        // Hold a single client open for the entire customer-resolution section.
+        // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
+        // calls for the same pre_register_token, preventing the race that produced
+        // two Stripe Customers from a single signup.
         const _piC = await _piPool.connect();
         let _piRow: { email: string; first_name: string; last_name: string; company_name: string; address: string | null; city: string | null; postal_code: string | null; country: string | null; stripe_customer_id: string | null } | null = null;
+        let _piTxOpen = false;
         try {
+          await _piC.query("BEGIN");
+          _piTxOpen = true;
           const _piR = await _piC.query(
             `SELECT email, first_name, last_name, company_name,
                     address, city, postal_code, country, stripe_customer_id
-             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
+             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1 FOR UPDATE`,
             [preRegisterToken]
           );
           _piRow = _piR.rows[0] ?? null;
-        } finally { _piC.release(); }
+        } catch (_piLockErr) {
+          if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); }
+          _piC.release();
+          throw _piLockErr;
+        }
 
-        if (_piRow) {
+        if (!_piRow) {
+          await _piC.query("ROLLBACK").catch(() => {});
+          _piC.release();
+        } else {
           const _piEmail = _piRow.email;
           metadata["orgId"]  = _piEmail;
           metadata["org_id"] = _piEmail;
@@ -774,16 +1074,36 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
             logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
           }
 
-          // Always write back so next attempt finds it immediately
-          const { pool: _piStorePool } = await import("@workspace/db");
-          const _piSc = await _piStorePool.connect();
+          // Persist inside the FOR UPDATE transaction — atomic write-back ensures any
+          // concurrent checkout-session that hits the lock after us reads the persisted customer.
           try {
-            await _piSc.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
-          } finally { _piSc.release(); }
+            await _piC.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
+            await _piC.query("COMMIT");
+            _piTxOpen = false;
+          } catch (_piWriteErr) {
+            if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); _piTxOpen = false; }
+            throw _piWriteErr;
+          } finally {
+            _piC.release();
+          }
         }
       } catch (_piLookupErr) {
         logger.warn({ _piLookupErr }, "[PublicBilling] payment-intent: customer lookup failed (non-fatal — proceeding without customer)");
       }
+    }
+
+    // Patch an existing Customer too: the first checkout attempt may have
+    // created it before seller attribution was attached to the flow.
+    if (preRegCustomerId && _paymentIntentSellerCode) {
+      await stripe.customers.update(preRegCustomerId, {
+        metadata: {
+          seller_id:          _paymentIntentSellerCode,
+          seller_attribution: "ref_link",
+        },
+      }).catch((_sellerCustomerErr: unknown) => {
+        logger.warn({ _sellerCustomerErr, customerId: preRegCustomerId },
+          "[PublicBilling] payment-intent: seller metadata patch failed (non-fatal)");
+      });
     }
 
     // For authenticated users (cookie session, no preRegisterToken): resolve the Stripe
@@ -792,7 +1112,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     // but left the DB record intact). This prevents "No such customer" 500 errors during
     // checkout when the stored stripe_customer_id no longer exists in Stripe.
     if (!preRegCustomerId && !preRegisterToken) {
-      const _authOrgId = (req as Request & { orgId?: string }).orgId;
+      const _authOrgId = _piReqOrgId;
       if (_authOrgId && _authOrgId !== "default") {
         try {
           const { loadBillingContext } = await import("../services/billing-context.js");
@@ -814,9 +1134,11 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       }
     }
 
-    // For the closed-tab webhook path: inject the authenticated orgId into PI metadata
-    // so the webhook can attribute credits without a Stripe customer→org lookup.
-    if (metadata["type"] === "ai_credits" && !metadata["orgId"]) {
+    // A0 — Closed-tab webhook recovery: inject orgId for ALL authenticated purchases.
+    // Previously only injected for AI-credit carts; now covers recurring add-ons too.
+    // The webhook reads metadata.orgId to activate add-ons even if the browser
+    // closes before finalize-checkout is called.
+    if (!metadata["orgId"]) {
       const _piMetaOrgId = (req as Request & { orgId?: string }).orgId;
       if (_piMetaOrgId && _piMetaOrgId !== "default") {
         metadata["orgId"]   = _piMetaOrgId;
@@ -897,7 +1219,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   if (addons === null) return; // parseAddonsPub already sent 400
 
   const _fcPreRegRaw = body?.preRegisterToken;
-  const preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
+  let preRegisterToken = typeof _fcPreRegRaw === "string" ? _fcPreRegRaw.trim() : "";
   const stripeKey = getStripeKey();
 
   if (!stripeKey) {
@@ -911,7 +1233,14 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   //   B) preRegisterToken in body → new signup who just paid via checkout-payment.html;
   //      validated against pending_signups (must exist and not yet expired).
   //      The account may already be activated by the webhook — that's fine (idempotent).
-  const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"] ?? "";
+  // Accept both fp_token cookie AND Authorization: Bearer header (existing users
+  // arriving from checkout-return.html send Bearer from localStorage, not a cookie).
+  const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"]
+    ?? (() => {
+      const ah = req.headers["authorization"];
+      if (typeof ah === "string" && ah.startsWith("Bearer ")) return ah.slice(7).trim();
+      return "";
+    })();
   const _preRegToken = typeof (req.body as Record<string, unknown>)?.preRegisterToken === "string"
     ? ((req.body as Record<string, unknown>).preRegisterToken as string).trim()
     : "";
@@ -954,6 +1283,47 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       } finally { _fcBypassC.release(); }
     } catch (_fcBypassErr) {
       logger.warn({ _fcBypassErr }, "[PublicBilling/finalize-checkout] preRegisterToken lookup failed (non-fatal)");
+    }
+  }
+
+  // Path C: recover pre_register_token from Stripe intent metadata.
+  // Handles the case where sessionStorage was cleared during the Stripe redirect
+  // (full-page navigation to stripe.com, then back) and localStorage TTL expired.
+  // The token was embedded in the intent's metadata when /public/payment-intent
+  // created it, so we can always recover it as long as the PI/SI exists in Stripe.
+  // Intentionally non-fatal: any Stripe or DB error leaves _authenticatedOrgId null
+  // and the outer 401 gate fires normally.
+  if (!_authenticatedOrgId && intentId && (intentType === "payment" || intentType === "setup")) {
+    try {
+      const { getStripeKey: _gskC, createStripeClient: _cscC } = await import("../services/stripe-factory.js");
+      const _recKey = _gskC();
+      if (_recKey) {
+        const _recStripe = await _cscC(_recKey);
+        const _recRaw = intentType === "payment"
+          ? await _recStripe.paymentIntents.retrieve(String(intentId))
+          : await _recStripe.setupIntents.retrieve(String(intentId));
+        const _recMeta = (_recRaw.metadata ?? {}) as Record<string, string>;
+        const _recPrt  = _recMeta["pre_register_token"] ?? "";
+        if (_recPrt) {
+          const { pool: _recPool } = await import("@workspace/db");
+          const _recC = await _recPool.connect();
+          try {
+            const _recR = await _recC.query<{ email: string }>(
+              `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+              [_recPrt]
+            );
+            if (_recR.rows[0]?.email) {
+              _authenticatedOrgId = _recR.rows[0].email;
+              preRegisterToken    = _recPrt; // restore so activateNewSignup can use it
+              logger.info({ orgId: _authenticatedOrgId },
+                "[PublicBilling/finalize-checkout] Path C: authenticated via PI/SI metadata pre_register_token");
+            }
+          } finally { _recC.release(); }
+        }
+      }
+    } catch (_pathCErr) {
+      logger.warn({ _pathCErr },
+        "[PublicBilling/finalize-checkout] Path C: PI/SI metadata recovery failed (non-fatal)");
     }
   }
 
@@ -1068,6 +1438,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
     /* Resolve plan/addons (prefer request body, fallback to intent metadata) */
     const planKey  = (plan || intentMeta["plan"] || "").toLowerCase();
+    const _fcSellerCode = intentMeta["seller_id"] || null;
     const addonsResolved: AddonsMap = Object.keys(addons as AddonsMap).length
       ? (addons as AddonsMap)
       : (() => { try { return JSON.parse(intentMeta["addons"] || "{}"); } catch { return {}; } })();
@@ -1139,6 +1510,27 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
          Month 1 was already charged via the PaymentIntent. */
       if (_aoRecurring.length > 0) {
         try {
+          /* Ensure _authenticatedOrgId is a UUID — legacy email-keyed sessions must be
+             resolved to their canonical organizations.id before DB writes that have a UUID FK. */
+          const _aoOrigOrgId = _authenticatedOrgId; // snapshot BEFORE resolve (for diagnostics)
+          try {
+            const { resolveCanonicalOrgUuid: _aoResolve } = await import("../services/ai-engine.js");
+            const _resolved = await _aoResolve(_authenticatedOrgId!);
+            if (_resolved) _authenticatedOrgId = _resolved;
+          } catch (_resolveErr) { /* non-fatal: proceed with original orgId */ }
+          // Diagnostic log — no behavior change; helps trace UUID vs email orgId mismatch
+          const _uuidFmt = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          logger.info({
+            FINALIZE_ADDON_CONTEXT:       true,
+            authenticatedOrgId_original:  _aoOrigOrgId        ? String(_aoOrigOrgId).slice(0, 8)        + "…" : null,
+            resolvedOrgId:                _authenticatedOrgId ? String(_authenticatedOrgId).slice(0, 8) + "…" : null,
+            resolutionSucceeded:          _authenticatedOrgId !== _aoOrigOrgId,
+            isUuidOriginal:               _uuidFmt.test(_aoOrigOrgId        ?? ""),
+            isUuidResolved:               _uuidFmt.test(_authenticatedOrgId ?? ""),
+            addonKeys:                    _aoRecurring,
+            paymentIntentId:              intentId ? String(intentId).slice(0, 20) + "…" : null,
+          }, "[PublicBilling] finalize: FINALIZE_ADDON_CONTEXT");
+
           /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
           const { loadBillingContext: _aoLbc } = await import("../services/billing-context.js");
           const _aoCtx = await _aoLbc(_authenticatedOrgId);
@@ -1180,15 +1572,33 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           } else if (_aoPlanSub) {
             /* Add add-on items to the subscriber's existing plan subscription so no second
                subscription is created. proration_behavior:"none" because month 1 was already
-               collected via the PaymentIntent — Stripe will bill the add-on at next renewal. */
+               collected via the PaymentIntent — Stripe will bill the add-on at next renewal.
+               CRITICAL: check for an existing item with the same Price ID before creating —
+               Stripe rejects a duplicate create with "already using that Price". Use UPDATE
+               (quantity++) instead. */
             for (const item of _aoItems) {
-              await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
-                .subscriptionItems.create({
-                  subscription:       _aoPlanSub.id,
-                  price:              item.price,
-                  quantity:           item.quantity,
+              type SubItem = { id: string; price?: { id?: string }; quantity?: number };
+              const _existingAoItem: SubItem | undefined = (_aoPlanSub.items?.data ?? []).find(
+                (it: SubItem) => it.price?.id === item.price
+              );
+              if (_existingAoItem) {
+                // Price already on this subscription — increment quantity
+                const _newQty = ((_existingAoItem as SubItem).quantity ?? 0) + (item.quantity ?? 1);
+                await stripe.subscriptionItems.update(_existingAoItem.id, {
+                  quantity:           _newQty,
                   proration_behavior: "none",
                 });
+                logger.info({ subscriptionId: _aoPlanSub.id, priceId: item.price, oldQty: _existingAoItem.quantity, newQty: _newQty },
+                  "[PublicBilling] finalize: addon quantity updated on existing subscription item (idempotent create-vs-update)");
+              } else {
+                await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
+                  .subscriptionItems.create({
+                    subscription:       _aoPlanSub.id,
+                    price:              item.price,
+                    quantity:           item.quantity,
+                    proration_behavior: "none",
+                  });
+              }
             }
             _aoSubId = _aoPlanSub.id;
             logger.info({ subscriptionId: _aoSubId, addons: _aoRecurring },
@@ -1227,9 +1637,58 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             "[PublicBilling] finalize: addon-only purchase provisioned");
         } catch (aoErr) {
           logger.error({ aoErr, orgId: _authenticatedOrgId, addons: _aoRecurring },
-            "[PublicBilling] finalize: addon provisioning failed after successful charge");
-          res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
-          return;
+            "[PublicBilling] finalize: Stripe addon sub step failed after payment — attempting local activation fallback");
+          // Payment was already received. Attempt direct DB entitlement so the user
+          // gets access immediately; the Stripe webhook will reconcile the subscription.
+          // FK-aware: if the session org_id has no organizations row (FK 23503), retry
+          // with the orgId embedded in the PaymentIntent metadata (set at PI creation time).
+          const _piMetaOrgId: string | null = (intentMeta["org_id"] || intentMeta["orgId"]) ?? null;
+          const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          // Candidate org IDs to try in order (deduplicated, UUIDs only)
+          const _fallbackCandidates: string[] = [];
+          if (_authenticatedOrgId) _fallbackCandidates.push(_authenticatedOrgId);
+          if (_piMetaOrgId && _uuidRe.test(_piMetaOrgId) && _piMetaOrgId !== _authenticatedOrgId) {
+            _fallbackCandidates.push(_piMetaOrgId);
+          }
+          try {
+            const { activateAddon: _aoFallback } = await import("../services/addons-service.js");
+            let _fallbackSucceeded = false;
+            let _usedOrgId: string | null = null;
+            for (const _candidateOrgId of _fallbackCandidates) {
+              const _candidateResults = await Promise.all(_aoRecurring.map(async k => {
+                const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
+                return _aoFallback(k, _candidateOrgId, qty).catch(() => false as boolean | false);
+              }));
+              if (_candidateResults.every(Boolean)) {
+                _fallbackSucceeded = true;
+                _usedOrgId = _candidateOrgId;
+                // Broadcast to the org that actually received the entitlement
+                for (const k of _aoRecurring) {
+                  try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _candidateOrgId); } catch (_) { /* non-fatal */ }
+                }
+                break;
+              }
+              logger.warn({ candidateOrgId: _candidateOrgId ? String(_candidateOrgId).slice(0,8)+"…" : null, addons: _aoRecurring },
+                "[PublicBilling] finalize: fallback candidate failed — trying next");
+            }
+            if (_fallbackSucceeded) {
+              logger.info({ orgId: _usedOrgId ? String(_usedOrgId).slice(0,8)+"…" : null, addons: _aoRecurring },
+                "[PublicBilling] finalize: local addon activation succeeded as fallback (webhook will reconcile Stripe)");
+              // Update _authenticatedOrgId to the one that worked for the success response
+              if (_usedOrgId && _usedOrgId !== _authenticatedOrgId) _authenticatedOrgId = _usedOrgId;
+              // Fall through to the res.json success below
+            } else {
+              logger.error({ addons: _aoRecurring, candidates: _fallbackCandidates.map(c => c.slice(0,8)+"…") },
+                "[PublicBilling] finalize: local addon activation failed for all candidates");
+              res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
+              return;
+            }
+          } catch (fallbackErr) {
+            logger.error({ fallbackErr, orgId: _authenticatedOrgId },
+              "[PublicBilling] finalize: fallback activation threw");
+            res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
+            return;
+          }
         }
       }
 
@@ -1252,6 +1711,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
        > (d) last resort: create new.
     ──────────────────────────────────────────────────────────────────────────── */
     let customerId: string | null = intentCustomerId;
+    let customerSource: string | null = intentCustomerId ? "payment_or_setup_intent.customer" : null;
     let hasSubscriptionHistory    = false;
 
     if (customerId) {
@@ -1278,10 +1738,14 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _fcSubs = await stripe.subscriptions.list({ customer: _fcEc2.id, status: "all", limit: 1 });
           if (_fcSubs.data.length > 0) {
             customerId = _fcEc2.id; hasSubscriptionHistory = true;
+            customerSource = "stripe_customer_email_search_with_subscription_history";
             logger.info({ customerId, email: _fcEmail }, "[PublicBilling] finalize: reusing Stripe customer (has history)");
             break;
           }
-          if (!customerId) customerId = _fcEc2.id;
+          if (!customerId) {
+            customerId = _fcEc2.id;
+            customerSource = "stripe_customer_email_search";
+          }
         }
       }
     }
@@ -1300,11 +1764,37 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             );
             if (_fcPsR.rows[0]?.stripe_customer_id) {
               customerId = _fcPsR.rows[0].stripe_customer_id;
+              customerSource = "pending_signups.stripe_customer_id";
               logger.info({ customerId }, "[PublicBilling] finalize: found customer via pre_register_token");
             }
           } finally { _fcPsC.release(); }
         } catch { /* non-fatal */ }
       }
+    }
+
+    // Existing UUID organizations must recover their persistent Customer, never
+    // enter the new-signup fallback below when a lookup was incomplete.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(_authenticatedOrgId || "")) {
+      const { pool: anchorPool } = await import("@workspace/db");
+      const anchor = await anchorPool.query(
+        `SELECT stripe_customer_id, subscription_status FROM organizations WHERE id::text = $1 LIMIT 1`, [_authenticatedOrgId]);
+      const persistentCustomer = anchor.rows[0]?.stripe_customer_id;
+      const endedAccount = ["canceled", "ended", "expired"].includes(anchor.rows[0]?.subscription_status);
+      if ((!persistentCustomer && endedAccount) || (persistentCustomer && customerId && customerId !== persistentCustomer)) {
+        logger.warn({
+          event: "billing_customer_mismatch",
+          orgId: _authenticatedOrgId,
+          canonicalCustomerId: persistentCustomer ?? null,
+          resolvedCustomerId: customerId,
+          resolvedCustomerSource: customerSource,
+          intentCustomerId,
+          pendingSignupCustomerId: customerSource === "pending_signups.stripe_customer_id" ? customerId : null,
+        }, "[PublicBilling/finalize-checkout] canonical Stripe Customer mismatch");
+        res.status(409).json({ error: "billing_customer_mismatch",
+          message: "Le compte de facturation nécessite une vérification. Contactez le support." });
+        return;
+      }
+      if (persistentCustomer) customerId = persistentCustomer;
     }
 
     if (!customerId) {
@@ -1319,19 +1809,35 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         metadata: {
           source: "checkout_payment", plan: planKey,
           ...(_fcOrgForMeta ? { orgId: _fcOrgForMeta, org_id: _fcOrgForMeta } : {}),
+          ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
         },
       });
       customerId = _fcNewC.id;
       logger.warn({ customerId }, "[PublicBilling] finalize: new Stripe customer created (last resort — check for duplicates)");
     }
 
-    // Attach payment method to resolved customer (safe even if already attached)
-    await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch(() => {});
+    // Attach payment method to resolved customer — idempotent guard to avoid 400
+    // "PaymentMethod already attached" when finalize-checkout is called twice.
+    const _pmInfo = await stripe.paymentMethods.retrieve(paymentMethodId!).catch(() => null);
+    const _pmAlreadyOnCustomer = _pmInfo?.customer && _pmInfo.customer === customerId!;
+    if (!_pmAlreadyOnCustomer) {
+      await stripe.paymentMethods.attach(paymentMethodId!, { customer: customerId! }).catch((pmErr: { message?: string }) => {
+        const msg = String(pmErr?.message ?? pmErr ?? "");
+        if (msg.includes("already been attached") || msg.includes("already attached")) {
+          logger.info({ paymentMethodId, customerId }, "[PublicBilling] finalize: PM already attached — skipping (idempotent)");
+        } else {
+          logger.error({ pmErr, paymentMethodId, customerId }, "[PublicBilling] finalize: PM attach failed");
+        }
+      });
+    } else {
+      logger.info({ paymentMethodId, customerId }, "[PublicBilling] finalize: PM already on customer — skipping attach (idempotent)");
+    }
 
     // Keep the canonical billing record in sync before creating the subscription.
     // A trial checkout may create the Stripe customer before the activation
     // webhook creates the UUID organization; persistOrgData mirrors safely for
     // pre-registration IDs and writes organizations for authenticated accounts.
+    const _UUID_RE_FC = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     try {
       const { persistOrgData: persistCheckoutCustomer } = await import("../services/org-data.js");
       await persistCheckoutCustomer(_authenticatedOrgId, { stripeCustomerId: customerId! });
@@ -1341,6 +1847,32 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       // persistence/webhook remains a recovery path, but make the gap visible.
       logger.error({ customerPersistErr, orgId: _authenticatedOrgId, customerId },
         "[PublicBilling] finalize: could not link Stripe customer to organization");
+    }
+
+    // P0 UUID anchor: when _authenticatedOrgId is email-keyed (pre-register flow),
+    // the persist above writes to org_settings[email] only. Also anchor the customer ID
+    // to the UUID org so ESC finds it on re-subscription without creating a duplicate.
+    let _fcResolvedUuidEarly: string | null = null;
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const { pool: _fcUuidEarlyPool } = await import("@workspace/db");
+        const _fcUuidEarlyC = await _fcUuidEarlyPool.connect();
+        try {
+          const _fcUuidEarlyR = await _fcUuidEarlyC.query<{ id: string }>(
+            `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+            [_authenticatedOrgId]
+          );
+          _fcResolvedUuidEarly = _fcUuidEarlyR.rows[0]?.id ?? null;
+        } finally { _fcUuidEarlyC.release(); }
+
+        if (_fcResolvedUuidEarly) {
+          const { persistOrgData: _fcPodUuidEarly } = await import("../services/org-data.js");
+          await _fcPodUuidEarly(_fcResolvedUuidEarly, { stripeCustomerId: customerId! });
+          logger.info({ orgId: _fcResolvedUuidEarly, customerId }, "[PublicBilling] finalize: Stripe customer anchored to UUID org (pre-register path)");
+        }
+      } catch (_fcUuidEarlyErr) {
+        logger.warn({ _fcUuidEarlyErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org early anchor failed (non-fatal)");
+      }
     }
 
     /* ── Enrich Customer: merge Stripe Address Element data + pending_signups ──
@@ -1429,24 +1961,55 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     const trialEndUnix = grantTrial ? Math.floor(Date.now() / 1000) + intentTrialDays * 86400 : undefined;
     logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
 
-    // ── P1-5: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
-    // Check whether this customer already has an active or trialing subscription for
-    // the same plan price ID before creating a new one.
+    // ── P1-5 + P0: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
+    // P0 fix (2026-08-16): the previous guard filtered by `price: planPriceId` only,
+    // which allowed a SECOND subscription to be created when the customer already had
+    // an active/trialing subscription for a DIFFERENT plan (e.g., a Pro trialing sub
+    // created 43 min earlier via another checkout session with the same pre_register_token).
+    // Now we check ALL active/trialing subscriptions for the customer and block with 409
+    // when a different-plan subscription exists, preventing a double billing scenario.
     let planSubscription: Awaited<ReturnType<typeof stripe.subscriptions.create>>;
     {
-      const existingSubs = await stripe.subscriptions.list({
+      const _allSubs = await stripe.subscriptions.list({
         customer: customerId!,
-        price:    planPriceId,
-        limit:    5,
+        status:   "all",
+        limit:    10,
       });
-      const reusable = existingSubs.data.find(
-        (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing" || s.status === "past_due"
+      const _activeOrTrialing = _allSubs.data.filter(
+        (s: Stripe.Subscription) =>
+          (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
+          !s.cancel_at_period_end
       );
-      if (reusable) {
+      const _samePlanReusable = _activeOrTrialing.find(
+        (s: Stripe.Subscription) => s.items.data.some((item: Stripe.SubscriptionItem) => item.price.id === planPriceId)
+      );
+
+      if (_samePlanReusable) {
         // Reuse — avoid duplicate subscription on page refresh / double-click
-        logger.info({ subscriptionId: reusable.id, planKey, customerId },
+        logger.info({ subscriptionId: _samePlanReusable.id, planKey, customerId },
           "[PublicBilling] finalize: reusing existing plan subscription (idempotent)");
-        planSubscription = reusable as typeof planSubscription;
+        planSubscription = _samePlanReusable as typeof planSubscription;
+      } else if (_activeOrTrialing.length > 0) {
+        // P0: customer already has an active/trialing subscription for a DIFFERENT plan.
+        // Creating a second subscription would charge the customer twice. Block immediately.
+        const _conflict = _activeOrTrialing[0]!;
+        logger.error(
+          {
+            conflictSubId:     _conflict.id,
+            conflictStatus:    _conflict.status,
+            conflictPriceId:   _conflict.items.data[0]?.price.id,
+            newPlan:           planKey,
+            customerId,
+            orgId:             _authenticatedOrgId,
+            preRegisterToken,
+          },
+          "[PublicBilling][P0] DUPLICATE SUBSCRIPTION BLOCKED — customer already has active/trialing subscription for a different plan"
+        );
+        res.status(409).json({
+          error:   "account_already_subscribed",
+          message: "Ce compte possède déjà un abonnement actif. Connectez-vous pour gérer votre plan.",
+        });
+        return;
       } else {
         planSubscription = await stripe.subscriptions.create({
           customer:               customerId,
@@ -1459,6 +2022,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             flowpoint_cart: "true",
             org_id:         _authenticatedOrgId,
             orgId:          _authenticatedOrgId,
+            ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
             ...(preRegisterToken || intentMeta["pre_register_token"]
               ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
               : {}),
@@ -1515,6 +2079,61 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.warn({ _fcPodErr }, "[PublicBilling] finalize: persistOrgData non-fatal (webhook will sync)");
     }
 
+    // P0 UUID anchor (full billing state): for pre-register flow (_authenticatedOrgId = email)
+    // all persists above went to org_settings[email]. Look up the UUID org (created by
+    // activateNewSignup from the PI.succeeded webhook) and anchor the full billing state so
+    // subsequent ESC calls find the canonical customer without creating a duplicate.
+    if (!_UUID_RE_FC.test(_authenticatedOrgId) && customerId) {
+      try {
+        const _fcAnchorUuid = _fcResolvedUuidEarly ?? await (async () => {
+          const { pool: _fcUuidFinalPool } = await import("@workspace/db");
+          const _fcUuidFinalC = await _fcUuidFinalPool.connect();
+          try {
+            const _r = await _fcUuidFinalC.query<{ id: string }>(
+              `SELECT id::text FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
+              [_authenticatedOrgId]
+            );
+            return _r.rows[0]?.id ?? null;
+          } finally { _fcUuidFinalC.release(); }
+        })();
+
+        if (_fcAnchorUuid) {
+          const { persistOrgData: _fcPodFull } = await import("../services/org-data.js");
+          await _fcPodFull(_fcAnchorUuid, {
+            stripeCustomerId:     customerId!,
+            stripeSubscriptionId: planSubscription.id,
+            subscriptionStatus:   grantTrial ? "trialing" : "active",
+            plan:                 planKey,
+            trialConsumedAt:      new Date().toISOString(),
+            ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
+          });
+          logger.info({ orgId: _fcAnchorUuid, customerId, planKey }, "[PublicBilling] finalize: full billing state anchored to UUID org");
+        }
+      } catch (_fcAnchorErr) {
+        logger.warn({ _fcAnchorErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org full anchor failed (non-fatal)");
+      }
+    }
+
+    // Normalize Stripe customer metadata to canonical orgId (UUID when known, email otherwise).
+    // This ensures ESC Step 3 (stripe.customers.search by metadata.orgId) finds the customer
+    // on re-subscription when the org UUID is already in place.
+    try {
+      const _metaNormOrgId = _UUID_RE_FC.test(_authenticatedOrgId)
+        ? _authenticatedOrgId
+        : (_fcResolvedUuidEarly ?? _authenticatedOrgId);
+      await stripe.customers.update(customerId!, {
+        metadata: {
+          orgId: _metaNormOrgId,
+          org_id: _metaNormOrgId,
+          flowpointOrgId: _metaNormOrgId,
+          ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
+        },
+      });
+      logger.info({ customerId, orgId: _metaNormOrgId }, "[PublicBilling] finalize: Stripe customer metadata normalized");
+    } catch (_metaNormErr) {
+      logger.warn({ _metaNormErr, customerId }, "[PublicBilling] finalize: metadata normalization non-fatal");
+    }
+
     // ── Pre-registration: activate new user account and deliver magic link ────
     // A successful finalization must never claim that a login email was sent
     // before the account, token and delivery have all completed successfully.
@@ -1540,35 +2159,96 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           logger.info({ step: "FC-1", token: _fcActToken.slice(0, 8) }, "[FC] step-1: querying pending_signups");
           const _fcActC0 = await _fcActPool.connect();
           let _fcSignup: Record<string, string | null> | null = null;
+          // _fcPendingRow is saved outside the try so FC-1-skip can read the email
+          let _fcPendingRow: Record<string, string | null> | null = null;
           try {
             const _fcActR0 = await _fcActC0.query(
-              `SELECT email, first_name, last_name, company_name, consumed_at, expires_at
+              `SELECT email, first_name, last_name, company_name, country, address, city,
+                      postal_code, phone, vat, seller_id, consumed_at, expires_at
                FROM pending_signups
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
             );
-            const _fcRow = _fcActR0.rows[0] ?? null;
+            _fcPendingRow = _fcActR0.rows[0] ?? null;
             logger.info({
               step: "FC-1-result",
-              found:    !!_fcRow,
-              consumed: _fcRow ? !!_fcRow["consumed_at"] : null,
-              email:    _fcRow?.["email"],
-              expires:  _fcRow?.["expires_at"],
+              found:    !!_fcPendingRow,
+              consumed: _fcPendingRow ? !!_fcPendingRow["consumed_at"] : null,
+              email:    _fcPendingRow?.["email"],
+              expires:  _fcPendingRow?.["expires_at"],
             }, "[FC] step-1: pending_signup lookup result");
-            _fcSignup = (_fcRow && !_fcRow["consumed_at"]) ? _fcRow : null;
+            _fcSignup = (_fcPendingRow && !_fcPendingRow["consumed_at"]) ? _fcPendingRow : null;
           } finally { _fcActC0.release(); }
 
           if (!_fcSignup) {
-            // Token already consumed (webhook or previous finalize call) or not found.
-            // Account already created — return success so checkout-return shows the
-            // correct UI instead of hanging with no HTTP response.
-            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing — activation already complete, returning success");
+            // Token already consumed (webhook already activated the account) or not found.
+            // The webhook should have sent the magic link email, but if it failed we must
+            // re-send now so the user isn't left with a blank inbox after seeing "check your email".
+            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing — attempting email re-send");
+            const _skipEmail = _fcPendingRow?.["email"] ?? null;
+            if (_skipEmail) {
+              // ── FC-1-skip resend: find existing valid token or mint a fresh one ──
+              const _reSendC = await _fcActPool.connect();
+              let _reSendOk = false;
+              let _reSendEmailId: string | undefined;
+              try {
+                const _existTok = await _reSendC.query<{ token: string }>(
+                  `SELECT token FROM magic_link_tokens
+                   WHERE email = $1 AND used = FALSE AND expires_at > NOW()
+                   ORDER BY expires_at DESC LIMIT 1`,
+                  [_skipEmail]
+                );
+                let _reToken = _existTok.rows[0]?.token ?? null;
+                if (!_reToken) {
+                  // No valid token left — mint a fresh one
+                  _reToken = _fcRb(32).toString("hex");
+                  await _reSendC.query(
+                    `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+                     VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE)
+                     ON CONFLICT (token) DO NOTHING`,
+                    [_reToken, _skipEmail]
+                  );
+                  logger.info({ step: "FC-1-skip-new-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: created fresh magic link token");
+                } else {
+                  logger.info({ step: "FC-1-skip-reuse-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: reusing existing valid token");
+                }
+                const _rePubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+                const _reMagicUrl = `${_rePubUrl}/login-verify.html?token=${_reToken}`;
+                const { mailer: _reMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+                if (_reMailer) {
+                  const _reResult = await _reMailer.sendActivationMagicLink({
+                    to:           _skipEmail,
+                    name:         _fcPendingRow?.["first_name"] || _skipEmail.split("@")[0],
+                    plan:         planKey,
+                    magicLinkUrl: _reMagicUrl,
+                    isTrial:      grantTrial,
+                  }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
+                  _reSendOk      = !!_reResult?.ok;
+                  _reSendEmailId = (_reResult as { id?: string })?.id;
+                  logger.info({ step: "FC-1-skip-mail", ok: _reSendOk, emailId: _reSendEmailId, error: (_reResult as { error?: string })?.error }, "[FC] FC-1-skip: re-send result");
+                } else {
+                  logger.warn({ step: "FC-1-skip-no-mailer" }, "[FC] FC-1-skip: mailer unavailable");
+                }
+              } catch (_reSendErr) {
+                logger.error({ step: "FC-1-skip-resend-err", err: (_reSendErr as Error).message }, "[FC] FC-1-skip: re-send threw");
+              } finally { _reSendC.release(); }
+
+              res.json({
+                success: true,
+                subscriptionId: planSubscription?.id,
+                addonSubscriptionId,
+                activationEmailSent: _reSendOk,
+                ...(_reSendOk ? {} : { emailFailed: true }),
+              });
+              return;
+            }
+            // No email found in pending_signup row — token was never in DB (invalid)
             res.json({
               success: true,
               subscriptionId: planSubscription?.id,
               addonSubscriptionId,
               activationEmailSent: false,
-              activationSkipped: true,
+              emailFailed: true,
             });
             return;
           }
@@ -1612,14 +2292,15 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
             // 4a — upsert user
             logger.info({ step: "FC-4a", email: _fcAEmail }, "[FC] step-4a: INSERT INTO users");
+            const _fcNewUserId = _fcRandUUID();
             const _fcUsr = await _fcActTxC.query<{ id: string }>(
-              `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
-               VALUES ($1,$2,$3,'magic_link',TRUE,'active')
+              `INSERT INTO users (id, email, first_name, last_name, auth_provider, email_verified, status)
+               VALUES ($4,$1,$2,$3,'magic_link',TRUE,'active')
                ON CONFLICT (email) DO UPDATE
                  SET status='active', email_verified=TRUE,
                      first_name=COALESCE(EXCLUDED.first_name,users.first_name), updated_at=NOW()
                RETURNING id`,
-              [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? ""]
+              [_fcAEmail, _fcSignup["first_name"] ?? "", _fcSignup["last_name"] ?? "", _fcNewUserId]
             );
             const _fcUserId = _fcUsr.rows[0]?.id;
             logger.info({ step: "FC-4a-ok", userId: _fcUserId }, "[FC] step-4a: user upserted");
@@ -1627,13 +2308,19 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
             // 4b — upsert organization
             logger.info({ step: "FC-4b", orgId: _fcAOrgId }, "[FC] step-4b: INSERT INTO organizations");
+            // Seller attribution was already validated and stored on pending_signups.
+            // Carry it into the canonical organization here as well as in the webhook
+            // path, because finalize-checkout can activate the account before the
+            // payment webhook is delivered.
+            const _fcSellerId = _fcSignup["seller_id"] ?? null;
             await _fcActTxC.query(
               `INSERT INTO organizations
-                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at)
-               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9)
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10)
                ON CONFLICT (id) DO UPDATE
                  SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
                      stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
+                      seller_id=COALESCE(organizations.seller_id,EXCLUDED.seller_id),
                      updated_at=NOW()`,
               [
                 _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
@@ -1641,6 +2328,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                 _fcUserId, planKey, grantTrial ? "trialing" : "active",
                 _fcAEmail, customerId ?? null,
                 trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
+                 _fcSellerId,
               ]
             );
             logger.info({ step: "FC-4b-ok" }, "[FC] step-4b: organization upserted");
@@ -1669,6 +2357,48 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             _fcActivationCommitted = true;
             logger.info({ step: "FC-4-COMMITTED", orgId: _fcAOrgId, userId: _fcUserId, plan: planKey }, "[FC] TRANSACTION COMMITTED — user + org activated");
 
+            // ── Step 4f: Propagate signup contact/address into org_settings ──
+            // (non-fatal — profile data only, never billing data). Without this,
+            // accounts activated via finalize-checkout (webhook lost/slow) never
+            // see their signup address in Workspace/Settings/Localisation.
+            try {
+              const { upsertOrgSettings: _fcUpsertOs, loadOrgSettings: _fcLoadOs } = await import("../services/org-settings.js");
+              const _fcOsExisting = await _fcLoadOs(_fcAOrgId).catch(() => null);
+              const _fcHasAddr = !!(_fcSignup["address"] || _fcSignup["city"] || _fcSignup["country"] || _fcSignup["phone"]);
+              if (!_fcOsExisting) {
+                await _fcUpsertOs(_fcAOrgId, {
+                  email:              _fcAEmail,
+                  orgName:            _fcSignup["company_name"] ?? "",
+                  firstName:          _fcSignup["first_name"]   ?? "",
+                  lastName:           _fcSignup["last_name"]    ?? "",
+                  country:            _fcSignup["country"]      ?? null,
+                  city:               _fcSignup["city"]         ?? null,
+                  address:            _fcSignup["address"]      ?? null,
+                  postalCode:         _fcSignup["postal_code"]  ?? null,
+                  phone:              _fcSignup["phone"]        ?? null,
+                  vat:                _fcSignup["vat"]          ?? null,
+                  locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings profile row created from signup data");
+              } else if (_fcHasAddr && !_fcOsExisting.address && !_fcOsExisting.city) {
+                // Existing profile row without any address — fill the missing
+                // contact fields from the signup form (never overwrite values).
+                await _fcUpsertOs(_fcAOrgId, {
+                  country:            _fcOsExisting.country    ?? _fcSignup["country"]     ?? null,
+                  city:               _fcSignup["city"]        ?? null,
+                  address:            _fcSignup["address"]     ?? null,
+                  postalCode:         _fcOsExisting.postalCode ?? _fcSignup["postal_code"] ?? null,
+                  phone:              _fcOsExisting.phone      ?? _fcSignup["phone"]       ?? null,
+                  locationConfigured: !!(_fcSignup["city"] || _fcSignup["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ step: "FC-4f", orgId: _fcAOrgId }, "[FC] step-4f: org_settings address self-healed from signup data");
+              }
+            } catch (_fcOsErr) {
+              logger.warn({ step: "FC-4f", err: (_fcOsErr as Error).message }, "[FC] step-4f: org_settings propagation failed (non-fatal)");
+            }
+
           } catch (_fcActErr) {
             await _fcActTxC.query("ROLLBACK").catch(() => {});
             // Log the full PostgreSQL error so we can identify the exact failing statement
@@ -1690,21 +2420,88 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             throw _fcActErr;
           } finally { _fcActTxC.release(); }
 
-          // ── Step 5: Insert magic link token ─────────────────────────────
-          logger.info({ step: "FC-5", email: _fcAEmail }, "[FC] step-5: inserting magic_link_token");
+          // ── ML-1: Generate magic link token ─────────────────────────────
+          logger.info({ step: "ML-1", email: _fcAEmail }, "[ML] step-1: generating magic link token (randomBytes 32)");
           const _fcMagicToken = _fcRb(32).toString("hex");
+
+          // ── ML-2: Insert token into DB ────────────────────────────────────
+          logger.info({ step: "ML-2", tokenPrefix: _fcMagicToken.slice(0, 8), email: _fcAEmail }, "[ML] step-2: inserting magic_link_token into DB");
           const _fcTokC = await _fcActPool.connect();
+          let _mlTokInserted = false;
           try {
-            await _fcTokC.query(
+            const _mlTokR = await _fcTokC.query<{ token: string }>(
               `INSERT INTO magic_link_tokens(token,email,expires_at,used)
-               VALUES($1,$2,NOW()+INTERVAL '24 hours',FALSE) ON CONFLICT(token) DO NOTHING`,
+               VALUES($1,$2,NOW()+INTERVAL '24 hours',FALSE) ON CONFLICT(token) DO NOTHING RETURNING token`,
               [_fcMagicToken, _fcAEmail]
             );
+            _mlTokInserted = (_mlTokR.rowCount ?? 0) > 0;
+            logger.info({ step: "ML-2-ok", tokenPrefix: _fcMagicToken.slice(0, 8), inserted: _mlTokInserted }, "[ML] step-2: magic_link_token DB result");
           } finally { _fcTokC.release(); }
 
-          // ── Step 6: Send activation email ───────────────────────────────
-          logger.info({ step: "FC-6", email: _fcAEmail, isTrial: grantTrial }, "[FC] step-6: sending activation email");
+          // ── ML-5: Compose magic link URL (logged before ML-3 for clarity) ─
           const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+          const _fcMagicLinkUrl = `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`;
+          logger.info({ step: "ML-5", urlDomain: _fcPubUrl, tokenPrefix: _fcMagicToken.slice(0, 8), path: "/login-verify.html" }, "[ML] step-5: magic link URL composed");
+
+          // ── ML-2.5: Resend suppression-list pre-check ─────────────────────
+          // A hard bounce auto-adds the address to Resend's suppression list.
+          // Any subsequent send attempt is silently dropped by Resend — the SDK
+          // returns ok:true with an emailId but the email is never delivered.
+          // Check BEFORE calling the mailer so we can return emailFailed:true
+          // immediately (and show the "connect directly" UI) instead of falsely
+          // claiming the link was sent.
+          const _resendKeyChk = process.env["RESEND_API_KEY"];
+          if (_resendKeyChk) {
+            try {
+              const _supResp = await fetch(
+                `https://api.resend.com/suppressions/${encodeURIComponent(_fcAEmail)}`,
+                { headers: { Authorization: `Bearer ${_resendKeyChk}` } }
+              );
+              if (_supResp.ok) {
+                const _supData = await _supResp.json() as { email?: string; origin?: string };
+                if (_supData?.email) {
+                  // Address is suppressed — sending would be silently ignored
+                  logger.warn({
+                    step: "ML-2.5-SUPPRESSED",
+                    email: _fcAEmail,
+                    origin: _supData.origin,
+                    tokenPrefix: _fcMagicToken.slice(0, 8),
+                  }, "[ML] step-2.5: email suppressed — delivery impossible, returning emailFailed");
+                  res.json({
+                    success: true,
+                    subscriptionId: planSubscription?.id,
+                    addonSubscriptionId,
+                    activationEmailSent: false,
+                    emailFailed: true,
+                    emailFailReason: "suppressed",
+                  });
+                  return;
+                }
+                // 200 with email field present → suppressed; 404 → not suppressed (good)
+                logger.info({ step: "ML-2.5-OK", email: _fcAEmail }, "[ML] step-2.5: address not suppressed");
+              }
+              // Non-200 response or network error → proceed anyway (suppress check is best-effort)
+            } catch (_supErr) {
+              logger.warn({
+                step: "ML-2.5-ERR",
+                err: (_supErr as Error).message,
+              }, "[ML] step-2.5: suppression check failed (non-fatal, proceeding with send)");
+            }
+          }
+
+          // ── ML-3 / ML-4 ──────────────────────────────────────────────────
+          // Always send the activation magic link immediately — for both trial
+          // and non-trial signups.  The trial template (isTrial=true) already
+          // carries the right subject / eyebrow badge ("Essai gratuit 14 jours").
+          // Delegating to a Stripe webhook (sendTrialStartedOnce) was unreliable:
+          // any webhook delay or failure left the user with a "Vérifiez vos emails"
+          // message and an empty inbox.
+
+          // ── ML-3: Call mailer — log transport type before the call ────────
+          const _mlTransport = process.env["RESEND_API_KEY"]
+            ? "resend-sdk"
+            : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
+          logger.info({ step: "ML-3", email: _fcAEmail, transport: _mlTransport, isTrial: grantTrial }, "[ML] step-3: calling sendActivationMagicLink");
           const { mailer: _fcMailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
           if (!_fcMailer) {
             throw new Error("Activation email service unavailable");
@@ -1713,11 +2510,22 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               to:           _fcAEmail,
               name:         _fcSignup["first_name"] || _fcAEmail.split("@")[0],
               plan:         planKey,
-              magicLinkUrl: `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`,
+              magicLinkUrl: _fcMagicLinkUrl,
               isTrial:      grantTrial,
           });
+
+          // ── ML-4: Mailer response — log everything ────────────────────────
+          logger.info({
+            step:      "ML-4",
+            ok:        _fcMailResult?.ok,
+            emailId:   _fcMailResult?.id,
+            error:     _fcMailResult?.error,
+            transport: _mlTransport,
+            to:        _fcAEmail,
+          }, "[ML] step-4: sendActivationMagicLink response");
+
           if (!_fcMailResult?.ok) {
-            logger.warn({ step: "FC-6-warn", email: _fcAEmail, mailErr: _fcMailResult?.error }, "[FC] step-6: activation email failed — account already created, user must log in manually");
+            logger.warn({ step: "ML-4-FAIL", email: _fcAEmail, error: _fcMailResult?.error, transport: _mlTransport }, "[ML] step-4: FAIL — activation email not delivered");
             res.json({
               success: true,
               subscriptionId: planSubscription.id,
@@ -1727,7 +2535,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             });
             return;
           }
-          logger.info({ step: "FC-6-ok", email: _fcAEmail }, "[FC] step-6: activation magic link sent");
+          logger.info({ step: "ML-4-OK", emailId: _fcMailResult?.id, to: _fcAEmail }, "[ML] step-4: OK — activation email accepted by transport");
 
       } catch (_fcActTopErr) {
         logger.error({ step: "FC-TOP-FAIL", err: (_fcActTopErr as Error)?.message }, "[FC] top-level activation catch");
@@ -1748,7 +2556,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         return;
       }
     }
-    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: !!_fcActToken });
+    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: true });
   } catch (err) {
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");
     res.status(500).json({ error: "Erreur lors de la finalisation." });

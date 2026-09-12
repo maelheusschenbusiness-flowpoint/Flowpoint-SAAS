@@ -1,82 +1,53 @@
-- [Invite accept RLS pattern](invite-accept-rls-pattern.md) — SET LOCAL "app.current_org_id" + try/catch SET ROLE needed before any org_members DML in raw pool.connect() tx
-- [Accept-invitation session & role bugs](accept-invitation-session-bugs.md) — token key mismatch + missing cookie in accept flow; me.ts fallback was "owner" not "member"
-- [Skeleton shimmer animation pattern](skeleton-shimmer-animation.md) — shimmer needs fpSlide (background-position) not fpSkeleton (opacity); 2.2s ease-in-out for coherent rhythm
-- [Pricing plan auth guard](pricing-plan-auth-guard.md) — anti-flash localStorage read must check _hasActiveSession before marking current plan
+- [custom_domains RLS + missing tables pattern](custom-domains-rls-missing-tables.md) — custom_domains needed ENABLE+FORCE RLS; gsc_keyword_data/gsc_page_data/gsc_sync_logs/revenue_leaks/gbp_profiles were never CREATE'd in init-data-tables.ts
+- [Timezone Bruxelles 22023 fix](timezone-bruxelles-fix.md) — sanitizeTimezone() in me.ts validates IANA + maps French labels; DB migration fixes stored "Bruxelles" in user_prefs/organizations/org_settings
+- [25P01 double-ROLLBACK pattern](txactive-pattern.md) — use txActive flag so catch block only sends ROLLBACK when transaction is still open; prevents 25P01 in Postgres logs
+- [Google OAuth — organizations table check](google-oauth-org-check.md) — callback must query organizations BEFORE org_settings; magic-link users only exist in organizations; skip creates duplicate Stripe customer
+- [apiFetch auth state machine](apifetch-auth-state-machine.md) — global logout ONLY on /api/me failure; secondary endpoint 401 must throw (not redirect); recovery call must send Bearer; structural fix for false F5→login
+- [Magic link + session + billing refresh fixes](magic-link-session-billing-fixes.md) — storeMagicToken 15min→1h; finalize-checkout sends email not assumes; SESSION_TTL 24h→7d; fp:billing:updated re-fetches /api/me; suppression check ML-2.5; ALERT_EMAIL_FROM from-field bug
+- [Trial signup activation email — webhook delegation removed](trial-email-no-delegation.md) — ML-3-TRIAL-SKIP removed; activation email sent immediately for ALL signups (isTrial=grantTrial); sendTrialStartedOnce only sets DB flag, sends no email; activationEmailSent no longer uses !!_fcActToken; checkout-complete ML-FAIL replaces false emailSent=true
+- [AI conversation lock permanent after Stop](ai-lock-lifecycle.md) — res.on("close") cleanup + cancel releases lock immediately + stale sweep; new generation MUST clear stale _cancelledConversations marker or next message dies "interrompue"
+- [Add-on and AI credits purchase chain](addon-purchase-chain.md) — fpBuyAICredits/fpActivateAddon full chain; finalize-checkout adds items to existing sub (not new sub); SSE broadcasts; checkout-return Case A checkoutType handling
+- [PLAN_PRICE_IDS live-mode only](plan-price-ids-live-only.md) — PLAN_PRICE_IDS in plans.ts holds live Stripe prices; cert subs have test prices; billing/upgrade fails resource_missing in test mode — not a prod bug
 - [Stripe webhook secret key name](stripe-webhook-secret-key.md) — must read STRIPE_WEBHOOK_SECRET || STRIPE_WEBHOOK_SECRET_RENDER; only the _RENDER name is set in prod secrets
-- [github_connections real schema](github-service-schema.md) — github_user_id NOT NULL, connected_at not installed_at; exchangeCodeForToken returns string not object; getGitHubUser returns avatarUrl camelCase
-- [Test setup — orgDb + dbContext](test-setup-orgdb.md) — routes using req.orgDb need BOTH orgContext AND dbContext in test server; orgContext alone leaves req.orgDb undefined
-- [Router catch-all plan gate pattern](router-catchall-plangate.md) — router.use(requireFeature()) with no path prefix intercepts ALL unmatched routes; always path-scope it
 - [Nav item delegation fix](nav-delegation-fix.md) — nav + infinite-skeleton regressions share root cause: delegation must be at IIFE global scope, not inside bindGlobalEvents()
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
 - [org_settings → organizations migration](org-settings-migration-complete.md) — 7 jalons done; organizations is sole billing source; column name map; what still reads org_settings (profile only)
-- [Auth migration v2 — Stripe-gated signup](auth-migration-v2.md) — schema (users/org_members/orgs), 6-check login-verify, Stripe-only activation; 10/10 validated 2026-07-27
+- [Auth migration v2 — Stripe-gated signup](auth-migration-v2.md) — schema (users/org_members/orgs), 6-check login-verify, Stripe-only activation; 10/10 validated 2026-07-27; org_settings readonly; drop target 2026-08-27
 - [pool.query() org_id audit](pool-query-orgid-audit.md) — all pool.query() on tenant tables need explicit org_id; RLS bypassed for postgres superuser; pg_class.relforcerowsecurity not pg_tables.forcedrowsecurity
 - [Stripe checkout add_invoice_items](stripe-checkout-invoice-items.md) — add_invoice_items invalid in checkout.sessions.create() (2026-04-22.dahlia); use stripe.invoiceItems.create() before session instead
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create
-- [GA4 funnel v1alpha service](ga4-funnel-service-pattern.md) — runConfiguredFunnel via v1alpha; setGA4FunnelBaseUrl for QA; google_tokens UNIQUE(org_id,account_id) not org_id alone
-- [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
-- [scoreGauge null-safe pattern](scoregauge-null-safe.md) — scoreGauge must guard val with hasVal (!=null && isFinite); null→"—" grey text, no arc; healthMetrics source vals use null not 0 for absent data
-- [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
 - [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 32925-line file (read tool capped at 14681); use bash sed -n for lines > 14681, always get exact context before editing
 - [Settings plan casing & real data](settings-plan-casing.md) — plan stored lowercase in DB; me.ts must normalize to Title Case; team member map needs id field; security vuln fallback uses twoFactorEnabled
 - [FlowPoint dynamic dates](flowpoint-dynamic-dates.md) — CUR_MONTH/PREV_MONTH constants at IIFE top; all section titles use these, never hardcode month strings
 - [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
-- [alert_events operator nullable](alert-events-operator.md) — operator column must be NULL-able; event-based types (monitor_down/up) have no operator; DROP NOT NULL in init-data-tables.ts
-- [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
-- [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [AI provider strict mode](ai-provider-strict-mode.md) — strictProvider=true dans aiChat/aiStream désactive fallback cross-provider; uniquement /ai/chat; matrice provider×mode dans ai-provider-matrix.ts
 - [Inline onclick pattern](inline-onclick-pattern.md) — never JSON.stringify or template vars inside onclick attrs; use data-attributes + escHtml + this.dataset
-- [QA harness](qa-harness.md) — Playwright scans .local/qa_*.mjs/.cjs, run from workspace root, CJS (not ESM), token via addInitScript; key UI ids inside
 - [dashboard.js init() delegation pattern](dashboard-init-delegation.md) — event handlers that must always work (nav, panel buttons) must use document delegation at IIFE global scope, not inside init(); init() can crash from unhandledRejection before reaching bindXxx() calls
 - [De-mock completeness](flowpoint-demock-completeness.md) — fake data hides in sub-page side cards and forecast pages (fabricated past curves); audit every card per sub-route, derive slopes from real auditHistory
 - [innerHTML script extraction pattern](innerhtml-script-extraction.md) — <script> tags inside innerHTML strings do NOT execute; all window.* functions must live in the global setup block; _intg* functions (integrations) were extracted in this session; second script block at line ~28769 (GitHub IIFE) is still inside innerHTML
-- [FlowPoint plan names & Pro+ elimination](flowpoint-plan-names.md) — plan hierarchy is Standard < Pro < Ultra (never "Pro+"); Pro+ found and fixed in 6 places: Monitors interval select, Local SEO badge, Growth geo badge, Storage addon tag, AI credits tag, audit Fix IA label
-- [RLS UUID org_id tables](rls-uuid-orgid.md) — gsc_keyword_data, gsc_page_data, gsc_sync_logs, ga4_accounts have UUID org_id; use org_id::text comparison in RLS policies
-- [FlowPoint API audit results](flowpoint-api-audit.md) — 31/31 endpoints 200 OK, 6/6 CRUD ops 201; correct paths: /api/team, /api/calendar-events; settings=localStorage only
 - [Google OAuth multi-instance fix](google-oauth-db-state.md) — pendingOAuthStates remplacé par table google_oauth_states; fonctions now async
 - [OAuth return cache-bust pattern](oauth-return-cache-bust.md) — init() must detect ?google_connected/?github_connected in URL and clear fp-state-cache; GA4/GSC status must fallback to google_tokens when property table is empty (discovery async)
-- [FlowPoint review-intel fake data](review-intel-empty-state.md) — SAMPLE_REVIEWS supprimé; empty state propre quand aucun avis GBP
-- [FlowPoint API route map](flowpoint-api-routes.md) — correct paths for all 44 tested routes (revenue-leak not leaks, gbp-posts not gbp/posts, calendar-events, review-intelligence, cro, seo/status)
-- [FlowPoint RLS 100% coverage](flowpoint-rls-migration.md) — 150/150 tables, 600 policies; google_oauth_states patched in init-rls-setup.ts startup hook (migrations/015 SQL for docs)
 - [FlowPoint mailer service](flowpoint-mailer.md) — centralized mailer at services/mailer.ts; 11 email types; all fire-and-forget; TEST_MAIL_DIR transport captures email to disk (no Resend); token extracted via regex [?&]token=([a-f0-9]{64})
-- [QA self-contained session pattern](qa-self-contained-sessions.md) — all QA suites use pg + randomBytes; ensureOrg+createSession in each file; RUN=Date.now() suffix; ultra plan for Lot B (10 seats); E2E group needs SEPARATE fresh org to avoid quota saturation
-- [FlowPoint billing production state](flowpoint-billing-prod.md) — NODE_ENV=production, mock=false confirmed; plans.ts has live price IDs with env var overrides; webhook rejects unsigned in prod (correct)
-- [FlowPoint Playwright auth](flowpoint-playwright-auth.md) — HttpOnly cookie blocks testing subagent; use Bearer header for API tests instead
 - [Billing store.me singleton email bug](billing-email-singleton.md) — store.me.email is always null; use req.orgContext?.email instead
-- [Render boot errors — org_settings schema gaps](render-boot-errors.md) — 3 startup errors fixed: RLS conditional, trial_ends_at/email/first_name columns, cron catch level
-- [withOrgDb Supabase role degradation](withorgdb-supabase.md) — SET LOCAL ROLE app_user must be try/caught; Supabase DATABASE_URL user may not have the role granted; GUC-only mode still enforces RLS
+- [withOrgDb role and locked-session rules](withorgdb-supabase.md) — probe app_user before requests; reuse one client throughout session advisory-lock critical sections
 - [workflow_runs schema gaps](workflow-runs-schema.md) — ended_at, duration_ms, steps_completed, steps_failed must be ADD COLUMN'd in init-automation.ts; automation-service.ts uses all 4
-- [Express route order — sub-routes vs /:id](express-route-order.md) — specific routes (schedule, upcoming, clients) must be registered BEFORE /:id or Express swallows them as dynamic params
 - [Rate limit 429 structural fix](rate-limit-GET-exemption.md) — authenticated GET requests must bypass globalRateLimit; only writes + anonymous are counted; dashboard loads ~60 GETs per session
-- [RLS sentinel bug — org_id vs rowsecurity](rls-sentinel-fix.md) — sentinel must check pg_tables.rowsecurity=true not audits.org_id; org_id exists from table creation, causing migration to always skip
 - [init-data-tables.ts self-healing schema](init-data-tables-self-healing.md) — only init-*.ts files auto-run in prod; raw migrations/*.sql never do; fix prod schema drift there, not in migration files
-- [missions assigned_to self-healing](missions-assigned-to.md) — assigned_to column was in CREATE TABLE but missing in prod DB; fixed via ALTER TABLE ADD COLUMN IF NOT EXISTS in init-missions.ts self-healing block
-- [team_members name column pattern](team-members-name-column.md) — name removed from INSERT/SELECT/RETURNING; derived from email at read-time; ADD COLUMN + ALTER COLUMN SET DEFAULT pair needed to handle both absent-column and exists-without-default cases
 - [GitHub push via REST API](github-push-rest.md) — git push/add/commit blocked by sandbox; use ReplitConnectors proxy + Contents API (≤1MB) or Git Data API (blob+tree+commit+ref) for large files
-- [GitHub push mechanism limits](github-push-mechanism.md) — sandbox blocks git add/commit (exit 254); connector proxy fails "No connection found" in code_execution; listConnections('github') returns 0 in sandbox; tell user to push manually
+- [GitHub push mechanism limits](github-push-mechanism.md) — Git transports may lack auth; use connector Git Data API, with SHA-verified tolerant Base64 when Cloudflare filters a blob
 - [gpt-5 family API param compatibility](gpt5-migration-params.md) — gpt-5+ needs max_completion_tokens (not max_tokens) and no custom temperature; model-string swaps alone break silently at runtime
 - [FlowPoint post-verification checkout redirect](flowpoint-checkout-redirect.md) — use sessionStorage `fp_next` + localStorage `fp_cart` to route a new signup into checkout.html instead of the dashboard after magic-link verify
 - [Postgres silent rollback on abort](postgres-silent-rollback-abort.md) — a failing statement mid-transaction poisons it; COMMIT then silently becomes ROLLBACK with no error; guard secondary logic with SAVEPOINT
 - [integrations-service signatures](integrations-service-pattern.md) — correct fn sigs + table (automation_integrations); Slack/Discord no HMAC; missions use source_type not source
 - [AI context enrichment](ai-context-enrichment.md) — buildFlowpointContext(extra, orgId) queries keywords/competitors/GBP; STRICT_AI_RULE constant in every chat system prompt; competitors has domain_rating not rating
 - [AI engine consultant refactor](ai-engine-consultant-refactor.md) — buildFlowpointContext reads psi_cache; all AI endpoints use real DB data; dynamic dates; mission-engine AI-driven
-- [Security tab / Checkout / Logout patterns](flowpoint-security-checkout-logout.md) — security checklist CTAs per item.label; logout calls POST /auth/logout; PaymentElement needs 8s fallback + loaderror handler
 - [Multi-tenant org isolation pattern](multitenant-org-isolation.md) — two-layer defence: requireValidOrg middleware in index.ts + requireOrgId() helper; service token gets orgId:"default" which is blocked at boundary
 - [Billing route architecture](billing-route-architecture.md) — /billing/plans served by public-billing.ts (pre-auth); billingRouter routes are post-auth; /addons/:key/activate|deactivate exist in addons.ts; getUsageSummary uses safeCount() per-query isolation; getInvoices accepts optional stripeCustomerId param
-- [FlowPoint team_members schema fix](flowpoint-team-invite-fix.md) — UUID→TEXT migration; local pool ≠ Supabase; production session via PostgREST service role
-- [AI Economy Mode Pattern](ai-economy-pattern.md) — provider never changes; model+tokens degrade within same family; EXHAUSTED→402; test E needs matching plan limit
-- [QA fixture injection pattern](qa-fixture-injection.md) — _qa_result MUST use apiSvc() (X-Api-Key), not api() (Bearer→403); isQaFixturesEnabled() multi-condition guard; guard Phase 1 needs server restart without flag
-- [audits.date TEXT column](audits-date-column.md) — audits.date is TEXT NOT NULL DEFAULT ''; never compare it to a timestamp; use created_at (TIMESTAMP) for date-range duplicate checks
-- [_doRender crash pattern](dorender-crash-pattern.md) — nav/breadcrumb updated BEFORE html=renderXxx(); if renderer throws, page.innerHTML is never written and old DOM stays; fix: try/catch around switch block
 - [Monitor check rule eval scope](monitor-check-rule-eval.md) — latency/uptime evaluation must be a standalone fire-and-forget IIFE after every check; NOT inside if(notifyAfterCommit)
-- [Alert rules enabled vs active](alert-rules-enabled-field.md) — backend returns `enabled` (boolean), never `active`; dashboard.js had 3 r.active refs on alertRules (L3684, L4161, L16074) — all fixed to r.enabled
-- [activity.ts parameterized SQL](activity-sql-params.md) — GET /api/activity now supports limit(1-200)/page/type via SQL; id included in SELECT for 60s-poll dedup; always returns array (backward compat)
 - [window.apiAction timing](window-apiaction-timing.md) — window.apiAction must be assigned at module level (near window.STATE) not only inside the async IIFE; IIFE awaits delay the assignment past onclick fire
 - [Wave 3 RBAC pattern](wave3-rbac.md) — requireRole exports, role matrix, ALLOWED roles, organizations table
 - [Alert-events service-only gate](alert-events-service-gate.md) — POST /alert-events blocked for user sessions via userId check (not role); service bypass in routes/index.ts allows userId="service" past org-context gate
-- [QA harness run order](qa-harness.md) — never parallelize purge with suite runs; purge deletes session tokens mid-test; always purge LAST after all suites; B3 _qa_result calls must use apiSvc()
-- [Overview insights quota-vs-no_data order](overview-insights-priority.md) — quota_exhausted must be checked BEFORE no_data; "0" string from COUNT(*) is truthy, use Number(x)>0 for DB row guards
 - [Overview insights RL + fixed credits](overview-insights-rl.md) — PG SELECT FOR UPDATE mutex; fixedCreditCost:500 bypasses gpt-4o-mini multiplier (0.4); cache hits skip slot; QA: bust in-process hot cache by changing audit score (new context hash)
 - [P0 auth isolation fixes](auth-isolation-fixes.md) — store.me global singleton causes cross-user leakage; me.ts fallback must use safe defaults; login-verify.js must purgeUserCache before redirect
 - [Billing state-machine corrections](billing-state-machine.md) — 9 structural fixes: pending_billing at signup, subscriptionStatus dual-key, canStartTrial DB-only, resource_missing DB cleanup, cart versioning, org_addons source of truth
@@ -84,7 +55,6 @@
 - [fpUpgradeOrCheckout scope bug](fp-upgrade-scope.md) — defined only inside if(sub==='addons'); must inject with || guard before if(sub==='plans') so Plans tab buttons work
 - [Checkout trial gate](checkout-trial-gate.md) — _fpCanStartTrial from /api/me.canStartTrial; plan-sub text + totals + bullet all must be conditioned on it
 - [pricing.html cart restoration](pricing-cart-restoration.md) — ?from=dashboard: read fp_cart, populate _cart silently, mark addons at DOMContentLoaded; do NOT call selectPlan (billing-state IIFE handles plan button)
-- [Auth migration v2](auth-migration-v2.md) — 4-phase migration (users/org_members/organizations); login-verify 6-check flow; org_settings readonly since 2026-07-27; drop target 2026-08-27
 - [Magic link 503 fix](magic-link-503-fix.md) — dynamic import inside try/catch causes 503 loop in prod bundle; fix: static import + peek-before-consume
 - [Reactivation checkout idempotency](reactivation-checkout-idempotency.md) — canceled+stripeCustomerId → new Checkout Session; two-layer idempotency: list pre-flight + idempotencyKey 2nd arg with 30-min bucket
 - [finalize-checkout intentType mismatch](finalize-checkout-intenttype.md) — frontend sends "payment"/"setup"; old validation whitelisted "payment_intent"/"setup_intent"; now ["payment","setup","checkout_session"]; public-billing.ts must use createStripeClient() not new Stripe() for test injection
@@ -94,14 +64,7 @@
 - [Per-tab session bootstrap](per-tab-session-bootstrap.md) — fp-backend loads before dashboard; protected preloads must await sessionStorage token restoration before using auth
 - [dashboard.js skeleton stuck — SyntaxError](dashboard-skeleton-syntaxerror.md) — SyntaxError crashes IIFE; fp-backend shows skeleton that never resolves; always run node --check after edits
 - [dashboard.js apiFetch resilience](dashboard-apifetch-resilience.md) — AbortController 15s timeout + 12s safety timer on loadData + fp_session_token cleared on 401; prevents permanent skeleton
-- [AI Agents Phase 1](ai-agents-phase1.md) — registre destinations.json = source unique; marqueur SSE retenu (borné 8Ko); permissions FAIL-CLOSED; prefill validé 2 côtés; jamais de bouton non journalisé
-- [AI Agents Phase 2](ai-agents-phase2.md) — missions.delete distinct; version_after exact (no tolerance); normalizeGeminiFinishReason; QA fixtures sous /api/qa/ (pas /qa/); 198+68/198+68 certifiés
-- [Phase 2 blockers — Undo atomic + UNDO_VERSION_UNAVAILABLE + Gemini French + Undo UI](phase2-blockers-patterns.md) — date_trunc ms fix; NULL version_after→409; Gemini keyword map; max rounds finalTextEmitted; bouton Annuler dashboard+panel
-- [AI Agents Phase 3.1 — Calendrier](ai-agents-phase3.md) — 5 outils calendar, ALL_TOOLS_MAP lookup, canDelete middleware, Gemini pre-embed pattern; 3×65/65 E2E + 116/116 structure certifiés
-- [AI Agents Phase 3.2 — Calendrier avancé](ai-agents-phase32.md) — update_recurring_event + delete_recurring_series, RRULE enrichi (YEARLY/BYDAY/UNTIL), series_id sur toutes occurrences, /ai/tools endpoint, 105/105 certifiés
-- [AI Agents Phase 4 — Audits SEO](ai-agents-phase4.md) — 9 audit tools, audits.write/delete/export permissions, fire-and-forget PSI, create_missions_from_audit undo, 63/63 certifiés 2026-08-02
 - [Partie A infra RLS fixes](partie-a-infra-rls-fixes.md) — inline ENABLE RLS in init files (not rls-migration); FK drops before ALTER COLUMN TYPE UUID→TEXT; rule for future tables
-- [AI Agents Phase 5 — Recommandations SEO](ai-agents-phase5.md) — 10 outils, 6 permissions, 6 destinations; undo handlers for dismiss/restore/generate in undo.ts; confirmationLevel preview/full = AI asks confirm in single-turn chat; 89/89 certifiés 2026-08-02
 - [Webhook orgId canonicalization](webhook-orgid-canonicalization.md) — email-shaped orgId must be mapped to UUID organizations.id before any plan/status persist; mailer Resend→SMTP fallback
 - [Dashboard plan/addon/badge/i18n fixes](dashboard-plan-addon-i18n-fixes.md) — direct /billing/upgrade for subscribed, pricing gate trusts dashboard origin, no literal count fallbacks, fpApplyTranslations catalog
 - [Cumulative usage events + addon Stripe sync](billing-usage-events.md) — usage never decrements on delete (GREATEST(live,events)); paid addons add/remove Stripe subscription items on activate/deactivate
@@ -110,7 +73,6 @@
 - [Google Maps POI + dark InfoWindows](gmaps-poi-place-details.md) — ev.stop() on placeId clicks, server-side place-details/photo proxy, .gm-style-iw dark CSS; audit_schedules.next_run is bigint epoch ms
 - [Google signup pre-register continuation](google-signup-preregister.md) — pending_billing OAuth signup must carry a pending_signups token to signin.html plan screen, never a bare redirect
 - [google_product_connections per-product flags](google-product-connections.md) — GBP/GA4/GSC status/disconnect via per-product flags + resolveOrgId; token presence alone never decides
-- [AI Agents Phase 6 — Monitors & Alertes](ai-agents-phase6.md) — 12 outils, 7 permissions, 8 destinations; batch undo MUST be before const id=snap["id"] line; delete_monitor 3 protections; 124/124 certifiés 2026-08-02
 - [Confirm endpoint content→error bridge](confirm-endpoint-error-field.md) — executor sets content (not error) on ok:false; confirm must mirror to error field; fail-closed permissions must be fail-open for missing table
 - [SSE two registries — store vs events.ts](sse-two-registries-bug.md) — store.broadcast() and /api/events are DISJOINT; events.ts must bridge via store.addSseClient() on connect + removeSseClient on close
 - [Response cache org key](response-cache-org-key.md) — withCache keyed by URL only leaked org-scoped responses cross-tenant; cache keys must include req.orgId
@@ -120,17 +82,19 @@
 - [Export branding preview](export-branding-preview.md) — --fp-surface n'existe pas (use --fp-bg-sidebar); fpOpenExportPreview module-level; pdf.ts logo fetch SSRF-hardened via validateMonitorUrl helpers
 - [Billing V5 checkout-session auth fix](billing-v5-checkout-auth.md) — public checkout-session was missing auth-user orgId/customer lookup; webhook fallback for ai_credits_only type
 - [Supabase users schema gap](supabase-users-schema-gap.md) — first_name/last_name absent from prod users table; every new CREATE TABLE column MUST have a matching ALTER TABLE self-heal entry
-- [Stripe webhook HMAC signing](stripe-webhook-hmac.md) — use raw whsec_... string directly as HMAC key (no strip, no base64 decode); whsec_ prefix is part of the key material
+- [Stripe webhook HMAC signing](stripe-webhook-hmac.md) — use raw whsec_... string directly as HMAC key (no strip, no base64 decode); whsec_ prefix is part of the key material; confirmed 2026-08-15
 - [checkout-return.html AI credits](checkout-return-ai-credits.md) — billing/verify returns checkoutType; ai_credits_only shows "tokens added" UI, redirects to dashboard.html#billing
 - [Stripe E2E cert tooling](stripe-e2e-cert-tooling.md) — tools/e2e-billing-cert.mjs; STRIPE_TEST_KEY secret; Content-Type must be application/json; secret order must match server
+- [Audits concurrency PgBouncer fix](audit-concurrency-pgbouncer.md) — pg_advisory_lock (session) broken in PgBouncer; use pg_advisory_xact_lock+BEGIN/COMMIT; launchAudit accepts preInsertedId to skip double INSERT
 - [Checkout deleted-Stripe-customer fix](checkout-deleted-stripe-customer.md) — payment-intent endpoint must call ensureStripeCustomer, not use raw stripeCustomerId; fpGoToPricing guard blocks canceled-user re-subscription
 - [Stripe test-mode cert pattern](stripe-test-mode-pattern.md) — getStripeKey() uses sk_test_ prefix guard (NOT NODE_ENV); webhook fallback same; monitorsPack10 missing from ADDON_DEFINITIONS was root cause of addon failure
 - [Canceled sub 4 states](canceled-sub-4-states.md) — canceled block must query Stripe live before routing: cancel_at_period_end→fall-through, terminated+downgrade→DB-only, terminated+upgrade→reactivation checkout, orphaned→cleanup
 - [Billing V5 audit cert — P0/P1 fixes](billing-v5-audit-cert.md) — monitorsPack10 ghost in 6 frontend files; addon-stripe-sync raw env bypass; legacy duplicate webhook in billing.ts; ADDON_CATALOG price drift
 - [Account deletion pipeline](account-deletion-pipeline.md) — dynamic table discovery, per-table param binding, refuse-to-commit survivor check; Stripe before tx, storage after
+- [Account deletion — email self-heal](account-deletion-email-selfheal.md) — email=null skips magic_link_tokens+legacy org_settings cleanup → deleted user can re-login; fix: let email, self-heal from users+organizations inside tx
 - [Full tenant purge — two account layers](prod-full-tenant-purge.md) — deleting all customers needs UUID orgs + legacy email-keyed org_settings + an independent Stripe sweep; verify via login-request 404
 - [Google OAuth scope allowlist](google-oauth-scope-allowlist.md) — one canonical GOOGLE_INTEGRATION_SCOPES list; analytics read-only only; unit test + src/dist/frontend grep guard
-- [Production test session via PostgREST](prod-test-session-uuid.md) — prod sessions need UUID org_id + organizations/users rows; email-shaped org_id → 401 legacy_session
+- [Production test sessions](prod-test-session-uuid.md) — UUID org_id required; admin test-session works for APIs but browser bootstrap also requires a real-backed user identity
 - [dashboard.js global onclick scope](dashboard-global-onclick-scope.md) — window.* handlers used by >1 page must be at IIFE global scope; `window.fn && window.fn()` guards hide dead UI
 - [Add-on catalogue single source](addon-catalog-single-source.md) — ADDON_DEFINITIONS in lib/plans.ts is the only place a name/price may live; parallel tables drift into displayed-X/charged-Y bugs
 - [esbuild does not typecheck](esbuild-no-typecheck.md) — a green build can ship a ReferenceError from a missing import; run tsc --noEmit and grep for the files you touched
@@ -144,8 +108,7 @@
 - [Maps server key state](maps-server-key-state.md) — FLOWPOINT_MAP_BACKEND is the server key, aliased to GOOGLE_MAPS_API_KEY at startup; GOOGLE_MAPS_PUBLIC_KEY browser-only; all 6 backend Maps surfaces certified live
 - [Maps controls & competitor cards](maps-controls-competitor-cards.md) — zoomControl:false needs cameraControl:false too; guard ControlPosition undefined; tiles never render on localhost (referer key); click-time place-details card upgrade
 - [Maps JS double injection](maps-double-injection.md) — dashboard.js + fp-backend.js both load Maps JS; second script tag resets google.maps mid-flight; both loaders now check for existing script tag first
-- [uuid→TEXT migration dance](uuid-to-text-migration-dance.md) — ALTER COLUMN TYPE blockers: ALL policies + both-direction FKs + views + defaults, one tx; pg_policies deparse has 2 predicate forms; AI 503 gate until migration verified
-- [tsc-noEmit zero errors](uuid-to-text-migration-dance.md) — api-server now typechecks clean; adding a dep to package.json can shift pnpm type resolution and spawn TS2742 "not portable" — pin @types/express-serve-static-core as devDep
+- [uuid→TEXT migration dance](uuid-to-text-migration-dance.md) — ALTER COLUMN TYPE blockers: ALL policies + both-direction FKs + views + defaults, one tx; pg_policies deparse has 2 predicate forms; AI 503 gate until migration verified; tsc --noEmit + pin @types/express-serve-static-core as devDep if TS2742 appears
 - [Service orgId scoping](service-orgid-scoping.md) — mutations taking orgId must enforce it in SQL (AND org_id=$n + rowCount 404); accepting-and-discarding orgId on superuser pool = cross-tenant hole; vitest include list must name new test files
 - [AI confirmation card conversationId](ai-confirmation-card-convid.md) — confirmation_request SSE must embed conversationId (arrives before _ai frame); confirm handlers prefer card ID; TOOL_LABELS map for previews; errors visible in chat
 - [Dashboard i18n engine](dashboard-i18n-engine.md) — every visible French string must be an exact FP_I18N key or built from fpT() fragments; composites never match; notif dropdown is a translation root
@@ -155,3 +118,40 @@
 - [Hard refresh session recovery](hard-refresh-session-recovery.md) — session-restore must fall back to cookie when Bearer is stale; both _sessionReady and dashboard init must always call session-restore (never skip when token exists)
 - [AI Engine Robustness](ai-engine-robustness.md) — PSI await pattern, timeouts (round/tool/loop), cancellation Sets, mutex via res.on('finish'), Stop button wiring
 - [Registration retry robustness](registration-retry-robustness.md) — pre-register must never leave ghost rows; guard only blocks active/trialing/past_due; non-active org_settings deleted immediately
+- [me.ts addons & limits fix](me-ts-addons-limits-fix.md) — org_addons.org_id=uuid (cast $1::uuid); PLAN_INCLUDED_ADDONS must be merged in me.ts; QTY_ADDON_GRANTS expansion on mutable limits copy
+- [Stripe billing cert fixes](billing-stripe-cert-fixes.md) — reconcile must use subscription.livemode to pick test vs live key; AI credits PI needs type="ai_credits"; past_due needs hasPremiumAccess=true
+- [ALTER TABLE inside PgBouncer transaction](alterable-inside-pgbouncer-tx.md) — DDL inside BEGIN poisons Supabase pooled-connection transactions; run self-heals in a separate auto-commit connection before BEGIN
+- [checkout-complete direct magic link path](checkout-complete-magic-link.md) — sends ML directly if user exists but no token; 402 when user not yet created (webhook retry); never trusts emailSent:true blindly
+- [Add-on server enforcement gaps](addon-entitlement-gaps.md) — only 4 add-on keys have real server gates; quantity packs expose limits in /api/me but route POST doesn't block overages
+- [createSession throw-on-failure](createsession-throw-on-failure.md) — createSession now throws on persistent DB failure; login-verify catches → 503; never sets orphaned cookie for non-existent session row
+- [P0 backstop plan-tier decision](p0-backstop-plan-tier.md) — backstop préfère le plan de niveau supérieur (standard<pro<ultra) pour décider quelle sub annuler; trial status non fiable (dépend de l'ordre de finalisation)
+- [Activation email FC-1-skip + webhook INSERT bugs](activation-email-fc1-skip-bug.md) — webhook INSERT users sans id→ROLLBACK silencieux; FC-1-skip doit re-envoyer l'email avant de retourner succès
+- [Dashboard UX batch 2 — sièges/SSO/add-on/maps/PM](dashboard-ux-fixes-batch2.md) — seat cap = max(3 sources); add-on→checkout.html; gestureHandling greedy; sub PM fallback
+- [fp-backend.js apiFetchNow session-critical rule](fp-backend-auth-structural-rule.md) — root cause F5→SignIn; 3 unconditional redirects in apiFetchNow had no session-critical guard; AI widget raw fetch also redirected on plan-gate 401
+- [Purge table schema gaps](purge-table-schema-gaps.md) — org_members/invitations/activity_log don't exist; correct names + 40 absent tables documented
+- [Compound mission + calendar confirmations](compound-mission-calendar-confirmations.md) — explicit paired writes keep separate proposals; a due-date companion never writes before its own confirmation
+- [Team removal canonical identity](team-removal-canonical-identity.md) — normalize legacy member identities before scoped access revocation
+- [Pricing anonymous state & visitor cart](pricing-anonymous-state.md) — cached billing render gated on token + reversed on 401 via resetBillingUIToAnonymous; visitor carts kept <1h without _orgId; checkout-return redirects must carry a cache-bust param
+- [AI rate-limit buckets](ai-ratelimit-buckets.md) — chat vs batch buckets must be separate; no per-IP limiter post-auth; 429s carry details.source; cert prompts need _CI_ACTION_RE verbs; monthly token quota resets via ai_monthly_usage
+- [PSI categories explicit](psi-category-params.md) — PSI returns only performance unless category params given; never fabricate 0; psiRealScore() render heuristic neutralizes legacy fake zeros- [Stale team_members → 503 BILLING_DATA_UNAVAILABLE](stale-team-members-503.md) — purged account leaves ghost team_members row; resolveOrCreateLegacyOrg Step A2 + S6 must validate org existence before using its orgId as sessionOrgId
+- [signin-extras WAF block + org-change fix](signin-extras-injection.md) — WAF blocks signin.html/app.ts/build.mjs on GitHub blob API; org-change detection in dashboard.js is the primary fix
+- [persistOrgData UPDATE-first pattern](persistorgdata-update-first.md) — bare INSERT ON CONFLICT fails for existing orgs; UPDATE first + INSERT ON CONFLICT fallback only when rowCount=0
+- [Webhook deactivation race — expand missing](webhook-deactivation-race.md) — subscriptions.list() without expand causes item.price?.id=undefined → all paid addons wrongly deactivated right after activation
+- [Addon separate subscription P0-B](addon-separate-subscription.md) — paid add-ons go on a dedicated Stripe subscription (metadata.addonSub:true), billing_cycle_anchor:now; legacy items on plan sub stay in place (backward compat)
+- [AI chat crash fix](chat-crash-fix.md) — ERR_STREAM_WRITE_AFTER_END: sseClose closes res before outer handler writes; guard writableEnded; add global unhandledRejection handler
+- [Monitor null email/phone fix](monitor-null-email-phone.md) — configure_monitor INSERT must use `cfEmail ?? ""` not `cfEmail ?? null`; NOT NULL DEFAULT '' violated by explicit NULL; pre-flight asks for email in multi-turn
+- [Confirm idempotency — _fpConfirmedProposals](confirm-idempotency-set.md) — track confirmed proposalIds in window._fpConfirmedProposals; re-renders of confirmation cards must check the Set; never re-enable button in catch; _settle() pattern
+- [Streak DELETE on every restart](streak-delete-on-restart.md) — one-time self-heal DELETE inside init-data-tables.ts wipes user_activity_days on every deploy; must be removed once the underlying recordActivityDay() bug is fixed
+- [Local SEO history mode isolation](local-seo-history-mode.md) — selectedHistoryIds.size>0 = HISTORY mode; global markers must stay hidden even when merged.length===0; fpClearHistoryMarkers must call fpShow not fpHide; geocoder callbacks need generation guard
+- [DFS Google Maps item type filter](dfs-maps-item-type.md) — getGoogleMapsResults must filter type==="maps_search"||"local_pack"; bare "maps_search" returns 0 items when DFS returns local_pack type; log warn when mismatch
+- [Team contributions owner canonical](team-contrib-owner-canonical.md) — NULLIF(owner_user_id,'') in principal SQL; email as last-resort canonical_uid; team page lookup tries [userId, email]; backfill NULL created_by→owner in audits/missions/reports on startup
+- [Public billing Customer anchor](public-billing-auth-anchor.md) — public billing runs before orgContext; resolve authenticated sessions before creating Stripe intents and reuse organizations.stripe_customer_id
+- [Clean reset AI schema bootstrap](clean-reset-ai-schema.md) — AI billing tables must be created before strict migration checks or a fresh database cannot boot
+- [Render/Stripe historical purge boundary](render-stripe-historical-purge.md) — app.flowpoint.pro may use a separate Render DB; scan deleted Stripe Customers through subscription metadata, not only current DB links
+- [FFmpeg still-image zoompan duration](ffmpeg-zoompan-duration.md) — with looped still inputs, zoompan d must stay 1 or each source frame is duplicated and short clips become extremely long.
+- [Plan vs add-on notifications](plan-addon-notification-separation.md) — bundled plan entitlements reuse add-on activation events; typed plan actions must suppress only their technical add-on toasts.
+- [Continuous FFmpeg zooms](ffmpeg-continuous-zoom.md) — animate scale with eval=frame and crop to output size; segment fades cause visible black flashes.
+- [Stripe TEST public key and return](stripe-test-key-and-return.md) — TEST must return pk_test matching sk_test; confirmSetup/confirmPayment may succeed without redirect.
+- [Stripe live price verification](stripe-live-price-verification.md) — verify the configured price against the live account before switching a preview to real billing.
+- [Seller attribution Payment Element](seller-attribution-payment-element.md) — await seller lookup before Stripe intents and copy pending seller into every canonical activation path.
+- [Stripe key-mode in-flight isolation](stripe-key-mode-inflight.md) — ensureStripeCustomer's org-only in-flight lock must always receive the mode-aware key around login→checkout sequences.

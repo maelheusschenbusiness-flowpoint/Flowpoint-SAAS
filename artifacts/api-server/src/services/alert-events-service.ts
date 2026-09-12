@@ -90,8 +90,8 @@ export async function fireAlertEvent(opts: FireAlertEventOpts): Promise<void> {
         `SELECT ar.channels,
                 u.email AS org_email
          FROM   alert_rules ar
-         JOIN   org_members om ON om.org_id = ar.org_id AND om.role = 'owner'
-         JOIN   users       u  ON u.id = om.user_id
+         JOIN   organization_members om ON om.organization_id = ar.org_id AND om.role = 'owner'
+         JOIN   users                u  ON u.id = om.user_id
          WHERE  ar.id = $1 AND ar.org_id = $2
          LIMIT  1`,
         [opts.ruleId, opts.orgId],

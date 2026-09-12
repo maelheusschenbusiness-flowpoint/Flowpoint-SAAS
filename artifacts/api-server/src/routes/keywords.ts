@@ -182,6 +182,27 @@ router.post("/keywords/track", canWrite, async (req, res) => {
   const { keyword, url, device, location, language, tag } = req.body as Record<string,string>;
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
+    // keywordDomination add-on extends the limit to 10 000 (vs plan default: ultra=5000, pro=500, standard=50)
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    const hasKeywordDomination = !!(bCtx?.addons?.["keywordDomination"]);
+    const basePlanLimit = getKeywordLimit(plan);
+    const effectiveLimit = hasKeywordDomination ? Math.max(basePlanLimit, 10000) : basePlanLimit;
+    // Check current count before inserting
+    const countRes = await (req as OrgReq).orgDb(
+      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
+      [orgId]
+    ).catch(() => ({ rows: [{ n: 0 }] }));
+    const currentCount = (countRes.rows[0] as { n: number })?.n ?? 0;
+    if (currentCount >= effectiveLimit) {
+      res.status(429).json({
+        error: `Plan limit atteint (${currentCount}/${effectiveLimit} mots-clés). ${hasKeywordDomination ? '' : 'Activez Keyword Domination Engine pour passer à 10 000 mots-clés.'}`.trim(),
+        code: "KEYWORD_LIMIT_REACHED",
+        current: currentCount, limit: effectiveLimit,
+        addonKey: hasKeywordDomination ? null : "keywordDomination",
+      });
+      return;
+    }
     const id = await trackKeyword(orgId, keyword, { targetUrl: url, device, location, tag });
     res.status(201).json({ ok: true, id, keyword, location: location ?? "France", device: device ?? "desktop" });
   } catch (err) {
@@ -254,7 +275,7 @@ router.post("/keywords", canWrite, async (req, res) => {
     );
     const kw = r.rows[0];
     if (!kw) { res.status(409).json({ error: "Keyword already tracked", keyword }); return; }
-    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword", orgId }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
+    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword", orgId, userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
     res.status(201).json(kw);
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -292,7 +313,7 @@ router.delete("/keywords/:id", canWrite, async (req, res) => {
       `UPDATE tracked_keywords SET active = false, updated_at = now() WHERE id = $1 AND org_id = $2 RETURNING keyword`,
       [req.params.id, orgId]);
     if (deleted.rows.length > 0) {
-      store.logActivity({ type:"audit", label:`Keyword retiré : "${String(deleted.rows[0]?.["keyword"] ?? "")}"`, targetId:String(req.params.id), targetType:"keyword", orgId }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
+      store.logActivity({ type:"audit", label:`Keyword retiré : "${String(deleted.rows[0]?.["keyword"] ?? "")}"`, targetId:String(req.params.id), targetType:"keyword", orgId, userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch((err: Error) => logger.warn({ err: err?.message }, "logActivity failed"));
       res.json({ ok: true });
     } else {
       res.status(404).json({ error: "not found" });

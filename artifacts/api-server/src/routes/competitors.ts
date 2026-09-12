@@ -3,7 +3,13 @@ import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { canWrite } from "../middlewares/requireRole.js";
-import { withCache } from "../middlewares/cacheControl.js";
+import { requireQuota } from "../middlewares/planGate.js";
+import { fetchCompetitorDomainMetrics } from "../services/dataforseo-service.js";
+import { randomUUID } from "node:crypto";
+import {
+  runFullCompetitorAnalysis,
+  getCompetitorAnalysis,
+} from "../services/competitor-analysis-service.js";
 
 const router = Router();
 
@@ -12,7 +18,7 @@ const suggestionsCache = new Map<string, { ts: number; data: unknown[] }>();
 const SUGGESTIONS_TTL_MS = 6 * 60 * 60 * 1000;
 
 type OrgReq = Request & {
-  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number }>;
   orgId?: string;
 };
 
@@ -164,23 +170,74 @@ function toPublic(row: Record<string, unknown>) {
     threatLevel:  row["threat_level"],
     delta:        row["delta"],
     createdAt:    row["created_at"],
+    dataStatus:   row["data_status"] ?? "unavailable",
+    dataFetchedAt: row["data_fetched_at"] ?? null,
+    dataError:    row["data_error"] ?? null,
   };
+}
+
+function normalizeCompetitorUrl(value: string): { url: string; domain: string } | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname.includes(".")) return null;
+    return { url: `https://${parsed.hostname.toLowerCase()}`, domain: parsed.hostname.toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+async function enrichCompetitor(
+  req: OrgReq,
+  id: string,
+  domain: string,
+  orgId: string,
+): Promise<Record<string, unknown> | null> {
+  const metrics = await fetchCompetitorDomainMetrics(domain, orgId);
+  if (metrics.ok) {
+    const update = await req.orgDb(
+      `UPDATE competitors
+       SET domain_rating=$1, keywords=$2, traffic=$3, data_status='available',
+           data_provider=$4, provider_model=$5, data_fetched_at=NOW(), data_error=NULL
+       WHERE id=$6 AND org_id=$7
+       RETURNING *`,
+      [metrics.authority, metrics.keywords, metrics.traffic, metrics.provider, metrics.providerModel, id, orgId],
+    );
+    return update.rows[0] ?? null;
+  }
+
+  const message: Record<typeof metrics.reason, string> = {
+    // Customer-facing copy: clear, actionable, no "fournisseur" language.
+    not_configured: "Métriques SEO non disponibles — DataForSEO non configuré pour cette organisation.",
+    no_metrics: "Aucune métrique SEO disponible pour ce domaine via DataForSEO.",
+    provider_error: "Métriques SEO temporairement indisponibles (DataForSEO). Réessayez dans quelques minutes.",
+  };
+  const update = await req.orgDb(
+    `UPDATE competitors
+     SET data_status='unavailable', data_provider=$1, provider_model=NULL,
+         data_fetched_at=NOW(), data_error=$2
+     WHERE id=$3 AND org_id=$4
+     RETURNING *`,
+    [metrics.provider, message[metrics.reason], id, orgId],
+  );
+  return update.rows[0] ?? null;
 }
 
 // ── GET /competitors ──────────────────────────────────────────────────────────
 // req.orgDb scopes via RLS → only this org's competitors are returned.
 
-router.get("/competitors", withCache(60), async (req, res) => {
+router.get("/competitors", async (req, res) => {
   try {
     const orgId = (req as import("express").Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
     const result = await req.orgDb(
-      `SELECT * FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 200`,
+      `SELECT * FROM competitors WHERE org_id=$1 ORDER BY data_status='available' DESC, domain_rating DESC LIMIT 200`,
       [orgId],
     );
     res.json(result.rows.map(toPublic));
   } catch (err) {
     logger.warn({ err }, "[competitors] GET failed");
-    res.json([]);
+    res.status(500).json({ error: "Failed to fetch competitors" });
   }
 });
 
@@ -188,7 +245,8 @@ router.get("/competitors", withCache(60), async (req, res) => {
 
 router.get("/competitors/:id", async (req, res) => {
   try {
-    const result = await req.orgDb(`SELECT * FROM competitors WHERE id = $1 LIMIT 1`, [req.params.id]);
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+    const result = await req.orgDb(`SELECT * FROM competitors WHERE id = $1 AND org_id = $2 LIMIT 1`, [req.params.id, orgId]);
     if (!result.rows[0]) { res.status(404).json({ error: "Competitor not found" }); return; }
     res.json(toPublic(result.rows[0]));
   } catch (err) {
@@ -199,35 +257,80 @@ router.get("/competitors/:id", async (req, res) => {
 
 // ── POST /competitors ─────────────────────────────────────────────────────────
 
-router.post("/competitors", reportRateLimit, canWrite, async (req, res) => {
-  const {
-    name, url: rawUrl, domain: rawDomain,
-    domainRating = 0, keywords = 0, traffic = 0, threatLevel = "low",
-  } = req.body as {
-    name?: string; url?: string; domain?: string; domainRating?: number;
-    keywords?: number; traffic?: number; threatLevel?: string;
-  };
-  const url = rawUrl || rawDomain; // accept 'domain' as alias for 'url'
-  if (!name || !url) { res.status(400).json({ error: "name and url required" }); return; }
-
-  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
-
-  try {
-    const id     = `comp${Date.now()}`;
-    const result = await req.orgDb(
-      `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,NOW()) RETURNING *`,
-      [id, name, url, Number(domainRating), Number(keywords), Number(traffic), threatLevel || "low", orgId],
+router.post(
+  "/competitors",
+  reportRateLimit,
+  canWrite,
+  requireQuota("competitors", async (orgId, quotaReq) => {
+    const result = await (quotaReq as OrgReq).orgDb(
+      `SELECT COUNT(*)::int AS count FROM competitors WHERE org_id = $1`,
+      [orgId],
     );
-    store.logActivity({
-      type: "alert", label: `Concurrent ajouté : ${name}`,
-      targetId: id, targetType: "competitor",
-      orgId,
-    }).catch(() => {});
-    res.status(201).json(toPublic(result.rows[0]));
+    return Number(result.rows[0]?.["count"] ?? 0);
+  }),
+  async (req, res) => {
+    const { name: rawName, url: rawUrl, domain: rawDomain, threatLevel = "low" } = req.body as {
+      name?: string; url?: string; domain?: string; threatLevel?: string;
+    };
+    const name = rawName?.trim();
+    const target = normalizeCompetitorUrl(rawUrl || rawDomain || "");
+    if (!name || !target) {
+      res.status(400).json({ error: "A name and public http(s) domain are required" });
+      return;
+    }
+    const threat = ["critical", "high", "medium", "low"].includes(threatLevel) ? threatLevel : "low";
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+
+    try {
+      const id = `comp_${randomUUID()}`;
+      const created = await (req as OrgReq).orgDb(
+        `INSERT INTO competitors (
+          id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id,
+          data_status, data_provider, created_at
+        ) VALUES ($1,$2,$3,0,0,0,$4,0,$5,'pending','DataForSEO',NOW())
+        RETURNING *`,
+        [id, name, target.url, threat, orgId],
+      );
+      const enriched = await enrichCompetitor(req as OrgReq, id, target.domain, orgId);
+      const competitor = enriched ?? created.rows[0];
+      store.logActivity({
+        type: "alert", label: `Concurrent ajouté : ${name}`,
+        targetId: id, targetType: "competitor",
+        orgId,
+        actionKey: "activity.competitor.added", actionParams: { name: String(name) },
+        userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+        userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
+      }).catch(() => {});
+      res.status(201).json(toPublic(competitor));
+    } catch (err) {
+      logger.error({ err }, "[competitors] POST failed");
+      res.status(500).json({ error: "Failed to create competitor" });
+    }
+  },
+);
+
+// ── POST /competitors/:id/refresh ────────────────────────────────────────────
+// The row remains visible if the provider cannot respond; only its persisted
+// data status changes so the UI can offer another retry without fake metrics.
+router.post("/competitors/:id/refresh", reportRateLimit, canWrite, async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+  try {
+    const existing = await (req as OrgReq).orgDb(
+      `SELECT * FROM competitors WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, orgId],
+    );
+    const row = existing.rows[0];
+    if (!row) { res.status(404).json({ error: "Competitor not found" }); return; }
+    const target = normalizeCompetitorUrl(String(row["url"] ?? ""));
+    if (!target) {
+      res.status(400).json({ error: "Saved competitor domain is invalid" });
+      return;
+    }
+    const refreshed = await enrichCompetitor(req as OrgReq, String(row["id"]), target.domain, orgId);
+    res.json(toPublic(refreshed ?? row));
   } catch (err) {
-    logger.error({ err }, "[competitors] POST failed");
-    res.status(500).json({ error: "Failed to create competitor" });
+    logger.error({ err }, "[competitors] refresh failed");
+    res.status(500).json({ error: "Failed to refresh competitor data" });
   }
 });
 
@@ -261,9 +364,10 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
   }
 
   try {
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
     const result = await req.orgDb(
-      `UPDATE competitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-      [id, ...values],
+      `UPDATE competitors SET ${setClauses.join(", ")} WHERE id = $1 AND org_id = $${values.length + 2} RETURNING *`,
+      [id, ...values, orgId],
     );
     if (!result.rowCount) { res.status(404).json({ error: "not found" }); return; }
     res.json(toPublic(result.rows[0]));
@@ -278,10 +382,110 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
 
 router.delete("/competitors/:id", canWrite, async (req, res) => {
   try {
-    const r = await req.orgDb(`DELETE FROM competitors WHERE id = $1 RETURNING id`, [req.params.id]);
+    const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+    const r = await req.orgDb(`DELETE FROM competitors WHERE id = $1 AND org_id = $2 RETURNING id`, [req.params.id, orgId]);
     if (!r.rows[0]) { res.status(404).json({ error: "Competitor not found" }); return; }
+    // Also remove analysis so next add starts fresh
+    req.orgDb(`DELETE FROM competitor_analysis WHERE competitor_id=$1 AND org_id=$2`, [req.params.id, orgId]).catch(() => {});
     res.json({ ok: true });
   } catch { res.status(500).json({ error: "Failed to delete competitor" }); }
+});
+
+// ── GET /competitors/:id/analysis ────────────────────────────────────────────
+// Returns the stored AI analysis for a competitor (fast, reads DB only).
+
+router.get("/competitors/:id/analysis", async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+  try {
+    const analysis = await getCompetitorAnalysis(req.params.id, orgId, (sql, vals) => req.orgDb(sql, vals));
+    if (!analysis) {
+      res.status(404).json({ ok: false, error: "no_analysis", message: "Aucune analyse disponible — lancez une analyse depuis la page Concurrents." });
+      return;
+    }
+    res.json({ ok: true, analysis });
+  } catch (err) {
+    logger.warn({ err }, "[competitors] GET analysis failed");
+    res.status(500).json({ ok: false, error: "Failed to fetch analysis" });
+  }
+});
+
+// ── POST /competitors/:id/analyze ─────────────────────────────────────────────
+// Full pipeline: scrape public site + optional SEO metrics + AI analysis → DB.
+// DataForSEO is additive only — its failure never blocks the AI analysis.
+
+router.post("/competitors/:id/analyze", reportRateLimit, canWrite, async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? req.orgContext?.orgId ?? "default";
+  try {
+    // 1. Fetch competitor row
+    const existing = await req.orgDb(
+      `SELECT * FROM competitors WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, orgId],
+    );
+    const row = existing.rows[0];
+    if (!row) { res.status(404).json({ ok: false, error: "Competitor not found" }); return; }
+
+    const normalizedUrl = normalizeCompetitorUrl(String(row["url"] ?? ""));
+    if (!normalizedUrl) {
+      res.status(400).json({ ok: false, error: "L'URL du concurrent est invalide" }); return;
+    }
+    const competitorUrl = normalizedUrl.url;
+
+    // 2. Collect org context (best-effort, non-blocking)
+    let orgContext: {
+      orgName?: string; orgUrl?: string; orgPlan?: string;
+      orgKeywords?: string[]; orgScore?: number; orgFeatures?: string[];
+    } = {};
+    try {
+      const [kwRes, auditRes, prefRes] = await Promise.allSettled([
+        req.orgDb(`SELECT keyword FROM tracked_keywords WHERE org_id=$1 AND active=true LIMIT 20`, [orgId]),
+        req.orgDb(`SELECT score FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId]),
+        req.orgDb(`SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`, [orgId]),
+      ]);
+      if (kwRes.status === "fulfilled") {
+        orgContext.orgKeywords = (kwRes.value.rows as Record<string, unknown>[]).map(r => String(r["keyword"] ?? "")).filter(Boolean);
+      }
+      if (auditRes.status === "fulfilled" && (auditRes.value.rows as Record<string, unknown>[])[0]) {
+        orgContext.orgScore = Number((auditRes.value.rows as Record<string, unknown>[])[0]?.["score"] ?? 0);
+      }
+      if (prefRes.status === "fulfilled" && (prefRes.value.rows as Record<string, unknown>[])[0]) {
+        const settings = ((prefRes.value.rows as Record<string, unknown>[])[0]?.["settings"] as Record<string, unknown>) ?? {};
+        orgContext.orgName = String(settings["companyName"] ?? settings["orgName"] ?? "");
+        orgContext.orgUrl  = String(settings["siteUrl"] ?? settings["websiteUrl"] ?? "");
+        orgContext.orgPlan = String(settings["plan"] ?? "");
+      }
+    } catch { /* non-fatal */ }
+
+    // 3. Run full analysis pipeline
+    const result = await runFullCompetitorAnalysis({
+      competitorId:   String(row["id"]),
+      competitorName: String(row["name"] ?? "Concurrent"),
+      competitorUrl,
+      orgId,
+      userId:  req.userId ?? "system",
+      orgDb:   (sql, vals) => req.orgDb(sql, vals),
+      orgContext,
+    });
+
+    if (!result.ok) {
+      res.status(422).json({ ok: false, error: result.error });
+      return;
+    }
+
+    // 4. Log activity
+    store.logActivity({
+      type: "report",
+      label: `Analyse IA lancée sur le concurrent : ${String(row["name"])}`,
+      targetId: String(row["id"]), targetType: "competitor",
+      orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
+    }).catch(() => {});
+
+    res.json({ ok: true, analysis: result.analysis });
+  } catch (err) {
+    logger.error({ err }, "[competitors] POST analyze failed");
+    res.status(500).json({ ok: false, error: "Erreur lors de l'analyse — réessayez dans quelques instants" });
+  }
 });
 
 export default router;

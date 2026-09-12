@@ -1,881 +1,1225 @@
-# FlowPoint — Documentation Technique Complète
-> État au 27 juin 2026 — après migration RLS sessions 1–3
+# FlowPoint — Cartographie Technique Complète
+> Branche : `Test-Replit` · Généré le 2026-08-17 · Dashboard.js : 68 718 lignes · ai.ts : 3 301 lignes
 
 ---
 
-## Table des matières
+## 1. Navigation complète
 
-1. [Architecture globale](#1-architecture-globale)
-2. [Tech Stack](#2-tech-stack)
-3. [Schéma d'architecture](#3-schéma-darchitecture)
-4. [Parcours utilisateur complet](#4-parcours-utilisateur-complet)
-5. [Authentification](#5-authentification)
-6. [Base de données](#6-base-de-données)
-7. [RLS (Row Level Security)](#7-rls-row-level-security)
-8. [Organisation & Multi-tenant](#8-organisation--multi-tenant)
-9. [Flux de données API → Frontend](#9-flux-de-données-api--frontend)
-10. [APIs par page du dashboard](#10-apis-par-page-du-dashboard)
-11. [Stripe & Billing](#11-stripe--billing)
-12. [Automatisation, Cron & Webhooks](#12-automatisation-cron--webhooks)
-13. [Services externes](#13-services-externes)
-14. [Migrations & Initialisation](#14-migrations--initialisation)
-15. [Tableau de complétude par module](#15-tableau-de-complétude-par-module)
-16. [Points techniques prioritaires avant prod](#16-points-techniques-prioritaires-avant-prod)
+### Système de routing
 
----
+Le routing est **entièrement hash-based côté client**. Le switch canonique est `dashboard.js:15019-15110`.
 
-## 1. Architecture globale
+**Fonctions clés :**
+- `navigate(route, sub?)` → `history.replaceState('#route/sub')` + localStorage + `_doRender()` immédiat (`dashboard.js:14795-14805`)
+- `navigateSub(sub)` → `history.pushState` + localStorage (`dashboard.js:14808-14826`)
+- `_doRender()` → debounce 30ms → sélectionne renderer → remplace `#fp-page` → injecte subnav (`dashboard.js:15018-15183`)
+- `popstate` + `hashchange` listeners : `dashboard.js:17442-17461`
 
-FlowPoint est un **SaaS SEO multi-tenant** organisé en monorepo pnpm. Il comprend :
+**Noms canoniques** : `PAGE_NAMES` — `dashboard.js:14681-14697`  
+**Sous-pages** : `SUB_NAVS` — `dashboard.js:14699-14734`
 
-| Couche | Technologie | Rôle |
-|--------|-------------|------|
-| **Frontend** | Vanilla JS SPA (HTML/CSS/JS) | Dashboard interactif servi statiquement |
-| **Backend** | Express + TypeScript (Node.js) | API REST, SSE, auth, webhooks |
-| **Base de données** | PostgreSQL (Supabase) | Stockage principal + RLS |
-| **ORM** | Drizzle ORM + pg pool raw | Schéma typé + requêtes brutes |
-| **In-memory store** | Singleton `Store` (Node.js) | Plan actif, SSE clients, état org |
-| **Services externes** | Stripe, Resend, DataForSEO, Google, BetterStack, GitHub | Paiements, email, SEO data, monitoring |
-
-### Structure des répertoires
-
-```
-/
-├── artifacts/
-│   ├── api-server/          # Backend Express (TypeScript)
-│   │   ├── src/
-│   │   │   ├── routes/      # 65+ fichiers de routes (un par module)
-│   │   │   ├── services/    # Logique métier (keyword-engine, billing-service, etc.)
-│   │   │   ├── middlewares/ # requireAuth, dbContext, rateLimiter, cacheControl
-│   │   │   ├── workers/     # cron-scheduler, cron jobs
-│   │   │   └── lib/         # logger, plans, safe-error
-│   │   ├── migrations/      # 14 fichiers SQL (001 → 013)
-│   │   └── build.mjs        # Bundle esbuild → dist/index.mjs
-│   └── flowpoint-export/    # Frontend SPA (HTML/JS/CSS statique)
-│       ├── index.html / dashboard.html / login.html
-│       ├── dashboard.js     # ~14 500 lignes — logique UI complète
-│       └── fp-backend.js    # Couche d'intégration API ↔ frontend
-├── lib/
-│   ├── db/                  # Package @workspace/db — schéma Drizzle + pool + withOrgDb
-│   ├── api-zod/             # Schémas de validation Zod partagés
-│   ├── api-spec/            # Types d'API partagés
-│   └── api-client-react/    # Client React (non utilisé par le frontend actuel)
-├── scripts/                 # Scripts de maintenance DB
-└── audit/                   # Scripts Playwright d'audit UI
-```
+**Normalisation des alias** (`dashboard.js:15099-15109`) :
+- `automations` → `settings/automations`
+- `integrations` → `settings/integrations`
+- `addons` → `billing/addons`
+- `competitors` → `competitor`
+- `activity` → `activity-feed`
+- `alerts` → `alerts-center`
+- `keywords` → `growth/keywords`
+- `content` → `growth`
 
 ---
 
-## 2. Tech Stack
+### Pages et sous-pages
 
-| Composant | Choix | Version / Notes |
-|-----------|-------|-----------------|
-| Runtime | Node.js | ≥ 20 |
-| Framework backend | Express | 5.x |
-| Langage backend | TypeScript | compilé par esbuild |
-| Frontend | Vanilla JS | Pas de framework — SPA custom |
-| Base de données | PostgreSQL | Supabase (cloud) |
-| ORM | Drizzle ORM | `lib/db/src/index.ts` |
-| Driver SQL brut | `pg` (node-postgres) | Pool + client.query |
-| Validation | Zod | `lib/api-zod/` |
-| Email | Resend SDK | Magic links + notifications |
-| Paiements | Stripe SDK | Checkout, Portal, Webhooks |
-| AI | OpenAI GPT-4o / GPT-4o-mini | Missions, recommendations |
-| SEO data | DataForSEO API | Keywords, SERP, backlinks |
-| Monitoring | BetterStack API | Monitors, incidents, heartbeats |
-| Auth SSO | Google OAuth 2.0 + GitHub OAuth | Tokens chiffrés en DB |
-| Real-time | SSE (Server-Sent Events) | Pas de WebSocket |
-| Bundler backend | esbuild | `build.mjs` → `dist/index.mjs` |
-| Gestionnaire de paquets | pnpm workspaces | Monorepo |
-
----
-
-## 3. Schéma d'architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           UTILISATEUR                                    │
-│                    (navigateur, appli, API client)                       │
-└───────────────────────────────┬─────────────────────────────────────────┘
-                                │  HTTPS  (cookie fp_token / Bearer token)
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND  (SPA Vanilla JS)                       │
-│   flowpoint-export/dashboard.html + dashboard.js (~14 500 lignes)        │
-│                                                                          │
-│  ┌──────────┐  ┌──────────────────┐  ┌──────────────────────────────┐  │
-│  │ STATE {} │  │ navigate(route)  │  │ SSE listener (fp:*  events)  │  │
-│  │ (global) │  │ render() → HTML  │  │ billing:plan_updated, alerts  │  │
-│  └────┬─────┘  └────────┬─────────┘  └──────────────────────────────┘  │
-│       │                 │                                                │
-│  ┌────▼─────────────────▼───────────────────────────────────────────┐   │
-│  │  fp-backend.js  (bridge API)                                      │   │
-│  │  apiFetch(path) · apiAction(method, path, body)                   │   │
-│  │  window.FP_MISSIONS_API · FP_MONITORS_API · FP_NOTIF_API …        │   │
-│  └───────────────────────────┬───────────────────────────────────────┘  │
-└──────────────────────────────┼──────────────────────────────────────────┘
-                               │  fetch /api/*  (credentials: 'include')
-                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                  BACKEND  (Express + TypeScript)                         │
-│                  artifacts/api-server  · PORT 8081                       │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  Middlewares globaux                                               │  │
-│  │  cors · helmet · compression · rateLimiter · orgContext            │  │
-│  │  dbContext (attache req.orgDb) · requireAuth                       │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  Routes publiques (avant requireAuth)                              │  │
-│  │  /health · /api/auth/* · /api/share/:token · /api/webhooks/stripe  │  │
-│  │  /api/events (SSE) · /api/billing/config                          │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │  Routes protégées (après requireAuth)                              │  │
-│  │  /api/missions · /api/monitors · /api/audits · /api/keywords       │  │
-│  │  /api/reports · /api/billing/* · /api/team · /api/connectors …    │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────────┐     │
-│  │  Store (mémoire│  │  Services métier │  │  Workers (cron)      │     │
-│  │  plan, addons, │  │  keyword-engine  │  │  monitor-cron 5min   │     │
-│  │  sseClients)   │  │  mission-engine  │  │  dataforseo-sync 6h  │     │
-│  │                │  │  billing-service │  │  mission-engine 6h   │     │
-│  └────────────────┘  │  pdf · store     │  │  forecast 24h        │     │
-│                       └─────────────────┘  └──────────────────────┘     │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │
-                 ┌─────────────┴──────────────┐
-                 │                            │
-                 ▼                            ▼
-┌────────────────────────────┐  ┌────────────────────────────────────────┐
-│   PostgreSQL (Supabase)     │  │   Services externes                    │
-│                            │  │                                        │
-│  145+ tables               │  │  ┌─────────┐  Checkout / Webhooks      │
-│  RLS via app_user role     │  │  │  Stripe  │  Subscriptions / Credits  │
-│  GUC app.current_org_id    │  │  └─────────┘                           │
-│                            │  │  ┌─────────┐  Magic links / Notifs     │
-│  withOrgDb()               │  │  │  Resend  │                           │
-│    SET ROLE app_user       │  │  └─────────┘                           │
-│    SET app.current_org_id  │  │  ┌──────────────┐  Keywords/SERP/Rank  │
-│    RLS policy evaluée      │  │  │  DataForSEO  │                       │
-│                            │  │  └──────────────┘                       │
-│  Drizzle ORM (schéma typé) │  │  ┌────────────┐  GSC / GA4 / GBP       │
-│  pool.query (superuser)    │  │  │  Google API│  OAuth tokens DB         │
-│                            │  │  └────────────┘                         │
-│                            │  │  ┌────────────┐  Monitors / SLA        │
-│                            │  │  │ BetterStack│                         │
-│                            │  │  └────────────┘                         │
-│                            │  │  ┌────────────┐  Repo analysis         │
-│                            │  │  │   GitHub   │                         │
-└────────────────────────────┘  │  └────────────┘                         │
-                                └────────────────────────────────────────┘
-```
+| Route / Hash | Renderer | Fichier | Conditions | Plan requis |
+|---|---|---|---|---|
+| `#overview` | `renderOverview()` | `dashboard.js:5195` | auth | tous |
+| `#overview/insights` | `renderOverviewInsights()` | — | auth | tous |
+| `#overview/quick-wins` | — | — | auth | tous |
+| `#overview/checklist` | — | — | auth | tous |
+| `#missions` | `renderMissions()` | `dashboard.js` | auth | tous |
+| `#missions/todo`, `in_progress`, `done`, `ai` | sub-tabs | — | auth | tous |
+| `#audits` | `renderAudits()` | `dashboard.js` | auth | tous |
+| `#audits/analysis`, `compare`, `history`, `opportunites` | sub-tabs | — | auth | tous |
+| `#monitors` | `renderMonitors()` | `dashboard.js` | auth | tous |
+| `#monitors/performance`, `incidents`, `config`, `sla` | sub-tabs | — | auth | tous |
+| `#local-seo` | `renderLocalSEO()` | `dashboard.js` | auth | tous |
+| `#local-seo/map` | `renderLocalSEOMap()` | `dashboard.js:58436` | auth | tous |
+| `#local-seo/competitors-map` | `renderCompetitorsMap()` | `dashboard.js:58736` | auth | tous |
+| `#local-seo/zones`, `opportunities`, `reviews`, `gbp` | sub-tabs | — | auth | — |
+| `#reports` | `renderReports()` | `dashboard.js` | auth | tous |
+| `#reports/exec`, `seo`, `monitoring`, `local`, `conversion`, `client`, `ai` | sub-tabs | — | auth | — |
+| `#team` | `renderTeam()` | `dashboard.js` | auth | tous |
+| `#team/chat`, `activity`, `files`, `performance` | sub-tabs | — | auth | — |
+| `#growth` | `renderGrowth()` | `dashboard.js` | auth | tous |
+| `#growth/projections`, `objectives`, `keywords` | sub-tabs | — | auth | — |
+| `#competitor` | `renderCompetitor()` | `dashboard.js:51761` | auth | tous |
+| `#competitor/overview`, `keywords`, `content`, `backlinks`, `local`, `alerts` | sub-tabs | — | auth | — |
+| `#conversion` | `renderGA4Conversion()` | `dashboard.js:52899` | auth | GA4 connecté |
+| `#conversion/funnel`, `ux-lab`, `cta`, `revenue-leak`, `cro` | sub-tabs | — | auth | — |
+| `#alerts-center` | `renderAlertsCenter()` | `dashboard.js:53920` | auth | tous |
+| `#alerts-center/incidents`, `seo`, `performance`, `conversion`, `local`, `competitor`, `ai` | sub-tabs | — | auth | — |
+| `#activity-feed` | `renderActivityFeed()` | `dashboard.js:54818` | auth | tous |
+| `#activity-feed/team`, `seo`, `monitoring`, `ai`, `reports`, `competitor`, `ops` | sub-tabs | — | auth | — |
+| `#data-explorer` | `renderDataExplorer()` | `dashboard.js:55752` | auth | tous |
+| `#data-explorer/traffic`, `behavior`, `dashboards`, `insights`, `forecast`, `export` | — | — | auth | — |
+| `#client-mode` | `renderGA4ClientMode()` | `dashboard.js:56604` | auth | White-label |
+| `#client-mode/dashboards`, `reporting`, `communication`, `onboarding`, `projects`, `analytics`, `agency` | — | — | auth | — |
+| `#billing` | `renderBilling()` | `dashboard.js` | auth | tous |
+| `#billing/plans`, `addons`, `usage`, `invoices`, `ai-strategist`, `enterprise` | sub-tabs | — | auth | — |
+| `#settings` | `renderSettings()` | `dashboard.js` | auth | tous |
+| `#settings/workspace`, `team`, `security`, `alerts`, `automations`, `integrations`, `api`, `ai-config`, `data`, `localisation`, `sso` | sub-tabs | — | auth | — |
+| `#ai` | `renderAI()` | `dashboard.js` | auth | tous |
+| `#ai/usage`, `intelligence`, `insights`, `actions`, `strategist` | sub-tabs | — | auth | — |
+| `#analytics` | `renderGA4*()` | `dashboard.js:60098+` | auth | GA4 connecté |
+| `#analytics/realtime`, `pages`, `conversions`, `connect` | — | — | auth | — |
+| `#traffic/organic`, `paid`, `social`, `direct`, `anomalies` | — | — | auth | — |
+| `#funnels/goals`, `paths`, `dropoff` | — | — | auth | — |
+| `#audience/geo`, `devices`, `demographics` | — | — | auth | — |
+| `#campaigns/utm`, `roi`, `compare` | — | — | auth | — |
+| `#live/events`, `pages`, `geo` | — | — | auth | — |
+| `#performance` | `renderPerformance*()` | `dashboard.js:63504` | auth | tous |
+| `#performance/mobile`, `desktop`, `history`, `opportunities`, `ai` | — | — | auth | — |
+| `#core-web-vitals/lcp`, `cls`, `inp`, `ttfb`, `compare` | — | — | auth | — |
+| `#technical-audit/render-blocking`, `js-css`, `images`, `accessibility`, `seo`, `ai` | `dashboard.js:63779` | — | auth | — |
+| `#github-integration` | `dashboard.js:64348` | — | auth | — |
+| `#github-integration/repos`, `commits`, `ci-cd`, `security`, `config` | — | — | auth | — |
+| `#code-analysis/seo`, `performance`, `security`, `quality`, `ai` | `dashboard.js:64703` | — | auth | — |
+| `#search-console` | `renderSearchConsole()` | `dashboard.js:64847` | auth | GSC connecté |
+| `#search-console/keywords`, `pages`, `impressions`, `indexing`, `connect` | — | — | auth | — |
+| `#crm/connections`, `sync`, `logs`, `field-mapping` | `dashboard.js:66377` | — | auth | — |
+| `#market-intelligence/trends`, `opportunities`, `competitors`, `signals`, `reports` | — | — | auth | — |
+| `#permissions/matrix`, `audit` | `dashboard.js:66843` | — | auth | admin/owner |
 
 ---
 
-## 4. Parcours utilisateur complet
+## 2. Redirections
 
-### 4.1 Inscription
-
+### Frontend → pricing
 ```
-1. Utilisateur → GET /signup.html (frontend)
-2. Frontend → POST /api/auth/signup { email, name }
-3. Backend :
-   a. Crée un enregistrement user dans user_sessions (pré-session)
-   b. Génère token 32 bytes hex → INSERT magic_link_tokens (expire 15min)
-   c. Envoie email via Resend : "Confirmez votre email"
-4. Utilisateur clique le lien magic → /login-verify.html?token=XXX
-5. Frontend → GET /api/auth/login-verify?token=XXX
-6. Backend :
-   a. SELECT magic_link_tokens WHERE token = $1 AND used = false AND expires_at > NOW()
-   b. Marque used = true
-   c. createSession() → signe HMAC-SHA256 → INSERT user_sessions
-   d. Set-Cookie: fp_token=... (httpOnly, secure, sameSite=lax, 24h)
-7. Redirect → /dashboard.html
+navigate() → if plan gate → location.href = '/pricing.html?from=dashboard&plan=...'
+dashboard.js:14771-14793
 ```
 
-### 4.2 Connexion (utilisateur existant)
-
+### Frontend → Auth
 ```
-1. Utilisateur → POST /api/auth/login-request { email }
-2. Backend → magic link (même flow inscription step 3–7)
-   OU
-2b. OAuth Google → GET /api/auth/google/start → redirect → callback
-   → createSession() → Set-Cookie fp_token
+apiFetch /api/me → 401 → _clearAuth() → window.location.replace('/login.html')
+fp-backend.js:87-112
 ```
 
-### 4.3 Utilisation du dashboard
-
+### Logout
 ```
-1. GET /dashboard.html → charge dashboard.js + fp-backend.js
-2. fp-backend.js → GET /api/me → renvoie { plan, orgId, email, addons, ... }
-3. STATE.me = response → render() déclenche l'affichage
-4. navigate("overview") → _doRender() → renderOverview()
-   → FP_OVERVIEW_API.load() → GET /api/overview
-   → STATE.overview = data → render() → HTML injecté dans #fp-page
-5. SSE : EventSource /api/events → écoute fp:monitor:alert, billing:plan_updated, etc.
+window.fpLogout() / logout button → DELETE /api/auth/logout → _clearAuth() → location.replace('/login.html')
 ```
 
-### 4.4 Expiration de session
+### magic link
+```
+login.html → POST /api/auth/magic-link → email → login-verify.html?token=xxx
+login-verify.js:36-55 → POST /api/auth/verify → sessionStorage fp_session_token → location.replace('/dashboard.html?_cb=...')
+```
 
+### OAuth Google
 ```
-- Sessions TTL : 24h (SESSION_TTL_MS)
-- requireAuth vérifie expires_at en DB
-- Si expiré : 401 → frontend redirige vers /login.html
-- Pas de refresh token — l'utilisateur doit se reconnecter via magic link
+signin.html:201 → location.href = /api/auth/google → Google OAuth → /api/auth/google/callback → session → dashboard.html
 ```
+
+### checkout / billing
+```
+fpGoToPricing() → /pricing.html
+fpUpgradeOrCheckout() → /api/billing/upgrade (si sub active) → ou /api/billing/create-checkout-session → /checkout.html → Stripe → /checkout-return.html
+```
+
+### Back/Forward navigateur
+```
+popstate → listener dashboard.js:17442 → lit window.location.hash → navigate()
+BFCache pageshow → fp-backend.js:pageshow listener → force session-restore si bfcache
+```
+
+### Fonctions de navigation recensées
+
+| Fonction | Mécanisme | Fichier |
+|---|---|---|
+| `navigate(route, sub)` | `history.replaceState` | `dashboard.js:14795` |
+| `navigateSub(sub)` | `history.pushState` | `dashboard.js:14808` |
+| `window.fpGoToBillingPlans()` | `navigate('billing','plans')` | `dashboard.js:14829` |
+| `window.fpGoToPricing()` | `location.href = '/pricing.html?...'` | `dashboard.js:14771` |
+| `window.fpUpgradeOrCheckout()` | `/api/billing/upgrade` ou pricing | `dashboard.js:14771+` |
+| OAuth / externe | `location.href` | `dashboard.js:64825,65288,65381,65540` |
+| OAuth URL cleanup | `history.replaceState` | `dashboard.js:46009-46021` |
+| 401 auto-redirect | `window.location.replace('/login.html')` | `fp-backend.js:87` |
+| login-verify → dashboard | `location.replace('/dashboard.html?_cb=...')` | `login-verify.js:81` |
 
 ---
 
-## 5. Authentification
+## 3. Architecture Auth
 
-### 5.1 Token de session
+### Flux complet Sign In → Dashboard
 
 ```
-Format : <payload_base64url>.<signature_base64url>
-Payload : userId:orgId:randomBytes:timestamp
-Signature : HMAC-SHA256(payload, JWT_SECRET)
+1. login.html   → user saisit email
+2. POST /api/auth/magic-link (auth.ts:544)
+   → valide email + statut compte
+   → génère token 64 hex chars (auth.ts:639)
+   → INSERT magic_link_tokens (TTL 1h) (auth.ts:644-650)
+   → envoie email avec link /login-verify.html?token=xxx
+3. User clique le lien → login-verify.html
+4. login-verify.js:36-55
+   → lit URL token
+   → POST /api/auth/verify avec credentials:include
+5. Backend auth.ts:1404-1701
+   → vérifie token en DB (expires_at, used=false) (1404-1540)
+   → consume token (1616-1629)
+   → crée session DB user_sessions (1635-1649)
+   → Set-Cookie: fp_token, HttpOnly, Secure, SameSite=None, maxAge=7j (1660-1668)
+   → répond { token: '...', orgId, role, ... }
+6. login-verify.js:59-89
+   → sessionStorage['fp_session_token'] = token
+   → sessionStorage['fp_tab_uid'] = uid
+   → setTimeout 1200ms → location.replace('/dashboard.html?_cb=...')
 ```
 
-Le token est **à la fois dans un cookie HttpOnly** (`fp_token`) et accepté comme `Authorization: Bearer <token>` ou `X-Api-Key` header.
+### Flux Dashboard Load → Render
 
-### 5.2 Tables concernées
+```
+1. dashboard.html charge
+2. fp-backend.js:23-29  → lit sessionStorage['fp_session_token']
+3. fp-backend.js:32-71  → POST /api/auth/session-restore
+   → Bearer token si présent, credentials:include (cookie fp_token en fallback)
+   → stocke canonical token retourné (fp-backend.js:53-60)
+4. dashboard.js:1453-1491 → répète session-restore
+5. dashboard.js:1493-1511 → GET /api/me {force:true} OBLIGATOIRE
+6. STATE.me = résultat /api/me
+7. render() → Phase 1 (squelette) puis Phase 2 (données) puis Phase 3 (modules secondaires)
+```
 
-| Table | Rôle |
-|-------|------|
-| `user_sessions` | Sessions actives : token (PK), user_id, org_id, email, role, expires_at |
-| `magic_link_tokens` | Tokens à usage unique : token, email, expires_at, used |
-| `login_audits` | Historique des connexions |
+### Stockage session
 
-### 5.3 Middlewares
+| Clé | Store | Valeur | TTL |
+|---|---|---|---|
+| `fp_token` | Cookie HttpOnly | token opaque HMAC-SHA256 | 7 jours |
+| `fp_session_token` | sessionStorage | même token | onglet |
+| `fp_tab_uid` | sessionStorage | identifiant onglet | onglet |
 
-| Middleware | Position | Rôle |
-|-----------|---------|------|
-| `orgContext` | Avant tout | Extrait et valide le token → attache `req.orgContext` |
-| `dbContext` | Après orgContext | Attache `req.orgDb(sql, params)` scopé RLS |
-| `requireAuth` | Route protégée | Bloque si pas de session valide (renvoie 401) |
-| `requireAdmin` | Routes admin | Vérifie `req.orgContext.role === 'admin'` |
+**Format token** : `userId:orgId:random:base36timestamp.HMACsignature` (`services/sessions.ts:23-35`)
 
-### 5.4 OAuth (Google / GitHub)
+**Table DB** : `user_sessions(token, user_id, org_id, email, role, expires_at, created_at, user_id_v2, ip_address, user_agent)`
 
-- Tokens OAuth chiffrés **AES-256-GCM** et stockés dans `google_tokens`
-- Flow : `/api/auth/google/start` → Google → `/api/auth/google/callback` → `createSession()`
-- Scopes Google : `openid email profile https://www.googleapis.com/auth/searchconsole.readonly`
+### Session restore — ordre de priorité (auth.ts:2045-2117)
+1. `Authorization: Bearer` header
+2. Cookie `fp_token` (fallback)
+3. → 401 + cookie clear si aucun valide
 
-### 5.5 SAML SSO (Enterprise)
+### 401 handling
+```
+fp-backend.js:87-112
+  apiFetch → response.status === 401
+  → _clearAuth() (supprime fp_session_token, fp_tab_uid, legacy localStorage keys)
+  → window.location.replace('/login.html')
+```
 
-- Configuration via `sso_providers` (table DB)
-- Routes : `publicSsoRouter` — `/api/sso/saml/metadata`, `/api/sso/saml/callback`
-- Disponible comme add-on Stripe (`ssoEnterprise`)
+### Logout
+```
+DELETE /api/auth/logout (auth.ts:2137-2145)
+  → deleteSession(token) → DELETE FROM user_sessions WHERE token=$1
+  → clear-cookie fp_token
+  → réponse { success: true }
+```
+
+### BFCache
+```
+fp-backend.js: pageshow listener
+  → si event.persisted → force session-restore
+  → évite token périmé sur navigation arrière
+```
+
+### Expiration magic link
+- TTL **1 heure** (`services/sessions.ts` + `index.ts:220-236`, le schéma par défaut est 15m mais `storeMagicToken` surcharge explicitement à 1h)
+
+### requireAuth middleware (`middlewares/requireAuth.ts:28-121`)
+1. Extrait `Authorization: Bearer`
+2. Puis `X-Api-Key`
+3. Puis cookie `fp_token`
+4. Appelle `getSession(token)` → `SELECT ... WHERE token=$1 AND expires_at>NOW()`
+5. Accepte également API secret/service keys et FlowPoint API keys
+6. Sinon → 401
 
 ---
 
-## 6. Base de données
+## 4. Architecture de rendu du dashboard
 
-### 6.1 Connexion et configuration
+### Phases de chargement (`dashboard.js:1418-1963`)
 
-```typescript
-// lib/db/src/index.ts
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+```
+init()
+  ├── session-restore + /api/me (Phase 0 — auth)
+  ├── loadData() ← Phase 1 : données critiques (bloquantes)
+  │     ├── GET /api/overview, /api/plans, /api/billing/*
+  │     ├── GET /api/audits, /api/monitors, /api/reports, /api/team, /api/alerts
+  │     ├── GET /api/activity, /api/missions, /api/competitors, /api/keywords
+  │     └── STATE.loading = false ← déblocage render
+  ├── render() ← Phase 2 : premier render complet après Phase 1
+  └── loadDataSecondary() ← Phase 3 : données non-bloquantes
+        ├── GET /api/billing/usage, /api/schedules, /api/calendar/*
+        ├── GET /api/ga4/*, /api/gsc/*, /api/google/*
+        ├── GET /api/reviews, /api/market-intelligence, /api/team/files
+        └── render() (si page concernée)
+```
 
-// Drizzle ORM — utilise le même pool (SANS set app.current_org_id → bypass RLS)
-export const db = drizzle(pool, { schema });
+**Skeleton :** affiché pendant Phase 0/1 via `.fp-skeleton` CSS. Disparaît quand `STATE.loading = false`.
 
-// Requête RLS-scoped (attribue le rôle app_user + GUC org_id)
-export async function withOrgDb<T>(
-  orgId: string,
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SET LOCAL ROLE app_user");
-    await client.query("SET LOCAL \"app.current_org_id\" = $1", [orgId]);
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
-  }
+**Safety timer :** 12s (`dashboard.js:1418-1428`) — force `STATE.loading = false` si les APIs ne répondent pas.
+
+**Render debounce :** 30ms (`dashboard.js:15018-15022`) — évite les renders multiples simultanés.
+
+### `_doRender(route, sub)` (`dashboard.js:15018-15183`)
+1. Détecte route vs refresh même-route (préserve scroll sur data update)
+2. Sélectionne renderer selon `route` (switch 15019-15110)
+3. Remplace `innerHTML` de `#fp-page`
+4. Injecte subnav/subpage
+5. Bind les event listeners de la page
+6. Masque le spinner
+
+### Déclencheurs de `render()` global
+
+| Déclencheur | Localisation |
+|---|---|
+| `navigate(route)` | `dashboard.js:14795` |
+| `navigateSub(sub)` | `dashboard.js:14808` |
+| Phase 1 terminée | `dashboard.js:1556` |
+| Phase 3 terminée (page concernée) | `dashboard.js:1942` |
+| SSE `monitor_update` | `fp-backend.js:3004-3015` |
+| SSE `alert:new/update` | `fp-backend.js:2971-3001` |
+| Action CRUD réussie (missions, competitors, etc.) | divers |
+| Polling 60s — overview/monitors | `fp-backend.js:3055-3101` (patch STATE + re-render ciblé) |
+
+### SSE / Événements temps réel (`fp-backend.js:2916-3053`)
+
+**EventSource :** `GET /api/events?token=...`
+
+| Événement SSE | Action frontend |
+|---|---|
+| `monitor_update` | Patch `STATE.monitors` → re-render monitors/overview |
+| `notification` | Unshift `STATE.notifications` + update badge |
+| `chat:message` / `team:message` | CustomEvent dispatch |
+| `billing:plan_updated` | CustomEvent billing → re-fetch /api/me |
+| `alert:new` / `alert:update` | Re-fetch `/api/alert-events` → render |
+| `heartbeat` | Maintient la connexion |
+
+**Reconnect :** max 5 tentatives avec backoff exponentiel. Banner "connexion perdue" si dépassé.
+
+**Polling 60s :** refresh `/api/monitors` + `/api/notifications` chaque tick ; `/api/overview` tous les 5 ticks. Patch `STATE`, pas de full render.
+
+---
+
+## 5. STATE frontend
+
+STATE est un objet global mutable (`window.STATE`) défini dans `dashboard.js`. Voici les propriétés principales :
+
+| Propriété | Contenu | Remplit par | Utilisé par | Actualisé |
+|---|---|---|---|---|
+| `STATE.me` | Profil user : email, firstName, plan, billing, limits, addons, permissions | `GET /api/me` | Toutes pages | init + polling |
+| `STATE.billing` | stripeCustomerId, status normalisé, trial, plan, addons | `GET /api/billing/*` | Billing, toutes gates | init + SSE billing |
+| `STATE.audits` | Liste audits (score, url, status, date) | `GET /api/audits` | Audits, Overview | Phase 1 |
+| `STATE.monitors` | Liste monitors (status, url, latency, incidents) | `GET /api/monitors` | Monitors, Overview | Phase 1 + SSE + polling 60s |
+| `STATE.missions` | Liste missions (titre, priorité, statut, steps) | `GET /api/missions` | Missions, AI | Phase 1 |
+| `STATE.reports` | Liste reports (titre, date, type, pdf_url) | `GET /api/reports` | Reports | Phase 1 |
+| `STATE.competitors` | Liste concurrents (domain, rating, keywords) | `GET /api/competitors` | Competitor, Local SEO | Phase 1 |
+| `STATE.keywords` | Mots-clés trackés (keyword, position, volume, trend) | `GET /api/keywords` | Growth, Overview | Phase 1 |
+| `STATE.alerts` | Alertes actives + événements | `GET /api/alert-events` | Alerts Center, sidebar | Phase 1 + SSE |
+| `STATE.team` | Membres équipe + invitations | `GET /api/team` | Team, Settings | Phase 1 |
+| `STATE.activity` | Fil activité (actions, timestamps, users) | `GET /api/activity` | Activity Feed | Phase 1 |
+| `STATE.notifications` | Notifications non-lues | `GET /api/notifications` | Badge sidebar | Phase 1 + SSE + polling |
+| `STATE.overview` | Métriques overview (score moyen, counts) | `GET /api/overview` | Overview | Phase 1 + polling 5min |
+| `STATE.loading` | `true` pendant Phase 0/1 | init() / safety timer | Skeleton | Une fois |
+| `STATE.currentRoute` | Route active | navigate() | Render switch | À chaque nav |
+| `STATE.currentSub` | Sous-page active | navigate()/navigateSub() | Subnav render | À chaque nav |
+| `STATE.plan` | Plan actif normalisé | `/api/me` billing | Toutes gates plan | init |
+| `STATE.seatUsage` | { used, limit } | `GET /api/billing/usage` | Settings/Team | Phase 3 |
+| `STATE.aiCredits` | { used, limit, extra } | `/api/me` + `/api/ai/usage` | AI page, billing | init + après action AI |
+
+**Autres stores globaux :**
+- `window._fpReportsState` + `window._fpReportsAPI` → Reports (`dashboard.js:68061`)
+- `window._fpAnalyticsState`, `_fpTrafficState`, `_fpConversionState`, etc. → GA4 pages (`dashboard.js:59875-60087`)
+- `window.FP_DATA` → Local SEO map data
+- `window.FP_MAPS_API` → Wrapper Maps
+- `window.FP_COMPETITORS_API` → Wrapper Competitors
+- `window.STATE._aiConversationId` → Conversation IA active
+
+---
+
+## 6. API utilisée par chaque page
+
+> Format : `Page → Méthode endpoint → Stockage frontend`
+
+### Overview
+- `GET /api/overview` → `STATE.overview`
+- `GET /api/audits` → `STATE.audits`
+- `GET /api/monitors` → `STATE.monitors`
+- `GET /api/missions?status=todo&limit=5` → overview widget
+- `POST /api/ai/overview-insights` → insights card
+
+### Missions
+- `GET /api/missions` → `STATE.missions`
+- `POST /api/missions` → création
+- `PATCH /api/missions/:id` → modification
+- `DELETE /api/missions/:id` → suppression
+- `POST /api/missions/:id/complete` → marquer terminée
+
+### Audits
+- `GET /api/audits` → `STATE.audits`
+- `POST /api/audits` → déclenche nouvel audit
+- `DELETE /api/audits/:id` → suppression
+- `GET /api/audits/:id/score-history` → historique scores
+- `POST /api/ai/audit` → analyse IA d'un audit
+
+### Monitors
+- `GET /api/monitors` → `STATE.monitors`
+- `POST /api/monitors` → création
+- `PATCH /api/monitors/:id` → modification
+- `DELETE /api/monitors/:id` → suppression
+- `GET /api/monitor-checks/:monitorId` → historique checks
+- `GET /api/monitors/:id/sla` → SLA stats
+
+### Reports
+- `GET /api/reports` → `STATE.reports` (LIMIT 500)
+- `GET /api/reports/clients` → clients list
+- `POST /api/reports` → création rapport
+- `GET /api/reports/:id/download` → PDF blob
+- `POST /api/reports/:id/share` → token partage 30j
+- `DELETE /api/reports/:id` → suppression
+
+### Local SEO / Map
+- `GET /maps/config` → clé Maps publique browser
+- `GET /maps/geocode?address=...` → coordonnées
+- `GET /maps/heatmap?...` → données heatmap
+- `GET /maps/competitors?...` → pins concurrents
+- `GET /maps/place-details?placeId=...` → détails POI
+- `GET /api/local-maps/*` → données SEO local
+- `GET /api/reviews/*` → avis GBP
+- `GET /api/gbp-posts` → posts GBP
+
+### Growth / Keywords
+- `GET /api/keywords` → `STATE.keywords`
+- `POST /api/keywords` → ajout mot-clé
+- `DELETE /api/keywords/:id` → suppression
+- `GET /api/growth-objectives` → objectifs
+- `GET /api/forecast` → prévisions
+
+### Competitor
+- `GET /api/competitors` → `STATE.competitors`
+- `POST /api/competitors` → ajout
+- `DELETE /api/competitors/:id` → suppression
+- `POST /api/ai/competitors` → analyse IA
+
+### Team
+- `GET /api/team` → `STATE.team`
+- `POST /api/team/invite` → invitation
+- `DELETE /api/team/members/:id` → suppression
+- `GET /api/team/chat/messages` → messages
+- `POST /api/team/chat/messages` → envoi message
+- `GET /api/team/files` → fichiers partagés
+
+### AI Chat
+- `POST /api/ai/chat` (SSE) → stream delta
+- `POST /api/ai/cancel` → stop génération
+- `GET /api/ai/history` → historique conversation
+- `POST /api/ai/confirm` → confirmer action tool
+- `GET /api/ai/usage` → crédits consommés
+- `GET /api/ai/tools` → outils disponibles
+
+### Billing
+- `GET /api/billing/payment-methods` → méthodes paiement
+- `GET /api/billing/usage` → usage/seats
+- `GET /api/billing/invoices` → factures
+- `POST /api/billing/create-checkout-session` → session Stripe
+- `POST /api/billing/upgrade` → changement plan
+- `POST /api/billing/portal` → Customer Portal Stripe
+- `POST /api/billing/checkout-ai-credits` → achat crédits IA
+
+### Settings
+- `GET /api/me` → profil org
+- `PATCH /api/me` → modification profil
+- `GET /api/settings/api-keys` → clés API
+- `POST /api/settings/api-keys` → création clé
+- `GET /api/sessions` (security) → sessions actives
+- `DELETE /api/sessions/:id` → révocation session
+
+### Search Console
+- `GET /api/gsc/status` → statut connexion
+- `GET /api/gsc/sites` → sites disponibles
+- `POST /api/gsc/select-site` → sélection
+- `GET /api/gsc/keywords` → mots-clés GSC
+- `GET /api/gsc/pages` → pages GSC
+- `GET /api/gsc/impressions` → impressions
+- `GET /api/gsc/indexing` → indexation
+- `POST /api/gsc/sync` → synchronisation
+
+### GA4 / Analytics
+- `GET /api/ga4/status`, `/accounts`, `/properties`
+- `POST /api/ga4/select-property`
+- `GET /api/ga4/overview`, `/realtime`, `/sources`, `/pages`, `/funnels`, `/conversions`, `/audience`, `/campaigns`
+- `GET /api/conversion/revenue-leak`, `/cro`
+- `GET /api/analytics/*` (multiples sous-endpoints)
+
+---
+
+## 7. Billing complet
+
+### Plans et limites (`lib/plans.ts:29`)
+
+| Plan | Prix mensuel | Audits | Monitors | Sièges | PDFs |
+|---|---|---|---|---|---|
+| Standard | — | 100 | 10 | 3 | 50 |
+| Pro | — | 300 | 50 | 10 | 300 |
+| Ultra | — | Illimité | Illimité | Illimité | Illimité |
+
+`PLAN_PRICE_IDS` → **live Stripe price IDs uniquement** (pas test). Les tests utilisent des prix séparés.
+
+### Normalisation du statut
+
+```
+organizations.subscription_status (raw DB) → billing-context.ts
+  "active"    → "active"       (hasPremiumAccess = true)
+  "trialing"  + subscriptionId → "trialing"    (hasPremiumAccess = true)
+  "trialing"  + NO subscriptionId → "pending_billing"
+  "canceled"  → "canceled"
+  "past_due"  → "past_due"     (hasPremiumAccess = true)
+  null/vide   → "pending_billing"
+```
+
+### Trial
+
+- `canStartTrial` = `trialConsumedAt IS NULL AND stripeSubscriptionId IS NULL` (`billing-context.ts:canStartTrial`)
+- Trial Stripe démarre via webhook `checkout.session.completed` (`stripe-webhook.ts:778+`)
+- Email trial envoyé au signup immédiat (pas via webhook)
+
+### Flux Checkout complet
+
+```
+1. fpGoToPricing() → /pricing.html
+2. pricing.html → sélection plan/addons → fp_cart localStorage
+3. pricing.js → POST /api/billing/create-checkout-session (billing.ts:133)
+   → createStripeCustomer si inexistant
+   → Stripe Checkout Session (mode:'subscription')
+   → subscription_data.metadata = { plan, orgId }
+   → trial_period_days si éligible
+4. Redirect → Stripe hosted page
+5. Stripe → /checkout-return.html?session_id=...
+6. checkout-return.html → GET /api/billing/verify?session_id=...
+   → billing.ts:276-378 → retrieve session → persist plan/status/customer/subscriptionId
+   → OR : webhook checkout.session.completed arrive en parallèle (source de vérité)
+7. Redirect → /dashboard.html#billing ou #overview
+```
+
+### Webhooks (`routes/stripe-webhook.ts`)
+
+| Événement | Action |
+|---|---|
+| `checkout.session.completed` | Activate plan, provision addons, update DB |
+| `payment_intent.succeeded` | AI credits, addon credits, accounting |
+| `customer.subscription.created/updated` | Sync status/plan/trial/subscriptionId |
+| `customer.subscription.deleted` | Cancel account, downgrade |
+| `invoice.payment_succeeded` | Renewal tracking |
+| `invoice.payment_failed` | Past due handling |
+
+**HMAC signing :** clé brute `whsec_...` (prefix inclus dans la signature), lue depuis `STRIPE_WEBHOOK_SECRET || STRIPE_WEBHOOK_SECRET_RENDER`.
+
+### Add-ons (`lib/plans.ts:231+`, `services/addons-service.ts`)
+
+`ADDON_DEFINITIONS` = source de vérité unique pour prix/nom. Stockage : table `org_addons(org_id, addon_key, active, quantity, stripe_item_id)`.
+
+| Add-on clé | Type | Description |
+|---|---|---|
+| `monitorsPack10` | quantité | +10 monitors |
+| `gbp` | flag | Google Business Profile |
+| `extraSeats` | quantité | Sièges supplémentaires |
+| `auditPack100` | quantité | +100 audits |
+| `aiCredits50k/200k/500k` | quantité | Crédits IA |
+| `customDomain` | flag | White-label domaine |
+| `webhooks` | flag | Webhooks |
+| `retention90d/365d` | flag | Rétention données |
+
+### AI Credits
+
+- Packs : 50k/4€, 200k/9€, 500k/19€
+- Achat : `POST /api/billing/checkout-ai-credits` → Stripe Checkout `mode:'payment'`
+- Comptage : table `ai_monthly_usage(org_id, month, credits_used)` + `ai_credit_purchases`
+- Déduction : après chaque réponse IA réussie (estimé chars/4 tokens)
+
+### Payment Methods (`billing.ts:501-590`)
+
+- `resource_missing` (customer supprimé) → warning structuré + nettoyage DB + `200 { paymentMethods: [] }`
+- Pas de création automatique de customer sur GET
+
+### Customer Portal
+
+- `POST /api/billing/portal` (owner-only) → `billing.ts:380+` → redirect Stripe portal
+- Déclenché par : Add card, Manage, Default, Delete, Invoice dans l'UI billing
+
+### Redirections billing importantes
+
+| Condition | Redirection |
+|---|---|
+| `pending_billing` (pas de sub) | CTAs → `#billing/plans` |
+| Plan insuffisant (gate feature) | `fpGoToPricing()` → `/pricing.html` |
+| Sub active + upgrade | `POST /api/billing/upgrade` |
+| Checkout succès AI credits | `#billing` tab |
+| Checkout cancel | `/pricing.html` |
+
+---
+
+## 8. Reports
+
+### Structure backend (`routes/reports.ts`)
+
+| Endpoint | Action |
+|---|---|
+| `GET /api/reports` | Liste (org, date DESC, LIMIT 500) |
+| `GET /api/reports/clients` | Rapports clients |
+| `GET /api/reports/:id` | Un rapport |
+| `POST /api/reports` | Création |
+| `POST /api/reports/clients` | Rapport client |
+| `POST /api/reports/approve` | Approbation |
+| `GET /api/reports/:id/download` | PDF (chargement audit+monitors+missions+branding → `streamReportPdf`) |
+| `POST /api/reports/:id/share` | Token partage 30 jours → table `share_tokens` |
+| `GET /api/reports/:id/shares` | Liste tokens |
+| `DELETE /api/reports/share/:tokenId` | Révocation token |
+| `DELETE /api/reports/:id` | Suppression (+ share_tokens) |
+
+### Frontend (`dashboard.js:68061+`)
+
+- Stores : `window._fpReportsState`, `window._fpReportsAPI`
+- Renderer principal : `renderGA4Reports()` — `dashboard.js:68319`
+- `renderNewReportPanel()` — `dashboard.js:8391` (panel création)
+- Templates : boutons de création rapide par type (`dashboard.js:68444`)
+- Téléchargement : blob fetch → lien download
+- Partage : génère URL avec token, 30j
+
+### Templates disponibles
+
+Types reportés dans les routes : `exec`, `seo`, `monitoring`, `local`, `conversion`, `client`, `ai`.
+
+---
+
+## 9. Local SEO / Maps / Rankings / Competitors
+
+### Local SEO — sous-pages et APIs
+
+| Sous-page | Renderer | APIs principales |
+|---|---|---|
+| `map` | `renderLocalSEOMap()` (`dashboard.js:58436`) | `/maps/geocode`, `/maps/heatmap`, `/maps/competitors` |
+| `competitors-map` | `renderCompetitorsMap()` (`dashboard.js:58736`) | `/maps/competitors`, `/api/competitors` |
+| `zones` | — | `/api/local-maps/zones` |
+| `opportunities` | — | `/api/local-maps/opportunities` |
+| `reviews` | — | `/api/reviews/*` |
+| `gbp` | `renderLocalSEOGBP()` (`dashboard.js:57662`) | `/api/google/gbp`, `/api/gbp-posts` |
+
+### Google Maps Backend (`routes/maps.ts`)
+
+- Clé serveur : `FLOWPOINT_MAP_BACKEND` (alias `GOOGLE_MAPS_API_KEY`) — **jamais exposée au browser**
+- Clé browser : `GOOGLE_MAPS_PUBLIC_KEY` — servie par `GET /maps/config`
+- Double-injection guard : `dashboard.js` et `fp-backend.js` vérifient la présence d'un script Maps existant avant d'en créer un autre
+- Proxy `/maps/place-details?placeId=...` → appel serveur-side vers Google Places API
+- Infobulles sombres : `.gm-style-iw` CSS override
+
+### Rankings / Keywords (`routes/keywords.ts`)
+
+- Table : `tracked_keywords(org_id, keyword, current_position, prev_position, search_volume, trend, active)`
+- `GET /api/keywords` → liste filtrée org
+- `POST /api/keywords` → ajout
+- DataForSEO : `/serp/google/organic/live/advanced` pour positions réelles
+- Cron `dataforseo-sync` (`workers/cron-scheduler.ts:11`) → update positions périodique
+
+### Competitors (`routes/competitors.ts`)
+
+- Table : `competitors(org_id, name, url, domain_rating, keywords, threat_level, delta)`
+- Recherche manuelle → `POST /api/competitors` → INSERT
+- Map pins = résultats Google Maps temps réel (NON auto-persistés)
+- Ajout depuis map → `FP_COMPETITORS_API.create()` (`dashboard.js:67907`) → persist en DB
+
+### DataForSEO
+
+- Base URL : `https://api.dataforseo.com/v3`
+- Auth : Basic (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)
+- Endpoints utilisés : `/serp/google/organic/live/advanced`, `/serp/google/local_pack/live/advanced`
+- Quota : `dataforseo_quota` table, config `lib/config.ts:169` (20 000 unités/plan)
+
+### Flux complet : Recherche utilisateur → Rendu carte
+
+```
+User saisit adresse (Enter)
+  → FP_MAPS_API.searchAddress() (dashboard.js:58477)
+  → GET /maps/geocode?address=...
+  → GET /maps/heatmap?lat=...&lng=...&keyword=...
+  → GET /maps/competitors?lat=...&lng=...
+  → Réponse { competitors, count, center }
+  → FP_DATA = { competitors, ... }
+  → renderLocalSEOMap() consomme FP_DATA (dashboard.js:58449)
+  → Render pins Google Maps + heatmap overlay
+```
+
+### GSC / GA4
+
+- GSC : `routes/gsc.ts` — données clics/impressions/CTR/position
+- GA4 : `routes/ga4.ts` — sessions/users/realtime/sources/pages/funnels/conversions/audience/campaigns
+- Statut connexion : vérifié au load Phase 3 (`dashboard.js:1878-1885`)
+- Enforcement quota : `ga4-funnel-service.ts:382-399`
+
+---
+
+## 10. Agents IA
+
+### Endpoint principal : `POST /api/ai/chat`
+
+```
+Request reçue → auth (requireAuth)
+  ↓
+[CR-8] Guard orgId : !orgId || orgId==="default" → 400 ORG_ID_REQUIRED
+  ↓
+Résolution provider/model/economy/quota (ai.ts:1520-1705)
+  ↓
+[CR-5] isSimpleGreeting ? skip buildFlowpointContext (salutation/ack pures)
+  ↓
+buildFlowpointContext(orgId, contextFactor) (ai.ts:243-812)    ← t_context_start
+  ├── Promise.allSettled: keywords, competitors, google_tokens, seo_domain_metrics
+  ├── GSC/GA4 presence checks
+  ├── Audits + monitors (Drizzle parallel)
+  ├── PSI cache
+  ├── Calendar + missions + alerts + credits
+  └── Monitor health + recommendations
+  ↓ [CR-6] log _t_context_ms
+resolveEffectivePermissions() → permissions utilisateur
+  ↓
+System prompt = systemPromptBase + [CR-1] RÈGLE 0 + STRICT_AI_RULE + fpContext
+             + [CR-4] _hypotheticalBlock (si question hypothétique) + navPrompt + attachments
+  ↓
+[SSE path] Tool loop (si hasAnyToolPermission)
+  → runToolCallingLoop() (ai.ts:1042)
+  → MAX 6 rounds, ROUND_TIMEOUT 35s/60s, TOOL_TIMEOUT 95s, LOOP_DEADLINE 180s
+  → SSE: delta chunks + confirmation_request + undo_available + _ai + [DONE]
+  ↓
+[Non-SSE] aiChat() → JSON response
+  ↓
+Persist assistant message + deferred usage accounting
+```
+
+### Correctifs moteur IA — Task #592 (9 root-cause fixes)
+
+| CR | Description | Fichier |
+|---|---|---|
+| CR-1 | RÈGLE 0 : appel immédiat d'outil sans demander la permission | `ai.ts` system prompt |
+| CR-3 | STRICT_AI_RULE conditionnel : template visuel uniquement pour analyses complexes | `ai.ts` |
+| CR-4 | Détection hypothétique (regex si/would/imagine…) → `_hypotheticalBlock` injecté | `ai.ts` |
+| CR-5 | Salutation pure → skip `buildFlowpointContext` (aucune requête DB) | `ai.ts` |
+| CR-6 | Instrumentation `_t_context_ms` loggé à chaque requête | `ai.ts` |
+| CR-7 | Strict path : 1 retry + 1 s backoff même provider avant PROVIDER_UNAVAILABLE | `ai-provider.ts` |
+| CR-8 | Guard orgId : `undefined` ou `"default"` → 400 fail-closed | `ai.ts` |
+| CR-9 | `list_missions` ajouté (aucun paramètre requis) ; `query` optionnel dans `search_mission` | `mission-tools.ts` |
+
+### STRICT_AI_RULE (`ai.ts:814-950`)
+
+Appliqué de manière **conditionnelle** — uniquement pour les analyses complexes (audits, stratégie, comparaisons). Pour les salutations simples, questions rapides et réponses directes, le template `👉 / CLÔTURE` n'est pas imposé.
+
+Forçages toujours actifs :
+- Pas de salutations répétées
+- Max 3 priorités : 🔴 / 🟠 / 🟢
+- Pas de chiffres précis d'impact sans données vérifiées
+
+### Agents disponibles
+
+Il n'existe **pas de classes agent distinctes**. Le chat est un unique consultant SEO senior. Les endpoints spécialisés ont des prompts différents mais partagent la même infrastructure :
+
+| Endpoint | Prompt spécialisé | Ligne |
+|---|---|---|
+| `POST /api/ai/chat` | Consultant SEO senior + STRICT_AI_RULE | `ai.ts:1854` |
+| `POST /api/ai/seo` | Analyse SEO | `ai.ts:2760` |
+| `POST /api/ai/conversion` | Conversion | `ai.ts:2811` |
+| `POST /api/ai/local` | Local SEO | `ai.ts:2862` |
+| `POST /api/ai/competitors` | Concurrents | `ai.ts:2910` |
+| `POST /api/ai/audit` | Audit SEO | `ai.ts:2543` |
+| `POST /api/ai/missions` | Génération missions | `ai.ts:3062` |
+| `POST /api/ai/reports` | Rapport | `ai.ts:2924` |
+| `POST /api/ai/generate` | Marketing content | `ai.ts:3255` |
+| `POST /api/ai/pagespeed-insights` | PSI | `ai.ts:3139` |
+
+### ALL_TOOLS (`ai.ts:56-71`) — 48 outils au total
+
+| Tool | confirmationLevel | Permission | Notes |
+|---|---|---|---|
+| `list_missions` | none | missions.read | **CR-9** — aucun paramètre requis, filtres optionnels (status/category/priority/limit) |
+| `search_mission` | none | missions.read | **CR-9** — `query` optionnel ; sans query = liste complète |
+| `create_mission` | **preview** | missions.write | |
+| `update_mission` | preview | missions.write | |
+| `complete_mission` | preview | missions.write | |
+| `assign_mission` | none | missions.write | |
+| `delete_mission` | **full** | missions.delete | |
+| `navigate_to` | none | overview.read | |
+| Outils calendar (11) | none/preview/full | calendar.read/write | Phases 3.1 + 3.2 |
+| Outils audits (9) | none/preview/full | audits.read/write/delete | Phase 4 |
+| Outils recommendations (10) | none/preview | recommendations.read/write | Phase 5 |
+| Outils monitors (12) | none/preview/full | monitors.read/write/delete | Phase 6 |
+| `analyze_url` | none | overview.read | |
+
+### Instrumentation (`ai.ts`)
+
+Chaque requête `/api/ai/chat` émet deux entrées de log structuré :
+- `[AI] context built` — `orgId`, `_t_context_ms`, `isSimpleGreeting`, `isHypothetical`, `contextFactor`
+- `[AI] Chat complete` — `provider`, `model`, `tokens`, `latency`
+
+`_t_context_ms` mesure le temps entre le déclenchement de `buildFlowpointContext` et la fin du `Promise.allSettled`. Pour les salutations simples (`isSimpleGreeting: true`), ce délai est ≈50 ms (quota DB uniquement, aucun enrichissement). Pour une requête complexe, 200–400 ms (GSC + GA4 + audits + missions en parallèle).
+
+### Providers / Sélection (`services/ai-provider.ts`)
+
+**Strict (user-selected)** : `strictProvider=true` → 1 retry → PROVIDER_UNAVAILABLE si fail. Pas de fallback cross-provider.
+
+**Internal** : fallback chain `openai → anthropic → gemini` automatique.
+
+**Task defaults (`task-router.ts:16-49`) :**
+- chat → `openai/gpt-5-mini`
+- executive_report → `anthropic/claude-sonnet-4-6`
+- seo_audit → `anthropic/claude-sonnet-4-6`
+- forecasting → `openai/gpt-5`
+- vision → `gemini/gemini-2.5-flash`
+- image → `openai/gpt-image-1`
+
+### SSE Streaming
+
+Chunks → `data: { delta: "..." }` → `data: { _ai: { provider, model } }` → `data: [DONE]`
+
+Frontend (`dashboard.js:13685-13730`) : reader ReadableStream → parse `delta` / `confirmation_request` / `undo_available` / `_ai` / errors.
+
+### Crédits IA
+
+- Comptage : estimé chars/4 en tokens pour streaming ; exact pour non-stream
+- Déduction : après stream terminé (deferred)
+- Tables : `ai_monthly_usage`, `ai_credit_purchases`
+- Quota gate : vérifié avant chaque requête (`checkAIQuota`)
+
+---
+
+## 11. Traductions (`fpT()`)
+
+### Mécanisme
+
+```javascript
+window.fpT(key)  →  FP_I18N[currentLang][key] || FP_I18N['fr'][key] || key
+```
+
+- `FP_I18N` : objet global dans `dashboard.js`, catalogues par langue
+- Fallback en chaîne : lang actif → français → clé brute
+- Appel : `fpT('Clé exacte française')` — la clé IS le texte français
+
+### Langues supportées (catalogues présents)
+
+| Code | Langue | Lignes dashboard.js |
+|---|---|---|
+| `fr` | Français (défaut) | — |
+| `en` | Anglais | `~17495` |
+| `es` | Espagnol | `~20803` |
+| `de` | Allemand | `~23686` |
+| `it` | Italien | `~26548` |
+| `pt` | Portugais | `~29410` |
+| `nl` | Néerlandais | `~32272` |
+| `pl` | Polonais | `~35134` |
+| `sv` | Suédois | `~37996` |
+| `ro` | Roumain | `~40858` |
+| `cs` | Tchèque | `~43720` |
+
+### Persistance
+
+- Langue stockée dans `localStorage['fp_lang']` ou préférence org (`/api/me`)
+- Changement → `fpT()` réévalue + `render()` ou `fpApplyTranslations()`
+
+### Règle de code
+
+Tout texte visible DOIT passer par `fpT()`. Les textes hardcodés ne sont PAS traduits.
+
+### Traductions backend
+
+Les emails (mailer.ts) sont en français uniquement — pas de système i18n côté backend.
+
+---
+
+## 12. Responsive / Dark mode
+
+### Fichier CSS principal
+
+`artifacts/flowpoint-export/dashboard.css` — styles centralisés, variables CSS, responsive, dark mode.
+
+### Variables CSS (thème)
+
+```css
+:root {
+  --fp-bg             /* fond principal */
+  --fp-bg-sidebar     /* fond sidebar */
+  --fp-surface        /* cartes/surfaces */
+  --fp-border         /* bordures */
+  --fp-text           /* texte principal */
+  --fp-text-muted     /* texte secondaire */
+  --fp-accent         /* couleur d'accentuation */
+  --fp-danger         /* rouge erreurs */
+  --fp-track          /* fond inputs/tracks */
+  --fp-radius-md      /* border-radius medium */
 }
 ```
 
-### 6.2 Tables principales (par module)
+### Dark mode
 
-#### Auth & Sessions
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `user_sessions` | token(PK), user_id, org_id, email, role, expires_at | RLS : select by token only |
-| `magic_link_tokens` | token(PK), email, used, expires_at | Expire 15min, usage unique |
-| `login_audits` | org_id, email, success, ip, created_at | Historique connexions |
+- Mécanisme : attribut `data-theme` sur `<html>`
+- Sélecteur : `html[data-theme="dark"]` → surcharge variables
+- Sélecteur safe : `html:not([data-theme="light"])` pour dark-only
+- **Pitfall** : `bare :not([data-theme])` matche tout ancêtre → utiliser `html:not([data-theme="light"])`
+- Toggle : settings/localisation → `document.documentElement.setAttribute('data-theme', 'dark'/'light')`
+- Persistance : `localStorage['fp_theme']` ou préférence org
 
-#### Organisation
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `org_settings` | org_id(PK), plan, email, name, trial_ends_at, stripe_customer_id, subscription_status | Config principale |
-| `user_prefs` | user_id, org_id, prefs_json | Préférences UI par utilisateur |
-| `org_addons` | org_id, addon_key, enabled, quantity | Add-ons Stripe actifs |
+### Responsive
 
-#### Audits SEO
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `audits` | id, org_id, url, name, score, status, data_json, created_at | Résultats d'audit complets |
-| `audit_schedules` | org_id, url, frequency, next_run_at | Audits programmés |
-
-#### Monitoring Uptime
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `monitors` | id, org_id, name, url, interval, status, uptime, response_time | Config moniteur |
-| `monitor_checks` | monitor_id, status, response_time, checked_at | Historique checks |
-| `monitor_incidents` | monitor_id, started_at, resolved_at, duration | Incidents de downtime |
-
-#### Missions (IA)
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `missions` | id, org_id, title, description, category, type, priority, priority_score, status, impact, effort, ai_quick_win, ai_explanation, ai_action_steps, due_date | Tasks IA |
-| `mission_history` | id, mission_id, org_id, action, from_status, to_status | Audit trail |
-| `mission_ai_logs` | org_id, trigger, missions_created, model_used, created_at | Logs génération IA |
-
-#### Keywords & SEO
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `tracked_keywords` | id, org_id, keyword, url, device, location, current_position, prev_position, trend, search_volume, tag, cluster_id | Keywords suivis |
-| `keyword_history` | keyword_id, org_id, recorded_at, position, search_volume | Historique positions |
-| `keyword_clusters` | id, org_id, name, intent, count | Clusters thématiques |
-| `keyword_opportunities` | id, org_id, keyword, type, opportunity_score | Gaps SEO |
-| `ranking_alerts` | id, org_id, keyword_id, old_position, new_position, triggered_at, read | Alertes chute |
-| `keywords` | id, keyword, position, volume, difficulty, trend, tag | Table legacy (Drizzle) |
-
-#### Reports
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `reports` | id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json | Rapports générés |
-| `share_tokens` | token(PK), report_id, report_json, branding_json, views, expires_at | Partage public |
-| `report_templates` | org_id, logo_url, primary_color, footer_msg | Branding white-label |
-
-#### Billing
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `billing_events` | org_id, type, amount, currency, plan, stripe_event_id, created_at | Audit trail Stripe |
-| `ai_monthly_usage` | org_id, month, credits_used, credits_extra, total_tokens | Quota IA mensuel |
-| `ai_credit_purchases` | org_id, credits, stripe_session_id, created_at | Achats one-time |
-| `ai_usage_logs` | org_id, endpoint, tokens_used, model, created_at | Logs granulaires IA |
-
-#### Team
-| Table | Colonnes clés | Notes |
-|-------|--------------|-------|
-| `team_members` | id, org_id, name, email, role, joined | Membres de l'org |
-| `team_messages` | id, org_id, from_id, content, created_at | Messages internes |
-
-#### Autres modules
-| Table | Module | Notes |
-|-------|--------|-------|
-| `competitors` | Concurrents | domain, metrics_json, last_checked |
-| `notifications` | Notifs | type, title, message, read, link |
-| `calendar_events` | Calendrier | title, type, date, start_time |
-| `connectors` | Connecteurs | provider, credentials_json (chiffré), status |
-| `alert_rules` | Alertes | type, operator, threshold, channels, enabled |
-| `automation_workflows` | Automation | trigger_type, actions_json, enabled |
-| `behavior_events` | Analytics | session_id, event_type, url, metadata |
-| `cro_recommendations` | CRO | page_url, type, priority, status |
-| `revenue_leaks` | Revenue Leak | page, issue_type, impact_euros |
-| `seo_forecasts` | Forecast | org_id, metric, predictions_json |
-| `gbp_locations` | Local SEO | place_id, name, address, rating |
-| `review_analysis` | Reviews | source, rating, sentiment, text |
-| `crm_integrations` | CRM | provider (salesforce/hubspot), status |
-| `google_tokens` | OAuth | access_token (chiffré), refresh_token, scopes |
-| `sso_providers` | SSO | provider, metadata_url, entity_id |
-| `incoming_webhooks` | Webhooks | name, secret_token, actions_json |
+- Breakpoints dans `dashboard.css` (mobile-first)
+- Sidebar : collapse sous ~768px
+- Grilles : `fp-grid-2`, `fp-grid-3` → 1 colonne sur mobile
+- **Pitfall mobile** : checkboxes hidden absolues échappent au clip → `overflow:hidden` requis sur parent
+- Bars fixées : `left: var(--sidebar-width)` sur desktop → `left: 0` sur mobile
 
 ---
 
-## 7. RLS (Row Level Security)
+## 13. Legacy / Dead code
 
-### 7.1 Fonctionnement
+> Ces éléments existent dans le code actuel mais ne sont plus actifs ou sont partiellement obsolètes.
 
-```sql
--- Rôle applicatif (migration 011_app_user.sql)
-CREATE ROLE app_user NOLOGIN NOSUPERUSER;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+### Pages / Routes sans vraie implémentation backend
 
--- Politique type sur chaque table tenant-scoped (migration 012, 013)
-ALTER TABLE missions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY rls_org_isolation ON missions
-  USING (org_id = current_setting('app.current_org_id', true));
-CREATE POLICY tenant_insert ON missions FOR INSERT
-  WITH CHECK (org_id = current_setting('app.current_org_id', true));
--- + tenant_update, tenant_delete
-```
+Les routes suivantes ont un renderer dans `dashboard.js` mais peu/pas de données backend réelles :
+- `#github-integration`, `#code-analysis`, `#deployments`, `#repository-health` → UI présente, données GitHub limitées
+- `#crm`, `#market-intelligence`, `#permissions` → UI présente, backends partiels ou INCERTAIN
+- `#data-explorer` → UI présente, plusieurs sous-pages potentiellement vides
 
-Quand `withOrgDb` est utilisé :
-1. `BEGIN`
-2. `SET LOCAL ROLE app_user` → perd les droits superuser
-3. `SET LOCAL "app.current_org_id" = 'xxx'` → le GUC est lu par les policies
-4. La requête est exécutée → RLS filtre automatiquement par org
-5. `COMMIT`
+### Ancien système billing
 
-### 7.2 État de migration par route (au 27/06/2026)
+- `org_settings.stripe_customer_id` → **legacy**, ne plus utiliser ; source de vérité = `organizations.stripe_customer_id`
+- `org_settings` encore lue pour fallback legacy dans `resolveOrCreateLegacyOrg()` (`auth.ts:80-191`)
+- Colonnes `org_settings` encore patchées lors de la purge customer Stripe par compatibilité
 
-| Route | Méthode DB | RLS actif | Notes |
-|-------|-----------|-----------|-------|
-| `missions.ts` | `req.orgDb` | ✅ | Migré session 3 |
-| `notifications.ts` | `req.orgDb` | ✅ | Migré session 3 |
-| `calendar-events.ts` | `req.orgDb` | ✅ | Migré session 3 |
-| `team.ts` | `req.orgDb` | ✅ | Raw SQL (schema Drizzle manque org_id) |
-| `keywords.ts` | `req.orgDb` + Drizzle | ⚠️ Partiel | tracked_keywords = RLS ; keywords legacy = Drizzle bypass |
-| `reports.ts` | `req.orgDb` + Drizzle | ⚠️ Partiel | share_tokens = RLS ; reports table = Drizzle bypass |
-| `billing.ts` | `req.orgDb` + rawPool | ⚠️ Partiel | usage-details = RLS ; webhook = pool intentionnel (Stripe ≠ org user) |
-| `monitors.ts` | `req.orgDb` + pool | ⚠️ Partiel | Lectures = RLS ; writes background = pool |
-| `audits.ts` | `req.orgDb` + pool | ⚠️ Partiel | Lectures = RLS ; writes PSI background = pool |
-| `competitors.ts` | `req.orgDb` | ✅ | Migré |
-| `alert-rules.ts` | Drizzle `db` | ❌ | Drizzle bypass RLS |
-| `connectors.ts` | Drizzle `db` | ❌ | Drizzle bypass RLS |
-| `crm.ts` | `pool` | ❌ | Pool superuser |
-| `integrations.ts` | `pool` | ❌ | Pool superuser |
-| `market-intelligence.ts` | `pool` | ❌ | Pool superuser |
-| `review-intelligence.ts` | `pool` | ❌ | Pool superuser |
-| `gbp-posts.ts` | `pool` | ❌ | Pool superuser |
-| `local-maps.ts` | `pool` | ❌ | Pool superuser |
-| `gsc.ts` | `pool` | ❌ | Pool superuser |
-| `me.ts` | `pool` | ❌ | Pool superuser |
-| `google.ts` | `pool` | ❌ | Pool superuser |
-| `automation.ts` | Drizzle `db` | ❌ | Drizzle bypass RLS |
-| `behavioral.ts` | Drizzle `db` | ❌ | Drizzle bypass RLS |
-| `cro.ts` | Drizzle `db` | ❌ | Drizzle bypass RLS |
-| `revenue-leak.ts` | Drizzle `db` | ❌ | Drizzle bypass RLS |
-| `share.ts` | Drizzle `db` | ❌ | Public endpoint — pas d'orgId |
-| `auth.ts` | `pool` | N/A | Global par design (magic links) |
-| `health.ts` | `pool` | N/A | Infrastructure |
-| `admin.ts` | `pool` | N/A | Admin superuser intentionnel |
-| `diagnostics.ts` | `pool` | N/A | Infrastructure |
+### Mock data / Données hardcodées
 
-> **Résumé :** ~35% des routes utilisent `req.orgDb` (RLS actif). Les Drizzle `db` calls et les `pool` directs dans les routes métier représentent le principal risque d'isolation à corriger avant mise en production.
+- Concurrents DFS : partiellement hardcodés dans certaines vues — task #113 existante
+- Dashboard.js : certaines sections de forecast/projections peuvent utiliser des courbes calculées sur données synthétiques
+
+### Anciens systèmes Reports
+
+- `renderNewReportPanel()` (`dashboard.js:8391`) peut être legacy (le renderer principal est `renderGA4Reports()` `68319`)
+
+### Preview mode / Flags
+
+- Pas de flag "preview mode" global identifié
+- `fp-config.js` : constantes de configuration frontend
+
+### `window.fn && window.fn()` guards
+
+`dashboard.js` utilise des guards `window.fn && window.fn()` qui indiquent des fonctions qui peuvent être absentes — signe de dead UI ou de chargement conditionnel (`dashboard-global-onclick-scope.md` memory).
+
+### Redirections obsolètes
+
+- `GET /api/auth/login-verify` rétrocompatible pour anciens liens (`:1691-1701`)
+- Anciens patterns `org_id` email-shaped (ex: `support@flowpoint.pro` comme org_id) → migrés vers UUID mais code de compatibilité encore présent dans `resolveOrCreateLegacyOrg()`
 
 ---
 
-## 8. Organisation & Multi-tenant
+## 14. Arbre des fichiers
 
-### 8.1 Création d'une organisation
+### Frontend (`artifacts/flowpoint-export/`)
 
-Actuellement, l'org `default` est la seule organisation active. La table `org_settings` est le pivot :
+| Fichier | Rôle |
+|---|---|
+| `dashboard.html` | Shell HTML du dashboard authentifié |
+| `dashboard.js` | **68 718 lignes** — State, routing, rendering, i18n, toutes les pages |
+| `dashboard.css` | Styles, variables CSS, dark mode, responsive |
+| `fp-backend.js` | Wrapper API, session restore, SSE/polling, auth redirect |
+| `fp-config.js` | Constantes runtime frontend |
+| `signin.html` | Page sign-in (lien Google OAuth) |
+| `login.html` | Formulaire saisie email → magic link |
+| `login-verify.html` + `login-verify.js` | Consommation token magic link → création session |
+| `pricing.html` + `pricing.js` | Catalogue plans, sélection, cart → checkout |
+| `checkout.html` + `checkout.js` | Étapes checkout Stripe |
+| `checkout-payment.html` | UI paiement |
+| `checkout-return.html` | Retour Stripe → vérification session → redirect |
+| `success.html` | Confirmation post-checkout |
+| `cancel.html` | Annulation checkout |
+| `accept-invitation.html` | Acceptation invitation équipe |
+| `report-view.html` | Viewer rapport partagé (public, token) |
 
-```sql
-CREATE TABLE org_settings (
-  org_id TEXT PRIMARY KEY DEFAULT 'default',
-  plan TEXT DEFAULT 'standard',
-  email TEXT,
-  name TEXT,
-  trial_ends_at TIMESTAMPTZ,
-  subscription_status TEXT DEFAULT 'trial',
-  stripe_customer_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+### Backend routes (`artifacts/api-server/src/routes/`)
 
-À l'inscription d'un utilisateur : si `org_settings` pour son `org_id` n'existe pas, un enregistrement est créé via `upsertOrgSettings()`.
+| Fichier | Rôle |
+|---|---|
+| `index.ts` | Composition routers public/auth, middlewares globaux |
+| `auth.ts` | Magic link, verify, session, logout, OAuth |
+| `me.ts` | Profil user/org, plan, limits, addons |
+| `billing.ts` | Checkout, upgrade, payment-methods, portal, usage, invoices |
+| `ai.ts` | **3 301 lignes** — Chat SSE, tools, context, tous endpoints IA |
+| `audits.ts` + `audit.ts` | CRUD audits, PSI, score history |
+| `monitors.ts` | CRUD monitors, checks, SLA, incidents |
+| `missions.ts` | CRUD missions, progress, assign |
+| `reports.ts` | CRUD reports, PDF, share tokens |
+| `competitors.ts` | CRUD concurrents |
+| `keywords.ts` | CRUD keywords, positions |
+| `maps.ts` | Proxy Google Maps config/browser key |
+| `local-maps.ts` | Heatmap, geocode, competitors map, zones |
+| `gsc.ts` | Search Console — sync, keywords, pages, impressions |
+| `ga4.ts` | GA4 — properties, overview, realtime, sources, funnels |
+| `google.ts` | OAuth Google, GBP, AI reply |
+| `alert-rules.ts` | CRUD règles alertes, évaluation |
+| `events.ts` | SSE endpoint `/api/events` |
+| `activity.ts` | Fil d'activité |
+| `team.ts` | Membres, invitations, chat, fichiers |
+| `calendar-events.ts` | CRUD événements calendrier |
+| `billing.ts` (stripe-webhook) | Webhooks Stripe |
+| `admin.ts` | Opérations admin (purge, support) |
+| `settings.ts` | API keys, sessions security |
+| `automation.ts` | Workflows automation CRUD |
+| `integrations.ts` | Catalogue connecteurs |
+| `health.ts` | `GET /health` public |
 
-### 8.2 Lien utilisateur ↔ organisation
+### Services (`artifacts/api-server/src/services/`)
 
-- Chaque session (`user_sessions`) porte un `org_id`
-- `req.orgContext.orgId` est extrait de la session active
-- `req.orgId` est un shortcut = `req.orgContext?.orgId ?? 'default'`
+| Fichier | Rôle |
+|---|---|
+| `billing-context.ts` | Charge état billing par requête depuis organizations |
+| `ensure-stripe-customer.ts` | DB-first customer creation, concurrency lock |
+| `ai-provider.ts` | Unified chat/stream API, fallback chain |
+| `ai-providers/task-router.ts` | Defaults provider/model par task type |
+| `ai-providers/openai-provider.ts` | Adapteur OpenAI |
+| `ai-providers/anthropic-provider.ts` | Adapteur Anthropic |
+| `ai-providers/gemini-provider.ts` | Adapteur Gemini |
+| `ai-engine.ts` | Comptage usage, credits accounting |
+| `mailer.ts` | Envoi emails (Resend/SMTP), 11 types |
+| `sessions.ts` | Création/validation/suppression sessions |
+| `org-data.ts` | Chargement données org (organizations + fallback org_settings) |
+| `billing-quote.ts` | Calcul devis billing |
+| `addons-service.ts` | Activation/désactivation add-ons, Stripe sync |
+| `store.ts` | Store global serveur, SSE broadcast, logActivity |
+| `ga4-funnel-service.ts` | GA4 funnels, quota enforcement |
+| `init-data-tables.ts` | Auto-création/migration tables au démarrage |
 
-### 8.3 In-memory Store (singleton)
+### Agents IA (`artifacts/api-server/src/agent/`)
 
-Le `Store` en mémoire (`services/store.ts`) représente l'état de l'org active côté serveur :
+| Fichier | Rôle |
+|---|---|
+| `tool-executor.ts` | Registry ALL_TOOLS, dispatch, validation Zod, permission check |
+| `mission-tools.ts` | Définitions tools missions (search/create/update/complete/assign/delete) |
+| `calendar-tools.ts` | Définitions tools calendrier (5 outils) |
+| `audit-tools.ts` | Définitions tools audits (9 outils) |
+| `recommendation-tools.ts` | Définitions tools recommandations (10 outils) |
+| `monitor-tools.ts` | Définitions tools monitors (12 outils) |
+| `url-tools.ts` | analyze_url, run_audit |
+| `permissions.ts` | Résolution permissions effectives |
+| `nav-agent.ts` | navigate_to tool |
+| `destination-registry.ts` | Registre destinations navigation |
+| `proposals.ts` | Proposals SSE frame |
+| `undo.ts` | Undo handlers par action |
 
-```typescript
-class Store {
-  me: {
-    plan: string;         // "standard" | "pro" | "ultra" | "agency"
-    orgId: string;        // "default" (actuellement mono-org)
-    email?: string;
-    name?: string;
-    addons: Record<string, boolean>;  // whiteLabel, prioritySupport, etc.
-    seats: number;
-    trialEndsAt?: string;
-    subscriptionStatus?: string;  // "trial" | "active" | "past_due" | "canceled"
-    stripeCustomerId?: string;
-  };
-  triggeredAlerts: Array<...>;
-  sseClients: Set<(data: string) => void>;  // SSE connectés
-}
-```
+### Middlewares (`artifacts/api-server/src/middlewares/`)
 
-Au démarrage serveur, `store.refresh()` recharge le plan depuis `org_settings` DB.
+| Fichier | Rôle |
+|---|---|
+| `requireAuth.ts` | Validation session Bearer/cookie |
+| `requireRole.ts` | Gate owner-only (`ownerOnly`) |
+| `rateLimiter.ts` | Rate limiting global + par route |
+| `dbContext.ts` | Injection pool DB dans req |
+
+### Lib (`artifacts/api-server/src/lib/`)
+
+| Fichier | Rôle |
+|---|---|
+| `plans.ts` | PLAN_LIMITS, PLAN_PRICE_IDS, ADDON_DEFINITIONS, PLAN_INCLUDED_ADDONS |
+| `config.ts` | Configuration runtime (quotas, timeouts) |
+| `logger.ts` | Pino logger structuré |
+| `subscription-state.ts` | Normalisation statut Stripe → état interne |
 
 ---
 
-## 9. Flux de données API → Frontend
+## 15. Diagrammes ASCII
 
+### Auth
 ```
-1. Utilisateur clique sur "Missions" dans le menu
-          │
-          ▼
-2. navigate("missions")   [dashboard.js]
-   → STATE.route = "missions"
-   → render()
-          │
-          ▼
-3. renderMissions()   [dashboard.js]
-   → Affiche skeleton/loading
-   → FP_MISSIONS_API.loadAll()
-          │
-          ▼
-4. apiFetch("/api/missions")   [fp-backend.js]
-   → fetch("https://[host]/api/missions", { credentials: 'include' })
-   → Header automatique : Cookie fp_token=...
-          │
-          ▼
-5. Express route handler   [routes/missions.ts]
-   → requireAuth → vérifie session DB
-   → req.orgDb("SELECT * FROM missions WHERE org_id = $1", [orgId])
-   → withOrgDb : SET ROLE app_user + SET app.current_org_id
-   → PostgreSQL RLS policy filtre par org_id
-   → Retourne rows[]
-          │
-          ▼
-6. res.json(missions)   → 200 JSON
-          │
-          ▼
-7. fp-backend.js reçoit la réponse
-   → normalise (dates, id mapping)
-   → STATE.missions = missions
-          │
-          ▼
-8. render()   → _doRender()
-   → renderMissions() avec STATE.missions rempli
-   → Template literals → chaîne HTML
-   → document.getElementById('fp-page').innerHTML = html
-          │
-          ▼
-9. Utilisateur voit la liste des missions
-```
-
-### SSE (Server-Sent Events)
-
-```
-EventSource /api/events (connection permanente)
-  ↓ fp:monitor:alert    → STATE.alerts.push(...) → render()
-  ↓ billing:plan_updated → STATE.me.plan = plan → render()
-  ↓ fp:audit:complete   → STATE.audits reload   → render()
-  ↓ payment_failed      → affiche banner rouge  → render()
+signin.html
+    │
+    ▼
+POST /api/auth/magic-link
+    │ génère token (1h) + email
+    ▼
+login-verify.html?token=xxx
+    │
+    ▼
+POST /api/auth/verify
+    │ consume token → créer user_session → Set-Cookie fp_token
+    ▼
+sessionStorage fp_session_token
+    │ location.replace
+    ▼
+dashboard.html
+    │
+    ▼
+fp-backend.js: POST /api/auth/session-restore
+    │ Bearer → session validate
+    ▼
+GET /api/me
+    │
+    ▼
+STATE.me → render()
 ```
 
 ---
 
-## 10. APIs par page du dashboard
-
-| Page | Endpoints GET principaux | Endpoints CRUD |
-|------|--------------------------|----------------|
-| **Overview** | `GET /api/overview` | — |
-| **Audits** | `GET /api/audits` | `POST /api/audits`, `DELETE /api/audits/:id` |
-| **Monitors** | `GET /api/monitors` | `POST /api/monitors`, `PATCH /api/monitors/:id`, `DELETE /api/monitors/:id` |
-| **Missions** | `GET /api/missions`, `/api/missions/stats`, `/api/missions/quick-wins`, `/api/missions/roadmap` | `POST /api/missions`, `PATCH /api/missions/:id`, `DELETE /api/missions/:id` |
-| **Keywords** | `GET /api/keywords`, `/api/keywords/stats`, `/api/keywords/clusters`, `/api/keywords/opportunities` | `POST /api/keywords/track`, `DELETE /api/keywords/:id` |
-| **Competitors** | `GET /api/competitors` | `POST /api/competitors`, `DELETE /api/competitors/:id` |
-| **Reports** | `GET /api/reports` | `POST /api/reports`, `POST /api/reports/:id/share`, `DELETE /api/reports/:id` |
-| **Billing** | `GET /api/billing/subscription`, `/api/billing/invoices`, `/api/billing/usage`, `/api/billing/usage-details` | `POST /api/billing/checkout`, `POST /api/billing/portal` |
-| **Alert Rules** | `GET /api/alert-rules` | `POST /api/alert-rules`, `PATCH /api/alert-rules/:id`, `DELETE /api/alert-rules/:id` |
-| **Team** | `GET /api/team` | `POST /api/team/invite`, `PATCH /api/team/:id`, `DELETE /api/team/:id` |
-| **Calendar** | `GET /api/calendar-events` | `POST /api/calendar-events`, `PATCH /api/calendar-events/:id`, `DELETE /api/calendar-events/:id` |
-| **Notifications** | `GET /api/notifications` | `POST /api/notifications`, `PATCH /api/notifications/:id/read`, `DELETE /api/notifications/:id` |
-| **Connectors** | `GET /api/connectors` | `POST /api/connectors/:provider/connect`, `POST /api/connectors/:provider/disconnect` |
-| **Market Intel** | `GET /api/market-intelligence` | `POST /api/market-intelligence/refresh` |
-| **Review Intel** | `GET /api/review-intelligence` | `POST /api/review-intelligence/reply` |
-| **GBP Posts** | `GET /api/gbp-posts` | `POST /api/gbp-posts` |
-| **Local Maps** | `GET /api/local-seo/citations` | — |
-| **CRM** | `GET /api/crm/status`, `/api/crm/providers`, `/api/crm/logs` | `POST /api/crm/connect/:provider`, `POST /api/crm/sync` |
-| **Automation** | `GET /api/automation/workflows` | `POST /api/automation/workflows`, `POST /api/automation/workflows/:id/run` |
-| **Forecast** | `GET /api/forecast` | `POST /api/forecast/refresh` |
-| **AI** | `GET /api/ai/recommendations` | `POST /api/ai-workspace-launch` |
-| **Settings/Me** | `GET /api/me`, `GET /api/me/prefs` | `PATCH /api/me`, `PUT /api/me/prefs` |
-
----
-
-## 11. Stripe & Billing
-
-### 11.1 Plans disponibles
-
-| Plan | Prix Stripe | Audits | Monitors | Reports | Team seats | AI crédits/mois |
-|------|-------------|--------|----------|---------|-----------|-----------------|
-| Standard | `STRIPE_PRICE_ID_STANDARD` | 30 | 3 | 30 | 1 | 30 000 |
-| Pro | `STRIPE_PRICE_ID_PRO` | 300 | 50 | 300 | 5 | 100 000 |
-| Ultra | `STRIPE_PRICE_ID_ULTRA` | 2 000 | 300 | 2 000 | 10 | 500 000 |
-| Agency | custom | illimité | illimité | illimité | illimité | 2 000 000 |
-
-### 11.2 Add-ons disponibles (25+)
-
-Catégories :
-- **Monitoring** : monitorsPack10, monitorsPack50, globalMonitoring, slaMonitoring
-- **SEO Lab** : advancedSeoLab, keywordDomination, backlinkIntelligence, aiContentStrategist
-- **Local SEO** : gbpSlots10, aiGbpPosting, reviewIntelligence, localDominationMaps
-- **CRO / Conversion** : aiCro, behavioralAI, revenueLeak, abTestingAI
-- **Rapports** : whiteLabel, agencyPacks, aiExecutiveReport, aiForecasting
-- **Intelligence** : marketIntelligence, aiWorkflows
-- **Team** : extraSeats, enterprisePermissions
-- **Rétention data** : retention90d, retention365d
-- **Intégrations** : advancedWebhooks, zapierIntegration, crmIntegration
-- **Enterprise** : customDomain, ssoEnterprise, aiWorkspaceLaunch, prioritySupport
-- **Crédits IA** : aiCreditsPack50k, aiCreditsPack200k, aiCreditsPack500k
-
-### 11.3 Flux de paiement
-
+### Dashboard render
 ```
-1. POST /api/billing/checkout { plan, addons[], trialDays }
-   → buildLineItems() → Stripe Checkout Session (14j trial)
-   → { url: "https://checkout.stripe.com/..." }
+dashboard.html load
+    │
+    ▼
+fp-backend.js: session-restore
+    │ fail → /login.html
+    ▼
+dashboard.js: init()
+    │
+    ├─ Phase 0: GET /api/me (obligatoire)
+    │
+    ├─ Phase 1: loadData() [bloquant]
+    │   ├── /api/overview, /api/plans
+    │   ├── /api/audits, /api/monitors, /api/missions
+    │   ├── /api/reports, /api/alerts, /api/team
+    │   └── STATE.loading = false
+    │
+    ├─ render() ← premier render complet
+    │   └── _doRender(route, sub)
+    │         ├── select renderer
+    │         ├── innerHTML #fp-page
+    │         └── bind events
+    │
+    └─ Phase 3: loadDataSecondary() [non-bloquant]
+        ├── /api/ga4/*, /api/gsc/*, billing, calendar...
+        └── render() si page concernée
 
-2. Utilisateur paye → Stripe redirige → /billing?success=1
-
-3. GET /api/billing/verify?session_id=xxx
-   → Vérifie payment_status === "paid"
-   → Met à jour store.me.plan en mémoire + org_settings DB
-
-4. Stripe envoie webhook → POST /api/webhooks/stripe
-   → Vérifie signature (STRIPE_WEBHOOK_SECRET)
-   → Traite les events (voir tableau ci-dessous)
-```
-
-### 11.4 Events Stripe traités
-
-| Event Stripe | Action FlowPoint |
-|-------------|-----------------|
-| `checkout.session.completed` | Active plan, stocke stripeCustomerId, broadcastPlanUpdate |
-| `customer.subscription.created` | Synchro plan + add-ons → DB |
-| `customer.subscription.updated` | Mise à jour plan/status/trial + add-ons |
-| `customer.subscription.deleted` | Downgrade → standard, désactive add-ons |
-| `customer.subscription.trial_will_end` | Log (TODO: envoyer email reminder Resend) |
-| `invoice.payment_succeeded` | Status → active, trackBillingEvent |
-| `invoice.payment_failed` | Status → past_due, broadcast payment_failed SSE |
-
-### 11.5 Crédits IA
-
-```
-Achats one-time → POST /api/billing/checkout-ai-credits
-  → checkout.session.completed
-  → INSERT ai_credit_purchases
-  → UPDATE ai_monthly_usage SET credits_extra += N
-
-Consommation :
-  → POST /api/ai/* (recommendations, missions/generate, etc.)
-  → checkQuota() vérifie ai_monthly_usage
-  → logUsage() INSERT ai_usage_logs + UPDATE ai_monthly_usage
+                    ┌──────────────────────────┐
+                    │  SSE /api/events          │
+                    │  poll 60s                 │
+                    │  → patch STATE → rerender │
+                    └──────────────────────────┘
 ```
 
 ---
 
-## 12. Automatisation, Cron & Webhooks
-
-### 12.1 Cron jobs actifs
-
-| Job | Intervalle | Source | Action |
-|-----|-----------|--------|--------|
-| `monitor-health` | 5 min | `monitor-cron.ts` + `setInterval` | Vérifie uptime de tous les monitors actifs, crée incidents, déclenche alertes |
-| `dataforseo-sync` | 6h | `dataforseo-cron.ts` + `setInterval` | Rafraîchit métriques SEO des domaines stale (>6h), régénère missions |
-| `mission-engine` | 6h | `cron-scheduler.ts` | Analyse données SEO + monitoring → génère/met à jour missions IA |
-| `audit-scheduler` | 1h | `cron-scheduler.ts` | Exécute les audits planifiés (audit_schedules) |
-| `forecast-refresh` | 24h | `cron-scheduler.ts` | Refraisîchit prédictions SEO (seo_forecasts) |
-
-### 12.2 Système d'automatisation
-
+### Navigation
 ```
-automation_workflows (table DB)
-  trigger_type: "schedule" | "event" | "condition" | "manual"
-  actions_json: [{ type: "send_report", ... }, { type: "send_email", ... }]
-  enabled: boolean
+User click nav item
+    │
+    ▼
+navigate('route', 'sub')
+    │
+    ├─ history.replaceState('#route/sub')
+    ├─ localStorage['fp_last_route'] = route
+    └─ _doRender(route, sub) [debounce 30ms]
+                │
+                ▼
+        route switch (dashboard.js:15019)
+                │
+                ▼
+        renderXxx() → innerHTML #fp-page
+                │
+                ▼
+        bindGlobalEvents()
+        initChartTooltips()
+        ...
 
-POST /api/automation/workflows/:id/run
-  → automation-service.ts → execute chaque action séquentiellement
-  → INSERT workflow_runs (log)
-
-Workflows prédéfinis (seedés au démarrage) :
-  - Weekly Client Report
-  - Strict SLA Monitoring  
-  - Full SEO Pipeline
-  - Client Onboarding
-  - Competitor Intelligence
-```
-
-### 12.3 Webhooks entrants
-
-```
-incoming_webhooks (table DB)
-  name, secret_token, actions_json, enabled
-
-POST /api/webhooks/:token
-  → Vérifie secret_token
-  → Déclenche les actions configurées
-```
-
-### 12.4 Webhooks Stripe
-
-```
-Endpoint public (avant requireAuth) :
-  POST /api/webhooks/stripe  [stripe-webhook.ts]
-  POST /api/billing/webhook  [billing.ts - backup]
-
-Sécurité :
-  stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET)
-  
-Idempotence :
-  billing_events table avec stripe_event_id unique
+Hash change / popstate
+    │
+    ▼
+listener → parse hash → navigate()
 ```
 
 ---
 
-## 13. Services externes
-
-| Service | Variables d'env | Statut | Usage |
-|---------|----------------|--------|-------|
-| **Stripe** | `STRIPE_SECRET_KEY`, `STRIPE_LIVE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_STRIPE_API_KEY` | ✅ Complet | Abonnements, checkout, portal, webhooks, crédits IA |
-| **Resend** | `RESEND_API_KEY` | ✅ Complet | Magic links, notifications email |
-| **DataForSEO** | `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` | ⚠️ Hybride | Keywords, SERP, backlinks — fallback mock si non configuré |
-| **Google OAuth** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | ✅ Complet | Auth OAuth, tokens chiffrés DB |
-| **Google GBP** | (tokens OAuth) | ✅ Complet | GMB posts, reviews, locations |
-| **Google GSC** | (tokens OAuth) | ⚠️ Stub | syncGSCData retourne 0, getTopKeywords retourne mock |
-| **Google GA4** | (tokens OAuth) | ⚠️ Stub | ga4-service.ts retourne données mock |
-| **BetterStack** | `BETTERSTACK_API_TOKEN` | ✅ Complet | Sync monitors, incidents, heartbeats, SLA |
-| **GitHub** | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | ✅ Complet | OAuth, repo analysis |
-| **OpenAI** | `OPENAI_API_KEY` | ✅ Complet | GPT-4o pour missions, CRO, market intel, forecast |
-| **SMTP** | `SMTP_PASS` (env présent) | ⚠️ Non implémenté | Remplacé par Resend |
-| **Google Maps** | `GOOGLE_MAPS_API_KEY` (MCP) | ⚠️ Partiel | Lookups basiques via MCP, DataForSEO pour maps SERP |
-
----
-
-## 14. Migrations & Initialisation
-
-### 14.1 Migrations SQL (ordre d'application)
-
-| Migration | Contenu |
-|-----------|---------|
-| `001_auth_tables.sql` | `user_sessions`, `magic_link_tokens`, `login_audits` |
-| `002_dashboard_tables.sql` | `audits`, `reports`, `keywords`, `competitors`, `monitors`, `alert_rules`, `team_members`, `notifications`, `connectors`, `billing_events`, `behavior_*`, `cro_*`, `crm_*`, `sso_*`, `ai_*` |
-| `003_fix_monitors_notifications.sql` | Corrections colonnes monitors + notifications |
-| `004_org_settings_activity_logs.sql` | `org_settings`, `activity_logs` |
-| `005_missing_tables.sql` | `tracked_keywords`, `keyword_clusters`, `keyword_history`, `keyword_opportunities`, `ranking_alerts`, `competitor_rankings`, `user_prefs`, `market_trends`, `industry_signals` |
-| `006_location.sql` | Tables géolocalisation |
-| `007_missing_tables_2.sql` | `google_tokens`, `seo_forecasts`, `gbp_locations`, `crm_field_mappings`, `competitor_movements` |
-| `008_automation_missions.sql` | `missions`, `mission_history`, `mission_ai_logs`, `automation_workflows`, `workflow_runs`, `incoming_webhooks`, `automation_runs` |
-| `009_ai_credit_purchases.sql` | `ai_credit_purchases` |
-| `010_rls_hardening_clean.sql` | Enable RLS + policies de base sur toutes les tables |
-| `011_app_user.sql` | Rôle `app_user`, GRANT sur toutes les tables |
-| `012_supabase_rls_tenant_isolation.sql` | Policies `rls_org_isolation` (5 policies/table) pour 145 tables |
-| `013_supabase_cloud_rls.sql` | Ajustements pour Supabase cloud (SECURITY DEFINER views) |
-
-### 14.2 Initialisation au démarrage serveur
-
-```typescript
-// artifacts/api-server/src/index.ts
-await initMissionsTables();     // Vérifie missions, mission_history, mission_ai_logs
-await initAutomationTables();   // Vérifie automation_workflows, workflow_runs
-await initMonitorsTables();     // Vérifie monitors, monitor_checks, monitor_incidents
-await initDataTables();         // Vérifie audits, notifications, competitors, calendar_events
-await store.refresh();          // Recharge plan + addons depuis org_settings DB
-startCronJobs();                // Lance les workers periodiques
+### Billing
+```
+Dashboard CTA (upgrade/trial)
+    │
+    ▼
+fpGoToPricing() → /pricing.html
+    │
+    ▼
+pricing.js: sélection plan/addons → fp_cart localStorage
+    │
+    ▼
+POST /api/billing/create-checkout-session
+    │ createStripeCustomer (DB-first, ensureStripeCustomer)
+    │ Stripe Checkout Session (mode:'subscription')
+    ▼
+Redirect → Stripe hosted checkout
+    │
+    ▼
+/checkout-return.html?session_id=...
+    │
+    ├─ GET /api/billing/verify?session_id=...
+    │   → persist plan/status/customer/subscriptionId
+    │
+    └─ [parallel] Stripe webhook checkout.session.completed
+        → stripe-webhook.ts:778
+        → activate plan, provision addons
+        → UPDATE organizations SET subscription_status='trialing'/'active'
+    │
+    ▼
+/dashboard.html#billing ou #overview
+    │
+    ▼
+SSE billing:plan_updated → re-fetch /api/me → render
 ```
 
 ---
 
-## 15. Tableau de complétude par module
-
-| Module | Complétude | Endpoints principaux | Tables principales | RLS | Points restants |
-|--------|-----------|---------------------|-------------------|-----|-----------------|
-| **Audits** | 80% | GET/POST/DELETE /api/audits, GET /api/audits/:id/details | `audits`, `audit_schedules` | ⚠️ Partiel | GSC/GA4 réels (actuellement mock) ; rapport complet PDF |
-| **Monitors** | 85% | CRUD /api/monitors, /api/monitors/:id/checks | `monitors`, `monitor_checks`, `monitor_incidents` | ⚠️ Partiel | BetterStack sync complet ; SSL checker |
-| **Missions** | 90% | CRUD /api/missions, /api/missions/generate, /api/missions/roadmap | `missions`, `mission_history`, `mission_ai_logs` | ✅ | Engine AI améliorable ; intégration GSC réelle |
-| **Keywords** | 75% | CRUD /api/keywords, /api/keywords/track, /api/keywords/stats | `tracked_keywords`, `keyword_clusters`, `keyword_history` | ⚠️ Partiel | DataForSEO sync réel (stub) ; SERP live |
-| **Competitors** | 70% | CRUD /api/competitors | `competitors`, `competitor_rankings` | ✅ | Analyses IA plus poussées ; tracking SERP live |
-| **Reports** | 80% | CRUD /api/reports, /api/reports/:id/share, /api/reports/:id/download | `reports`, `share_tokens`, `report_templates` | ⚠️ Partiel | Drizzle sans org_id à corriger ; envoi email auto |
-| **Billing** | 85% | GET /api/billing/*, POST /api/billing/checkout, portal | `org_settings`, `billing_events`, `org_addons`, `ai_monthly_usage` | ⚠️ Partiel | Gestion multi-org ; reminder email trial |
-| **Alert Rules** | 75% | CRUD /api/alert-rules | `alert_rules` | ❌ Drizzle | Migrate vers req.orgDb ; SMS channel |
-| **Team** | 80% | CRUD /api/team, /api/team/invite | `team_members`, `team_messages` | ✅ | Invitation email réelle ; permissions granulaires |
-| **Calendar** | 80% | CRUD /api/calendar-events | `calendar_events` | ✅ | Intégration Google Calendar |
-| **Notifications** | 85% | CRUD /api/notifications, /api/notifications/read-all | `notifications` | ✅ | Push notifications browser |
-| **Connectors** | 65% | GET/POST /api/connectors/* | `connectors` | ❌ Drizzle | Migrate ; OAuth flows complets Slack/Jira |
-| **CRM** | 50% | GET /api/crm/status, /providers, /logs | `crm_integrations`, `crm_sync_logs`, `crm_field_mappings` | ❌ Pool | Sync HubSpot/Salesforce réel (stub) |
-| **Market Intelligence** | 60% | GET /api/market-intelligence | `market_trends`, `market_opportunities`, `industry_signals` | ❌ Pool | DataForSEO live ; tendances réelles |
-| **Review Intelligence** | 65% | GET /api/review-intelligence, POST /reply | `review_analysis`, `review_alerts` | ❌ Pool | GBP review sync automatique |
-| **GBP Posts** | 70% | CRUD /api/gbp-posts | `gbp_locations` | ❌ Pool | Planification avancée ; analytics posts |
-| **Local SEO / Maps** | 50% | GET /api/local-seo/citations | `gbp_locations` | ❌ Pool | /api/local-seo 404 ; local rank live |
-| **Forecast** | 65% | GET /api/forecast | `seo_forecasts` | N/A | Modèle prédictif plus précis |
-| **CRO** | 60% | GET /api/cro | `cro_recommendations`, `cro_scores`, `cro_experiments` | ❌ Drizzle | A/B testing réel ; heatmaps |
-| **Revenue Leak** | 55% | GET /api/revenue-leak | `revenue_leaks` | ❌ Drizzle | Calculs réels (scraping + analytics) |
-| **AI / Workspace** | 70% | GET /api/ai/recommendations, POST /api/ai-workspace-launch | `ai_usage_logs`, `ai_monthly_usage` | N/A | Contexte plus riche ; RAG sur données client |
-| **Automation** | 65% | CRUD /api/automation/workflows, POST /run | `automation_workflows`, `workflow_runs` | ❌ Drizzle | Triggers event réels ; Zapier/Make |
-| **Analytics Comportement** | 55% | GET /api/behavioral, snippet JS | `behavior_events`, `behavior_sessions`, `behavior_insights` | ❌ Drizzle | Entonnoirs ; replay sessions |
-| **SSO Enterprise** | 60% | GET/POST /api/sso/* | `sso_providers`, `org_auth_config` | N/A | Tests SAML réels |
-| **White Label** | 70% | GET/PATCH /api/white-label | `report_templates`, `custom_domains` | ❌ Drizzle | DNS validation custom domain |
-| **GSC / GA4** | 30% | GET /api/gsc/*, /api/ga4/* | `google_tokens` | ❌ Pool | syncGSCData stub → vraies données |
-| **Overview** | 85% | GET /api/overview | Agrégat multi-tables | N/A | Métriques historiques plus riches |
-| **Activity** | 90% | GET /api/activity | `activity_logs` | N/A | Filtres avancés |
-| **Settings/Me** | 75% | GET/PATCH /api/me, /api/me/prefs | `org_settings`, `user_prefs` | ❌ Pool | Migrate vers req.orgDb |
-
----
-
-## 16. Points techniques prioritaires avant prod
-
-### 🔴 Bloquants (sécurité / isolation)
-
-1. **~65% des routes utilisent encore pool/Drizzle (bypass RLS)**
-   - `alert-rules.ts`, `connectors.ts`, `automation.ts`, `me.ts`, `crm.ts`, `integrations.ts`, `market-intelligence.ts`, `review-intelligence.ts`, `gbp-posts.ts`, `local-maps.ts`, `gsc.ts`, `google.ts`, `behavioral.ts`, `cro.ts`, `revenue-leak.ts`, `white-label.ts`
-   - **Action** : migrer `pool`/Drizzle → `req.orgDb` dans les 20+ routes restantes
-
-2. **Drizzle ORM n'est pas RLS-scoped**
-   - `db.select().from(reportsTable)` retourne les données de TOUTES les orgs
-   - **Action** : soit ajouter `org_id` aux schémas Drizzle + `.where(eq(table.orgId, orgId))`, soit wrapper Drizzle dans `withOrgDb`
-
-3. **`store.ts` utilise pool superuser pour broadcastPlanUpdate**
-   - Fire-and-forget pool.connect() dans le store singleton
-   - **Action** : remplacer par un appel `upsertOrgSettings()` qui accepte un client RLS-scoped
-
-### 🟡 Importants (qualité / fiabilité)
-
-4. **Sessions sans refresh token**
-   - TTL 24h seulement — l'utilisateur doit refaire un magic link quotidiennement
-   - **Action** : implémenter refresh token (7j) + rotation automatique
-
-5. **Mono-org (`default`) hardcodé dans le store**
-   - Le `Store` singleton ne supporte qu'un seul `orgId` à la fois
-   - **Action** : si multi-org est prévu, le store doit être scopé par requête, pas singleton
-
-6. **GSC et GA4 sont des stubs**
-   - `syncGSCData` retourne 0 ; `ga4-service.ts` retourne des campagnes fictives
-   - **Action** : implémenter les vraies APIs Google pour les données de performance
-
-7. **DataForSEO en mode hybride**
-   - `getKeywordSuggestions`, `getBacklinks` etc. retournent du mock si API non configurée
-   - **Action** : activer les credentials DataForSEO et valider les flows live
-
-8. **CI/CD check RLS manquant**
-   - Aucune vérification automatique qu'une nouvelle table a ses policies RLS
-   - **Action** : ajouter `pnpm run check:rls` qui compare tables avec org_id vs tables avec policies
-
-### 🟢 Nice-to-have (avant GA)
-
-9. **Email d'invitation équipe non envoyé**
-   - `POST /api/team/invite` crée le membre en DB mais n'envoie pas d'email
-   - **Action** : ajouter Resend pour email d'invitation avec magic link inclus
-
-10. **Reminder email "trial se termine dans 3 jours"**
-    - L'event `customer.subscription.trial_will_end` est loggué mais le TODO Resend n'est pas implémenté
-
-11. **Local SEO `/api/local-seo` → 404**
-    - La route de summary n'existe pas
-    - **Action** : créer `GET /api/local-seo` comme alias de `/api/local-seo/citations`
-
-12. **PDF download en production**
-    - `streamReportPdf` utilise une lib PDF qui peut consommer beaucoup de mémoire sous charge
-    - **Action** : tester avec gros volume, envisager génération async + stockage objet
+### IA
+```
+User prompt → sendAIMessage() (dashboard.js:13559)
+    │ context + history + provider + enableTools
+    ▼
+POST /api/ai/chat (SSE)
+    │
+    ├─ Auth: requireAuth
+    ├─ Quota: checkAIQuota
+    ├─ Context: buildFlowpointContext() [15+ DB queries]
+    │   └── keywords, competitors, GBP, GSC, audits, monitors,
+    │       missions, PSI, calendar, credits, recommendations
+    │
+    ├─ Permissions: resolveEffectivePermissions()
+    │
+    ├─ System prompt: systemPromptBase + STRICT_AI_RULE + fpContext
+    │
+    ├─ [si tools activés] runToolCallingLoop() [max 6 rounds]
+    │   └── LLM → tool_call → executeTool() → result → LLM synthesis
+    │       └── SSE: confirmation_request (preview/full) → user confirms
+    │           → undo snapshot → DB write → undo_available SSE
+    │
+    └─ [sinon] aiStream() → SSE delta chunks
+        │
+        ▼
+    SSE: delta → confirmation_request → undo_available → _ai → [DONE]
+        │
+        ▼
+    dashboard.js reader (13685)
+        → renderAIMessages() update
+        → usage debit (deferred)
+        → reload AI credits display
+```
 
 ---
 
-*Document généré automatiquement par introspection du codebase FlowPoint le 27 juin 2026.*
-*Tous les pourcentages de complétude sont des estimations basées sur l'état fonctionnel des endpoints (CRUD complet, données réelles vs mock, RLS actif).*
+## Contradictions / Doublons identifiés
+
+| # | Problème | Détail |
+|---|---|---|
+| 1 | `org_settings` vs `organizations` | Deux tables stockent les infos billing ; `organizations` est la source de vérité mais `org_settings` persiste pour compatibilité legacy |
+| 2 | `store.broadcast()` vs `/api/events` | Deux registres SSE disjoints — `events.ts` bridge `store.addSseClient()` au connect |
+| 3 | `search_mission` query requise | Impossible de lister toutes les missions sans paramètre query — `list_missions` absent |
+| 4 | `oid ?? "default"` dans buildFlowpointContext | Si orgId absent, toutes les requêtes utilisent `org_id='default'` — risque cross-tenant silencieux |
+| 5 | STRICT_AI_RULE template imposé | Template `📊/✅/⚠️/🎯/👉` sur chaque réponse, même les simples — task #592 prévoit la correction |
+| 6 | Agents IA visuellement distincts | Les agents SEO/Local/Concurrents sont le même endpoint avec prompts différents, pas de vraie spécialisation |
+| 7 | dashboard.js + fp-backend.js loadent Maps | Double injection Google Maps JS — guard de déduplication ajouté (`maps-double-injection.md`) |
+| 8 | `confirmationLevel: "preview"` sur create_mission | Le modèle demande confirmation avant d'appeler l'outil, au lieu de l'appeler et laisser le système gérer la confirmation |

@@ -65,6 +65,7 @@ vi.mock("../lib/logger.js", () => ({
 
 vi.mock("../middlewares/rateLimiter.js", () => ({
   aiRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
+  aiChatRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 vi.mock("../services/ai-engine.js", () => ({
@@ -169,6 +170,7 @@ function makeReq(
     orgDb:   overrides.orgDb ?? vi.fn().mockResolvedValue({ rows: [] }),
     headers: {},
     ip:      `10.0.${Math.floor(_reqCounter / 256)}.${_reqCounter % 256}`,
+    on:      vi.fn(),
   } as unknown as Request;
 }
 
@@ -179,6 +181,7 @@ function makeRes(): Response {
     write:         vi.fn(),
     end:           vi.fn(),
     setHeader:     vi.fn(),
+    flushHeaders:  vi.fn(),
     writableEnded: false,
     on:            vi.fn(),
   };

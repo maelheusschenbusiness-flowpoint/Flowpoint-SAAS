@@ -67,6 +67,7 @@ import dataExplorerRouter from "./data-explorer.js";
 import clientModeRouter from "./client-mode.js";
 import progressionRouter from "./progression.js";
 import orgDataExportRouter from "./org-data-export.js";
+import onboardingRouter from "./onboarding.js";
 
 const router: IRouter = Router();
 
@@ -182,6 +183,7 @@ router.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 router.use(meRouter);
+router.use(onboardingRouter);
 router.use(orgDataExportRouter);
 router.use(overviewRouter);
 router.use(auditsRouter);

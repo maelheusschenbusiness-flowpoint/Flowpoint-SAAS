@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getWorkflowsData, executeWorkflow } from "../services/automation-service.js";
 import { store } from "../services/store.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -10,6 +11,9 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// aiWorkflows add-on gates all automation workflow routes
+router.use("/automation", requireAddon("aiWorkflows", "AI Automation Workflows"));
 
 router.get("/automation/workflows", async (req: Request, res: Response) => {
   try {
@@ -69,7 +73,10 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
     );
     // Return the created row so the frontend can update its list without a reload
     const created = await db(req)(`SELECT * FROM automation_workflows WHERE id=$1 AND org_id=$2`, [id, org(req)]).catch(() => ({ rows: [] }));
-    store.logActivity({ type: "settings", label: `Workflow créé : ${name}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(() => {});
+    const _awCtx = (req as any).orgContext || {};
+    store.logActivity({ type: "settings", label: `Workflow créé : ${name}`, targetId: id, targetType: "workflow", orgId: org(req),
+      actionKey: "activity.workflow.created", actionParams: { name: String(name) },
+      userId: _awCtx.userId || _awCtx.email || null, userName: _awCtx.name || _awCtx.email || null }).catch(() => {});
     res.status(201).json({ ok: true, id, workflow: created.rows[0] ?? null });
   } catch {
     res.status(500).json({ error: "Failed to create workflow" });
@@ -123,7 +130,10 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
       res.status(500).json({ error: runError, runId: result.runId });
       return;
     }
-    store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    const _arCtx = (req as any).orgContext || {};
+    store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow", orgId: org(req),
+      actionKey: "activity.workflow.run", actionParams: { id: String(id) },
+      userId: _arCtx.userId || _arCtx.email || null, userName: _arCtx.name || _arCtx.email || null }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:workflow:completed", workflowId: id }, org(req));
     res.json(result);
   } catch (execErr) {

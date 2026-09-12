@@ -1,14 +1,80 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
+import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
 
-import { PLAN_LIMITS } from "../lib/plans.js";
+import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
 import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
+import {
+  loadMeEntitlement,
+  BillingDataUnavailableError,
+  BILLING_DATA_UNAVAILABLE_CODE,
+} from "./me-entitlement.js";
+import { isUUIDFormat } from "../lib/validate-org-id.js";
 
 const router = Router();
+
+/**
+ * Validate and sanitize an IANA timezone string.
+ * Maps common French UI labels to their IANA equivalents (e.g. "Bruxelles" → "Europe/Brussels").
+ * Falls back to "Europe/Brussels" for completely unrecognised values rather than
+ * storing an invalid string that would cause PostgreSQL AT TIME ZONE errors (22023).
+ */
+function sanitizeTimezone(raw: string): string {
+  // Common UI-label → IANA mappings (French labels, city-only labels, etc.)
+  const LABEL_MAP: Record<string, string> = {
+    "Bruxelles":      "Europe/Brussels",
+    "bruxelles":      "Europe/Brussels",
+    "Paris":          "Europe/Paris",
+    "paris":          "Europe/Paris",
+    "Amsterdam":      "Europe/Amsterdam",
+    "amsterdam":      "Europe/Amsterdam",
+    "Berlin":         "Europe/Berlin",
+    "berlin":         "Europe/Berlin",
+    "London":         "Europe/London",
+    "london":         "Europe/London",
+    "Madrid":         "Europe/Madrid",
+    "madrid":         "Europe/Madrid",
+    "Rome":           "Europe/Rome",
+    "rome":           "Europe/Rome",
+    "Zurich":         "Europe/Zurich",
+    "zurich":         "Europe/Zurich",
+    "Lisbon":         "Europe/Lisbon",
+    "lisbon":         "Europe/Lisbon",
+    "Varsovie":       "Europe/Warsaw",
+    "varsovie":       "Europe/Warsaw",
+    "New York":       "America/New_York",
+    "new york":       "America/New_York",
+    "Los Angeles":    "America/Los_Angeles",
+    "los angeles":    "America/Los_Angeles",
+    "Chicago":        "America/Chicago",
+    "chicago":        "America/Chicago",
+    "Toronto":        "America/Toronto",
+    "toronto":        "America/Toronto",
+    "Tokyo":          "Asia/Tokyo",
+    "tokyo":          "Asia/Tokyo",
+    "Dubai":          "Asia/Dubai",
+    "dubai":          "Asia/Dubai",
+    "Singapour":      "Asia/Singapore",
+    "singapour":      "Asia/Singapore",
+    "Sydney":         "Australia/Sydney",
+    "sydney":         "Australia/Sydney",
+  };
+
+  const mapped = LABEL_MAP[raw] ?? raw;
+
+  // Validate as a proper IANA timezone — Intl.DateTimeFormat throws on invalid zones
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: mapped });
+    return mapped;
+  } catch {
+    logger.warn({ raw, mapped }, "[sanitizeTimezone] Invalid IANA timezone — falling back to Europe/Brussels");
+    return "Europe/Brussels";
+  }
+}
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
@@ -31,31 +97,57 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 
   // Record today's activity for streak reliability — every dashboard load counts,
   // regardless of whether /api/me/streak or /api/me/prefs is reached later.
-  recordActivityDay(orgDb(req), orgId).catch(() => {});
+  recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
 
-  // Canonical timezone from user_prefs.settings (written by PATCH /api/me/settings).
-  // Queried unconditionally so it appears even when org_settings row is missing.
+  // Canonical timezone + language from user_prefs.settings (written by PATCH /api/me/settings).
+  // Queried unconditionally so they appear even when org_settings row is missing
+  // (new-auth orgs only have an organizations row, not org_settings).
   let settingsTimezone: string | null = null;
+  let settingsLanguage: string | null = null;
   try {
     const pRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const prefs = pRow.rows[0]?.settings as Record<string, unknown> | null;
-    if (prefs && typeof prefs.timezone === "string" && prefs.timezone) {
-      settingsTimezone = prefs.timezone;
+    if (prefs) {
+      if (typeof prefs.timezone === "string" && prefs.timezone) {
+        settingsTimezone = prefs.timezone;
+      }
+      if (typeof prefs.language === "string" && prefs.language) {
+        settingsLanguage = prefs.language;
+      }
     }
   } catch { /* non-fatal */ }
 
   try {
-    // Jalon 4: parallel fetch — billing from organizations (source of truth) + profile from org_settings
-    const [billingData, dbData] = await Promise.all([
-      loadOrgData(orgId).catch(() => null),       // organizations first, org_settings fallback
-      loadOrgSettings(orgId).catch(() => null),   // profile fields: firstName, lastName, timezone, location…
-    ]);
+    // Jalon 4: parallel fetch — billing from organizations (source of truth) + profile from org_settings.
+    // FAIL-CLOSED: loadMeEntitlement distinguishes "row genuinely absent" (null) from
+    // "store threw" (BillingDataUnavailableError). A transient DB failure must NEVER be
+    // downgraded to a fabricated Standard/unknown entitlement — it becomes a retryable 503.
+    // org_addons is loaded fail-closed too, so quantity-addon limits are never undercounted.
+    const { billingData, dbData, addonRows: _entitlementAddonRows } = await loadMeEntitlement(orgId, {
+      loadOrgData,
+      loadOrgSettings,
+      loadAddons: async (id) => {
+        // org_addons.org_id is UUID-typed in production.
+        // A legacy (email-shaped) orgId would throw "invalid input syntax for type uuid"
+        // and pollute Supabase logs.  Skip the query when id is not a valid UUID;
+        // the caller falls back to plan-included addons only.
+        if (!isUUIDFormat(id)) {
+          return [];
+        }
+        const r = await orgDb(req)(
+          `SELECT addon_key, active, quantity FROM org_addons WHERE org_id=$1`,
+          [id],
+        );
+        return r.rows;
+      },
+    });
 
     if (billingData ?? dbData) {
       // Billing fields: prefer organizations (billingData) → org_settings fallback (dbData)
       const rawPlan             = billingData?.plan ?? dbData?.plan ?? "standard";
       const plan                = rawPlan.toLowerCase();
-      const limits              = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
+      // Mutable copy — org_addons qty grants are applied below after _addonsRows is read
+      const limits: Record<string, number> = { ...(PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"]) };
       const rawSubStatus        = billingData?.subscriptionStatus ?? dbData?.subscriptionStatus ?? null;
       const rawStripeSubId      = billingData?.stripeSubscriptionId ?? dbData?.stripeSubscriptionId ?? null;
       const rawStripeCustomerId = billingData?.stripeCustomerId     ?? dbData?.stripeCustomerId     ?? null;
@@ -75,7 +167,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         : `fp_pub_${_pkHash}`;
 
       // Normalise subscription status — include trialConsumedAt for pending_billing detection
-      const normStatus = normalizeSubscriptionStatus({
+      const _normStatusBase = normalizeSubscriptionStatus({
         rawStatus:            rawSubStatus,
         stripeSubscriptionId: rawStripeSubId,
         stripeCustomerId:     rawStripeCustomerId,
@@ -83,14 +175,36 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         trialConsumedAt:      rawTrialConsumedAt,
       });
 
-      // Read addons from org_addons table (single source of truth — Correction 8)
-      const _addonsRows = await orgDb(req)(
-        `SELECT addon_key, active FROM org_addons WHERE org_id=$1`,
-        [orgId]
-      ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+      // Internal QA bypass — mirrors billing-context.ts guard exactly.
+      // Double-locked: orgId must match the fixed QA UUID AND is_internal_qa=true.
+      // Prevents any other org from ever receiving 'trialing' via this path.
+      const _QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+      const _isQaOrg = orgId === _QA_ORG_UUID && billingData?.isInternalQa === true;
+      const normStatus = _isQaOrg ? "trialing" as const : _normStatusBase;
+
+      // Read addons from org_addons table (single source of truth — Correction 8).
+      // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
+      // org_addons load failure into a 503 rather than a suppressed empty array —
+      // otherwise quantity-addon limits below would be silently undercounted.
+      const _addonsRows = { rows: _entitlementAddonRows };
       const _mergedAddons: Record<string, boolean | number> = {};
       for (const row of _addonsRows.rows) {
-        _mergedAddons[String(row["addon_key"])] = Boolean(row["active"]);
+        const key = String(row["addon_key"]);
+        if (!row["active"]) continue;
+        // Qty addons (extraSeats, monitorsPack10, etc.) → store pack count as number
+        const qtyGrant = QTY_ADDON_GRANTS[key as keyof typeof QTY_ADDON_GRANTS];
+        if (qtyGrant) {
+          const packs = Number(row["quantity"] ?? 1);
+          _mergedAddons[key] = packs;
+          // Expand the mutable limits object with this pack's grant
+          limits[qtyGrant.resource] = (limits[qtyGrant.resource] ?? 0) + packs * qtyGrant.perPack;
+        } else {
+          _mergedAddons[key] = true;
+        }
+      }
+      // Merge plan-included addons (whiteLabel for Standard, etc.) — PLAN_INCLUDED_ADDONS is the source of truth
+      for (const addonKey of PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()) {
+        if (!_mergedAddons[addonKey]) _mergedAddons[addonKey] = true;
       }
       // Merge org_settings.addons as legacy supplemental (org_addons takes precedence)
       const legacyAddons = dbData?.addons ?? billingData?.addons;
@@ -99,13 +213,53 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
           if (!(key in _mergedAddons)) _mergedAddons[key] = val as boolean | number;
         }
       }
-      const _canStartTrial = !rawTrialConsumedAt && !rawStripeSubId;
+      // QA org: never show "start trial" CTA — it's an internal account, not a real signup.
+      const _canStartTrial = !_isQaOrg && !rawTrialConsumedAt && !rawStripeSubId;
 
+      // ── P0 ISOLATION LOGGING — temporary, identifies cross-user leaks ──────────
+      // Logs every /api/me response with full identity context so USER A / USER B
+      // test scenarios can trace exactly which session/user/plan is being served.
+      // Remove once ACTUAL_ROOT_CAUSE is confirmed from browser tests.
+      const _sessionBearer = String((req as Request & { headers: Record<string, unknown> }).headers["authorization"] ?? "").slice(7, 23) || "cookie-auth";
+      logger.info({
+        // ─ Identity
+        session_id:             _sessionBearer,
+        user_id:                req.orgContext?.userId ?? null,
+        user_uuid:              req.orgContext?.userUuid ?? null,
+        email:                  req.orgContext?.email ?? null,
+        org_id:                 orgId,
+        // ─ Stripe
+        stripe_customer_id:     rawStripeCustomerId ? rawStripeCustomerId.slice(-8) : null,
+        stripe_subscription_id: rawStripeSubId      ? rawStripeSubId.slice(-8)      : null,
+        // ─ Plan resolution chain
+        plan_from_db:           (billingData?.plan ?? dbData?.plan ?? "MISSING").toLowerCase(),
+        plan_source:            billingData?.plan ? "organizations" : dbData?.plan ? "org_settings" : "NONE",
+        plan_final:             normPlan(rawPlan),
+        // ─ Addons & quotas
+        addon_source:           "org_addons+plan_included",
+        addon_count:            Object.keys(_mergedAddons).length,
+        retention90d_active:    !!_mergedAddons["retention90d"],
+        retention365d_active:   !!_mergedAddons["retention365d"],
+        // ─ Subscription
+        sub_status:             normStatus,
+        role:                   req.orgContext?.role ?? "member",
+        org_name:               (dbData?.orgName ?? "").slice(0, 30),
+      }, "[P0-ISOLATION][ME]");
+      // ── P1 RETENTION90D SUPPRESSION — fix Ultra double-count ─────────────────
+      // On Ultra, retention90d is superseded by retention365d.  If both are active
+      // (legacy Pro provisioning survived upgrade), remove retention90d from the
+      // merged addons so /api/me does not report 11 active addons for an Ultra org.
+      if (plan === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
+        delete _mergedAddons["retention90d"];
+        logger.info({ orgId, plan }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
+      }
       res.json({
+        orgId:               orgId,
         firstName,
         lastName:            dbData?.lastName ?? "",
         email:               req.orgContext?.email ?? "",
         userId:              req.orgContext?.userId ?? null,
+        userUuid:            req.orgContext?.userUuid ?? null,
         plan:                normPlan(rawPlan),
         role:                req.orgContext?.role ?? "member",
         org:                 { name: billingData?.orgName ?? dbData?.orgName ?? "", website: dbData?.website ?? "" },
@@ -114,33 +268,65 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         trialEndsAt:         rawTrialEndsAt,
         stripeCustomerId:    rawStripeCustomerId,
         canStartTrial:       _canStartTrial,
-        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing",
-        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing",
+        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
+        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
+        onboardingCompletedAt: await (async () => {
+          try {
+            const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId]);
+            return (_obr.rows[0]?.cat as string | null) ?? null;
+          } catch { return null; }
+        })(),
         usage:              await (async () => {
           try {
-            const [auditR, monR, repR, expR] = await Promise.all([
+            const now = new Date();
+            const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+            const [auditR, monR, repR, kwR, pdfR, exportR] = await Promise.all([
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
               orgDb(req)(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
-              orgDb(req)(`SELECT COUNT(*)::int AS n FROM report_exports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              // keyword tracking count — persists in DB, survives F5
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]).catch(() => ({rows:[]})),
+              // PDF exports — counted via usage_events (kind='pdf_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind='pdf_export' AND created_at >= $2`,
+                [orgId, monthStart],
+              ).catch(() => ({rows:[]})),
+              // Data exports — counted via usage_events (kind='export' or 'health_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind IN ('export','health_export') AND created_at >= $2`,
+                [orgId, monthStart],
+              ).catch(() => ({rows:[]})),
             ]);
             const stored = (dbData?.usage ?? {}) as Record<string, unknown>;
             return {
               ...stored,
-              audit:   { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
-              monitor: { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
-              reports: { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
-              exports: { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
-              pdf:     { used: (expR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              audit:    { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
+              monitor:  { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
+              reports:  { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              exports:  { used: (exportR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
+              pdf:      { used: (pdfR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              keywords: { used: (kwR.rows[0]    as Record<string,number>|undefined)?.n ?? 0, limit: limits.keywords ?? 500 },
             };
           } catch { return dbData?.usage ?? {}; }
         })(),
         addons:             _mergedAddons,
         limits,
+        // dfsQuota: DataForSEO API quota for today — seeded here so the dashboard
+        // can show a correct X/N value immediately on F5, before /api/seo/status loads.
+        dfsQuota: await (async () => {
+          try {
+            const { isDataForSEOConfigured, getQuotaUsageFromDB } = await import("../services/dataforseo-service.js");
+            const configured = await isDataForSEOConfigured(orgId);
+            // DB-backed: reads dataforseo_quota for today, warms in-memory cache.
+            // This ensures /api/me returns the correct used count on F5/reconnect.
+            const { used, limit } = await getQuotaUsageFromDB(orgId, rawPlan);
+            return { configured, used, limit, remaining: Math.max(0, limit - used) };
+          } catch { return null; }
+        })(),
         publicApiKey:       _publicApiKey,
         createdAt:          dbData?.createdAt ?? new Date().toISOString(),
         timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
-        language:  dbData?.language  ?? null,
+        language:  dbData?.language  ?? settingsLanguage ?? null,
         currency:  dbData?.currency  ?? null,
         dateFormat: dbData?.dateFormat ?? null,
         timeFormat: dbData?.timeFormat ?? null,
@@ -160,40 +346,45 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
-  } catch {
-    // Non-fatal — fall through to safe defaults
+  } catch (err) {
+    // Authoritative billing/entitlement data could not be loaded (transient DB
+    // failure / outage). NEVER fabricate a Standard/unknown entitlement here —
+    // return an explicit, retryable, non-cacheable 503 so the client retries
+    // instead of treating the org as having no plan.
+    if (err instanceof BillingDataUnavailableError) {
+      logger.warn({ orgId }, "[me] GET /api/me — billing/entitlement data unavailable, returning 503");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Retry-After", "5");
+      res.status(503).json({
+        error: "Billing and entitlement data is temporarily unavailable. Please retry.",
+        code:  BILLING_DATA_UNAVAILABLE_CODE,
+        retryable: true,
+      });
+      return;
+    }
+    // Unexpected non-billing error — also fail closed rather than fabricating a plan.
+    logger.error({ err, orgId }, "[me] GET /api/me — unexpected error, returning 503");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Retry-After", "5");
+    res.status(503).json({
+      error: "Unable to load account data. Please retry.",
+      code:  BILLING_DATA_UNAVAILABLE_CODE,
+      retryable: true,
+    });
+    return;
   }
 
-  // SECURITY: never fall back to store.me (global singleton — would leak other users' data).
-  // Return minimal safe defaults derived from the authenticated org context only.
-  const _safeEmail = req.orgContext?.email ?? "";
-  const _safeFirstName = _safeEmail.split("@")[0] || "User";
-  res.json({
-    firstName:           _safeFirstName,
-    lastName:            "",
-    email:               _safeEmail,
-    userId:              req.orgContext?.userId ?? null,
-    plan:                "Standard",
-    role:                req.orgContext?.role ?? "member",
-    org:                 { name: "", website: "" },
-    subscriptionStatus:  "unknown",
-    stripeSubscriptionId: null,
-    trialEndsAt:         null,
-    stripeCustomerId:    null,
-    usage:               {},
-    addons:              {},
-    limits:              PLAN_LIMITS["standard"],
-    publicApiKey:        null,
-    createdAt:           new Date().toISOString(),
-    timezone:            settingsTimezone ?? null,
-    language:            null,
-    currency:            null,
-    dateFormat:          null,
-    timeFormat:          null,
-    location: {
-      address: null, city: null, postalCode: null, country: null, region: null,
-      phone: null, latitude: null, longitude: null, serviceArea: [], locationConfigured: false, locationSource: null,
-    },
+  // Reached only when both authoritative sources resolved successfully but the org
+  // genuinely has no billing/settings row yet (brand-new account). This is a
+  // legitimate absence, NOT a failure — but we still must not fabricate a paid or
+  // fake entitlement. Treat it as retryable-unavailable so provisioning can catch up.
+  logger.warn({ orgId }, "[me] GET /api/me — no billing/entitlement row for org, returning 503");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Retry-After", "5");
+  res.status(503).json({
+    error: "Account entitlement is not available yet. Please retry.",
+    code:  BILLING_DATA_UNAVAILABLE_CODE,
+    retryable: true,
   });
 });
 
@@ -201,7 +392,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 // Fully org-isolated: reads from DB, applies only provided fields, returns DB-confirmed data.
 // Never reads from store.me (global singleton) to prevent multi-tenant leaks.
 // ── PATCH /api/org — update organisation name / website ─────────────────────
-router.patch("/org", async (req: Request, res: Response): Promise<void> => {
+router.patch("/org", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const { name, website } = req.body as { name?: string; website?: string };
@@ -280,7 +471,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   // frontend uses to write it (PATCH /api/me or PATCH /api/me/settings both write here).
   let resolvedTimezone: string | null = current?.timezone ?? null;
   if (typeof timezone === "string" && timezone.trim()) {
-    const tz = timezone.trim();
+    const tz = sanitizeTimezone(timezone.trim());
     resolvedTimezone = tz;
     try {
       await orgDb(req)(
@@ -311,6 +502,8 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     firstName:          current?.firstName ?? "",
     lastName:           current?.lastName  ?? "",
     email:              req.orgContext?.email ?? "",
+    userId:             req.orgContext?.userId ?? null,
+    userUuid:           req.orgContext?.userUuid ?? null,
     plan:               normPlan(current?.plan),
     role:               req.orgContext?.role ?? "member",
     org:                { name: current?.orgName ?? "", website: current?.website ?? "" },
@@ -323,7 +516,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     publicApiKey:       _publicApiKey,
     createdAt:          current?.createdAt ?? new Date().toISOString(),
     timezone:           resolvedTimezone,
-    language:           current?.language  ?? null,
+    language:           current?.language  ?? (typeof _patchStoredKey?.language === "string" ? _patchStoredKey.language : null) ?? null,
     currency:           current?.currency  ?? null,
     dateFormat:         current?.dateFormat ?? null,
     timeFormat:         current?.timeFormat ?? null,
@@ -344,7 +537,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 });
 
 // ── PUT /api/me/addons ────────────────────────────────────────────────────────
-router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
+router.put("/me/addons", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const body = req.body as Partial<Record<string, boolean | number>>;
@@ -357,8 +550,10 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
   const orgData = await loadOrgData(orgId).catch(() => null);
   const currentAddons: Record<string, boolean | number> = { ...(orgData?.addons ?? {}) as Record<string, boolean | number> };
 
+  // Removed from the commercial catalogue; never accept or retain this legacy
+  // compatibility value as an entitlement.
+  delete currentAddons.prioritySupport;
   if (typeof body.whiteLabel      === "boolean") currentAddons.whiteLabel      = body.whiteLabel;
-  if (typeof body.prioritySupport === "boolean") currentAddons.prioritySupport = body.prioritySupport;
   if (typeof body.customDomain    === "boolean") currentAddons.customDomain    = body.customDomain;
   if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) currentAddons.extraSeats     = Math.floor(body.extraSeats);
   if (typeof body.monitorsPack10  === "number" && body.monitorsPack10 >= 0) currentAddons.monitorsPack10 = Math.floor(body.monitorsPack10);
@@ -385,7 +580,7 @@ type DbFn = (sql: string, vals?: unknown[]) => Promise<{ rows: Record<string, un
  * Falls back to a direct pool.query (superuser — bypasses RLS) when the
  * RLS-scoped orgDb insert is blocked or fails, so streaks are never silently lost.
  */
-async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
+async function recordActivityDay(db: DbFn, orgId: string, userId?: string): Promise<void> {
   let tz = "Europe/Brussels";
   try {
     const tzRow = await db(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
@@ -393,29 +588,44 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
     if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
   } catch { /* non-fatal — fall through with default tz */ }
 
-  // Primary path: RLS-scoped insert
+  // Use the real userId when available; fall back to org_id so org-level streak always records.
+  const activityUserId = userId && !userId.startsWith("apikey:") ? userId : orgId;
+
+  // Primary path: RLS-scoped insert (org-level streak)
   let inserted = false;
   try {
     await db(
       `INSERT INTO user_activity_days (org_id, user_id, day)
-       VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
+       VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
        ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-      [orgId, tz]
+      [orgId, activityUserId, tz]
     );
     inserted = true;
   } catch { /* fall through to pool fallback */ }
 
-  // Fallback: direct pool.query bypasses RLS (superuser connection).
-  // Ensures the row lands even when SET LOCAL ROLE / GUC is silently rejected.
+  // Fallback: direct pool.query bypasses RLS
   if (!inserted) {
     try {
       await pool.query(
         `INSERT INTO user_activity_days (org_id, user_id, day)
-         VALUES ($1, $1, (NOW() AT TIME ZONE $2)::date)
+         VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
          ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-        [orgId, tz]
+        [orgId, activityUserId, tz]
       );
-    } catch { /* non-fatal — table may not exist yet on first boot */ }
+    } catch { /* non-fatal */ }
+  }
+
+  // Per-member streak tracking — record with actual user UUID when available
+  const effectiveUserId = userId && !userId.startsWith("apikey:") ? userId : orgId;
+  if (effectiveUserId !== orgId) {
+    try {
+      await pool.query(
+        `INSERT INTO member_activity_days (org_id, user_id, day)
+         VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
+         ON CONFLICT (org_id, user_id, day) DO NOTHING`,
+        [orgId, effectiveUserId, tz]
+      );
+    } catch { /* non-fatal — table created on first boot */ }
   }
 }
 
@@ -424,13 +634,30 @@ async function recordActivityDay(db: DbFn, orgId: string): Promise<void> {
  * Today counts if present; if today absent, start from yesterday
  * so the streak never decreases during the same calendar day.
  */
-async function computeStreakFromTable(db: DbFn, orgId: string, tz: string): Promise<{ current: number; best: number; rowCount: number }> {
-  const actRes = await db(
+async function computeStreakFromTable(db: DbFn, orgId: string, tz: string, userId?: string): Promise<{ current: number; best: number; rowCount: number }> {
+  // Primary path via orgDb; if it returns empty (RLS/withOrgDb poison on Supabase), fall back to pool.
+  // userId filter is mandatory: streak is personal, never org-wide.
+  const userFilter = userId ? "AND user_id=$3" : "";
+  const userParams = userId ? [orgId, tz, userId] : [orgId, tz];
+  let actRes = await db(
     `SELECT day::text AS d FROM user_activity_days
-     WHERE org_id=$1 AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+     WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
      ORDER BY d DESC`,
-    [orgId, tz]
-  );
+    userParams
+  ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+  if (actRes.rows.length === 0) {
+    // Pool.query bypasses RLS entirely — use it as fallback so Supabase pooled-connection
+    // SET LOCAL ROLE failures never silently return [] and reset the streak to 0.
+    try {
+      const poolRes = await pool.query(
+        `SELECT day::text AS d FROM user_activity_days
+         WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
+         ORDER BY d DESC`,
+        userParams
+      );
+      actRes = poolRes as { rows: Record<string, unknown>[] };
+    } catch { /* non-fatal — table may not exist yet */ }
+  }
   // rowCount=0 means the table is accessible but empty for this org —
   // callers must NOT overwrite a previously-stored positive streak with 0 in this case.
   if (actRes.rows.length === 0) return { current: 0, best: 0, rowCount: 0 };
@@ -470,7 +697,8 @@ router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
-    await recordActivityDay(orgDb(req), orgId);
+    // [FIX] Pass real userId so member_activity_days is populated for team-streak display.
+    await recordActivityDay(orgDb(req), orgId, req.orgContext?.userId);
     let tz = "Europe/Brussels";
     let storedStreak = 0;
     try {
@@ -479,7 +707,8 @@ router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
       if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
       storedStreak = typeof tzRow.rows[0]?.["streak"] === "number" ? (tzRow.rows[0]["streak"] as number) : 0;
     } catch { /* non-fatal */ }
-    const streak = await computeStreakFromTable(orgDb(req), orgId, tz);
+    const userId = req.orgContext?.userId ?? req.userId ?? undefined;
+    const streak = await computeStreakFromTable(orgDb(req), orgId, tz, userId);
     // Never return 0 if the activity table is empty for this org —
     // that means the row insertion hasn't happened yet (RLS race), not a genuine gap.
     const safeStreak = (streak.rowCount === 0 && storedStreak > 0) ? storedStreak : streak.current;
@@ -495,7 +724,7 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   if (!orgId) return;
   try {
     // Record today's activity (cheap upsert, non-fatal)
-    recordActivityDay(orgDb(req), orgId).catch(() => {});
+    recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
 
     const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };
@@ -509,11 +738,16 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
 
     // Compute streak from user_activity_days (authoritative).
     // Fall back to legacy activity_logs, then to stored value.
+    // [FIX] Pass canonical userId — streak is personal, not org-wide.
+    // Without userId, computeStreakFromTable returns the org aggregate (all members combined).
+    const userId = typeof req.orgContext?.userId === "string"
+      ? req.orgContext.userId
+      : undefined;
     let finalStreak: number;
     let querySucceeded = false;
     let computedStreak = 0;
     try {
-      const { current } = await computeStreakFromTable(orgDb(req), orgId, tz);
+      const { current } = await computeStreakFromTable(orgDb(req), orgId, tz, userId);
       querySucceeded = true;
       computedStreak = current;
       finalStreak = current;
@@ -634,8 +868,12 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     // Journalise la modification de paramètres dans le fil d'activité (Command Center)
     if (settings && Object.keys(settings).length > 0) {
       const keys = Object.keys(settings).slice(0, 5).join(", ");
+      const _settingsCtx = (req as any).orgContext || {};
       import("../services/store.js")
-        .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId }))
+        .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId,
+          actionKey: "activity.settings.updated", actionParams: { keys },
+          userId: _settingsCtx.userId || _settingsCtx.email || null,
+          userName: _settingsCtx.name || _settingsCtx.email || null }))
         .catch(() => {});
     }
     res.json({ ok: true });
@@ -659,7 +897,7 @@ router.get("/me/settings", async (req: Request, res: Response): Promise<void> =>
 // ── PATCH /api/me/settings — write canonical user preferences (timezone, etc.) ──
 // Canonical storage for timezone. Merges into user_prefs.settings JSONB so that
 // GET /api/me/settings always returns the authoritative value.
-router.patch("/me/settings", async (req: Request, res: Response): Promise<void> => {
+router.patch("/me/settings", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
@@ -721,7 +959,7 @@ router.get("/me/dataforseo/status", async (req: Request, res: Response): Promise
 });
 
 /** POST /api/me/dataforseo/credentials — save org-scoped credentials */
-router.post("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
+router.post("/me/dataforseo/credentials", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const { login, password } = req.body as { login?: string; password?: string };
@@ -744,7 +982,7 @@ router.post("/me/dataforseo/credentials", async (req: Request, res: Response): P
 });
 
 /** DELETE /api/me/dataforseo/credentials — clear org-scoped credentials */
-router.delete("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
+router.delete("/me/dataforseo/credentials", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
@@ -857,56 +1095,75 @@ router.get("/settings/api-keys", async (req: Request, res: Response): Promise<vo
 
 // ── DELETE /api/settings/data ─────────────────────────────────────────────────
 // Purge all product data for this org but keep the account intact.
-router.delete("/settings/data", async (req: Request, res: Response): Promise<void> => {
+router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   const tables = [
+    // Core SEO & audit data
     "audits", "audit_schedules", "reports", "report_exports",
+    // Monitoring
     "monitors", "monitor_checks", "monitor_incidents",
     "alert_rules", "alert_events",
+    // Keywords, calendar, team
     "tracked_keywords", "calendar_events",
     "team_messages", "team_files",
+    // Automations & workflows
     "automation_integrations", "automation_workflows", "automation_runs",
     "automation_logs", "workflow_runs", "incoming_webhooks",
+    // AI & missions
     "missions", "mission_history", "mission_ai_logs",
+    "ai_usage_logs", "ai_monthly_usage",
+    // Analytics & SEO tools
     "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
     "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
     "behavior_events", "behavior_sessions",
     "traffic_sources", "traffic_losses",
     "cro_scores", "cro_experiments", "revenue_leaks",
-    "local_pack_history", "org_checklist",
+    // Competitors & Local SEO
+    "competitors", "competitor_analysis", "competitor_map_results",
+    "gbp_profiles", "local_pack_history",
+    // Notifications, activity, misc
+    "notifications",
+    "org_checklist",
     "overview_insights_cache", "overview_insights_rl",
     "activity_log", "share_tokens", "growth_objectives",
   ];
+  const { pool: pgPool } = await import("@workspace/db");
+  const client = await pgPool.connect();
+  let deleted = 0;
   try {
-    const { pool: pgPool } = await import("@workspace/db");
-    const client = await pgPool.connect();
-    let deleted = 0;
+    const existCheck = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+      [tables]
+    );
+    const existing = new Set(existCheck.rows.map(r => r.tablename));
+    await client.query("BEGIN");
     try {
-      const existCheck = await client.query<{ tablename: string }>(
-        `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
-        [tables]
-      );
-      const existing = new Set(existCheck.rows.map(r => r.tablename));
-      await client.query("BEGIN");
       for (const t of tables.filter(t => existing.has(t))) {
-        const r = await client.query(`DELETE FROM ${t} WHERE org_id = $1`, [orgId]);
+        const r = await client.query(
+          // ai_usage_logs.org_id is UUID; explicit cast handles all column types safely
+          `DELETE FROM ${t} WHERE org_id::text = $1`,
+          [orgId]
+        );
         deleted += r.rowCount ?? 0;
       }
       await client.query("COMMIT");
-    } finally {
-      client.release();
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
     }
     logger.info({ orgId, deleted }, "[settings/data] User data purged");
     res.json({ ok: true, deleted });
   } catch (err) {
     logger.error({ err }, "[settings/data] purge failed");
     res.status(500).json({ error: "Erreur lors de la suppression" });
+  } finally {
+    client.release();
   }
 });
 
 // ── POST /api/settings/api-keys/regenerate ────────────────────────────────────
-router.post("/settings/api-keys/regenerate", async (req: Request, res: Response): Promise<void> => {
+router.post("/settings/api-keys/regenerate", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
@@ -945,8 +1202,12 @@ router.post("/settings/api-keys/regenerate", async (req: Request, res: Response)
       res.json({ ok: true, key: publicKey, type: "public", createdAt });
     }
     // Journalise la rotation de clé dans le fil d'activité
+    const _apiKeyCtx = (req as any).orgContext || {};
     import("../services/store.js")
-      .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId }))
+      .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId,
+        actionKey: "activity.settings.apikey", actionParams: { type },
+        userId: _apiKeyCtx.userId || _apiKeyCtx.email || null,
+        userName: _apiKeyCtx.name || _apiKeyCtx.email || null }))
       .catch(() => {});
   } catch (err) {
     logger.error({ err }, "[api-keys/regenerate] failed");

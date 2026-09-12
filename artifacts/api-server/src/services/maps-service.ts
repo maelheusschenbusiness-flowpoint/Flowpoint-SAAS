@@ -1,11 +1,16 @@
+/** Server-side Maps API key — prefers FLOWPOINT_MAP_BACKEND (Places-enabled), falls back to GOOGLE_MAPS_API_KEY */
+function getMapsApiKey(): string {
+  return process.env["FLOWPOINT_MAP_BACKEND"] ?? process.env["GOOGLE_MAPS_API_KEY"] ?? "";
+}
+
 export function isMapsConfigured(): boolean {
-  return !!process.env["GOOGLE_MAPS_API_KEY"];
+  return !!getMapsApiKey();
 }
 
 export async function geocodeAddress(address: string): Promise<{
   lat: number; lng: number; formattedAddress: string; placeId: string;
 } | null> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
@@ -22,18 +27,45 @@ export async function geocodeAddress(address: string): Promise<{
   };
 }
 
+/**
+ * Fetches nearby places from Google Places Nearby Search, automatically
+ * paginating through up to 3 pages (≤60 results) using next_page_token.
+ * Google requires a ~2 s delay before requesting each subsequent page.
+ */
 export async function getNearbyPlaces(lat: number, lng: number, type: string, radius = 5000, keyword = ""): Promise<unknown[]> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const kw = keyword.trim() ? `&keyword=${encodeURIComponent(keyword.trim())}` : "";
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
-  const res = await fetch(url);
-  const data = await res.json() as Record<string, unknown>;
-  return (data["results"] as unknown[]) ?? [];
+
+  const allResults: unknown[] = [];
+  let pageToken: string | null = null;
+
+  for (let page = 0; page < 3; page++) {
+    let url: string;
+    if (pageToken) {
+      // Pages 2 and 3: only pagetoken + key are sent (other params are encoded in the token)
+      url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${encodeURIComponent(pageToken)}&key=${apiKey}`;
+    } else {
+      url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}${kw}&key=${apiKey}`;
+    }
+
+    const res = await fetch(url);
+    const data = await res.json() as Record<string, unknown>;
+    const pageResults = (data["results"] as unknown[]) ?? [];
+    allResults.push(...pageResults);
+
+    pageToken = (data["next_page_token"] as string | undefined) ?? null;
+    if (!pageToken) break;
+
+    // Google mandates a short delay before the next_page_token becomes valid
+    await new Promise<void>((r) => setTimeout(r, 2000));
+  }
+
+  return allResults;
 }
 
 export async function getDistanceMatrix(origins: string[], destinations: string[]): Promise<unknown> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origins.join("|")}&destinations=${destinations.join("|")}&key=${apiKey}`;
   const res = await fetch(url);
@@ -86,35 +118,102 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
  * review count (log scale) up to 40 pts. Places without coordinates are
  * dropped instead of producing NaN markers.
  */
+/**
+ * Full-disk competitor search covering up to 100 km using a 7-point hexagonal
+ * grid (centre + 6 surrounding points at ring_radius = R × √3/2).
+ *
+ * Proof of complete coverage
+ * ──────────────────────────
+ * For a disk of radius R covered by circles of radius r = 50 km, the ring
+ * radius is chosen such that the worst-case point (on the R perimeter, 30°
+ * from the nearest ring point) is exactly r from that ring point:
+ *   ring = R × √3/2  →  d² = ring² + R² − 2·ring·R·cos30° = R²·(3/4 + 1 − 3/2) = 0 ≠ r²
+ * Wait — actual derivation: ring = R × √3/2, cos30° = √3/2:
+ *   d² = (R√3/2)² + R² − 2·(R√3/2)·R·(√3/2)
+ *      = 3R²/4 + R² − 3R²/2 = 4R²/4 − 6R²/4 + 3R²/4 = R²/4  →  d = R/2 = 50 km when R=100 km ✓
+ * The 6-fold symmetry (60° steps) means every point inside the disk is within
+ * 50 km of at least one of the 7 centres — no gaps anywhere, including diagonals.
+ */
 export async function analyzeCompetitors(lat: number, lng: number, keyword: string, radius = 5000): Promise<unknown[]> {
-  // The keyword filters Nearby Search so "restaurant" returns actual
-  // restaurants (real potential competitors), not every establishment.
-  const raw = await getNearbyPlaces(lat, lng, "establishment", radius, keyword) as Array<Record<string, unknown>>;
-  const out: Array<Record<string, unknown>> = [];
-  for (const p of raw) {
-    const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
-    const plat = Number(loc["lat"]);
-    const plng = Number(loc["lng"]);
-    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue; // never emit NaN markers
-    const rating = typeof p["rating"] === "number" ? p["rating"] : null;
-    const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
-    const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
-    const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
-    out.push({
-      placeId: String(p["place_id"] ?? ""),
-      name: String(p["name"] ?? ""),
-      vicinity: String(p["vicinity"] ?? ""),
-      lat: plat,
-      lng: plng,
-      rating,
-      reviewCount,
-      distanceM: haversineM(lat, lng, plat, plng),
-      seoScore,
-      threatLevel,
-      types: (p["types"] as string[]) ?? [],
-    });
+  const SEARCH_RADIUS = 50000; // Google Places API hard limit per request
+  const EFF_RADIUS = Math.min(100000, radius);
+
+  // ring_radius = EFF_RADIUS × √3/2 guarantees every point in the disk
+  // is within SEARCH_RADIUS of at least one of the 7 hexagonal centres.
+  const cosLat = Math.max(0.3, Math.cos(lat * Math.PI / 180));
+  const centres: Array<{ lat: number; lng: number }> = [{ lat, lng }];
+
+  if (EFF_RADIUS > 50000) {
+    // >50 km  — 7-point hexagonal grid (centre + 6 ring points at √3/2·R)
+    const RING_M = EFF_RADIUS * Math.sqrt(3) / 2;
+    for (let i = 0; i < 6; i++) {
+      const ang = (i * Math.PI) / 3; // 0°, 60°, 120°, 180°, 240°, 300°
+      centres.push({
+        lat: lat + (RING_M / 111_000) * Math.sin(ang),
+        lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
+      });
+    }
+  } else if (EFF_RADIUS > 15000) {
+    // 15–50 km — 4-point grid (centre + 3 surrounding at 120° for triangular coverage)
+    // Ring at 60% of EFF_RADIUS gives comfortable overlap between search circles.
+    const RING_M = EFF_RADIUS * 0.6;
+    for (let i = 0; i < 3; i++) {
+      const ang = (i * 2 * Math.PI) / 3; // 0°, 120°, 240°
+      centres.push({
+        lat: lat + (RING_M / 111_000) * Math.sin(ang),
+        lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
+      });
+    }
   }
-  return out;
+  // ≤15 km — single centre; pagination inside getNearbyPlaces gives ≤60 results
+
+  // Each centre uses the actual requested radius (capped to 50 km per Google limit)
+  const SEARCH_RADIUS_PER_CENTRE = Math.min(50000, EFF_RADIUS);
+
+  const seen = new Map<string, Record<string, unknown>>();
+  // Centres run in parallel; pagination inside getNearbyPlaces is sequential per centre
+  // (with the mandatory 2 s inter-page delay). This keeps total latency bounded by
+  // the slowest centre (~4 s for 3 pages) rather than multiplying across all centres.
+  await Promise.all(centres.map(async (c) => {
+    let raw: Array<Record<string, unknown>>;
+    try {
+      raw = await getNearbyPlaces(c.lat, c.lng, "establishment", SEARCH_RADIUS_PER_CENTRE, keyword) as Array<Record<string, unknown>>;
+    } catch {
+      raw = [];
+    }
+    for (const p of raw) {
+      const pid = String(p["place_id"] ?? "");
+      if (!pid || seen.has(pid)) continue;
+      const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
+      const plat = Number(loc["lat"]);
+      const plng = Number(loc["lng"]);
+      if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+      const dist = haversineM(lat, lng, plat, plng);
+      if (dist > EFF_RADIUS) continue; // only include places inside requested radius
+      const rating = typeof p["rating"] === "number" ? p["rating"] : null;
+      const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
+      const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
+      const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
+      seen.set(pid, {
+        placeId: pid,
+        name: String(p["name"] ?? ""),
+        vicinity: String(p["vicinity"] ?? ""),
+        lat: plat,
+        lng: plng,
+        rating,
+        reviewCount,
+        distanceM: dist,
+        seoScore,
+        threatLevel,
+        types: (p["types"] as string[]) ?? [],
+      });
+    }
+  }));
+
+  // Return sorted by distance so nearest competitors appear first on the map
+  return Array.from(seen.values()).sort(
+    (a, b) => (a["distanceM"] as number) - (b["distanceM"] as number),
+  );
 }
 
 /**
@@ -123,7 +222,7 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
  * address, phone, website, opening status and a proxied photo URL.
  */
 export async function getPlaceDetails(placeId: string): Promise<Record<string, unknown> | null> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const fields = [
     "place_id", "name", "rating", "user_ratings_total", "formatted_address",
@@ -153,7 +252,7 @@ export async function getPlaceDetails(placeId: string): Promise<Record<string, u
 
 /** Streams a Google Places photo (keeps the API key server-side). */
 export async function fetchPlacePhoto(photoRef: string, maxWidth = 400): Promise<{ contentType: string; body: Buffer } | null> {
-  const apiKey = process.env["GOOGLE_MAPS_API_KEY"];
+  const apiKey = getMapsApiKey();
   if (!apiKey) throw new Error("Google Maps API key not configured");
   const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
   const res = await fetch(url, { redirect: "follow" });

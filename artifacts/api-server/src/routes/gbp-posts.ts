@@ -3,6 +3,7 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   createPost, generateAiPost, publishPost, getPostsDashboard, deletePost, getScheduledPosts,
 } from "../services/gbp-posting-service.js";
+import { requireAddon, requireFeature } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -12,6 +13,10 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// Draft/read/publish access follows the canonical gbpPosting feature flag.
+// AI suggestions remain independently gated by the aiGbpPosting add-on below.
+router.use("/gbp-posts", requireFeature("gbpPosting", "GBP Posting"));
 
 router.get("/gbp-posts", async (req, res) => {
   try {
@@ -62,12 +67,14 @@ router.post("/gbp-posts", async (req, res) => {
     ctaType?: string; ctaUrl?: string; mediaUrls?: string[]; scheduledAt?: string;
     seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
   };
-  if (!locationId || !content) { res.status(400).json({ error: "locationId et content requis" }); return; }
+  // locationId is optional for drafts — use 'default' as fallback so brouillon saves always work
+  const effectiveLocationId = locationId || 'default';
+  if (!content) { res.status(400).json({ error: "content requis" }); return; }
   try {
     type PostType = import("../services/gbp-posting-service.js").PostType;
     type CtaType  = import("../services/gbp-posting-service.js").CtaType;
     const post = await createPost(org(req), {
-      locationId, locationName, postType: postType as PostType, title, content,
+      locationId: effectiveLocationId, locationName, postType: postType as PostType, title, content,
       ctaType: ctaType as CtaType, ctaUrl, mediaUrls, scheduledAt,
       seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
     });
@@ -75,7 +82,8 @@ router.post("/gbp-posts", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/gbp-posts/ai-generate", async (req, res) => {
+// AI post generation requires the aiGbpPosting add-on
+router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), async (req, res) => {
   const { locationId, locationName, postType, industry, keywords, tone, objective } = req.body as {
     locationId?: string; locationName?: string; postType?: string; industry?: string;
     keywords?: string[]; tone?: string; objective?: string;

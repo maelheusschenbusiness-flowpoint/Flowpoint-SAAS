@@ -57,7 +57,10 @@ export async function dfsRequest<T>(path: string, body: unknown, orgId = "defaul
     const text = await res.text().catch(() => "");
     throw new Error(`DataForSEO ${res.status} — ${path}: ${text.slice(0, 200)}`);
   }
-  return res.json() as Promise<T>;
+  // The DFS API wraps results in {tasks:[...]}.
+  // Callers type T as the tasks array (Array<{result?:...}>), so we extract .tasks here.
+  const json = await res.json() as { tasks?: T };
+  return (json.tasks ?? []) as T;
 }
 
 // ── Quota management (in-memory + async DB persistence) ───────────────────────
@@ -110,6 +113,47 @@ export function getQuotaUsage(
   };
 }
 
+/**
+ * DB-backed quota read — warms the in-memory cache from `dataforseo_quota`
+ * so the value survives server restarts and F5.
+ * Callers that need the authoritative used count (e.g. /api/me, /api/seo/status)
+ * should prefer this over the sync `getQuotaUsage()`.
+ */
+export async function getQuotaUsageFromDB(
+  orgId = "default", _plan?: string
+): Promise<{ used: number; limit: number; resetAt: string }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const key   = `${orgId}:${today}`;
+  // Only hit the DB when the in-memory cache is cold (missing key = fresh process/restart).
+  if (!_quotaMemory.has(key)) {
+    const client = await pool.connect();
+    try {
+      // Rankings use reserveRankingSearch → local_seo_ranking_history (not dataforseo_quota).
+      // General DFS API calls use checkAndIncrementQuota → dataforseo_quota.
+      // Both are daily per-org counters; take the maximum so neither is hidden.
+      const [qr, rh] = await Promise.all([
+        client.query<{ n: string }>(
+          `SELECT COALESCE(requests_used, 0) AS n FROM dataforseo_quota WHERE org_id=$1 AND date=$2::date`,
+          [orgId, today]
+        ),
+        client.query<{ n: string }>(
+          `SELECT COUNT(*)::int AS n FROM local_seo_ranking_history WHERE org_id=$1 AND searched_at::date=$2::date`,
+          [orgId, today]
+        ),
+      ]);
+      const quotaUsed = Number(qr.rows[0]?.n ?? 0);
+      const rankUsed  = Number(rh.rows[0]?.n ?? 0);
+      // Rankings dominate the quota UI — use the higher of the two sources.
+      _quotaMemory.set(key, Math.max(quotaUsed, rankUsed));
+    } catch { /* non-fatal — fall through with 0 */ } finally { client.release(); }
+  }
+  return {
+    used:    _quotaMemory.get(key) ?? 0,
+    limit:   MAX_DAILY_REQUESTS,
+    resetAt: _quotaResetAt(),
+  };
+}
+
 // ── Keywords ──────────────────────────────────────────────────────────────────
 
 export async function getKeywordSuggestions(
@@ -155,22 +199,30 @@ export async function getCompetitors(
 ): Promise<Array<{ domain: string; organicTraffic: number; keywords: number; authority: number }>> {
   if (!await isDataForSEOConfigured(orgId)) return [];
   try {
-    type DFSResult = Array<{
-      result?: Array<{
-        domain: string; organic_traffic: number; organic_count: number; authority: number;
-      }>;
-    }>;
+    type DFSItem = {
+      domain: string;
+      intersections?: number;
+      full_domain_metrics?: { organic?: { count?: number; etv?: number } };
+      competitor_metrics?:  { organic?: { count?: number; etv?: number } };
+    };
+    type DFSResult = Array<{ result?: Array<{ items?: DFSItem[] }> }>;
+    // No location filter — global competitors; France-only returns empty for many international domains.
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/competitors_domain/live",
-      [{ target: domain, location_name: "France", language_name: "French" }],
+      [{ target: domain, location_code: 2840, language_code: "en" }],
       orgId
     );
-    return (data[0]?.result ?? []).slice(0, 10).map(r => ({
-      domain:         r.domain,
-      organicTraffic: r.organic_traffic,
-      keywords:       r.organic_count,
-      authority:      r.authority,
-    }));
+    // data[0] = first task; .result[0] = first result object; .items = competitor list
+    const items: DFSItem[] = data[0]?.result?.[0]?.items ?? [];
+    return items.slice(0, 10).map(r => {
+      const org = r.full_domain_metrics?.organic ?? r.competitor_metrics?.organic ?? {};
+      return {
+        domain:         r.domain,
+        organicTraffic: Math.round(Number(org["etv"]   ?? 0)),
+        keywords:       Math.round(Number(org["count"] ?? 0)),
+        authority:      0, // fetched separately via backlinks/summary if needed
+      };
+    });
   } catch { return []; }
 }
 
@@ -201,19 +253,25 @@ export async function getDomainMetrics(
 ): Promise<{ traffic: number; keywords: number; rank: number; backlinks: number }> {
   if (!await isDataForSEOConfigured(orgId)) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
   try {
-    type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
-    const data = await dfsRequest<DFSResult>(
-      "/dataforseo_labs/google/domain_metrics/live",
-      [{ target: domain, location_name: "France" }],
-      orgId
+    // Use domain_rank_overview (global, no location filter) — domain_metrics/live does not exist.
+    type DROResult = Array<{ result?: Array<{ items?: Array<{ metrics?: { organic?: { count?: number; etv?: number } } }> }> }>;
+    const data = await dfsRequest<DROResult>(
+      "/dataforseo_labs/google/domain_rank_overview/live",
+      [{ target: domain, location_code: 2840, language_code: "en" }],
+      orgId,
     );
-    const r = data[0]?.result?.[0] ?? {};
-    return {
-      traffic:  r["organic_traffic"] ?? 0,
-      keywords: r["organic_count"]   ?? 0,
-      rank:     r["rank"]            ?? 0,
-      backlinks:r["backlinks"]       ?? 0,
-    };
+    const item = data[0]?.result?.[0]?.items?.[0];
+    const org  = item?.metrics?.organic ?? {};
+    const keywords = Math.round(Number(org["count"] ?? 0));
+    const traffic  = Math.round(Number(org["etv"]   ?? 0));
+    // Domain rank from backlinks/summary/live
+    let rank = 0;
+    try {
+      type BLResult = Array<{ result?: Array<{ rank?: number }> }>;
+      const blData = await dfsRequest<BLResult>("/backlinks/summary/live", [{ target: domain }], orgId);
+      rank = Math.round(Number(blData[0]?.result?.[0]?.rank ?? 0));
+    } catch { /* rank stays 0 if backlinks endpoint unavailable */ }
+    return { traffic, keywords, rank, backlinks: 0 };
   } catch { return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 }; }
 }
 
@@ -234,38 +292,41 @@ export async function getKeywordDifficulty(keyword: string, orgId = "default"): 
 
 export async function getLocalPackRank(
   keyword: string, location: string, orgId = "default"
-): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string }>> {
+): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string; lat?: number; lng?: number; place_id?: string }>> {
   if (!await isDataForSEOConfigured(orgId)) return [];
   try {
-    type DFSResult = Array<{
-      status_code: number;
-      result?: Array<{
-        items?: Array<{
-          type: string;
-          rank_absolute: number;
-          title?: string;
-          rating?: { value: number; votes_count: number };
-          address?: string;
-        }>;
-      }>;
+    // Use business_listings/search/live — works on the standard DFS subscription tier.
+    // The legacy /serp/google/local_pack/live/regular endpoint requires a higher-tier SERP plan.
+    // We request 10 results and extract lat/lng so the frontend can place markers without
+    // relying on a secondary geocoding pass (which fails silently for non-FR addresses).
+    type BLItem = {
+      title?: string;
+      rating?: { value?: number; votes_count?: number };
+      address?: string;
+      place_id?: string;
+      latitude?: number;
+      longitude?: number;
+    };
+    type BLResult = Array<{
+      status_code?: number;
+      result?: Array<{ items?: BLItem[] }>;
     }>;
-    const data = await dfsRequest<DFSResult>("/serp/google/local_pack/live/regular", [{
+    const data = await dfsRequest<BLResult>("/business_data/business_listings/search/live", [{
       keyword,
-      location_name: location,
-      language_code: "fr",
-      depth: 3,
+      location_name: location, // Use the caller-supplied location string, not a hardcoded country code
+      limit: 10,
     }], orgId);
 
-    const items = (data[0]?.result?.[0]?.items ?? [])
-      .filter(i => i.type === "local_pack")
-      .slice(0, 3);
-
+    const items = data[0]?.result?.[0]?.items ?? [];
     return items.map((item, idx) => ({
-      rank:     item.rank_absolute ?? idx + 1,
+      rank:     idx + 1,
       title:    item.title ?? `Résultat ${idx + 1}`,
       rating:   item.rating?.value ?? 0,
       reviews:  item.rating?.votes_count ?? 0,
       address:  item.address,
+      lat:      item.latitude  != null ? Number(item.latitude)  : undefined,
+      lng:      item.longitude != null ? Number(item.longitude) : undefined,
+      place_id: item.place_id,
     }));
   } catch (e) {
     logger.warn({ e }, "[dfs] getLocalPackRank failed");
@@ -273,9 +334,85 @@ export async function getLocalPackRank(
   }
 }
 
+export type DomainMetricsFetchResult =
+  | {
+      ok: true;
+      provider: "DataForSEO";
+      providerModel: "dataforseo_labs/google/domain_metrics/live";
+      traffic: number;
+      keywords: number;
+      authority: number;
+    }
+  | {
+      ok: false;
+      provider: "DataForSEO";
+      reason: "not_configured" | "provider_error" | "no_metrics";
+    };
+
+/**
+ * Fetch persisted competitor metrics without converting an unavailable provider
+ * into a plausible-looking zero. Callers can therefore keep the competitor and
+ * render an explicit unavailable/retry state instead of fabricated metrics.
+ */
+export async function fetchCompetitorDomainMetrics(
+  domain: string,
+  orgId = "default",
+): Promise<DomainMetricsFetchResult> {
+  if (!await isDataForSEOConfigured(orgId)) {
+    return { ok: false, provider: "DataForSEO", reason: "not_configured" };
+  }
+
+  try {
+    type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
+    // Domain authority metrics are global — do NOT filter by location_name.
+    // A per-location filter on /domain_metrics silently returns empty results for
+    // many international domains (e.g. odoo.com, salesforce.com) even when global
+    // metrics exist. We request global metrics and then log the raw response so
+    // callers can distinguish "DFS returned data but mapping was wrong" from
+    // "DFS returned no data for this domain".
+    // Use domain_rank_overview — /domain_metrics/live does not exist on the DFS API.
+    // Field mapping: items[0].metrics.organic.count → keywords, .etv → traffic.
+    // Authority (domain_rank) comes from backlinks/summary/live.
+    type DROResult = Array<{ result?: Array<{ items?: Array<{ metrics?: { organic?: Record<string, number> } }> }> }>;
+    const data = await dfsRequest<DROResult>(
+      "/dataforseo_labs/google/domain_rank_overview/live",
+      [{ target: domain, location_code: 2840, language_code: "en" }],
+      orgId,
+    );
+    const item   = data[0]?.result?.[0]?.items?.[0];
+    const org    = item?.metrics?.organic ?? {};
+    logger.info({ domain, hasItem: !!item, orgKeys: Object.keys(org) }, "[dfs] domain_rank_overview raw");
+    if (!item) {
+      logger.warn({ domain, data: JSON.stringify(data).slice(0, 500) }, "[dfs] domain_rank_overview: no item — no_metrics");
+      return { ok: false, provider: "DataForSEO", reason: "no_metrics" };
+    }
+    const keywords = Math.round(Number(org["count"] ?? 0));
+    const traffic  = Math.round(Number(org["etv"]   ?? 0));
+    // Fetch domain authority from backlinks/summary
+    let authority = 0;
+    try {
+      type BLResult = Array<{ result?: Array<{ rank?: number }> }>;
+      const blData = await dfsRequest<BLResult>("/backlinks/summary/live", [{ target: domain }], orgId);
+      authority = Math.round(Number(blData[0]?.result?.[0]?.rank ?? 0));
+    } catch { /* authority stays 0 */ }
+    logger.info({ domain, authority, traffic, keywords }, "[dfs] domain_rank_overview mapped");
+    return {
+      ok: true,
+      provider: "DataForSEO",
+      providerModel: "dataforseo_labs/google/domain_rank_overview/live" as never,
+      traffic,
+      keywords,
+      authority,
+    };
+  } catch (err) {
+    logger.warn({ err, domain }, "[dfs] competitor domain metrics failed");
+    return { ok: false, provider: "DataForSEO", reason: "provider_error" };
+  }
+}
+
 export async function getGoogleMapsResults(
   keyword: string, location: string, orgId = "default"
-): Promise<{ results: Array<{ name: string; rating: number; reviews: number; address: string; category: string; placeId: string; rank: number; photoUrl: string | null }>; error?: string }> {
+): Promise<{ results: Array<{ name: string; rating: number; reviews: number; address: string; category: string; placeId: string; rank: number; photoUrl: string | null; lat?: number; lng?: number }>; error?: string }> {
   if (!await isDataForSEOConfigured(orgId)) return { results: [] };
   try {
     type DFSResult = Array<{
@@ -290,6 +427,8 @@ export async function getGoogleMapsResults(
           place_id?: string;
           rank_absolute?: number;
           image_url?: string;
+          latitude?: number;
+          longitude?: number;
         }>;
       }>;
     }>;
@@ -300,9 +439,17 @@ export async function getGoogleMapsResults(
       depth: 10,
     }], orgId);
 
-    const items = (data[0]?.result?.[0]?.items ?? [])
-      .filter(i => i.type === "maps_search")
+    const allItems = data[0]?.result?.[0]?.items ?? [];
+    // DFS returns "maps_search" for standard map pack results and sometimes
+    // "local_pack" for local pack entries — accept both.
+    const items = allItems
+      .filter(i => i.type === "maps_search" || i.type === "local_pack")
       .slice(0, 10);
+    if (items.length === 0 && allItems.length > 0) {
+      // Log all item types so we can diagnose unexpected type values.
+      logger.warn({ types: allItems.map(i => i.type).slice(0, 20), keyword, location },
+        "[dfs] getGoogleMapsResults: 0 items matched type filter but allItems non-empty");
+    }
 
     return { results: items.map(item => ({
       name:     item.title    ?? "",
@@ -313,6 +460,8 @@ export async function getGoogleMapsResults(
       placeId:  item.place_id ?? "",
       rank:     item.rank_absolute ?? 0,
       photoUrl: item.image_url ?? null,
+      lat:      item.latitude  != null ? Number(item.latitude)  : undefined,
+      lng:      item.longitude != null ? Number(item.longitude) : undefined,
     })) };
   } catch (e) {
     logger.warn({ e }, "[dfs] getGoogleMapsResults failed");

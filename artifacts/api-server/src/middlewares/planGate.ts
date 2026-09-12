@@ -13,6 +13,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { planAtLeast, getFeature, getQuota, normalizePlan, type PlanTier, type FeatureFlags, type CoreQuotas } from "../lib/config.js";
 import { planRequired, quotaExceeded } from "../lib/response.js";
+import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 
 const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
 
@@ -125,19 +126,27 @@ export function requireFeature(feature: keyof FeatureFlags, featureLabel?: strin
 }
 
 /** Check that current plan has remaining quota for a resource */
-export function requireQuota(resource: keyof CoreQuotas, getCurrentUsage: (orgId: string) => number | Promise<number>): (req: Request, res: Response, next: NextFunction) => void {
+export function requireQuota(
+  resource: keyof CoreQuotas,
+  getCurrentUsage: (orgId: string, req: Request) => number | Promise<number>,
+): (req: Request, res: Response, next: NextFunction) => void {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const orgId = (req as { orgId?: string }).orgId ?? "default";
-    const plan = await resolvePlanFromDB(req).catch(() => "standard");
-    const resolvedPlan = plan ?? "standard";
+    const resolvedPlan = await resolvePlanFromDB(req);
+    if (resolvedPlan === null) {
+      logger.error({ resource, orgId }, "[PlanGate] quota plan resolution failed — denying request");
+      res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+      return;
+    }
     const limit = getQuota(resolvedPlan, resource);
     if (limit >= 9999) { next(); return; }
     try {
-      const used = await getCurrentUsage(orgId);
+      const used = await getCurrentUsage(orgId, req);
       if (used < limit) { next(); return; }
       quotaExceeded(res, String(resource), limit, resolvedPlan);
-    } catch {
-      next(); // fail-open on quota check errors
+    } catch (err) {
+      logger.error({ err, resource, orgId }, "[PlanGate] quota usage resolution failed — denying request");
+      res.status(503).json({ error: "Usage status unavailable. Please try again." });
     }
   };
 }
@@ -156,6 +165,118 @@ export function orgIsolation(req: Request, res: Response, next: NextFunction): v
     (req as { orgId?: string }).orgId = "default";
   }
   next();
+}
+
+/**
+ * requireAddon — checks that the org either:
+ *   a) has the addon active in org_addons (purchased), OR
+ *   b) has it bundled in their plan via PLAN_INCLUDED_ADDONS
+ *
+ * This is the CORRECT gate for add-on features. Using requireFeature() alone
+ * blocks Standard/Pro users who legitimately purchased an add-on that is only
+ * bundled at higher plan tiers.
+ *
+ * Usage: router.use("/behavioral", requireAddon("behavioralAI", "Behavioral AI"));
+ */
+export function requireAddon(
+  addonKey: string,
+  label?: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const orgId = (req as { orgId?: string }).orgId;
+    if (!orgId || orgId === "default") {
+      // Dev mode without auth — fail-open
+      if (!isProd()) { next(); return; }
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    resolvePlanFromDB(req).then(async plan => {
+      if (plan === null) {
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+
+      // Check 1: bundled in plan
+      const planBundle = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+      if (planBundle.has(addonKey)) { next(); return; }
+
+      // Check 2: purchased in org_addons
+      try {
+        const client = await pool.connect();
+        try {
+          const r = await client.query<{ active: boolean }>(
+            `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2 LIMIT 1`,
+            [orgId, addonKey],
+          );
+          if (r.rows.length > 0 && r.rows[0].active) { next(); return; }
+        } finally {
+          client.release();
+        }
+      } catch (err) {
+        logger.error({ err, addonKey, orgId }, "[PlanGate] requireAddon DB query failed");
+        if (isProd()) {
+          res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+          return;
+        }
+        // Dev: fail-open
+        next();
+        return;
+      }
+
+      // Neither bundled nor purchased
+      logger.warn({ plan, addonKey, orgId }, "[PlanGate] Addon not active for org");
+      res.status(402).json({
+        error: `${label ?? addonKey} requires an active add-on subscription.`,
+        code: "ADDON_REQUIRED",
+        addonKey,
+        upgradeUrl: "/pricing.html",
+      });
+    }).catch(next);
+  };
+}
+
+/**
+ * requireAddonOrFeature — grants access when EITHER:
+ *   a) the plan's canonical feature flag (FEATURE_FLAGS) is enabled, OR
+ *   b) requireAddon() would allow it (bundled in PLAN_INCLUDED_ADDONS
+ *      or purchased/active in org_addons).
+ *
+ * This is the correct gate for capabilities that are part of the canonical
+ * plan entitlement (config.ts FEATURE_FLAGS) but ALSO sold as a standalone
+ * add-on to lower tiers. Example: Review Intelligence (reviewIntelAI) is a
+ * bundled entitlement for Pro/Ultra, while Standard can purchase the
+ * reviewIntelligence add-on to unlock it. Gating purely on requireAddon()
+ * wrongly forces a paying Ultra org to buy the add-on separately.
+ *
+ * Org isolation is preserved: the add-on branch still scopes org_addons by
+ * orgId; the feature branch only reads the plan resolved for this org.
+ */
+export function requireAddonOrFeature(
+  addonKey: string,
+  feature: keyof FeatureFlags,
+  label?: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  const addonGate = requireAddon(addonKey, label);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const orgId = (req as { orgId?: string }).orgId;
+    if (!orgId || orgId === "default") {
+      // Dev mode without auth — fall through to requireAddon (fail-open in dev).
+      addonGate(req, res, next);
+      return;
+    }
+
+    resolvePlanFromDB(req).then(plan => {
+      if (plan === null) {
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+      // Canonical plan entitlement — grant immediately.
+      if (getFeature(plan, feature)) { next(); return; }
+      // Otherwise defer to the add-on gate (bundled or purchased).
+      addonGate(req, res, next);
+    }).catch(next);
+  };
 }
 
 // ── Pre-built plan gates for common features ──────────────────────────────────

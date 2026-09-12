@@ -273,6 +273,7 @@ export const AUDIT_ARG_SCHEMAS = {
   run_audit: z.object({
     url: z.string().min(1).max(500),
     origin: z.enum(["manual", "agent"]).optional(),
+    force: z.boolean().optional(), // bypass 24-hour deduplication guard
   }),
 
   rerun_audit: z.object({

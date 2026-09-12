@@ -19,10 +19,11 @@
 import { Router, type Request, type Response } from "express";
 import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
-import { pool }                                from "@workspace/db";
+import { pool, withOrgDb }                     from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
-import { createSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
-import { PLAN_LIMITS }                          from "../lib/plans.js";
+import { createSession, SESSION_TTL_MS, updateSessionsRole } from "../services/sessions.js";
+import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
+import { store }                                from "../services/store.js";
 
 // ── Public router (registered before requireAuth in index.ts) ─────────────────
 export const publicTeamRouter = Router();
@@ -70,45 +71,43 @@ function buildInviteUrl(rawToken: string, email: string): string {
   return `${base}/accept-invitation.html?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}`;
 }
 
-/** Resolve plan seat limit — reads from organizations (Jalon 1 source of truth).
- *  Falls back to org_settings.plan when the webhook has not yet updated organizations.plan,
- *  taking whichever source gives the higher teamMembers limit (avoids blocking invites after upgrade).
+/** Count used seats: 1 (owner) + active members + pending invitations.
+ *
+ *  Seat capacity comes from the ONE authoritative resolver
+ *  (resolveSeatEntitlement) so GET /team and POST /team/invite can never
+ *  disagree.  When capacity cannot be resolved it throws
+ *  SeatEntitlementUnavailableError (retryable) — it NEVER silently degrades to
+ *  Standard/1, which would wrongly refuse invites for paying Pro/Ultra orgs.
  */
-async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
-  try {
-    const r = await pool.query<{ plan: string; legacy_plan: string }>(
-      `SELECT
-         COALESCE(NULLIF(o.plan,''), 'standard')              AS plan,
-         COALESCE(NULLIF(os.plan,''), '')                     AS legacy_plan
-       FROM organizations o
-       LEFT JOIN org_settings os ON os.org_id = o.id::text
-       WHERE o.id::text = $1 LIMIT 1`,
-      [orgId]
-    );
-    const plan1  = (r.rows[0]?.plan        ?? "standard").toLowerCase();
-    const plan2  = (r.rows[0]?.legacy_plan ?? "").toLowerCase();
-    const limit1 = PLAN_LIMITS[plan1]?.teamMembers ?? 1;
-    const limit2 = PLAN_LIMITS[plan2]?.teamMembers ?? 0;
-    // Prefer whichever plan grants more seats — guards against webhook lag after upgrade.
-    if (limit2 > limit1) return { limit: limit2, plan: plan2 };
-    return { limit: limit1, plan: plan1 };
-  } catch {
-    return { limit: 1, plan: "standard" };
-  }
-}
+/**
+ * Active members that occupy a seat BEYOND the owner's own seat.
+ *
+ * The owner always occupies exactly 1 seat (added as the constant below), so
+ * any active team_members row that *represents the owner* (legacy data can
+ * store the owner as a plain 'admin'/'member' row) must be excluded here or
+ * the owner would be counted twice — and the visible member list (which
+ * de-duplicates the owner) would disagree with seatUsage.used.
+ */
+const ACTIVE_NON_OWNER_MEMBERS_COUNT_SQL = `
+  SELECT COUNT(*)::int AS n
+  FROM team_members tm
+  WHERE tm.org_id = $1 AND tm.status = 'active'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM organizations o
+      LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+      WHERE o.id::text = tm.org_id
+        AND (LOWER(tm.email) = LOWER(o.owner_email)
+             OR (u.id IS NOT NULL AND tm.user_id = u.id::text))
+    )`;
 
-/** Count used seats: 1 (owner) + active members + pending invitations. */
 async function getSeatUsage(
   db: OrgDbFn,
   orgId: string,
 ): Promise<{ used: number; limit: number; plan: string }> {
   const [{ limit, plan }, membersRes, invitesRes] = await Promise.all([
-    getOrgSeatLimit(orgId),
-    db(
-      `SELECT COUNT(*)::int AS n FROM team_members
-       WHERE org_id = $1 AND status = 'active'`,
-      [orgId]
-    ),
+    resolveSeatEntitlement(orgId),
+    db(ACTIVE_NON_OWNER_MEMBERS_COUNT_SQL, [orgId]),
     db(
       `SELECT COUNT(*)::int AS n FROM team_invitations
        WHERE org_id = $1 AND status = 'pending' AND expires_at > NOW()`,
@@ -119,6 +118,71 @@ async function getSeatUsage(
   const pendingInvites = (invitesRes.rows[0]?.n   as number) ?? 0;
   const used = 1 + activeMembers + pendingInvites; // 1 = owner always occupies 1 seat
   return { used, limit, plan };
+}
+
+/**
+ * Atomically reserve one seat and create the invitation.
+ *
+ * The public GET display can use a normal count, but the write path MUST lock
+ * per organization: otherwise two requests at 9/10 can both count 9 then both
+ * insert, resulting in 11/10 seats. `pg_advisory_xact_lock` is database-wide,
+ * so this holds across application instances as well as within one process.
+ */
+async function reserveSeatAndCreateInvitation(input: {
+  orgId: string;
+  invitationId: string;
+  email: string;
+  role: string;
+  tokenHash: string;
+  invitedBy: string | null;
+  expiresAt: string;
+}): Promise<{ reserved: true; seatUsage: { used: number; limit: number; plan: string } } | {
+  reserved: false; seatUsage: { used: number; limit: number; plan: string };
+}> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.orgId]);
+
+    const [entitlement, membersRes, invitesRes] = await Promise.all([
+      resolveSeatEntitlement(input.orgId),
+      client.query<{ n: number }>(
+        ACTIVE_NON_OWNER_MEMBERS_COUNT_SQL,
+        [input.orgId],
+      ),
+      client.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM team_invitations
+         WHERE org_id = $1 AND status = 'pending' AND expires_at > NOW()`,
+        [input.orgId],
+      ),
+    ]);
+    const seatUsage = {
+      used: 1 + Number(membersRes.rows[0]?.n ?? 0) + Number(invitesRes.rows[0]?.n ?? 0),
+      limit: entitlement.limit,
+      plan: entitlement.plan,
+    };
+    if (seatUsage.used >= seatUsage.limit) {
+      await client.query("ROLLBACK");
+      return { reserved: false, seatUsage };
+    }
+
+    await client.query(
+      `INSERT INTO team_invitations
+         (id, org_id, email, role, token_hash, status, invited_by_user_id, expires_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, NOW(), NOW())`,
+      [
+        input.invitationId, input.orgId, input.email, input.role,
+        input.tokenHash, input.invitedBy, input.expiresAt,
+      ],
+    );
+    await client.query("COMMIT");
+    return { reserved: true, seatUsage };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,6 +339,14 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
              updated_at     = NOW()`,
       [email]
     );
+    const acceptedUserRes = await client.query<{ id: string }>(
+      `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    const acceptedUserUuid = acceptedUserRes.rows[0]?.id;
+    if (!acceptedUserUuid) {
+      throw new Error("accepted member has no canonical user id");
+    }
 
     // Create or update active team member
     // (no unique constraint on org_id+email → use check-then-insert to avoid duplicates)
@@ -290,9 +362,9 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       memberId = existingMemberRes.rows[0]!.id;
       await client.query(
         `UPDATE team_members
-         SET status = 'active', role = $1, joined_at = $2, accepted_at = $3, updated_at = $4
-         WHERE id = $5`,
-        [inv.role, nowIso, nowIso, nowIso, memberId]
+         SET status = 'active', role = $1, user_id = $2, joined_at = $3, accepted_at = $4, updated_at = $5
+         WHERE id = $6`,
+        [inv.role, acceptedUserUuid, nowIso, nowIso, nowIso, memberId]
       );
     } else {
       // Fresh insert — no prior member row exists for this email+org
@@ -302,22 +374,23 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
            (id, org_id, email, name, role, joined, status, user_id,
             invited_by_user_id, joined_at, accepted_at, invitation_token_hash,
             invited_at, email_status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', $3,
-                 $7, $8, $9, '',
-                 $10, 'sent', $11, $12)`,
+          VALUES ($1, $2, $3, $4, $5, $6, 'active', $7,
+                  $8, $9, $10, '',
+                  $11, 'sent', $12, $13)`,
         [
           memberId,                    // $1
           inv.org_id,                  // $2
-          email,                       // $3  (also used as user_id)
+          email,                       // $3
           email.split("@")[0] ?? "",   // $4  name
           inv.role,                    // $5
           joinedDay,                   // $6  joined (text date)
-          inv.invited_by_user_id ?? null, // $7
-          nowIso,                      // $8  joined_at
-          nowIso,                      // $9  accepted_at
-          nowIso,                      // $10 invited_at
-          nowIso,                      // $11 created_at
-          nowIso,                      // $12 updated_at
+          acceptedUserUuid,            // $7  canonical users.id
+          inv.invited_by_user_id ?? null, // $8
+          nowIso,                      // $9  joined_at
+          nowIso,                      // $10 accepted_at
+          nowIso,                      // $11 invited_at
+          nowIso,                      // $12 created_at
+          nowIso,                      // $13 updated_at
         ]
       );
     }
@@ -361,10 +434,11 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
 
     // Create session for the newly accepted member
     const sessionToken = await createSession({
-      userId:    email,
+      userId:    acceptedUserUuid,
       orgId:     inv.org_id,
       email,
       role:      inv.role,
+      userUuid:  acceptedUserUuid,
       ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -472,6 +546,58 @@ router.get("/team", async (req: Request, res: Response) => {
       createdAt: m.created_at,
     }));
 
+    // The owner occupies a seat (getSeatUsage counts "1 + active members") but
+    // usually has NO team_members row — without a synthetic entry, both owner
+    // and invited members see a list whose length never matches seatUsage.used,
+    // and the member never sees who owns the workspace. Prepend the owner from
+    // the organizations row unless an active member row already represents them.
+    try {
+      const ownerRes = await db(
+        `SELECT o.owner_email AS email, o.created_at AS org_created_at,
+                COALESCE(u.first_name, '') AS first_name,
+                COALESCE(u.last_name,  '') AS last_name,
+                u.id::text AS user_id
+           FROM organizations o
+           LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+          WHERE o.id::text = $1`,
+        [org]
+      );
+      const o = ownerRes.rows[0];
+      const ownerEmail = String(o?.email ?? "").toLowerCase();
+      if (ownerEmail) {
+        // Always force the owner to have role='owner', regardless of what may
+        // be stored in team_members (legacy rows can have 'admin' or 'member').
+        // This is the canonical source: organizations.owner_email.
+        const ownerMemberIdx = members.findIndex(m =>
+          String(m.email ?? "").toLowerCase() === ownerEmail ||
+          (o?.user_id && String(m.userId ?? "") === String(o.user_id)));
+
+        if (ownerMemberIdx !== -1) {
+          // Owner already in list — ensure their role is 'owner'
+          (members[ownerMemberIdx] as Record<string, unknown>).role = "owner";
+        } else {
+          // Owner not in team_members — prepend synthetic entry
+          members.unshift({
+            id:        "owner",
+            email:     ownerEmail,
+            name:      (o?.first_name && o?.last_name)
+                         ? `${o.first_name} ${o.last_name}`.trim()
+                         : ((o?.first_name as string) || ownerEmail.split("@")[0] || ""),
+            firstName: o?.first_name ?? "",
+            lastName:  o?.last_name ?? "",
+            role:      "owner",
+            status:    "active",
+            userId:    o?.user_id ?? null,
+            joinedAt:  o?.org_created_at ?? null,
+            createdAt: o?.org_created_at ?? null,
+          });
+        }
+      }
+    } catch (ownerErr) {
+      // Non-fatal: the list simply omits the synthetic owner row.
+      logger.warn({ err: (ownerErr as Error).message }, "[team/get] owner row lookup failed");
+    }
+
     const pendingInvitations = invitationsRes.rows.map(i => ({
       id:              i.id,
       email:           i.email,
@@ -486,10 +612,21 @@ router.get("/team", async (req: Request, res: Response) => {
 
     res.json({ members, pendingInvitations, seatUsage });
   } catch (err) {
+    // Seat capacity could not be authoritatively resolved — surface an explicit
+    // retryable error rather than degrading to Standard/1 (which would make the
+    // dashboard disagree with the invite gate for paying Pro/Ultra orgs).
+    if (err instanceof SeatEntitlementUnavailableError) {
+      logger.error({ orgId: org.slice(0, 20), err: err.message }, "[team/get] seat entitlement unavailable");
+      res.status(503).json({
+        ok:        false,
+        code:      "SEAT_ENTITLEMENT_UNAVAILABLE",
+        retryable: true,
+        error:     "Impossible de déterminer la capacité de sièges. Veuillez réessayer.",
+      });
+      return;
+    }
     logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[team/get] failed");
-    // Use real plan limit in error fallback — hardcoded limit:1 caused 1/1 seats bug for Pro/Ultra
-    const fallbackSeat = await getOrgSeatLimit(org).catch(() => ({ limit: 1, plan: "standard" }));
-    res.json({ members: [], pendingInvitations: [], seatUsage: { used: 1, limit: fallbackSeat.limit, plan: fallbackSeat.plan } });
+    res.status(500).json({ ok: false, code: "SERVER_ERROR", error: "Failed to load team" });
   }
 });
 
@@ -560,43 +697,51 @@ router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
     }
   } catch { /* non-fatal */ }
 
-  // Seat quota check
-  const seatUsage = await getSeatUsage(db, org);
-  if (seatUsage.used >= seatUsage.limit) {
-    res.status(402).json({
-      ok:         false,
-      code:       "SEAT_LIMIT_REACHED",
-      error:      `Limite de ${seatUsage.limit} siège${seatUsage.limit > 1 ? "s" : ""} atteinte pour le plan ${seatUsage.plan}.`,
-      seatUsage,
-    });
-    return;
-  }
-
-  // Generate token
+  // Generate the invitation credential before the atomic seat reservation.
   const rawToken  = randomBytes(32).toString("hex");
   const tHash     = hashToken(rawToken);
   const id        = randomUUID();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  // Insert (UNIQUE index on (org_id, lower(email)) WHERE pending blocks duplicates)
+  // Atomically count and reserve a seat. A plain count followed by a separate
+  // INSERT allowed concurrent 9/10 requests to both create the tenth invite.
+  let seatUsage: { used: number; limit: number; plan: string };
   try {
-    await db(
-      `INSERT INTO team_invitations
-         (id, org_id, email, role, token_hash, status, invited_by_user_id, expires_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, NOW(), NOW())`,
-      [id, org, email, memberRole, tHash, callerEmail ?? null, expiresAt.toISOString()]
-    );
-  } catch (insertErr: unknown) {
-    const err = insertErr as Error & { code?: string };
-    if (err.code === "23505") {
-      res.status(409).json({
-        ok: false, code: "DUPLICATE_INVITATION",
-        error: "Une invitation est déjà en attente pour cette adresse.",
+    const reservation = await reserveSeatAndCreateInvitation({
+      orgId: org,
+      invitationId: id,
+      email,
+      role: memberRole,
+      tokenHash: tHash,
+      invitedBy: callerEmail,
+      expiresAt: expiresAt.toISOString(),
+    });
+    seatUsage = reservation.seatUsage;
+    if (!reservation.reserved) {
+      res.status(402).json({
+        ok:         false,
+        code:       "SEAT_LIMIT_REACHED",
+        error:      `Limite de ${seatUsage.limit} siège${seatUsage.limit > 1 ? "s" : ""} atteinte pour le plan ${seatUsage.plan}.`,
+        seatUsage,
       });
       return;
     }
-    logger.error({ orgId: org.slice(0, 20), maskedEmail: maskEmail(email), err: err.message }, "[team/invite] INSERT failed");
-    res.status(500).json({ ok: false, code: "DB_ERROR", error: "Failed to create invitation" });
+  } catch (err) {
+    // Entitlement unavailable → explicit retryable error, never a Standard/1
+    // refusal. A Standard/1 fallback here caused paying Ultra orgs to be
+    // rejected at 1/1 while the dashboard showed Ultra/10.
+    if (err instanceof SeatEntitlementUnavailableError) {
+      logger.error({ orgId: org.slice(0, 20), err: err.message }, "[team/invite] seat entitlement unavailable");
+      res.status(503).json({
+        ok:        false,
+        code:      "SEAT_ENTITLEMENT_UNAVAILABLE",
+        retryable: true,
+        error:     "Impossible de déterminer la capacité de sièges. Veuillez réessayer.",
+      });
+      return;
+    }
+    logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[team/invite] seat usage failed");
+    res.status(500).json({ ok: false, code: "SERVER_ERROR", error: "Failed to check seat quota" });
     return;
   }
 
@@ -674,7 +819,7 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
   let memberRes: { rows: Record<string, unknown>[] };
   try {
     memberRes = await db(
-      `SELECT id, email, role, status FROM team_members WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      `SELECT id, email, role, status, user_id FROM team_members WHERE id = $1 AND org_id = $2 LIMIT 1`,
       [memberId, org]
     );
   } catch (err) {
@@ -686,7 +831,34 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const member = memberRes.rows[0];
   if (!member) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
 
-  if (member.role === "owner") {
+  // Ownership is defined by organizations.owner_email, NOT by the row's role:
+  // legacy/inconsistent data can leave the true owner as an 'admin'/'member'
+  // team_members row, and that row must be just as immutable. Fail CLOSED if
+  // the ownership lookup cannot be resolved.
+  let ownerEmail = "";
+  let ownerUserId: string | null = null;
+  try {
+    const ownerRes = await db(
+      `SELECT o.owner_email, u.id::text AS owner_user_id
+         FROM organizations o
+         LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+        WHERE o.id::text = $1 LIMIT 1`,
+      [org]
+    );
+    ownerEmail  = String(ownerRes.rows[0]?.owner_email ?? "").toLowerCase();
+    ownerUserId = (ownerRes.rows[0]?.owner_user_id as string | null) ?? null;
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/patch] owner lookup failed — refusing role change");
+    res.status(503).json({ ok: false, code: "OWNER_LOOKUP_UNAVAILABLE", retryable: true, error: "Vérification du propriétaire impossible. Réessayez." });
+    return;
+  }
+
+  const memberIsOrgOwner =
+    member.role === "owner" ||
+    (ownerEmail  && String(member.email ?? "").toLowerCase() === ownerEmail) ||
+    (ownerUserId && String(member.user_id ?? "") === ownerUserId);
+
+  if (memberIsOrgOwner) {
     res.status(403).json({ ok: false, code: "CANNOT_MODIFY_OWNER", error: "Le rôle du propriétaire ne peut pas être modifié." });
     return;
   }
@@ -721,6 +893,19 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
       [newRole, m.email as string, org]
     ).catch(err => logger.warn({ err: (err as Error).message }, "[team/patch] org_members dual-write failed (non-fatal)"));
 
+    // Update all active sessions for this member so req.orgContext.role
+    // reflects the new role on their very next API request (no logout needed).
+    updateSessionsRole(m.email as string, org, newRole).catch(() => {});
+
+    // Broadcast SSE so the affected member's browser immediately re-syncs
+    // their role without needing a manual page refresh.
+    try {
+      store.broadcast(
+        { type: "fp:role_updated", memberId, email: m.email, role: m.role },
+        org
+      );
+    } catch (_) { /* non-fatal — member will re-sync on next /api/me poll */ }
+
     res.json({
       ok: true,
       member: {
@@ -743,72 +928,124 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
-  const db          = orgDb(req);
   const callerEmail = req.orgContext?.email ?? "";
   const memberId    = req.params.id;
 
-  // Load current member
-  let memberRes: { rows: Record<string, unknown>[] };
+  // Removal is security-sensitive: canonical membership removal and session
+  // revocation must succeed together. A failure rolls back all changes so we
+  // never show a member as removed while their token still grants access.
   try {
-    memberRes = await db(
-      `SELECT id, email, role, status FROM team_members WHERE id = $1 AND org_id = $2 AND status = 'active' LIMIT 1`,
-      [memberId, org]
+    // Legacy invitation accepts stored the email in team_members.user_id.
+    // Resolve the immutable canonical UUID with the service pool before
+    // entering the RLS-scoped write transaction; querying users under the
+    // tenant role can be filtered even for a legitimate organization owner.
+    const canonicalLookup = await pool.query<{ team_user_id: string | null; canonical_user_id: string }>(
+      `SELECT tm.user_id AS team_user_id, u.id AS canonical_user_id
+       FROM team_members tm
+       JOIN users u ON lower(u.email) = lower(tm.email)
+       WHERE tm.id = $1 AND tm.org_id = $2 AND tm.status = 'active'
+       LIMIT 1`,
+      [memberId, org],
     );
-  } catch (err) {
-    logger.error({ err: (err as Error).message }, "[team/delete] SELECT failed");
-    res.status(500).json({ ok: false, error: "Failed to load member" });
-    return;
-  }
+    const lookup = canonicalLookup.rows[0];
 
-  const member = memberRes.rows[0];
-  if (!member) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
-
-  if (member.role === "owner") {
-    res.status(403).json({ ok: false, code: "CANNOT_REMOVE_OWNER", error: "Le propriétaire ne peut pas être retiré de l'équipe." });
-    return;
-  }
-
-  if (callerEmail && (member.email as string)?.toLowerCase() === callerEmail.toLowerCase()) {
-    res.status(403).json({ ok: false, code: "CANNOT_REMOVE_SELF", error: "Vous ne pouvez pas vous retirer vous-même." });
-    return;
-  }
-
-  try {
-    await db(
-      `UPDATE team_members SET status = 'removed', updated_at = NOW() WHERE id = $1 AND org_id = $2`,
-      [memberId, org]
+    // Ownership is defined by organizations.owner_email, NOT by the row's
+    // role: legacy data can leave the true owner as a non-owner team_members
+    // row, and that row must be just as protected from removal. This query
+    // failing aborts the whole route (fail closed).
+    const orgOwnerRes = await pool.query<{ owner_email: string | null; owner_user_id: string | null }>(
+      `SELECT o.owner_email, u.id::text AS owner_user_id
+         FROM organizations o
+         LEFT JOIN users u ON lower(u.email) = lower(o.owner_email)
+        WHERE o.id::text = $1 LIMIT 1`,
+      [org],
     );
-  } catch (err) {
-    logger.error({ orgId: org.slice(0, 20), memberId, err: (err as Error).message }, "[team/delete] UPDATE failed");
-    res.status(500).json({ ok: false, error: "Failed to remove member" });
-    return;
-  }
-
-  const memberEmail = member.email as string;
-
-  // Jalon 3 — dual-write removal to organization_members (fire-and-forget, migration utility)
-  pool.query(
-    `UPDATE organization_members om
-     SET status = 'removed', updated_at = NOW()
-     FROM users u
-     WHERE u.id = om.user_id AND lower(u.email) = lower($1) AND om.organization_id = $2`,
-    [memberEmail, org]
-  ).catch(err => logger.warn({ err: (err as Error).message }, "[team/delete] org_members dual-write failed (non-fatal)"));
-
-  // Session revocation is a security operation — must be awaited, never fire-and-forget
-  if (memberEmail) {
-    try {
-      await invalidateAllSessions(memberEmail);
-    } catch (err) {
-      logger.error(
-        { err: (err as Error).message, maskedEmail: maskEmail(memberEmail) },
-        "[team/delete] SECURITY: session revocation failed — member removed from DB but sessions may remain valid until expiry"
+    const orgOwnerEmail  = String(orgOwnerRes.rows[0]?.owner_email ?? "").toLowerCase();
+    const orgOwnerUserId = orgOwnerRes.rows[0]?.owner_user_id ?? null;
+    const removed = await withOrgDb(org, async (client) => {
+      const memberRes = await client.query<{ id: string; email: string; role: string; user_id: string | null }>(
+        `SELECT id, email, role, user_id
+         FROM team_members
+         WHERE id = $1 AND org_id = $2 AND status = 'active'
+         LIMIT 1`,
+        [memberId, org],
       );
-    }
-  }
+      const member = memberRes.rows[0];
+      if (!member) return { kind: "not_found" as const };
 
-  logger.info({ orgId: org.slice(0, 20), memberId, maskedEmail: maskEmail(memberEmail) }, "[team/delete] member soft-removed");
-  res.json({ ok: true });
+      const memberIsOrgOwner =
+        member.role === "owner" ||
+        (orgOwnerEmail  && member.email.toLowerCase() === orgOwnerEmail) ||
+        (orgOwnerUserId && (String(member.user_id ?? "") === orgOwnerUserId ||
+                            lookup?.canonical_user_id === orgOwnerUserId));
+      if (memberIsOrgOwner) return { kind: "owner" as const };
+      if (callerEmail && member.email.toLowerCase() === callerEmail.toLowerCase()) {
+        return { kind: "self" as const };
+      }
+
+      // organization_members is the authoritative membership table. Deleting
+      // this record (rather than updating it later in the background) closes
+      // the canonical access path in the same commit as legacy team cleanup.
+      if (!lookup || lookup.team_user_id !== member.user_id) {
+        throw new Error("active team member has no resolvable canonical user id");
+      }
+      const canonicalRes = await client.query<{ user_id: string }>(
+        `DELETE FROM organization_members
+         WHERE organization_id::text = $1
+           AND user_id::text = $2
+         RETURNING user_id`,
+        [org, lookup.canonical_user_id],
+      );
+      const canonicalUserId = canonicalRes.rows[0]?.user_id;
+      if (!canonicalUserId) {
+        throw new Error("active team member has no canonical organization membership");
+      }
+
+      // Sessions are scoped by organization. Never revoke another valid org
+      // session merely because the user has the same email or UUID.
+      await client.query(
+        `DELETE FROM user_sessions
+         WHERE org_id = $1
+           AND (lower(email) = lower($2) OR user_id_v2::text = $3)`,
+        [org, member.email, canonicalUserId],
+      );
+
+      const teamRes = await client.query(
+        `UPDATE team_members
+         SET status = 'removed', updated_at = NOW()
+         WHERE id = $1 AND org_id = $2 AND status = 'active'
+         RETURNING id`,
+        [memberId, org],
+      );
+      if (!teamRes.rows[0]) {
+        throw new Error("member disappeared during removal");
+      }
+
+      return { kind: "removed" as const, email: member.email };
+    });
+
+    if (removed.kind === "not_found") {
+      res.status(404).json({ ok: false, error: "Member not found" });
+      return;
+    }
+    if (removed.kind === "owner") {
+      res.status(403).json({ ok: false, code: "CANNOT_REMOVE_OWNER", error: "Le propriétaire ne peut pas être retiré de l'équipe." });
+      return;
+    }
+    if (removed.kind === "self") {
+      res.status(403).json({ ok: false, code: "CANNOT_REMOVE_SELF", error: "Vous ne pouvez pas vous retirer vous-même." });
+      return;
+    }
+
+    logger.info({ orgId: org.slice(0, 20), memberId, maskedEmail: maskEmail(removed.email) }, "[team/delete] member access revoked");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error(
+      { orgId: org.slice(0, 20), memberId, err: (err as Error).message },
+      "[team/delete] SECURITY: atomic membership/session revocation failed",
+    );
+    res.status(503).json({ ok: false, code: "MEMBER_REMOVAL_UNAVAILABLE", error: "Le retrait du membre n'a pas pu être sécurisé. Réessayez." });
+  }
 });
 
 // ── POST /team/invitations/:id/resend ─────────────────────────────────────────
@@ -1077,6 +1314,393 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
   } catch (err) {
     logger.error({ err: (err as Error).message }, "[organizations/switch] failed");
     res.status(500).json({ ok: false, error: "Failed to switch organization" });
+  }
+});
+
+// ── GET /api/team/contributions — per-user action + mission counts from real DB ─
+//
+// Counts are keyed only by the canonical users.id.  Historical activity rows
+// may identify their actor by UUID or email, but that legacy identity is
+// resolved to users.id before aggregation.
+//
+// A genuine zero (table accessible, no rows for a member) is distinct from a
+// query error: if EVERY underlying count query fails we surface `ok:false`
+// with `error:"contributions_unavailable"` rather than a false-empty {} that
+// would wrongly show every member as having done nothing.
+//
+// Org isolation: every count query is filtered by org_id = $1.
+router.get("/team/contributions", async (req: Request, res: Response) => {
+  const orgId = (req as OrgReq).orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ ok: false, error: "Authentication required" });
+    return;
+  }
+  try {
+    // ── Temporary diagnostic: trace owner identity chain ──────────────────────
+    // Helps debug why the org owner shows 0 contributions despite activity_log
+    // rows existing. Logs: session orgId, owner_email, owner_user_id,
+    // canonical_uid (what CTE would resolve to), raw activity_log count
+    // for that user, days of activity, and the userId from the session token.
+    try {
+      const diagRes = await pool.query<{
+        owner_email: string | null;
+        owner_raw_uid: string | null;
+        canonical_uid: string | null;
+        al_count: number;
+        al_user_ids: string;
+        days_of_activity: number;
+      }>(
+        `WITH owner_info AS (
+           SELECT LOWER(o.owner_email) AS owner_email,
+                  o.owner_user_id::text AS owner_raw_uid,
+                  COALESCE(
+                    (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+                    (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+                    o.owner_user_id::text
+                  ) AS canonical_uid
+           FROM organizations o WHERE o.id::text = $1 LIMIT 1
+         )
+         SELECT
+           oi.owner_email,
+           oi.owner_raw_uid,
+           oi.canonical_uid,
+           COUNT(al.id)::int                   AS al_count,
+           STRING_AGG(DISTINCT al.user_id, '|' ORDER BY al.user_id) FILTER (WHERE al.user_id IS NOT NULL) AS al_user_ids,
+           COUNT(DISTINCT DATE(al.created_at))::int AS days_of_activity
+         FROM owner_info oi
+         LEFT JOIN activity_logs al
+           ON (al.org_id = $1
+               OR LOWER(al.org_id) = oi.owner_email
+               OR al.org_id = oi.owner_raw_uid)
+         GROUP BY oi.owner_email, oi.owner_raw_uid, oi.canonical_uid`,
+        [orgId]
+      );
+      const d = diagRes.rows[0];
+      const sessionCtx = (req as unknown as Record<string, unknown>)["orgContext"] as Record<string,unknown> | undefined;
+      logger.info({
+        orgId: orgId.slice(0, 8),
+        sessionUserId: String(sessionCtx?.userId ?? "").slice(0, 36),
+        sessionEmail: String(sessionCtx?.email ?? ""),
+        ownerEmail: d?.owner_email ?? null,
+        ownerRawUid: d?.owner_raw_uid ?? null,
+        canonicalUid: d?.canonical_uid ?? null,
+        activityLogCount: d?.al_count ?? 0,
+        activityUserIds: d?.al_user_ids ?? null,
+        daysOfActivity: d?.days_of_activity ?? 0,
+      }, "[team/contributions] OWNER DIAG");
+    } catch (diagErr) {
+      logger.warn({ diagErr }, "[team/contributions] diag query failed (non-fatal)");
+    }
+
+    // ── REAL-TABLE contributions: count from audits/missions/reports.created_by ─
+    //
+    // Root cause of owner showing 0: activity_logs.user_id is stored in
+    // heterogeneous formats (UUID, email, "system") depending on when the action
+    // was taken.  Cross-table identity resolution fails for legacy user_ids.
+    //
+    // Fix: count directly from the business-object tables (audits, missions,
+    // reports) using their created_by column.  No dependency on activity_logs
+    // for business-object counts.  created_by can be a UUID or an email —
+    // we resolve both to the member's canonical users.id in TypeScript.
+    //
+    // Step 1: build a resolution map  created_by_value → canonical_user_id
+    //   - collect all member canonical UIDs + emails from team_members + org owner
+    //   - match by UUID first, then by email (case-insensitive)
+    //
+    // Step 2: count audits/missions/reports per created_by from DB
+    //
+    // Step 3: merge into byUser keyed by canonical_user_id
+
+    // ── Step 1: build principal map ──────────────────────────────────────────
+    const principalRes = await pool.query<{
+      canonical_uid: string; email: string;
+    }>(
+      `SELECT
+         COALESCE(
+           (SELECT u.id::text FROM users u WHERE u.id::text = tm.user_id LIMIT 1),
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(tm.email) LIMIT 1),
+           tm.user_id
+         ) AS canonical_uid,
+         LOWER(tm.email) AS email
+       FROM team_members tm
+       WHERE tm.org_id = $1
+       UNION
+       SELECT
+         COALESCE(
+           NULLIF(o.owner_user_id, ''),
+           (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+           o.owner_email
+         ) AS canonical_uid,
+         LOWER(o.owner_email) AS email
+       FROM organizations o WHERE o.id::text = $1`,
+      [orgId]
+    );
+
+    // Map: UUID/email → canonical_uid  AND  email → canonical_uid
+    const uidToCanonical = new Map<string, string>();
+    const emailToCanonical = new Map<string, string>();
+    for (const p of principalRes.rows) {
+      // canonical_uid may be an email (owner fallback) — still a valid key
+      if (!p.canonical_uid || p.canonical_uid.trim() === "") continue;
+      uidToCanonical.set(p.canonical_uid.toLowerCase(), p.canonical_uid);
+      if (p.email) {
+        emailToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+        // If canonical_uid IS an email, also register it via uidToCanonical lookup
+        if (p.canonical_uid.toLowerCase() === p.email.toLowerCase()) {
+          uidToCanonical.set(p.email.toLowerCase(), p.canonical_uid);
+        }
+      }
+    }
+
+    // Resolve a created_by value (UUID or email or legacy) → canonical_uid
+    const resolve = (cb: string | null): string | null => {
+      if (!cb || cb === "system" || cb === "") return null;
+      const lower = cb.toLowerCase();
+      return uidToCanonical.get(lower) ?? emailToCanonical.get(lower) ?? null;
+    };
+
+    const byUser: Record<string, { audits: number; missions: number; reports: number; monitors: number }> = {};
+    const ensure = (uid: string) => {
+      if (!byUser[uid]) byUser[uid] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
+    };
+
+    // ── Step 2a: audits.created_by ────────────────────────────────────────────
+    try {
+      const auditCounts = await pool.query<{ created_by: string; cnt: number }>(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM audits
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId]
+      );
+      for (const row of auditCounts.rows) {
+        const uid = resolve(row.created_by);
+        if (!uid) continue;
+        ensure(uid);
+        byUser[uid].audits = Math.max(byUser[uid].audits, Number(row.cnt ?? 0));
+      }
+    } catch (_e) { /* created_by column may not exist yet on older schema — non-fatal */ }
+
+    // ── Step 2b: missions.created_by ──────────────────────────────────────────
+    try {
+      const missionCounts = await pool.query<{ created_by: string; cnt: number }>(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM missions
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId]
+      );
+      for (const row of missionCounts.rows) {
+        const uid = resolve(row.created_by);
+        if (!uid) continue;
+        ensure(uid);
+        byUser[uid].missions = Math.max(byUser[uid].missions, Number(row.cnt ?? 0));
+      }
+    } catch (_e) { /* non-fatal */ }
+
+    // ── Step 2c: reports.created_by ───────────────────────────────────────────
+    try {
+      const reportCounts = await pool.query<{ created_by: string; cnt: number }>(
+        `SELECT created_by, COUNT(*)::int AS cnt
+         FROM reports
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         GROUP BY created_by`,
+        [orgId]
+      );
+      for (const row of reportCounts.rows) {
+        const uid = resolve(row.created_by);
+        if (!uid) continue;
+        ensure(uid);
+        byUser[uid].reports = Math.max(byUser[uid].reports, Number(row.cnt ?? 0));
+      }
+    } catch (_e) { /* non-fatal */ }
+
+    // ── Debug log ─────────────────────────────────────────────────────────────
+    try {
+      const snap = Object.entries(byUser).map(([k, v]) => ({
+        uid: k.length > 36 ? k.slice(0, 8) + "…" : k,
+        ...v,
+      }));
+      logger.info({ orgId: orgId.slice(0, 8), principals: principalRes.rows.length, members: snap },
+        "[team/contributions] real-table resolved");
+    } catch (_) { /* non-fatal */ }
+
+    res.json({ ok: true, contributions: byUser });
+  } catch (err) {
+    logger.error({ err }, "[team/contributions] failed");
+    res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
+  }
+});
+
+// ── GET /api/team/streaks — per-member streak from member_activity_days ──────
+router.get("/team/streaks", async (req: Request, res: Response) => {
+  const orgId = (req as OrgReq).orgId;
+  if (!orgId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const tz = await (async () => {
+      try {
+        const r = await pool.query(`SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`, [orgId]);
+        const s = r.rows[0]?.["settings"] as Record<string, unknown> | null;
+        return (s && typeof s["timezone"] === "string") ? s["timezone"] : "Europe/Brussels";
+      } catch { return "Europe/Brussels"; }
+    })();
+
+    // Get ALL active members with their canonical user UUIDs.
+    // NO LIMIT — every active member's streak must be computed; capping at 50
+    // silently dropped members past the 50th from the leaderboard.
+    // Org isolation: filtered by om.organization_id = $1.
+    // Prefer organization_members (new schema); fall back to team_members (legacy)
+    // so invited members who haven't migrated still get a streak computed.
+    let memberRes = await pool.query<{ user_id: string; email: string; name: string; role: string }>(
+      `SELECT DISTINCT om.user_id::text AS user_id,
+              COALESCE(u.email,'') AS email,
+              COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, om.user_id::text) AS name,
+              om.role
+       FROM organization_members om
+       JOIN users u ON u.id = om.user_id
+       WHERE om.organization_id::text = $1 AND om.status = 'active'`,
+      [orgId]
+    );
+    // If organization_members returned no rows, try legacy team_members table.
+    if (memberRes.rows.length === 0) {
+      try {
+        memberRes = await pool.query(
+          `SELECT DISTINCT tm.user_id::text AS user_id,
+                  COALESCE(u.email,'') AS email,
+                  COALESCE(u.first_name||' '||u.last_name, u.first_name, u.email, tm.user_id::text) AS name,
+                  COALESCE(tm.role,'member') AS role
+           FROM team_members tm
+           JOIN users u ON u.id::text = tm.user_id::text
+           WHERE tm.org_id = $1 AND tm.status = 'active'`,
+          [orgId]
+        );
+      } catch (_) { /* team_members might not exist — ignore */ }
+    }
+    // Always include the org owner (may not be in either members table), but
+    // only when the owner resolves to a canonical users.id.
+    let ownerUserId = "";
+    try {
+      const ownerQ = await pool.query(
+        `SELECT
+           COALESCE(
+             (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+              (SELECT u.id::text FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1)
+           ) AS user_id,
+           COALESCE(LOWER(o.owner_email), '') AS email,
+           COALESCE(
+             (SELECT u.first_name||' '||u.last_name FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
+             (SELECT u.first_name||' '||u.last_name FROM users u WHERE u.id::text = o.owner_user_id::text LIMIT 1),
+             o.owner_email, o.owner_user_id::text, 'Owner'
+           ) AS name
+         FROM organizations o
+         WHERE o.id::text = $1 LIMIT 1`,
+        [orgId]
+      );
+      const own = ownerQ.rows[0];
+      if (own?.user_id) {
+        ownerUserId = String(own.user_id);
+        const existingOwner = memberRes.rows.find(r => r.user_id === own.user_id);
+        if (existingOwner) {
+          existingOwner.role = "owner";
+          if (!existingOwner.email && own.email) existingOwner.email = own.email;
+        } else {
+          (memberRes.rows as Array<{ user_id: string; email: string; name: string; role: string }>)
+            .unshift({ user_id: own.user_id, email: own.email || '', name: (own.name || '').trim() || 'Owner', role: 'owner' });
+        }
+      }
+    } catch (_) { /* non-fatal */ }
+
+    const streaks: Array<{
+      userId: string; email: string; name: string; role: string;
+      current: number; best: number;
+      /** true when this member's streak could not be computed (query error). */
+      error?: boolean;
+    }> = [];
+
+    for (const member of memberRes.rows) {
+      const uid = member.user_id;
+      const base = { userId: uid, email: member.email, name: member.name.trim(), role: member.role };
+      try {
+        // The owner uses the same authoritative org activity source as
+        // /api/me/streak. Other members use their canonical per-user rows.
+        const isCurrentOwner = uid === ownerUserId;
+        // Both owner and members use their own canonical user_id filter.
+        // The previous "AND $2::text = $2::text" tautology for the owner was a bug
+        // that aggregated ALL rows for the org, inflating the owner's streak.
+        const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
+        const identityClause = "AND user_id=$2";
+        const actRes = await pool.query<{ d: string }>(
+          `SELECT day::text AS d FROM ${activityTable}
+           WHERE org_id=$1
+              ${identityClause}
+              AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+           ORDER BY d DESC`,
+          [orgId, uid, tz]
+        );
+        logger.info(
+          { userId: uid.slice(0, 8), email: member.email, activityRowsFound: actRes.rows.length },
+          "[STREAK DEBUG]"
+        );
+        if (actRes.rows.length === 0 && !isCurrentOwner) {
+          // member_activity_days empty for this member — check user_activity_days
+          // as fallback. This covers members who visited before member_activity_days
+          // was introduced, or whose writes went only to user_activity_days.
+          try {
+            const fallbackRes = await pool.query<{ d: string }>(
+              `SELECT day::text AS d FROM user_activity_days
+               WHERE org_id=$1 AND user_id=$2
+                 AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
+               ORDER BY d DESC`,
+              [orgId, uid, tz]
+            );
+            if (fallbackRes.rows.length > 0) {
+              actRes.rows.push(...fallbackRes.rows);
+              logger.info({ userId: uid.slice(0, 8), fallbackRows: fallbackRes.rows.length }, "[STREAK] member_activity_days empty — used user_activity_days fallback");
+            }
+          } catch { /* non-fatal fallback */ }
+        }
+        if (actRes.rows.length === 0) {
+          // Genuine zero: table accessible, member simply has no active days.
+          logger.info({ userId: uid.slice(0, 8), email: member.email, calculatedCurrentStreak: 0, bestStreak: 0 }, "[STREAK DEBUG]");
+          streaks.push({ ...base, current: 0, best: 0 });
+          continue;
+        }
+        const activeDays = new Set(actRes.rows.map(r => String(r.d).slice(0, 10)));
+        const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+        const startOffset = activeDays.has(todayStr) ? 0 : 1;
+        let current = 0;
+        for (let d = startOffset; d < 365; d++) {
+          const dt = new Date(Date.now() - d * 86_400_000);
+          const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
+          if (activeDays.has(dayStr)) { current++; } else { break; }
+        }
+        const sorted = Array.from(activeDays).sort();
+        let best = 0, run = 0;
+        for (let i = 0; i < sorted.length; i++) {
+          if (i === 0) { run = 1; } else {
+            const diff = Math.round((new Date(sorted[i]!).getTime() - new Date(sorted[i-1]!).getTime()) / 86_400_000);
+            run = diff === 1 ? run + 1 : 1;
+          }
+          if (run > best) best = run;
+        }
+        streaks.push({ ...base, current, best: Math.max(best, current) });
+        logger.info(
+          { member: base.name.slice(0, 20), userId: uid.slice(0, 8), email: base.email.slice(0, 20), streakDays: current, best: Math.max(best, current) },
+          "[TEAM PERFORMANCE DEBUG]"
+        );
+      } catch (memberErr) {
+        // Query error for THIS member — do NOT fabricate a genuine zero.
+        // Mark error:true so the caller can distinguish "no activity" from
+        // "could not read activity".
+        logger.warn({ err: memberErr, userId: uid.slice(0, 8) }, "[team/streaks] per-member streak query failed");
+        streaks.push({ ...base, current: 0, best: 0, error: true });
+      }
+    }
+
+    res.json({ streaks });
+  } catch (err) {
+    logger.error({ err }, "[team/streaks] failed");
+    res.status(500).json({ error: "Failed to compute member streaks" });
   }
 });
 

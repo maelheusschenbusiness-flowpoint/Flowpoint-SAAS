@@ -43,8 +43,8 @@ export interface CoreQuotas {
 
 // NOTE: audits/monitors/reports/exports/teamMembers must stay in sync with PLAN_DEFINITIONS.
 export const CORE_QUOTAS: Record<PlanTier, CoreQuotas> = {
-  standard: { audits:30,    monitors:10,  reports:30,   exports:30,   teamMembers:1,  keywords:50,   competitors:5,   heatmaps:2,   automations:3,  missions:20,  gbpPosts:10,  crmIntegrations:1 },
-  pro:      { audits:300,   monitors:50,  reports:300,  exports:300,  teamMembers:5,  keywords:500,  competitors:25,  heatmaps:10,  automations:20, missions:200, gbpPosts:100, crmIntegrations:3 },
+  standard: { audits:30,    monitors:10,  reports:30,   exports:30,   teamMembers:1,  keywords:50,   competitors:10,  heatmaps:2,   automations:3,  missions:20,  gbpPosts:10,  crmIntegrations:1 },
+  pro:      { audits:300,   monitors:50,  reports:300,  exports:300,  teamMembers:5,  keywords:500,  competitors:30,  heatmaps:10,  automations:20, missions:200, gbpPosts:100, crmIntegrations:3 },
   ultra:    { audits:1000,  monitors:300, reports:1000, exports:1000, teamMembers:10, keywords:5000, competitors:100, heatmaps:50,  automations:100,missions:999, gbpPosts:999, crmIntegrations:10 },
   agency:   { audits:1000,  monitors:300, reports:1000, exports:1000, teamMembers:10, keywords:5000, competitors:100, heatmaps:50,  automations:100,missions:999, gbpPosts:999, crmIntegrations:10 },
 };
@@ -116,23 +116,23 @@ export interface FeatureFlags {
 
 export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
   standard: {
-    sso:false, saml:false, whiteLabel:false, customDomain:false,
+    sso:false, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:false,
-    marketIntelligence:false, reviewIntelAI:false, gbpPosting:true,
+    marketIntelligence:false, reviewIntelAI:false, gbpPosting:false,
     crmIntegration:false, rbacCustomRoles:false, advancedReports:false,
     pdfExport:true, apiAccess:false, webhooks:false, zapierIntegration:false,
     behavioralAI:false, forecastingAI:false, revenueLeakAI:false,
     cro:false, multiLocation:false, prioritySupport:false,
   },
   pro: {
-    // whiteLabel + prioritySupport + webhooks bundled in Pro (see PLAN_INCLUDED_ADDONS in plans.ts)
+    // prioritySupport is intentionally disabled: the feature has no commercial implementation.
     sso:true, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:true,
-    marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
+    marketIntelligence:true, reviewIntelAI:true, gbpPosting:false,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:false,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:false, prioritySupport:true,
+    cro:true, multiLocation:false, prioritySupport:false,
   },
   ultra: {
     sso:true, saml:true, whiteLabel:true, customDomain:true,
@@ -141,7 +141,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:true,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:true, prioritySupport:true,
+    cro:true, multiLocation:true, prioritySupport:false,
   },
   agency: {
     sso:true, saml:true, whiteLabel:true, customDomain:true,
@@ -150,7 +150,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
     pdfExport:true, apiAccess:true, webhooks:true, zapierIntegration:true,
     behavioralAI:true, forecastingAI:true, revenueLeakAI:true,
-    cro:true, multiLocation:true, prioritySupport:true,
+    cro:true, multiLocation:true, prioritySupport:false,
   },
 };
 

@@ -52,7 +52,11 @@ export function broadcastMessage(data: unknown, orgId?: string): void {
 
 // ── GET /events — SSE stream (authentifié + scopé par org) ────────────────────────
 router.get("/events", (req: Request, res: Response) => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  // Canonical org bucket — must match team-messages.ts org(): the SSE client is
+  // registered under the SAME string that store.broadcast(payload, org) targets,
+  // otherwise the owner and their invited members register in different buckets
+  // and never receive each other's chat:message. Trimmed for the same reason.
+  const orgId = String(req.orgContext?.orgId ?? req.orgId ?? "default").trim() || "default";
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");

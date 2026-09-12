@@ -53,6 +53,12 @@ export interface OrgBillingData {
   firstName: string | null;
   /** Nom de l'organisation */
   orgName: string | null;
+  /**
+   * Internal QA flag — true only for the single fixed QA org (10000000-0000-4000-8000-000000000002).
+   * Grants premium access without a Stripe subscription.
+   * Never set for real customer orgs; billing-context.ts checks orgId AND this flag.
+   */
+  isInternalQa: boolean;
 }
 
 export type PersistOrgFields = {
@@ -99,31 +105,84 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         owner_email: string | null;
         owner_first_name: string | null;
         name: string | null;
+        is_internal_qa: boolean;
       }>(
         `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
                 trial_ends_at, trial_consumed_at, trial_started_at,
                 addons, pending_plan, pending_plan_date,
-                owner_email, owner_first_name, name
+                owner_email, owner_first_name, name, is_internal_qa
          FROM organizations WHERE id = $1 LIMIT 1`,
         [orgId],
       );
 
       if (r.rows.length > 0) {
         const row = r.rows[0];
+
+        // ── Legacy trial normalization (lazy migration) ──────────────────────
+        // For accounts originally created via the legacy email-keyed flow:
+        // organizations.trial_consumed_at / trial_ends_at may be NULL because
+        // the old webhooks wrote trial data to org_settings[email] instead of
+        // organizations[UUID].  When we detect this gap, normalize the data
+        // from the legacy record so grantTrial never incorrectly grants a second
+        // trial.  The persist is fire-and-forget; we also return the legacy
+        // value immediately so the current request gets the correct answer
+        // without waiting for the DB write to complete.
+        let _legacyTrialConsumedAt: string | null = null;
+        let _legacyTrialEndsAt: string | null = null;
+        let _legacyTrialStartedAt: string | null = null;
+        const _needsLegacyMigration =
+          (!row.trial_consumed_at) &&
+          row.owner_email &&
+          row.owner_email !== orgId;
+
+        if (_needsLegacyMigration) {
+          try {
+            const { loadOrgSettings } = await import("./org-settings.js");
+            const legacySettings = await loadOrgSettings(row.owner_email as string);
+            if (legacySettings?.trialConsumedAt) {
+              _legacyTrialConsumedAt = legacySettings.trialConsumedAt;
+              _legacyTrialEndsAt     = legacySettings.trialEndsAt     ?? null;
+              _legacyTrialStartedAt  = legacySettings.trialStartedAt  ?? null;
+              // Persist to organizations so future reads don't need this fallback.
+              const normalizeFields: PersistOrgFields = {
+                trialConsumedAt: _legacyTrialConsumedAt,
+              };
+              if (_legacyTrialEndsAt)    normalizeFields.trialEndsAt    = _legacyTrialEndsAt;
+              if (_legacyTrialStartedAt) normalizeFields.trialStartedAt = _legacyTrialStartedAt;
+              persistOrgData(orgId, normalizeFields).catch((normErr: unknown) =>
+                logger.warn({ normErr, orgId }, "[OrgData] Legacy trial normalization persist failed (non-fatal)"),
+              );
+              logger.info(
+                { orgId, ownerEmail: row.owner_email, trialConsumedAt: _legacyTrialConsumedAt },
+                "[OrgData] Legacy trial_consumed_at normalized from org_settings[email] into organizations[UUID]",
+              );
+            }
+          } catch (legMigErr) {
+            logger.warn({ legMigErr, orgId }, "[OrgData] Legacy trial migration lookup failed (non-fatal)");
+          }
+        }
+
         return {
           plan:                 (row.plan || "standard").toLowerCase(),
           subscriptionStatus:   row.subscription_status ?? null,
           stripeCustomerId:     row.stripe_customer_id || null,
           stripeSubscriptionId: row.stripe_subscription_id || null,
-          trialEndsAt:          row.trial_ends_at ? new Date(row.trial_ends_at).toISOString() : null,
-          trialConsumedAt:      row.trial_consumed_at ? new Date(row.trial_consumed_at).toISOString() : null,
-          trialStartedAt:       row.trial_started_at ? new Date(row.trial_started_at).toISOString() : null,
+          trialEndsAt:          row.trial_ends_at
+                                  ? new Date(row.trial_ends_at).toISOString()
+                                  : _legacyTrialEndsAt,
+          trialConsumedAt:      row.trial_consumed_at
+                                  ? new Date(row.trial_consumed_at).toISOString()
+                                  : _legacyTrialConsumedAt,
+          trialStartedAt:       row.trial_started_at
+                                  ? new Date(row.trial_started_at).toISOString()
+                                  : _legacyTrialStartedAt,
           addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
           pendingPlan:          row.pending_plan ?? null,
           pendingPlanDate:      row.pending_plan_date ?? null,
           email:                row.owner_email ?? null,
           firstName:            row.owner_first_name ?? null,
           orgName:              row.name ?? null,
+          isInternalQa:         row.is_internal_qa === true,
         };
       }
     } finally {
@@ -154,6 +213,8 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
       email:                legacy.email ?? null,
       firstName:            legacy.firstName ?? null,
       orgName:              legacy.orgName ?? null,
+      // Legacy org_settings path never sets is_internal_qa — QA org is UUID-only.
+      isInternalQa:         false,
     };
   } catch (legacyErr) {
     logger.error({ legacyErr, orgId }, "[OrgData] Both organizations and org_settings failed");
@@ -209,11 +270,23 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
     try {
       const client = await pool.connect();
       try {
-        await client.query(
-          `INSERT INTO organizations (id) VALUES ($1)
-           ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+        // Prefer UPDATE over INSERT ON CONFLICT: the org always exists when this
+        // function is called from billing/webhook paths, and a plain UPDATE avoids
+        // spurious failures caused by NOT NULL defaults on the INSERT path (e.g.
+        // RLS deny-all on a fresh INSERT attempt with only the id column filled).
+        const updateRes = await client.query(
+          `UPDATE organizations SET ${sets.join(", ")} WHERE id = $1::uuid`,
           [orgId, ...vals],
         );
+        if ((updateRes.rowCount ?? 0) === 0) {
+          // Org row doesn't exist yet (rare: new-account webhook race).
+          // Fall back to INSERT ON CONFLICT to create it safely.
+          await client.query(
+            `INSERT INTO organizations (id) VALUES ($1::uuid)
+             ON CONFLICT (id) DO UPDATE SET ${sets.join(", ")}`,
+            [orgId, ...vals],
+          );
+        }
         logger.debug({ orgId, keys: Object.keys(fields) }, "[OrgData] organizations mis à jour");
       } finally {
         client.release();
@@ -239,6 +312,7 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
     if (fields.pendingPlanDate !== undefined)       legacy["pendingPlanDate"]     = fields.pendingPlanDate;
     if (fields.ownerEmail !== undefined)            legacy["email"]               = fields.ownerEmail;
     if (fields.orgName !== undefined)               legacy["orgName"]             = fields.orgName;
+    if (fields.website !== undefined)               legacy["website"]             = fields.website;
     if (Object.keys(legacy).length > 0) {
       await upsertOrgSettings(orgId, legacy as Parameters<typeof upsertOrgSettings>[1]);
     }
@@ -259,19 +333,75 @@ export async function findOrgByStripeCustomer(stripeCustomerId: string): Promise
 
   const client = await pool.connect();
   try {
-    // Lookup primaire : organizations
+    // Lookup 1: organizations.stripe_customer_id (canonical)
     const r = await client.query<{ id: string }>(
       `SELECT id FROM organizations WHERE stripe_customer_id = $1 LIMIT 1`,
       [stripeCustomerId],
     );
     if (r.rows.length > 0) return r.rows[0].id;
 
-    // Fallback : org_settings
+    // Lookup 2: org_settings.stripe_customer_id (legacy email-keyed orgs)
     const legacy = await client.query<{ org_id: string }>(
       `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
       [stripeCustomerId],
     );
-    return legacy.rows[0]?.org_id ?? null;
+    if (legacy.rows[0]?.org_id) return legacy.rows[0].org_id;
+
+    // Lookup 3: fetch customer from Stripe API, read customer.metadata.orgId.
+    // This handles orgs where stripe_customer_id was never written back to the DB
+    // (e.g. signup completed before the column existed, or a race condition at
+    // checkout time). When we find the orgId this way, we self-heal the DB so
+    // future lookups hit path 1.
+    try {
+      const { createStripeClient, getStripeKey } = await import("../services/stripe-factory.js");
+      const _key = getStripeKey();
+      const stripe = _key ? await createStripeClient(_key) : null;
+      if (stripe) {
+        const customer = await (stripe as unknown as { customers: { retrieve(id: string): Promise<{ deleted?: boolean; metadata?: Record<string, string>; email?: string | null }> } }).customers.retrieve(stripeCustomerId);
+        if (customer && !customer.deleted) {
+          const metaOrgId = (customer.metadata as Record<string, string>)?.["orgId"]
+            ?? (customer.metadata as Record<string, string>)?.["org_id"]
+            ?? null;
+          if (metaOrgId && metaOrgId !== "default") {
+            // Self-heal: write stripe_customer_id back to organizations so next
+            // webhook skips the Stripe API round-trip.
+            const healed = await client.query(
+              `UPDATE organizations SET stripe_customer_id = $1
+               WHERE id = $2 AND stripe_customer_id IS NULL
+               RETURNING id`,
+              [stripeCustomerId, metaOrgId],
+            ).catch(() => null);
+            if (healed?.rowCount && healed.rowCount > 0) {
+              const { logger: log } = await import("../lib/logger.js");
+              log.info({ stripeCustomerId, metaOrgId }, "[OrgData] findOrgByStripeCustomer: stripe_customer_id self-healed from Stripe metadata");
+            }
+            return metaOrgId;
+          }
+          // Also try by customer email
+          const custEmail = (customer as { email?: string | null }).email;
+          if (custEmail) {
+            const byEmail = await client.query<{ id: string }>(
+              `SELECT id FROM organizations WHERE lower(owner_email) = lower($1) ORDER BY created_at DESC LIMIT 1`,
+              [custEmail],
+            );
+            if (byEmail.rows[0]?.id) {
+              // Self-heal
+              await client.query(
+                `UPDATE organizations SET stripe_customer_id = $1
+                 WHERE id = $2 AND stripe_customer_id IS NULL`,
+                [stripeCustomerId, byEmail.rows[0].id],
+              ).catch(() => null);
+              return byEmail.rows[0].id;
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: Stripe API unavailable or rate-limited — return null, webhook
+      // will log the unresolved orgId warning and Stripe will retry.
+    }
+
+    return null;
   } finally {
     client.release();
   }

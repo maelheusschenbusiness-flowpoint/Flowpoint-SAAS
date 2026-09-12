@@ -107,20 +107,30 @@ export async function aiChat(opts: AIProviderChatOptions & {
   }
 
   // ── STRICT PATH : provider utilisateur = source de vérité, pas de fallback ──
+  // 1 retry + 1 s backoff before surfacing PROVIDER_UNAVAILABLE to the user.
   if (strictProvider) {
-    try {
-      const provider = getProvider(primaryProviderId);
-      logger.info({ provider: primaryProviderId, model: primaryModel, task }, "[AI] Chat request (strict provider — user selected)");
-      const result = await provider.chat({ ...chatOpts, model: primaryModel });
-      logger.info({ provider: primaryProviderId, model: primaryModel, tokens: result.usage.totalTokens, latency: result.latencyMs }, "[AI] Chat complete");
-      return { ...result, _ai: { provider: primaryProviderId, model: primaryModel } };
-    } catch (err) {
-      logger.error({ err, provider: primaryProviderId, model: primaryModel }, "[AI] Chat failed — provider unavailable (no cross-provider fallback, strictProvider=true)");
-      throw Object.assign(
-        new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
-        { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
-      );
+    const STRICT_MAX_RETRIES = 1;
+    let lastStrictErr: unknown;
+    for (let attempt = 0; attempt <= STRICT_MAX_RETRIES; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 1000));
+      try {
+        const provider = getProvider(primaryProviderId);
+        logger.info({ provider: primaryProviderId, model: primaryModel, task, attempt }, "[AI] Chat request (strict provider — user selected)");
+        const result = await provider.chat({ ...chatOpts, model: primaryModel });
+        logger.info({ provider: primaryProviderId, model: primaryModel, tokens: result.usage.totalTokens, latency: result.latencyMs }, "[AI] Chat complete");
+        return { ...result, _ai: { provider: primaryProviderId, model: primaryModel } };
+      } catch (err) {
+        lastStrictErr = err;
+        if (attempt < STRICT_MAX_RETRIES) {
+          logger.warn({ err, provider: primaryProviderId, model: primaryModel, attempt }, "[AI] Chat failed — retrying once (strict provider)");
+        }
+      }
     }
+    logger.error({ err: lastStrictErr, provider: primaryProviderId, model: primaryModel }, "[AI] Chat failed — provider unavailable after retry (no cross-provider fallback, strictProvider=true)");
+    throw Object.assign(
+      new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
+      { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: lastStrictErr }
+    );
   }
 
   // ── FALLBACK PATH : routes internes (pas de strictProvider) ──
@@ -184,67 +194,85 @@ export async function *aiStream(opts: AIProviderChatOptions & {
   }
 
   // ── STRICT PATH : provider utilisateur = source de vérité, pas de fallback ──
+  // 1 retry + 1 s backoff before surfacing PROVIDER_UNAVAILABLE.
   if (strictProvider) {
-    let provider: OpenAIProvider | AnthropicProvider | GeminiProvider;
-    try {
-      provider = getProvider(primaryProviderId);
-    } catch (err) {
-      logger.error({ err, provider: primaryProviderId }, "[AI] Stream — provider unavailable (strictProvider=true, no fallback)");
-      throw Object.assign(
-        new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
-        { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
-      );
-    }
+    const STREAM_STRICT_MAX_RETRIES = 1;
+    let lastStreamStrictErr: unknown;
+    for (let attempt = 0; attempt <= STREAM_STRICT_MAX_RETRIES; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 1000));
+      let provider: OpenAIProvider | AnthropicProvider | GeminiProvider;
+      try {
+        provider = getProvider(primaryProviderId);
+      } catch (err) {
+        lastStreamStrictErr = err;
+        if (attempt < STREAM_STRICT_MAX_RETRIES) {
+          logger.warn({ err, provider: primaryProviderId, attempt }, "[AI] Stream — provider init failed, retrying (strictProvider=true)");
+          continue;
+        }
+        logger.error({ err, provider: primaryProviderId }, "[AI] Stream — provider unavailable after retry (strictProvider=true, no fallback)");
+        throw Object.assign(
+          new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
+          { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
+        );
+      }
 
-    logger.info({ provider: primaryProviderId, model: primaryModel, task, streaming: true }, "[AI] Stream request (strict provider — user selected)");
+      logger.info({ provider: primaryProviderId, model: primaryModel, task, streaming: true, attempt }, "[AI] Stream request (strict provider — user selected)");
 
-    try {
-      // Drive the generator manually so we can capture the generator return value
-      // (AIProviderResult) via IteratorResult.done===true. Using `for await...of`
-      // discards the return value, which caused a spurious second provider.chat()
-      // call after every stream — the root cause of Gemini truncation.
-      const gen = provider.stream({ ...chatOpts, model: primaryModel });
-      let finalResult: AIProviderResult | undefined;
-      let accumulatedText = "";
+      try {
+        // Drive the generator manually so we can capture the generator return value
+        // (AIProviderResult) via IteratorResult.done===true. Using `for await...of`
+        // discards the return value, which caused a spurious second provider.chat()
+        // call after every stream — the root cause of Gemini truncation.
+        const gen = provider.stream({ ...chatOpts, model: primaryModel });
+        let finalResult: AIProviderResult | undefined;
+        let accumulatedText = "";
 
-      while (true) {
-        const step = await gen.next();
-        if (step.done) {
-          // Generator return value is the AIProviderResult
-          if (step.value && typeof step.value === "object" && "text" in step.value) {
-            finalResult = step.value as AIProviderResult;
+        while (true) {
+          const step = await gen.next();
+          if (step.done) {
+            // Generator return value is the AIProviderResult
+            if (step.value && typeof step.value === "object" && "text" in step.value) {
+              finalResult = step.value as AIProviderResult;
+            }
+            break;
           }
-          break;
+          const chunk = step.value;
+          if (chunk && typeof chunk === "object" && "content" in chunk) {
+            accumulatedText += (chunk as AIProviderStreamChunk).content;
+            yield chunk as AIProviderStreamChunk;
+          }
         }
-        const chunk = step.value;
-        if (chunk && typeof chunk === "object" && "content" in chunk) {
-          accumulatedText += (chunk as AIProviderStreamChunk).content;
-          yield chunk as AIProviderStreamChunk;
+
+        // Fallback: build result from accumulated stream text if provider didn't return one
+        if (!finalResult) {
+          logger.warn({ provider: primaryProviderId, model: primaryModel }, "[AI] Stream returned no finalResult — building from accumulated text (no second call)");
+          finalResult = {
+            text: accumulatedText,
+            usage: { promptTokens: 0, completionTokens: Math.ceil(accumulatedText.length / 4), totalTokens: Math.ceil(accumulatedText.length / 4) },
+            model: primaryModel,
+            provider: primaryProviderId,
+            latencyMs: 0,
+          } as AIProviderResult;
+        }
+
+        logger.info({ provider: primaryProviderId, model: primaryModel, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
+        yield { _aiMeta: { provider: primaryProviderId, model: primaryModel } } as AIStreamMetaChunk;
+        return finalResult;
+      } catch (err) {
+        lastStreamStrictErr = err;
+        if (attempt < STREAM_STRICT_MAX_RETRIES) {
+          logger.warn({ err, provider: primaryProviderId, model: primaryModel, attempt }, "[AI] Stream failed — retrying once (strict provider)");
+          // Can't retry a generator mid-stream — only retry on initial failure before any yield
+          // (this catch fires if the stream itself throws, which happens before any chunk is yielded
+          //  only on auth/connection errors; mid-stream errors are non-retryable).
         }
       }
-
-      // Fallback: build result from accumulated stream text if provider didn't return one
-      if (!finalResult) {
-        logger.warn({ provider: primaryProviderId, model: primaryModel }, "[AI] Stream returned no finalResult — building from accumulated text (no second call)");
-        finalResult = {
-          text: accumulatedText,
-          usage: { promptTokens: 0, completionTokens: Math.ceil(accumulatedText.length / 4), totalTokens: Math.ceil(accumulatedText.length / 4) },
-          model: primaryModel,
-          provider: primaryProviderId,
-          latencyMs: 0,
-        } as AIProviderResult;
-      }
-
-      logger.info({ provider: primaryProviderId, model: primaryModel, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
-      yield { _aiMeta: { provider: primaryProviderId, model: primaryModel } } as AIStreamMetaChunk;
-      return finalResult;
-    } catch (err) {
-      logger.error({ err, provider: primaryProviderId, model: primaryModel }, "[AI] Stream failed — provider unavailable (strictProvider=true, no fallback)");
-      throw Object.assign(
-        new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
-        { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
-      );
     }
+    logger.error({ err: lastStreamStrictErr, provider: primaryProviderId, model: primaryModel }, "[AI] Stream failed — provider unavailable after retry (strictProvider=true, no fallback)");
+    throw Object.assign(
+      new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
+      { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: lastStreamStrictErr }
+    );
   }
 
   // ── FALLBACK PATH : routes internes (pas de strictProvider) ──

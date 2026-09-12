@@ -1,3 +1,6 @@
 packages:
   - "artifacts/*"
   - "lib/*"
+overrides:
+  brace-expansion@<2.0.0: 1.1.18
+  brace-expansion@>=2.0.0 <3.0.0: 2.1.4

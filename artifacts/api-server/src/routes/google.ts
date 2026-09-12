@@ -136,6 +136,9 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
       label: `Google connecté — ${userInfo.email ?? ""}`,
       targetType: "connector",
       orgId,
+      actionKey: "activity.google.connected", actionParams: { email: userInfo.email ?? "" },
+      userId: (req as any).orgContext?.userId || userInfo.email || null,
+      userName: (req as any).orgContext?.name || userInfo.email || null,
     });
 
     // Reflect Google connection in the connectors table (used by the Connectors UI)
@@ -277,7 +280,10 @@ router.post("/google/disconnect", async (req: Request, res: Response) => {
       [orgId]
     ).catch(() => {});
 
-    store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector", orgId });
+    store.logActivity({ type: "team", label: "Google déconnecté", targetType: "connector", orgId,
+      actionKey: "activity.google.disconnected",
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null });
     res.json({ ok: true });
   } catch (e) {
     logger.error({ e, orgId }, "[google] disconnect failed");
@@ -335,7 +341,8 @@ router.get("/google/reviews", async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
     const rows = await client.query(
-      `SELECT id, location_id, reviewer_name, reviewer_photo, rating, comment, create_time, update_time, reply_comment
+      `SELECT id, location_id, reviewer_name, reviewer_photo, rating, comment, create_time, update_time, reply_comment,
+              COALESCE(sentiment,'') AS sentiment, COALESCE(ai_reply,'') AS ai_reply, COALESCE(source,'') AS source
        FROM google_reviews WHERE org_id=$1 ORDER BY create_time DESC LIMIT 50`,
       [getOrgId(req)]
     );
@@ -450,7 +457,9 @@ router.post("/google/post", async (req: Request, res: Response) => {
         ? { actionType: callToActionType, url: callToActionUrl }
         : undefined,
     });
-    store.logActivity({ type: "ai", label: `Post GBP publié : "${text.slice(0, 60)}…"`, targetType: "google_business", orgId });
+    store.logActivity({ type: "ai", label: `Post GBP publié : "${text.slice(0, 60)}…"`, targetType: "google_business", orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null });
     res.json(result);
   } catch (e: any) {
     logger.error({ e }, "[GBP] post failed");
@@ -459,6 +468,62 @@ router.post("/google/post", async (req: Request, res: Response) => {
 });
 
 // ── GBP — reply to review ─────────────────────────────────────────────────────
+
+// ── GBP — delete a manually-added review ──────────────────────────────────────
+// POST /api/google/reviews — persist a manually analyzed review to DB
+router.post("/google/reviews", async (req: Request, res: Response) => {
+  const orgId = (req as any).orgId;
+  if (!orgId || orgId === "default") { res.status(401).json({ ok: false }); return; }
+  try {
+    const { author_name, rating, text, sentiment, ai_reply, analyzed_at, source } = req.body || {};
+    if (!author_name || rating == null) { res.status(400).json({ ok: false, error: "author_name and rating required" }); return; }
+    const reviewId = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    // google_reviews real schema: reviewer_name, comment, owner_reply, reply_comment
+    // We store sentiment + ai_reply in reply_comment (json) and source in reply_updated_at as marker
+    // Self-heal: add columns if not exist
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS sentiment TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS ai_reply TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE google_reviews ADD COLUMN IF NOT EXISTS source TEXT`).catch(()=>{});
+    await pool.query(`
+      INSERT INTO google_reviews
+        (id, org_id, review_id, location_id, reviewer_name, rating, comment, create_time, sentiment, ai_reply, source)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      ON CONFLICT (review_id, org_id) DO UPDATE
+        SET reviewer_name=EXCLUDED.reviewer_name, rating=EXCLUDED.rating, comment=EXCLUDED.comment,
+            sentiment=EXCLUDED.sentiment, ai_reply=EXCLUDED.ai_reply
+    `, [reviewId, orgId, reviewId, 'manual', String(author_name).slice(0,200), Number(rating),
+        String(text||'').slice(0,5000), analyzed_at || new Date().toISOString(),
+        String(sentiment||'').slice(0,50), String(ai_reply||'').slice(0,5000),
+        String(source||'manual').slice(0,50)]);
+    res.json({ ok: true, reviewId });
+  } catch (err: unknown) {
+    logger.error({ err }, "[google/reviews POST] failed");
+    res.status(500).json({ ok: false });
+  }
+});
+
+router.delete("/google/reviews/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const orgId = (req as Request & { orgId?: string }).orgId;
+  if (!id) { res.status(400).json({ ok: false, error: "id required" }); return; }
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `DELETE FROM google_reviews WHERE org_id=$1 AND (id::text=$2 OR review_id=$2)`,
+      [orgId, id]
+    );
+    if ((r.rowCount ?? 0) === 0) {
+      res.status(404).json({ ok: false, error: "Review not found" });
+    } else {
+      res.json({ ok: true, deleted: id });
+    }
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to delete review" });
+  } finally {
+    client.release();
+  }
+});
 
 router.post("/google/reply", async (req: Request, res: Response) => {
   const orgId = getOrgId(req);
@@ -512,7 +577,9 @@ router.post("/google/reply", async (req: Request, res: Response) => {
        WHERE review_id=$2 AND org_id=$3`,
       [finalComment, reviewId, orgId]
     );
-    store.logActivity({ type: "team", label: `Réponse GBP publiée — avis ${reviewId}`, targetType: "google_business", orgId });
+    store.logActivity({ type: "team", label: `Réponse GBP publiée — avis ${reviewId}`, targetType: "google_business", orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null });
     res.json({ ok: true, reply: finalComment });
   } catch (e: any) {
     logger.error({ e }, "[GBP] reply failed");
@@ -580,7 +647,9 @@ router.post("/google/posts", async (req: Request, res: Response) => {
         ? { actionType: callToActionType, url: callToActionUrl }
         : undefined,
     });
-    store.logActivity({ type: "ai", label: `Post GBP : "${postText.slice(0, 60)}"`, targetType: "google_business", orgId });
+    store.logActivity({ type: "ai", label: `Post GBP : "${postText.slice(0, 60)}"`, targetType: "google_business", orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null });
     res.json(result);
   } catch (e: any) {
     logger.error({ e }, "[GBP] posts alias failed");

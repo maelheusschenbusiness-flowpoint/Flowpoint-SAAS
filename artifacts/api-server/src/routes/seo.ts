@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { canWrite } from "../middlewares/requireRole.js";
+import { pool } from "@workspace/db";
 import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
   getQuotaUsage,
+  getQuotaUsageFromDB,
   getKeywordSuggestions,
   getSERP,
   getCompetitors,
@@ -18,8 +20,100 @@ import {
 } from "../services/dataforseo-service.js";
 import { checkLLMVisibility } from "../services/llm-visibility.js";
 import { store } from "../services/store.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
+
+// ── Helper — persisted Local SEO ranking usage ───────────────────────────────
+// `used` is derived from the persisted ranking-history rows for the current day
+// (survives F5/reconnection — it is not an in-memory counter). `limit` is the
+// DataForSEO daily quota for this org's plan. Org isolation is enforced by the
+// WHERE org_id filter.
+async function getRankingUsage(orgId: string): Promise<{ used: number; limit: number }> {
+  const { limit } = getQuotaUsage(orgId);
+  const r = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::int AS n
+     FROM local_seo_ranking_history
+     WHERE org_id=$1 AND searched_at::date = (NOW())::date`,
+    [orgId]
+  );
+  const used = Number(r.rows[0]?.n ?? 0);
+  return { used, limit };
+}
+
+/**
+ * Durably reserve one provider call before it is made. Pending rows count
+ * toward the daily quota but are hidden from history until finalized. The
+ * per-org advisory lock serializes concurrent callers across app instances.
+ */
+async function reserveRankingSearch(
+  orgId: string,
+  id: string,
+  keyword: string,
+  location: string,
+): Promise<{ reserved: boolean; used: number; limit: number }> {
+  const { limit } = getQuotaUsage(orgId);
+  const client = await pool.connect();
+  let txActive = false;
+  try {
+    await client.query("BEGIN");
+    txActive = true;
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`,
+      [`local-seo-rankings:${orgId}`],
+    );
+    const count = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::int AS n
+       FROM local_seo_ranking_history
+       WHERE org_id=$1 AND searched_at::date = (NOW())::date`,
+      [orgId],
+    );
+    const usedBefore = Number(count.rows[0]?.n ?? 0);
+    if (usedBefore >= limit) {
+      await client.query("ROLLBACK");
+      txActive = false;
+      return { reserved: false, used: usedBefore, limit };
+    }
+    await client.query(
+      `INSERT INTO local_seo_ranking_history (id, org_id, keyword, location, results, searched_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,NOW())`,
+      [id, orgId, keyword, location, JSON.stringify({ _status: "pending" })],
+    );
+    await client.query("COMMIT");
+    txActive = false;
+    return { reserved: true, used: usedBefore + 1, limit };
+  } catch (err) {
+    // Only ROLLBACK if the transaction is still open — prevents 25P01 in Supabase logs
+    if (txActive) { await client.query("ROLLBACK").catch(() => {}); }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function finalizeRankingSearch(orgId: string, id: string, rankings: unknown[]): Promise<void> {
+  const result = await pool.query(
+    `UPDATE local_seo_ranking_history
+     SET results=$3::jsonb
+     WHERE id=$1 AND org_id=$2
+       AND jsonb_typeof(results)='object'
+       AND results->>'_status'='pending'`,
+    [id, orgId, JSON.stringify(rankings)],
+  );
+  if ((result.rowCount ?? 0) !== 1) {
+    throw new Error("ranking reservation unavailable during finalization");
+  }
+}
+
+async function releaseRankingSearch(orgId: string, id: string): Promise<void> {
+  await pool.query(
+    `DELETE FROM local_seo_ranking_history
+     WHERE id=$1 AND org_id=$2
+       AND jsonb_typeof(results)='object'
+       AND results->>'_status'='pending'`,
+    [id, orgId],
+  );
+}
 
 // ── Helper — quota check middleware factory ───────────────────────────────────
 
@@ -47,7 +141,8 @@ function withQuota(handler: (req: import("express").Request, res: import("expres
 router.get("/seo/status", async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
-  const { used, limit } = getQuotaUsage(orgId, plan);
+  // Use the DB-backed version so the count survives server restarts (F5-safe).
+  const { used, limit } = await getQuotaUsageFromDB(orgId, plan);
   res.json({
     configured: await isDataForSEOConfigured(orgId),
     plan, quota: { used, limit, remaining: Math.max(0, limit - used) },
@@ -94,11 +189,22 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 }));
 
 // ── GET /api/seo/backlinks ────────────────────────────────────────────────────
+// Requires backlinkIntelligence add-on (Pro/Ultra include it; Standard requires purchase).
 
 router.get("/seo/backlinks", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
+    // Feature gate: backlinkIntelligence add-on required
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    if (!bCtx?.addons?.["backlinkIntelligence"]) {
+      res.status(403).json({
+        error: "L'add-on Backlink Intelligence est requis pour accéder à cette fonctionnalité.",
+        code: "ADDON_REQUIRED", addonKey: "backlinkIntelligence",
+      });
+      return;
+    }
     const data = await getBacklinks(domain, orgId);
     res.json({ domain, ...data });
   } catch (e) {
@@ -178,9 +284,21 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
   try {
+    // Feature gate: advancedSeoLab add-on required for deep content analysis
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    if (!bCtx?.addons?.["advancedSeoLab"]) {
+      res.status(403).json({
+        error: "L'add-on Advanced SEO Lab est requis pour l'optimisation de contenu avancée.",
+        code: "ADDON_REQUIRED", addonKey: "advancedSeoLab",
+      });
+      return;
+    }
     const data = await getContentOptimization(url, "seo local", orgId);
     await store.logActivity({
       type: "audit", label: `Analyse de contenu : ${url}`, targetId: url, targetType: "url", orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(() => {});
     res.json(data);
   } catch (e) {
@@ -278,17 +396,128 @@ router.post("/local-seo/rankings", canWrite, async (req, res) => {
   }
   try {
     if (await isDataForSEOConfigured(orgId)) {
-      const allowed = await checkAndIncrementQuota(orgId, "rankings", 1).catch(() => false);
-      if (allowed) {
-        const { getLocalPackRank } = await import("../services/dataforseo-service.js");
-        const rankings = await getLocalPackRank(keyword, location, orgId);
-        res.json({ ok: true, keyword, location, rankings, configured: true });
+      const histId = `rh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      let reservation: { reserved: boolean; used: number; limit: number };
+      try {
+        reservation = await reserveRankingSearch(orgId, histId, keyword, location);
+      } catch (persistErr) {
+        logger.error({ err: persistErr, orgId }, "[seo] local-seo ranking reservation failed");
+        res.status(502).json({
+          ok: false, rankings: [], configured: true, reason: "persist_error",
+          error: "La recherche n'a pas pu être réservée durablement. Aucun appel fournisseur n'a été lancé.",
+        });
         return;
       }
+      if (!reservation.reserved) {
+        res.status(429).json({
+          ok: false, rankings: [], configured: true, reason: "quota_exceeded",
+          usage: { used: reservation.used, limit: reservation.limit },
+          message: "Quota de recherches de classement local atteint pour aujourd'hui.",
+        });
+        return;
+      }
+
+      // Use getGoogleMapsResults (Maps API) so stored results include lat/lng for
+      // direct map-marker placement and real result counts (not capped at 3).
+      // NOTE: use the static import (top of file) — dynamic import bypasses vitest mocks.
+      let rankings: unknown[];
+      try {
+        const mapsResult = await getGoogleMapsResults(keyword, location, orgId);
+        rankings = mapsResult.results;
+      } catch (providerErr) {
+        try {
+          await releaseRankingSearch(orgId, histId);
+        } catch (cleanupErr) {
+          logger.error(
+            { err: cleanupErr, orgId, histId },
+            "[seo] local-seo failed reservation cleanup failed",
+          );
+        }
+        throw providerErr;
+      }
+      const resultCount = Array.isArray(rankings) ? rankings.length : 0;
+      try {
+        await finalizeRankingSearch(orgId, histId, rankings);
+      } catch (persistErr) {
+        logger.error({ err: persistErr, orgId, histId }, "[seo] local-seo ranking finalization failed");
+        res.status(502).json({
+          ok: false, rankings: [], configured: true, reason: "persist_error",
+          error: "Le classement a été récupéré mais n'a pas pu être enregistré. Réessayez dans quelques instants.",
+        });
+        return;
+      }
+      const usage = { used: reservation.used, limit: reservation.limit };
+      // Return the durable persisted row ID so the frontend can select the
+      // newly-created history entry immediately without guessing by array index.
+      res.json({ ok: true, keyword, location, rankings, count: resultCount, configured: true, usage, historyId: histId });
+      return;
     }
-    res.json({ ok: false, rankings: [], configured: false, reason: "not_configured", message: "DataForSEO n’est pas configuré pour cette organisation." });
+    res.json({ ok: false, rankings: [], configured: false, reason: "not_configured",
+      message: "Le service de classement local n'est pas encore configuré pour votre organisation." });
   } catch (e) {
-    res.status(502).json({ ok: false, rankings: [], configured: true, reason: "provider_error", error: "DataForSEO ne répond pas pour le moment." });
+    logger.error({ err: e, orgId }, "[seo] local-seo rankings provider error");
+    res.status(502).json({ ok: false, rankings: [], configured: true, reason: "provider_error",
+      error: "Le service de classement local est temporairement indisponible. Réessayez dans quelques instants." });
+  }
+});
+
+// ── GET /local-seo/rankings/history ──────────────────────────────────────────
+// Returns persisted ranking searches for this org (newest first, limit 50).
+router.get("/local-seo/rankings/history", async (req, res) => {
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  try {
+    const r = await pool.query(
+      `SELECT id, keyword, location, results, searched_at
+       FROM local_seo_ranking_history
+       WHERE org_id=$1 AND jsonb_typeof(results)='array'
+       ORDER BY searched_at DESC
+       LIMIT 50`,
+      [orgId]
+    );
+    // results is stored as JSONB — node-pg returns it parsed, but tolerate a
+    // string (legacy rows / text column drift) so Array.isArray(h.results) works.
+    const history = r.rows.map(row => {
+      const results = typeof row.results === "string"
+        ? (() => { try { return JSON.parse(row.results); } catch { return []; } })()
+        : (Array.isArray(row.results) ? row.results : []);
+      // Expose an explicit real result count so the frontend never has to guess.
+      return { ...row, results, resultCount: results.length, total_results: results.length };
+    });
+    // Persisted usage — derived from real rows so it survives F5. `used` is
+    // today's ranking searches, `limit` is the DataForSEO daily quota.
+    const usage = await getRankingUsage(orgId);
+    res.json({ ok: true, history, count: history.length, usage });
+  } catch (err) {
+    logger.error({ err, orgId }, "[seo] local-seo ranking history fetch failed");
+    res.status(500).json({
+      ok: false,
+      reason: "history_unavailable",
+      error: "Impossible de charger l'historique des classements locaux.",
+    });
+  }
+});
+
+// ── DELETE /local-seo/rankings/history/:id ────────────────────────────────────
+// Permanently removes one ranking history entry for this org.
+// After deletion the entry will not reappear on refresh or reconnection.
+router.delete("/local-seo/rankings/history/:id", canWrite, async (req, res) => {
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  const { id } = req.params;
+  if (!id) { res.status(400).json({ error: "id required" }); return; }
+  try {
+    const r = await pool.query(
+      `DELETE FROM local_seo_ranking_history WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [id, orgId]
+    );
+    if (!r.rowCount) {
+      res.status(404).json({ ok: false, error: "Entry not found or already deleted" });
+      return;
+    }
+    logger.info({ orgId, id }, "[seo] local-seo history entry deleted");
+    res.json({ ok: true, deleted: id });
+  } catch (err) {
+    logger.error({ err, orgId, id }, "[seo] local-seo history delete failed");
+    res.status(500).json({ ok: false, error: "Deletion failed" });
   }
 });
 

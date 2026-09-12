@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -17,17 +17,33 @@ router.get("/addons", async (req: Request, res: Response) => {
     // Use DB-sourced addons — never the store.me singleton (cross-tenant contamination risk).
     // org_addons is the source of truth; legacy org_settings JSON only fills gaps.
     const liveAddons: Record<string, boolean | number> = { ...((dbData?.addons ?? {}) as Record<string, boolean | number>), ...(orgAddons ?? {}) };
+    for (const removedKey of REMOVED_ADDONS) delete liveAddons[removedKey];
     // Overlay plan-bundled addons so subscribers see entitlements without manual activation.
     const planIncluded = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
+    // P1 — retention90d is superseded by retention365d on Ultra.
+    // A Pro→Ultra upgrade leaves retention90d active in org_addons (provisionPlanAddons
+    // only adds keys, never deactivates old-tier ones). Remove it here so it is not
+    // counted as an extra paid add-on when the higher-tier superseder is present.
+    if (plan === "ultra" && liveAddons["retention365d"] && liveAddons["retention90d"]) {
+      liveAddons["retention90d"] = false;
+      logger.info({ orgId, plan }, "[P1][addons] retention90d suppressed (superseded by retention365d on Ultra)");
+    }
     const quotas = getQuotaLimits(plan, liveAddons);
-    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).map(([key, definition]) => [key, {
-      ...definition,
-      active: liveAddons[key] ?? false,
-      includedInPlan: planIncluded.has(key),
-    }]));
+    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
+      const active = liveAddons[key] ?? false;
+      const includedInPlan = planIncluded.has(key);
+      return [key, {
+        ...definition,
+        active,
+        includedInPlan,
+        allowedForPlan: isPlanAllowedAddon(plan, key),
+        availability: getAddonAvailability(key),
+        status: getAddonStatus(key, { included: includedInPlan, active }),
+      }];
+    }));
     res.json({
       addons: liveAddons,
       orgAddons,
@@ -46,6 +62,24 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   if (!ADDON_DEFINITIONS[key]) {
     res.status(400).json({ error: "Unknown addon key" }); return;
   }
+  // ── Removed-from-catalogue gate ────────────────────────────────────────────
+  // "prioritySupport" was removed from the commercial catalogue (feature not
+  // implemented). Block any activation attempt regardless of plan.
+  if (REMOVED_ADDONS.has(key)) {
+    logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — removed from catalogue");
+    res.status(410).json({ error: "Cet add-on n'est plus disponible.", code: "ADDON_REMOVED" }); return;
+  }
+  // ── Coming-soon gate ───────────────────────────────────────────────────────
+  // Add-ons in COMING_SOON_ADDONS are visible on the pricing/UI as roadmap items
+  // but are NOT yet available for purchase.  Block activation at every layer.
+  if (COMING_SOON_ADDONS.has(key)) {
+    logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — add-on not yet available (COMING_SOON)");
+    res.status(503).json({
+      error: "Cet add-on n'est pas encore disponible. Il sera lancé prochainement.",
+      code: "ADDON_COMING_SOON",
+      addonKey: key,
+    }); return;
+  }
   // Optional quantity (quantity add-ons only) — clamped 1..20 to match the UI.
   const rawQty = (req.body as { quantity?: unknown } | undefined)?.quantity;
   const quantity = Math.min(20, Math.max(1, Math.floor(Number(rawQty ?? 1)) || 1));
@@ -57,12 +91,39 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
     res.json({ ok: true, addonKey: key, includedInPlan: true, addons: await getOrgAddons(orgId) });
     return;
   }
+  // ── Plan gate: block add-ons incompatible with current plan tier ─────────
+  // Three-layer enforcement: API (here) + checkout (public-billing) + UI.
+  if (!isPlanAllowedAddon(plan, key)) {
+    logger.warn({ orgId, addonKey: key, plan }, "[Addons] plan gate: add-on not allowed for plan tier");
+    res.status(403).json({
+      error: `L'add-on "${key}" n'est pas disponible sur le plan ${plan}. Passez à un plan supérieur pour y accéder.`,
+      code: "ADDON_PLAN_GATE",
+      currentPlan: plan,
+      addonKey: key,
+    });
+    return;
+  }
+  // ── Ensure Stripe customer exists before any subscription mutation ────────
+  // syncAddonWithStripe relies on loadBillingContext to find the customer.
+  // If the org has no customer row in DB (e.g. new org, never subscribed),
+  // ensureStripeCustomer creates one and writes it back — preventing a
+  // silent no_live_subscription failure that looks like a Stripe error.
+  try {
+    const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+    await ensureStripeCustomer(orgId);
+  } catch (_ensureErr) {
+    logger.warn({ orgId, addonKey: key, err: String(_ensureErr) },
+      "[Addons] ensureStripeCustomer failed — proceeding; syncAddonWithStripe will block if no sub");
+  }
   // Bill the paid add-on on the existing Stripe subscription BEFORE granting access.
   // A Stripe failure — OR any unsynced result — must not create a free paid feature.
   // Grant is allowed ONLY when Stripe actually carries the item (synced:true) or the
   // add-on is bundled in the plan (included_in_plan → nothing to bill).
   const { syncAddonWithStripe } = await import("../services/addon-stripe-sync.js");
   const stripeSync = await syncAddonWithStripe(orgId, key, "activate", quantity);
+  // Strict billing guard: only grant access when Stripe has confirmed the item
+  // is on the subscription, or the add-on is already included in the current plan.
+  // No entitlement must be granted without Stripe confirmation in production.
   const billingSecured = stripeSync.synced === true || stripeSync.reason === "included_in_plan";
   if (!billingSecured) {
     const statusByReason: Record<string, { code: number; msg: string }> = {
@@ -80,7 +141,10 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   }
   const ok = await activateAddon(key, orgId, quantity);
   if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
+    const _actCtx = (req as Request & { orgContext?: { userId?: string; email?: string; name?: string } }).orgContext;
+    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon", orgId,
+      actionKey: "activity.addon.activated", actionParams: { key },
+      userId: _actCtx?.userId ?? _actCtx?.email, userName: _actCtx?.name ?? _actCtx?.email }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:activated", addonKey: key }, orgId);
     const freshAddons = await getOrgAddons(orgId);
     res.json({ ok: true, addonKey: key, addons: freshAddons, stripe: stripeSync });
@@ -123,7 +187,10 @@ router.post("/addons/:key/deactivate", ownerOnly, async (req: Request, res: Resp
     return;
   }
 
-  store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId }).catch(err => console.warn("[logActivity]", err?.message));
+  const _deactCtx = (req as Request & { orgContext?: { userId?: string; email?: string; name?: string } }).orgContext;
+  store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon", orgId,
+    actionKey: "activity.addon.deactivated", actionParams: { key },
+    userId: _deactCtx?.userId ?? _deactCtx?.email, userName: _deactCtx?.name ?? _deactCtx?.email }).catch(err => console.warn("[logActivity]", err?.message));
   store.broadcast({ type: "fp:addon:deactivated", addonKey: key }, orgId);
 
   // Now stop Stripe billing. If this fails, compensate by re-activating in DB so the two

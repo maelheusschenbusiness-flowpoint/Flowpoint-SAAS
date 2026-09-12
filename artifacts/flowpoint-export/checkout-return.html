@@ -52,17 +52,14 @@
        instead of checkout-complete (which is designed for new signups only).   */
     var isAlreadyLoggedIn = false;
     try {
-      isAlreadyLoggedIn = !!(
-        localStorage.getItem('fp_token') ||
-        sessionStorage.getItem('fp_token')
-      );
+      isAlreadyLoggedIn = !!sessionStorage.getItem('fp_session_token');
     } catch(e) {}
 
     /* ── Shared auth headers for authenticated requests ── */
     function authHeaders() {
       var h = { 'Content-Type': 'application/json' };
       try {
-        var t = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token');
+        var t = sessionStorage.getItem('fp_session_token');
         if (t) h['Authorization'] = 'Bearer ' + t;
       } catch(e) {}
       return h;
@@ -79,6 +76,15 @@
       var preRegisterToken = '';
       try { cart             = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
       try { preRegisterToken = sessionStorage.getItem('fp_pre_reg_token') || ''; }      catch(e) {}
+      // Fallback: localStorage (written by signin.html with 2h TTL) survives tab closure
+      if (!preRegisterToken) {
+        try {
+          var _storedReg = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+          if (_storedReg && _storedReg.token && typeof _storedReg.exp === 'number' && _storedReg.exp > Date.now()) {
+            preRegisterToken = _storedReg.token;
+          }
+        } catch(e) {}
+      }
       var plan   = (cart && cart.plan)   ? cart.plan   : '';
       var addons = (cart && cart.addons) ? cart.addons : {};
       var isNewSignup = !!preRegisterToken;
@@ -104,8 +110,26 @@
             document.getElementById('fp-title').textContent = 'Compte activé !';
             document.getElementById('fp-sub').innerHTML =
               'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
-              "L'email de connexion n'a pas pu être envoyé — connectez-vous directement&nbsp;:" +
-              '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+              "L'email de connexion n'a pas pu être envoyé.<br>" +
+              'Connectez-vous directement depuis la page de connexion&nbsp;:' +
+              '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>' +
+              '<br><br><small style="opacity:.65">Vous pourrez demander un nouveau lien de connexion depuis cette page.</small>';
+            return;
+          }
+
+          /* ── AI credits or add-on purchase confirmation (PaymentElement path) ── */
+          var _ct = (res.data.checkoutType || '').toString();
+          if (_ct === 'ai_credits_only') {
+            showAiCreditsSuccess(res.data.credits || 0);
+            return;
+          }
+          if (_ct === 'addon_only') {
+            document.getElementById('fp-check').style.display = '';
+            document.getElementById('fp-title').textContent = 'Add-on activé !';
+            document.getElementById('fp-sub').innerHTML =
+              'Votre add-on est <strong>immédiatement disponible</strong>.<br>' +
+              'Vous allez être redirigé vers le tableau de bord…';
+            setTimeout(function(){ window.location.href = '/dashboard.html?checkout=success#billing'; }, 2200);
             return;
           }
 
@@ -151,11 +175,11 @@
           } else {
             document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
             document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
-            setTimeout(function(){ window.location.href = '/dashboard.html'; }, 1800);
+            setTimeout(function(){ window.location.href = '/dashboard.html?checkout=success'; }, 1800);
           }
         } else if (res.status === 401) {
           document.getElementById('fp-spinner').style.display = 'none';
-          document.getElementById('fp-title').textContent = 'Session expirée';
+          document.getElementById('fp-title').textContent = 'Paiement enregistré';
           document.getElementById('fp-sub').innerHTML =
             'Votre paiement a bien été enregistré.<br>Connectez-vous pour accéder à votre compte.' +
             '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
@@ -174,7 +198,9 @@
           } else {
             document.getElementById('fp-title').textContent = 'Erreur de finalisation';
             document.getElementById('fp-sub').textContent = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
-            document.getElementById('fp-sub').innerHTML += '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
+            document.getElementById('fp-sub').innerHTML += isAlreadyLoggedIn
+              ? '<br><br><a href="/dashboard.html#billing/plans" class="fp-btn">Retour aux abonnements</a>'
+              : '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
           }
         }
       })
@@ -188,7 +214,7 @@
 
     /* ── Case B: Stripe Checkout session_id ── */
     if (!sessionId) {
-      window.location.href = '/pricing.html';
+      window.location.href = isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/pricing.html';
       return;
     }
 
@@ -203,7 +229,7 @@
       document.getElementById('fp-sub').innerHTML =
         '<strong>' + (credits > 0 ? label : 'Vos') + ' crédits IA</strong> ont été ajoutés à votre compte.<br>' +
         'Vous allez être redirigé vers le tableau de bord…';
-      setTimeout(function(){ window.location.href = '/dashboard.html#billing'; }, 2200);
+      setTimeout(function(){ window.location.href = '/dashboard.html?checkout=success#billing'; }, 2200);
     }
 
     /* ── Existing user (reactivation / plan upgrade): verify via /api/billing/verify ──
@@ -216,11 +242,10 @@
       })
       .then(function(r){ return r.json(); })
       .then(function(data) {
-        try { localStorage.removeItem('fp_cart'); } catch(e) {}
-
         /* ── AI credits purchase: webhook already credited the org — show confirmation ── */
         var ct = data.checkoutType || '';
         if (data.ok && (ct === 'ai_credits_only' || ct === 'ai_credits')) {
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
           showAiCreditsSuccess(data.credits || 0);
           return;
         }
@@ -228,6 +253,7 @@
         if (data.ok) {
           /* billing/verify confirmed the subscription — go to dashboard for existing users,
              success page for new signups that fell through here.                         */
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
           if (isAlreadyLoggedIn) {
             window.location.href = '/dashboard.html?plan_activated=1';
           } else {
@@ -243,7 +269,7 @@
             window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
           }
         } else if (status === 'expired' || status === 'canceled') {
-          window.location.href = '/cancel.html';
+          window.location.href = isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/cancel.html';
         } else {
           /* Webhook still pending — show waiting state and redirect to dashboard.
              The subscription will be fully activated once the webhook fires.     */
@@ -262,7 +288,9 @@
       .catch(function() {
         document.getElementById('fp-title').textContent = 'Vérification impossible';
         document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
-        setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
+        setTimeout(function(){
+          window.location.href = isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/dashboard.html';
+        }, 3000);
       });
     }
 
@@ -290,6 +318,17 @@
           /* Session already used (idempotent: account exists, just redirect) */
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
           window.location.href = '/dashboard.html';
+        } else if (res.status === 200 && res.data.emailFailed) {
+          /* Account activated but email delivery failed — offer direct login */
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-check').style.display = '';
+          document.getElementById('fp-title').textContent = 'Compte activé !';
+          document.getElementById('fp-sub').innerHTML =
+            'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
+            "L'email de connexion n'a pas pu être envoyé.<br>" +
+            'Connectez-vous directement depuis la page de connexion&nbsp;:' +
+            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>' +
+            '<br><br><small style="opacity:.65">Vous pourrez demander un nouveau lien depuis cette page.</small>';
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-title').textContent = 'Erreur de finalisation';

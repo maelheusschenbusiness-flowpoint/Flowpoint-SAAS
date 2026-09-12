@@ -5,9 +5,10 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import type { PoolClient } from "pg";
 import { logger } from "../lib/logger.js";
 import { getRateLimit, type RateLimits } from "../lib/config.js";
-import { pool } from "@workspace/db";
+import { withOrgDb, withOrgDbClient } from "@workspace/db";
 import { store } from "../services/store.js";
 
 interface Window {
@@ -48,11 +49,20 @@ function getOrgId(req: Request): string {
   return (req as { orgId?: string }).orgId ?? 'default';
 }
 
-async function getPlanForOrg(orgId: string): Promise<string> {
+function runOrgScoped<T>(
+  orgId: string,
+  existingClient: PoolClient | undefined,
+  callback: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  return existingClient
+    ? withOrgDbClient(existingClient, orgId, callback)
+    : withOrgDb(orgId, callback);
+}
+
+async function getPlanForOrg(orgId: string, existingClient?: PoolClient): Promise<string> {
   if (orgId === "default") return (store.me?.plan || "standard").toLowerCase();
   try {
-    const client = await pool.connect();
-    try {
+    return await runOrgScoped(orgId, existingClient, async (client) => {
       // Source primaire : organizations
       const r = await client.query<{ plan: string }>(
         `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
@@ -65,12 +75,53 @@ async function getPlanForOrg(orgId: string): Promise<string> {
         [orgId],
       );
       return (legacy.rows[0]?.plan || "standard").toLowerCase();
-    } finally {
-      client.release();
-    }
+    });
   } catch {
     return (store.me?.plan || "standard").toLowerCase();
   }
+}
+
+export async function checkDistributedAiProviderRateLimit(
+  orgId: string,
+  bucket = "ai_provider",
+  existingClient?: PoolClient,
+): Promise<{ allowed: boolean; remaining: number; resetInMs: number; limit: number; plan: string }> {
+  const plan = await getPlanForOrg(orgId, existingClient);
+  const limit = getRateLimit(plan, "aiPerMinute");
+  const result = await runOrgScoped(
+    orgId,
+    existingClient,
+    (client) => client.query<{ request_count: number; reset_ms: string | number }>(
+      `INSERT INTO ai_rate_limit_windows
+         (org_id, bucket, window_start, request_count, updated_at)
+       VALUES ($1, $2, NOW(), 1, NOW())
+       ON CONFLICT (org_id, bucket) DO UPDATE
+         SET request_count = CASE
+               WHEN ai_rate_limit_windows.window_start <= NOW() - INTERVAL '60 seconds' THEN 1
+               ELSE ai_rate_limit_windows.request_count + 1
+             END,
+             window_start = CASE
+               WHEN ai_rate_limit_windows.window_start <= NOW() - INTERVAL '60 seconds' THEN NOW()
+               ELSE ai_rate_limit_windows.window_start
+             END,
+             updated_at = NOW()
+       RETURNING request_count,
+         GREATEST(
+           0,
+           EXTRACT(EPOCH FROM (window_start + INTERVAL '60 seconds' - NOW())) * 1000
+         )::BIGINT AS reset_ms`,
+      [orgId, bucket],
+    ),
+  );
+  const count = Number(result.rows[0]?.request_count ?? limit + 1);
+  const resetInMs = Math.max(0, Number(result.rows[0]?.reset_ms ?? 60_000));
+  return {
+    allowed: count <= limit,
+    remaining: Math.max(0, limit - count),
+    resetInMs,
+    limit,
+    plan,
+  };
 }
 
 /** General API rate limiter (global per org) */
@@ -104,26 +155,50 @@ export function globalRateLimit(req: Request, res: Response, next: NextFunction)
   })();
 }
 
-/** AI endpoint rate limiter */
-export function aiRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const orgId = getOrgId(req);
-  void (async () => {
-    try {
-      const plan = await getPlanForOrg(orgId);
-      const limit = getRateLimit(plan, 'aiPerMinute');
-      const { allowed, remaining, resetInMs } = checkRate(`ai:${orgId}`, limit);
+/**
+ * Shared implementation for the AI limiters.
+ *
+ * Two DISTINCT buckets share the same plan-aware `aiPerMinute` threshold:
+ *  - `ai:${orgId}`      — batch/background AI endpoints (summary, audit,
+ *                         pagespeed-insights, missions, generate, …)
+ *  - `ai:chat:${orgId}` — the interactive conversation endpoint /ai/chat
+ *
+ * WHY (Task #614 — premature 429): with a single shared bucket, background
+ * dashboard AI features silently drained the interactive chat budget, so a
+ * normal 15–20 message conversation could hit 429 even though the user never
+ * exceeded the chat limit itself. Splitting the buckets keeps every plan
+ * threshold identical (no limits were raised) while making each 429
+ * attributable to the surface that actually caused it.
+ */
+function aiLimitMiddleware(bucketPrefix: string, source: string) {
+  return function (req: Request, res: Response, next: NextFunction): void {
+    const orgId = getOrgId(req);
+    void (async () => {
+      try {
+        const plan = await getPlanForOrg(orgId);
+        const limit = getRateLimit(plan, 'aiPerMinute');
+        const { allowed, remaining, resetInMs } = checkRate(`${bucketPrefix}:${orgId}`, limit);
 
-      res.setHeader('X-AI-RateLimit-Remaining', String(remaining));
+        res.setHeader('X-AI-RateLimit-Remaining', String(remaining));
 
-      if (!allowed) {
-        logger.warn({ orgId, plan }, '[RateLimit] AI limit exceeded');
-        res.status(429).json({ ok: false, error: 'AI rate limit exceeded', code: 'AI_RATE_LIMIT', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), plan, limit } });
-        return;
-      }
-      next();
-    } catch { next(); }
-  })();
+        if (!allowed) {
+          // Structured attribution: every AI 429 must be traceable to its
+          // source bucket (interactive chat vs batch AI features).
+          logger.warn({ orgId, plan, limit, source, bucket: `${bucketPrefix}:${orgId}`, path: req.path }, '[RateLimit] AI limit exceeded');
+          res.status(429).json({ ok: false, error: 'AI rate limit exceeded', code: 'AI_RATE_LIMIT', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), plan, limit, source } });
+          return;
+        }
+        next();
+      } catch { next(); }
+    })();
+  };
 }
+
+/** AI endpoint rate limiter — batch/background AI feature endpoints */
+export const aiRateLimit = aiLimitMiddleware('ai', 'ai_batch');
+
+/** Interactive conversation limiter — POST /ai/chat only (own bucket) */
+export const aiChatRateLimit = aiLimitMiddleware('ai:chat', 'ai_chat');
 
 /** Factory: create a rate limiter for a specific endpoint type */
 export function createRateLimit(bucket: keyof RateLimits): (req: Request, res: Response, next: NextFunction) => void {

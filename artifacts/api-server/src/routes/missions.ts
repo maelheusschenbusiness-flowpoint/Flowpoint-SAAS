@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger.js";
+import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
 import { runMissionEngine, getMissionsStats } from "../services/mission-engine.js";
 import { canWrite } from "../middlewares/requireRole.js";
@@ -74,9 +75,13 @@ async function logHistory(
 }
 
 // GET /missions
+// Uses pool.query (superuser) with explicit org_id filter — bypasses withOrgDb/RLS which
+// can silently return [] when SET LOCAL ROLE app_user fails on Supabase pooled connections.
+// Tenant isolation is enforced by the WHERE org_id = $1 clause, same pattern as list_missions AI tool.
 router.get("/missions", async (req: Request, res: Response) => {
+  const _t0 = Date.now();
+  logger.info({ org: orgId(req) }, "[MISSIONS] API start");
   try {
-    const db = orgDb(req);
     const org = orgId(req);
     const { status, category, priority, quick_win, limit = "100", offset = "0" } = req.query as Record<string, string>;
 
@@ -92,10 +97,12 @@ router.get("/missions", async (req: Request, res: Response) => {
     query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
     params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
-    const result = await db(query, params);
+    const result = await pool.query(query, params);
+    const ms = Date.now() - _t0;
+    logger.info({ org, rows: result.rows.length, ms }, "[MISSIONS] API end");
     res.json(result.rows.map(rowToMission));
   } catch (err) {
-    logger.error({ err }, "[Missions] GET /missions error");
+    logger.error({ err, ms: Date.now() - _t0 }, "[Missions] GET /missions error");
     res.json([]);
   }
 });
@@ -196,13 +203,14 @@ router.post("/missions/from-template", canWrite, async (req: Request, res: Respo
       ? (steps as string[]).map((text, i) => ({ id: `s${Date.now()}${i}`, text, done: false, tag: `Étape ${i + 1}` }))
       : [];
 
+    const tmplCreatedBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
     await db(`
       INSERT INTO missions (
         id, org_id, title, category, priority, priority_score,
-        status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',NOW(),NOW(),NOW())
+        status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',$10,NOW(),NOW(),NOW())
     `, [id, org, templateTitle, category || "SEO Technique", priority, pScore,
-        impact || "Moyen", effort || "Moyen", JSON.stringify(stepsArr)]);
+        impact || "Moyen", effort || "Moyen", JSON.stringify(stepsArr), tmplCreatedBy]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
     res.json(rowToMission(row.rows[0]));
@@ -248,11 +256,12 @@ router.post("/missions/bulk-create", canWrite, async (req: Request, res: Respons
           }))
         : [];
 
+      const bulkCreatedBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
       await db(`
         INSERT INTO missions (
           id, org_id, title, category, priority, priority_score,
-          status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW(),NOW())
+          status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW(),NOW())
       `, [id, org, title,
           (m.category as string) || "SEO",
           priority, pScore,
@@ -260,7 +269,8 @@ router.post("/missions/bulk-create", canWrite, async (req: Request, res: Respons
           (m.impact as string) || "Moyen",
           (m.effort as string) || "Moyen",
           JSON.stringify(stepsArr),
-          (m.source as string) || "manual"]);
+          (m.source as string) || "manual",
+          bulkCreatedBy]);
 
       const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
       created.push(rowToMission(row.rows[0]));
@@ -358,13 +368,14 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
     const id = uid();
     const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[(priority as string)] ?? 50);
 
+    const createdBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
     await db(`
       INSERT INTO missions (
         id, org_id, title, description, category, type, priority, priority_score,
-        status, impact, effort, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',NOW(),NOW(),NOW())
+        status, impact, effort, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',$15,NOW(),NOW(),NOW())
     `, [id, org, normalizedTitle, description || null, category, type, priority, pScore, status, impact, effort,
-        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null]);
+        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null, createdBy]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     // BUG-003 guard: INSERT committed but SELECT returned no row — log full context for diagnosis
@@ -380,6 +391,9 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
       type: "report", label: `Mission créée : ${title}`,
       targetId: id, targetType: "mission",
       metadata: { category, impact }, orgId: org,
+      actionKey: "activity.mission.created", actionParams: { title: String(title) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(() => {});
 
     res.status(201).json(mission);
@@ -458,6 +472,9 @@ router.patch("/missions/:id", canWrite, async (req: Request, res: Response) => {
           type: "report", label: `Mission accomplie : ${prev.title}`,
           targetId: id, targetType: "mission",
           metadata: { category: prev.category, impact: prev.impact }, orgId: org,
+          actionKey: "activity.mission.done", actionParams: { title: String(prev.title) },
+          userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+          userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
         }).catch(() => {});
       }
     }
@@ -487,6 +504,9 @@ router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => 
       type: "report", label: `Mission supprimée : ${existing.rows[0].title}`,
       targetId: String(req.params.id), targetType: "mission",
       metadata: { category: existing.rows[0].category }, orgId: org,
+      actionKey: "activity.mission.deleted", actionParams: { title: String(existing.rows[0].title) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(() => {});
 
     res.json({ ok: true });

@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import crypto from "crypto";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import {
   createIntegration, dispatchEvent, testIntegration, getIntegrationStats,
   processIncomingWebhook, getIntegrationLimit, SUPPORTED_EVENTS,
@@ -126,8 +127,8 @@ router.get("/integrations/zapier", async (req, res) => {
   } catch (err) { logger.error({ err }, "[integrations/zapier] failed"); res.json({ integrations: [], stats: { runs: 0, success: 0 } }); }
 });
 
-// ── POST /api/integrations/zapier/connect ──────────────────────────────────────
-router.post("/integrations/zapier/connect", async (req, res) => {
+// ── Zapier / Make connect require zapierIntegration add-on ──────────────────
+router.post("/integrations/zapier/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), async (req, res) => {
   const { webhookUrl, events = [], name = "Zapier Integration" } = req.body as { webhookUrl?: string; events?: string[]; name?: string };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
   try {
@@ -154,7 +155,7 @@ router.get("/integrations/make", async (req, res) => {
 });
 
 // ── POST /api/integrations/make/connect ───────────────────────────────────────
-router.post("/integrations/make/connect", async (req, res) => {
+router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), async (req, res) => {
   const { webhookUrl, events = [], name = "Make Integration", scenarioName } = req.body as {
     webhookUrl?: string; events?: string[]; name?: string; scenarioName?: string;
   };
@@ -270,7 +271,7 @@ router.get("/integrations/webhooks", async (req, res) => {
 });
 
 // ── POST /api/integrations/webhooks ─ save outgoing webhook ──────────────────
-router.post("/integrations/webhooks", async (req, res) => {
+router.post("/integrations/webhooks", requireAddon("advancedWebhooks", "Advanced Webhooks"), async (req, res) => {
   const { url, events = ["*"], headers = {} } = req.body as { url?: string; events?: string[]; headers?: Record<string, string> };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
   const id = `wh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -285,7 +286,7 @@ router.post("/integrations/webhooks", async (req, res) => {
 });
 
 // ── POST /api/integrations/webhooks/test ─ ping test ─────────────────────────
-router.post("/integrations/webhooks/test", async (req, res) => {
+router.post("/integrations/webhooks/test", requireAddon("advancedWebhooks", "Advanced Webhooks"), async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
   // SSRF guard: https only, no private/link-local/loopback

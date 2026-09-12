@@ -47,10 +47,10 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
     features: [
       "30 audits/mois", "10 monitors", "30 rapports PDF/mois",
       "30 exports/mois", "1 membre d'équipe", "100 000 crédits IA/mois",
-      "Local SEO basique", "Export CSV", "Support email 48h",
+      "Local SEO basique", "Export CSV", "Support email 48h", "White-label",
     ],
     locked: [
-      "IA Insights", "White-label", "API Access",
+      "IA Insights", "API Access",
       "Analytics concurrents", "Multi-workspace",
       "SSO SAML", "Onboarding dédié", "Facturation client",
     ],
@@ -102,7 +102,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
     aiTokens: 750_000,
     features: [
       "1 000 audits/mois", "300 monitors", "1 000 rapports PDF/mois",
-      "1 000 exports/mois", "10 membres d'équipe", "10 000 000 crédits IA/mois",
+      "1 000 exports/mois", "10 membres d'équipe", "∞ crédits IA/mois",
       "Multi-workspace", "IA Stratégiste complet", "White-label portail",
       "SSO SAML", "API illimitée", "Custom domain",
       "SLA 99.9% garanti", "Support dédié < 1h", "Rétention 365 jours",
@@ -132,6 +132,57 @@ export const PLAN_PRICE_IDS: Record<string, string> = {
   pro:      process.env["STRIPE_PRICE_ID_PRO"]      ?? "price_1StW0A9eqtbj6iPB8GcUCuwQ",
   ultra:    process.env["STRIPE_PRICE_ID_ULTRA"]    ?? "price_1StW109eqtbj6iPBgiD1uRtP",
 };
+
+// ── Test-mode plan price IDs (Stripe CLI / test dashboard) ───────────────────
+// Set these env vars when running webhook tests in Stripe test mode so that
+// getPlanForPriceId() can resolve the plan even when metadata.plan is absent.
+// In production all FlowPoint checkouts set metadata.plan so this is a safety net only.
+export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
+  Object.entries({
+    standard: process.env["STRIPE_TEST_PRICE_ID_STANDARD"] ?? "",
+    pro:      process.env["STRIPE_TEST_PRICE_ID_PRO"]      ?? "",
+    ultra:    process.env["STRIPE_TEST_PRICE_ID_ULTRA"]    ?? "",
+  }).filter(([, v]) => v !== "")
+);
+
+// ── Add-on price IDs — test-mode overrides (Stripe CLI / test dashboard) ─────
+// Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to override any addon price in test mode.
+// These are resolved at call-time in getAddonPriceId() below.
+export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
+  Object.entries({
+    // Keys follow existing Replit secret naming conventions for backward compat.
+    monitorsPack10:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"]  // set via Replit secret
+                       ?? process.env["STRIPE_TEST_PRICE_ID_10MONITORS"]        ?? "",
+    monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
+                       ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
+    advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
+    keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
+    backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
+    behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
+    aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
+    enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
+    advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
+    retention365d:        process.env["STRIPE_TEST_PRICE_ID_ADDON_RET365"]      ?? "",
+    whiteLabel:           process.env["STRIPE_TEST_PRICE_ID_ADDON_WL"]          ?? "",
+    customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
+    extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
+    gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
+    aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
+    aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
+    aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
+  }).filter(([, v]) => v !== "")
+);
+
+/**
+ * Returns the correct Stripe price ID for an add-on, respecting test-mode overrides.
+ * In test mode (sk_test_ key active) → prefer ADDON_PRICE_IDS_TEST[key].
+ * In live mode or when no test override exists → fall back to ADDON_PRICE_IDS[key].
+ */
+export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
+  const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
+  if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];
+  return ADDON_PRICE_IDS[key] || undefined;
+}
 
 // ── Add-on price IDs (live Stripe — confirmed 23/06/2026) ────────────────────
 export const ADDON_PRICE_IDS: Record<string, string> = {
@@ -212,6 +263,14 @@ export interface AddonDefinition {
 }
 
 /**
+ * Public lifecycle/entitlement state used by every add-on catalogue surface.
+ * The first three values describe an organisation's entitlement; the final
+ * three describe the product lifecycle when there is no entitlement.
+ */
+export type AddonStatus = "included" | "active" | "beta" | "coming_soon" | "available";
+export type AddonAvailability = "beta" | "coming_soon" | "available";
+
+/**
  * Canonical public add-on catalogue.
  * Stripe price IDs above control collection; this metadata controls every
  * customer-facing label and amount. Frontends must obtain it from the API.
@@ -269,8 +328,137 @@ export const FLAG_ADDONS = new Set([
   "enterprisePermissions",
   "retention90d","retention365d",
   "advancedWebhooks","zapierIntegration","crmIntegration",
-  "customDomain","ssoEnterprise","aiWorkspaceLaunch","prioritySupport",
+  "customDomain","ssoEnterprise","aiWorkspaceLaunch",
+  // NOTE: "prioritySupport" removed — feature not implemented, no commercial exposure
 ]);
+
+/** Legacy keys retained only for historical Stripe/DB reconciliation. */
+export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
+
+/**
+ * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
+ * available for purchase.  Activation is blocked at every layer:
+ *   1. API  — POST /api/addons/:key/activate returns 503
+ *   2. Checkout — public-billing.ts must reject these keys
+ *   3. Frontend — UI renders disabled "Bientôt disponible" badge/button
+ *
+ * When an add-on ships, remove it from this set and add a Stripe price.
+ */
+export const COMING_SOON_ADDONS = new Set<string>([
+  // ── No requireAddon gate in any route ─────────────────────────────────────
+  // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
+  // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
+  "slaMonitoring",
+  // globalMonitoring: no routes exist.
+  "globalMonitoring",
+  // aiContentStrategist / abTestingAI: no routes exist.
+  // backlinkIntelligence: moved to BETA_ADDONS — route /seo/backlinks exists with
+  // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
+  // health fallback). Included in Pro & Ultra plans.
+  "aiContentStrategist",
+  "abTestingAI",
+  "agencyPacks",
+  "aiExecutiveReport",
+  "aiWorkflows",
+
+  // ── Routes exist but not commercially released ─────────────────────────────
+  // crmIntegration: crm.ts routes are complete but addon not yet sold.
+  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
+  "crmIntegration",
+
+  // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
+  // Only Google Workspace OIDC works today (plan feature, not this addon).
+  "ssoEnterprise",
+
+  // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
+  // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
+  // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
+  // Not commercially released.
+  "aiWorkspaceLaunch",
+
+  // customDomain: route exists but feature is not commercially available yet for
+  // Standard/Pro. Included in Ultra but still "coming soon" functionally.
+  // getAddonStatus returns "included" first for Ultra users so this is safe.
+  "customDomain",
+]);
+
+/**
+ * Audit fonctionnel (2026-08-24) — critère BETA :
+ * "route réelle, activable, mais partielle ou dépendante d'une intégration externe."
+ *
+ *   behavioralAI      → behavioral.ts:377 gate réelle. Mais dépend du snippet JS
+ *                        installé côté client (intégration externe). Sans snippet,
+ *                        les insights sont vides. → BETA
+ *
+ *   aiForecasting     → forecast.ts:11 gate réelle. Memory documente "fabricated
+ *                        past curves" pour les pages forecast. Couverture données
+ *                        limitée. → BETA
+ *
+ *   marketIntelligence → market-intelligence.ts:12 gate réelle. Task PROPOSÉE
+ *                        "Remplacer données concurrentes hardcodées par vraies DFS"
+ *                        non terminée. Données partiellement mockées. → BETA
+ *
+ *   revenueLeak       → revenue-leak.ts:15 gate réelle. Dépend de behavioral data
+ *                        (snippet onsite requis). Sans snippet = détection vide. → BETA
+ *
+ *   aiCro             → cro.ts:17 gate réelle. Dépend de behavioral data (snippet).
+ *                        Recommandations génériques sans données visiteurs. → BETA
+ *
+ *   reviewIntelligence → review-intelligence.ts:23 gate réelle. Analyse DFS/GBP
+ *                        reviews — intégration DFS partielle. → BETA
+ *
+ *   aiGbpPosting      → gbp-posts.ts:86 gate réelle sur génération IA. Dépend
+ *                        d'une connexion OAuth GBP active (intégration externe). → BETA
+ *
+ *   zapierIntegration → integrations.ts:131/158 gate réelle. Dépend OAuth
+ *                        Zapier/Make (connexion externe non bundlée). → BETA
+ */
+export const BETA_ADDONS = new Set<string>([
+  // Beta describes feature maturity, NOT commercial mode.
+  // A beta add-on CAN be included in a plan (e.g. Ultra) — it then shows as
+  // "🧪 Beta — Inclus dans votre plan" and cannot be re-purchased.
+  // BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS is a valid non-empty set by design.
+  //
+  // Dépendance snippet onsite
+  "behavioralAI",
+  "revenueLeak",
+  "aiCro",
+  // Couverture données partielle / DFS non complète
+  "aiForecasting",
+  "marketIntelligence",
+  "reviewIntelligence",
+  // Dépendance OAuth externe
+  "aiGbpPosting",
+  "zapierIntegration",
+  // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
+  // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
+  "backlinkIntelligence",
+]);
+
+/** Product lifecycle independent of an organisation's current entitlements. */
+export function getAddonAvailability(addonKey: string): AddonAvailability {
+  // COMING_SOON is authoritative even if a key is accidentally classified
+  // elsewhere while catalogue metadata is being updated.
+  if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (BETA_ADDONS.has(addonKey)) return "beta";
+  return "available";
+}
+
+/**
+ * Resolve the single display state for an add-on in an organisation catalogue.
+ * Roadmap state has highest precedence, followed by bundled and paid
+ * entitlements; beta is only shown when neither entitlement applies.
+ */
+export function getAddonStatus(
+  addonKey: string,
+  options: { included?: boolean; active?: boolean | number } = {},
+): AddonStatus {
+  const availability = getAddonAvailability(addonKey);
+  if (availability === "coming_soon") return "coming_soon";
+  if (options.included) return "included";
+  if (options.active === true || (typeof options.active === "number" && options.active > 0)) return "active";
+  return availability;
+}
 
 export const QTY_ADDONS = new Set([
   "monitorsPack10","monitorsPack50","gbpSlots10","extraSeats",
@@ -336,26 +524,93 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "advancedWebhooks",
     "retention90d",
     "advancedSeoLab",
+    // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
     "backlinkIntelligence",
-    "prioritySupport",
+    // Granular RBAC (custom roles, workspace permissions, SSO compat). Live price ID.
+    // Pro-purchasable already (_PRO_EXCLUSIVE); no Ultra-only backend guard.
+    "enterprisePermissions",
   ]),
   ultra: new Set<string>([
     "whiteLabel",
     "customDomain",
     "advancedWebhooks",
-    "retention90d",
     "advancedSeoLab",
+    // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
     "backlinkIntelligence",
-    "prioritySupport",
+    // behavioralAI: BETA + included in Ultra → shows as "🧪 Beta — Inclus dans votre plan"
+    "behavioralAI",
+    // aiForecasting: BETA + included in Ultra → same "🧪 Beta — Inclus" rendering
+    "aiForecasting",
+    "enterprisePermissions",
     "retention365d",
     "keywordDomination",
-    "behavioralAI",
-    "aiForecasting",
   ]),
 };
 
+/**
+ * PLAN_ALLOWED_ADDONS — which add-ons can be PURCHASED (paid) per plan tier.
+ * Distinct from PLAN_INCLUDED_ADDONS (bundled for free).
+ * An add-on absent from this set for the user's plan is BLOCKED at:
+ *   1. API level   — POST /api/addons/:key/activate returns 403
+ *   2. Checkout    — public-billing.ts strips incompatible add-on keys
+ *   3. Frontend    — UI should grey-out/hide (enforced by /api/addons response)
+ *
+ * Hierarchy: standard ⊂ pro ⊂ ultra.
+ */
+const _STANDARD_PURCHASABLE = new Set<string>([
+  // Capacity packs — available on all plans
+  "monitorsPack10", "monitorsPack50",
+  "gbpSlots10",
+  "extraSeats",
+  "auditsPack200", "auditsPack1000",
+  "pdfPack200", "exportsPack1000",
+  "aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k",
+  "retention90d",
+  // NOTE: "prioritySupport" removed — feature not implemented
+]);
+
+const _PRO_EXCLUSIVE = new Set<string>([
+  // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
+  // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
+  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  "keywordDomination",
+  "aiGbpPosting", "reviewIntelligence", "localDominationMaps",
+  "aiCro", "behavioralAI", "revenueLeak",
+  "zapierIntegration",
+  "aiForecasting", "marketIntelligence",
+  "enterprisePermissions",
+]);
+
+const _ULTRA_EXCLUSIVE = new Set<string>([
+  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON — not purchasable.
+  "retention365d",
+]);
+
+export const PLAN_ALLOWED_ADDONS: Record<string, ReadonlySet<string>> = {
+  standard: _STANDARD_PURCHASABLE,
+  pro:      new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE]),
+  ultra:    new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
+  agency:   new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
+};
+
+/** Returns true when a plan is allowed to purchase the given add-on key. */
+export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
+  const planNorm = plan.toLowerCase();
+  const allowed = PLAN_ALLOWED_ADDONS[planNorm];
+  if (!allowed) {
+    // Unknown/free plan: only capacity packs
+    return _STANDARD_PURCHASABLE.has(addonKey);
+  }
+  return allowed.has(addonKey);
+}
+
 export function getPlanForPriceId(priceId: string): string | null {
+  // Check live-mode price IDs first
   for (const [plan, id] of Object.entries(PLAN_PRICE_IDS)) {
+    if (id && id === priceId) return plan;
+  }
+  // Fallback: check test-mode price IDs (populated via STRIPE_TEST_PRICE_ID_* env vars)
+  for (const [plan, id] of Object.entries(PLAN_PRICE_IDS_TEST)) {
     if (id && id === priceId) return plan;
   }
   return null;

@@ -115,6 +115,50 @@ export class NavMarkerFilter {
   }
 }
 
+/**
+ * Sanitisation défensive : retire TOUTE occurrence de marqueur FP_NAV d'un texte,
+ * y compris les blocs complets, les marqueurs orphelins et les débuts tronqués.
+ * À appliquer sur tout texte destiné au rendu utilisateur — dernière ligne de
+ * défense si un chemin d'émission a contourné NavMarkerFilter/extractNavMarker.
+ */
+export function stripNavMarkers(text: string): string {
+  if (!text || text.indexOf("<<") < 0) return text;
+  const cleaned = text
+    // Blocs complets <<<FP_NAV>>>…<<<END_NAV>>>
+    .replace(/<<<FP_NAV>>>[\s\S]*?<<<END_NAV>>>/g, "")
+    // Marqueur de début orphelin : tout ce qui suit est du protocole, jamais du texte utile
+    .replace(/<<<FP_NAV>>>[\s\S]*$/g, "")
+    // Marqueur de fin orphelin
+    .replace(/<<<END_NAV>>>/g, "");
+  return _stripTrailingPartialMarker(cleaned).trimEnd();
+}
+
+/**
+ * Retire un PRÉFIXE PARTIEL de marqueur en fin de texte ("<<<FP_NAV>>", "<<<FP_",
+ * "<<" …) — cas d'une réponse provider tronquée (max_tokens) au milieu du
+ * délimiteur d'ouverture. On exige ≥ 2 caractères de préfixe pour ne pas mutiler
+ * un "<" légitime en fin de phrase.
+ */
+function _stripTrailingPartialMarker(text: string): string {
+  for (const marker of [NAV_MARKER_START, NAV_MARKER_END]) {
+    for (let len = marker.length - 1; len >= 2; len--) {
+      if (text.endsWith(marker.slice(0, len))) return text.slice(0, text.length - len);
+    }
+  }
+  return text;
+}
+
+/**
+ * Extraction + sanitisation combinées : parse le PREMIER marqueur (payload de
+ * navigation) puis retire toute trace de marqueur du texte restant.
+ * Utiliser partout où un texte complet (non streamé) part vers le client ou la
+ * persistance — garantit qu'aucun fragment <<<FP_NAV>>> n'atteint le rendu.
+ */
+export function sanitizeNavText(fullText: string): { cleanText: string; markerJson: unknown | null } {
+  const { cleanText, markerJson } = extractNavMarker(fullText);
+  return { cleanText: stripNavMarkers(cleanText), markerJson };
+}
+
 /** Extraction non-stream : retire le marqueur du texte et le parse. */
 export function extractNavMarker(fullText: string): { cleanText: string; markerJson: unknown | null } {
   const start = fullText.indexOf(NAV_MARKER_START);

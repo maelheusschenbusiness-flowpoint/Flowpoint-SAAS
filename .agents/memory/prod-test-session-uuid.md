@@ -21,6 +21,22 @@ Local `DATABASE_URL` points at the Replit-local postgres, **not** Supabase. To t
 production DB use PostgREST at `SUPABASE_URL` with `SUPABASE_SERVICE_ROLE_KEY` (both are
 present in the workspace env; the service role bypasses RLS).
 
+`POST /api/admin/test-session` can authenticate direct protected API calls when given an
+existing canonical organization UUID and `role: "owner"`. Treat that session as API-only:
+its synthetic user identity is not backed by the real `users`/membership rows, so the full
+dashboard bootstrap can still redirect to sign-in even while `/api/billing/*` accepts the
+same Bearer token.
+
+**Why:** repeated production browser checks stopped before the target API call because the
+dashboard rejected the synthetic identity; the same short-lived token passed direct billing
+preflight and mutation requests. An email-shaped organization anchor from legacy Stripe
+metadata was rejected by both paths.
+
+**How to apply:** resolve legacy email-shaped anchors to the canonical organization UUID
+first. Use the admin session for direct API certification only. For a real browser flow,
+mint a session whose user and membership rows match the actual auth-v2 identity, or use the
+fixed QA provisioner when the target behavior does not require a specific customer.
+
 Minimum row set for a session that passes org-context:
 1. `organizations` — `id` = fresh UUID, `owner_user_id` = user UUID, `status:'active'`, a plan
 2. `users` — `id` = user UUID, `email`, `status:'active'`

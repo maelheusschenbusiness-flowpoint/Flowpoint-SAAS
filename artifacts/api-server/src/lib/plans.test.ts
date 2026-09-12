@@ -5,7 +5,7 @@
  *   1. Every key in any plan's included set must have a Stripe price ID.
  *   2. Every key in any plan's included set must be defined in ADDON_DEFINITIONS.
  *   3. One-time credit packs must never appear in any included set.
- *   4. Ultra's included set is a superset of Pro's (cumulative model).
+ *   4. Ultra carries Pro inclusions except retention90d, which is upgraded to retention365d.
  *   5. Pro's included set is a superset of Standard's.
  *   6. FEATURE_FLAGS must grant Pro/Ultra subscribers their bundled add-on features.
  *   7. Addon-to-feature-flag alignment for the whiteLabel→whiteLabel mapping.
@@ -15,7 +15,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PLAN_INCLUDED_ADDONS, ADDON_PRICE_IDS } from "./plans.js";
+import {
+  PLAN_INCLUDED_ADDONS,
+  ADDON_PRICE_IDS,
+  BETA_ADDONS,
+  COMING_SOON_ADDONS,
+  getAddonAvailability,
+  getAddonStatus,
+} from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
 
@@ -52,14 +59,17 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(found, `One-time packs must not be in PLAN_INCLUDED_ADDONS: ${found.join(", ")}`).toHaveLength(0);
   });
 
-  it("ultra's included set is a superset of pro's (cumulative model)", () => {
+  it("ultra carries Pro inclusions but upgrades retention90d to retention365d", () => {
     const ultraSet = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set<string>();
     const proSet   = PLAN_INCLUDED_ADDONS["pro"]   ?? new Set<string>();
     const missing: string[] = [];
     for (const key of proSet) {
+      if (key === "retention90d") continue;
       if (!ultraSet.has(key)) missing.push(key);
     }
     expect(missing, `Pro add-ons not present in Ultra: ${missing.join(", ")}`).toHaveLength(0);
+    expect(ultraSet.has("retention90d")).toBe(false);
+    expect(ultraSet.has("retention365d")).toBe(true);
   });
 
   it("pro's included set is a superset of standard's (cumulative model)", () => {
@@ -78,7 +88,6 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(PLAN_INCLUDED_ADDONS).toHaveProperty("ultra");
   });
 });
-
 describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => {
   // whiteLabel is bundled in Pro → Pro feature flag must be true
   it("FEATURE_FLAGS.pro.whiteLabel is true (whiteLabel bundled in Pro)", () => {
@@ -86,10 +95,10 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["pro"].whiteLabel).toBe(true);
   });
 
-  // whiteLabel is NOT bundled in Standard → Standard feature flag must be false
-  it("FEATURE_FLAGS.standard.whiteLabel is false (whiteLabel not bundled in Standard)", () => {
-    expect(PLAN_INCLUDED_ADDONS["standard"]?.has("whiteLabel")).toBe(false);
-    expect(FEATURE_FLAGS["standard"].whiteLabel).toBe(false);
+  // whiteLabel is bundled in Standard → Standard feature flag must be true
+  it("FEATURE_FLAGS.standard.whiteLabel is true (whiteLabel bundled in Standard)", () => {
+    expect(PLAN_INCLUDED_ADDONS["standard"]?.has("whiteLabel")).toBe(true);
+    expect(FEATURE_FLAGS["standard"].whiteLabel).toBe(true);
   });
 
   // customDomain is bundled in Ultra only → Pro must be false, Ultra must be true
@@ -103,10 +112,10 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["ultra"].customDomain).toBe(true);
   });
 
-  // prioritySupport is bundled in Pro → Pro feature flag must be true
-  it("FEATURE_FLAGS.pro.prioritySupport is true (prioritySupport bundled in Pro)", () => {
-    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("prioritySupport")).toBe(true);
-    expect(FEATURE_FLAGS["pro"].prioritySupport).toBe(true);
+  it("prioritySupport is neither bundled nor enabled because it is not implemented", () => {
+    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("prioritySupport")).toBe(false);
+    expect(FEATURE_FLAGS["pro"].prioritySupport).toBe(false);
+    expect(FEATURE_FLAGS["ultra"].prioritySupport).toBe(false);
   });
 });
 
@@ -123,7 +132,7 @@ describe("addons entitlement merge logic", () => {
     }
     expect(liveAddons["whiteLabel"]).toBe(true);
     expect(liveAddons["advancedWebhooks"]).toBe(true);
-    expect(liveAddons["prioritySupport"]).toBe(true);
+    expect(liveAddons["prioritySupport"]).toBeUndefined();
     expect(liveAddons["retention90d"]).toBe(true);
     // customDomain must NOT appear for a Pro subscriber
     expect(liveAddons["customDomain"]).toBeUndefined();
@@ -153,5 +162,32 @@ describe("addons entitlement merge logic", () => {
     expect(liveAddons["customDomain"]).toBe(true);
     expect(liveAddons["retention365d"]).toBe(true);
     expect(liveAddons["keywordDomination"]).toBe(true);
+  });
+});
+
+describe("canonical add-on availability", () => {
+  it("keeps beta classification free of coming_soon add-ons (BETA ∩ INCLUDED is intentionally non-empty)", () => {
+    // Beta describes feature maturity; included describes commercial mode.
+    // A beta add-on can be bundled in a plan (e.g. Ultra) and shown as
+    // "🧪 Beta — Inclus dans votre plan" — this is intentional FlowPoint behaviour.
+    // The only forbidden overlap is BETA ∩ COMING_SOON (roadmap items cannot
+    // be simultaneously described as in-progress / beta).
+    expect([...BETA_ADDONS].filter((key) => COMING_SOON_ADDONS.has(key))).toEqual([]);
+  });
+
+  it("reports product lifecycle independently of entitlement", () => {
+    expect(getAddonAvailability("globalMonitoring")).toBe("coming_soon");
+    expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
+    expect(getAddonAvailability("marketIntelligence")).toBe("beta");
+    expect(getAddonAvailability("monitorsPack10")).toBe("available");
+  });
+
+  it("uses coming-soon, included, active, beta, available precedence", () => {
+    expect(getAddonStatus("globalMonitoring", { included: true, active: true })).toBe("coming_soon");
+    expect(getAddonStatus("aiWorkspaceLaunch", { active: true })).toBe("coming_soon");
+    expect(getAddonStatus("whiteLabel", { included: true, active: true })).toBe("included");
+    expect(getAddonStatus("monitorsPack10", { active: 2 })).toBe("active");
+    expect(getAddonStatus("marketIntelligence")).toBe("beta");
+    expect(getAddonStatus("monitorsPack10")).toBe("available");
   });
 });

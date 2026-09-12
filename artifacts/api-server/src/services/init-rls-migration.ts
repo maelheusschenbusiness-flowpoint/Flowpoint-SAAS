@@ -75,7 +75,7 @@ const NEEDS_ORG_ID: readonly string[] = [
   "ai_workspace_profiles", "ai_chat_history", "ai_generated_missions",
   "billing_events",
   "bs_monitors", "bs_incidents", "bs_heartbeats", "bs_status_pages",
-  "competitor_map_results",
+  "competitor_analysis", "competitor_map_results",
   "crm_integrations", "crm_sync_logs", "crm_contacts", "crm_tokens", "crm_webhooks",
   "cron_history", "custom_domains", "dataforseo_quota",
   "ga4_properties",

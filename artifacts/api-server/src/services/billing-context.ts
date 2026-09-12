@@ -60,16 +60,27 @@ export interface BillingContext {
 }
 
 /**
+ * Authoritative billing data could not be read. Callers that enforce an
+ * entitlement must surface a retryable failure, never invent Standard/empty
+ * limits from an outage.
+ */
+export class BillingContextUnavailableError extends Error {
+  readonly code = "BILLING_CONTEXT_UNAVAILABLE";
+  readonly retryable = true;
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = "BillingContextUnavailableError";
+  }
+}
+
+/**
  * Charge tous les champs de facturation pour l'org depuis `organizations` (source de vérité).
  * Toujours depuis la DB — jamais depuis le singleton store.me.
  * Sûr pour des requêtes concurrentes de différentes organisations.
  */
 export async function loadBillingContext(orgId: string): Promise<BillingContext> {
   const [orgData, addonsResult] = await Promise.all([
-    loadOrgData(orgId).catch(err => {
-      logger.warn({ err, orgId }, "[BillingContext] loadOrgData failed");
-      return null;
-    }),
+    loadOrgData(orgId),
     (async () => {
       const client = await pool.connect();
       try {
@@ -80,11 +91,13 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
       } finally {
         client.release();
       }
-    })().catch(err => {
-      logger.warn({ err, orgId }, "[BillingContext] org_addons query failed");
-      return { rows: [] as { addon_key: string; active: boolean }[] };
-    }),
+    })(),
   ]);
+  if (!orgData) {
+    throw new BillingContextUnavailableError(
+      `No authoritative billing row for org '${orgId}'`,
+    );
+  }
 
   // Construire la map addons depuis org_addons (source principale)
   // Les add-ons quantité portent leur nombre de packs (quantity) pour que
@@ -98,7 +111,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   }
 
   // Supplément : addons JSONB depuis organizations (legacy supplement)
-  if (orgData?.addons && typeof orgData.addons === "object") {
+  if (orgData.addons && typeof orgData.addons === "object") {
     for (const [key, val] of Object.entries(orgData.addons)) {
       if (!(key in addons)) {
         addons[key] = val as boolean | number;
@@ -108,7 +121,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
 
   // Overlay plan-bundled addons so feature gates work without manual DB activation.
   // This is read-only — no writes to org_addons happen here.
-  const planName = (orgData?.plan ?? "standard").toLowerCase();
+  const planName = orgData.plan.toLowerCase();
   const planIncluded = PLAN_INCLUDED_ADDONS[planName] ?? new Set<string>();
   for (const key of planIncluded) {
     if (!(key in addons)) {
@@ -116,22 +129,34 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     }
   }
 
-  const rawSubscriptionStatus = orgData?.subscriptionStatus ?? null;
-  const stripeSubscriptionId  = orgData?.stripeSubscriptionId ?? null;
-  const stripeCustomerId      = orgData?.stripeCustomerId ?? null;
-  const trialEndsAt           = orgData?.trialEndsAt ?? null;
-  const trialConsumedAt       = orgData?.trialConsumedAt ?? null;
+  const rawSubscriptionStatus = orgData.subscriptionStatus ?? null;
+  const stripeSubscriptionId  = orgData.stripeSubscriptionId ?? null;
+  const stripeCustomerId      = orgData.stripeCustomerId ?? null;
+  const trialEndsAt           = orgData.trialEndsAt ?? null;
+  const trialConsumedAt       = orgData.trialConsumedAt ?? null;
+
+  // ── Internal QA bypass (single hardcoded org, double-locked) ─────────────
+  // The QA org has no Stripe subscription, so normalizeSubscriptionStatus
+  // would return 'none' → hasPremiumAccess=false → dashboard blocked.
+  // We grant 'trialing' access only when BOTH conditions are true:
+  //   1. The org UUID exactly matches the single fixed QA org UUID.
+  //   2. The organizations.is_internal_qa flag is explicitly true.
+  // This cannot be triggered for any real customer org.
+  const QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+  const isQaOrg = orgId === QA_ORG_UUID && orgData.isInternalQa === true;
 
   // Normalisation — ne retourne jamais "active" sans stripeSubscriptionId
-  const normalised = normalizeSubscriptionStatus({
-    rawStatus:           rawSubscriptionStatus,
-    stripeSubscriptionId,
-    stripeCustomerId,
-    trialEndsAt,
-    trialConsumedAt,
-  });
+  const normalised = isQaOrg
+    ? "trialing" as const
+    : normalizeSubscriptionStatus({
+        rawStatus:           rawSubscriptionStatus,
+        stripeSubscriptionId,
+        stripeCustomerId,
+        trialEndsAt,
+        trialConsumedAt,
+      });
 
-  if (normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
+  if (!isQaOrg && normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
     logger.warn(
       { orgId, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId, trialConsumedAt },
       "[BillingContext] Subscription state normalisé à la lecture",
@@ -139,7 +164,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   }
 
   const hasPremiumAccess    = statusGrantsAccess(normalised);
-  const canStartTrial       = !trialConsumedAt && !stripeSubscriptionId;
+  const canStartTrial       = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
   const mustCompleteBilling = !hasPremiumAccess;
 
   return {

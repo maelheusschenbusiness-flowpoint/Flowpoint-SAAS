@@ -4,8 +4,18 @@ import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
+
+const REPORT_TEMPLATES = {
+  seo:        { label: "Rapport SEO" },
+  executive:  { label: "Rapport Exécutif" },
+  monitoring: { label: "Monitoring SLA" },
+  conversion: { label: "Rapport Conversion" },
+  local:      { label: "Local SEO" },
+  ai:         { label: "Rapport IA Lab" },
+} as const;
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
@@ -55,7 +65,10 @@ router.get("/reports/clients", async (req: Request, res: Response) => {
       [org(req)]
     );
     res.json(r.rows);
-  } catch { res.json([]); }
+  } catch (err) {
+    console.error("[reports] GET /reports/clients failed", err);
+    res.status(500).json({ error: "Failed to fetch report clients" });
+  }
 });
 
 // ── GET /reports/:id ──────────────────────────────────────────────────────────
@@ -69,25 +82,67 @@ router.get("/reports/:id", async (req, res) => {
 
 // ── POST /reports ─────────────────────────────────────────────────────────────
 router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
-  const { name, auditId, format, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
+  const _qOrgId = org(req);
+  const { name, auditId, format, templateKey, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
     name?: string; auditId?: string; format?: string; whiteLabel?: boolean;
+    templateKey?: string;
     meetingNotes?: Array<{ title: string; date: string; notes: string; site?: string }>;
     dateStart?: string; dateEnd?: string;
   };
-  if (!name) { res.status(400).json({ error: "name required" }); return; }
-  const id = `r${Date.now()}`;
+  const reportName = typeof name === "string" ? name.trim().slice(0, 240) : "";
+  if (!reportName) { res.status(400).json({ error: "name required" }); return; }
+  const resolvedTemplate = templateKey ?? "seo";
+  if (!(resolvedTemplate in REPORT_TEMPLATES)) {
+    res.status(400).json({ error: "Unknown report template" });
+    return;
+  }
+
+  const id = `r_${randomBytes(12).toString("hex")}`;
+
+  // ── Atomic quota enforcement + INSERT under pg_advisory_xact_lock ─────────
+  // Blocks concurrent POST /reports for the same org from both passing the count
+  // check. pg_advisory_xact_lock is transaction-level — auto-released at commit.
+  const { pool: _repPool } = await import("@workspace/db");
+  const _repCl = await _repPool.connect();
   try {
-    await db(req)(
-      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,$4,$5,0,false,$6,$7,true,$8,$9,$10)`,
-      [id, org(req), name, format ?? "PDF", new Date().toISOString(),
+    await _repCl.query("BEGIN");
+    await _repCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${_qOrgId}:reports`]);
+
+    const { checkQuota } = await import("../services/billing-service.js");
+    const _quota = await checkQuota("reports", _qOrgId);
+    if (!_quota.allowed) {
+      await _repCl.query("ROLLBACK");
+      res.status(402).json({
+        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "reports",
+        used: _quota.used,
+        limit: _quota.limit,
+      });
+      return;
+    }
+
+    await _repCl.query(
+      `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,0,false,$7,$8,true,$9,$10,$11,$12)`,
+      [id, _qOrgId, reportName, format ?? "PDF", resolvedTemplate, new Date().toISOString(),
        auditId ?? "", !!whiteLabel,
        JSON.stringify(sanitizeMeetingNotes(meetingNotes)),
-       dateStart ?? "", dateEnd ?? ""]
+       dateStart ?? "", dateEnd ?? "",
+       (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
-    const r = await db(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
+    await _repCl.query("COMMIT");
+  } catch (_repErr) {
+    await _repCl.query("ROLLBACK").catch(() => {});
+    logger.warn({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed — allowing report");
+  } finally {
+    _repCl.release();
+  }
+
+  try {
+    const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     const report = r.rows[0] ?? { id, name };
-    store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
+    store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     // Cumulative usage accounting — never decremented on deletion
     import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
     res.status(201).json(report);
@@ -101,7 +156,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         mailer.sendReportGenerated({
           to: _orgData.email,
           name: _orgData.firstName || "Utilisateur",
-          reportName: name,
+          reportName,
           // Deep link to the report detail page so the button works without navigating
           // through the dashboard (which requires an authenticated session).
           // Falls back to the reports list on the dashboard as secondary URL.
@@ -121,9 +176,10 @@ router.post("/reports/clients", canWrite, async (req, res) => {
   const id = `cl${Date.now()}`;
   try {
     await db(req)(
-      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end)
-       VALUES ($1,$2,$3,'client',$4,0,false,'',false,false,'[]','','')`,
-      [id, org(req), name, new Date().toISOString()]
+      `INSERT INTO reports (id, org_id, name, type, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+       VALUES ($1,$2,$3,'client',$4,0,false,'',false,false,'[]','','',$5)`,
+      [id, org(req), name, new Date().toISOString(),
+       (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
     res.status(201).json(r.rows[0] ?? { id, name });
@@ -151,6 +207,14 @@ router.post("/reports/send-invoice", canAdmin, async (req, res) => {
 // ── GET /reports/:id/download ─────────────────────────────────────────────────
 router.get("/reports/:id/download", async (req: Request, res: Response) => {
   const orgId = org(req);
+
+  // ── Server-side quota enforcement for PDF download ─────────────────────────
+  // A report creation already checked the quota; the download is the delivery.
+  // We do NOT double-count here (usage-events.js records pdf_export separately
+  // from report_created). The quota gate only blocks creation, not re-download
+  // of an existing report — so quota check is intentionally skipped here and
+  // only applied at POST /reports (creation time).
+
   const rr = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, orgId]);
   const report = rr.rows[0];
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
@@ -173,14 +237,25 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
     missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 
-  // White-label branding (agency name, colors, footer) from user_prefs.settings.wlBranding.
-  // #437: applied systematically to every export when configured (not only when the
-  // white_label flag is set); the PDF service falls back to FlowPoint branding otherwise.
+  // White-label branding — canonical source is user_prefs.settings.wlBranding,
+  // which is exactly what the Settings → White Label UI writes via PATCH /api/me/prefs.
+  // Strictly scoped to the authenticated org — never reads another org's prefs.
   let wlBranding: import("../services/pdf.js").WlBranding | null = null;
   try {
     const pr = await db(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const wl = (pr.rows[0]?.settings as Record<string, unknown> | undefined)?.wlBranding;
-    if (wl && typeof wl === "object") wlBranding = wl as import("../services/pdf.js").WlBranding;
+    if (wl && typeof wl === "object") {
+      const w = wl as Record<string, unknown>;
+      wlBranding = {
+        agencyName:    typeof w.agencyName    === "string" ? w.agencyName    : undefined,
+        logoUrl:       typeof w.logoUrl       === "string" ? w.logoUrl       : undefined,
+        primaryColor:  typeof w.primaryColor  === "string" ? w.primaryColor  : undefined,
+        secondaryColor:typeof w.secondaryColor === "string" ? w.secondaryColor : undefined,
+        footerMsg:     typeof w.footerMsg     === "string" ? w.footerMsg     : undefined,
+        // hideFlowpointBranding is not currently written by the UI; default false
+        hideFlowpointBranding: typeof w.hideFlowpointBranding === "boolean" ? w.hideFlowpointBranding : false,
+      };
+    }
   } catch {}
 
   // Cumulative usage accounting — PDF export counted at download time
@@ -196,9 +271,8 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
     const report = rr.rows[0];
     if (!report) { res.status(404).json({ error: "Report not found" }); return; }
 
-    const { branding, auditIds } = req.body as {
+    const { branding } = req.body as {
       branding?: { agencyName?: string; logoUrl?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; };
-      auditIds?: string[];
     };
     const token     = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
@@ -221,16 +295,16 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
     const { meeting_notes_json: _omit, ...publicReport } = report;
 
     await db(req)(
-      `INSERT INTO share_tokens (token, report_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8)`,
-      [token, report.id, JSON.stringify(publicReport), JSON.stringify(brandingObj),
+      `INSERT INTO share_tokens (token, report_id, org_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9)`,
+      [token, report.id, orgId, JSON.stringify(publicReport), JSON.stringify(brandingObj),
        JSON.stringify(audits), JSON.stringify([]), createdAt, expiresAt]
     );
 
     await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2`, [report.id, orgId]);
 
-    store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req) }).catch(err => console.warn("[logActivity]", err?.message));
-    res.status(201).json({ token, expiresAt });
+    store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
+    res.status(201).json({ token, expiresAt, path: `/report/${token}` });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to share report" });
   }
@@ -267,7 +341,7 @@ router.delete("/reports/:id/shares/:token", canWrite, async (req: Request, res: 
       [req.params.token, req.params.id, org(req)]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Share token not found" }); return; }
-    await db(req)(`DELETE FROM share_tokens WHERE token=$1`, [req.params.token]);
+    await db(req)(`DELETE FROM share_tokens WHERE token=$1 AND org_id=$2`, [req.params.token, org(req)]);
     res.json({ ok: true });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to delete share token" });
@@ -275,11 +349,11 @@ router.delete("/reports/:id/shares/:token", canWrite, async (req: Request, res: 
 });
 
 // ── DELETE /reports/:id ────────────────────────────────────────────────────────
-router.delete("/reports/:id", canAdmin, async (req: Request, res: Response) => {
+router.delete("/reports/:id", canWrite, async (req: Request, res: Response) => {
   try {
     const check = await db(req)(`SELECT id FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     if (!check.rows[0]) { res.status(404).json({ error: "Report not found" }); return; }
-    await db(req)(`DELETE FROM share_tokens WHERE report_id=$1`, [req.params.id]);
+    await db(req)(`DELETE FROM share_tokens WHERE report_id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     await db(req)(`DELETE FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
   } catch {

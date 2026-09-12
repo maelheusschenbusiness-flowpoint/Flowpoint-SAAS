@@ -151,6 +151,24 @@ router.get("/settings/data-export", async (req: Request, res: Response): Promise
     return;
   }
 
+  // ── Server-side quota enforcement ─────────────────────────────────────────
+  try {
+    const { checkQuota } = await import("../services/billing-service.js");
+    const _quota = await checkQuota("exports", orgId);
+    if (!_quota.allowed) {
+      res.status(402).json({
+        error: `Limite mensuelle d'exports atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack d'exports supplémentaires.`,
+        code: "QUOTA_EXCEEDED",
+        resource: "exports",
+        used: _quota.used,
+        limit: _quota.limit,
+      });
+      return;
+    }
+  } catch (_qErr) {
+    logger.warn({ err: _qErr, orgId }, "[data-export] quota check failed — allowing export");
+  }
+
   const client = await pool.connect();
   try {
     const organizationRows = await querySection(client, "organizations", `

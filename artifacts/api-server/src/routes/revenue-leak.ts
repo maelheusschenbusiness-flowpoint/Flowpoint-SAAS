@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { getRevenueLeakData, detectRevenueLeaks } from "../services/revenue-leak-service.js";
-import { requireFeature } from "../middlewares/planGate.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -12,7 +12,7 @@ const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 // Gate scoped to /revenue-leak/* only — path-less router.use() would intercept every route
 // mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
-router.use("/revenue-leak", requireFeature("cro", "Revenue Leak"));
+router.use("/revenue-leak", requireAddon("revenueLeak", "Revenue Leak AI"));
 
 async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
   const orgId = req.orgId ?? "default";
