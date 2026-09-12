@@ -3501,7 +3501,7 @@ export async function initDataTables(): Promise<void> {
         stripe_payment_intent_id    TEXT,
         plan                        TEXT NOT NULL,
         eligible_amount_cents       INTEGER NOT NULL DEFAULT 0,
-        commission_rate_bps         INTEGER NOT NULL DEFAULT 3500,
+        commission_rate_bps         INTEGER NOT NULL DEFAULT 3700,
         commission_amount_cents     INTEGER NOT NULL DEFAULT 0,
         currency                    TEXT NOT NULL DEFAULT 'eur',
         status                      TEXT NOT NULL DEFAULT 'pending',
@@ -3547,6 +3547,10 @@ export async function initDataTables(): Promise<void> {
             FOR ALL TO app_user USING (true) WITH CHECK (true);
         END IF;
       END $$`);
+    await run(client, `
+      ALTER TABLE public.seller_commissions
+        ALTER COLUMN commission_rate_bps SET DEFAULT 3700
+    `);
 
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {

@@ -617,6 +617,17 @@
   ── */
   var googleSignupParam = urlParams.get('google_signup');
   var preRegTokenParam  = urlParams.get('pre_reg_token');
+  /* Persist the referral at the first authenticated entry point. The email
+     signup reads this value below; the Google link receives it explicitly so
+     the OAuth state can carry it through the callback. */
+  var sellerRefParam = (urlParams.get('fp_ref') || urlParams.get('ref') || '').toUpperCase();
+  if (/^SELLER-[A-Z0-9]{1,20}$/.test(sellerRefParam)) {
+    try { localStorage.setItem('fp_seller_ref', sellerRefParam); } catch (_) {}
+    var googleSignupLink = document.getElementById('btn-google-oauth');
+    if (googleSignupLink) {
+      googleSignupLink.href = '/api/auth/google/login?seller_code=' + encodeURIComponent(sellerRefParam);
+    }
+  }
   if (googleSignupParam === '1' && preRegTokenParam) {
     _preRegisterToken = preRegTokenParam;
     // Clean URL so a refresh doesn't re-trigger

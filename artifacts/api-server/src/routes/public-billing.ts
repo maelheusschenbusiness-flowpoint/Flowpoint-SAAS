@@ -12,6 +12,12 @@ const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
 const router = Router();
 
+function getPublicStripeKey(stripeKey: string): string {
+  return stripeKey.startsWith("sk_test_")
+    ? (process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "")
+    : (process.env["PUBLIC_STRIPE_API_KEY"] || "");
+}
+
 // ── GET /api/billing/plans ────────────────────────────────────────────────────
 // Public endpoint — returns the full plan catalog + add-on catalog.
 // When an authenticated orgId is present on the request (set by auth middleware
@@ -283,7 +289,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
-  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  const publishableKey = getPublicStripeKey(stripeKey);
 
   /* No key in dev → mock */
   if (!stripeKey) {
@@ -852,7 +858,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     country:     typeof _rawAddr.country     === "string" ? _rawAddr.country.trim().toUpperCase() : "",
   } : null;
   const stripeKey      = getStripeKey();
-  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  const publishableKey = getPublicStripeKey(stripeKey);
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -900,26 +906,25 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
 
   // Seller attribution (beta): read seller_id from pending_signup — additive metadata only.
   // MUST NOT influence amount, customer resolution, trial, or line_items.
+  let _paymentIntentSellerCode: string | null = null;
   if (preRegisterToken) {
-    (async () => {
-      try {
-        const { resolveSellerIdFromToken: _rsit2 } = await import("../services/seller-attribution.js");
-        const _sid2 = await _rsit2(preRegisterToken);
-        if (_sid2) {
-          const _piPool = await import("@workspace/db");
-          const _sc2 = await _piPool.pool.query<{ seller_code: string }>(
-            `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid2]
-          );
-          const _piSC = _sc2.rows[0]?.seller_code ?? null;
-          if (_piSC) {
-            metadata["seller_id"]          = _piSC;
-            metadata["seller_attribution"] = "ref_link";
-          }
+    try {
+      const { resolveSellerIdFromToken: _rsit2 } = await import("../services/seller-attribution.js");
+      const _sid2 = await _rsit2(preRegisterToken);
+      if (_sid2) {
+        const _piPool = await import("@workspace/db");
+        const _sc2 = await _piPool.pool.query<{ seller_code: string }>(
+          `SELECT seller_code FROM sellers WHERE id = $1 AND status = 'active' LIMIT 1`, [_sid2]
+        );
+        _paymentIntentSellerCode = _sc2.rows[0]?.seller_code ?? null;
+        if (_paymentIntentSellerCode) {
+          metadata["seller_id"]          = _paymentIntentSellerCode;
+          metadata["seller_attribution"] = "ref_link";
         }
-      } catch (_pe) {
-        logger.warn({ _pe }, "[PublicBilling] payment-intent seller lookup failed (non-fatal)");
       }
-    })().catch(() => {});
+    } catch (_pe) {
+      logger.warn({ _pe }, "[PublicBilling] payment-intent seller lookup failed (non-fatal)");
+    }
   }
 
   // ── Closed-tab recovery: tag AI-credits-only PaymentIntents ───────────────
@@ -1085,6 +1090,20 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       } catch (_piLookupErr) {
         logger.warn({ _piLookupErr }, "[PublicBilling] payment-intent: customer lookup failed (non-fatal — proceeding without customer)");
       }
+    }
+
+    // Patch an existing Customer too: the first checkout attempt may have
+    // created it before seller attribution was attached to the flow.
+    if (preRegCustomerId && _paymentIntentSellerCode) {
+      await stripe.customers.update(preRegCustomerId, {
+        metadata: {
+          seller_id:          _paymentIntentSellerCode,
+          seller_attribution: "ref_link",
+        },
+      }).catch((_sellerCustomerErr: unknown) => {
+        logger.warn({ _sellerCustomerErr, customerId: preRegCustomerId },
+          "[PublicBilling] payment-intent: seller metadata patch failed (non-fatal)");
+      });
     }
 
     // For authenticated users (cookie session, no preRegisterToken): resolve the Stripe
@@ -1419,6 +1438,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
     /* Resolve plan/addons (prefer request body, fallback to intent metadata) */
     const planKey  = (plan || intentMeta["plan"] || "").toLowerCase();
+    const _fcSellerCode = intentMeta["seller_id"] || null;
     const addonsResolved: AddonsMap = Object.keys(addons as AddonsMap).length
       ? (addons as AddonsMap)
       : (() => { try { return JSON.parse(intentMeta["addons"] || "{}"); } catch { return {}; } })();
@@ -1789,6 +1809,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         metadata: {
           source: "checkout_payment", plan: planKey,
           ...(_fcOrgForMeta ? { orgId: _fcOrgForMeta, org_id: _fcOrgForMeta } : {}),
+          ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
         },
       });
       customerId = _fcNewC.id;
@@ -2001,6 +2022,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             flowpoint_cart: "true",
             org_id:         _authenticatedOrgId,
             orgId:          _authenticatedOrgId,
+            ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
             ...(preRegisterToken || intentMeta["pre_register_token"]
               ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
               : {}),
@@ -2100,7 +2122,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         ? _authenticatedOrgId
         : (_fcResolvedUuidEarly ?? _authenticatedOrgId);
       await stripe.customers.update(customerId!, {
-        metadata: { orgId: _metaNormOrgId, org_id: _metaNormOrgId, flowpointOrgId: _metaNormOrgId },
+        metadata: {
+          orgId: _metaNormOrgId,
+          org_id: _metaNormOrgId,
+          flowpointOrgId: _metaNormOrgId,
+          ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
+        },
       });
       logger.info({ customerId, orgId: _metaNormOrgId }, "[PublicBilling] finalize: Stripe customer metadata normalized");
     } catch (_metaNormErr) {
@@ -2137,7 +2164,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           try {
             const _fcActR0 = await _fcActC0.query(
               `SELECT email, first_name, last_name, company_name, country, address, city,
-                      postal_code, phone, vat, consumed_at, expires_at
+                      postal_code, phone, vat, seller_id, consumed_at, expires_at
                FROM pending_signups
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
@@ -2281,13 +2308,19 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
             // 4b — upsert organization
             logger.info({ step: "FC-4b", orgId: _fcAOrgId }, "[FC] step-4b: INSERT INTO organizations");
+            // Seller attribution was already validated and stored on pending_signups.
+            // Carry it into the canonical organization here as well as in the webhook
+            // path, because finalize-checkout can activate the account before the
+            // payment webhook is delivered.
+            const _fcSellerId = _fcSignup["seller_id"] ?? null;
             await _fcActTxC.query(
               `INSERT INTO organizations
-                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at)
-               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9)
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10)
                ON CONFLICT (id) DO UPDATE
                  SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
                      stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
+                      seller_id=COALESCE(organizations.seller_id,EXCLUDED.seller_id),
                      updated_at=NOW()`,
               [
                 _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
@@ -2295,6 +2328,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                 _fcUserId, planKey, grantTrial ? "trialing" : "active",
                 _fcAEmail, customerId ?? null,
                 trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
+                 _fcSellerId,
               ]
             );
             logger.info({ step: "FC-4b-ok" }, "[FC] step-4b: organization upserted");

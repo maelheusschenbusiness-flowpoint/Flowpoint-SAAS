@@ -124,6 +124,7 @@ export default defineConfig({
       "src/tests/billing-upgrade-reactivation.test.ts",
       // Checkout abandonné — gardes contre les mutations prématurées
       "src/tests/checkout-abandon-guards.test.ts",
+      "src/tests/auth-login-verify-stripe-mode.test.ts",
     ],
     environment: "node",
     globals:     false,
