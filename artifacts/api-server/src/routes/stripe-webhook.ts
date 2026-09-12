@@ -718,6 +718,35 @@ export async function activateNewSignup(opts: {
   }
 }
 
+// ── Invoice shape compatibility ───────────────────────────────────────────
+// Stripe API ≥ 2025-03-31.basil moved invoice.subscription and
+// invoice.subscription_details to invoice.parent.subscription_details, and a
+// line item's price from line.price to line.pricing.price_details.price.
+// Read the current shape first, then fall back to the legacy one so older
+// events (and endpoints pinned to an older API version) keep working.
+export function invoiceSubscriptionDetails(invoice: Record<string, unknown>): {
+  subscriptionId: string | null;
+  metadata: Record<string, string>;
+} {
+  const parent  = invoice["parent"] as Record<string, unknown> | null | undefined;
+  const current = parent?.["subscription_details"] as Record<string, unknown> | null | undefined;
+  const legacy  = invoice["subscription_details"] as Record<string, unknown> | null | undefined;
+  const rawSub  = current?.["subscription"] ?? invoice["subscription"] ?? null;
+  const subscriptionId = typeof rawSub === "string"
+    ? rawSub
+    : ((rawSub as { id?: string } | null)?.id ?? null);
+  const metadata = (current?.["metadata"] ?? legacy?.["metadata"] ?? {}) as Record<string, string>;
+  return { subscriptionId, metadata };
+}
+
+export function invoiceLinePriceId(line: Record<string, unknown>): string | null {
+  const priceDetails = (line["pricing"] as Record<string, unknown> | null | undefined)?.["price_details"] as Record<string, unknown> | undefined;
+  const raw = priceDetails?.["price"] ?? line["price"] ?? null;
+  if (typeof raw === "string") return raw;
+  const id = (raw as { id?: string } | null)?.id;
+  return id ? String(id) : null;
+}
+
 // ── Pending-signup activation barrier ─────────────────────────────────────
 // For a new pre-registered signup, finalize-checkout creates the Stripe
 // subscription BEFORE it commits the canonical UUID organization (FC-4).
@@ -838,10 +867,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
     }
 
-    // Try 3: subscription metadata
-    if (!orgId && obj["subscription"]) {
-      const subMeta = (obj["subscription_details"] as Record<string, unknown>)?.["metadata"] as Record<string, string> | undefined;
-      const subOrgId = subMeta?.["orgId"] ?? subMeta?.["org_id"] ?? "";
+    // Try 3: subscription metadata (invoice snapshot, current or legacy shape)
+    const { subscriptionId: _t3SubId, metadata: subMeta } = invoiceSubscriptionDetails(obj);
+    if (!orgId && _t3SubId) {
+      const subOrgId = subMeta["orgId"] ?? subMeta["org_id"] ?? "";
       if (subOrgId && subOrgId !== "default") {
         orgId = subOrgId;
         resolvedVia = "subscription_metadata";
@@ -1839,8 +1868,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         (async () => {
           try {
             // Check if this is an addon subscription (skip — no commission on addons)
-            const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
-            const _subMeta    = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
+            const { subscriptionId: _invSubId, metadata: _subMeta } = invoiceSubscriptionDetails(obj);
             if (_subMeta["addonSub"] === "true") return;
 
             const { pool: _commPool } = await import("@workspace/db");
@@ -1860,7 +1888,6 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             if (_existComm.rows[0]) return; // idempotent — already recorded
 
             const _invId       = obj["id"]           ? String(obj["id"])           : null;
-            const _invSubId    = obj["subscription"]  ? String(obj["subscription"]) : null;
             const _invCurrency = obj["currency"]      ? String(obj["currency"])     : "eur";
 
             const { recordCommission: _rcInv } = await import("../services/seller-attribution.js");
@@ -1926,8 +1953,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         // checking whether any invoice line item's price ID matches a known plan-tier
         // price (Standard / Pro / Ultra).  If NONE match → add-on-only mutation →
         // send addon confirmation, never sendPlanChanged.
-        const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
-        const _subMeta = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
+        const { metadata: _subMeta } = invoiceSubscriptionDetails(obj);
         const _isAddonSub = _subMeta["addonSub"] === "true";
 
         let _isAddonOnlyInvoice = false;
@@ -1939,8 +1965,8 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             // (live only) which caused test-mode plan changes to be misclassified as
             // addon-only and trigger the wrong email.
             const _hasPlanLine = _lineData.some(l => {
-              const priceId = (l["price"] as Record<string, unknown> | null)?.["id"];
-              return priceId && getPlanForPriceId(String(priceId)) !== null;
+              const priceId = invoiceLinePriceId(l);
+              return priceId && getPlanForPriceId(priceId) !== null;
             });
             // Add-on-only if there are lines but none is a plan price
             _isAddonOnlyInvoice = _lineData.length > 0 && !_hasPlanLine;

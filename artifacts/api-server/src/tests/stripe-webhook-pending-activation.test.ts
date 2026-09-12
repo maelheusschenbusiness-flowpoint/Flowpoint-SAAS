@@ -32,6 +32,8 @@ let uuidQueries: Array<{ sql: string; id: unknown }>;
 let persistCalls: Array<{ orgId: string; fields: Record<string, unknown> }>;
 let commissionCalls: Array<Record<string, unknown>>;
 let orgSellerId: string | null;
+let useRealCommission: boolean;   // delegate to the real recordCommission (35 % computation)
+let commissionRows: Array<{ subscriptionId: unknown; invoiceId: unknown; eligible: unknown; bps: unknown; amount: unknown }>;
 
 /** Simulates finalize-checkout FC-4 COMMIT: org row + pending_signup consumed atomically. */
 function commitActivation(): void {
@@ -47,7 +49,6 @@ function pgUuidError(): Error {
 
 async function fakeQuery(sql: string, params: unknown[] = []) {
   const s = sql.replace(/\s+/g, " ");
-  if (process.env.DBG) console.log("SQL", s.slice(0, 90), JSON.stringify(params).slice(0, 80));
 
   // organizations.id is UUID in production: any `WHERE id = $1` on organizations
   // with a non-UUID parameter raises 22P02 (string_to_uuid).
@@ -73,6 +74,10 @@ async function fakeQuery(sql: string, params: unknown[] = []) {
   }
   if (/SELECT plan FROM org_settings/i.test(s)) return { rows: [], rowCount: 0 };
   if (/SELECT id FROM seller_commissions/i.test(s)) return { rows: [], rowCount: 0 };
+  if (/INSERT INTO seller_commissions/i.test(s)) {
+    commissionRows.push({ subscriptionId: params[4], invoiceId: params[6], eligible: params[9], bps: params[10], amount: params[11] });
+    return { rows: [], rowCount: 1 };
+  }
 
   // Idempotency claim / finalize (claim-then-finalize protocol).
   if (/INSERT INTO billing_events/i.test(s)) {
@@ -146,9 +151,15 @@ vi.mock("../services/store.js", () => ({
   store: { broadcast: vi.fn(), broadcastPlanUpdate: vi.fn() },
 }));
 
-vi.mock("../services/seller-attribution.js", () => ({
-  recordCommission: vi.fn(async (args: Record<string, unknown>) => { commissionCalls.push(args); }),
-}));
+vi.mock("../services/seller-attribution.js", async () => {
+  const actual = await vi.importActual<typeof import("../services/seller-attribution.js")>("../services/seller-attribution.js");
+  return {
+    recordCommission: vi.fn(async (args: Parameters<typeof actual.recordCommission>[0]) => {
+      commissionCalls.push(args as unknown as Record<string, unknown>);
+      if (useRealCommission) await actual.recordCommission(args);
+    }),
+  };
+});
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 type FakeRes = { statusCode: number; body: unknown; status(c: number): FakeRes; json(b: unknown): FakeRes };
@@ -195,6 +206,8 @@ beforeEach(async () => {
   uuidQueries = [];
   persistCalls = [];
   commissionCalls = [];
+  useRealCommission = false;
+  commissionRows = [];
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -438,5 +451,134 @@ describe("INVOICE_TRIAL_STATUS — invoice.payment_succeeded and €0 trial invo
     const res = await deliver(invoice("evt_INV_RECOVERY", { amount_paid: 2900, billing_reason: "manual" }));
     expect(res.statusCode).toBe(200);
     expect(statusWrites()).toEqual([{ orgId: ORG_UUID, fields: { subscriptionStatus: "active" } }]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRIPE_INVOICE_SCHEMA_COMPAT — Stripe API ≥ 2025-03-31.basil moved
+//   invoice.subscription / invoice.subscription_details → invoice.parent.subscription_details
+//   invoice line price (line.price.id)                    → line.pricing.price_details.price
+// The webhook must read the current shape first and still accept legacy events.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("STRIPE_INVOICE_SCHEMA_COMPAT — current and legacy invoice shapes", () => {
+  const PLAN_PRICE  = "price_1StVzQ9eqtbj6iPBNOLjgwHm";   // Standard (plans.ts default)
+  const ADDON_PRICE = "price_E2E_NOT_A_PLAN";
+  const current = (o: Record<string, unknown>, meta: Record<string, string> = {}) => ({
+    object: "invoice", id: "in_CUR", customer: CUS, currency: "eur",
+    parent: { type: "subscription_details", subscription_details: { subscription: SUB, metadata: meta } },
+    ...o,
+  });
+  const legacy = (o: Record<string, unknown>, meta: Record<string, string> = {}) => ({
+    object: "invoice", id: "in_LEG", customer: CUS, currency: "eur",
+    subscription: SUB, subscription_details: { metadata: meta },
+    ...o,
+  });
+  const ev = (id: string, type: string, object: Record<string, unknown>) => ({ id, type, data: { object } });
+  const SELLER = "11111111-2222-4333-8444-555555555555";
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+
+  it("current format: first paid Standard invoice → commission with subscription id, 3500 bps, 10,15 €", async () => {
+    commitActivation(); orgSellerId = SELLER; useRealCommission = true;
+    const res = await deliver(ev("evt_CUR_PAID", "invoice.payment_succeeded", current({ amount_paid: 2900, billing_reason: "subscription_cycle" })));
+    await settle();
+    expect(res.statusCode).toBe(200);
+    expect(commissionCalls).toHaveLength(1);
+    expect(commissionCalls[0]).toMatchObject({ stripeSubscriptionId: SUB, eligibleAmountCents: 2900, orgId: ORG_UUID });
+    expect(commissionRows).toEqual([{ subscriptionId: SUB, invoiceId: "in_CUR", eligible: 2900, bps: 3500, amount: 1015 }]);
+  });
+
+  it("legacy format: same result (subscription id from invoice.subscription)", async () => {
+    commitActivation(); orgSellerId = SELLER; useRealCommission = true;
+    await deliver(ev("evt_LEG_PAID", "invoice.payment_succeeded", legacy({ amount_paid: 2900, billing_reason: "subscription_cycle" })));
+    await settle();
+    expect(commissionRows).toEqual([{ subscriptionId: SUB, invoiceId: "in_LEG", eligible: 2900, bps: 3500, amount: 1015 }]);
+  });
+
+  it("current format: add-on subscription invoice (metadata.addonSub) → no commission", async () => {
+    commitActivation(); orgSellerId = SELLER;
+    await deliver(ev("evt_CUR_ADDON", "invoice.payment_succeeded", current({ amount_paid: 1900, billing_reason: "subscription_cycle" }, { addonSub: "true", orgId: ORG_UUID })));
+    await settle();
+    expect(commissionCalls).toHaveLength(0);
+  });
+
+  it("legacy format: add-on subscription invoice → no commission", async () => {
+    commitActivation(); orgSellerId = SELLER;
+    await deliver(ev("evt_LEG_ADDON", "invoice.payment_succeeded", legacy({ amount_paid: 1900, billing_reason: "subscription_cycle" }, { addonSub: "true" })));
+    await settle();
+    expect(commissionCalls).toHaveLength(0);
+  });
+
+  it("current format: trial 0 € invoice → no commission, status not forced active", async () => {
+    commitActivation(); orgSellerId = SELLER;
+    await deliver(ev("evt_CUR_TRIAL0", "invoice.payment_succeeded", current({ amount_paid: 0, billing_reason: "subscription_create" })));
+    await settle();
+    expect(commissionCalls).toHaveLength(0);
+    expect(persistCalls.filter((c) => c.fields["subscriptionStatus"] !== undefined)).toEqual([]);
+  });
+
+  it("replay of an already-processed paid invoice → no second commission", async () => {
+    commitActivation(); orgSellerId = SELLER;
+    billingEvents.set("evt_CUR_REPLAY", { status: "processed", orgId: ORG_UUID });
+    const res = await deliver(ev("evt_CUR_REPLAY", "invoice.payment_succeeded", current({ amount_paid: 2900, billing_reason: "subscription_cycle" })));
+    await settle();
+    expect(res.body).toEqual({ received: true, duplicate: true });
+    expect(commissionCalls).toHaveLength(0);
+  });
+
+  it("current format: org fallback resolution from the subscription metadata snapshot", async () => {
+    commitActivation();
+    const { findOrgByStripeCustomer } = await import("../services/org-data.js");
+    vi.mocked(findOrgByStripeCustomer).mockImplementationOnce(async () => null);
+    await deliver(ev("evt_CUR_FALLBACK", "invoice.payment_succeeded", current({ amount_paid: 2900, billing_reason: "manual" }, { orgId: ORG_UUID })));
+    expect(persistCalls).toEqual([{ orgId: ORG_UUID, fields: { subscriptionStatus: "active" } }]);
+  });
+
+  it("legacy format: org fallback resolution still works", async () => {
+    commitActivation();
+    const { findOrgByStripeCustomer } = await import("../services/org-data.js");
+    vi.mocked(findOrgByStripeCustomer).mockImplementationOnce(async () => null);
+    await deliver(ev("evt_LEG_FALLBACK", "invoice.payment_succeeded", legacy({ amount_paid: 2900, billing_reason: "manual" }, { orgId: ORG_UUID })));
+    expect(persistCalls).toEqual([{ orgId: ORG_UUID, fields: { subscriptionStatus: "active" } }]);
+  });
+
+  describe("subscription_update email routing", () => {
+    beforeEach(async () => {
+      const { mailer } = await import("../services/mailer.js");
+      vi.mocked(mailer.sendPlanChanged).mockClear();
+      vi.mocked(mailer.sendPaymentSucceeded).mockClear();
+    });
+    const lineCurrent = (price: string) => ({ pricing: { type: "price_details", price_details: { price, product: "prod_X" } } });
+    const lineLegacy  = (price: string) => ({ price: { id: price } });
+    const sent = async () => {
+      const { mailer } = await import("../services/mailer.js");
+      return {
+        plan: vi.mocked(mailer.sendPlanChanged).mock.calls.length,
+        addon: vi.mocked(mailer.sendPaymentSucceeded).mock.calls.filter((c) => (c[0] as { isAddon?: boolean }).isAddon).length,
+      };
+    };
+
+    it("current format: plan price line → plan-changed email", async () => {
+      commitActivation();
+      await deliver(ev("evt_CUR_UPD_PLAN", "invoice.payment_succeeded", current({ amount_paid: 7000, billing_reason: "subscription_update", lines: { data: [lineCurrent(PLAN_PRICE)] } })));
+      expect(await sent()).toEqual({ plan: 1, addon: 0 });
+    });
+
+    it("current format: add-on-only lines → add-on email", async () => {
+      commitActivation();
+      await deliver(ev("evt_CUR_UPD_ADDON", "invoice.payment_succeeded", current({ amount_paid: 900, billing_reason: "subscription_update", lines: { data: [lineCurrent(ADDON_PRICE)] } })));
+      expect(await sent()).toEqual({ plan: 0, addon: 1 });
+    });
+
+    it("current format: addonSub metadata → add-on email", async () => {
+      commitActivation();
+      await deliver(ev("evt_CUR_UPD_ADDONSUB", "invoice.payment_succeeded", current({ amount_paid: 900, billing_reason: "subscription_update", lines: { data: [lineCurrent(PLAN_PRICE)] } }, { addonSub: "true" })));
+      expect(await sent()).toEqual({ plan: 0, addon: 1 });
+    });
+
+    it("legacy format: plan price line → plan-changed email", async () => {
+      commitActivation();
+      await deliver(ev("evt_LEG_UPD_PLAN", "invoice.payment_succeeded", legacy({ amount_paid: 7000, billing_reason: "subscription_update", lines: { data: [lineLegacy(PLAN_PRICE)] } })));
+      expect(await sent()).toEqual({ plan: 1, addon: 0 });
+    });
   });
 });
