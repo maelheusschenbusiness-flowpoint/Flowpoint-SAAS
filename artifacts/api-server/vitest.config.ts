@@ -128,6 +128,8 @@ export default defineConfig({
       // Checkout abandonné — gardes contre les mutations prématurées
       "src/tests/checkout-abandon-guards.test.ts",
       "src/tests/auth-login-verify-stripe-mode.test.ts",
+      // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
+      "src/tests/stripe-webhook-pending-activation.test.ts",
     ],
     environment: "node",
     globals:     false,
