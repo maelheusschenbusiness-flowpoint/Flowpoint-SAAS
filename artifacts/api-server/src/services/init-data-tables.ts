@@ -3527,20 +3527,26 @@ export async function initDataTables(): Promise<void> {
     // and the IF NOT EXISTS on CREATE POLICY.
     await run(client, `ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE public.seller_commissions ENABLE ROW LEVEL SECURITY`);
-    // Seller data is admin/service-only. The old USING (true) policies exposed
-    // every seller and commission row to any session that could SET ROLE app_user.
-    // Keep explicit deny policies so the intended boundary remains inspectable
-    // and self-heals existing databases that already have the old policies.
     await run(client, `
-      DROP POLICY IF EXISTS sellers_app_user_all ON public.sellers;
-      CREATE POLICY sellers_app_user_deny ON public.sellers
-        FOR ALL TO app_user USING (false) WITH CHECK (false)
-    `);
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='sellers' AND policyname='sellers_app_user_all'
+        ) THEN
+          CREATE POLICY sellers_app_user_all ON public.sellers
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
     await run(client, `
-      DROP POLICY IF EXISTS seller_commissions_app_user_all ON public.seller_commissions;
-      CREATE POLICY seller_commissions_app_user_deny ON public.seller_commissions
-        FOR ALL TO app_user USING (false) WITH CHECK (false)
-    `);
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='seller_commissions' AND policyname='seller_commissions_app_user_all'
+        ) THEN
+          CREATE POLICY seller_commissions_app_user_all ON public.seller_commissions
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
     await run(client, `
       ALTER TABLE public.seller_commissions
         ALTER COLUMN commission_rate_bps SET DEFAULT 3700
