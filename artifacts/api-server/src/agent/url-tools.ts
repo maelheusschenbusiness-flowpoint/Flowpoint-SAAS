@@ -43,6 +43,40 @@ export const URL_TOOLS: ToolDef[] = [
       required: ["url"],
     },
   },
+  {
+    name: "analyze_site",
+    description:
+      "Analyse APPROFONDIE multi-pages d'un site : récupère la page d'accueil, découvre les liens internes " +
+      "du même domaine et crawle jusqu'à 8 pages au total (robots.txt respecté, 5s max par page). " +
+      "Utiliser quand l'utilisateur demande une analyse POUSSÉE/COMPLÈTE de son site ou d'un site entier " +
+      "(« analyse poussée de mon site », « analyse toutes les pages », « deep analysis »). " +
+      "NE PAS utiliser pour une page unique (analyze_url est plus rapide) ni pour un audit SEO chiffré (run_audit). " +
+      "Le résultat indique le nombre de pages réellement récupérées — TOUJOURS le mentionner dans la synthèse.",
+    requiredPermission: "web.read",
+    confirmationLevel: "none",
+    isWrite: false,
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description:
+            "URL de la page d'accueil (ou page de départ) du site à analyser. " +
+            "Doit commencer par http:// ou https://. Si l'utilisateur donne un domaine sans protocole, ajouter https://.",
+          maxLength: 2048,
+        },
+        purpose: {
+          type: "string",
+          enum: ["competitor", "seo", "general"],
+          description:
+            "'competitor' = analyse comparative d'un site concurrent ; " +
+            "'seo' = analyse de structure/contenu SEO ; " +
+            "'general' = analyse générale. Optionnel.",
+        },
+      },
+      required: ["url"],
+    },
+  },
 ];
 
 export const URL_TOOL_BY_NAME = new Map<string, ToolDef>(URL_TOOLS.map((t) => [t.name, t]));
@@ -55,6 +89,20 @@ export const URL_ARG_SCHEMAS: Record<string, {
   };
 }> = {
   analyze_url: z.object({
+    url: z.string().min(1).max(2048).refine(
+      (u) => {
+        try {
+          const parsed = new URL(u.startsWith("http") ? u : `https://${u}`);
+          return parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+      { message: "URL doit être une adresse http:// ou https:// valide" }
+    ),
+    purpose: z.enum(["competitor", "seo", "general"]).optional(),
+  }),
+  analyze_site: z.object({
     url: z.string().min(1).max(2048).refine(
       (u) => {
         try {

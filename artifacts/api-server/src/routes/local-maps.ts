@@ -7,8 +7,12 @@ import {
 } from "../services/local-maps-service.js";
 import { pool } from "@workspace/db";
 import { isDataForSEOConfigured, checkAndIncrementQuota, getGoogleMapsResults } from "../services/dataforseo-service.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
+
+// localDominationMaps is a purchasable add-on (any plan).
+router.use("/local-maps", requireAddon("localDominationMaps", "Local Domination Maps"));
 const org = (req: import("express").Request) => ((req as unknown as { orgId?: string }).orgId ?? "default");
 
 router.get("/local-maps", async (req, res) => {

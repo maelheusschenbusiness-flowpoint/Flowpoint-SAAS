@@ -185,7 +185,7 @@ interface AnalyzeInput {
 }
 
 interface AnalyzeResult {
-  sentiment: "positif" | "négatif" | "neutre";
+  sentiment: "positive" | "negative" | "neutral";
   score: number;
   strengths: string[];
   weaknesses: string[];
@@ -214,11 +214,13 @@ export async function analyzeReview(
   const posCount = positiveWords.filter(w => lower.includes(w)).length;
   const negCount = negativeWords.filter(w => lower.includes(w)).length;
 
+  // Use English canonical values ("positive"/"negative"/"neutral") so the DB
+  // column is consistent with the google_reviews mapping and the UI filter.
   const sentimentRaw = (rating >= 4 || (posCount > negCount && rating >= 3))
-    ? "positif"
+    ? "positive"
     : (rating <= 2 || negCount > posCount)
-    ? "négatif"
-    : "neutre";
+    ? "negative"
+    : "neutral";
 
   const score = Math.min(10, Math.max(1, Math.round(rating * 2)));
 
@@ -226,13 +228,13 @@ export async function analyzeReview(
   const strengths: string[]   = [];
   const weaknesses: string[]  = [];
 
-  if (sentimentRaw === "positif") {
+  if (sentimentRaw === "positive") {
     if (lower.includes("service"))  strengths.push("Qualité de service saluée");
     if (lower.includes("rapidité") || lower.includes("rapide") || lower.includes("vite")) strengths.push("Réactivité et rapidité appréciées");
     if (lower.includes("résultat") || lower.includes("résultats")) strengths.push("Résultats concrets mentionnés");
     if (lower.includes("équipe") || lower.includes("team"))  strengths.push("Travail d'équipe mis en avant");
     if (strengths.length === 0) strengths.push("Expérience globalement positive");
-  } else if (sentimentRaw === "négatif") {
+  } else if (sentimentRaw === "negative") {
     if (lower.includes("attente") || lower.includes("délai") || lower.includes("lent"))  weaknesses.push("Délais jugés trop longs");
     if (lower.includes("cher") || lower.includes("prix") || lower.includes("tarif"))     weaknesses.push("Prix perçu comme élevé");
     if (lower.includes("problème") || lower.includes("erreur") || lower.includes("bug")) weaknesses.push("Problèmes techniques signalés");
@@ -245,12 +247,12 @@ export async function analyzeReview(
 
   // ── Tips ─────────────────────────────────────────────────────
   const tips: string[] = [];
-  if (sentimentRaw === "positif") {
+  if (sentimentRaw === "positive") {
     tips.push("Demandez à ce client de partager son avis sur Google pour renforcer votre réputation.");
     if (!lower.includes("référence") && !lower.includes("recommande")) {
       tips.push("Proposez-lui un programme de parrainage ou une offre fidélité.");
     }
-  } else if (sentimentRaw === "négatif") {
+  } else if (sentimentRaw === "negative") {
     tips.push("Répondez sous 24h pour montrer votre réactivité et limiter l'impact public.");
     tips.push("Proposez une solution concrète ou un contact direct (email/téléphone).");
   } else {
@@ -259,9 +261,9 @@ export async function analyzeReview(
 
   // ── Suggested reply ───────────────────────────────────────────
   let suggestedReply: string;
-  if (sentimentRaw === "positif") {
+  if (sentimentRaw === "positive") {
     suggestedReply = `Merci ${firstName} pour ce retour très positif ! Votre satisfaction est notre plus belle récompense. Nous serons toujours là pour vous accompagner. À bientôt ! 🙏`;
-  } else if (sentimentRaw === "négatif") {
+  } else if (sentimentRaw === "negative") {
     suggestedReply = `Bonjour ${firstName}, nous sommes sincèrement désolés que votre expérience n'ait pas été à la hauteur de vos attentes. Votre retour est précieux pour nous améliorer. Pouvez-vous nous contacter directement afin que nous trouvions ensemble une solution ? 🤝`;
   } else {
     suggestedReply = `Merci ${firstName} pour votre retour. Nous prenons note de vos remarques et mettons tout en œuvre pour améliorer continuellement notre service. N'hésitez pas à nous recontacter si vous avez des questions.`;
@@ -278,7 +280,7 @@ export async function analyzeReview(
     tips,
     suggestedReply,
     topics,
-    urgency: sentimentRaw === "négatif" ? "high" : "low",
+    urgency: sentimentRaw === "negative" ? "high" : "low",
   };
 }
 

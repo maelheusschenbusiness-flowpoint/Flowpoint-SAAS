@@ -137,6 +137,20 @@ export async function initAiMigration(): Promise<void> {
       END $$
     `);
 
+    // Cross-instance fixed-window counters for provider-backed AI operations.
+    await run("ai_rate_limit_windows table", `
+      CREATE TABLE IF NOT EXISTS public.ai_rate_limit_windows (
+        org_id        TEXT NOT NULL,
+        bucket        TEXT NOT NULL,
+        window_start  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        request_count INTEGER NOT NULL DEFAULT 0,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, bucket)
+      )
+    `);
+    await run("ai_rate_limit_windows RLS", `ALTER TABLE public.ai_rate_limit_windows ENABLE ROW LEVEL SECURITY`);
+    await tenantPolicies("ai_rate_limit_windows");
+
     // ── 016 : idempotency_key on ai_usage_logs ───────────────────────────────────
     await run("ai_usage_logs idempotency_key column", `
       ALTER TABLE public.ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT
@@ -469,6 +483,7 @@ export async function initAiMigration(): Promise<void> {
       "public.ai_generated_missions",
       "public.ai_setup_logs",
       "public.ai_recommendations",
+      "public.ai_rate_limit_windows",
     ];
 
     const checkRes = await client.query<{ tbl: string; exists: boolean }>(

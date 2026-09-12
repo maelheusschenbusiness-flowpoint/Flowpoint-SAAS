@@ -1,4 +1,5 @@
-import { pool, withOrgDb } from "@workspace/db";
+import { pool, withOrgDb, withOrgDbClient } from "@workspace/db";
+import type { PoolClient } from "pg";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { loadOrgData } from "./org-data.js";
@@ -325,6 +326,12 @@ export async function recordCompletedUsage(opts: {
   /** Override the computed credit cost. Use to enforce the feature base cost
    *  regardless of model multiplier (e.g. feature-priced endpoints). */
   fixedCreditCost?: number;
+}, execution?: {
+  /** Reuse an already-reserved pool session (for example while holding a
+   * session-level advisory lock) without acquiring another connection. */
+  client: PoolClient;
+  /** Canonical UUID already established by authenticated org context. */
+  canonicalOrgId: string;
 }): Promise<{ creditsDebited: number; remaining: number }> {
   const { userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
   const provider    = opts.provider ?? "openai";
@@ -342,7 +349,7 @@ export async function recordCompletedUsage(opts: {
   // ai_usage_logs.org_id and ai_monthly_usage.org_id are UUID columns; a
   // non-UUID id used to make both writes fail silently ("invalid input syntax
   // for type uuid") — the provider was billed but FlowPoint never counted it.
-  const orgId = await resolveCanonicalOrgUuid(opts.orgId);
+  const orgId = execution?.canonicalOrgId ?? await resolveCanonicalOrgUuid(opts.orgId);
   if (!orgId) {
     // Verified absence — fail explicitly; callers must never receive a
     // success-shaped debit for usage that was not persisted.
@@ -362,7 +369,7 @@ export async function recordCompletedUsage(opts: {
   // aggregate can never diverge.
   let recorded = false;
   try {
-    recorded = await withOrgDb(orgId, async (client) => {
+    const recordUsage = async (client: PoolClient) => {
       const ins = await client.query(
         `INSERT INTO ai_usage_logs
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
@@ -396,7 +403,10 @@ export async function recordCompletedUsage(opts: {
         [`amu_${orgId}_${month}`, orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
       );
       return true;
-    });
+    };
+    recorded = execution
+      ? await withOrgDbClient(execution.client, orgId, recordUsage)
+      : await withOrgDb(orgId, recordUsage);
   } catch (err) {
     // Loud, explicit failure — the provider WAS consumed but FlowPoint could
     // not persist the usage. This must never pass silently at debug level.
@@ -407,6 +417,28 @@ export async function recordCompletedUsage(opts: {
   }
   if (!recorded && idemKey) {
     logger.info({ orgId, requestId: idemKey }, "[AI] recordCompletedUsage: duplicate requestId — usage already recorded, aggregate not re-incremented");
+  }
+
+  if (execution) {
+    const usage = await withOrgDbClient(execution.client, orgId, async (client) => {
+      const result = await client.query<{
+        credits_used: number;
+        credits_limit: number;
+        credits_extra: number;
+      }>(
+        `SELECT credits_used, credits_limit, credits_extra
+         FROM ai_monthly_usage
+         WHERE org_id::text = $1 AND month = $2
+         LIMIT 1`,
+        [orgId, month],
+      );
+      return result.rows[0];
+    });
+    const totalAvailable = Number(usage?.credits_limit ?? 0) + Number(usage?.credits_extra ?? 0);
+    return {
+      creditsDebited: creditsDeb,
+      remaining: Math.max(0, totalAvailable - Number(usage?.credits_used ?? 0)),
+    };
   }
 
   // Fetch updated usage for alert thresholds + return value

@@ -61,7 +61,7 @@
  */
 
 import { pool } from "@workspace/db";
-import { loadOrgSettings } from "./org-settings.js";
+import { loadOrgSettings, upsertOrgSettings } from "./org-settings.js";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
 
@@ -154,7 +154,7 @@ async function _runWithLock(
     // ── Step 1: Authoritative DB read inside the lock ──────────────────────
     // Any customer created by a competing process that committed BEFORE we
     // acquired the lock will be visible here.
-    const settings = await loadOrgSettings(orgId, client).catch(() => null);
+    const settings = await loadOrgSettings(orgId, client);
     logger.debug(
       { orgId, dbCustomerId: settings?.stripeCustomerId ?? null, ms: Date.now() - t0 },
       "[ESC][DEBUG] Step 1 — DB read complete",
@@ -162,7 +162,120 @@ async function _runWithLock(
 
     // CRITICAL: normalise empty-string → null.
     // Some rows have stripe_customer_id='' (not NULL); `??` does NOT treat '' as nullish.
-    const rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+    let rawId = settings?.stripeCustomerId ?? hint?.stripeCustomerId ?? null;
+
+    // ── Step 1B: organizations.stripe_customer_id (resubscription invariant) ─
+    // org_settings[UUID] may be absent or stale if the customer was written only
+    // through the webhook path or a prior ESC run that updated organizations but
+    // not org_settings. Reading organizations directly here ensures that an
+    // existing customer is ALWAYS found and NEVER recreated — even if org_settings
+    // is empty. This is the primary guard for the resubscription scenario:
+    //
+    //   existing org (UUID) → canceled subscription → user picks new plan
+    //   → Checkout → ESC → must reuse organizations.stripe_customer_id
+    //
+    // Invariant: 1 org UUID = 1 Stripe Customer for life.
+    const orgRow = await client.query(
+      `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`, [orgId]);
+    const orgCid = orgRow.rows[0]?.stripe_customer_id?.trim();
+    // The UUID organization owns the persistent identity; stale hints cannot override it.
+    if (orgCid) {
+      rawId = orgCid;
+      await upsertOrgSettings(orgId, { stripeCustomerId: orgCid }, client);
+    }
+
+    // ── UUID orgId fallback (auth-migration v2) ───────────────────────────
+    // After migration, orgId is a UUID but org_settings PK is still the owner
+    // email. If the candidate is still null here, try fetching the legacy
+    // org_settings row keyed by owner_email — prevents creating a duplicate
+    // Stripe customer when the original was stored under the email key.
+    //
+    // IMPORTANT: when the legacy customer is found and confirmed alive (Step 2),
+    // _persistStrict MUST be called to anchor orgId→customer in org_settings[UUID]
+    // AND mirror it to organizations.stripe_customer_id via persistOrgData.
+    // Without this, every future call re-runs the fallback and, if org_settings
+    // [email] is ever cleared, recreates the customer.
+    let _fromLegacyFallback = false;
+    let _fromPendingSignupsFallback = false;
+    if (!rawId?.trim()) {
+      try {
+        const orgEmailRow = await client.query(
+          `SELECT owner_email FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId],
+        );
+        const ownerEmail = (orgEmailRow.rows[0] as { owner_email?: string } | undefined)?.owner_email;
+        if (ownerEmail && ownerEmail !== orgId) {
+          // ── A: legacy org_settings (original fallback) ────────────────────
+          const emailSettings = await loadOrgSettings(ownerEmail, client);
+          const legacyId = emailSettings?.stripeCustomerId;
+          if (legacyId && legacyId.trim()) {
+            rawId = legacyId.trim();
+            _fromLegacyFallback = true;
+            logger.info(
+              { orgId, ownerEmail, legacyId },
+              "[ESC] UUID→email fallback: found customer in legacy org_settings — will persist to UUID key to prevent future duplicates",
+            );
+          }
+
+          // ── B: pending_signups fallback (abandoned checkout recovery) ─────
+          // Covers the ONE_CUSTOMER_INVARIANT scenario:
+          //   1. pre-register → pending_signup created
+          //   2. payment-intent → Stripe Customer created + persisted in pending_signups.stripe_customer_id
+          //   3. checkout abandoned (consumed_at = NULL, session.completed never fires)
+          //   4. org UUID created separately (magic link / Google OAuth)
+          //   5. organizations.stripe_customer_id = NULL
+          //   6. user relaunches checkout → ESC must NOT create a second Customer
+          //
+          // Strategy: deterministic — only reuse a pending_signup Customer when:
+          //   (a) it matches by owner_email (same FlowPoint identity)
+          //   (b) it is NOT already anchored to a DIFFERENT UUID org
+          //   (c) it was created within 90 days (stale signups are excluded)
+          // NB: consumed_at IS NOT filtered — a consumed signup may still carry
+          //     a valid Customer that was never written to organizations.
+          if (!rawId?.trim()) {
+            const psRows = await client.query(
+              `SELECT stripe_customer_id
+               FROM   pending_signups
+               WHERE  lower(email) = lower($1)
+                 AND  stripe_customer_id IS NOT NULL
+                 AND  created_at > NOW() - INTERVAL '90 days'
+               ORDER BY created_at DESC
+               LIMIT 5`,
+              [ownerEmail],
+            );
+            for (const ps of psRows.rows) {
+              const cid = String(ps.stripe_customer_id);
+              // Safety gate: refuse to adopt a Customer already anchored to a different org.
+              // This prevents cross-tenant contamination when multiple accounts share an email domain.
+              const conflict = await client.query(
+                `SELECT 1 FROM organizations
+                 WHERE  stripe_customer_id = $1
+                   AND  id != $2::uuid
+                 LIMIT  1`,
+                [cid, orgId],
+              );
+              if (conflict.rows.length > 0) {
+                logger.warn(
+                  { orgId, cid },
+                  "[ESC] pending-signups fallback: Customer already anchored to a different org — skipping candidate",
+                );
+                continue;
+              }
+              rawId = cid;
+              _fromPendingSignupsFallback = true;
+              logger.info(
+                { orgId, ownerEmail, cid },
+                "[ESC] pending-signups fallback: found abandoned-checkout Customer — will persist to prevent duplicate creation",
+              );
+              break;
+            }
+          }
+        }
+      } catch (fallbackErr) {
+        logger.warn({ fallbackErr, orgId }, "[ESC] UUID→email/pending-signups fallback lookup failed (non-fatal)");
+      }
+    }
+
     const candidateId: string | null = rawId && rawId.trim() ? rawId.trim() : null;
 
     // ── Step 2: Validate existing customer ────────────────────────────────
@@ -181,33 +294,36 @@ async function _runWithLock(
           // name was known (signup happens before org settings are complete).
           const _existing = customer as { name?: string | null; description?: string | null; metadata?: Record<string, string> };
           const _company = settings?.orgName ?? hint?.orgName ?? null;
-          if (_company && (!_existing.description || _existing.metadata?.["company"] !== _company)) {
-            const _fullName = [settings?.firstName ?? hint?.firstName, _company].filter(Boolean).join(" ").trim();
+          // Only backfill with a real company name — never with an email address (Google signup placeholder)
+          const _realCompany = _company && !_company.includes("@") ? _company : null;
+          if (_realCompany && (!_existing.description || _existing.metadata?.["company"] !== _realCompany)) {
+            const _bfFirstName = settings?.firstName ?? hint?.firstName;
+            const _bfLastName  = (settings as Record<string, unknown> | null)?.["lastName"] as string | null ?? null;
+            const _fullName = [_bfFirstName, _bfLastName].filter(Boolean).join(" ").trim() || null;
             stripe.customers.update(candidateId, {
               ...(_fullName ? { name: _fullName } : {}),
-              description: _company,
-              metadata: { ..._existing.metadata, company: _company },
+              description: _realCompany,
+              metadata: { ..._existing.metadata, company: _realCompany },
             }).then(() => {
               logger.info({ orgId, customerId: candidateId, company: _company }, "[ESC] backfilled company on existing Stripe customer");
             }).catch((updErr: unknown) => {
               logger.warn({ orgId, customerId: candidateId, err: updErr instanceof Error ? updErr.message : String(updErr) }, "[ESC] company backfill failed (non-fatal)");
             });
           }
+          // ── Legacy / pending-signups fallback persistence ─────────────────
+          // When either fallback found this customer, org_settings[UUID] does
+          // not yet have a stripe_customer_id row.  Persist now inside this transaction
+          // so the next call reads it from Step 1 (no fallback, no risk of re-creation).
+          // The dual-write inside _persistStrict also updates organizations.stripe_customer_id.
+          await _persistStrict(orgId, candidateId, client, t0);
           return candidateId;
         }
-        logger.warn(
-          { orgId, candidateId, stripeMs: ms2 },
-          "[ESC][DEBUG] Step 2 — customer deleted in Stripe — will recreate",
-        );
+        throw new Error("[ensureStripeCustomer] Persisted Customer was deleted; explicit billing repair required");
       } catch (err: unknown) {
-        const stripeErr = err as { code?: string };
-        const ms2 = Date.now() - t2;
-        if (stripeErr?.code !== "resource_missing") throw err;
-        logger.warn(
-          { orgId, candidateId, stripeMs: ms2, code: "resource_missing" },
-          "[ESC][DEBUG] Step 2 — resource_missing (test key in live mode, or wrong account) — will recreate",
-        );
+        // Includes resource_missing: wrong Stripe account/key must never recreate an identity.
+        throw err;
       }
+
     } else {
       logger.debug({ orgId }, "[ESC][DEBUG] Step 2 — no candidate in DB, skipping retrieve");
     }
@@ -233,10 +349,7 @@ async function _runWithLock(
         "[ESC][DEBUG] Step 3 — metadata search complete",
       );
     } catch (searchErr) {
-      logger.debug(
-        { orgId, searchErr, stripeMs: Date.now() - t3 },
-        "[ESC][DEBUG] Step 3 — search failed (index lag or transient error) — proceeding to create",
-      );
+      throw searchErr;
     }
 
     if (orphan) {
@@ -247,6 +360,31 @@ async function _runWithLock(
       // _persistStrict errors propagate correctly (not inside the search try-catch)
       await _persistStrict(orgId, orphan.id, client, t0);
       return orphan.id;
+    }
+
+    // ── QA / synthetic org guard (Phase 4) ───────────────────────────────
+    // If the Stripe key is LIVE, block customer creation for internal QA orgs.
+    // These orgs should never receive a live Stripe customer; they must use
+    // test-mode keys or mocked billing.  Checked here (after all DB reads are
+    // done inside the lock) so the advisory lock is already held — no TOCTOU.
+    if (key.startsWith("sk_live_")) {
+      try {
+        const qaRow = await client.query(
+          `SELECT COALESCE(is_internal_qa, false) AS is_qa FROM organizations WHERE id::text = $1 LIMIT 1`,
+          [orgId],
+        );
+        const _isQaOrg = qaRow.rows[0]?.is_qa === true;
+        if (_isQaOrg) {
+          throw new Error(
+            `[ESC] BLOCKED: org ${orgId} has is_internal_qa=true — live Stripe customer creation is prohibited for QA orgs. ` +
+            `Call ensureStripeCustomer with STRIPE_TEST_KEY instead.`,
+          );
+        }
+      } catch (qaErr) {
+        // Re-throw if it's our own guard; suppress DB errors (missing column etc.) so existing orgs are unaffected.
+        if (qaErr instanceof Error && qaErr.message.startsWith("[ESC] BLOCKED")) throw qaErr;
+        logger.warn({ qaErr, orgId }, "[ESC] QA guard check failed (non-fatal, proceeding to create)");
+      }
     }
 
     // ── Step 4: Create exactly one customer ───────────────────────────────
@@ -262,11 +400,13 @@ async function _runWithLock(
 
     const email: string | null = settings?.email ?? hint?.email ?? null;
     const isValidEmail = email != null && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+    // Build display name from real name fields — never from orgName (which may be an email placeholder)
+    const _escFirstName = settings?.firstName ?? hint?.firstName;
+    const _escLastName  = (settings as Record<string, unknown> | null)?.["lastName"] as string | null ?? null;
     const displayName =
-      [settings?.firstName ?? hint?.firstName, settings?.orgName ?? hint?.orgName]
-        .filter(Boolean)
-        .join(" ")
-        .trim() || "FlowPoint User";
+      [_escFirstName, _escLastName].filter(Boolean).join(" ").trim()
+      || (isValidEmail && email ? email.split("@")[0] : null)
+      || "FlowPoint User";
 
     logger.debug(
       { orgId, idempotencyKey, email: isValidEmail ? email : "(invalid)", displayName },
@@ -278,6 +418,9 @@ async function _runWithLock(
     const orgCity     = settings?.city     ?? null;
     const orgAddress  = settings?.address  ?? null;
     const orgCompany  = settings?.orgName  ?? hint?.orgName ?? null;
+    // Only use orgCompany as description when it is a real company name, not an email address
+    // (Google OAuth signup temporarily stores the user's email in orgName; don't leak it as description)
+    const orgCompanyDisplay = orgCompany && !orgCompany.includes("@") ? orgCompany : null;
     const orgWebsite  = (settings as unknown as { primarySite?: string } | null)?.primarySite ?? null;
 
     const t4 = Date.now();
@@ -285,7 +428,7 @@ async function _runWithLock(
       {
         ...(isValidEmail ? { email } : {}),
         name: displayName,
-        ...(orgCompany ? { description: orgCompany } : {}),
+        ...(orgCompanyDisplay ? { description: orgCompanyDisplay } : {}),
         ...(orgCountry || orgCity || orgAddress ? {
           address: {
             ...(orgCountry ? { country: orgCountry } : {}),
@@ -297,7 +440,7 @@ async function _runWithLock(
           orgId,
           flowpointUserId: orgId,
           flowpoint_org_id: orgId,
-          company:         orgCompany  ?? "",
+          company:         orgCompanyDisplay ?? "",
           website:         orgWebsite  ?? "",
           environment:     process.env["NODE_ENV"] ?? "development",
           signup_source:   "flowpoint_web",
@@ -451,13 +594,10 @@ async function _persistStrict(
           { orgId, customerId, rowCount, totalMs: Date.now() - t0 },
           "[ESC][DEBUG] Step 5 — DB write confirmed — customer persisted",
         );
-        // Dual-write: mirror stripe_customer_id to organizations (fire-and-forget, non-fatal)
-        // Uses a separate connection outside this transaction.
-        import("../services/org-data.js").then(({ persistOrgData }) => {
-          persistOrgData(orgId, { stripeCustomerId: customerId }).catch(mirrorErr => {
-            logger.warn({ mirrorErr, orgId }, "[ESC] organizations stripe_customer_id mirror failed (non-fatal)");
-          });
-        }).catch(() => {/* non-fatal */});
+        // Anchor both stores atomically under the same organization lock.
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = $1 WHERE id::text = $2`,
+          [customerId, orgId]);
         return;
       }
 

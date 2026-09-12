@@ -5,10 +5,7 @@ const router = Router();
 
 /** Extended row shape that includes columns present in the DB but not in the Drizzle schema stub. */
 interface ShareTokenRow {
-  id: string;
   token: string;
-  type: string;
-  targetId: string;
   orgId: string | null;
   expiresAt: Date | null;
   createdAt: Date | null;
@@ -19,11 +16,12 @@ interface ShareTokenRow {
 }
 
 router.get("/share/:token", async (req, res) => {
-  // Use raw SQL to access all columns including those absent from the Drizzle schema stub.
+    // Query only the durable share_tokens schema. Older generic share columns
+    // (id/type/target_id) are not part of report share links.
   const client = await pool.connect();
   try {
     const result = await client.query<ShareTokenRow>(
-      `SELECT id, token, type, target_id AS "targetId", org_id AS "orgId",
+      `SELECT token, org_id AS "orgId",
               expires_at AS "expiresAt", created_at AS "createdAt",
               views, report_json AS "reportJson",
               audits_json AS "auditsJson", branding_json AS "brandingJson"
@@ -55,7 +53,9 @@ router.get("/share/:token", async (req, res) => {
     // Re-scope audits to only those that belong to this report.
     // This also sanitizes legacy tokens whose auditsJson may contain
     // unrelated records bundled before this fix was applied.
-    const allowedAuditId = typeof reportSnapshot.auditId === "string" ? reportSnapshot.auditId : null;
+    const allowedAuditId = typeof reportSnapshot.auditId === "string"
+      ? reportSnapshot.auditId
+      : typeof reportSnapshot.audit_id === "string" ? reportSnapshot.audit_id : null;
     const rawAudits = JSON.parse(row.auditsJson ?? "[]") as Record<string, unknown>[];
     const scopedAudits = allowedAuditId
       ? rawAudits.filter((a) => a.id === allowedAuditId)

@@ -46,9 +46,46 @@ export interface ToolPropertySchema {
 // ── Catalogue d'outils — Phase 2 : Missions seulement ─────────────────────
 export const MISSION_TOOLS: ToolDef[] = [
   {
+    name: "list_missions",
+    description:
+      "Liste toutes les missions de l'organisation avec des filtres optionnels (statut, catégorie, priorité). " +
+      "Utiliser pour afficher un tableau de bord des missions, lister toutes les missions en cours, ou parcourir les missions par statut/priorité. " +
+      "Ne nécessite pas de mots-clés — utilise search_mission pour une recherche textuelle ciblée.",
+    requiredPermission: "missions.read",
+    confirmationLevel: "none",
+    isWrite: false,
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["todo", "in_progress", "done", "dismissed"],
+          description: "Filtre par statut de mission (optionnel — si omis, retourne tous les statuts).",
+        },
+        category: {
+          type: "string",
+          description: "Filtre par catégorie (optionnel).",
+        },
+        priority: {
+          type: "string",
+          enum: ["critical", "high", "medium", "low"],
+          description: "Filtre par priorité (optionnel).",
+        },
+        limit: {
+          type: "number",
+          description: "Nombre maximum de résultats à retourner (défaut : 10, max : 20).",
+          minimum: 1,
+          maximum: 20,
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: "search_mission",
     description:
-      "Recherche des missions dans FlowPoint par titre, statut, catégorie ou priorité. " +
+      "Recherche des missions dans FlowPoint par mots-clés dans le titre ou la description. " +
+      "Peut aussi lister toutes les missions si query est omis (équivalent à list_missions avec filtres). " +
       "À utiliser AVANT toute modification pour trouver l'ID réel d'une mission. " +
       "L'IA ne doit JAMAIS inventer un ID de mission.",
     requiredPermission: "missions.read",
@@ -59,7 +96,7 @@ export const MISSION_TOOLS: ToolDef[] = [
       properties: {
         query: {
           type: "string",
-          description: "Mots-clés à rechercher dans le titre ou la description de la mission.",
+          description: "Mots-clés à rechercher dans le titre ou la description de la mission (optionnel — si omis, retourne toutes les missions correspondant aux filtres).",
         },
         status: {
           type: "string",
@@ -82,7 +119,7 @@ export const MISSION_TOOLS: ToolDef[] = [
           maximum: 10,
         },
       },
-      required: ["query"],
+      required: [],
     },
   },
   {
@@ -267,8 +304,14 @@ export const TOOL_BY_NAME = new Map<string, ToolDef>(MISSION_TOOLS.map(t => [t.n
 
 // ── Schémas Zod par outil (validation serveur des arguments) ───────────────
 export const TOOL_ARG_SCHEMAS: Record<string, z.ZodTypeAny> = {
+  list_missions: z.object({
+    status: z.enum(["todo", "in_progress", "done", "dismissed"]).optional(),
+    category: z.string().max(100).optional(),
+    priority: z.enum(["critical", "high", "medium", "low"]).optional(),
+    limit: z.number().int().min(1).max(20).optional().default(10),
+  }),
   search_mission: z.object({
-    query: z.string().min(1).max(300),
+    query: z.string().min(1).max(300).optional(),
     status: z.enum(["todo", "in_progress", "done", "dismissed"]).optional(),
     category: z.string().max(100).optional(),
     priority: z.enum(["critical", "high", "medium", "low"]).optional(),

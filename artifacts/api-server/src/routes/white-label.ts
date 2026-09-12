@@ -12,14 +12,54 @@ type OrgReq = Request & {
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
+// ── SQL error classification ────────────────────────────────────────────────
+// Reliability: never disguise a schema/SQL failure as a legitimate empty
+// result. A missing table/column is schema drift that our idempotent init can
+// self-heal; anything else is a genuine failure that MUST surface as 500 so the
+// frontend can show a retry — not a silent {templates:[]} that looks empty.
+const PG_UNDEFINED_TABLE  = "42P01";
+const PG_UNDEFINED_COLUMN = "42703";
+function pgCode(err: unknown): string | undefined {
+  return (err as { code?: string })?.code
+    ?? (err as { raw?: { code?: string } })?.raw?.code;
+}
+function isSchemaMissing(err: unknown): boolean {
+  const code = pgCode(err);
+  return code === PG_UNDEFINED_TABLE || code === PG_UNDEFINED_COLUMN;
+}
+async function selfHealDataTables(): Promise<void> {
+  const { initDataTables } = await import("../services/init-data-tables.js");
+  await initDataTables();
+}
+
 // ── Report templates ──────────────────────────────────────────────────────────
 
 router.get("/white-label/templates", async (req: Request, res: Response) => {
+  // Stable contract: on success ALWAYS { templates: [...] } scoped to the
+  // authenticated org (real persisted rows — a genuinely empty org yields []).
+  // On failure NEVER return {templates:[]} (that hides the error); return 500
+  // so the frontend can show a retry. Missing schema → self-heal once + retry.
+  const sql = `SELECT * FROM report_templates WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`;
+  const orgId = org(req);
   try {
-    const r = await db(req)(`SELECT * FROM report_templates WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`, [org(req)]);
-    res.json({ templates: r.rows });
-  } catch {
-    res.json({ templates: [] });
+    const r = await db(req)(sql, [orgId]);
+    res.json({ templates: r.rows ?? [] });
+  } catch (err) {
+    if (isSchemaMissing(err)) {
+      logger.warn({ orgId, code: pgCode(err) }, "[WhiteLabel] report_templates schema missing — self-healing and retrying");
+      try {
+        await selfHealDataTables();
+        const r = await db(req)(sql, [orgId]);
+        res.json({ templates: r.rows ?? [] });
+        return;
+      } catch (retryErr) {
+        logger.error({ err: retryErr, orgId }, "[WhiteLabel] templates fetch failed after self-heal");
+        res.status(500).json({ error: "Failed to fetch templates" });
+        return;
+      }
+    }
+    logger.error({ err, orgId }, "[WhiteLabel] templates fetch failed");
+    res.status(500).json({ error: "Failed to fetch templates" });
   }
 });
 
@@ -143,7 +183,7 @@ router.post("/white-label/domains/:id/verify", async (req: Request, res: Respons
     }
 
     if (!verified) {
-      await db(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1`, [id]);
+      await db(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org(req)]);
       res.status(422).json({
         ok: false, status: "pending_dns", verified: false, dnsError,
         message: `Enregistrement DNS TXT introuvable. Ajoutez _flowpoint-verify.${domain} → ${verification_token ?? ""} et réessayez dans quelques minutes.`,
@@ -151,7 +191,7 @@ router.post("/white-label/domains/:id/verify", async (req: Request, res: Respons
       }); return;
     }
 
-    await db(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1`, [id]);
+    await db(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     res.json({
       ok: true, status: "dns_verified", sslActive: false,
       message: "DNS vérifié avec succès. SSL doit être configuré manuellement via votre hébergeur ou proxy (Cloudflare, Caddy, Nginx + Let's Encrypt).",
@@ -184,7 +224,7 @@ router.post("/white-label/domains/:id/ssl-check", async (req: Request, res: Resp
     });
 
     const newStatus = sslOk ? "ssl_active" : "ssl_pending";
-    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3`, [newStatus, sslOk, id]);
+    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3 AND org_id=$4`, [newStatus, sslOk, id, org(req)]);
     res.json({
       ok: true, status: newStatus, sslActive: sslOk,
       message: sslOk

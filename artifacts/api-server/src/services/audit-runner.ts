@@ -49,23 +49,34 @@ export interface LaunchedAudit {
  * Insert the processing audit row and kick off the async PSI analysis.
  * `url` must already be normalized via normalizeAuditUrl.
  */
-export async function launchAudit(opts: { orgId: string; url: string; origin: string; name?: string }): Promise<LaunchedAudit> {
+export async function launchAudit(opts: {
+  orgId: string; url: string; origin: string; name?: string; userId?: string; userName?: string;
+  /** When set, the audit row is already committed to the DB — skip the INSERT. */
+  preInsertedId?: string;
+}): Promise<LaunchedAudit> {
   const { orgId, url, origin } = opts;
-  const auditId = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+  const auditId = opts.preInsertedId ?? `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
   const dateStr = new Date().toISOString();
   const name = opts.name ?? "";
 
-  await pool.query(
-    `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_at)
-     VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,NOW())`,
-    [auditId, url, name, dateStr, origin, orgId],
-  );
+  const createdBy = origin === "scheduled" ? null : (opts.userId ?? null);
+  if (!opts.preInsertedId) {
+    await pool.query(
+      `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+       VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+      [auditId, url, name, dateStr, origin, orgId, createdBy],
+    );
+  }
 
   store.logActivity({
     type: "audit",
     label: origin === "scheduled" ? `Audit planifié lancé : ${url}` : `Audit lancé : ${url}`,
     targetId: auditId, targetType: "audit",
     metadata: { url, origin, type: "SEO complet" }, orgId,
+    actionKey: origin === "scheduled" ? "activity.audit.scheduled" : "activity.audit.launched",
+    actionParams: { url: String(url) },
+    userId: origin === "scheduled" ? "system" : (opts.userId ?? "system"),
+    userName: origin === "scheduled" ? "Scheduler" : (opts.userName ?? "Système"),
   }).catch(err => logger.error({ err }, "[audit-runner] logActivity failed"));
 
   // Async PSI analysis — never blocks the caller.
@@ -79,15 +90,35 @@ export async function launchAudit(opts: { orgId: string; url: string; origin: st
       const d = desktop.status === "fulfilled" ? desktop.value : null;
       if (!m && !d) throw new Error("Both PSI requests failed");
 
-      const avg = (mv: number, dv: number, mw: number, dw: number) =>
-        m && d ? Math.round(mv * mw + dv * dw) : m ? mv : dv;
+      // Null-safe two-device blend: a missing category (PSI can omit any of
+      // seo/accessibility/bestPractices) must NEVER be coerced to 0 — that
+      // fabricates a failing score. Blend only the finite values; return null
+      // when neither device reported the category.
+      const blend2 = (mv: number | null | undefined, dv: number | null | undefined, mw: number, dw: number): number | null => {
+        const mOk = typeof mv === "number" && Number.isFinite(mv);
+        const dOk = typeof dv === "number" && Number.isFinite(dv);
+        if (mOk && dOk) return Math.round((mv as number) * mw + (dv as number) * dw);
+        if (mOk) return mv as number;
+        if (dOk) return dv as number;
+        return null;
+      };
 
-      const weightedPerf = avg(m?.scores.performance ?? 0, d?.scores.performance ?? 0, 0.6, 0.4);
-      const weightedSeo  = avg(m?.scores.seo           ?? 0, d?.scores.seo           ?? 0, 0.6, 0.4);
-      const weightedA11y = avg(m?.scores.accessibility ?? 0, d?.scores.accessibility ?? 0, 0.5, 0.5);
-      const weightedBP   = avg(m?.scores.bestPractices ?? 0, d?.scores.bestPractices ?? 0, 0.5, 0.5);
+      const weightedPerf = blend2(m?.scores.performance, d?.scores.performance, 0.6, 0.4);
+      const weightedSeo  = blend2(m?.scores.seo,           d?.scores.seo,           0.6, 0.4);
+      const weightedA11y = blend2(m?.scores.accessibility, d?.scores.accessibility, 0.5, 0.5);
+      const weightedBP   = blend2(m?.scores.bestPractices, d?.scores.bestPractices, 0.5, 0.5);
 
-      const score  = Math.round(weightedPerf * 0.40 + weightedSeo * 0.30 + weightedA11y * 0.15 + weightedBP * 0.15);
+      // Renormalize the blend weights over the categories actually available —
+      // same contract as the audit-score blends in tool-executor.ts.
+      const parts: Array<[number | null, number]> = [
+        [weightedPerf, 0.40], [weightedSeo, 0.30], [weightedA11y, 0.15], [weightedBP, 0.15],
+      ];
+      let weightedSum = 0, weightTotal = 0;
+      for (const [value, weight] of parts) {
+        if (value !== null) { weightedSum += value * weight; weightTotal += weight; }
+      }
+      if (weightTotal === 0) throw new Error("PSI returned no usable category scores");
+      const score = Math.round(weightedSum / weightTotal);
       const status: "ok" | "warn" | "error" = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
       const speed  = d?.scores.performance ?? m?.scores.performance ?? 0;
       const issues = (m?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
@@ -106,6 +137,9 @@ export async function launchAudit(opts: { orgId: string; url: string; origin: st
         label: `Audit terminé : ${url} — Score ${score}/100`,
         targetId: auditId, targetType: "audit",
         metadata: { url, score, status, origin }, orgId,
+        actionKey: "activity.audit.completed", actionParams: { url: String(url), score },
+        userId: origin === "scheduled" ? "system" : (opts.userId ?? "system"),
+        userName: origin === "scheduled" ? "Scheduler" : (opts.userName ?? "Système"),
       }).catch(err => logger.error({ err }, "[audit-runner] logActivity (complete) failed"));
     } catch {
       await pool.query(

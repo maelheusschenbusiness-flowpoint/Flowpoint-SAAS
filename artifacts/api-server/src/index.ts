@@ -183,6 +183,58 @@ async function main() {
         // This prevents the `token` column from being exposed via PostgREST.
         await client.query(`ALTER TABLE pending_signups ENABLE ROW LEVEL SECURITY`);
         await client.query(`ALTER TABLE pending_signups FORCE ROW LEVEL SECURITY`);
+
+        // ── Race-condition guard: unique index on active (non-consumed) email rows ──
+        // Step 1: purge expired unconsumed rows — they block the index but are unusable.
+        await client.query(`DELETE FROM pending_signups WHERE consumed_at IS NULL AND expires_at < NOW()`).catch(() => {});
+        // Step 2: deduplicate, keeping the most recent non-consumed row per email.
+        //         Tie-breaker on token (lexicographic) handles equal created_at timestamps.
+        await client.query(`
+          DELETE FROM pending_signups ps
+          WHERE consumed_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM pending_signups ps2
+              WHERE lower(ps2.email) = lower(ps.email)
+                AND ps2.consumed_at IS NULL
+                AND (ps2.created_at > ps.created_at
+                     OR (ps2.created_at = ps.created_at AND ps2.token > ps.token))
+            )
+        `).catch(() => {});
+        // Step 3: create unique index (one active row per email).
+        //         Failure is surfaced as an ERROR log; startup continues but the guard
+        //         is inactive — operators must resolve remaining duplicates manually.
+        try {
+          await client.query(`
+            CREATE UNIQUE INDEX IF NOT EXISTS pending_signups_email_active_uniq
+              ON pending_signups(lower(email))
+              WHERE consumed_at IS NULL
+          `);
+        } catch (_idxErr) {
+          logger.error(
+            { err: (_idxErr as Error).message },
+            "[startup] CRITICAL: pending_signups_email_active_uniq index creation FAILED — " +
+            "concurrent-signup race-condition guard NOT active; manual deduplication required"
+          );
+        }
+
+        // ── magic_link_tokens: single-use token table for magic-link auth ─────────
+        // Referenced by auth.ts (storeMagicToken / atomicConsumeToken / peekToken).
+        // Must be self-healed here; migrations/*.sql don't auto-run in production.
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS magic_link_tokens (
+            token       TEXT         PRIMARY KEY,
+            email       TEXT         NOT NULL,
+            expires_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
+            used        BOOLEAN      NOT NULL DEFAULT FALSE,
+            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+          )
+        `);
+        await client.query(`CREATE INDEX IF NOT EXISTS magic_link_tokens_email_idx   ON magic_link_tokens(email)`).catch(() => {});
+        await client.query(`CREATE INDEX IF NOT EXISTS magic_link_tokens_expires_idx ON magic_link_tokens(expires_at)`).catch(() => {});
+        // Opportunistic cleanup of spent tokens (non-fatal)
+        await client.query(
+          `DELETE FROM magic_link_tokens WHERE expires_at < NOW() - INTERVAL '1 day' OR used = true`
+        ).catch(() => {});
         // checkout_post_tokens: single-use token created by webhook after org creation.
         // SECURITY: token_hash = SHA256(stripe_session_id) — raw session ID never stored in plaintext.
         // Expiry: 15 minutes (spec requirement). Row is DELETED on consumption (not merely flagged).
@@ -290,10 +342,12 @@ async function main() {
     await runCriticalStartupStep("init-rls-setup", initRlsSetup);
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
     await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
+    // init-data-tables MUST run first: creates organizations, users, org_settings
+    // and all core tables that init-missions/automation/monitors depend on.
+    await runCriticalStartupStep("init-data-tables", initDataTables);
     await runCriticalStartupStep("init-missions",   initMissionsTables);
     await runCriticalStartupStep("init-automation", initAutomationTables);
     await runCriticalStartupStep("init-monitors",   initMonitorsTables);
-    await runCriticalStartupStep("init-data-tables", initDataTables);
     await runCriticalStartupStep("AI migration", initAiMigration);
 
     // Phase 1 — New user architecture (non-destructive, runs after full init)
@@ -390,6 +444,30 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT",  () => void shutdown("SIGINT"));
 }
+
+// ── Global unhandled rejection / uncaught exception guards ───────────────────
+// Node 20 exits by default on any unhandled rejection. Background async work
+// (deferred usage recording, SSE cleanup, cron callbacks) must never crash the
+// server. Log the rejection loudly so we can trace the root cause, but keep
+// the process alive so in-flight requests are not dropped.
+process.on("unhandledRejection", (reason: unknown, promise: Promise<unknown>) => {
+  logger.error(
+    {
+      reason: reason instanceof Error
+        ? { message: reason.message, stack: reason.stack, code: (reason as NodeJS.ErrnoException).code }
+        : String(reason),
+      promise: String(promise),
+    },
+    "[CRITICAL] Unhandled promise rejection — server kept alive; fix the root cause",
+  );
+});
+
+process.on("uncaughtException", (err: Error) => {
+  logger.error(
+    { message: err.message, stack: err.stack, code: (err as NodeJS.ErrnoException).code },
+    "[CRITICAL] Uncaught exception — server kept alive",
+  );
+});
 
 main().catch((err: unknown) => {
   logger.error(

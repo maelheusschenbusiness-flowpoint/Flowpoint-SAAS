@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, computeQtyAddonExtras } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -12,7 +12,7 @@ const _PLAN_PRESENTATION: Record<string, {
   addons: string[]; highlighted: string[];
 }> = {
   standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
-  pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","prioritySupport","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
+  pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
   ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois","SLA 99.9%"] },
 };
 
@@ -46,19 +46,65 @@ export const PLAN_CONFIG = Object.fromEntries(
 // presentation-only. NEVER restate a price or a name here: a second table is how
 // "14 € displayed / 35 € charged" divergences appear.
 // Keys must exist in ADDON_PRICE_IDS, otherwise checkout cannot collect them.
+// A3 — Full catalog: every entry in ADDON_PRICE_IDS must appear here so that
+// /api/billing/plans reflects the real purchasable catalog. Icons and units are
+// presentation-only; prices, names, and descriptions come from ADDON_DEFINITIONS.
 const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
-  aiCreditsPack50k: { icon: "🤖", unit: "+50 000 crédits" },
-  monitorsPack10:   { icon: "📡", unit: "+10 monitors"    },
-  monitorsPack50:   { icon: "📡", unit: "+50 monitors"    },
-  extraSeats:       { icon: "👥", unit: "+5 sièges"       },
-  exportsPack1000:  { icon: "📤", unit: "+1 000 exports"  },
-  pdfPack200:       { icon: "📄", unit: "+200 PDF"        },
-  whiteLabel:       { icon: "🏷️", unit: "portail complet"  },
-  retention90d:     { icon: "🗄️", unit: "/mois"            },
-  retention365d:    { icon: "🏛️", unit: "/mois"            },
+  // ── Monitoring ─────────────────────────────────────────────────────────────
+  monitorsPack10:        { icon: "📡", unit: "+10 monitors"         },
+  monitorsPack50:        { icon: "📡", unit: "+50 monitors"         },
+  globalMonitoring:      { icon: "🌍", unit: "mondial"              },
+  slaMonitoring:         { icon: "📊", unit: "SLA avancé"          },
+  // ── SEO ────────────────────────────────────────────────────────────────────
+  advancedSeoLab:        { icon: "🔬", unit: "lab SEO complet"      },
+  keywordDomination:     { icon: "🎯", unit: "domination mots-clés" },
+  backlinkIntelligence:  { icon: "🔗", unit: "backlinks IA"         },
+  aiContentStrategist:   { icon: "✍️",  unit: "IA contenu"           },
+  // ── Local SEO ──────────────────────────────────────────────────────────────
+  gbpSlots10:            { icon: "📍", unit: "+10 fiches GBP"       },
+  aiGbpPosting:          { icon: "📱", unit: "publication IA GBP"   },
+  reviewIntelligence:    { icon: "⭐", unit: "IA avis clients"       },
+  localDominationMaps:   { icon: "🗺️", unit: "cartes locales"        },
+  // ── Conversion / IA ────────────────────────────────────────────────────────
+  aiCro:                 { icon: "🚀", unit: "CRO IA"               },
+  behavioralAI:          { icon: "🧠", unit: "comportemental IA"    },
+  revenueLeak:           { icon: "💰", unit: "fuites revenus IA"    },
+  abTestingAI:           { icon: "🧪", unit: "A/B tests IA"         },
+  // ── Reporting ──────────────────────────────────────────────────────────────
+  whiteLabel:            { icon: "🏷️", unit: "portail complet"       },
+  agencyPacks:           { icon: "🏢", unit: "packs agence"          },
+  aiExecutiveReport:     { icon: "📋", unit: "rapport exécutif IA"  },
+  aiForecasting:         { icon: "📈", unit: "prévisions IA"         },
+  // ── Intelligence ───────────────────────────────────────────────────────────
+  marketIntelligence:    { icon: "🌐", unit: "intelligence marché"   },
+  aiWorkflows:           { icon: "⚙️", unit: "workflows IA"          },
+  // ── Équipe ─────────────────────────────────────────────────────────────────
+  extraSeats:            { icon: "👥", unit: "+5 sièges"             },
+  enterprisePermissions: { icon: "🔐", unit: "permissions avancées" },
+  // ── Rétention de données ───────────────────────────────────────────────────
+  retention90d:          { icon: "🗄️", unit: "90 jours"             },
+  retention365d:         { icon: "🏛️", unit: "365 jours"             },
+  // ── Intégrations ───────────────────────────────────────────────────────────
+  advancedWebhooks:      { icon: "🔔", unit: "webhooks avancés"      },
+  zapierIntegration:     { icon: "⚡", unit: "Zapier + Make"         },
+  crmIntegration:        { icon: "🤝", unit: "CRM intégré"           },
+  // ── Enterprise ─────────────────────────────────────────────────────────────
+  customDomain:          { icon: "🌐", unit: "domaine personnalisé"  },
+  ssoEnterprise:         { icon: "🔑", unit: "SSO SAML/OIDC"        },
+  aiWorkspaceLaunch:     { icon: "🎯", unit: "lancement IA"          },
+  // ── Packs audits / exports ─────────────────────────────────────────────────
+  auditsPack200:         { icon: "🔍", unit: "+200 audits"           },
+  auditsPack1000:        { icon: "🔍", unit: "+1 000 audits"         },
+  pdfPack200:            { icon: "📄", unit: "+200 PDF"              },
+  exportsPack1000:       { icon: "📤", unit: "+1 000 exports"        },
+  // ── Crédits IA ─────────────────────────────────────────────────────────────
+  aiCreditsPack50k:      { icon: "🤖", unit: "+50 000 crédits"      },
+  aiCreditsPack200k:     { icon: "🤖", unit: "+200 000 crédits"     },
+  aiCreditsPack500k:     { icon: "🤖", unit: "+500 000 crédits"     },
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
+  if (REMOVED_ADDONS.has(id)) return [];
   const def = ADDON_DEFINITIONS[id];
   if (!def) {
     logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key — omitted");
@@ -74,6 +120,17 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     oneTime:  def.oneTime,
     quantity: def.quantity,
     priceId:  ADDON_PRICE_IDS[id] ?? "",
+    // Public billing has no organisation entitlement context. Its status is
+    // therefore the canonical product lifecycle; GET /api/addons refines this
+    // to "included" or "active" for an authenticated organisation.
+    availability: getAddonAvailability(id),
+    status:       getAddonAvailability(id),
+    // allowedPlans: derived from PLAN_ALLOWED_ADDONS (canonical per-plan purchasability matrix).
+    // coming_soon add-ons are not purchasable on any plan.
+    allowedPlans: getAddonAvailability(id) === "coming_soon"
+      ? []
+      : (["standard", "pro", "ultra"] as const)
+          .filter(p => PLAN_ALLOWED_ADDONS[p]?.has(id)),
   }];
 });
 
@@ -296,8 +353,17 @@ export async function checkQuota(
             break;
           }
           case "exports": {
+            // Count all export events this month from usage_events
+            // (CSV client-side, PDF, Health-Score all report via POST /billing/usage-events)
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM usage_events
+                WHERE org_id=$1
+                  AND event_type IN ('export','pdf_export','health_export')
+                  AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
             limit = limits.exports + extraExports;
-            usedCount = 0; // exports tracked separately — not blocked here
             break;
           }
         }

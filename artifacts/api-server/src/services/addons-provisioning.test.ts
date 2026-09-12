@@ -43,9 +43,9 @@ describe("provisionPlanAddons — Pro plan", () => {
     expect(activatedKeys).toContain("whiteLabel");
   });
 
-  it("provisions prioritySupport for Pro (bundled in plan)", async () => {
+  it("does not provision prioritySupport for Pro because it is not bundled", async () => {
     await provisionPlanAddons("pro", "org-pro", activatorStub);
-    expect(activatedKeys).toContain("prioritySupport");
+    expect(activatedKeys).not.toContain("prioritySupport");
   });
 
   it("provisions advancedWebhooks + retention90d for Pro", async () => {
@@ -88,29 +88,33 @@ describe("provisionPlanAddons — Ultra plan", () => {
   it("provisions keywordDomination, behavioralAI, aiForecasting for Ultra", async () => {
     await provisionPlanAddons("ultra", "org-ultra", activatorStub);
     expect(activatedKeys).toContain("keywordDomination");
+    // behavioralAI and aiForecasting are BETA + included in Ultra:
+    // they are provisioned automatically on plan activation (no purchase needed).
     expect(activatedKeys).toContain("behavioralAI");
     expect(activatedKeys).toContain("aiForecasting");
   });
 
-  it("provisions all Pro bundled addons (cumulative — Ultra ⊇ Pro)", async () => {
+  it("provisions Pro inclusions while upgrading retention90d to retention365d", async () => {
     await provisionPlanAddons("ultra", "org-ultra", activatorStub);
     const proKeys = Array.from(PLAN_INCLUDED_ADDONS["pro"] ?? []);
     for (const key of proKeys) {
+      if (key === "retention90d") continue;
       expect(activatedKeys, `Expected Pro key '${key}' in Ultra activation`).toContain(key);
     }
+    expect(activatedKeys).not.toContain("retention90d");
+    expect(activatedKeys).toContain("retention365d");
   });
 });
 
 describe("provisionPlanAddons — Standard plan", () => {
-  it("provisions zero addons for Standard (nothing bundled)", async () => {
+  it("provisions the canonical Standard inclusion set", async () => {
     await provisionPlanAddons("standard", "org-std", activatorStub);
-    expect(activatorStub).not.toHaveBeenCalled();
-    expect(activatedKeys).toHaveLength(0);
+    expect(activatedKeys).toEqual(Array.from(PLAN_INCLUDED_ADDONS["standard"] ?? []));
   });
 
-  it("does NOT provision whiteLabel for Standard (gated paid feature)", async () => {
+  it("provisions whiteLabel for Standard", async () => {
     await provisionPlanAddons("standard", "org-std", activatorStub);
-    expect(activatedKeys).not.toContain("whiteLabel");
+    expect(activatedKeys).toContain("whiteLabel");
   });
 });
 

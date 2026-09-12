@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { getForecastData, generateForecasts } from "../services/forecasting-service.js";
-import { requireFeature } from "../middlewares/planGate.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
@@ -8,7 +8,7 @@ const router = Router();
 // All forecast endpoints require the 'forecastingAI' feature flag (Pro plan and above).
 // Gate scoped to /forecast/* only — path-less router.use() would intercept every route
 // mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
-router.use("/forecast", requireFeature("forecastingAI", "AI Forecasting"));
+router.use("/forecast", requireAddon("aiForecasting", "AI Forecasting Engine"));
 
 router.get("/forecast", withCache(60), async (req: Request, res: Response) => {
   // orgId is resolved server-side from the authenticated session — never trusted from client

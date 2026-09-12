@@ -12,12 +12,15 @@ function getOrg(req: Request): string {
 // ── Liste ─────────────────────────────────────────────────────────────────
 router.get("/calendar-events", async (req: Request, res: Response) => {
   try {
+    const org = getOrg(req);
     const r = await (req as OrgReq).orgDb(
       `SELECT id, title, site, type, date, start_time, duration, notes, client_name,
               priority, color, reminder, linked_mission_id, updated_at, created_at
        FROM calendar_events
+       WHERE org_id = $1
        ORDER BY date ASC, start_time ASC
-       LIMIT 500`
+       LIMIT 500`,
+      [org]
     );
     const events = r.rows.map((row) => ({
       id:              row.id,
@@ -43,11 +46,12 @@ router.get("/calendar-events", async (req: Request, res: Response) => {
 // ── Détail ────────────────────────────────────────────────────────────────
 router.get("/calendar-events/:id", async (req: Request, res: Response) => {
   try {
+    const org = getOrg(req);
     const r = await (req as OrgReq).orgDb(
       `SELECT id, title, site, type, date, start_time, duration, notes, client_name,
               priority, color, reminder, linked_mission_id, updated_at, created_at
-       FROM calendar_events WHERE id=$1 LIMIT 1`,
-      [req.params.id]
+       FROM calendar_events WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, org]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Event not found" }); return; }
     const row = r.rows[0];
@@ -112,16 +116,17 @@ router.patch("/calendar-events/:id", canWrite, async (req: Request, res: Respons
     startTime?: string; duration?: number; notes?: string; clientName?: string;
     priority?: string; color?: string; reminder?: number; linkedMissionId?: string;
   };
+  const org = getOrg(req);
   try {
     const r = await (req as OrgReq).orgDb(
       `UPDATE calendar_events
        SET title=$1, site=$2, type=$3, date=$4, start_time=$5, duration=$6, notes=$7,
            client_name=$8, priority=$9, color=$10, reminder=$11, linked_mission_id=$12,
            updated_at=NOW()
-       WHERE id=$13 RETURNING *`,
+       WHERE id=$13 AND org_id=$14 RETURNING *`,
       [title, site || "", type || "Autre", date || "", startTime || "",
        duration ?? 60, notes || "", clientName || "",
-       priority || "normal", color || "", reminder ?? 0, linkedMissionId || null, id]
+       priority || "normal", color || "", reminder ?? 0, linkedMissionId || null, id, org]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Event not found" }); return; }
     const row = r.rows[0];
@@ -139,9 +144,11 @@ router.patch("/calendar-events/:id", canWrite, async (req: Request, res: Respons
 
 // ── Suppression ───────────────────────────────────────────────────────────
 router.delete("/calendar-events/:id", canDelete, async (req: Request, res: Response) => {
+  const org = getOrg(req);
   try {
     const r = await (req as OrgReq).orgDb(
-      `DELETE FROM calendar_events WHERE id=$1 RETURNING id`, [req.params.id]
+      `DELETE FROM calendar_events WHERE id=$1 AND org_id=$2 RETURNING id`,
+      [req.params.id, org]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Event not found" }); return; }
     res.json({ ok: true });

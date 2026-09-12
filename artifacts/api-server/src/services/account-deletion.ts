@@ -405,6 +405,65 @@ async function cleanupStorage(orgId: string, userIds: string[]): Promise<Deletio
   };
 }
 
+// ── Phase 0: Early session revocation ───────────────────────────────────────
+
+/**
+ * Immediately revoke all sessions belonging to the org/user in a SEPARATE,
+ * auto-commit connection — BEFORE Stripe cleanup, table discovery, or any
+ * other slow operation.
+ *
+ * Invariant: once this function returns, any subsequent /api/auth/session-restore
+ * call with the old token must return 401, even if the rest of the deletion
+ * pipeline takes another 20+ seconds or is aborted by the client.
+ *
+ * The in-transaction user_sessions deletion (step 2c-ter) is retained as a
+ * defence-in-depth second sweep for sessions that might have been created
+ * between this point and the long transaction's COMMIT.
+ *
+ * FAILURE BEHAVIOUR: throws on DB error so the caller aborts the deletion
+ * rather than proceeding with unrevoked sessions.  This is intentional: a
+ * partial deletion that leaves the session alive is worse than no deletion.
+ *
+ * POST-FAILURE SAFETY: if this function succeeds but a later step fails
+ * (Stripe or DB purge), the session is already gone.  The account data may
+ * still exist in the DB but the user is fully locked out.  We do NOT recreate
+ * the session in any error path.
+ */
+export async function preKillSessions(opts: {
+  orgId: string;
+  userId: string | null | undefined;
+  email: string | null | undefined;
+}): Promise<number> {
+  const { orgId, userId, email } = opts;
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    // Run without BEGIN/COMMIT — every statement auto-commits individually,
+    // so the DELETE is visible to all other connections the instant it finishes.
+    //
+    // Coverage:
+    //   org_id::text   — UUID sessions for this org (covers all members)
+    //   user_id_v2     — UUID session owned by the authenticated user
+    //   user_id        — legacy email-keyed sessions (pre-migration rows)
+    const result = (await client.query(
+      `DELETE FROM user_sessions
+        WHERE org_id::text = $1
+          OR ($2::text IS NOT NULL AND user_id_v2::text = $2)
+          OR ($3::text IS NOT NULL AND lower(user_id::text) = lower($3))`,
+      [orgId, userId ?? null, email ?? null],
+    )) as unknown as { rowCount: number };
+    const deleted = result.rowCount ?? 0;
+    logger.info(
+      { orgId, userId, deleted },
+      "[AccountDeletion] preKillSessions: sessions revoked before Stripe/purge",
+    );
+    return deleted;
+  } finally {
+    client.release();
+  }
+  // DB errors propagate — caller aborts the deletion.
+}
+
 // ── Main pipeline ───────────────────────────────────────────────────────────
 
 /**
@@ -416,9 +475,19 @@ async function cleanupStorage(orgId: string, userIds: string[]): Promise<Deletio
 export async function deleteAccount(target: DeletionTarget): Promise<DeletionReport> {
   const startedAt = new Date();
   const { orgId } = target;
-  const email = target.email ?? null;
+  // `let` — may be self-healed from the DB when the caller did not supply it.
+  let email = target.email ?? null;
 
   logger.info({ orgId, email }, "[AccountDeletion] Starting");
+
+  // ── Phase 0: Early session revocation ────────────────────────────────────
+  // Sessions are killed BEFORE any slow operation (Stripe API, table discovery,
+  // multi-table purge transaction).  This guarantees that if the browser
+  // abandons the fetch mid-operation (e.g. at the 15 s mark), a subsequent
+  // /api/auth/session-restore with the old token returns 401 immediately.
+  // NOTE: on failure this throws and the pipeline aborts — intentional, see
+  // preKillSessions() docblock.
+  await preKillSessions({ orgId, userId: target.userId, email });
 
   // ── Phase 1: Stripe (external, irreversible, must precede the DB work) ────
   const stripeReport = await cleanupStripe(target.stripeCustomerId, orgId);
@@ -440,6 +509,35 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
 
     // Lock the organization row so two concurrent deletions cannot interleave.
     await client.query(`SELECT id FROM organizations WHERE id = $1 FOR UPDATE`, [orgId]);
+
+    // ── Email self-heal ───────────────────────────────────────────────────
+    // If the caller did not supply an email (e.g. billingCtx returned null),
+    // resolve it from the DB so that email-keyed tables (magic_link_tokens,
+    // pending_signups, legacy org_settings, user_sessions) are always cleaned.
+    // Without this, a deleted account can still request a new magic link and
+    // log back in via the S3-legacy path in login-verify.
+    if (!email) {
+      try {
+        const [fromUsers, fromOrgs] = await Promise.all([
+          client.query<{ email: string }>(
+            `SELECT email FROM users WHERE id::text = $1 LIMIT 1`,
+            [String(target.userId ?? "")],
+          ),
+          client.query<{ owner_email: string }>(
+            `SELECT owner_email FROM organizations WHERE id::text = $1 LIMIT 1`,
+            [orgId],
+          ),
+        ]);
+        email = fromUsers.rows[0]?.email ?? fromOrgs.rows[0]?.owner_email ?? null;
+        if (email) {
+          logger.info({ orgId, email }, "[AccountDeletion] Email self-healed from DB");
+        } else {
+          logger.warn({ orgId }, "[AccountDeletion] Could not resolve email from DB — email-keyed cleanup will be skipped");
+        }
+      } catch (resolveErr) {
+        logger.warn({ resolveErr, orgId }, "[AccountDeletion] Email self-heal query failed (non-fatal) — email-keyed cleanup will be skipped");
+      }
+    }
 
     // ── 2a. Resolve which users are being erased ──────────────────────────
     const memberRes = await client.query(
@@ -511,6 +609,53 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
       const rowsAfter = (afterRes.rows[0] as { n: number }).n;
 
       tableRecords.push({ table, predicate, rowsBefore, rowsDeleted, rowsAfter });
+    }
+
+    // ── 2c-bis-pre. Explicit user_prefs deletion ─────────────────────────
+    // user_prefs is keyed by org_id (UUID). Dynamic discovery covers it via
+    // the org_id column, but it is explicitly included here as a safety net
+    // because it stores profile data (timezone, settings, streak, pinned items)
+    // that must never survive account deletion and re-registration.
+    {
+      const _upExists = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_prefs'`,
+      );
+      if (_upExists.rows.length > 0) {
+        const _upDel = (await client.query(
+          `DELETE FROM user_prefs WHERE org_id::text = $1`,
+          [orgId],
+        )) as unknown as { rowCount: number };
+        logger.info({ orgId, deleted: _upDel.rowCount }, "[AccountDeletion] user_prefs explicitly cleared");
+        tableRecords.push({
+          table: "user_prefs",
+          predicate: "org_id::text = $1",
+          rowsBefore: _upDel.rowCount ?? 0,
+          rowsDeleted: _upDel.rowCount ?? 0,
+          rowsAfter: 0,
+        });
+      }
+    }
+
+    // ── 2c-bis. Explicit user_sessions deletion ───────────────────────────
+    // user_sessions is keyed by org_id (UUID) AND user_id (legacy email) AND
+    // user_id_v2 (UUID). Dynamic discovery may miss rows that use only the
+    // legacy user_id column. Delete explicitly using all three identifiers so
+    // a deleted account can never replay an old session token.
+    {
+      const _sessExists = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_sessions'`,
+      );
+      if (_sessExists.rows.length > 0) {
+        const _sessIds: string[] = [orgId, ...(target.userId ? [String(target.userId)] : [])].filter(Boolean);
+        const _sessDel = (await client.query(
+          `DELETE FROM user_sessions
+            WHERE org_id::text = $1
+              OR user_id_v2::text = ANY($2::text[])
+              ${email ? "OR lower(user_id::text) = lower($3)" : ""}`,
+          email ? [orgId, _sessIds, email] : [orgId, _sessIds],
+        )) as unknown as { rowCount: number };
+        logger.info({ orgId, deleted: _sessDel.rowCount }, "[AccountDeletion] user_sessions explicitly cleared");
+      }
     }
 
     // ── 2d. Email-keyed auth tables ───────────────────────────────────────

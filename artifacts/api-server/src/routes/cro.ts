@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getCROData, generateCRORecommendations, upsertCROScore } from "../services/cro-service.js";
 import { canWrite } from "../middlewares/requireRole.js";
-import { requireFeature } from "../middlewares/planGate.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -14,7 +14,7 @@ const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 // Gate scoped to /cro/* only — path-less router.use() would intercept every route
 // mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
-router.use("/cro", requireFeature("cro", "CRO AI"));
+router.use("/cro", requireAddon("aiCro", "AI CRO Strategist"));
 
 async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
   const orgId = req.orgId ?? "default";

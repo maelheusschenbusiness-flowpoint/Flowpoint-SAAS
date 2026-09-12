@@ -69,6 +69,7 @@ export async function initMissionsTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_missions_org_id ON missions(org_id);
       CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
       CREATE INDEX IF NOT EXISTS idx_mission_history_mission_id ON mission_history(mission_id);
+      CREATE INDEX IF NOT EXISTS idx_missions_org_priority ON missions(org_id, priority_score DESC, created_at DESC);
 
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_url TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_audit_id TEXT;
@@ -92,6 +93,22 @@ export async function initMissionsTables(): Promise<void> {
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS ai_summary                TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS history                   JSONB DEFAULT '[]';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS last_refreshed_at         TIMESTAMP;
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS created_by                TEXT;
+      -- Backfill: attribute pre-fix missions (created_by IS NULL) to the org owner
+      -- Wrapped in DO block to tolerate fresh DBs where owner_email column may not
+      -- exist yet (init-data-tables adds it, but ordering can vary on first boot).
+      DO $$
+      BEGIN
+        UPDATE missions m
+        SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+        FROM organizations o
+        WHERE m.org_id = o.id::text
+          AND (m.created_by IS NULL OR m.created_by = '')
+          AND (COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) IS NOT NULL
+               AND COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) != '');
+      EXCEPTION WHEN undefined_column THEN
+        NULL; -- owner_email not yet added; backfill will run on next boot
+      END $$;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS completed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS dismissed_at              TIMESTAMP;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS due_date                  TEXT;

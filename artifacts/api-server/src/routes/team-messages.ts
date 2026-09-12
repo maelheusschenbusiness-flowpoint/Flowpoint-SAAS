@@ -7,15 +7,29 @@ const router = Router();
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
   orgId?: string;
-  orgContext?: { email?: string; userId?: string };
+  orgContext?: { orgId?: string; email?: string; userId?: string; userUuid?: string };
 };
-const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
+// Canonical org bucket — the tenant every teammate (owner + invited member)
+// shares. orgContext.orgId is authoritative (set from the verified session and
+// identical for the owner and everyone they invited); fall back to req.orgId,
+// then "default". Normalized (trim) so REST reads and SSE broadcasts key the
+// exact same bucket and messages are never split across two org strings.
+const org = (req: Request): string => {
+  const ctx = (req as OrgReq).orgContext;
+  const raw = ctx?.orgId ?? (req as OrgReq).orgId ?? "default";
+  const s = String(raw).trim();
+  return s || "default";
+};
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 // Stable identity of the requester — used to persist sender_id and to compute
-// per-recipient "self" on reads. Prefers userId, falls back to email.
+// per-recipient "self" on reads. Prefers the immutable user UUID, then userId,
+// then email. Trimmed so the same person always resolves to the same senderId
+// regardless of whitespace/casing drift in the session record.
 const requesterId = (req: Request): string => {
   const ctx = (req as OrgReq).orgContext;
-  return String(ctx?.userId || ctx?.email || "user");
+  const raw = ctx?.userUuid || ctx?.userId || ctx?.email || "user";
+  const s = String(raw).trim();
+  return s || "user";
 };
 // Canonical channel form: bare lowercase name without '#' prefix ("general", "seo", …)
 const normChannel = (c: unknown): string =>
@@ -107,12 +121,20 @@ router.delete("/team/channels/:name", canWrite, async (req, res) => {
 router.get("/team/messages", async (req, res) => {
   try {
     const channel = normChannel(req.query["channel"]);
+    // ?since=<epoch_ms> — only return messages newer than this timestamp.
+    // Used by the 15s polling fallback in fp-backend.js to fetch only new
+    // messages instead of re-processing the full 100-message history.
+    const sinceMs = Number(req.query["since"]) || 0;
+    const params: unknown[] = [org(req), channel];
+    const sinceClause = sinceMs > 0
+      ? (() => { params.push(new Date(sinceMs).toISOString()); return `AND created_at > $3`; })()
+      : "";
     const r = await db(req)(
       `SELECT id, org_id, channel, sender_id, sender_name, content, type, attachment_url, attachment_name, created_at
        FROM team_messages
-       WHERE org_id=$1 AND channel=$2
+       WHERE org_id=$1 AND channel=$2 ${sinceClause}
        ORDER BY created_at DESC LIMIT 100`,
-      [org(req), channel]
+      params
     );
     const me = requesterId(req);
     res.json(r.rows.reverse().map((m: Record<string, unknown>) => mapMsg(m, String(m["sender_id"] ?? "") === me)));
@@ -125,16 +147,28 @@ router.get("/team/messages", async (req, res) => {
 // ── GET /team/messages/all  — fetch all persisted channels in one request ─────
 router.get("/team/messages/all", async (req, res) => {
   try {
-    // Fetch channel list dynamically from team_channels, fallback to defaults
+    // Fetch channel list dynamically from team_channels, fallback to defaults.
+    // Union with message-derived channels: the channel-row auto-persist in
+    // POST /team/messages is best-effort, so a message whose channel row was
+    // never written must still surface here instead of silently disappearing.
     let channels: string[] = ["general", "seo", "rapports", "support"];
     try {
       const chRes = await db(req)(
         `SELECT name FROM team_channels WHERE org_id=$1 ORDER BY created_at ASC`,
         [org(req)]
       );
-      if (chRes.rows.length > 0) {
-        channels = chRes.rows.map((r: Record<string, unknown>) => String(r["name"]));
-      }
+      const names = chRes.rows.map((r: Record<string, unknown>) => String(r["name"]));
+      try {
+        const msgRes = await db(req)(
+          `SELECT DISTINCT channel FROM team_messages WHERE org_id=$1`,
+          [org(req)]
+        );
+        for (const r of msgRes.rows) {
+          const c = String(r["channel"]);
+          if (c && !names.includes(c)) names.push(c);
+        }
+      } catch { /* channel rows only */ }
+      if (names.length > 0) channels = names;
     } catch { /* use defaults */ }
 
     const results: Record<string, unknown[]> = {};
@@ -170,9 +204,14 @@ router.post("/team/messages", canWrite, async (req, res) => {
   const senderName = (req as OrgReq).orgContext?.email?.split("@")[0] ?? "Équipe";
   const senderId = requesterId(req);
   const id = "msg" + Date.now();
+  console.log("[CHAT SEND]", { messageId: id, orgId: org(req), senderId, channel });
   try {
-    // Auto-persist the channel so it always appears in the channel list
-    db(req)(
+    // Auto-persist the channel so it always appears in the channel list.
+    // AWAITED (not fire-and-forget): /team/messages/all derives its channel
+    // list from team_channels, so a recipient refreshing right after this POST
+    // must already find the row — otherwise the message exists but its channel
+    // is missing from the response and the chat looks empty.
+    await db(req)(
       `INSERT INTO team_channels (org_id, name, created_by, created_at)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (org_id, name) DO NOTHING`,
@@ -198,23 +237,45 @@ router.post("/team/messages", canWrite, async (req, res) => {
     // self:true would suppress their unread badge. Send self:false + senderId;
     // each client compares senderId to its own identity to decide "self".
     store.broadcast({ type: "chat:message", channel, message: { ...msg, self: false, read: false } }, org(req));
+    console.log("[CHAT SSE BROADCAST]", { messageId: id, orgId: org(req), channel, senderId, recipients: "all-org-sse-clients" });
     // Persist PER-RECIPIENT notification rows so offline teammates see the
     // message in their notification feed. One row per active member (excluding
     // the sender), each with its own read state — one member marking all read
     // can never clear another member's chat alert. Fire-and-forget.
     (async () => {
       const senderEmail = (req as OrgReq).orgContext?.email ?? "";
-      const members = await db(req)(
-        `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
-           FROM team_members
-          WHERE org_id = $1 AND status = 'active'`,
-        [org(req)]
-      );
+      const [membersRes, ownerRes] = await Promise.all([
+        db(req)(
+          `SELECT COALESCE(NULLIF(user_id, ''), email) AS rid, email, user_id
+             FROM team_members
+            WHERE org_id = $1 AND status = 'active'`,
+          [org(req)]
+        ),
+        // The org owner often has NO team_members row — include them explicitly
+        // so they always receive chat notifications regardless of membership table state.
+        db(req)(
+          `SELECT COALESCE(NULLIF(u.id::text, ''), o.owner_email) AS rid,
+                  o.owner_email AS email,
+                  u.id::text AS user_id
+             FROM organizations o
+             LEFT JOIN users u ON LOWER(u.email) = LOWER(o.owner_email)
+            WHERE o.id::text = $1`,
+          [org(req)]
+        ),
+      ]);
+      // Merge: add owner if not already covered by a team_members row
+      const memberRidSet = new Set(membersRes.rows.map((r: Record<string, unknown>) => String(r["rid"] ?? "")));
+      const ownerRow = ownerRes.rows[0] as Record<string, unknown> | undefined;
+      const ownerRid = String(ownerRow?.["rid"] ?? "");
+      const allRecipientRows: Record<string, unknown>[] = [...membersRes.rows];
+      if (ownerRid && !memberRidSet.has(ownerRid)) {
+        allRecipientRows.push(ownerRow as Record<string, unknown>);
+      }
       const title = `Nouveau message de ${senderName} dans #${channel}`;
       const body  = (text ?? attachmentName ?? "Pièce jointe").slice(0, 300);
       const link  = JSON.stringify({ route: "team", sub: "chat", channel, senderId });
       let n = 0;
-      for (const m of members.rows) {
+      for (const m of allRecipientRows) {
         const rid = String(m["rid"] ?? "");
         if (!rid) continue;
         // Exclude the sender under any of their identities (userId or email)

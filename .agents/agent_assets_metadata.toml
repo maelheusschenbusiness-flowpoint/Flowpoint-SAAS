@@ -6,39 +6,358 @@ id = "z0XcdgFASiJ614rrqjGGD"
 uri = "file://dashboard-flowpoint.zip"
 type = "unspecified"
 title = "Dashboard FlowPoint (3 fichiers)"
+logical_id = "a7178fe2-4adf-46ba-8b9b-26ab9b7a35e3"
 
 [[outputs]]
 id = "fYKxoyz382CAySI3Ffyyb"
 uri = "file://flowpoint-complet.zip"
 type = "unspecified"
 title = "FlowPoint — Projet complet (155 fichiers)"
+logical_id = "ee875231-8f4a-4428-9bed-6b2720230b60"
 
 [[outputs]]
 id = "qMvFtads3bec0xf5MmlI1"
 uri = "file://flowpoint-dashboard-export.zip"
 type = "unspecified"
 title = "FlowPoint Dashboard — Frontend + Backend complets"
+logical_id = "b4baee4b-ac36-4389-96a9-fa98a98258df"
 
 [[outputs]]
 id = "mEdehkMQbYGYli_qGB2Id"
 uri = "file://ARCHITECTURE.md"
 type = "text"
 title = "FlowPoint — Documentation Technique Complète"
+logical_id = "2d962f9e-911a-4a33-8802-14d2353da5ba"
 
 [[outputs]]
 id = "OQnzCQsKKoUPF7Hpv3A-q"
 uri = "file://flowpoint-complete-project.zip"
 type = "unspecified"
 title = "FlowPoint — Projet Complet (backend + frontend)"
+logical_id = "8342debb-baea-4b23-bcf1-490978c62763"
 
 [[outputs]]
 id = "mJp8yqXAxRrbdgOKn9Mzv"
 uri = "file://flowpoint-full-export-20260723.zip"
 type = "unspecified"
 title = "FlowPoint — Export complet du projet (1.4 Mo)"
+logical_id = "97c783a9-1ff0-45cc-bb85-de1b08a33b9a"
 
 [[outputs]]
 id = "dddUdpwuEqXxZndz7g6Lx"
 uri = "file://billing-files.zip"
 type = "unspecified"
 title = "FlowPoint billing files — 12 fichiers ZIP (624 KB)"
+logical_id = "3aace4dd-27b0-45a7-b72f-248dca447cf7"
+
+[[outputs]]
+id = "OYQNUIJ3Wxr7amhuN-k8T"
+uri = "file://flowpoint-source.tar.gz"
+type = "unspecified"
+title = "FlowPoint — code complet"
+description = "Archive téléchargeable de 11 Mo contenant le code source, backend, frontend, tests, scripts, documentation, configurations et tâches du projet. SHA-256 : bcf15fea28f19d3a850638c8f4dc6c7cde6e2899eb36faae93940d96ce9d48bc"
+logical_id = "6dbbf4b8-c293-43b8-9db2-e09dadbe1c13"
+
+[[outputs]]
+id = "-YoKIHB6IVFvTVppGbkhO"
+uri = "file://flowpoint-project-part-00"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 01/10"
+description = "Partie 1 sur 10 de l’archive complète incluant les assets. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "ba4e56fd-8307-488c-974c-2eef2777fc89"
+
+[[outputs]]
+id = "j7XnfFAQCzAUfHjq73K3x"
+uri = "file://flowpoint-project-part-01"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 02/10"
+description = "Partie 2 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "dc7bdee2-43be-474e-a94a-238417757205"
+
+[[outputs]]
+id = "MhbHg9_q8LmPHqz3tHUZK"
+uri = "file://flowpoint-project-part-02"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 03/10"
+description = "Partie 3 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "fc72795e-8756-4373-8def-6c3fa6ec4577"
+
+[[outputs]]
+id = "wDt_da3zm_CEhBSHZtT8y"
+uri = "file://flowpoint-project-part-03"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 04/10"
+description = "Partie 4 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "cd00f50f-5875-449b-be22-66bf3c5268d9"
+
+[[outputs]]
+id = "NykarPdu4RrzXBZMF2s9P"
+uri = "file://flowpoint-project-part-04"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 05/10"
+description = "Partie 5 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "953526a6-4930-4557-8880-4460ed9ce693"
+
+[[outputs]]
+id = "zwldJnxMHnSiEUnd08iLb"
+uri = "file://flowpoint-project-part-05"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 06/10"
+description = "Partie 6 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "1dc63eaa-4b6e-4cde-a563-64e501e693cc"
+
+[[outputs]]
+id = "8BXLmQsJ6GHDAEfcJoHSk"
+uri = "file://flowpoint-project-part-06"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 07/10"
+description = "Partie 7 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "b951b8a0-e498-4125-a851-62c79504cdd6"
+
+[[outputs]]
+id = "TsaM9Q9bDzsFZZh2Qc5G8"
+uri = "file://flowpoint-project-part-07"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 08/10"
+description = "Partie 8 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "46282bf1-3c28-4cd6-b0db-98f30ac4b4f6"
+
+[[outputs]]
+id = "zCT2LPXQk5BwUCo2JLVLt"
+uri = "file://flowpoint-project-part-08"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 09/10"
+description = "Partie 9 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "78c261c4-1b91-45f8-b8f0-b767c585e249"
+
+[[outputs]]
+id = "25dZPzZCw-EYlgn9N_tVT"
+uri = "file://flowpoint-project-part-09"
+type = "unspecified"
+title = "FlowPoint — archive complète, partie 10/10"
+description = "Partie 10 sur 10. Télécharge toutes les parties puis exécute : cat flowpoint-project-part-* > flowpoint-project-complete.tar.gz"
+logical_id = "84ded8de-f09e-46cf-9a5f-2eca72e13bac"
+
+[[outputs]]
+id = "-OFjZ2NA1-WbZz4QitScp"
+uri = "file://exports/flowpoint-project-backup-downloadable-2026-09-05.tar.gz"
+type = "unspecified"
+title = "Sauvegarde complète FlowPoint — téléchargement"
+description = "Archive tar.gz vérifiée et extractible contenant le code, les configurations assainies, la documentation, les scripts, les assets projet utiles et les 183 plans .local/tasks/. Taille : 7,560,569 octets. Les secrets, dépendances générées, caches, métadonnées Git et captures historiques volumineuses sont exclus."
+logical_id = "cf3de19d-c041-4a93-b3b4-9039d29de2a9"
+content_hash = "sha256:91c297e3c26eb6b5a2a4ae1c0f3c0ceae205898f48d0658a66b3b8d33c525544"
+size = 7560569
+mtime_ms = 1788646029756
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/cf3de19d-c041-4a93-b3b4-9039d29de2a9/dc36a47a-5b7f-4117-ae94-1a3364252df8"
+storage_version_token = "1788646068669021"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "bfp0oVsAX-fQwoYchQlNT"
+uri = "file://exports/flowpoint-project-backup-downloadable-2026-09-05.manifest.txt"
+type = "text"
+title = "Manifeste et empreinte de la sauvegarde"
+description = "Inventaire complet, exclusions explicites, contrôles de restauration et empreinte SHA-256 de l’archive téléchargeable."
+logical_id = "e9b3d63d-6896-488d-8b04-43d210288f3c"
+content_hash = "sha256:88be5adf9c5e5cae15df4c7333b5eec0651a8faf323157b138b8e28a46add39e"
+size = 79193
+mtime_ms = 1788646029931
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/e9b3d63d-6896-488d-8b04-43d210288f3c/b9179e6b-e6fb-4629-9866-813f82d8e7dd"
+storage_version_token = "1788646069385598"
+content_type = "text/plain"
+
+[[outputs]]
+id = "Nz-ilkMKSbfb2_Uo8O_A7"
+uri = "file://exports/flowpoint-project-complete-2026-09-06.tar.gz"
+type = "unspecified"
+title = "FlowPoint project complete — updated"
+description = "Latest complete project archive, including the clean-reset AI schema bootstrap. SHA-256: e58f37f1aff62d6b20e78ae60e7db9641e5047493c3d0609128f37d9a6a62ba9"
+logical_id = "82e853f2-d52f-4cfc-abcc-0fe9f5f2fb3c"
+content_hash = "sha256:e58f37f1aff62d6b20e78ae60e7db9641e5047493c3d0609128f37d9a6a62ba9"
+size = 6435639
+mtime_ms = 1788648519904
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/82e853f2-d52f-4cfc-abcc-0fe9f5f2fb3c/7d006f73-9ffd-4811-bd77-e52d4e2080f5"
+storage_version_token = "1788648528926598"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "9qDcT_jIvV4obRLrz7tuE"
+uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
+type = "video"
+title = "FlowPoint onboarding — V1 corrigée"
+description = "Vidéo V1 finale — 1920×1080, 30 fps, H.264, 40,4 secondes."
+logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
+content_hash = "sha256:a25bed3024150e2d5e7c5dc57d27a085b3d8278c2f9d68ceb53be6fd15159900"
+size = 3763662
+mtime_ms = 1789064081675
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/e6438b94-8303-4426-986e-c20b51a8b8f3"
+storage_version_token = "1789064625573727"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "bCj9Owgr4NLdh6z2xnyqH"
+uri = "file://artifacts/flowpoint-export/onboarding/step2-workflow.mp4"
+type = "video"
+title = "Onboarding 2 — Workflow FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "26478669-5d0c-444c-bfab-3710e3b5a717"
+content_hash = "sha256:c54b13e7890fcd81fe32a666dbd31aa76614f7ed8387127c381439a3d13f46af"
+size = 922725
+mtime_ms = 1788973626841
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/26478669-5d0c-444c-bfab-3710e3b5a717/ecb73f2b-4826-4d74-b2b8-7f25a682f4ef"
+storage_version_token = "1788977035296908"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "CS16R9EsMjtEcnZt0Hr8_"
+uri = "file://artifacts/flowpoint-export/onboarding/step3-data.mp4"
+type = "video"
+title = "Onboarding 3 — Données FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "d4409d07-467e-4611-986f-44c3f98762bb"
+content_hash = "sha256:cafec1f3c71a5b8d7f8b6e0289436ce861e55aa51de5b162660c726a4937facb"
+size = 1011016
+mtime_ms = 1788973629677
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/d4409d07-467e-4611-986f-44c3f98762bb/9bf531fc-4017-403b-bf8d-f56affd1acfc"
+storage_version_token = "1788977037138996"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "sryiFqo3X_ivK_jwbffra"
+uri = "file://artifacts/flowpoint-export/onboarding/step4-daily.mp4"
+type = "video"
+title = "Onboarding 4 — Usage quotidien FlowPoint"
+description = "Vidéo réelle de l’interface FlowPoint."
+logical_id = "ae96f023-379d-44c6-a24b-b63b8506432c"
+content_hash = "sha256:a550a7682986548d78d57f75be827e89ff4e3b22f0f6b825a4060e9616ab538d"
+size = 1172826
+mtime_ms = 1788973632697
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/ae96f023-379d-44c6-a24b-b63b8506432c/3f2294c2-4df2-4bf2-9bc2-d94f2316006e"
+storage_version_token = "1788977038864551"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "R2gIs_1BQ9u_4urBEnCix"
+uri = "file://FlowPoint-onboarding-videos-V1-V6.zip"
+type = "unspecified"
+title = "FlowPoint onboarding — vidéos V1 à V6"
+description = "Archive ZIP contenant les six vidéos d’onboarding FlowPoint, V1 à V6."
+logical_id = "1a3814c4-0e78-401c-b8d4-2947f30675d1"
+content_hash = "sha256:82616dc20f8eedef8a296c433e8c6768c4965d49f4bf11b2b77f8942cbf82edb"
+size = 10409473
+mtime_ms = 1789064666422
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/1a3814c4-0e78-401c-b8d4-2947f30675d1/62a3d1dc-dc0d-4ede-8ff1-56b120ef3346"
+storage_version_token = "1789064672323425"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "56_HSC7ZzJW8YbzrYaMmp"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_0.5s-overview.jpg"
+type = "image"
+title = "t=0.5s — Vue générale Overview"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "f9f1b687-e2aa-4b2c-8397-1adc5e799a76"
+content_hash = "sha256:93c8cd2349a973061200fed79d5ad15d90f10846d6b3e111429d03f50501f74f"
+size = 48375
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/f9f1b687-e2aa-4b2c-8397-1adc5e799a76/b28d516e-fa18-44a5-9f1f-1ac150513ca8"
+storage_version_token = "1789062282710136"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "CwgPgLd-ASJUtIYbhrkit"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_kpi-hover.jpg"
+type = "image"
+title = "t=13.6s — Hover KPI cards (avant zoom)"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "2ee2f66a-74a1-401a-8548-bddacea9b831"
+content_hash = "sha256:161c69faf01fcc7223d397c33f7fe83d1ba8a1ad83688ee6553659787c556e89"
+size = 10730
+mtime_ms = 1789062269133
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/2ee2f66a-74a1-401a-8548-bddacea9b831/d6150ebb-b910-42a7-a0d1-69860fd3e4f3"
+storage_version_token = "1789062284759417"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Q-h5X-4fhyFVF8BEQlppn"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_kpi-zoom-callout.jpg"
+type = "image"
+title = "t=14.9s — Zoom ×1.28 + callout \"Votre score SEO\""
+description = "Capture V1 pilot 1920×1080"
+logical_id = "0cb0897c-7b45-496f-8779-1f47b92b4575"
+content_hash = "sha256:bdc69ed897fe5fabc623ea08d03e9f7255c08afb1e3bdf8cf43a0d45632bc974"
+size = 60311
+mtime_ms = 1789062269133
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/0cb0897c-7b45-496f-8779-1f47b92b4575/d474fe08-ed31-4690-a6f3-a4437ac9b367"
+storage_version_token = "1789062286756054"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "KiD7ck2g_NYrvmX2xeQmV"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_insights-callout.jpg"
+type = "image"
+title = "t=19.6s — Section insights + callout priorités"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "0355df8d-abf0-4b3a-b31d-f8b150e11797"
+content_hash = "sha256:a2ac7ed23189ee6d1f38d0b95628b3d805b3b7c10adf828d508b93e0fa3fb881"
+size = 71656
+mtime_ms = 1789062269133
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/0355df8d-abf0-4b3a-b31d-f8b150e11797/aa3ce42e-7df2-449b-8ea5-4fa19ea08806"
+storage_version_token = "1789062288349810"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "eNXk5QyfLtY6a341Sg-Rs"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_audits-overview.jpg"
+type = "image"
+title = "t=28.9s — Arrivée sur Audits SEO"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "3ec156a3-12d1-42b8-9fbd-1379ce14bae1"
+content_hash = "sha256:e08cb7bdba804441169176936ce9c8a57bf057aa9a93e9d7f4911f6bdf3542cb"
+size = 43913
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/3ec156a3-12d1-42b8-9fbd-1379ce14bae1/df22c39e-4471-4781-b4dd-37890aa821b7"
+storage_version_token = "1789062290240475"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "i4fjxMN_8kBxbtN2GzMO2"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_audits-zoom-callout.jpg"
+type = "image"
+title = "t=30.9s — Zoom ×1.22 table + callout"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "3c2ee05a-3bcc-43ea-b298-79a6c55020f3"
+content_hash = "sha256:82231fe3d886adccffa8a4839fb9e828045078c06aec1030b5c386d565008ed2"
+size = 49224
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/3c2ee05a-3bcc-43ea-b298-79a6c55020f3/07e95d72-761f-4deb-8a96-09e6bb1a8081"
+storage_version_token = "1789062292827916"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "OSncVqe3X74rsf_ElOQRk"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames/frame_back-overview-final.jpg"
+type = "image"
+title = "t=44.5s — Retour Overview — callout final"
+description = "Capture V1 pilot 1920×1080"
+logical_id = "91b1a900-7abb-4947-a685-55719f243f51"
+content_hash = "sha256:e63b815fe975aaff76f4b11ed3b27fef8a9129233ef2607947e8ba76147794b9"
+size = 71212
+mtime_ms = 1789062269132
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/91b1a900-7abb-4947-a685-55719f243f51/fd5b7d60-a158-48f6-abac-6ab640fb8c89"
+storage_version_token = "1789062294551202"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "sX-1Q841_GMnffZATaM3n"
+uri = "file://artifacts/flowpoint-export/onboarding/v1-frames-final/transitions-contact-sheet.jpg"
+type = "image"
+title = "V1 — contrôle transitions zooms"
+description = "Planche de contrôle avant / pendant / après les zooms KPI et Audits : aucune transition noire intermédiaire."
+logical_id = "76eb192b-7c2c-4e35-9681-4c318c460a33"
+content_hash = "sha256:3168eb7eee70fd839288c001c6a49ce88fe54ca2848414617b99fff7bcb378d7"
+size = 610379
+mtime_ms = 1789062807857
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/76eb192b-7c2c-4e35-9681-4c318c460a33/ccb1e99d-e081-470e-aafc-dc3da5a88090"
+storage_version_token = "1789062876574857"
+content_type = "image/jpeg"

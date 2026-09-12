@@ -1444,6 +1444,7 @@ html:not([data-theme="light"]) .fp-toast {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid rgba(255,255,255,0.06);
+  align-items: flex-end;
 }
 .fp-ai-input {
   flex: 1;
@@ -1456,13 +1457,23 @@ html:not([data-theme="light"]) .fp-toast {
   outline: none;
   transition: border-color var(--fp-t-fast);
   resize: none;
+  max-height: 120px;
+  overflow-y: auto !important;
 }
 .fp-ai-input:focus { border-color: rgba(37,99,235,0.5); }
 .fp-ai-send {
+  -webkit-appearance: none;
+  appearance: none;
   background: linear-gradient(135deg, var(--fp-accent), var(--fp-accent-dark));
   border: none;
   border-radius: var(--fp-radius-md);
-  padding: 10px 16px;
+  padding: 0;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  flex-shrink: 0;
+  box-sizing: border-box;
   color: #fff;
   cursor: pointer;
   display: flex;
@@ -2150,9 +2161,11 @@ div[style*="overflow-x: auto"] {
 /* ── STAT ROW ── */
 .fp-stat-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* auto-fit (not auto-fill): empty tracks collapse so cards always span 100% width */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 14px;
   margin-bottom: 24px;
+  width: 100%;
 }
 
 .fp-stat-card {
@@ -3099,6 +3112,98 @@ div[style*="overflow-x: auto"] {
 /* -- Onboarding -- */
 [data-theme="light"] .fp-onboarding { background: rgba(255,255,255,0.6); }
 [data-theme="light"] .fp-onboarding-card { background: #ffffff; border-color: rgba(0,0,0,0.09); box-shadow: 0 20px 60px rgba(0,0,0,0.15); color: #0f172a; }
+
+/* ── Onboarding modal bêta (fp-ob-*) ─────────────────────────────────────── */
+.fp-ob-backdrop {
+  position: absolute; inset: 0;
+  background: transparent; /* overlay handled by .fp-onboarding parent */
+  cursor: default;
+}
+.fp-ob-dialog {
+  position: relative; z-index: 1;
+  background: var(--fp-card-bg, #0d1525);
+  border: 1px solid rgba(37,99,235,0.28);
+  border-radius: var(--fp-radius-xl, 16px);
+  box-shadow: 0 24px 72px rgba(0,0,0,0.55);
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  animation: fp-scale-in 0.22s var(--fp-ease-spring, cubic-bezier(0.34,1.56,0.64,1));
+}
+.fp-ob-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px 0;
+}
+.fp-ob-welcome {
+  font-size: 12px; font-weight: 700; color: var(--fp-accent, #2563EB);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.fp-ob-progress {
+  font-size: 12px; color: var(--fp-text-faint, #64748b); font-weight: 600;
+}
+.fp-ob-media {
+  padding: 16px 24px 0;
+}
+.fp-ob-video-placeholder {
+  width: 100%; aspect-ratio: 16/9;
+  border-radius: 10px;
+  background: var(--fp-inner-card, rgba(255,255,255,0.04));
+  border: 1px dashed var(--fp-border, rgba(255,255,255,0.08));
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; color: var(--fp-text-faint, #64748b);
+}
+.fp-ob-video-icon { opacity: 0.45; }
+.fp-ob-video-label { font-size: 13px; font-weight: 500; }
+.fp-ob-body { padding: 20px 24px 24px; }
+.fp-ob-title {
+  font-family: var(--fp-font-head, inherit);
+  font-size: 20px; font-weight: 800; color: var(--fp-text);
+  margin-bottom: 8px; line-height: 1.3;
+}
+.fp-ob-desc {
+  font-size: 13px; color: var(--fp-text-muted); line-height: 1.65;
+  margin-bottom: 20px;
+}
+.fp-ob-dots {
+  display: flex; gap: 8px; justify-content: flex-start; margin-bottom: 24px;
+}
+.fp-ob-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,0.12); border: none; cursor: pointer;
+  padding: 0; transition: background 0.2s, transform 0.15s;
+}
+.fp-ob-dot.active { background: var(--fp-accent, #2563EB); transform: scale(1.3); }
+.fp-ob-dot:hover:not(.active) { background: rgba(255,255,255,0.28); }
+.fp-ob-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.fp-ob-skip { color: var(--fp-text-faint) !important; font-size: 12px !important; }
+.fp-ob-next { min-width: 160px; }
+
+/* Light mode overrides */
+[data-theme="light"] .fp-ob-dialog {
+  background: #ffffff;
+  border-color: rgba(37,99,235,0.18);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+}
+[data-theme="light"] .fp-ob-dot { background: rgba(0,0,0,0.12); }
+[data-theme="light"] .fp-ob-dot:hover:not(.active) { background: rgba(0,0,0,0.22); }
+[data-theme="light"] .fp-ob-video-placeholder {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.12);
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .fp-ob-dialog { border-radius: 14px 14px 0 0; align-self: flex-end; width: 100vw; max-width: 100vw; }
+  .fp-onboarding { align-items: flex-end; }
+  .fp-ob-header { padding: 16px 16px 0; }
+  .fp-ob-media { padding: 12px 16px 0; }
+  .fp-ob-body { padding: 16px; }
+  .fp-ob-title { font-size: 17px; }
+  .fp-ob-actions { flex-wrap: wrap; gap: 8px; }
+  .fp-ob-next { min-width: auto; flex: 1; }
+}
 
 /* -- Context menu -- */
 [data-theme="light"] .fp-ctx-menu { background: #ffffff; border-color: rgba(0,0,0,0.1); box-shadow: 0 8px 28px rgba(0,0,0,0.12); }
@@ -6047,10 +6152,10 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
    OVERVIEW PAGE — Layout & Alignment Fixes v4
    ═══════════════════════════════════════════════════════════════ */
 
-/* Health gauge 8-card grid (inline style override via class) */
+/* Health gauge 8-card grid — auto-fill so cards never overflow or leave gaps */
 .fp-health-gauge-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
 /* Forecast 4-card grid */
@@ -6466,11 +6571,13 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
 }
 .fp-ai-chat-panel {
   position: fixed; top: 0; right: 0; bottom: 0; width: 520px;
-  background: var(--fp-bg-panel); border-left: 1px solid var(--fp-border);
+  background: var(--fp-bg-card); border-left: 1px solid var(--fp-border);
   z-index: 1200; display: flex; flex-direction: column;
   animation: fpSlideInRight 0.25s cubic-bezier(0.16,1,0.3,1);
   box-shadow: -8px 0 32px rgba(0,0,0,0.3);
 }
+.fp-ai-chat-panel[hidden],
+.fp-ai-chat-overlay[hidden] { display: none !important; }
 @keyframes fpSlideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .fp-ai-chat-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -6486,7 +6593,7 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
 .fp-ai-chat-title { font-size: 14px; font-weight: 600; color: var(--fp-text); }
 .fp-ai-chat-subtitle { font-size: 11px; color: var(--fp-text-faint); }
 .fp-ai-chat-messages {
-  flex: 1; overflow-y: auto; padding: 16px;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 16px;
   display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth;
 }
 .fp-ai-chat-welcome { text-align: center; padding: 24px 16px; }
@@ -6523,16 +6630,26 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
 .fp-ai-typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .fp-ai-typing-dot:nth-child(3) { animation-delay: 0.4s; }
 @keyframes fpTyping { 0%,60%,100% { opacity: 0.2; transform: scale(0.75); } 30% { opacity: 1; transform: scale(1); } }
-.fp-ai-chat-footer { border-top: 1px solid var(--fp-border); padding: 12px 16px; background: var(--fp-bg-panel); flex-shrink: 0; }
+.fp-ai-chat-footer { border-top: 1px solid var(--fp-border); padding: 12px 16px; background: var(--fp-bg-card); flex-shrink: 0; }
 .fp-ai-chat-input-wrap { display: flex; gap: 8px; align-items: flex-end; }
 .fp-ai-chat-input {
   flex: 1; background: var(--fp-bg-body); border: 1px solid var(--fp-border);
-  border-radius: 10px; padding: 10px 14px; color: var(--fp-text);
+  border-radius: 10px; padding: 10px 18px 10px 14px; color: var(--fp-text);
   font-size: 13px; resize: none; max-height: 120px; min-height: 42px;
-  overflow-y: auto; line-height: 1.5; outline: none; font-family: inherit;
+  /* JS toggles this to auto only after content exceeds max-height:120px. */
+  overflow-y: hidden; line-height: 1.5; outline: none; font-family: inherit;
   transition: border-color 0.15s; display: block; width: 100%;
+  -webkit-overflow-scrolling: touch;   /* smooth scroll on iOS Safari */
 }
 .fp-ai-chat-input:focus { border-color: var(--fp-accent); }
+/* Always-visible 5px scrollbar — -webkit-appearance:none forces it visible on
+   macOS Safari (otherwise hidden until hover by default). */
+#fp-ai-chat-input::-webkit-scrollbar { width: 5px; -webkit-appearance: none; }
+#fp-ai-chat-input::-webkit-scrollbar-track { background: transparent; border-radius: 4px; margin: 4px 0; }
+#fp-ai-chat-input::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.45); border-radius: 4px; min-height: 28px; }
+#fp-ai-chat-input::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.75); }
+html[data-theme="dark"] #fp-ai-chat-input::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.5); }
+html[data-theme="dark"] #fp-ai-chat-input::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.65); }
 .fp-ai-chat-send {
   width: 40px; height: 40px; background: var(--fp-accent); border: none;
   border-radius: 10px; color: white; cursor: pointer;
@@ -6543,6 +6660,102 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
 .fp-ai-chat-send:not(:disabled):hover { opacity: 0.88; transform: scale(1.05); }
 .fp-ai-chat-credits { font-size: 10px; color: var(--fp-text-faint); margin-top: 6px; text-align: right; }
 @media (max-width: 768px) { .fp-ai-chat-panel { width: 100vw; } }
+
+/* Unified chat sizing: all composers scroll after 120px and their message panes
+   consume only the available flex space. */
+.fp-card:has(#ai-messages),
+#fp-ai-chat-panel,
+.fp-float-panel:has(#ai-panel-input) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.fp-card:has(#ai-messages) { overflow: visible !important; }
+#ai-messages,
+.fp-ai-chat-messages,
+.fp-float-panel-body:has(#ai-panel-input) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.fp-ai-input-row,
+.fp-ai-chat-input-wrap {
+  display: flex;
+  min-height: 0;
+}
+#ai-input,
+#ai-panel-input,
+#fp-ai-chat-input {
+  max-height: 120px;
+  overflow-y: auto !important;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+  body,
+  .fp-layout,
+  .fp-main-wrap,
+  .fp-ai-chat-panel,
+  .fp-float-panel {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+  .fp-ai-chat-panel,
+  .fp-float-panel {
+    top: 0;
+    bottom: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .fp-ai-chat-panel {
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  body.fp-ai-open .fp-main-wrap {
+    padding-right: 0 !important;
+  }
+  body.fp-ai-open::after {
+    display: none;
+  }
+  .fp-ai-chat-footer,
+  .fp-float-panel-body:has(#ai-panel-input) {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+.fp-ranking-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.fp-ranking-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  .fp-ranking-history-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .fp-ranking-history-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+  .fp-ranking-history-actions .fp-btn {
+    min-width: 0;
+    white-space: normal;
+  }
+}
 
 /* ── PageSpeed / Performance ────────────────────────────────────────────────── */
 .fp-psi-url-bar {
@@ -6609,6 +6822,18 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 16px; padding: 60px 20px;
 }
+.fp-psi-loading--inline {
+  display: none;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  border: 1px solid var(--fp-border);
+  border-radius: 10px;
+  background: var(--fp-inner-card);
+}
+.fp-psi-loading--inline.is-active { display: flex; }
 .fp-psi-spinner {
   width: 48px; height: 48px; border-radius: 50%;
   border: 3px solid var(--fp-border); border-top-color: var(--fp-accent);
@@ -6618,6 +6843,30 @@ html:not([data-theme="light"]) span[style*="color:#94a3b8"] {
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   transition: none;
+}
+.fp-psi-spinner--inline { width: 20px; height: 20px; border-width: 2px; flex: 0 0 auto; }
+/* Linear (non-circular) PSI loading indicator */
+.fp-psi-linear-track {
+  width: 100%; height: 4px; border-radius: 2px; overflow: hidden;
+  background: var(--fp-border);
+  position: relative;
+}
+.fp-psi-linear-bar {
+  position: absolute; top: 0; left: 0; height: 100%; width: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--fp-accent, #2563EB), #818cf8);
+  animation: fpPsiLinear 1.4s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes fpPsiLinear {
+  0% { transform: translateX(-100%); }
+  60% { transform: translateX(180%); }
+  100% { transform: translateX(260%); }
+}
+@-webkit-keyframes fpPsiLinear {
+  0% { -webkit-transform: translateX(-100%); }
+  60% { -webkit-transform: translateX(180%); }
+  100% { -webkit-transform: translateX(260%); }
 }
 @-webkit-keyframes fpSpin { to { -webkit-transform: rotate(360deg); transform: rotate(360deg); } }
 @keyframes fpSpin { to { transform: rotate(360deg); } }
@@ -7158,29 +7407,19 @@ body.fp-ai-open::after {
 }
 
 /* ── 10. Skeleton loader ─────────────────────────────────────────────── */
-/* Slide keyframe used for ALL skeleton/shimmer blocks (defined here once) */
+/* Subtle pulse keyframe — no horizontal wave, just a slow opacity breath */
 @keyframes fpSkeleton {
-  0%   { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 0.65; }
 }
 .fp-skeleton {
-  background: linear-gradient(90deg,
-    rgba(255,255,255,0.04) 25%,
-    rgba(255,255,255,0.09) 50%,
-    rgba(255,255,255,0.04) 75%
-  );
-  background-size: 200% 100%;
-  animation: fpSkeleton 2.2s ease-in-out infinite;
+  background: rgba(255,255,255,0.06);
+  animation: fpSkeleton 2.8s ease-in-out infinite;
   border-radius: 6px;
 }
 [data-theme="light"] .fp-skeleton {
-  background: linear-gradient(90deg,
-    rgba(0,0,0,0.04) 25%,
-    rgba(0,0,0,0.10) 50%,
-    rgba(0,0,0,0.04) 75%
-  );
-  background-size: 200% 100%;
-  animation: fpSkeleton 2.2s ease-in-out infinite;
+  background: rgba(0,0,0,0.07);
+  animation: fpSkeleton 2.8s ease-in-out infinite;
 }
 .fp-skeleton-text  { height: 12px; margin-bottom: 8px; }
 .fp-skeleton-title { height: 20px; width: 60%; margin-bottom: 12px; }
@@ -7288,17 +7527,6 @@ body.fp-ai-open::after {
 .fp-main-wrap {
   will-change: padding-right;
 }
-
-
-/* ════════════════════════════════════════════════════════════════════
-   SECTION v8d — AI PANEL SUPPRIMÉ + RENDER FIX
-   ════════════════════════════════════════════════════════════════════ */
-
-/* ── Cache définitivement le panel IA et le bouton topbar ────────── */
-#fp-ai-chat-panel,
-#fp-ai-chat-overlay      { display: none !important; }
-#topbar-ai               { display: none !important; }
-body.fp-ai-open .fp-main-wrap { padding-right: 0 !important; }
 
 
 /* ════════════════════════════════════════════════════════════════════
@@ -8226,6 +8454,27 @@ code {
   /* Addon card — reduce padding so content fits */
   .fp-addon-grid > div {
     padding: 12px !important;
+  }
+  /* Addon card footer row: price + buttons.
+     On narrow screens (≤640px) the price label and the button group
+     can't sit side-by-side without overflow. Stack them vertically so
+     neither "Ajouter +1" nor "Désactiver" is cut off. */
+  .fp-addon-grid > div > div:last-child {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    row-gap: 8px !important;
+  }
+  /* Button group inside active quantity add-on card */
+  .fp-addon-grid > div > div:last-child > div[style*="display:flex"] {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+  .fp-addon-grid > div > div:last-child .fp-btn {
+    flex: 1 1 auto;
+    max-width: 100% !important;
+    white-space: nowrap;
+    min-height: 32px;
+    touch-action: manipulation;
   }
 
   /* ── 3. Insights IA cards — action button moves inside content on mobile ── */
@@ -9187,16 +9436,6 @@ html:not([data-theme="light"]) .fp-kanban-card:hover {
   background: #1c1f29 !important;
 }
 
-/* ── 2. LOCAL SEO RANKINGS FRAME — solid background ─────────────────
-   The DataForSEO / rankings container inside Local SEO uses .fp-card
-   which gets the transparent rgba bg from dark mode. Ensure it's solid
-   (handled by rule 1 above), but also cover any inner content cells.
-   ─────────────────────────────────────────────────────────────────── */
-html:not([data-theme="light"]) #dfs-local-rank-widget,
-html:not([data-theme="light"]) #dfs-local-rank-widget {
-  background: transparent; /* inherits solid parent card */
-}
-
 /* ── 3. ALERT COMMAND CENTER 8-SCORE GAUGES — badge vertical alignment ──
    The gauge cards are flex-columns. We pin the label to a min-height
    of 2 lines (~2.4em) so the badge always sits at the same baseline.
@@ -9332,4 +9571,55 @@ html:not([data-theme="light"]) div[style*="background: #f8faff"],
 html:not([data-theme="light"]) div[style*="background:#eef2ff"],
 html:not([data-theme="light"]) div[style*="background: #eef2ff"] {
   background: var(--fp-bg-inset) !important;
+}
+
+/* ══ MOBILE FIXES — passe finalisation ══════════════════════════════════════ */
+
+/* 1. CWV / PSI URL bar — flex-wrap on small screens */
+@media (max-width: 640px) {
+  .fp-psi-url-bar {
+    flex-wrap: wrap;
+  }
+  .fp-psi-url-input {
+    min-width: 0;
+    flex: 1 1 100%;
+    order: 1;
+  }
+  .fp-psi-url-bar > button {
+    flex: 1 1 100%;
+    order: 2;
+    justify-content: center;
+  }
+  .fp-psi-analyze-label { display: inline; }
+}
+
+/* 2. Filter tabs — gap between buttons */
+.fp-filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 3. PSI opportunity cards — prevent letter-by-letter on narrow grids */
+.fp-psi-opportunity {
+  min-width: 0;
+}
+.fp-psi-opportunity > div[style*="flex:1"] {
+  overflow: hidden;
+}
+
+/* 4. Audit category cards — font-size already fixed in JS; ensure word-break */
+@media (max-width: 480px) {
+  .fp-audit-cat-grid .fp-card {
+    word-break: break-word;
+  }
+}
+
+/* 5. Permissions table — guaranteed horizontal scroll on mobile */
+@media (max-width: 768px) {
+  .fp-data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

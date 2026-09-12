@@ -1,3 +1,7 @@
+// Bootstrap timestamp: used to provide a grace period before redirecting to
+// login on a 401 error, preventing the Sign-In flash during normal page refresh.
+window.__fpPageLoadTs = Date.now();
+
 /**
  * FLOWPOINT — Couche d'intégration Backend
  * ══════════════════════════════════════════
@@ -40,35 +44,79 @@
   // back to the HttpOnly cookie if the Bearer has expired.  The server returns
   // the canonical valid token, which we (re)store so subsequent apiFetch calls
   // use a fresh, verified token and never hit a foreground 401 on hard refresh.
-  var _sessionReady = (async function () {
-    var _existingToken = _sessionToken();
+  // One page-wide session coordinator. dashboard.js loads after this file and
+  // must join this exact promise instead of running a competing restore request.
+  // A forced restore is used only for BFCache/background revalidation.
+  // Dedup: if a forced restore is already in-flight, return that same promise.
+  // Multiple callers (loadData, _confirmSessionExpiredBackend, BFCache pageshow)
+  // can all call _restoreSession({ force: true }) simultaneously. Without dedup
+  // they launch competing POST /api/auth/session-restore requests whose results
+  // race each other (the last write to sessionStorage wins, which may be stale).
+  var _fpRestoreInFlight = null;
+  var _fpSessionGeneration = 0;
+
+  function _resetTenantCaches() {
+    try { _fpCache = {}; _fpInFlight = {}; } catch (_) {}
     try {
-      var _headers = { 'Content-Type': 'application/json' };
-      if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
-      var response = await fetch('/api/auth/session-restore', {
-        method: 'POST',
-        credentials: 'include',
-        headers: _headers,
-      });
-      if (response.ok) {
-        var data = await response.json().catch(function () { return null; });
-        if (data && data.token) {
-          sessionStorage.setItem('fp_session_token', data.token);
-          if (!sessionStorage.getItem('fp_tab_uid')) {
-            sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
+      if (typeof window.__fpResetDashboardCaches === 'function') {
+        window.__fpResetDashboardCaches();
+      }
+    } catch (_) {}
+  }
+
+  function _restoreSession(options) {
+    var force = !!(options && options.force);
+    if (!force && window.__fpSessionReady) return window.__fpSessionReady;
+    // If a forced restore is already running, reuse it instead of launching another.
+    if (force && _fpRestoreInFlight) {
+      window.__fpSessionReady = _fpRestoreInFlight;
+      return _fpRestoreInFlight;
+    }
+    var restoreGeneration = ++_fpSessionGeneration;
+    _resetTenantCaches();
+    var restore = (async function () {
+      var _existingToken = _sessionToken();
+      try {
+        var _headers = { 'Content-Type': 'application/json' };
+        if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
+        var response = await fetch('/api/auth/session-restore', {
+          method: 'POST',
+          credentials: 'include',
+          headers: _headers,
+        });
+        if (response.ok) {
+          var data = await response.json().catch(function () { return null; });
+          if (data && data.token && restoreGeneration === _fpSessionGeneration) {
+            sessionStorage.setItem('fp_session_token', data.token);
+            if (!sessionStorage.getItem('fp_tab_uid')) {
+              sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
+            }
+            return true;
           }
-          return true;
         }
-      }
-      // 401 means neither Bearer nor cookie is valid — clear the stale token so
-      // dashboard.js gets a clean start and shows the login page cleanly.
-      if (response.status === 401 && _existingToken) {
-        try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
-        try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
-      }
-    } catch (_) { /* network error — dashboard.js will handle via /api/me 401 */ }
-    return false;
-  })();
+        // Only an explicit 401 proves the stored bearer and cookie are both gone.
+        if (response.status === 401 && _existingToken) {
+          try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+          try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+        }
+      } catch (_) { /* /api/me performs the final auth decision after a network failure */ }
+      return false;
+    })();
+    // Clear dedup slot when this restore finishes (success or error).
+    restore.then(function() { if (_fpRestoreInFlight === restore) _fpRestoreInFlight = null; })
+           .catch(function() { if (_fpRestoreInFlight === restore) _fpRestoreInFlight = null; });
+    _fpRestoreInFlight = restore;
+    window.__fpSessionReady = restore;
+    return restore;
+  }
+  window.__fpRestoreSession = _restoreSession;
+  window.__fpCancelSessionRestore = function() {
+    _fpSessionGeneration++;
+    _fpRestoreInFlight = null;
+    window.__fpSessionReady = Promise.resolve(false);
+    _resetTenantCaches();
+  };
+  var _sessionReady = _restoreSession();
 
   function _authHeaders() {
     try {
@@ -88,18 +136,86 @@
   var _fp401BackgroundCount = 0;
   var _fp401ConfirmTimer    = null;
 
+  // ── BFCache reset — called by dashboard.js pageshow handler ─────────────────
+  // fp-backend.js has its own 401 counters that are NOT reset by dashboard.js's
+  // pageshow handler. Expose a reset function so dashboard.js can clear both sets
+  // of counters in one pageshow event, preventing stale counts from triggering
+  // _confirmSessionExpiredBackend() on a perfectly valid restored session.
+  window.__fpResetAuth401 = function() {
+    if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
+    _fp401BackgroundCount = 0;
+    // Reset the redirect mutex so a future genuine logout can still redirect.
+    window.__fpRedirecting = false;
+    // Force a fresh session-restore so subsequent apiFetch calls in fp-backend
+    // get a verified token and never hit the redirect branch on BFCache restore.
+    if (typeof window.__fpRestoreSession === 'function') {
+      window.__fpRestoreSession({ force: true });
+    }
+  };
+
+  // ── Own pageshow handler — fp-backend.js ────────────────────────────────────
+  // dashboard.js's pageshow calls window.__fpResetAuth401() but that requires
+  // fp-backend.js to already be loaded. Add a direct handler here as a backstop.
+  window.addEventListener('pageshow', function(evt) {
+    if (!evt.persisted) return;
+    if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
+    _fp401BackgroundCount = 0;
+    // Reset the redirect mutex — a BFCache-restored page must be able to redirect
+    // if the session is truly expired after revalidation.
+    window.__fpRedirecting = false;
+    // Kick off a fresh session-restore so background timers that fire immediately
+    // after BFCache restore pick up a verified token, not a stale sessionStorage one.
+    if (typeof window.__fpRestoreSession === 'function') {
+      window.__fpRestoreSession({ force: true });
+    }
+  });
+
   function _confirmSessionExpiredBackend() {
-    fetch('/api/me', {
+    // ── Guard 1: another redirect is already in flight — do nothing. ─────────────
+    if (window.__fpRedirecting) {
+      _fp401BackgroundCount = 0;
+      return;
+    }
+    // ── Guard 2: loadData() is still running — STATE.me may not be set yet. ──────
+    // Defer the confirmation check until loading completes.
+    if (window.__fpLoadDataInProgress) {
+      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'loadData in progress — deferring session confirmation by 6s.');
+      if (!_fp401ConfirmTimer) {
+        _fp401ConfirmTimer = setTimeout(function() { _fp401ConfirmTimer = null; _confirmSessionExpiredBackend(); }, 6000);
+      }
+      return;
+    }
+    // ── Guard 3: STATE.me already populated — session confirmed valid. ────────────
+    // A 401 from a secondary endpoint must NOT trigger a global logout while the
+    // user's identity is established.
+    // NOTE: /api/me does NOT return a top-level orgId field — use .email as the
+    // presence sentinel (always populated when STATE.me is fully loaded).
+    if (window.STATE && window.STATE.me && window.STATE.me.email) {
+      console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Suppressed false-logout — window.STATE.me confirmed (email present); background 401 on secondary endpoint ignored.');
+      _fp401BackgroundCount = 0;
+      return;
+    }
+    // Revalidate cookie/Bearer through the shared coordinator first. A
+    // background 401 must never redirect while auth is still unknown.
+    var restore = typeof window.__fpRestoreSession === 'function'
+      ? window.__fpRestoreSession({ force: true })
+      : (window.__fpSessionReady || Promise.resolve(false));
+    Promise.resolve(restore).then(function() {
+      return fetch('/api/me', {
       credentials: 'include',
       headers: _authHeaders(),
+      });
     })
       .then(function(r) {
         var ts = new Date().toISOString();
         if (r.status === 401) {
           console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me → 401. Session expired. Redirecting.');
           _fp401BackgroundCount = 0;
-          _clearAuth();
-          window.location.href = '/login.html';
+          if (!window.__fpRedirecting) {
+            window.__fpRedirecting = true;
+            _clearAuth();
+            window.location.replace('/login.html');
+          }
         } else {
           console.warn('[FP-BACKEND-AUTH]', ts, 'Confirmation /api/me →', r.status, '— session still valid, ignoring background 401.');
           _fp401BackgroundCount = 0;
@@ -112,6 +228,8 @@
   }
 
   function _clearAuth() {
+    _fpSessionGeneration++;
+    _fpRestoreInFlight = null;
     try {
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
         localStorage.removeItem(k);
@@ -119,16 +237,46 @@
       sessionStorage.removeItem('fp_session_token');
       sessionStorage.removeItem('fp_tab_uid');
     } catch (_) {}
+    // P0 — Clear the GET response cache so a new user who logs in within the
+    // 30-second TTL window does not receive the previous user's /api/me response.
+    // _fpCache is a page-scoped var and normally resets on page reload, but SPA
+    // navigations and BFCache restores can keep it alive across user switches.
+    _resetTenantCaches();
+  }
+
+  function _fpBackendCacheIdentity() {
+    var token = _sessionToken();
+    if (!token) return 'cookie-or-anonymous';
+    var hash = 2166136261;
+    for (var i = 0; i < token.length; i++) {
+      hash ^= token.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return 'session-' + (hash >>> 0).toString(36);
+  }
+
+  function _deleteBackendCachePath(path) {
+    var suffix = '\n' + path;
+    Object.keys(_fpCache).forEach(function(key) {
+      if (key.endsWith(suffix)) delete _fpCache[key];
+    });
+    Object.keys(_fpInFlight).forEach(function(key) {
+      if (key.endsWith(suffix)) delete _fpInFlight[key];
+    });
+    try {
+      if (typeof _fpDeleteApiCachePath === 'function') _fpDeleteApiCachePath(path);
+    } catch (_) {}
   }
 
   function apiFetchNow(path, opts) {
     var isGet = !opts || !opts.method || opts.method === 'GET';
+    var cacheKey = _fpBackendCacheIdentity() + '\n' + path;
 
     // ── GET cache (30 s TTL, same as dashboard.js) ────────────────────────────
     if (isGet) {
-      var cached = _fpCache[path];
+      var cached = _fpCache[cacheKey];
       if (cached && (Date.now() - cached.ts < _API_CACHE_TTL)) return Promise.resolve(cached.data);
-      if (_fpInFlight[path]) return _fpInFlight[path];
+      if (_fpInFlight[cacheKey]) return _fpInFlight[cacheKey];
     }
 
     // ── Cache-buster for GETs (same pattern as dashboard.js) ─────────────────
@@ -169,12 +317,112 @@
             }
             return null;
           }
-          console.warn('[FP-BACKEND-AUTH]', _ts, 'Foreground 401 on', path, '— clearing session and redirecting.');
+          console.warn('[FP-BACKEND-AUTH]', _ts, 'Foreground 401 on', path, '— attempting session-restore before redirect.');
           _fp401BackgroundCount = 0;
           if (_fp401ConfirmTimer) { clearTimeout(_fp401ConfirmTimer); _fp401ConfirmTimer = null; }
-          _clearAuth();
-          window.location.href = '/login.html';
-          return null;
+          // Attempt session-restore (cookie → new Bearer) before giving up.
+          // This mirrors the dashboard.js retry logic and prevents refresh/Back → login.
+          var _existingTok = _sessionToken();
+          var _srHeaders = { 'Content-Type': 'application/json' };
+          if (_existingTok) _srHeaders['Authorization'] = 'Bearer ' + _existingTok;
+          return fetch('/api/auth/session-restore', {
+            method: 'POST', credentials: 'include',
+            headers: _srHeaders, body: '{}',
+          }).then(function(sr) {
+            if (sr.ok) {
+              return sr.json().then(function(srData) {
+                if (srData && srData.token) {
+                  try { sessionStorage.setItem('fp_session_token', srData.token); } catch(_) {}
+                }
+                // Retry original request once with fresh token
+                var _rHdrs = Object.assign({'Content-Type':'application/json'}, _authHeaders(), (opts && opts.headers) || {});
+                return fetch(_path, Object.assign({}, opts || {}, { credentials: 'include', headers: _rHdrs }))
+                  .then(function(rr) {
+                    if (rr.status === 401) {
+                      // ── STRUCTURAL RULE (mirrors dashboard.js apiFetch) ────────────────────
+                      // Global logout is only justified when /api/me itself confirms the session
+                      // is invalid. Secondary endpoints (/api/billing, /api/google, /api/ai, …)
+                      // can return 401 due to plan gates, feature flags, or connector state —
+                      // none of which means the session expired.
+                      // Redirecting to login on their failure destroys a perfectly valid session.
+                      var _isCrit = path === '/api/me' || path.startsWith('/api/auth/');
+                      if (!_isCrit) {
+                        console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Foreground 401 on secondary endpoint', path, '— throwing (no global logout; session intact).');
+                        var _err = new Error('Unauthorized'); _err.status = 401; throw _err;
+                      }
+                      // Extra guard: if STATE.me is populated the session is valid — do not redirect.
+                      if (typeof window !== 'undefined' && window.STATE && window.STATE.me && window.STATE.me.email) {
+                        console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), '/api/me returned 401 but STATE.me is present — suppressed (BFCache/back-fwd false positive).');
+                        var _err4 = new Error('Unauthorized'); _err4.status = 401; throw _err4;
+                      }
+                      // Bootstrap grace period: within 5 s of page load, session-restore
+                      // may still be settling (race condition causes a false 401).
+                      // Delay the redirect to prevent the Sign-In flash on F5 refresh.
+                      if (!window.__fpRedirecting) {
+                        var _pageAge1 = Date.now() - (window.__fpPageLoadTs || Date.now());
+                        if (_pageAge1 < 8000 && !window.__fpBootstrapRedirectScheduled) {
+                          window.__fpBootstrapRedirectScheduled = true;
+                          console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'Bootstrap grace period active — deferring login redirect by', Math.ceil(5000-_pageAge1), 'ms');
+                          setTimeout(function() {
+                            if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                            }
+                          }, 8000 - _pageAge1 + 500);
+                          return null;
+                        }
+                        window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                      }
+                      return null;
+                    }
+                    if (!rr.ok) throw new Error('HTTP ' + rr.status + ' ' + path);
+                    return rr.json();
+                  });
+              });
+            }
+            // session-restore response was non-OK. Apply the same structural rule.
+            var _isCrit2 = path === '/api/me' || path.startsWith('/api/auth/');
+            if (!_isCrit2) {
+              console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on secondary endpoint', path, '— throwing (no global logout).');
+              var _err2 = new Error('Unauthorized'); _err2.status = 401; throw _err2;
+            }
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore failed on session-critical endpoint — redirecting to login.');
+            if (!window.__fpRedirecting) {
+              var _pageAge2 = Date.now() - (window.__fpPageLoadTs || Date.now());
+              if (_pageAge2 < 8000 && !window.__fpBootstrapRedirectScheduled) {
+                window.__fpBootstrapRedirectScheduled = true;
+                setTimeout(function() {
+                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                    window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                  }
+                }, 8000 - _pageAge2 + 500);
+                return null;
+              }
+              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+            }
+            return null;
+          }).catch(function(e) {
+            // Network error during session-restore. Apply the same structural rule.
+            var _isCrit3 = path === '/api/me' || path.startsWith('/api/auth/');
+            if (!_isCrit3) {
+              console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on secondary endpoint', path, '— throwing (no global logout).');
+              var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
+            }
+            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
+            if (!window.__fpRedirecting) {
+              var _pageAge3 = Date.now() - (window.__fpPageLoadTs || Date.now());
+              if (_pageAge3 < 8000 && !window.__fpBootstrapRedirectScheduled) {
+                window.__fpBootstrapRedirectScheduled = true;
+                setTimeout(function() {
+                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
+                    window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+                  }
+                }, 8000 - _pageAge3 + 500);
+                return null;
+              }
+              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
+            }
+            return null;
+          });
         }
         if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
@@ -182,24 +430,24 @@
       })
       .then(function (data) {
         if (isGet) {
-          _fpCache[path] = { data: data, ts: Date.now() };
-          delete _fpInFlight[path];
+          _fpCache[cacheKey] = { data: data, ts: Date.now() };
+          delete _fpInFlight[cacheKey];
         }
         return data;
       })
       .catch(function (err) {
-        if (isGet) delete _fpInFlight[path];
+        if (isGet) delete _fpInFlight[cacheKey];
         throw err;
       });
 
-    if (isGet) _fpInFlight[path] = promise;
+    if (isGet) _fpInFlight[cacheKey] = promise;
     return promise;
   }
 
   // Every backend integration call waits for session bootstrap. This prevents
   // an early 401 from being mistaken for an expired session during page load.
   function apiFetch(path, opts) {
-    return _sessionReady.then(function () {
+    return (window.__fpSessionReady || _sessionReady).then(function () {
       return apiFetchNow(path, opts);
     });
   }
@@ -273,12 +521,13 @@
   // Appelé par les boutons inline "Passer Pro / Passer Ultra"
 
   window.upgradeCheckout = function (plan) {
+    if (typeof window.fpUpgradeOrCheckout === 'function') {
+      return window.fpUpgradeOrCheckout(plan);
+    }
     if (typeof window.FP_BILLING_API !== 'undefined') {
-      window.FP_BILLING_API.checkout(plan).catch(function () {
-        if (typeof window.navigate === 'function') window.navigate('billing');
-      });
+      return window.FP_BILLING_API.checkout(plan);
     } else {
-      if (typeof window.navigate === 'function') window.navigate('billing');
+      return apiAction('POST', '/api/billing/upgrade', { plan: plan });
     }
   };
 
@@ -460,15 +709,26 @@
         return normalizeDoc(await apiAction('POST', '/api/competitors', comp));
       } catch (e) {
         console.warn('[FP] competitor create error:', e.message);
-        return comp;
+        return null;
+      }
+    },
+
+    refresh: async function (id) {
+      try {
+        return normalizeDoc(await apiAction('POST', '/api/competitors/' + encodeURIComponent(id) + '/refresh'));
+      } catch (e) {
+        console.warn('[FP] competitor refresh error:', e.message);
+        return null;
       }
     },
 
     delete: async function (id) {
       try {
         await apiAction('DELETE', '/api/competitors/' + id);
+        return true;
       } catch (e) {
         console.warn('[FP] competitor delete error:', e.message);
+        return false;
       }
     },
   };
@@ -589,15 +849,32 @@
     checkout: async function (plan) {
       try {
         if (typeof window.showToast === 'function') {
-          window.showToast('info', 'Redirection vers le paiement ' + (plan === 'ultra' ? 'Ultra' : 'Pro') + '…');
+          window.showToast('info', 'Mise à jour du plan en cours…');
         }
-        var data = await apiAction('POST', '/api/billing/checkout', { plan: plan });
-        if (data.url) {
-          window.location.href = data.url;
+        // Dashboard plan CTAs all use the authenticated upgrade state machine.
+        // It reuses organizations.stripe_customer_id and returns checkoutUrl
+        // only when Stripe Checkout is genuinely required for reactivation.
+        var data = await apiAction('POST', '/api/billing/upgrade', { plan: plan });
+        var redirectUrl = data && (data.checkoutUrl || data.url);
+        if (redirectUrl) {
+          window.location.href = redirectUrl;
+          return data;
         }
+        if (data && (data.upgraded || data.downgrade || data.reactivated)) {
+          _resetTenantCaches();
+          if (typeof window.loadData === 'function') {
+            await window.loadData();
+          }
+          if (typeof window.navigate === 'function') window.navigate('billing');
+          if (typeof window.navigateSub === 'function') window.navigateSub('plans');
+        }
+        return data;
       } catch (e) {
-        console.warn('[FP] billing checkout error:', e.message);
-        if (typeof window.navigate === 'function') window.navigate('billing');
+        console.warn('[FP] billing upgrade error:', e.message);
+        if (typeof window.showToast === 'function') {
+          window.showToast('error', e.message || 'Le changement de plan a échoué.');
+        }
+        throw e;
       }
     },
   };
@@ -651,80 +928,105 @@
     });
 
     // ── Mise à jour billing ──
-    document.addEventListener('fp:billing:updated', function (e) {
+    document.addEventListener('fp:billing:updated', async function (e) {
       var data = e.detail;
       if (!data || !window.STATE || !window.STATE.me) return;
+      // Optimistic update so the UI responds instantly
       if (data.plan) window.STATE.me.plan = data.plan;
       if (data.subscriptionStatus) window.STATE.me.subscriptionStatus = data.subscriptionStatus;
-      if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Plan mis à jour : ' + (data.plan || ''));
-      }
       if (typeof window.render === 'function') window.render();
+      // Re-fetch /api/me to sync ALL limits, addons, and AI credits — not just
+      // plan/subscriptionStatus.  The optimistic patch above only updates two fields;
+      // limits.teamMembers, limits.exports, limits.monitors, addons, AI credits, etc.
+      // all stay stale until a full /api/me refresh arrives.
+      try {
+        // Bust the cache so apiFetch doesn't return the old response
+        _deleteBackendCachePath('/api/me');
+        var freshMe = await apiFetch('/api/me');
+        if (freshMe && window.STATE) {
+          window.STATE.me = freshMe;
+          if (typeof window.render === 'function') window.render();
+        }
+      } catch (_) { /* non-fatal — optimistic update already applied */ }
+      // Also reload payment methods — the Stripe webhook fires after plan changes,
+      // which can also attach/update the payment method on the subscription.
+      try {
+        var pmRefresh = await apiFetch('/api/billing/payment-methods', { force: true });
+        if (pmRefresh && Array.isArray(pmRefresh.paymentMethods) && window.STATE) {
+          window.STATE.billing = Object.assign({}, window.STATE.billing || {}, { paymentMethods: pmRefresh.paymentMethods });
+          if (typeof window.render === 'function') window.render();
+        }
+      } catch (_) { /* non-fatal */ }
+      if (typeof window.showToast === 'function') {
+        window.showToast('success', 'Plan mis à jour : ' + (data.plan || data.subscriptionStatus || ''));
+      }
     });
 
-    // ── Message équipe ──
-    document.addEventListener('fp:team:message', function (e) {
-      var data = e.detail;
-      if (!data || !window.STATE) return;
-      var ch = data.channel || 'general';
-      if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
-      if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
-      var isSelf = data.from === (window.STATE.me && (window.STATE.me.firstName || window.STATE.me.name));
-      var legacyId = data.id;
-      var legacyExisting = window.STATE.channelMessages[ch].findIndex(function (m) {
-        return (legacyId && m.id === legacyId) ||
-          (!legacyId && m.id && String(m.id).indexOf('optimistic_') === 0 && m.text === (data.text || ''));
-      });
-      if (legacyExisting >= 0) {
-        window.STATE.channelMessages[ch][legacyExisting] = Object.assign({}, window.STATE.channelMessages[ch][legacyExisting], {
-          id: legacyId || window.STATE.channelMessages[ch][legacyExisting].id,
-          from: data.from || 'Équipe',
-          text: data.text || '',
-          createdAt: data.createdAt || null,
-          time: data.createdAt ? new Date(data.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
-        });
-        if (typeof window.render === 'function') window.render();
-        setTimeout(function() { var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight; }, 50);
-        return;
+    // ── Stripe Portal return — reload payment methods when tab regains focus ──
+    // The Stripe Customer Portal opens in a new tab; when the user closes it and
+    // returns to the dashboard, we must re-fetch payment methods so the UI is fresh.
+    (function () {
+      var _pmLastReload = 0;
+      function _reloadPaymentMethods() {
+        var now = Date.now();
+        if (now - _pmLastReload < 10000) return; // debounce 10s
+        _pmLastReload = now;
+        if (!window.STATE || !window.apiFetch) return;
+        apiFetch('/api/billing/payment-methods', { force: true }).then(function(r) {
+          if (r && Array.isArray(r.paymentMethods) && window.STATE) {
+            window.STATE.billing = Object.assign({}, window.STATE.billing || {}, { paymentMethods: r.paymentMethods });
+            if (typeof window.render === 'function') window.render();
+          }
+        }).catch(function() {});
       }
-      window.STATE.channelMessages[ch].unshift({
-        id: data.id,
-        from: data.from || 'Équipe',
-        text: data.text || '',
-        time: 'À l\'instant',
-        createdAt: data.createdAt || null,
-        read: isSelf,
-        self: isSelf,
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) _reloadPaymentMethods();
       });
-      if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
-      if (typeof window.render === 'function') window.render();
-      setTimeout(function() {
-        var c = document.getElementById('team-chat-msgs'); if (c) c.scrollTop = c.scrollHeight;
-        var dd = document.getElementById('fp-msg-dropdown');
-        if (dd && dd.offsetParent !== null && typeof window.renderMsgDropdown === 'function') {
-          dd.innerHTML = window.renderMsgDropdown();
-          if (typeof window.bindMsgPanel === 'function') window.bindMsgPanel(dd);
-          var ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight;
-        }
-      }, 50);
+      window.addEventListener('focus', _reloadPaymentMethods);
+    })();
+
+    // ── Canonical channel key ────────────────────────────────────────────────
+    // Must match the server-side normChannel() in team-messages.ts so SSE-inserted
+    // messages land in the SAME bucket as REST-hydrated ones (bare lowercase, no '#').
+    // "#General", "General", "general" all collapse to "general".
+    function _fpNormChannel(c) {
+      var s = (c == null ? 'general' : String(c)).trim().replace(/^#+/, '').toLowerCase();
+      return s || 'general';
+    }
+
+    // ── Message équipe (LEGACY — NEUTRALIZED) ─────────────────────────────────
+    // The backend now emits a single canonical event (type "chat:message" →
+    // fp:chat:message). This legacy handler wrote into the SAME channelMessages
+    // bucket with a divergent self-computation (name-based) and a divergent dedup
+    // key, which duplicated or misclassified messages that also arrived via the
+    // canonical path. It is intentionally left as a no-op so that any stray legacy
+    // "team:message"/"chat" event cannot corrupt the canonical store.
+    document.addEventListener('fp:team:message', function () {
+      /* neutralized: canonical delivery is handled by fp:chat:message */
     });
+
+    function _fpChatMessageIsSelf(msgData, me) {
+      var myIds = [me && me.userUuid, me && me.userId, me && me.id, me && me.email]
+        .filter(Boolean)
+        .map(String);
+      return msgData && msgData.senderId != null
+        ? myIds.indexOf(String(msgData.senderId)) >= 0
+        : !!(msgData && msgData.self);
+    }
 
     // ── Chat SSE (nouveau format depuis /api/team/messages) ──
-    document.addEventListener('fp:chat:message', function (e) {
-      var data = e.detail;
+    function _fpHandleChatMessage(data) {
       if (!data || !window.STATE) return;
-      var ch = (data.channel || data.message && data.message.channel) || 'general';
+      var ch = _fpNormChannel((data.channel || (data.message && data.message.channel)) || 'general');
       var msgData = data.message || data;
       if (!window.STATE.channelMessages) window.STATE.channelMessages = {};
       if (!window.STATE.channelMessages[ch]) window.STATE.channelMessages[ch] = [];
       // Recipient-side "self" computation: the SSE broadcast reaches every
       // client of the org, so the server can't decide per-recipient. Compare
-      // the stable senderId against our own identity (userId or email).
+      // the stable senderId against every identity exposed by /api/me. UUID is
+      // canonical for migrated sessions; userId/email preserve legacy sessions.
       var me = window.STATE.me || {};
-      var myIds = [me.userId, me.id, me.email].filter(Boolean).map(String);
-      var isSelf = msgData.senderId != null
-        ? myIds.indexOf(String(msgData.senderId)) >= 0
-        : (msgData.self || false);
+      var isSelf = _fpChatMessageIsSelf(msgData, me);
       var serverId = msgData.id;
       var existingIndex = window.STATE.channelMessages[ch].findIndex(function (m) {
         return (serverId && m.id === serverId) ||
@@ -753,6 +1055,28 @@
       });
       // Teammate message: refresh the header badge, play the chat sound.
       if (!isSelf) {
+        // Inject a synthetic notification row so _fpRefreshMsgBadge() sees this
+        // unread message immediately — without waiting for the 30s notification poll.
+        // The real server-side notification row (created asynchronously on POST) will
+        // overwrite this on the next poll. Keyed on message id to avoid duplicates.
+        try {
+          if (!Array.isArray(window.STATE.notifications)) window.STATE.notifications = [];
+          var syntheticId = 'ntf_chat_' + (serverId || ('sse_' + Date.now()));
+          var alreadyPresent = window.STATE.notifications.some(function(n) {
+            return n && (n.id === syntheticId || (n.id && String(n.id).indexOf('ntf_chat_' + serverId) === 0));
+          });
+          if (!alreadyPresent) {
+            window.STATE.notifications.unshift({
+              id: syntheticId,
+              type: 'chat',
+              title: 'Nouveau message dans #' + ch,
+              message: normalizedMessage.text || '',
+              read: false,
+              _synthetic: true,
+              created_at: normalizedMessage.createdAt || new Date().toISOString(),
+            });
+          }
+        } catch(_) {}
         if (typeof window._fpRefreshMsgBadge === 'function') { try { window._fpRefreshMsgBadge(); } catch(_) {} }
         if (typeof window._fpPlayChatSound === 'function') { try { window._fpPlayChatSound(); } catch(_) {} }
       }
@@ -767,6 +1091,9 @@
           var ml = dd.querySelector('#fp-msg-list'); if (ml) ml.scrollTop = ml.scrollHeight;
         }
       }, 50);
+    }
+    document.addEventListener('fp:chat:message', function (e) {
+      _fpHandleChatMessage(e.detail);
     });
 
     // ── Audit terminé ──
@@ -1096,9 +1423,21 @@
     loadTemplates: async function () {
       try {
         var data = await apiFetch('/api/white-label/templates');
-        if (data) { window.FP_DATA.whiteLabelTemplates = data.templates || []; }
+        if (data) {
+          window.FP_DATA.whiteLabelTemplates = data.templates || [];
+          if (window.STATE) {
+            window.STATE.whiteLabelTemplates = data.templates || [];
+            window.STATE.whiteLabelTemplatesError = null;
+          }
+          if (typeof window.render === 'function') window.render();
+        }
         return data;
-      } catch (e) { console.warn('[FP] white-label templates error:', e.message); return null; }
+      } catch (e) {
+        console.warn('[FP] white-label templates error:', e.message);
+        if (window.STATE) window.STATE.whiteLabelTemplatesError = e.message || String(e);
+        if (typeof window.render === 'function') window.render();
+        return null;
+      }
     },
     saveTemplate: async function (template) {
       try {
@@ -1822,27 +2161,45 @@
 
     _isLight: function () { return document.documentElement.dataset.theme === 'light'; },
 
+    // Called by applyTheme() in dashboard.js whenever the user switches theme.
+    // Iterates every initialized FP_MAPS_API map and updates its base tile
+    // styles — the same FP_MAPS_DARK_STYLE used at creation time. Controls and
+    // InfoWindow chrome are handled automatically by the html:not([data-theme="light"])
+    // CSS injected by _injectDarkCss(); this method only handles the tile layer.
+    syncTheme: function () {
+      var self = this;
+      var styles = self._isLight() ? [] : FP_MAPS_DARK_STYLE;
+      Object.keys(self._mapInstances).forEach(function (id) {
+        var inst = self._mapInstances[id];
+        if (inst && inst.map) inst.map.setOptions({ styles: styles });
+      });
+    },
+
     // Dark-mode CSS for Google's native controls (map-type buttons, fullscreen,
     // keyboard-shortcuts/attribution bar) and InfoWindows on both map containers.
+    // Injected unconditionally so the rules exist regardless of the theme at init
+    // time. Every rule is prefixed with html:not([data-theme="light"]) so it
+    // activates/deactivates automatically when applyTheme() changes dataset.theme —
+    // no map re-init required. Mirrors the same pattern used in initLocalSEOMap().
     _injectDarkCss: function () {
-      if (this._isLight()) return;
       if (document.getElementById('fp-maps-dark-ctrl')) return;
       var css = [];
       ['#fp-gmap', '#fp-competitors-map'].forEach(function (sel) {
+        var p = 'html:not([data-theme="light"]) ';
         css.push(
-          sel + ' .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
-          sel + ' .gm-style-mtc button:hover{background:#334155!important}',
-          sel + ' .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
-          sel + ' .gm-style-mtc li,' + sel + ' .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
-          sel + ' .gm-bundled-control button,' + sel + ' .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
-          sel + ' .gm-svpc,' + sel + ' .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
-          sel + ' .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
-          sel + ' .gm-style-cc a,' + sel + ' .gm-style-cc span,' + sel + ' .gm-style-cc button{color:#94a3b8!important}',
-          sel + ' .gm-style-iw,' + sel + ' .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
-          sel + ' .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
-          sel + ' .gm-style-iw-tc::after{background:#0f172a!important}',
-          sel + ' .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
-          sel + ' .gm-style-iw a{color:#60a5fa!important}'
+          p + sel + ' .gm-style-mtc button{background:#1e293b!important;color:#e2e8f0!important;border-color:#334155!important;box-shadow:none!important}',
+          p + sel + ' .gm-style-mtc button:hover{background:#334155!important}',
+          p + sel + ' .gm-style-mtc>div{background:#1e293b!important;border-color:#334155!important}',
+          p + sel + ' .gm-style-mtc li,' + p + sel + ' .gm-style-mtc label{background:#1e293b!important;color:#e2e8f0!important}',
+          p + sel + ' .gm-bundled-control button,' + p + sel + ' .gm-fullscreen-control{background:#1e293b!important;color:#e2e8f0!important}',
+          p + sel + ' .gm-svpc,' + p + sel + ' .gm-fullscreen-control img{filter:invert(1) brightness(0.8)}',
+          p + sel + ' .gm-style-cc>div{background:rgba(13,17,23,0.72)!important}',
+          p + sel + ' .gm-style-cc a,' + p + sel + ' .gm-style-cc span,' + p + sel + ' .gm-style-cc button{color:#94a3b8!important}',
+          p + sel + ' .gm-style-iw,' + p + sel + ' .gm-style-iw-c{background:#0f172a!important;color:#e2e8f0!important;box-shadow:0 8px 24px rgba(0,0,0,0.6)!important;border:1px solid #1e3a5f!important;border-radius:12px!important}',
+          p + sel + ' .gm-style-iw-d{background:#0f172a!important;color:#e2e8f0!important;overflow:auto!important}',
+          p + sel + ' .gm-style-iw-tc::after{background:#0f172a!important}',
+          p + sel + ' .gm-style-iw button.gm-ui-hover-effect>span{background-color:#e2e8f0!important}',
+          p + sel + ' .gm-style-iw a{color:#60a5fa!important}'
         );
       });
       var s = document.createElement('style');
@@ -1894,7 +2251,9 @@
       if (lat !== null && lng !== null && !(Math.abs(lat - 48.8566) < 1e-9 && Math.abs(lng - 2.3522) < 1e-9)) {
         return { lat: lat, lng: lng, source: 'dataset', needsGeocode: needsGeocode };
       }
-      return { lat: 48.8566, lng: 2.3522, source: 'fallback', needsGeocode: needsGeocode };
+      // Neutral Europe center instead of Paris so the fallback does not reveal
+      // an arbitrary hardcoded city when no address is configured.
+      return { lat: 48.5, lng: 10, source: 'fallback', needsGeocode: needsGeocode };
     },
 
     _savedAddressQuery: function () {
@@ -1952,10 +2311,12 @@
     // Details payload (photo, phone, open/closed, website); when null the card
     // renders from the Nearby Search fields already on `c`.
     _competitorCardHtml: function (c, color, d) {
+      // Colors use CSS variables so the card follows theme switches live.
+      // Old approach: txt/mut computed once at call time from _isLight() →
+      // frozen when the InfoWindow was first opened, wrong after theme toggle.
       var esc = this._esc;
-      var light = this._isLight();
-      var txt = light ? '#0f172a' : '#e2e8f0';
-      var mut = light ? '#64748b' : '#94a3b8';
+      var txt = 'var(--fp-text,#0f172a)';
+      var mut = 'var(--fp-text-muted,#94a3b8)';
       var rating = d && d.rating != null ? d.rating : c.rating;
       var reviews = d && d.reviewCount != null ? d.reviewCount : c.reviewCount;
       var address = (d && d.address) || c.vicinity || '';
@@ -1995,36 +2356,61 @@
     },
 
     _bizCardHtml: function (name) {
-      var light = this._isLight();
-      var txt = light ? '#0f172a' : '#e2e8f0';
-      var mut = light ? '#64748b' : '#94a3b8';
-      return '<div style="font-family:Inter,sans-serif;padding:6px 8px;min-width:150px;color:' + txt + '">'
+      return '<div style="font-family:Inter,sans-serif;padding:6px 8px;min-width:150px;color:var(--fp-text,#0f172a)">'
         + '<div style="font-weight:700;font-size:13px">📍 ' + this._esc(name) + '</div>'
-        + '<div style="font-size:10px;color:' + mut + ';margin-top:2px">Votre établissement</div>'
+        + '<div style="font-size:10px;color:var(--fp-text-muted,#94a3b8);margin-top:2px">Votre établissement</div>'
         + '</div>';
     },
 
+    // ── Flash-free map init helpers ─────────────────────────────────────────
+    // _tryInit() hides the skeleton immediately before calling _initMainMap /
+    // _initCompetitorsMap. When we need to geocode first (source==='fallback'
+    // AND an address is configured), we re-show the skeleton, run the geocode
+    // async, then call _doCreateMainMap / _doCreateCompetitorsMap with the
+    // resolved center — the map is never created at an arbitrary fallback city.
+    // For dataset coords that need refining (needsGeocode=true), the existing
+    // post-creation _geocodeSavedAddress path is kept (smaller, acceptable jump).
+
     _initMainMap: function (el) {
+      var self = this;
       var c = this._bizCenter(el);
-      var lat = c.lat, lng = c.lng;
       var radius = parseInt(el.dataset.radius || '3000');
       var keyword = el.dataset.keyword || '';
       var name = el.dataset.name || 'Mon établissement';
-
       this._injectDarkCss();
-      var map = new google.maps.Map(el, this._mapOptions({ lat: lat, lng: lng }, 14));
+      if (c.source === 'fallback' && this._savedAddressQuery()) {
+        // Keep skeleton visible during geocode — _tryInit hid it; re-show.
+        var sk = document.getElementById('fp-gmap-skeleton');
+        if (sk) sk.style.display = 'flex';
+        apiAction('POST', '/api/maps/geocode', { address: this._savedAddressQuery() }).then(function (geo) {
+          var center = (geo && isFinite(Number(geo.lat)) && isFinite(Number(geo.lng)))
+            ? { lat: Number(geo.lat), lng: Number(geo.lng) }
+            : { lat: 48.5, lng: 10 };
+          self._doCreateMainMap(el, center, radius, keyword, name, false);
+        }).catch(function () {
+          self._doCreateMainMap(el, { lat: 48.5, lng: 10 }, radius, keyword, name, false);
+        });
+      } else {
+        // Saved coords, dataset coords (or no address at all) — create map now.
+        var center = { lat: c.lat, lng: c.lng };
+        this._doCreateMainMap(el, center, radius, keyword, name, !!(c.needsGeocode && c.source !== 'fallback'));
+      }
+    },
 
+    _doCreateMainMap: function (el, center, radius, keyword, name, needsRecenter) {
+      var self = this;
+      var sk = document.getElementById('fp-gmap-skeleton');
+      if (sk) sk.style.display = 'none';
+      var map = new google.maps.Map(el, this._mapOptions(center, 14));
       var businessMarker = new google.maps.Marker({
-        position: { lat: lat, lng: lng },
+        position: center,
         map: map,
         title: name,
         icon: this._makeBusinessIcon(),
         zIndex: 1000,
       });
-
       var infoWindow = new google.maps.InfoWindow({ content: this._bizCardHtml(name) });
       businessMarker.addListener('click', function () { infoWindow.open(map, businessMarker); });
-
       var radiusCircle = new google.maps.Circle({
         strokeColor: '#2563EB',
         strokeOpacity: 0.5,
@@ -2032,37 +2418,52 @@
         fillColor: '#2563EB',
         fillOpacity: 0.05,
         map: map,
-        center: { lat: lat, lng: lng },
+        center: center,
         radius: radius,
       });
-
-      var inst = { map: map, markers: [], circle: radiusCircle, heatLayer: null, heatVisible: true, compVisible: true, radiusVisible: true, center: { lat: lat, lng: lng }, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
+      var inst = { map: map, markers: [], circle: radiusCircle, heatLayer: null, heatVisible: true, compVisible: true, radiusVisible: true, center: center, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
       this._mapInstances['fp-gmap'] = inst;
-
-      var self = this;
-      if (c.source === 'fallback' || c.needsGeocode) {
-        // Saved address must win: no layer loads at temporary coordinates.
-        // centerPending suppresses setRadius/reloadData loads until the
-        // geocode resolves; the callback then loads with CURRENT radius/keyword.
+      if (needsRecenter) {
+        // Dataset coords are approximate; geocode the saved address to refine.
+        // This is the minor-jump path, distinct from the no-coords-at-all path.
         inst.centerPending = true;
         self._geocodeSavedAddress('fp-gmap', businessMarker, radiusCircle);
       } else {
-        self._loadCompetitorMarkers('fp-gmap', lat, lng, radius, keyword);
-        self._loadHeatmapLayer('fp-gmap', lat, lng, radius, keyword);
+        self._loadCompetitorMarkers('fp-gmap', center.lat, center.lng, radius, keyword);
+        self._loadHeatmapLayer('fp-gmap', center.lat, center.lng, radius, keyword);
       }
     },
 
     _initCompetitorsMap: function (el) {
+      var self = this;
       var c = this._bizCenter(el);
-      var lat = c.lat, lng = c.lng;
       var radius = parseInt(el.dataset.radius || '5000');
       var keyword = el.dataset.keyword || '';
-
       this._injectDarkCss();
-      var map = new google.maps.Map(el, this._mapOptions({ lat: lat, lng: lng }, 13));
+      if (c.source === 'fallback' && this._savedAddressQuery()) {
+        // Keep skeleton visible during geocode — _tryInit hid it; re-show.
+        var sk = document.getElementById('fp-competitors-map-skeleton');
+        if (sk) sk.style.display = 'flex';
+        apiAction('POST', '/api/maps/geocode', { address: this._savedAddressQuery() }).then(function (geo) {
+          var center = (geo && isFinite(Number(geo.lat)) && isFinite(Number(geo.lng)))
+            ? { lat: Number(geo.lat), lng: Number(geo.lng) }
+            : { lat: 48.5, lng: 10 };
+          self._doCreateCompetitorsMap(el, center, radius, keyword, false);
+        }).catch(function () {
+          self._doCreateCompetitorsMap(el, { lat: 48.5, lng: 10 }, radius, keyword, false);
+        });
+      } else {
+        var center = { lat: c.lat, lng: c.lng };
+        this._doCreateCompetitorsMap(el, center, radius, keyword, !!(c.needsGeocode && c.source !== 'fallback'));
+      }
+    },
 
+    _doCreateCompetitorsMap: function (el, center, radius, keyword, needsRecenter) {
+      var sk = document.getElementById('fp-competitors-map-skeleton');
+      if (sk) sk.style.display = 'none';
+      var map = new google.maps.Map(el, this._mapOptions(center, 13));
       var bizMarker = new google.maps.Marker({
-        position: { lat: lat, lng: lng },
+        position: center,
         map: map,
         icon: this._makeBusinessIcon(),
         zIndex: 1000,
@@ -2070,7 +2471,6 @@
       });
       var bizIW = new google.maps.InfoWindow({ content: this._bizCardHtml('Mon établissement') });
       bizMarker.addListener('click', function () { bizIW.open(map, bizMarker); });
-
       var bizCircle = new google.maps.Circle({
         strokeColor: '#8b5cf6',
         strokeOpacity: 0.4,
@@ -2078,18 +2478,16 @@
         fillColor: '#8b5cf6',
         fillOpacity: 0.04,
         map: map,
-        center: { lat: lat, lng: lng },
+        center: center,
         radius: radius,
       });
-
-      var inst = { map: map, markers: [], circle: bizCircle, radiusVisible: true, center: { lat: lat, lng: lng }, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
+      var inst = { map: map, markers: [], circle: bizCircle, radiusVisible: true, center: center, radius: radius, keyword: keyword, centerPending: false, _geoGen: 0 };
       this._mapInstances['fp-competitors-map'] = inst;
-
-      if (c.source === 'fallback' || c.needsGeocode) {
+      if (needsRecenter) {
         inst.centerPending = true;
         this._geocodeSavedAddress('fp-competitors-map', bizMarker, bizCircle);
       } else {
-        this._loadCompetitorMarkers('fp-competitors-map', lat, lng, radius, keyword);
+        this._loadCompetitorMarkers('fp-competitors-map', center.lat, center.lng, radius, keyword);
       }
     },
 
@@ -2464,7 +2862,19 @@
           }),
         });
 
-        if (resp.status === 401) { _clearAuth(); window.location.href = '/login.html'; return; }
+        if (resp.status === 401) {
+          // 401 from /api/ai/chat may be quota exhaustion or plan gate — NOT necessarily session
+          // expiry. Redirect only after /api/me confirms the session is gone (same pattern
+          // as background-poll 401s handled by _confirmSessionExpiredBackend).
+          _fp401BackgroundCount++;
+          if (!_fp401ConfirmTimer) {
+            _fp401ConfirmTimer = setTimeout(function() {
+              _fp401ConfirmTimer = null;
+              _confirmSessionExpiredBackend();
+            }, 3000);
+          }
+          return;
+        }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
         var contentType = resp.headers.get('content-type') || '';
@@ -2904,6 +3314,32 @@
         try { document.dispatchEvent(new CustomEvent('fp:team:message', { detail: data })); } catch(_) {}
       }
       // ── Alert events — re-fetch and refresh sidebar badge in real time ──────────────
+      // ── Billing plan update (Stripe webhook → store.broadcastPlanUpdate → SSE → UI)
+      if (data.type === 'billing:plan_updated') {
+        try { document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data })); } catch(_) {}
+      }
+      // ── Add-on activation / deactivation — re-fetch /api/me so limits update ──
+      if (data.type === 'addon:activated') {
+        try { document.dispatchEvent(new CustomEvent('fp:addon:activated', { detail: data })); } catch(_) {}
+        // Full /api/me refresh to update limits (e.g. monitors +10 after monitorsPack10)
+        _deleteBackendCachePath('/api/me');
+        apiFetch('/api/me').then(function(freshMe) {
+          if (freshMe && window.STATE) {
+            window.STATE.me = freshMe;
+            if (typeof window.render === 'function') window.render();
+          }
+        }).catch(function() {});
+      }
+      if (data.type === 'addon:deactivated') {
+        try { document.dispatchEvent(new CustomEvent('fp:addon:deactivated', { detail: data })); } catch(_) {}
+        _deleteBackendCachePath('/api/me');
+        apiFetch('/api/me').then(function(freshMe) {
+          if (freshMe && window.STATE) {
+            window.STATE.me = freshMe;
+            if (typeof window.render === 'function') window.render();
+          }
+        }).catch(function() {});
+      }
       if (data.type === 'alert:update' || data.type === 'alert:new') {
         if (window.STATE && typeof window.apiFetch === 'function') {
           window.apiFetch('/api/alert-events').then(function(events) {
@@ -3147,7 +3583,13 @@
       var page = document.getElementById('fp-page');
       if (!page) return;
       var hasSkeleton = !!page.querySelector('#fp-loading-skeleton');
-      var hasRealContent = !!page.querySelector('.fp-hero-cmd, .fp-stat-card, .fp-card, .fp-gauge-card, .fp-stat-row, .fp-page-section, .fp-overview-grid');
+      // hasRealContent: detect any known content class OR substantial non-skeleton innerHTML.
+      // This prevents false-positive re-renders on pages that don't use .fp-stat-card
+      // (e.g. Settings uses .fp-form-group, Local SEO uses .fp-map-wrap, etc.)
+      var hasRealContent = !hasSkeleton && (
+        !!page.querySelector('.fp-hero-cmd, .fp-stat-card, .fp-card, .fp-gauge-card, .fp-stat-row, .fp-page-section, .fp-overview-grid, .fp-form-group, .fp-kpi-row, .fp-chart-card, .fp-map-wrap, .fp-settings-card') ||
+        page.innerHTML.length > 2000
+      );
       var stateReady = window.STATE && window.STATE.me && !window.STATE.loading;
       if ((hasSkeleton || !hasRealContent) && stateReady && window.render) {
         console.debug('[FP] ' + label + ': skeleton/blank detected — forcing re-render');
@@ -3164,8 +3606,9 @@
         }
       }
     }
-    setTimeout(function() { check('3s check'); }, 3000);
-    setTimeout(function() { check('8s check'); }, 8000);
+    // Safety check removed: Phase 3+4 now await each other before a single final
+    // render(), and the loadData() safety timeout handles crash recovery.
+    // Any forced render at 5s would cause a spurious DOM replacement on normal pages.
   })();
 
   console.log('[FP] Error catcher v8b actif');
@@ -3294,13 +3737,20 @@
         if (!page) return;
 
         var hasSkeleton  = !!page.querySelector('#fp-loading-skeleton');
-        var hasContent   = !!(
-          page.querySelector('.fp-hero-cmd')      ||
-          page.querySelector('.fp-stat-card')     ||
-          page.querySelector('.fp-card')          ||
-          page.querySelector('.fp-page-section')  ||
-          page.querySelector('.fp-kpi-row')       ||
-          page.querySelector('.fp-gauge-card')
+        // hasContent: any known content class OR substantial non-skeleton HTML.
+        // Including Settings (.fp-form-group), Local SEO (.fp-map-wrap), etc.
+        // so those pages aren't wrongly detected as "empty" and re-rendered.
+        var hasContent = !hasSkeleton && (
+          !!(page.querySelector('.fp-hero-cmd')       ||
+             page.querySelector('.fp-stat-card')      ||
+             page.querySelector('.fp-card')           ||
+             page.querySelector('.fp-page-section')   ||
+             page.querySelector('.fp-kpi-row')        ||
+             page.querySelector('.fp-gauge-card')     ||
+             page.querySelector('.fp-form-group')     ||
+             page.querySelector('.fp-map-wrap')       ||
+             page.querySelector('.fp-settings-card')) ||
+          page.innerHTML.length > 2000
         );
 
         // Vrai contenu présent → OK
@@ -3357,4 +3807,3 @@
 
     console.log('[FP] v8d — render garanti + AI panel désactivé');
   })();
-

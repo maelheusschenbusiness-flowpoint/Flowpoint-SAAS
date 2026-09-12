@@ -208,7 +208,10 @@ async function callOpenAIWithTools(opts: ToolCallingOptions): Promise<ToolCallin
     tools: rawTools as unknown as OpenAI.ChatCompletionTool[],
     tool_choice: "auto",
     ...(model.startsWith("gpt-5") || model.startsWith("o")
-      ? { max_completion_tokens: maxTokens + 500 }
+      // CR-11: reasoning_effort:"low" reduces tool-selection latency.
+      // The API default is "medium" when omitted, which adds unnecessary thinking for
+      // tool dispatch (create_mission, delete_mission, etc.). "low" is sufficient.
+      ? { max_completion_tokens: maxTokens + 500, reasoning_effort: "low" as const }
       : { max_tokens: maxTokens, temperature: 0.3 }),
   });
 

@@ -135,6 +135,101 @@ async function run(client: PoolClient, sql: string): Promise<void> {
 export async function initDataTables(): Promise<void> {
   const client = await pool.connect();
   try {
+    // ── org_settings legacy mirror / profile store ────────────────────────────
+    // organizations is the canonical billing source, but this table remains a
+    // read-only/dual-write compatibility surface during the auth migration.
+    // Keep its bootstrap self-healing: the SQL migrations are not executed by
+    // every deployment and a reset database must still be reconstructible.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS org_settings (
+        org_id                 TEXT PRIMARY KEY DEFAULT 'default',
+        plan                   TEXT NOT NULL DEFAULT 'standard',
+        email                  TEXT,
+        first_name             TEXT,
+        last_name              TEXT,
+        name                   TEXT,
+        org_name               TEXT,
+        website                TEXT,
+        logo_url               TEXT,
+        timezone               TEXT NOT NULL DEFAULT 'Europe/Paris',
+        language               TEXT NOT NULL DEFAULT 'fr',
+        currency               TEXT NOT NULL DEFAULT 'EUR',
+        date_format            TEXT,
+        time_format            TEXT,
+        monthly_budget         NUMERIC,
+        primary_site           TEXT,
+        industry               TEXT,
+        company_size           TEXT,
+        billing_email          TEXT,
+        stripe_customer_id    TEXT,
+        stripe_subscription_id TEXT,
+        subscription_status    TEXT,
+        trial_ends_at          TIMESTAMPTZ,
+        trial_consumed_at      TIMESTAMPTZ,
+        trial_started_at       TIMESTAMPTZ,
+        pending_plan           TEXT,
+        pending_plan_date      TEXT,
+        addons                 JSONB NOT NULL DEFAULT '{}'::jsonb,
+        usage                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+        address                TEXT,
+        city                   TEXT,
+        postal_code            TEXT,
+        country                TEXT,
+        region                 TEXT,
+        phone                  TEXT,
+        vat                    TEXT,
+        latitude               NUMERIC,
+        longitude              NUMERIC,
+        service_area           JSONB NOT NULL DEFAULT '[]'::jsonb,
+        location_configured    BOOLEAN NOT NULL DEFAULT false,
+        location_source        TEXT,
+        created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // Existing installations may have the smaller migration-004/005 schema.
+    // These additive repairs keep profile reads and the billing mirror safe.
+    for (const sql of [
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS first_name TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS last_name TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS org_name TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS website TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS date_format TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS time_format TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS subscription_status TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS pending_plan TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS pending_plan_date TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS addons JSONB NOT NULL DEFAULT '{}'::jsonb`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS usage JSONB NOT NULL DEFAULT '{}'::jsonb`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS address TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS city TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS country TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS vat TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS latitude NUMERIC`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS longitude NUMERIC`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS service_area JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS location_configured BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS location_source TEXT`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+      `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    ]) {
+      await run(client, sql);
+    }
+    await run(client, `CREATE INDEX IF NOT EXISTS idx_org_settings_city ON org_settings(city)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS idx_org_settings_country ON org_settings(country)`);
+    await run(client, `
+      INSERT INTO org_settings (org_id, plan)
+      VALUES ('default', 'standard')
+      ON CONFLICT (org_id) DO NOTHING
+    `);
+
     // ── audits ────────────────────────────────────────────────────────────────
     await run(client, `
       CREATE TABLE IF NOT EXISTS audits (
@@ -162,9 +257,41 @@ export async function initDataTables(): Promise<void> {
     // POST /api/audits INSERTs an org_id column that did not exist there,
     // causing a 500 (Postgres 42703 "column audits.org_id does not exist").
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    // created_by: the userId (UUID or email) of the user who created the audit.
+    // Used for real-table attribution in /team/contributions — avoids relying on
+    // activity_logs identity chain which breaks for legacy/pre-migration user_ids.
+    await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS created_by TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_url_idx ON audits(url);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_created_at_idx ON audits(created_at);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_org_id_idx ON audits(org_id);`);
+    // Back-fill created_by for historical audits from activity_logs (best-effort, non-fatal).
+    // Rows already having a non-null created_by are left untouched.
+    await run(client, `
+      UPDATE audits a
+      SET created_by = al.user_id
+      FROM (
+        SELECT DISTINCT ON (target_id) target_id, user_id
+        FROM activity_logs
+        WHERE target_type = 'audit'
+          AND user_id IS NOT NULL AND user_id NOT IN ('system','')
+        ORDER BY target_id, created_at ASC
+      ) al
+      WHERE al.target_id = a.id
+        AND a.created_by IS NULL;
+    `).catch(() => { /* non-fatal: activity_logs may not exist yet */ });
+
+    // Second-pass backfill: if activity_logs had no user_id (system/null),
+    // attribute remaining NULL created_by rows to the org owner (email or user_id).
+    // This covers audits created before the created_by column was populated.
+    await run(client, `
+      UPDATE audits a
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE a.org_id = o.id::text
+        AND (a.created_by IS NULL OR a.created_by = '')
+        AND (o.owner_user_id IS NOT NULL AND o.owner_user_id != ''
+             OR o.owner_email IS NOT NULL AND o.owner_email != '');
+    `).catch(() => { /* non-fatal */ });
 
     // ── reports + share_tokens ───────────────────────────────────────────────
     // BUGFIX: the `reports` table was never created on production — it only
@@ -178,6 +305,7 @@ export async function initDataTables(): Promise<void> {
         org_id             TEXT NOT NULL DEFAULT 'default',
         name               TEXT NOT NULL,
         type               TEXT NOT NULL DEFAULT 'PDF',
+        template_key       TEXT NOT NULL DEFAULT 'seo',
         date               TEXT NOT NULL DEFAULT '',
         pages              INTEGER NOT NULL DEFAULT 0,
         shared             BOOLEAN NOT NULL DEFAULT false,
@@ -191,7 +319,34 @@ export async function initDataTables(): Promise<void> {
       );
     `);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    // created_by: real-table attribution for /team/contributions (same pattern as audits + missions)
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_by TEXT;`);
+    // Back-fill created_by for historical reports from activity_logs (best-effort, non-fatal).
+    await run(client, `
+      UPDATE reports r
+      SET created_by = al.user_id
+      FROM (
+        SELECT DISTINCT ON (target_id) target_id, user_id
+        FROM activity_logs
+        WHERE target_type = 'report'
+          AND user_id IS NOT NULL AND user_id NOT IN ('system','')
+        ORDER BY target_id, created_at ASC
+      ) al
+      WHERE al.target_id = r.id
+        AND r.created_by IS NULL;
+    `).catch(() => { /* non-fatal */ });
+    // Second-pass backfill: attribute remaining NULL reports to the org owner
+    await run(client, `
+      UPDATE reports r
+      SET created_by = COALESCE(NULLIF(o.owner_user_id, ''), o.owner_email)
+      FROM organizations o
+      WHERE r.org_id = o.id::text
+        AND (r.created_by IS NULL OR r.created_by = '')
+        AND (COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) IS NOT NULL
+             AND COALESCE(NULLIF(o.owner_user_id,''), o.owner_email) != '');
+    `).catch(() => { /* non-fatal */ });
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS template_key TEXT NOT NULL DEFAULT 'seo';`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pages INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS shared BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pdf_ready BOOLEAN NOT NULL DEFAULT false;`);
@@ -390,7 +545,73 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS domain_rating INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS threat_level TEXT NOT NULL DEFAULT 'low';`);
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS delta INTEGER DEFAULT 0;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_status TEXT NOT NULL DEFAULT 'unavailable';`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_provider TEXT;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS provider_model TEXT;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_fetched_at TIMESTAMP;`);
+    await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS data_error TEXT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS competitors_domain_rating_idx ON competitors(domain_rating);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitors_org_id_idx ON competitors(org_id);`);
+
+    // ── competitor_analysis ───────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS competitor_analysis (
+        id              TEXT PRIMARY KEY,
+        org_id          TEXT NOT NULL DEFAULT 'default',
+        competitor_id   TEXT NOT NULL,
+        url_fetched     TEXT NOT NULL DEFAULT '',
+        value_prop      TEXT NOT NULL DEFAULT 'Non déterminé',
+        target_audience TEXT NOT NULL DEFAULT 'Non déterminé',
+        products        TEXT NOT NULL DEFAULT 'Non déterminé',
+        arguments       JSONB NOT NULL DEFAULT '[]',
+        differentiators JSONB NOT NULL DEFAULT '[]',
+        features        JSONB NOT NULL DEFAULT '[]',
+        plans           JSONB NOT NULL DEFAULT '[]',
+        pricing         TEXT NOT NULL DEFAULT 'Non déterminé',
+        trial           TEXT NOT NULL DEFAULT 'Non déterminé',
+        ctas            JSONB NOT NULL DEFAULT '[]',
+        strengths       JSONB NOT NULL DEFAULT '[]',
+        weaknesses      JSONB NOT NULL DEFAULT '[]',
+        advantages      JSONB NOT NULL DEFAULT '[]',
+        disadvantages   JSONB NOT NULL DEFAULT '[]',
+        differentiating JSONB NOT NULL DEFAULT '[]',
+        you_better      JSONB NOT NULL DEFAULT '[]',
+        they_better     JSONB NOT NULL DEFAULT '[]',
+        opportunities   JSONB NOT NULL DEFAULT '[]',
+        feature_matrix  JSONB NOT NULL DEFAULT '[]',
+        sources         JSONB NOT NULL DEFAULT '[]',
+        snapshot_hash   TEXT NOT NULL DEFAULT '',
+        changes_detected JSONB NOT NULL DEFAULT '[]',
+        pages_fetched   INTEGER NOT NULL DEFAULT 0,
+        ai_available    BOOLEAN NOT NULL DEFAULT false,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(competitor_id, org_id)
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitor_analysis_org_idx ON competitor_analysis(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS competitor_analysis_comp_idx ON competitor_analysis(competitor_id);`);
+    // ── Security: RLS must be applied inline, right after table creation.
+    // runRlsMigrationIfNeeded() runs BEFORE initDataTables() in both the
+    // full-init and fast-path sequences, so any table created here would be
+    // left unprotected until the NEXT startup.  Applying it here closes the
+    // gap on first boot and on every subsequent boot (all ALTER/CREATE are
+    // idempotent — IF NOT EXISTS / DROP POLICY IF EXISTS guard repeats).
+    await run(client, `ALTER TABLE competitor_analysis ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE competitor_analysis FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_select" ON competitor_analysis`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_insert" ON competitor_analysis`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_update" ON competitor_analysis`);
+    await run(client, `DROP POLICY IF EXISTS "tenant_delete" ON competitor_analysis`);
+    await run(client, `CREATE POLICY "tenant_select" ON competitor_analysis FOR SELECT USING     (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_insert" ON competitor_analysis FOR INSERT WITH CHECK (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_update" ON competitor_analysis FOR UPDATE USING     (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_delete" ON competitor_analysis FOR DELETE USING     (COALESCE(org_id::text,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS feature_matrix JSONB NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS you_better JSONB NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS they_better JSONB NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE competitor_analysis ADD COLUMN IF NOT EXISTS opportunities JSONB NOT NULL DEFAULT '[]';`);
 
     // ── alert_events ──────────────────────────────────────────────────────────
     await run(client, `
@@ -480,6 +701,84 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS report_exports_org_id_idx     ON report_exports(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS report_exports_created_at_idx ON report_exports(created_at);`);
 
+    // ── custom_domains ──────────────────────────────────────────────────────────
+    // White-label custom-domain feature (routes/white-label.ts). Previously this
+    // table was only referenced by the RLS migration list but had no CREATE TABLE,
+    // so every /white-label/domains* endpoint failed with 42P01 on a fresh DB.
+    // Columns match exactly what white-label.ts inserts/selects/updates.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS custom_domains (
+        id                 TEXT        PRIMARY KEY,
+        org_id             TEXT        NOT NULL DEFAULT 'default',
+        domain             TEXT        NOT NULL DEFAULT '',
+        status             TEXT        NOT NULL DEFAULT 'pending_dns',
+        ssl_active         BOOLEAN     NOT NULL DEFAULT false,
+        verification_token TEXT,
+        verified_at        TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS org_id             TEXT        NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS domain             TEXT        NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS status             TEXT        NOT NULL DEFAULT 'pending_dns';`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS ssl_active         BOOLEAN     NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS verification_token TEXT;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS verified_at        TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `CREATE INDEX IF NOT EXISTS custom_domains_org_id_idx ON custom_domains(org_id);`);
+
+    // ── custom_domains — ENABLE + FORCE RLS + 4 tenant isolation policies ─────
+    // Supabase Security Advisor flagged custom_domains as public without RLS.
+    // FORCE ensures even superuser pool connections are subject to the policy.
+    await run(client, `ALTER TABLE custom_domains ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE custom_domains FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_select') THEN
+          CREATE POLICY custom_domains_tenant_select ON custom_domains FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_insert') THEN
+          CREATE POLICY custom_domains_tenant_insert ON custom_domains FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_update') THEN
+          CREATE POLICY custom_domains_tenant_update ON custom_domains FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='custom_domains' AND policyname='custom_domains_tenant_delete') THEN
+          CREATE POLICY custom_domains_tenant_delete ON custom_domains FOR DELETE
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
+    // ── report_templates (unconditional self-heal) ─────────────────────────────
+    // Also created inside the missing-production-tables-v3 migration block below,
+    // but that block is skipped once the migration flag is set. White-label GET
+    // /templates now self-heals via initDataTables on a 42P01, so the table must
+    // be (re)provisionable on every boot — not only on first init. Idempotent.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS report_templates (
+        id                       TEXT        PRIMARY KEY,
+        org_id                   TEXT        NOT NULL DEFAULT 'default',
+        name                     TEXT        NOT NULL DEFAULT '',
+        logo_url                 TEXT,
+        primary_color            TEXT,
+        secondary_color          TEXT,
+        font                     TEXT,
+        footer_text              TEXT,
+        header_text              TEXT,
+        hide_flowpoint_branding  BOOLEAN     NOT NULL DEFAULT false,
+        is_default               BOOLEAN     NOT NULL DEFAULT false,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS report_templates_org_idx ON report_templates(org_id);`);
+
     // ── team_messages ─────────────────────────────────────────────────────────
     await run(client, `
       CREATE TABLE IF NOT EXISTS team_messages (
@@ -530,6 +829,95 @@ export async function initDataTables(): Promise<void> {
       );
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS org_secrets_org_id_idx ON org_secrets(org_id);`);
+
+    // ── billing_events — Stripe webhook idempotency table ────────────────────
+    // Self-heal: table may be missing on older deployments (schema gap).
+    // stripe-webhook.ts fails-open with 42P01 and logs a warning until this runs.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS billing_events (
+        id               SERIAL PRIMARY KEY,
+        org_id           TEXT        NOT NULL DEFAULT '_system_',
+        type             TEXT        NOT NULL DEFAULT '',
+        stripe_event_id  TEXT        UNIQUE,
+        amount           INTEGER     NOT NULL DEFAULT 0,
+        currency         TEXT        NOT NULL DEFAULT 'eur',
+        metadata         JSONB,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS billing_events_org_id_idx        ON billing_events(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS billing_events_stripe_event_id_idx ON billing_events(stripe_event_id);`);
+    await run(client, `ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS metadata JSONB;`);
+    // ── Security: billing_events must not be publicly readable without RLS ─────
+    // Supabase security advisor flags any table in public schema with RLS disabled.
+    // billing_events is written by Stripe webhooks via pool (superuser — bypasses RLS)
+    // and read by billing-service.ts also via pool.  ENABLE RLS + deny-all is correct:
+    // user sessions see nothing, service connections see everything.
+    await run(client, `ALTER TABLE billing_events ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE billing_events FORCE ROW LEVEL SECURITY`);
+    // A SELECT policy lets org-scoped dashboard billing history work for authed sessions:
+    await run(client, `DROP POLICY IF EXISTS "be_select" ON billing_events`);
+    await run(client, `CREATE POLICY "be_select" ON billing_events FOR SELECT USING (org_id = current_setting('app.current_org_id', true))`);
+    await run(client, `DROP POLICY IF EXISTS "be_insert" ON billing_events`);
+    await run(client, `DROP POLICY IF EXISTS "be_update" ON billing_events`);
+
+    // ── AI billing tables — create before any self-healing ALTERs ─────────────
+    // These tables used to be assumed to exist from an external/legacy schema.
+    // That made a clean database reset unrecoverable: the ALTER statements below
+    // were swallowed as warnings, then initAiMigration aborted on ai_usage_logs.
+    // Keep the base schema here so a fresh database can boot deterministically.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_usage_logs (
+        id               TEXT PRIMARY KEY,
+        org_id           TEXT NOT NULL DEFAULT 'default',
+        user_id          TEXT,
+        feature          TEXT NOT NULL DEFAULT '',
+        model            TEXT NOT NULL DEFAULT 'gpt-5-mini',
+        tokens_used      INTEGER NOT NULL DEFAULT 0,
+        credits_used     NUMERIC NOT NULL DEFAULT 0,
+        credits_debited  NUMERIC NOT NULL DEFAULT 0,
+        tokens_in        INTEGER NOT NULL DEFAULT 0,
+        tokens_out       INTEGER NOT NULL DEFAULT 0,
+        cached_tokens    INTEGER NOT NULL DEFAULT 0,
+        cost_eur         NUMERIC NOT NULL DEFAULT 0,
+        real_cost_eur    NUMERIC NOT NULL DEFAULT 0,
+        latency_ms       INTEGER NOT NULL DEFAULT 0,
+        duration_ms      INTEGER NOT NULL DEFAULT 0,
+        success          BOOLEAN NOT NULL DEFAULT true,
+        metadata         JSONB,
+        idempotency_key  TEXT,
+        provider         TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_monthly_usage (
+        id             TEXT PRIMARY KEY,
+        org_id         TEXT NOT NULL DEFAULT 'default',
+        month          TEXT NOT NULL,
+        credits_used   NUMERIC NOT NULL DEFAULT 0,
+        credits_limit  INTEGER NOT NULL DEFAULT 100000,
+        credits_extra  INTEGER NOT NULL DEFAULT 0,
+        cost_eur       NUMERIC NOT NULL DEFAULT 0,
+        request_count  INTEGER NOT NULL DEFAULT 0,
+        tokens_used    BIGINT NOT NULL DEFAULT 0,
+        reset_at       TIMESTAMPTZ,
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, month)
+      );
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_credit_purchases (
+        id                       TEXT PRIMARY KEY,
+        org_id                   TEXT NOT NULL DEFAULT 'default',
+        pack                     TEXT NOT NULL DEFAULT '',
+        credits                  INTEGER NOT NULL DEFAULT 0,
+        amount_eur_cents         INTEGER NOT NULL DEFAULT 0,
+        stripe_session_id        TEXT,
+        stripe_payment_intent    TEXT,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
 
     // ── ai_usage_logs — extended cost logging columns ────────────────────────
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
@@ -987,8 +1375,80 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    // Internal QA flag — grants premium access to the single hardcoded QA org without Stripe.
+    // Only billing-context.ts reads this flag, and only for the fixed QA_ORG_UUID.
+    // NEVER use this flag to bypass billing for any other org.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_internal_qa BOOLEAN NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_email TEXT NOT NULL DEFAULT '';`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
+
+    // ── user_prefs — per-organization preferences and onboarding state ───────
+    // This table is the canonical store for /api/me/prefs and
+    // settings.onboardingCompletedAt.  migrations/*.sql are not executed on
+    // every deployment, so keep the reset/self-heal path authoritative here.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS user_prefs (
+        org_id     TEXT PRIMARY KEY DEFAULT 'default',
+        streak     INTEGER NOT NULL DEFAULT 0,
+        pinned     JSONB NOT NULL DEFAULT '{}',
+        checklist  JSONB,
+        settings   JSONB NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS pinned JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS checklist JSONB`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_prefs_org_idx ON user_prefs(org_id)`);
+    await run(client, `ALTER TABLE user_prefs ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE user_prefs NO FORCE ROW LEVEL SECURITY`);
+    for (const op of ["select", "insert", "update", "delete"]) {
+      await run(client, `DROP POLICY IF EXISTS "tenant_${op}" ON user_prefs`);
+    }
+    await run(client, `CREATE POLICY "tenant_select" ON user_prefs FOR SELECT USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_insert" ON user_prefs FOR INSERT WITH CHECK (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_update" ON user_prefs FOR UPDATE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_delete" ON user_prefs FOR DELETE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+
+    // ── org_addons — durable add-on entitlements ─────────────────────────────
+    // Billing context and plan gates read this table on every dashboard load.
+    // Keep it self-healing because the raw migration that originally created it
+    // is not replayed automatically after a development reset.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS org_addons (
+        id           TEXT PRIMARY KEY,
+        org_id       TEXT NOT NULL DEFAULT 'default',
+        addon_key    TEXT NOT NULL,
+        active       BOOLEAN NOT NULL DEFAULT false,
+        quantity     INTEGER NOT NULL DEFAULT 1,
+        activated_at TIMESTAMPTZ,
+        metadata     JSONB NOT NULL DEFAULT '{}',
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default'`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS addon_key TEXT NOT NULL DEFAULT ''`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT false`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS org_addons_org_idx ON org_addons(org_id)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS org_addons_key_idx ON org_addons(org_id, addon_key)`);
+    await run(client, `ALTER TABLE org_addons ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE org_addons NO FORCE ROW LEVEL SECURITY`);
+    for (const op of ["select", "insert", "update", "delete"]) {
+      await run(client, `DROP POLICY IF EXISTS "tenant_${op}" ON org_addons`);
+    }
+    await run(client, `CREATE POLICY "tenant_select" ON org_addons FOR SELECT USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_insert" ON org_addons FOR INSERT WITH CHECK (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_update" ON org_addons FOR UPDATE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "tenant_delete" ON org_addons FOR DELETE USING (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true))`);
 
     // ── team_invitations — dedicated invitation table (Wave 3 Lot B) ─────────
     // Invitations are decoupled from team_members: pending/accepted/expired/revoked.
@@ -1198,15 +1658,32 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
-    // ── revenue_leaks — add org_id ────────────────────────────────────────────
+    // ── revenue_leaks — CREATE (idempotent) + org_id self-heal ───────────────
+    // Previously only added org_id IF the table existed, but never created it.
+    // Routes (overview.ts, revenue-leak.ts, overview-service.ts) all query this
+    // table unconditionally and fail with 42P01 on a fresh DB.
+    // Schema matches the Drizzle revenueLeaksTable in lib/db/src/index.ts.
     await run(client, `
-      DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='revenue_leaks') THEN
-          EXECUTE 'ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
-          EXECUTE 'CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id)';
-        END IF;
-      END $$;
+      CREATE TABLE IF NOT EXISTS revenue_leaks (
+        id                     TEXT        PRIMARY KEY,
+        org_id                 TEXT        NOT NULL DEFAULT 'default',
+        site_url               TEXT,
+        leak_type              TEXT        NOT NULL DEFAULT 'conversion',
+        page                   TEXT        NOT NULL DEFAULT '/',
+        title                  TEXT        NOT NULL DEFAULT '',
+        description            TEXT,
+        estimated_monthly_loss REAL        DEFAULT 0,
+        impact_score           INTEGER     DEFAULT 50,
+        fix_difficulty_min     INTEGER     DEFAULT 60,
+        quick_fix              TEXT,
+        status                 TEXT        NOT NULL DEFAULT 'active',
+        metadata               JSONB       DEFAULT '{}',
+        detected_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at            TIMESTAMPTZ
+      )
     `);
+    await run(client, `ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id);`);
 
     // ── Fix RLS on behavioral/CRO tables: USING=(true) → org_id filter ───────
     // Drop both old *_isolation policies AND old tenant_* permissive bypass policies.
@@ -1283,10 +1760,28 @@ export async function initDataTables(): Promise<void> {
         END IF;
       END $$;
     `);
+    // revenue_leaks — ENABLE + FORCE RLS + 4 tenant policies (table now always exists)
+    await run(client, `ALTER TABLE revenue_leaks ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE revenue_leaks FORCE ROW LEVEL SECURITY`);
     await run(client, `
       DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'revenue_leaks' AND rowsecurity = true) THEN
-          CREATE POLICY revenue_leaks_isolation ON revenue_leaks
+        -- Drop old single-operation isolation policy if it exists
+        DROP POLICY IF EXISTS revenue_leaks_isolation ON revenue_leaks;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_select') THEN
+          CREATE POLICY revenue_leaks_tenant_select ON revenue_leaks FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_insert') THEN
+          CREATE POLICY revenue_leaks_tenant_insert ON revenue_leaks FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_update') THEN
+          CREATE POLICY revenue_leaks_tenant_update ON revenue_leaks FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_delete') THEN
+          CREATE POLICY revenue_leaks_tenant_delete ON revenue_leaks FOR DELETE
             USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$;
@@ -1482,6 +1977,68 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at      TIMESTAMPTZ`);
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
 
+    // ── Deduplicate & purge before creating unique index ──────────────────────
+    // Step 1: Delete expired unconsumed rows. These have consumed_at IS NULL but
+    // expires_at < NOW(), so they can never be used — but they DO block the unique
+    // index below, causing legitimate retry attempts to fail.
+    await run(client, `
+      DELETE FROM pending_signups
+        WHERE consumed_at IS NULL AND expires_at < NOW()
+    `);
+    // Step 2: Remove older duplicate non-consumed rows, keeping the most recent
+    // one per email. Tie-breaker on token (lexicographic) handles rows with
+    // identical created_at, ensuring exactly one survivor per email regardless.
+    await run(client, `
+      DELETE FROM pending_signups ps
+        WHERE consumed_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM pending_signups ps2
+             WHERE lower(ps2.email) = lower(ps.email)
+               AND ps2.consumed_at IS NULL
+               AND (ps2.created_at > ps.created_at
+                    OR (ps2.created_at = ps.created_at AND ps2.token > ps.token))
+          )
+    `);
+    // Step 3: Create unique index (only one unconsumed row per email at a time).
+    // We intentionally bypass the run() helper here so that a failure is surfaced
+    // as an explicit error log rather than a silent warn — failing to create this
+    // index means the race-condition guard is not in effect.
+    try {
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS pending_signups_email_active_uniq
+          ON pending_signups(lower(email))
+          WHERE consumed_at IS NULL
+      `);
+      logger.info("[init] pending_signups unique email index OK");
+    } catch (idxErr) {
+      logger.error(
+        { err: (idxErr as Error).message },
+        "[init] FAILED to create pending_signups_email_active_uniq — " +
+        "race-condition guard NOT active; check for remaining duplicate rows"
+      );
+    }
+
+    // ── magic_link_tokens — single-use magic link storage ──────────────────────
+    // Referenced by auth.ts (storeMagicToken / atomicConsumeToken / peekToken).
+    // Must be created here (not only in migrations/*.sql which don't auto-run in prod).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS magic_link_tokens (
+        token       TEXT         PRIMARY KEY,
+        email       TEXT         NOT NULL,
+        expires_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
+        used        BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS magic_link_tokens_email_idx ON magic_link_tokens(email);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS magic_link_tokens_expires_idx ON magic_link_tokens(expires_at);`);
+    // Remove expired/used tokens to keep the table small
+    await run(client, `
+      DELETE FROM magic_link_tokens
+        WHERE expires_at < NOW() - INTERVAL '1 day'
+           OR used = true
+    `).catch(() => { /* non-fatal cleanup */ });
+
     // ── activity_logs — event feed for dashboard activity panel ────────────────
     await run(client, `
       CREATE TABLE IF NOT EXISTS activity_logs (
@@ -1502,6 +2059,10 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_id   TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS target_type TEXT`);
     await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS metadata    JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS action_key TEXT`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS action_params JSONB`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS user_id TEXT`);
+    await run(client, `ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS user_name TEXT`);
     // ── RLS on activity_logs — enable inline so it takes effect on first boot ──
     // init-rls-migration runs before this table is created on the slow path;
     // adding ENABLE here ensures the table has RLS immediately after creation.
@@ -1510,9 +2071,32 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE activity_logs NO FORCE ROW LEVEL SECURITY`);
 
-    // ── user_sessions — self-heal ip_address + user_agent columns ──────────────
+    // ── user_sessions — auth session storage + self-healing columns ────────────
+    // Some reset/legacy databases contain the auth code but not this table.
+    // createSession() must never write an orphaned cookie, so bootstrap the full
+    // table before the additive column repairs below.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        token       TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL,
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        email       TEXT NOT NULL,
+        role        TEXT NOT NULL DEFAULT 'member',
+        expires_at  TIMESTAMPTZ NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        user_id_v2  UUID,
+        ip_address  TEXT,
+        user_agent  TEXT
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_sessions_org_idx ON user_sessions(org_id)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS user_sessions_expiry_idx ON user_sessions(expires_at)`);
+    await run(client, `ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE user_sessions NO FORCE ROW LEVEL SECURITY`);
     // These columns may not exist on older deployments (table was created before
-    // login history feature). Add idempotently so the INSERT in sessions.ts works.
+    // login history and UUID user migration). Add idempotently so the INSERT in
+    // sessions.ts works on both fresh and legacy schemas.
+    await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id_v2 UUID`);
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address TEXT`);
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT`);
 
@@ -1581,6 +2165,10 @@ export async function initDataTables(): Promise<void> {
         await run(client, `CREATE POLICY           "tenant_${op}" ON "${t}" ${cmd}`);
       }
     };
+
+    // org_settings is also a tenant-scoped table. Do not FORCE RLS here:
+    // legacy profile/billing compatibility paths still use raw pool queries.
+    await applyTenantRls("org_settings");
 
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
@@ -1700,6 +2288,26 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE INDEX IF NOT EXISTS google_reviews_org_loc_idx ON google_reviews(org_id, location_id)`);
       await applyTenantRls("google_reviews");
 
+      // ── gbp_profiles — queried by overview-service.ts and client-mode-service.ts ─
+      // Populated by GBP sync (google-service.ts). Contains aggregate review stats
+      // and profile completion percentage per org (one row per org, upserted on sync).
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gbp_profiles (
+          id               TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id           TEXT        NOT NULL DEFAULT 'default',
+          location_id      TEXT,
+          location_name    TEXT,
+          avg_rating       REAL,
+          review_count     INTEGER     NOT NULL DEFAULT 0,
+          unanswered_count INTEGER     NOT NULL DEFAULT 0,
+          completion_pct   REAL,
+          updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gbp_profiles_org_idx ON gbp_profiles(org_id)`);
+      await applyTenantRls("gbp_profiles");
+
       // ── gbp_posts — gbp-posting-service.ts UPDATE sets published_at ──────────
       await run(client, `
         CREATE TABLE IF NOT EXISTS gbp_posts (
@@ -1775,6 +2383,57 @@ export async function initDataTables(): Promise<void> {
       `);
       await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_sites_org_url_idx ON gsc_sites(org_id, site_url)`);
       await applyTenantRls("gsc_sites");
+
+      // ── gsc_keyword_data — written by gsc-service.ts syncGSCData ─────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_keyword_data (
+          id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          keyword     TEXT        NOT NULL DEFAULT '',
+          date        TEXT        NOT NULL DEFAULT '',
+          impressions INTEGER     NOT NULL DEFAULT 0,
+          clicks      INTEGER     NOT NULL DEFAULT 0,
+          ctr         REAL        NOT NULL DEFAULT 0,
+          position    REAL        NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_keyword_data_org_kw_date_idx ON gsc_keyword_data(org_id, keyword, date)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_keyword_data_org_idx ON gsc_keyword_data(org_id)`);
+      await applyTenantRls("gsc_keyword_data");
+
+      // ── gsc_page_data — written by gsc-service.ts syncGSCData ─────────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_page_data (
+          id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          page        TEXT        NOT NULL DEFAULT '',
+          date        TEXT        NOT NULL DEFAULT '',
+          impressions INTEGER     NOT NULL DEFAULT 0,
+          clicks      INTEGER     NOT NULL DEFAULT 0,
+          ctr         REAL        NOT NULL DEFAULT 0,
+          position    REAL        NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_page_data_org_page_date_idx ON gsc_page_data(org_id, page, date)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_page_data_org_idx ON gsc_page_data(org_id)`);
+      await applyTenantRls("gsc_page_data");
+
+      // ── gsc_sync_logs — written by gsc-service.ts after each sync ─────────────
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_sync_logs (
+          id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          site_url    TEXT        NOT NULL DEFAULT '',
+          rows_synced INTEGER     NOT NULL DEFAULT 0,
+          synced_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_sync_logs_org_idx ON gsc_sync_logs(org_id)`);
+      await applyTenantRls("gsc_sync_logs");
 
       // ── reviews ─────────────────────────────────────────────────────────────
       await run(client, `
@@ -2128,8 +2787,27 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE automation_templates ALTER COLUMN platform      SET DEFAULT 'custom'`);
     await run(client, `ALTER TABLE automation_templates ALTER COLUMN trigger_event SET DEFAULT ''`);
     await run(client, `ALTER TABLE automation_templates ALTER COLUMN action_type   SET DEFAULT ''`);
-    // sso_providers: rename provider_type→keep old, add new service columns
+    // sso_providers: keep provider_type for historical fixtures/API clients and
+    // add the current service columns. This self-heal must run even when the
+    // missing-production-tables migration marker already exists.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS sso_providers (
+        id            TEXT PRIMARY KEY,
+        org_id        TEXT NOT NULL DEFAULT 'default',
+        provider_type TEXT,
+        type          TEXT NOT NULL DEFAULT 'saml',
+        name          TEXT,
+        client_id     TEXT,
+        issuer        TEXT,
+        enabled       BOOLEAN NOT NULL DEFAULT true,
+        default_role  TEXT NOT NULL DEFAULT 'member',
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS sso_providers_org_idx ON sso_providers(org_id)`);
+    await applyTenantRls("sso_providers");
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS type         TEXT NOT NULL DEFAULT 'saml'`);
+    await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS provider_type TEXT`);
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS name         TEXT`);
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS client_id    TEXT`);
     await run(client, `ALTER TABLE sso_providers ADD COLUMN IF NOT EXISTS issuer       TEXT`);
@@ -2251,6 +2929,11 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ`);
     // org_addons.quantity — durable per-pack quantity for QTY_ADDONS (monitorsPack10/50, extraSeats…)
     await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`);
+    // org_addons.metadata — used by activateAddon (source tag) and reconcile Phase-3 Guard-C
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    // org_addons.updated_at / created_at — Drizzle schema expects these; missing in some prod deployments
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `ALTER TABLE org_addons ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     // ai_monthly_usage extra columns (already in block above but repeat for safety)
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used NUMERIC    NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur     NUMERIC    NOT NULL DEFAULT 0`);
@@ -2648,6 +3331,26 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "uad_select" ON "user_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_insert" ON "user_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "uad_delete" ON "user_activity_days" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    // NOTE: the one-time self-heal DELETE (user_id = org_id) has been removed.
+    // recordActivityDay() now always uses the real userId; running a broad DELETE
+    // on every restart was wiping valid streak rows after each deploy.
+
+    // ── member_activity_days — per-member streak tracking (one row per user per day) ──
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS member_activity_days (
+        org_id  TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        day     DATE NOT NULL,
+        PRIMARY KEY (org_id, user_id, day)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS member_activity_days_org_user_idx ON member_activity_days(org_id, user_id, day DESC)`);
+    await run(client, `ALTER TABLE member_activity_days ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE member_activity_days NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "mad_select" ON "member_activity_days"`);
+    await run(client, `DROP POLICY IF EXISTS "mad_insert" ON "member_activity_days"`);
+    await run(client, `CREATE POLICY "mad_select" ON "member_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "mad_insert" ON "member_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
 
     // ── team_channels — persisted channel registry for team chat ─────────────────
     // Channels survive even when they have zero messages.
@@ -2682,6 +3385,172 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "tc_insert" ON "team_channels" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "tc_update" ON "team_channels" FOR UPDATE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "tc_delete" ON "team_channels" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
+    // ── local_seo_ranking_history — persists each ranking search result ────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_seo_ranking_history (
+        id           TEXT        PRIMARY KEY,
+        org_id       TEXT        NOT NULL DEFAULT 'default',
+        keyword      TEXT        NOT NULL,
+        location     TEXT        NOT NULL,
+        results      JSONB       NOT NULL DEFAULT '[]',
+        searched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS lsrh_org_idx ON local_seo_ranking_history(org_id, searched_at DESC)`);
+    await run(client, `ALTER TABLE local_seo_ranking_history ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE local_seo_ranking_history NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "lsrh_select" ON "local_seo_ranking_history"`);
+    await run(client, `DROP POLICY IF EXISTS "lsrh_insert" ON "local_seo_ranking_history"`);
+    await run(client, `DROP POLICY IF EXISTS "lsrh_delete" ON "local_seo_ranking_history"`);
+    await run(client, `CREATE POLICY "lsrh_select" ON "local_seo_ranking_history" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "lsrh_insert" ON "local_seo_ranking_history" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "lsrh_delete" ON "local_seo_ranking_history" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
+    // ── custom_dashboards — user-created dashboards in Data Explorer ─────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS custom_dashboards (
+        id           TEXT        PRIMARY KEY,
+        org_id       TEXT        NOT NULL DEFAULT 'default',
+        name         TEXT        NOT NULL,
+        description  TEXT        NOT NULL DEFAULT '',
+        widgets      JSONB       NOT NULL DEFAULT '[]',
+        icon         TEXT        NOT NULL DEFAULT '📊',
+        color        TEXT        NOT NULL DEFAULT '#2563EB',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS widgets JSONB NOT NULL DEFAULT '[]'`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT '📊'`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#2563EB'`);
+    await run(client, `ALTER TABLE custom_dashboards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS cd_org_idx ON custom_dashboards(org_id, created_at DESC)`);
+    await run(client, `ALTER TABLE custom_dashboards ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE custom_dashboards NO FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS "cd_select" ON "custom_dashboards"`);
+    await run(client, `DROP POLICY IF EXISTS "cd_insert" ON "custom_dashboards"`);
+    await run(client, `DROP POLICY IF EXISTS "cd_update" ON "custom_dashboards"`);
+    await run(client, `DROP POLICY IF EXISTS "cd_delete" ON "custom_dashboards"`);
+    await run(client, `CREATE POLICY "cd_select" ON "custom_dashboards" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "cd_insert" ON "custom_dashboards" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "cd_update" ON "custom_dashboards" FOR UPDATE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    await run(client, `CREATE POLICY "cd_delete" ON "custom_dashboards" FOR DELETE USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+
+    // ── Timezone migration — fix invalid French city labels stored in DB ───────
+    // Postgres raises 22023 when AT TIME ZONE receives a non-IANA timezone string
+    // (e.g. "Bruxelles" instead of "Europe/Brussels").  This migration corrects
+    // both the user_prefs JSONB field and the organizations.timezone column.
+    await run(client, `
+      UPDATE user_prefs
+      SET settings = jsonb_set(settings, '{timezone}', '"Europe/Brussels"')
+      WHERE (settings->>'timezone') IN (
+        'Bruxelles','bruxelles','Brussels','brussels',
+        'Belgique','belgique','Belgium','belgium'
+      )
+    `);
+    await run(client, `
+      UPDATE organizations
+      SET timezone = 'Europe/Brussels'
+      WHERE timezone IN (
+        'Bruxelles','bruxelles','Brussels','brussels',
+        'Belgique','belgique','Belgium','belgium'
+      )
+    `);
+    await run(client, `
+      UPDATE org_settings
+      SET timezone = 'Europe/Brussels'
+      WHERE timezone IN (
+        'Bruxelles','bruxelles','Brussels','brussels',
+        'Belgique','belgique','Belgium','belgium'
+      )
+    `);
+    // Also fix any other bare city labels that PostgreSQL won't accept
+    await run(client, `
+      UPDATE user_prefs
+      SET settings = settings - 'timezone'
+      WHERE settings ? 'timezone'
+        AND (settings->>'timezone') NOT LIKE '%/%'
+        AND (settings->>'timezone') NOT IN ('UTC','utc','GMT','gmt')
+        AND (settings->>'timezone') != ''
+    `);
+
+    // ── Seller Attribution (beta) ─────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS sellers (
+        id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+        seller_code TEXT UNIQUE NOT NULL,
+        name        TEXT,
+        email       TEXT,
+        status      TEXT NOT NULL DEFAULT 'active',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS seller_commissions (
+        id                          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+        seller_id                   TEXT NOT NULL REFERENCES sellers(id),
+        org_id                      TEXT NOT NULL,
+        customer_email              TEXT NOT NULL,
+        stripe_customer_id          TEXT,
+        stripe_subscription_id      TEXT,
+        stripe_checkout_session_id  TEXT,
+        stripe_invoice_id           TEXT,
+        stripe_payment_intent_id    TEXT,
+        plan                        TEXT NOT NULL,
+        eligible_amount_cents       INTEGER NOT NULL DEFAULT 0,
+        commission_rate_bps         INTEGER NOT NULL DEFAULT 3700,
+        commission_amount_cents     INTEGER NOT NULL DEFAULT 0,
+        currency                    TEXT NOT NULL DEFAULT 'eur',
+        status                      TEXT NOT NULL DEFAULT 'pending',
+        attribution_method          TEXT NOT NULL DEFAULT 'ref_link',
+        attributed_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        earned_at                   TIMESTAMPTZ,
+        paid_at                     TIMESTAMPTZ,
+        created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_seller_commissions_org UNIQUE (org_id)
+      )
+    `);
+    // Self-heal: add seller_id columns to existing tables
+    await run(client, `ALTER TABLE pending_signups    ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+    await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+    // Self-heal: add paid_by / notes to seller_commissions
+    await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS paid_by TEXT`);
+    await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS notes   TEXT`);
+
+    // ── RLS: sellers + seller_commissions ────────────────────────────────────
+    // DDL must run outside any transaction (PgBouncer auto-commit rule).
+    // These statements are idempotent: IF NOT EXISTS / DO NOTHING equivalent
+    // handled by Postgres silently ignoring ENABLE on an already-enabled table
+    // and the IF NOT EXISTS on CREATE POLICY.
+    await run(client, `ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE public.seller_commissions ENABLE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='sellers' AND policyname='sellers_app_user_all'
+        ) THEN
+          CREATE POLICY sellers_app_user_all ON public.sellers
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policies
+          WHERE schemaname='public' AND tablename='seller_commissions' AND policyname='seller_commissions_app_user_all'
+        ) THEN
+          CREATE POLICY seller_commissions_app_user_all ON public.seller_commissions
+            FOR ALL TO app_user USING (true) WITH CHECK (true);
+        END IF;
+      END $$`);
+    await run(client, `
+      ALTER TABLE public.seller_commissions
+        ALTER COLUMN commission_rate_bps SET DEFAULT 3700
+    `);
 
     logger.info("[init-data-tables] all tables, schema_migrations, missing-production-tables, P0-5 ALTERs, P1-2 type fixes done");
   } catch (err) {

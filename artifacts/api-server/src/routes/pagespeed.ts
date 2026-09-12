@@ -72,9 +72,10 @@ router.post("/pagespeed/analyze", async (req, res) => {
   try {
     logger.info({ url: normalizedUrl, orgId, force }, "[PSI] Starting full analysis");
 
+    const psiLocale = (req.headers["accept-language"] as string | undefined)?.split(",")[0]?.split(";")[0]?.trim() ?? "en";
     const [mobile, desktop] = await Promise.all([
-      analyzePSI(normalizedUrl, "mobile", orgId, force),
-      analyzePSI(normalizedUrl, "desktop", orgId, force),
+      analyzePSI(normalizedUrl, "mobile", orgId, force, psiLocale),
+      analyzePSI(normalizedUrl, "desktop", orgId, force, psiLocale),
     ]);
 
     res.json({

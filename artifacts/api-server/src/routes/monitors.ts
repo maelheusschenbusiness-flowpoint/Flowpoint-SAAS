@@ -8,6 +8,7 @@ import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { isQaFixturesEnabled } from "./qa-fixtures.js";
+import { checkQuota } from "../services/billing-service.js";
 
 const router = Router();
 const monitorCreateRateLimit = createRateLimit("reportsPerHour");
@@ -283,6 +284,7 @@ async function saveCheckResult(
         }
 
         // Log activity so the activity feed reflects the state change
+        // userId is null here (automated cron check) — actor is "system"
         store.logActivity({
           type: "monitor",
           label: notifTitle,
@@ -290,6 +292,8 @@ async function saveCheckResult(
           targetType: "monitor",
           metadata: { url: String(mon.url), kind: _notify.kind },
           orgId,
+          userId: "system",
+          userName: "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
         // Resolve recipient using the 3-tier priority chain:
@@ -500,9 +504,11 @@ router.get("/monitors", async (req: Request, res: Response) => {
 
 router.get("/monitors/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
+  // Defense-in-depth: explicit org_id even though orgDb enforces RLS.
+  const _getOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
     const result = await req.orgDb(
-      `SELECT * FROM monitors WHERE id = $1 LIMIT 1`, [id],
+      `SELECT * FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _getOrgId],
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
     res.json(toPublic(result.rows[0]));
@@ -516,7 +522,12 @@ router.get("/monitors/:id", async (req: Request, res: Response) => {
 
 router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) => {
   const { id } = req.params;
+  const _cSumOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
+    // Verify monitor belongs to caller's org before returning check data.
+    const _cSumOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _cSumOrgId]);
+    if (!_cSumOwn.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
+
     const now   = Date.now();
     const since = now - 30 * 24 * 60 * 60 * 1000;
 
@@ -551,7 +562,19 @@ router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) =
 router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const days  = Math.min(Number(req.query["days"] ?? 30), 90);
+    const orgId = (req as unknown as { orgId?: string }).orgId ?? req.orgId ?? "default";
+    // Defense-in-depth: verify monitor ownership before returning check history.
+    const _cOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, orgId]);
+    if (!_cOwn.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
+    // retention365d add-on: extend monitor check history beyond 90 days
+    let maxDays = 90;
+    try {
+      const { loadBillingContext } = await import("../services/billing-context.js");
+      const bCtx = await loadBillingContext(orgId).catch(() => null);
+      if (bCtx?.addons?.["retention365d"]) maxDays = 365;
+    } catch { /* non-blocking */ }
+    const requestedDays = Number(req.query["days"] ?? 30);
+    const days  = Math.min(requestedDays, maxDays);
     const since = Date.now() - days * 24 * 60 * 60 * 1000;
 
     const result = await req.orgDb(
@@ -578,7 +601,11 @@ router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
 
 router.get("/monitors/:id/incidents", async (req: Request, res: Response) => {
   const { id } = req.params;
+  const _incOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
+    // Defense-in-depth: verify monitor ownership before returning incidents.
+    const _incOwn = await req.orgDb(`SELECT id FROM monitors WHERE id = $1 AND org_id::text = $2 LIMIT 1`, [id, _incOrgId]);
+    if (!_incOwn.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
     const result = await req.orgDb(
       `SELECT * FROM monitor_incidents WHERE monitor_id = $1 ORDER BY started_at DESC LIMIT 50`,
       [id],
@@ -591,7 +618,9 @@ router.get("/monitors/:id/incidents", async (req: Request, res: Response) => {
 
 // ── POST /monitors ────────────────────────────────────────────────────────────
 
-router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, res: Response) => {
+// Monitor creation and modification require owner or admin (Manager).
+// Editor (member) can READ monitors but not create/modify them per the RBAC matrix.
+router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, res: Response) => {
   const { url, name, alertEmail, alertPhone, isCritical, frequency } = req.body as {
     url?: string; name?: string; alertEmail?: string; alertPhone?: string;
     isCritical?: boolean; frequency?: string;
@@ -608,32 +637,82 @@ router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, 
   if (phoneError) { res.status(400).json({ error: phoneError }); return; }
 
   try {
-    const id    = `m${Date.now()}`;
     const orgId = requireOrgId(req, res);
     if (!orgId) return;
 
-    // Guard: same URL already monitored for this org
-    const dup = await req.orgDb(
-      `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`,
-      [orgId, url]
-    );
-    if (dup.rows.length) {
-      res.status(409).json({ error: "Cette URL est déjà surveillée", duplicateId: dup.rows[0].id });
+    // ── P0 Quota enforcement (fast pre-check — resolves plan+addon limits) ──
+    const quota = await checkQuota("monitors", orgId);
+    if (!quota.allowed) {
+      logger.warn({ orgId, used: quota.used, limit: quota.limit, plan: quota.plan },
+        "[monitors] POST blocked — monitor quota reached");
+      res.status(429).json({
+        error: `Quota de monitors atteint (${quota.used}/${quota.limit} sur le plan ${quota.plan}). Activez le pack +50 monitors ou passez à un plan supérieur.`,
+        code:  "MONITOR_QUOTA_EXCEEDED",
+        used:  quota.used,
+        limit: quota.limit,
+        plan:  quota.plan,
+      });
       return;
     }
 
-    await req.orgDb(
-      `INSERT INTO monitors
-         (id, org_id, name, url, status, uptime, latency,
-          frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
-      [id, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false],
-    );
+    // ── Atomic quota re-check + INSERT under pg_advisory_xact_lock ───────────
+    // pg_advisory_xact_lock blocks concurrent requests on the same (org+resource)
+    // key, ensuring the re-count + INSERT is atomic and prevents limit+1 overruns.
+    const { pool: _monPool } = await import("@workspace/db");
+    const _monCl = await _monPool.connect();
+    const _monId = `m${Date.now()}`;
+    try {
+      await _monCl.query("BEGIN");
+      await _monCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId}:monitors`]);
 
-    const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
+      // Re-count under lock — uses quota.limit already resolved above (plan+addons)
+      const _cnt = await _monCl.query(
+        `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]
+      );
+      if (Number(_cnt.rows[0]?.n ?? 0) >= quota.limit) {
+        await _monCl.query("ROLLBACK");
+        res.status(429).json({
+          error: `Quota de monitors atteint (${quota.limit}/${quota.limit} sur le plan ${quota.plan}). Activez le pack +50 monitors ou passez à un plan supérieur.`,
+          code:  "MONITOR_QUOTA_EXCEEDED",
+          used:  quota.limit,
+          limit: quota.limit,
+          plan:  quota.plan,
+        });
+        return;
+      }
+
+      // Duplicate URL check under lock
+      const _dup = await _monCl.query(
+        `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`, [orgId, url]
+      );
+      if (_dup.rows.length) {
+        await _monCl.query("ROLLBACK");
+        res.status(409).json({ error: "Cette URL est déjà surveillée", duplicateId: _dup.rows[0].id });
+        return;
+      }
+
+      await _monCl.query(
+        `INSERT INTO monitors
+           (id, org_id, name, url, status, uptime, latency,
+            frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
+        [_monId, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false],
+      );
+      await _monCl.query("COMMIT");
+    } catch (_monErr) {
+      await _monCl.query("ROLLBACK").catch(() => {});
+      throw _monErr;
+    } finally {
+      _monCl.release();
+    }
+
+    const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [_monId]);
     store.logActivity({
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
-      targetId: id, targetType: "monitor", metadata: { url, name }, orgId,
+      targetId: _monId, targetType: "monitor", metadata: { url, name }, orgId,
+      actionKey: "activity.monitor.created", actionParams: { name: String(name), url: String(url) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
     // Cumulative usage accounting — never decremented on deletion
     import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "monitor_created")).catch(() => {});
@@ -647,7 +726,7 @@ router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, 
 
 // ── PATCH /monitors/:id ───────────────────────────────────────────────────────
 
-router.patch("/monitors/:id", canWrite, async (req: Request, res: Response) => {
+router.patch("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
   const body = req.body as {
     name?: string; url?: string; alertEmail?: string;
@@ -695,10 +774,12 @@ router.patch("/monitors/:id", canWrite, async (req: Request, res: Response) => {
   }
   setClauses.push("updated_at = NOW()");
 
+  // Defense-in-depth: explicit org_id in WHERE even though orgDb enforces RLS.
+  const _patchOrgId = (req as unknown as { orgId?: string }).orgId ?? "default";
   try {
     const result = await req.orgDb(
-      `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-      [id, ...values],
+      `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 AND org_id::text = $${values.length + 2} RETURNING *`,
+      [id, ...values, _patchOrgId],
     );
     if (result.rowCount === 0) { res.status(404).json({ error: "not found" }); return; }
     res.json(toPublic(result.rows[0]));
@@ -758,6 +839,9 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
           targetId: id, targetType: "monitor",
           metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
           orgId,
+          actionKey: "activity.monitor.pinged", actionParams: { name: String(monitor["name"]), status: newStatus, latencyMs: result.latencyMs },
+          userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || "system",
+          userName: (req as any).orgContext?.name || (req as any).orgContext?.email || "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
         store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
         res.json({
@@ -793,6 +877,9 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       targetId: id, targetType: "monitor",
       metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
       orgId,
+      actionKey: "activity.monitor.pinged", actionParams: { name: String(monitor["name"]), status: newStatus, latencyMs: result.latencyMs },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || "system",
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || "Système",
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
@@ -885,21 +972,44 @@ router.post("/monitors/:id/test-sms", canAdmin, async (req: Request, res: Respon
 
 router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
   const id = req.params["id"] as string;
+  // Canonical org — never fall back to "default" for a tenant-scoped route.
+  const _delOrgId = requireOrgId(req, res);
+  if (!_delOrgId) return;
   try {
-    const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
-    if (existing.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
-    const m = existing.rows[0] as Record<string, unknown>;
+    // Keep the ownership check, child cleanup, and monitor delete in one
+    // transaction. The snapshot is also the source for the activity event;
+    // never read monitor fields from an undefined post-delete variable.
+    const deletedMonitor = await withOrgDb(_delOrgId, async (client) => {
+      const existing = await client.query<Record<string, unknown>>(
+        `SELECT * FROM monitors WHERE id = $1 AND org_id::text = $2 FOR UPDATE`,
+        [id, _delOrgId],
+      );
+      const monitor = existing.rows[0];
+      if (!monitor) return null;
 
-    await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
-    await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-    await req.orgDb(`DELETE FROM monitors          WHERE id = $1`,         [id]);
+      await client.query(`DELETE FROM monitor_checks WHERE monitor_id = $1 AND org_id::text = $2`, [id, _delOrgId]);
+      await client.query(`DELETE FROM monitor_incidents WHERE monitor_id = $1 AND org_id::text = $2`, [id, _delOrgId]);
+      const del = await client.query(
+        `DELETE FROM monitors WHERE id = $1 AND org_id::text = $2 RETURNING id`,
+        [id, _delOrgId],
+      );
+      if ((del.rowCount ?? 0) === 0) {
+        throw new Error("MONITOR_DELETE_CONFLICT");
+      }
+      return monitor;
+    });
+    if (!deletedMonitor) { res.status(404).json({ error: "Monitor not found" }); return; }
 
     store.logActivity({
       type: "monitor",
-      label: `Monitor supprimé : ${String(m["name"])} (${String(m["url"])})`,
+      label: `Monitor supprimé : ${String(deletedMonitor["name"])} (${String(deletedMonitor["url"])})`,
       targetId: id, targetType: "monitor",
-      metadata: { url: m["url"], name: m["name"] },
-      orgId: String(m["org_id"] ?? (req as unknown as Record<string, unknown>)["orgId"] ?? "default"),
+      metadata: { url: deletedMonitor["url"], name: deletedMonitor["name"] },
+      orgId: _delOrgId,
+      actionKey: "activity.monitor.deleted",
+      actionParams: { name: String(deletedMonitor["name"]), url: String(deletedMonitor["url"]) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.json({ ok: true });

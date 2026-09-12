@@ -53,7 +53,9 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 15px; line-height: 1.5;
     }
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
+    /* Auth-boot guard: body stays invisible until session check resolves.
+       Eliminates the ~400ms flash of sign-in form on browser-back from dashboard. */
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; visibility: hidden; }
 
     .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; text-decoration: none; }
     .logo-wordmark { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
@@ -172,6 +174,143 @@
       .plan-cards { grid-template-columns: 1fr; }
     }
   </style>
+  <script>
+    /* ── Auth-boot guard (HEAD) ─────────────────────────────────────────────────
+       Runs before first paint. If the user already has a valid session, redirect
+       to dashboard without showing the sign-in form.
+       SECURITY: sessionStorage tokens are NEVER trusted blindly — they must be
+       validated by /api/auth/session-restore before we redirect to dashboard.html.
+       This prevents stale/expired tokens from acting as a pass-through for
+       unauthenticated visitors arriving via marketing CTAs.               */
+    (function() {
+      // ── Explicit sign-out: ?signout=1 clears all auth state immediately ──────
+      // The logout button navigates here with ?signout=1 so the form is always
+      // shown even when a valid session cookie is still present.
+      var _urlParams = new URLSearchParams(window.location.search);
+      if (_urlParams.get('signout') === '1') {
+        try { sessionStorage.removeItem('fp_session_token'); sessionStorage.removeItem('fp_tab_uid'); sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+        try { ['token','fp_token','fp-token','fp-auth','fp-session','fp-user','fp_tab_uid','fp_had_session'].forEach(function(k){localStorage.removeItem(k);}); } catch(_) {}
+        // Strip the param from the URL so a refresh doesn't repeat the purge.
+        history.replaceState({}, '', '/signin.html');
+        document.body.style.visibility = 'visible';
+        // Skip _checkAndRedirect entirely — show form.
+        return;
+      }
+
+      // ── Account deleted: ?deleted=1 — show a confirmation banner ────────
+      if (_urlParams.get('deleted') === '1') {
+        try { sessionStorage.clear(); localStorage.clear(); } catch(_) {}
+        history.replaceState({}, '', '/signin.html');
+        document.body.style.visibility = 'visible';
+        // Show a green info banner once the DOM is ready.
+        document.addEventListener('DOMContentLoaded', function() {
+          var banner = document.createElement('div');
+          banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#166534;color:#dcfce7;padding:14px 24px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:420px;text-align:center';
+          banner.textContent = '✅ Votre compte a été supprimé définitivement. Toutes vos données ont été effacées.';
+          document.body.appendChild(banner);
+          setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 6000);
+        });
+        return;
+      }
+
+      // Helper: call session-restore and redirect on success, reveal form on failure.
+      // Only runs when there is evidence of a prior session — never for anonymous
+      // visitors so they see the form immediately without a round-trip.
+      function _checkAndRedirect(source) {
+        var _st = null;
+        try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
+
+        // ── RULE: only redirect if an active per-tab sessionStorage token exists.
+        // fp_had_session (localStorage) alone is NOT sufficient — a user who
+        // explicitly navigates to signin.html must see the form, even if their
+        // session cookie is still valid. The cookie-only path was the root cause
+        // of the "signin always redirects to dashboard" bug.
+        // BFCache re-validate (pageshow-persisted) is the one case where we do
+        // want to check even on back-navigation — but only if sessionStorage has
+        // a token (set when we originally redirected to dashboard from this tab).
+        if (!_st) {
+          // No sessionStorage token → show form, never call session-restore.
+          try {
+            console.log('[SIGNIN AUTH TRACE]', {
+              source: source, credential: 'none',
+              decision: 'STAY_SIGNIN', reason: 'no_sessionStorage_token',
+              timestamp: new Date().toISOString(),
+            });
+          } catch(_) {}
+          document.body.style.visibility = 'visible';
+          return;
+        }
+
+        // sessionStorage token present → validate with backend before deciding.
+        document.body.style.visibility = 'hidden';
+        var _traceTs = new Date().toISOString();
+
+        fetch('/api/auth/session-restore', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _st },
+        }).then(function(r) {
+          var httpStatus = r.status;
+          if (r.ok) return r.json().catch(function() { return null; }).then(function(d) { return { data: d, httpStatus: httpStatus }; });
+          return r.json().catch(function() { return null; }).then(function(d) { return { data: null, httpStatus: httpStatus, _noToken: true }; });
+        }).then(function(res) {
+          var httpStatus = res.httpStatus;
+          var data = res.data;
+          var hasToken = !!(data && data.token && !res._noToken);
+          var decision = hasToken ? 'REDIRECT_DASHBOARD' : 'STAY_SIGNIN';
+          try {
+            console.log('[SIGNIN AUTH TRACE]', {
+              source: source,
+              credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              httpStatus: httpStatus,
+              decision: decision,
+              reason: hasToken ? 'backend_confirmed_valid' : 'backend_rejected',
+              referrer: document.referrer || '(direct)',
+              timestamp: _traceTs,
+            });
+          } catch(_) {}
+          if (hasToken) {
+            try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
+            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
+            // Clear last-route so a fresh session (or re-registration) always starts
+            // at the overview rather than the previous account's last page.
+            try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
+            window.location.replace('/dashboard.html');
+          } else {
+            // Session-restore failed → purge stale auth so we don't re-check on next visit.
+            try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+            try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+            try { localStorage.removeItem('fp_had_session'); } catch(_) {}
+            document.body.style.visibility = 'visible';
+          }
+        }).catch(function(err) {
+          try {
+            console.log('[SIGNIN AUTH TRACE]', {
+              source: source, credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              decision: 'STAY_SIGNIN', reason: 'network_error',
+              error: String(err), timestamp: _traceTs,
+            });
+          } catch(_) {}
+          // Network error → fail-open, show form, do NOT redirect.
+          document.body.style.visibility = 'visible';
+        });
+      }
+
+      window.addEventListener('DOMContentLoaded', function() {
+        _checkAndRedirect('DOMContentLoaded');
+      });
+
+      // ── BFCache protection (Safari / all browsers) ─────────────────────────
+      // When Safari restores this page from BFCache, re-validate session.
+      window.addEventListener('pageshow', function(evt) {
+        if (!evt.persisted) return;
+        document.body.style.visibility = 'hidden';
+        _checkAndRedirect('pageshow-BFCache');
+      });
+    })();
+  </script>
 </head>
 <body>
 
@@ -389,6 +528,18 @@
 </style>
 
 <script>
+  /* ── Session guard: already logged-in users should never land on signin ──
+     SECURITY: sessionStorage token is sent to backend for validation before
+     any redirect. A stale/expired token must NOT redirect to dashboard.html.
+     The HEAD guard above already handles the full validation on initial load
+     and BFCache restore; this body-level guard is a belt-and-suspenders
+     safety net (e.g. if DOMContentLoaded fires before body script). */
+  (function() {
+    // No immediate redirect based on sessionStorage alone — the HEAD guard's
+    // _checkAndRedirect() handles this correctly via session-restore.
+    // Body stays hidden until HEAD guard resolves (already set by CSS default).
+  })();
+
   var _preRegisterToken = '';
   var _planBtnsLocked   = false;
 
@@ -409,6 +560,9 @@
     // Save plan + preRegisterToken then go to checkout
     try { localStorage.setItem('fp_cart', JSON.stringify({ plan: plan, addons: {}, _v: 1, _updatedAt: Date.now() })); } catch(e) {}
     try { sessionStorage.setItem('fp_pre_reg_token', _preRegisterToken); } catch(e) {}
+    // Also persist to localStorage with a 2-hour TTL so the token survives
+    // tab closure or sessionStorage loss between signin → pricing → checkout-payment.
+    try { localStorage.setItem('fp_pre_reg_token', JSON.stringify({ token: _preRegisterToken, exp: Date.now() + 7200000 })); } catch(e) {}
     window.location.href = '/checkout.html?plan=' + encodeURIComponent(plan);
   }
 
@@ -463,6 +617,17 @@
   ── */
   var googleSignupParam = urlParams.get('google_signup');
   var preRegTokenParam  = urlParams.get('pre_reg_token');
+  /* Persist the referral at the first authenticated entry point. The email
+     signup reads this value below; the Google link receives it explicitly so
+     the OAuth state can carry it through the callback. */
+  var sellerRefParam = (urlParams.get('fp_ref') || urlParams.get('ref') || '').toUpperCase();
+  if (/^SELLER-[A-Z0-9]{1,20}$/.test(sellerRefParam)) {
+    try { localStorage.setItem('fp_seller_ref', sellerRefParam); } catch (_) {}
+    var googleSignupLink = document.getElementById('btn-google-oauth');
+    if (googleSignupLink) {
+      googleSignupLink.href = '/api/auth/google/login?seller_code=' + encodeURIComponent(sellerRefParam);
+    }
+  }
   if (googleSignupParam === '1' && preRegTokenParam) {
     _preRegisterToken = preRegTokenParam;
     // Clean URL so a refresh doesn't re-trigger
@@ -514,7 +679,8 @@
       body: JSON.stringify({ _hp: hp, firstName: firstName, lastName: lastName,
         email: email, companyName: companyName, country: country,
         address: address, city: city, postalCode: postalCode,
-        phone: phone || undefined, vat: vat || undefined })
+        phone: phone || undefined, vat: vat || undefined,
+        seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})() })
     })
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {

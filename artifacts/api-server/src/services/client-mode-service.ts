@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
 
 export interface ClientKPIs {
   avg_seo_score: number | null;
@@ -39,6 +40,43 @@ export interface ClientStatus {
   };
 }
 
+// ── SQL error classification ──────────────────────────────────────────────────
+// Reliability: we must NOT swallow SQL/schema failures as legitimate empty
+// results. A genuine empty state (no rows) is a successful query returning 0
+// rows — that is preserved. A schema/connection failure is an *error* and must
+// surface so the frontend can show a retry affordance instead of a false
+// "everything is empty" state.
+
+/** PostgreSQL error code for "relation does not exist" (undefined_table). */
+const PG_UNDEFINED_TABLE = "42P01";
+/** PostgreSQL error code for "column does not exist" (undefined_column). */
+const PG_UNDEFINED_COLUMN = "42703";
+
+function pgCode(err: unknown): string | undefined {
+  return (err as { code?: string })?.code
+    ?? (err as { raw?: { code?: string } })?.raw?.code;
+}
+
+/**
+ * True when the failure is a missing table/column — i.e. schema drift that our
+ * self-healing init routines can repair. These are still errors (never a
+ * silent empty array) but are eligible for a one-shot self-heal + retry.
+ */
+function isSchemaMissing(err: unknown): boolean {
+  const code = pgCode(err);
+  return code === PG_UNDEFINED_TABLE || code === PG_UNDEFINED_COLUMN;
+}
+
+/**
+ * Runs the data-tables self-heal (idempotent CREATE TABLE / ALTER TABLE IF NOT
+ * EXISTS). Imported lazily to avoid a startup import cycle and so the service
+ * stays cheap to import for callers that never hit schema drift.
+ */
+async function selfHealDataTables(): Promise<void> {
+  const { initDataTables } = await import("./init-data-tables.js");
+  await initDataTables();
+}
+
 export async function getClientStatus(orgId: string): Promise<ClientStatus> {
   let plan: string | null = null;
   let siteCount = 0;
@@ -48,8 +86,14 @@ export async function getClientStatus(orgId: string): Promise<ClientStatus> {
     plan = r.rows?.[0]?.plan ? String(r.rows[0].plan) : null;
     const sc = await client.query(`SELECT COUNT(*) as c FROM audits WHERE org_id=$1`, [orgId]);
     siteCount = Number(sc.rows?.[0]?.c ?? 0);
-  } catch { /* best effort */ }
-  finally { client.release(); }
+  } catch (err) {
+    // Do not silently pretend the org has no plan / no sites on a real DB
+    // failure — surface it so the route returns 500 and the client retries.
+    logger.error({ err, orgId }, "[client-mode] getClientStatus query failed");
+    throw err;
+  } finally {
+    client.release();
+  }
   return {
     org_id: orgId,
     plan,
@@ -110,13 +154,27 @@ export async function getClientKPIs(orgId: string): Promise<ClientKPIs> {
     missionsTotal = Number(misr.rows?.[0]?.total ?? 0);
     missionsDone = Number(misr.rows?.[0]?.done ?? 0);
 
+    // gbp_profiles is an optional/experimental table. A missing table here is a
+    // genuine "feature not provisioned" state → leave gbp_rating null. Any
+    // OTHER SQL error is a real failure and must propagate so the whole KPI
+    // payload is not silently served as partial/zeroed data.
     try {
       const gr = await client.query(`SELECT avg_rating FROM gbp_profiles WHERE org_id=$1 LIMIT 1`, [orgId]);
       const raw = gr.rows?.[0]?.avg_rating;
       if (raw != null) gbpRating = Math.round(Number(raw) * 10) / 10;
-    } catch { /* table may not exist */ }
-  } catch { /* best effort */ }
-  finally { client.release(); }
+    } catch (err) {
+      if (isSchemaMissing(err)) {
+        logger.debug({ orgId }, "[client-mode] gbp_profiles not provisioned — gbp_rating stays null");
+      } else {
+        throw err;
+      }
+    }
+  } catch (err) {
+    logger.error({ err, orgId }, "[client-mode] getClientKPIs query failed");
+    throw err;
+  } finally {
+    client.release();
+  }
 
   return {
     avg_seo_score: avgSeoScore,
@@ -132,49 +190,80 @@ export async function getClientKPIs(orgId: string): Promise<ClientKPIs> {
   };
 }
 
+/**
+ * Shared reports for the org. Joins reports → share_tokens so the client link
+ * (token) is exposed. Both tables are provisioned by initDataTables; if either
+ * is missing we self-heal ONCE and retry, so a fresh/drifted DB does not
+ * masquerade as "no shared reports". Any non-schema error propagates.
+ */
 export async function getClientReports(orgId: string): Promise<ClientReport[]> {
-  const client = await pool.connect();
-  try {
-    const r = await client.query(
-      `SELECT r.id, r.name, r.type, r.date, r.pages, st.token
+  const sql =
+    `SELECT r.id, r.name, r.type, r.date, r.pages, st.token
        FROM reports r
        LEFT JOIN share_tokens st ON st.report_id = r.id
        WHERE r.org_id=$1 AND r.shared=true
-       ORDER BY r.date DESC LIMIT 50`,
-      [orgId]
-    );
-    return (r.rows ?? []).map((row) => ({
-      id: String(row.id ?? ""),
-      name: String(row.name ?? ""),
-      type: String(row.type ?? "PDF"),
-      date: row.date ? new Date(row.date as string).toLocaleDateString("fr-FR") : "—",
-      pages: row.pages != null ? Number(row.pages) : null,
-      token: row.token ? String(row.token) : null,
-    }));
-  } catch {
-    return [];
-  } finally {
-    client.release();
+       ORDER BY r.date DESC LIMIT 50`;
+
+  const runQuery = async () => {
+    const client = await pool.connect();
+    try {
+      const r = await client.query(sql, [orgId]);
+      return (r.rows ?? []).map((row) => ({
+        id: String(row.id ?? ""),
+        name: String(row.name ?? ""),
+        type: String(row.type ?? "PDF"),
+        date: row.date ? new Date(row.date as string).toLocaleDateString("fr-FR") : "—",
+        pages: row.pages != null ? Number(row.pages) : null,
+        token: row.token ? String(row.token) : null,
+      }));
+    } finally {
+      client.release();
+    }
+  };
+
+  try {
+    return await runQuery();
+  } catch (err) {
+    if (isSchemaMissing(err)) {
+      logger.warn({ orgId, code: pgCode(err) }, "[client-mode] reports/share_tokens schema missing — self-healing and retrying");
+      await selfHealDataTables();
+      // Retry once. If it still fails, propagate — never a silent empty array.
+      return await runQuery();
+    }
+    logger.error({ err, orgId }, "[client-mode] getClientReports query failed");
+    throw err;
   }
 }
 
 export async function getClientAudits(orgId: string, limit = 20): Promise<Record<string, unknown>[]> {
-  const client = await pool.connect();
+  const sql =
+    `SELECT id, url, score, created_at, status FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`;
+
+  const runQuery = async () => {
+    const client = await pool.connect();
+    try {
+      const r = await client.query(sql, [orgId, limit]);
+      return (r.rows ?? []).map((row) => ({
+        id: String(row.id ?? ""),
+        url: String(row.url ?? "—"),
+        score: row.score != null ? Number(row.score) : null,
+        status: String(row.status ?? "done"),
+        date: row.created_at ? new Date(row.created_at as string).toLocaleDateString("fr-FR") : "—",
+      }));
+    } finally {
+      client.release();
+    }
+  };
+
   try {
-    const r = await client.query(
-      `SELECT id, url, score, created_at, status FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`,
-      [orgId, limit]
-    );
-    return (r.rows ?? []).map((row) => ({
-      id: String(row.id ?? ""),
-      url: String(row.url ?? "—"),
-      score: row.score != null ? Number(row.score) : null,
-      status: String(row.status ?? "done"),
-      date: row.created_at ? new Date(row.created_at as string).toLocaleDateString("fr-FR") : "—",
-    }));
-  } catch {
-    return [];
-  } finally {
-    client.release();
+    return await runQuery();
+  } catch (err) {
+    if (isSchemaMissing(err)) {
+      logger.warn({ orgId, code: pgCode(err) }, "[client-mode] audits schema missing — self-healing and retrying");
+      await selfHealDataTables();
+      return await runQuery();
+    }
+    logger.error({ err, orgId }, "[client-mode] getClientAudits query failed");
+    throw err;
   }
 }

@@ -87,16 +87,82 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
         return;
       }
     }
-    // Shared runner (#437): identical path for manual and scheduled audits —
-    // insert, async PSI, alert rules, broadcast, activity, usage accounting.
-    const launched = await launchAudit({
-      orgId, url: normalizedUrl, origin,
-      name: ((req.body as Record<string,unknown>)["name"] as string) || "",
-    });
-    res.status(201).json({ ...launched, type: type ?? "SEO complet" });
-  } catch (err) {
-    logger.error({ err }, "[audits] POST failed");
-    res.status(500).json({ error: "La création de l’audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+
+    // ── Atomic quota enforcement + INSERT under pg_advisory_xact_lock ───────
+    // pg_advisory_xact_lock (transaction-level) works correctly with Supabase
+    // PgBouncer — the lock is held for the duration of the transaction and
+    // automatically released on COMMIT/ROLLBACK. Session-level advisory locks
+    // do NOT work with PgBouncer transaction pooling because consecutive queries
+    // on the same client can be routed to different backend sessions.
+    //
+    // Pattern: BEGIN → xact_lock → COUNT → (ok) INSERT → COMMIT
+    //          Lock is released at COMMIT; INSERT is already visible to others.
+    //          Then call launchAudit(preInsertedId=…) to do PSI/notifications.
+    let _auLockClient: import("pg").PoolClient | null = null;
+    const _auLockKey = `${orgId}:audits`;
+    try {
+      const { pool: _auPool } = await import("@workspace/db");
+      const { checkQuota } = await import("../services/billing-service.js");
+
+      _auLockClient = await _auPool.connect();
+      await _auLockClient.query("BEGIN");
+      await _auLockClient.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [_auLockKey]
+      );
+
+      // Re-count within the lock (xact_lock ensures serialization)
+      const quota = await checkQuota("audits", orgId);
+      if (!quota.allowed) {
+        await _auLockClient.query("ROLLBACK");
+        _auLockClient.release(); _auLockClient = null;
+        res.status(402).json({
+          error: `Limite mensuelle d'audits atteinte (${quota.used}/${quota.limit}). Upgradez votre plan ou achetez un pack d'audits supplémentaires.`,
+          code: "QUOTA_EXCEEDED", resource: "audits", used: quota.used, limit: quota.limit,
+        });
+        return;
+      }
+
+      // INSERT the audit row inside the transaction (claims the slot atomically)
+      const _aCtx   = (req as any).orgContext || {};
+      const _auId   = `a${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+      const _auDate = new Date().toISOString();
+      const _auName = ((req.body as Record<string,unknown>)["name"] as string) || "";
+      const _auBy   = _aCtx.userId || _aCtx.email || null;
+      await _auLockClient.query(
+        `INSERT INTO audits (id, url, name, score, status, speed, date, issues, origin, org_id, created_by, created_at)
+         VALUES ($1,$2,$3,0,'processing',0,$4,0,$5,$6,$7,NOW())`,
+        [_auId, normalizedUrl, _auName, _auDate, origin, orgId, _auBy]
+      );
+      await _auLockClient.query("COMMIT");
+      // Lock released at COMMIT; slot is now committed and visible to other requests.
+      _auLockClient.release(); _auLockClient = null;
+
+      // Now trigger PSI analysis + notifications outside the transaction.
+      // preInsertedId tells launchAudit to skip the INSERT (already done above).
+      const launched = await launchAudit({
+        orgId, url: normalizedUrl, origin, name: _auName,
+        userId: _aCtx.userId || _aCtx.email || "system",
+        userName: _aCtx.name || _aCtx.email || "Système",
+        preInsertedId: _auId,
+      });
+      res.status(201).json({ ...launched, type: type ?? "SEO complet" });
+    } catch (err) {
+      logger.error({ err }, "[audits] POST failed");
+      if (!res.headersSent) {
+        res.status(500).json({ error: "La création de l'audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+      }
+    } finally {
+      if (_auLockClient) {
+        await _auLockClient.query("ROLLBACK").catch(() => {});
+        _auLockClient.release();
+      }
+    }
+  } catch (outerErr) {
+    // Outer try covers the duplicate guard (lines above the advisory lock block).
+    logger.error({ err: outerErr }, "[audits] POST outer error");
+    if (!res.headersSent) {
+      res.status(500).json({ error: "La création de l'audit a échoué. Réessayez dans un instant.", code: "AUDIT_CREATE_FAILED" });
+    }
   }
 });
 
@@ -106,12 +172,25 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
 router.get("/audits/history", async (req: Request, res: Response) => {
   const url     = req.query.url as string | undefined;
   const daysRaw = parseInt((req.query.days as string) || "90", 10);
-  const days    = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
-  if (!url) { res.status(400).json({ error: "url required" }); return; }
-
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
+
+  // retention365d add-on: extend historical lookback beyond 90 days (up to 365)
+  let maxDays = 90; // default: 90 days
+  try {
+    const { loadBillingContext } = await import("../services/billing-context.js");
+    const bCtx = await loadBillingContext(orgId).catch(() => null);
+    if (bCtx?.addons?.["retention365d"]) maxDays = 365;
+    else if (bCtx?.addons?.["retention90d"]) maxDays = 90;
+  } catch { /* non-blocking */ }
+
+  // Cap requested days to what the org is entitled to
+  const requestedDays = Number.isFinite(daysRaw) ? Math.max(1, daysRaw) : 90;
+  const days = Math.min(requestedDays, maxDays);
+
+  if (!url) { res.status(400).json({ error: "url required", maxDays }); return; }
+
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   try {
     const result = await req.orgDb(
       `SELECT * FROM audits WHERE url = $1 AND date >= $2 AND org_id = $3 ORDER BY date ASC LIMIT 365`,
@@ -155,10 +234,13 @@ router.get("/audits/upcoming",  upcomingSchedules);
 // ── GET /audits/:id ───────────────────────────────────────────────────────────
 
 router.get("/audits/:id", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const result = await req.orgDb(
-      `SELECT * FROM audits WHERE id = $1 LIMIT 1`,
-      [req.params.id],
+      // Defense-in-depth: explicit org_id even though orgDb enforces RLS.
+      `SELECT * FROM audits WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [req.params.id, orgId],
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Audit not found" }); return; }
     res.json(auditToPublic(result.rows[0]));

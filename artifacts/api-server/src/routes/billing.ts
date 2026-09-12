@@ -1,13 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { ownerOnly } from "../middlewares/requireRole.js";
+import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
   startTrial, validateCoupon, getInvoices, trackBillingEvent,
@@ -15,6 +16,7 @@ import {
 import { mailer } from "../services/mailer.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { provisionPlanAddons } from "../services/addons-service.js";
+import { getSession, invalidateAllSessions } from "../services/sessions.js";
 
 /* PLAN_INCLUDED_ADDONS imported from plans.ts — do NOT duplicate here */
 
@@ -130,12 +132,12 @@ function parseAddons(raw: unknown, res: Response): AddonsMap | null {
 }
 
 
-router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/create-checkout-session", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   res.redirect(307, "/api/billing/checkout");
 });
 
 // ── POST /billing/checkout ───────────────────────────────────────────────────
-router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlan(req.body?.plan, res);
   if (plan === null) return;
   const addons = parseAddons(req.body?.addons, res);
@@ -200,14 +202,19 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       }
     }
 
-    // Only grant 14-day trial for confirmed first-time subscribers
-    const hasHadTrial = !!billingCtx.trialEndsAt;
+    // ── Trial eligibility — canonical org-level gate ──────────────────────────
+    // The canonical source is billingCtx.trialConsumedAt (organizations table,
+    // normalized from legacy org_settings by loadOrgData if needed).
+    // A new Stripe Customer must NEVER reset the trial — only the org's own
+    // trialConsumedAt determines eligibility.  hasStripeSubHistory is kept as a
+    // secondary Stripe-side guard to block edge cases where trialConsumedAt
+    // hasn't been normalized yet (e.g., first request after DB gap).
     let hasStripeSubHistory = false;
     if (customerId) {
       const allSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
       hasStripeSubHistory = allSubs.data.length > 0;
     }
-    const grantTrial = !hasHadTrial && !hasStripeSubHistory;
+    const grantTrial = !billingCtx.trialConsumedAt && !hasStripeSubHistory;
 
     /* Canonical quote — the single place line items, plan inclusions and trial
        length are derived. This route used to build its own Stripe items and
@@ -242,12 +249,17 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       return;
     }
 
-    const subscriptionData: Record<string, unknown> = {};
+    // Always embed plan in subscription metadata so parsePlanFromSubscription
+    // can identify the plan from customer.subscription.created/updated webhooks
+    // without relying on price-ID mapping (which may not cover all test-mode IDs).
+    const subscriptionData: Record<string, unknown> = {
+      metadata: { plan: plan.toLowerCase(), orgId },
+    };
     if (quote.trialEligible) {
       subscriptionData["trial_period_days"] = quote.trialDays;
       logger.info({ plan, orgId, trialDays: quote.trialDays }, "[Billing] Granting trial — confirmed first-time subscriber");
     } else {
-      logger.info({ plan, hasHadTrial, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
+      logger.info({ plan, trialConsumedAt: billingCtx.trialConsumedAt, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
     }
 
     logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
@@ -507,9 +519,10 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    const [pmList, customer] = await Promise.all([
+    const [pmList, customer, subList] = await Promise.all([
       stripe.paymentMethods.list({ customer: stripeCustomerId, type: "card" }),
       stripe.customers.retrieve(stripeCustomerId),
+      stripe.subscriptions.list({ customer: stripeCustomerId, limit: 1, status: "active" }),
     ]);
 
     const defaultPmId =
@@ -519,24 +532,72 @@ router.get("/billing/payment-methods", async (req: Request, res: Response) => {
             : (customer.invoice_settings.default_payment_method as { id: string }).id)
         : null;
 
-    const paymentMethods = (pmList.data as Array<{ id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } }>).map((pm) => ({
+    // Also capture the subscription's default_payment_method (set by Checkout sessions)
+    const subDefaultPmId = subList.data[0]?.default_payment_method
+      ? (typeof subList.data[0].default_payment_method === "string"
+          ? subList.data[0].default_payment_method
+          : (subList.data[0].default_payment_method as { id: string }).id)
+      : null;
+
+    type StripePmCard = { id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } };
+    const pmMap = new Map<string, StripePmCard>((pmList.data as StripePmCard[]).map((pm) => [pm.id, pm]));
+
+    // If the subscription's PM is not in the customer's card list, fetch it explicitly
+    if (subDefaultPmId && !pmMap.has(subDefaultPmId)) {
+      try {
+        const subPm = await stripe.paymentMethods.retrieve(subDefaultPmId) as StripePmCard;
+        if (subPm?.card) pmMap.set(subPm.id, subPm);
+      } catch { /* non-fatal */ }
+    }
+
+    const effectiveDefaultId = defaultPmId ?? subDefaultPmId;
+    const paymentMethods = Array.from(pmMap.values()).map((pm) => ({
       id:       pm.id,
       brand:    pm.card?.brand ?? "card",
       last4:    pm.card?.last4 ?? "????",
       expMonth: pm.card?.exp_month ?? 0,
       expYear:  pm.card?.exp_year  ?? 0,
-      isDefault: pm.id === defaultPmId,
+      isDefault: pm.id === effectiveDefaultId,
     }));
 
     res.json({ paymentMethods });
-  } catch (err) {
-    logger.error({ err }, "[Billing] Failed to get payment methods");
+  } catch (err: unknown) {
+    // ── resource_missing : customer deleted or never existed in Stripe ────────
+    // Treat this as a desynchronised billing state, not a server failure.
+    // Clear the stale ID from DB and return an empty list — do NOT create a new
+    // customer here (that belongs to the billing checkout workflow only).
+    const stripeCode = (err as { code?: string })?.code;
+    if (stripeCode === "resource_missing") {
+      logger.warn(
+        { orgId, stripeCustomerId },
+        "[Billing] payment-methods: Stripe customer not found (deleted or wrong env) — clearing stale ID from DB",
+      );
+      try {
+        const { pool: cleanPool } = await import("@workspace/db");
+        await Promise.all([
+          cleanPool.query(
+            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1 AND stripe_customer_id = $2`,
+            [orgId, stripeCustomerId],
+          ),
+          cleanPool.query(
+            `UPDATE org_settings SET stripe_customer_id = '' WHERE org_id = $1 AND stripe_customer_id = $2`,
+            [orgId, stripeCustomerId],
+          ).catch(() => {}), // org_settings may not have this row — non-fatal
+        ]);
+      } catch (cleanErr: unknown) {
+        logger.warn({ cleanErr, orgId }, "[Billing] payment-methods: failed to clear stale stripeCustomerId (non-fatal)");
+      }
+      res.json({ paymentMethods: [] });
+      return;
+    }
+    // ── All other errors are genuine server failures ───────────────────────────
+    logger.error({ err, orgId }, "[Billing] Failed to get payment methods");
     res.status(500).json({ error: "Failed to retrieve payment methods" });
   }
 });
 
 // ── POST /billing/trial ──────────────────────────────────────────────────────
-router.post("/billing/trial", async (req: Request, res: Response) => {
+router.post("/billing/trial", ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlanWithDefault(req.body?.plan, "pro", res);
   if (plan === null) return;
   const rawDays = req.body?.days;
@@ -564,7 +625,7 @@ router.post("/billing/trial", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/coupon/validate ────────────────────────────────────────────
-router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
+router.post("/billing/coupon/validate", canAdmin, async (req: Request, res: Response) => {
   const { code } = req.body as { code?: string };
   if (!code) { res.status(400).json({ error: "Coupon code requis" }); return; }
   try {
@@ -755,7 +816,31 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
           to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
-      logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately");
+      // Revoke ALL active sessions for this user so that any open browser/device
+      // immediately receives 401 on the next request (not just a billing gate).
+      // This is FATAL — if revocation fails we return 500 rather than ok:true,
+      // because a stale session on device B could still read data via non-gated
+      // GET endpoints (audits, monitors, missions) even though hasPremiumAccess=false.
+      // The Stripe cancel is idempotent: a frontend retry will self-heal (subscription
+      // already gone → DB status corrected) and attempt revocation again.
+      // Stripe customer and all workspace data are deliberately preserved for reactivation.
+      const _aCookieToken  = (req as any).cookies?.fp_token ?? "";
+      const _aAuthHeader   = req.headers["authorization"] ?? "";
+      const _aBearerToken  = typeof _aAuthHeader === "string" && _aAuthHeader.startsWith("Bearer ")
+        ? _aAuthHeader.slice(7).trim() : "";
+      const _aPrimaryToken = _aBearerToken || _aCookieToken;
+      if (_aPrimaryToken) {
+        const _aSess = await getSession(_aPrimaryToken);
+        if (_aSess?.userId) {
+          await invalidateAllSessions(_aSess.userId);
+          logger.info({ orgId, subId: sub.id, userIdPrefix: _aSess.userId.slice(0, 8) },
+            "[Billing] cancel-trial: all sessions revoked");
+        }
+        // If session is already invalid (e.g. duplicate request), continue — idempotent
+      }
+      const _isProd = process.env["NODE_ENV"] === "production" || !!process.env["RENDER"];
+      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: _isProd ? "none" : "lax", path: "/" });
+      logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately — session revoked");
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
   } catch (err) {
@@ -763,6 +848,257 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
     res.status(500).json({ error: "Failed to cancel trial" });
   }
 });
+
+// ── Server-side reactivation helper ──────────────────────────────────────────
+// Tries to create a Stripe subscription directly, without a Checkout Session,
+// when the customer already has a reusable default payment method.
+//
+// Returns a typed result so callers can distinguish "no payment method" from a
+// payment failure. A reusable PM must never be silently converted into an
+// automatic Checkout redirect.
+//
+// Uses `payment_behavior: "error_if_incomplete"` so Stripe never creates a
+// dangling incomplete subscription — on any payment failure the call throws and
+// we fall through to Checkout cleanly.
+//
+// PM resolution order (three layers):
+//   1. customer.invoice_settings.default_payment_method  (set by Checkout sessions)
+//   2. last canceled subscription's default_payment_method  (set on the sub itself)
+//   3. first card/sepa_debit payment method attached to the customer
+//
+// Case A (cancel_at_period_end=true): caller routes to the active-sub upgrade
+//   path — this function is only called when the subscription is truly canceled.
+// Case B: PM found  → server-side subscriptions.create(), no Checkout.
+// Case C: no PM → Checkout may be offered explicitly.
+// Case D: Stripe throws 3DS/action_required → stay on dashboard and surface the
+//   payment failure; never auto-redirect.
+type ServerSideReactivationResult =
+  | {
+      ok: true;
+      id: string;
+      status: string;
+      originalTrialEnd: number | null;
+      trialEnd: number | null;
+      currentPeriodEnd: number | null;
+    }
+  | {
+      ok: false;
+      reason:
+        | "no_payment_method"
+        | "payment_failed"
+        | "customer_missing"
+        | "history_lookup_failed"
+        | "payment_method_lookup_failed"
+        | "short_trial_payment_method_required";
+      originalTrialEnd: number | null;
+      currentPeriodEnd: number | null;
+      code?: string;
+    };
+
+async function attemptServerSideReactivation(
+  stripe: Awaited<ReturnType<typeof createStripeClient>>,
+  customerId: string,
+  priceId:    string,
+  orgId:      string,
+  targetPlan: string,
+  historicalSubscriptionId?: string | null,
+  persistedTrialEndsAt?: string | null,
+): Promise<ServerSideReactivationResult> {
+  const persistedTrialEndMs = persistedTrialEndsAt ? Date.parse(persistedTrialEndsAt) : Number.NaN;
+  const persistedTrialEnd =
+    Number.isFinite(persistedTrialEndMs) && persistedTrialEndMs > Date.now()
+      ? Math.floor(persistedTrialEndMs / 1000)
+      : null;
+  let originalTrialEnd: number | null = persistedTrialEnd;
+  let historicalPeriodEnd: number | null = null;
+  try {
+    // ── Layer 1: customer.invoice_settings.default_payment_method ──────────
+    const customer = await stripe.customers.retrieve(customerId, {
+      expand: ["invoice_settings.default_payment_method"],
+    }) as {
+      deleted?: boolean;
+      invoice_settings?: { default_payment_method?: { id: string } | string | null };
+    };
+
+    if (customer.deleted) {
+      return { ok: false, reason: "customer_missing", originalTrialEnd, currentPeriodEnd: historicalPeriodEnd };
+    }
+
+    let pmId: string | undefined;
+    type HistoricalSubscription = {
+      id?: string;
+      status?: string;
+      customer?: { id?: string } | string | null;
+      trial_end?: number | null;
+      default_payment_method?: { id?: string } | string | null;
+      items?: { data?: Array<{ current_period_end?: number | null }> };
+    };
+    let canceledSubs: HistoricalSubscription[] = [];
+    let anchoredHistoricalSub: HistoricalSubscription | null = null;
+    let historyResolved = false;
+
+    const rawPm = customer.invoice_settings?.default_payment_method;
+    pmId = typeof rawPm === "string" ? rawPm : (rawPm as { id?: string } | null)?.id;
+
+    // Prefer the exact historical subscription persisted for this organization.
+    // This prevents another, more recently canceled subscription from hiding
+    // the original future trial deadline.
+    if (historicalSubscriptionId) {
+      try {
+        const anchored = await stripe.subscriptions.retrieve(historicalSubscriptionId);
+        const anchoredCustomer =
+          typeof anchored.customer === "string"
+            ? anchored.customer
+            : (anchored.customer as { id?: string } | null)?.id;
+        if (anchored.status === "canceled" && anchoredCustomer === customerId) {
+          anchoredHistoricalSub = anchored as HistoricalSubscription;
+          historyResolved = true;
+          const nowEpoch = Math.floor(Date.now() / 1000);
+          originalTrialEnd =
+            anchored.trial_end && anchored.trial_end > nowEpoch
+              ? anchored.trial_end
+              : null;
+          historicalPeriodEnd =
+            (anchored.items?.data?.[0] as { current_period_end?: number | null } | undefined)?.current_period_end
+            ?? null;
+          if (!pmId) {
+            const anchoredPm = anchored.default_payment_method;
+            pmId = typeof anchoredPm === "string"
+              ? anchoredPm
+              : (anchoredPm as { id?: string } | null)?.id;
+          }
+        }
+      } catch {
+        // Fall back to deterministic canceled-history scanning below.
+      }
+    }
+
+    // Load canceled history even when layer 1 already found a PM.
+    try {
+      const canceled = await stripe.subscriptions.list({
+        customer: customerId,
+        status:   "canceled",
+        limit:    10,
+      });
+      canceledSubs = canceled.data as typeof canceledSubs;
+      historyResolved = true;
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const historical =
+        anchoredHistoricalSub
+        ?? canceledSubs.find((sub) => Boolean(sub.trial_end && sub.trial_end > nowEpoch))
+        ?? canceledSubs[0];
+      if (historical?.trial_end && historical.trial_end > nowEpoch) {
+        originalTrialEnd = historical.trial_end;
+      }
+      historicalPeriodEnd = historical?.items?.data?.[0]?.current_period_end ?? null;
+    } catch {
+      // A verified anchor or persisted future trial remains usable. Otherwise
+      // fail closed: unknown history must never become an immediate charge.
+    }
+
+    if (!historyResolved && !persistedTrialEnd) {
+      logger.warn({ customerId, orgId }, "[Billing] attemptServerSideReactivation: subscription history unavailable");
+      return {
+        ok: false,
+        reason: "history_lookup_failed",
+        originalTrialEnd,
+        currentPeriodEnd: historicalPeriodEnd,
+      };
+    }
+
+    // ── Layer 2: last canceled subscription's default_payment_method ────────
+    if (!pmId) {
+      for (const cs of canceledSubs) {
+          const subPmRaw = cs.default_payment_method;
+          const subPmId  = typeof subPmRaw === "string" ? subPmRaw : (subPmRaw as { id?: string } | null)?.id;
+          if (subPmId) { pmId = subPmId; break; }
+      }
+    }
+
+    // ── Layer 3: first card/sepa attached to the customer ───────────────────
+    if (!pmId) {
+      let pmLookupFailed = false;
+      try {
+        const [cardsResult, sepasResult] = await Promise.allSettled([
+          stripe.paymentMethods.list({ customer: customerId, type: "card",      limit: 1 }),
+          stripe.paymentMethods.list({ customer: customerId, type: "sepa_debit", limit: 1 }),
+        ]);
+        const cards = cardsResult.status === "fulfilled" ? cardsResult.value.data : [];
+        const sepas = sepasResult.status === "fulfilled" ? sepasResult.value.data : [];
+        pmLookupFailed = cardsResult.status === "rejected" || sepasResult.status === "rejected";
+        pmId = cards[0]?.id ?? sepas[0]?.id;
+      } catch {
+        pmLookupFailed = true;
+      }
+      if (!pmId && pmLookupFailed) {
+        logger.warn({ customerId, orgId }, "[Billing] attemptServerSideReactivation: payment method lookup unavailable");
+        return {
+          ok: false,
+          reason: "payment_method_lookup_failed",
+          originalTrialEnd,
+          currentPeriodEnd: historicalPeriodEnd,
+        };
+      }
+    }
+
+    if (!pmId) {
+      const minCheckoutTrialEnd = Math.floor(Date.now() / 1000) + (48 * 60 * 60);
+      if (originalTrialEnd && originalTrialEnd < minCheckoutTrialEnd) {
+        logger.info({ customerId, orgId }, "[Billing] attemptServerSideReactivation: short remaining trial requires an attached PM");
+        return {
+          ok: false,
+          reason: "short_trial_payment_method_required",
+          originalTrialEnd,
+          currentPeriodEnd: historicalPeriodEnd,
+        };
+      }
+      logger.info({ customerId, orgId }, "[Billing] attemptServerSideReactivation: no reusable PM found — Checkout required");
+      return { ok: false, reason: "no_payment_method", originalTrialEnd, currentPeriodEnd: historicalPeriodEnd };
+    }
+
+    logger.info({ customerId, orgId, pmId, targetPlan }, "[Billing] attemptServerSideReactivation: PM found — creating subscription server-side");
+
+    const newSub = await stripe.subscriptions.create({
+      customer:               customerId,
+      items:                  [{ price: priceId, quantity: 1 }],
+      default_payment_method: pmId,
+      payment_behavior:       "error_if_incomplete" as const,
+      off_session:            true,
+      ...(originalTrialEnd ? { trial_end: originalTrialEnd } : {}),
+      metadata: { plan: targetPlan, orgId, reactivation: "true" },
+    });
+    const trialEnd = newSub.trial_end ?? null;
+    const currentPeriodEnd =
+      (newSub.items?.data?.[0] as { current_period_end?: number | null } | undefined)?.current_period_end
+      ?? trialEnd;
+    return {
+      ok: true,
+      id: newSub.id,
+      status: newSub.status,
+      originalTrialEnd,
+      trialEnd,
+      currentPeriodEnd,
+    };
+  } catch (err) {
+    const se = err as { type?: string; code?: string };
+    const isPaymentFailure =
+      se.type === "card_error" ||
+      ["card_declined", "authentication_required", "insufficient_funds",
+       "expired_card", "incorrect_cvc", "payment_intent_authentication_failure",
+       "payment_method_customer_subscription_declined"].includes(se.code ?? "");
+    if (isPaymentFailure) {
+      logger.info({ customerId, orgId, code: se.code }, "[Billing] attemptServerSideReactivation: reusable PM failed — staying on dashboard");
+      return {
+        ok: false,
+        reason: "payment_failed",
+        originalTrialEnd,
+        currentPeriodEnd: historicalPeriodEnd,
+        code: se.code,
+      };
+    }
+    throw err; // Genuine Stripe error — let the outer catch send a 500
+  }
+}
 
 // ── POST /billing/upgrade ─────────────────────────────────────────────────────
 // Handles: upgrade (immediate + prorations), downgrade (scheduled to the end
@@ -774,19 +1110,25 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
 
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
+  // Resolve the persistent UUID anchor before evaluating subscription state.
+  const { pool: billingPool } = await import("@workspace/db");
+  const anchor = await billingPool.query(
+    `SELECT stripe_customer_id FROM organizations WHERE id::text = $1 LIMIT 1`, [orgId]);
+  const anchoredCustomer = anchor.rows[0]?.stripe_customer_id;
+  if (anchoredCustomer) billingCtx.stripeCustomerId = anchoredCustomer;
 
-  // Guard: reject if target plan is already the active plan
-  const currentPlan   = billingCtx.plan.toLowerCase();
-  const targetPlan    = plan.toLowerCase();
-  const upgradeStatus = billingCtx.subscriptionStatus;
-  if (targetPlan && targetPlan === currentPlan && (upgradeStatus === "active" || upgradeStatus === "trialing")) {
-    logger.warn({ currentPlan, targetPlan, orgId }, "[Billing] upgrade blocked — plan already active");
-    res.status(409).json({
-      error: "plan_already_active",
-      message: `Le plan ${plan} est déjà votre plan actuel.`,
-    });
+
+  if (["canceled", "ended", "expired"].includes(billingCtx.subscriptionStatus ?? "") && !billingCtx.stripeCustomerId) {
+    res.status(409).json({ error: "billing_customer_missing",
+      message: "Le compte de facturation doit être restauré. Contactez le support." });
     return;
   }
+
+  // Same-plan requests cannot be rejected yet: an active/trialing Stripe
+  // subscription may have cancel_at_period_end=true. In that state choosing the
+  // current plan is a valid dashboard reactivation and must clear cancellation.
+  const currentPlan   = billingCtx.plan.toLowerCase();
+  const targetPlan    = plan.toLowerCase();
 
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -828,7 +1170,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     //  B) Trialing subscription — same as A; Stripe shows "trialing".
     //
     //  C) Completely terminated — no active/trialing sub in Stripe. The billing
-    //     cycle is over. Downgrade → DB-only; upgrade → reactivation checkout.
+    //     cycle is over. Every selected plan requires a new subscription.
     //
     //  D) Orphaned customer — customer ID in DB no longer exists in Stripe. Clean
     //     it up and send user to fresh checkout.
@@ -855,23 +1197,9 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         const stripeCode = (listErr as { code?: string })?.code;
         if (stripeCode !== "resource_missing") throw listErr;
 
-        // State D: orphaned customer — clear it from DB and redirect to fresh checkout.
-        logger.warn(
-          { orgId, stripeCustomerId: billingCtx.stripeCustomerId },
-          "[Billing] canceled-check: stripeCustomerId orphaned (resource_missing) — clearing",
-        );
-        try {
-          const { pool: cleanPool } = await import("@workspace/db");
-          await cleanPool.query(
-            `UPDATE org_settings SET stripe_customer_id = '' WHERE org_id = $1`, [orgId],
-          );
-          await cleanPool.query(
-            `UPDATE organizations SET stripe_customer_id = NULL WHERE id = $1`, [orgId],
-          ).catch(() => {});
-        } catch (cleanErr: unknown) {
-          logger.error({ cleanErr, orgId }, "[Billing] failed to clear orphaned stripeCustomerId");
-        }
-        res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
+        // A missing persisted Customer is an integrity error, never a signup retry.
+        res.status(409).json({ error: "billing_customer_missing",
+          message: "Le compte de facturation doit être restauré. Contactez le support." });
         return;
       }
 
@@ -885,32 +1213,96 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           "[Billing] canceled-check: live sub found (cancel_at_period_end?) — routing through normal upgrade path",
         );
         // No return — fall through
-      } else if (isDowngrade) {
-        // State C + downgrade: no live billing cycle to honour → DB-only plan update.
-        try {
-          await persistOrgData(orgId, { plan });
-        } catch (persistErr) {
-          logger.error({ persistErr, orgId, plan, currentPlan }, "[Billing] canceled-sub downgrade: persistOrgData failed");
-          res.status(500).json({ error: "Échec de la mise à jour du plan — veuillez réessayer." });
-          return;
-        }
-        logger.info({ plan, orgId, currentPlan }, "[Billing] canceled-sub downgrade — plan updated in DB immediately");
-        res.json({ ok: true, plan, downgrade: true, effective: "now", noSubDowngrade: true });
-        return;
       } else {
-        // State C + upgrade: reactivation checkout — reuse the existing Stripe customer.
-        // The webhook (checkout.session.completed) is the sole source of truth; no DB
-        // mutation happens here.
+        // State C: subscription truly ended. Try server-side reactivation first
+        // (customer has a reusable PM → no Checkout required). Fall through to
+        // Checkout only when Checkout is genuinely necessary.
         const priceId = PLAN_PRICE_IDS[targetPlan];
         if (!priceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
         }
 
+        // ── CAS 2: try server-side subscription create if PM available ──────
+        const serverReact = await attemptServerSideReactivation(
+          stripe, billingCtx.stripeCustomerId!, priceId, orgId, targetPlan,
+          billingCtx.stripeSubscriptionId, billingCtx.trialEndsAt,
+        );
+        if (serverReact.ok) {
+          const trialEndsAt = serverReact.trialEnd
+            ? new Date(serverReact.trialEnd * 1000).toISOString()
+            : null;
+          try {
+            await persistOrgData(orgId, {
+              plan: targetPlan,
+              subscriptionStatus: serverReact.status,
+              stripeSubscriptionId: serverReact.id,
+              trialEndsAt,
+              trialConsumedAt: new Date().toISOString(),
+            });
+          } catch (persistErr) {
+            logger.error({ persistErr, orgId, targetPlan }, "[Billing] server-side reactivation: persistOrgData failed (non-fatal)");
+          }
+          try { store.broadcastPlanUpdate(targetPlan, orgId); } catch (_) { /* non-fatal */ }
+          logger.info({ subId: serverReact.id, orgId, targetPlan }, "[Billing] server-side reactivation (canceled state) succeeded");
+          res.json({
+            ok: true,
+            reactivated: true,
+            upgraded: true,
+            plan: targetPlan,
+            subscriptionStatus: serverReact.status,
+            trialEndsAt,
+            currentPeriodEnd: serverReact.currentPeriodEnd
+              ? new Date(serverReact.currentPeriodEnd * 1000).toISOString()
+              : null,
+            customerReused: true,
+          });
+          return;
+        }
+
+        if (serverReact.reason === "payment_failed") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_reactivation_failed",
+            code: serverReact.code,
+            customerReused: true,
+            targetPlan,
+          });
+          return;
+        }
+        if (serverReact.reason === "customer_missing") {
+          res.status(409).json({ ok: false, error: "billing_customer_missing" });
+          return;
+        }
+        if (serverReact.reason === "history_lookup_failed" ||
+            serverReact.reason === "payment_method_lookup_failed") {
+          res.status(503).json({
+            ok: false,
+            reactivation: true,
+            retryable: true,
+            error: serverReact.reason,
+          });
+          return;
+        }
+        if (serverReact.reason === "short_trial_payment_method_required") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_required_before_reactivation",
+          });
+          return;
+        }
+
+        // ── No PM → Checkout is the only remaining path (CAS 4) ────────────
         const existingSession = openSessions.find(
           (s) =>
             s.metadata?.["reactivation"] === "true" &&
             s.metadata?.["targetPlan"]   === targetPlan &&
+            (!serverReact.originalTrialEnd ||
+              s.metadata?.["originalTrialEnd"] === String(serverReact.originalTrialEnd)) &&
             s.url,
         );
         if (existingSession) {
@@ -927,15 +1319,21 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             mode:        "subscription",
             line_items:  [{ price: priceId, quantity: 1 }],
             success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url:  `${publicUrl}/pricing.html`,
+            cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
             metadata: {
               plan:         targetPlan,
               targetPlan,
               orgId,
               reactivation: "true",
               userId:       String(req.userId ?? ""),
+              ...(serverReact.originalTrialEnd
+                ? { originalTrialEnd: String(serverReact.originalTrialEnd) }
+                : {}),
             },
-            subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+            subscription_data: {
+              metadata: { plan: targetPlan, orgId, reactivation: "true" },
+              ...(serverReact.originalTrialEnd ? { trial_end: serverReact.originalTrialEnd } : {}),
+            },
           },
           { idempotencyKey },
         );
@@ -955,6 +1353,15 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
 
       if (sub) {
         const isTrialing = sub.status === "trialing";
+        const isRenewalCanceled = sub.cancel_at_period_end === true;
+        if (targetPlan === currentPlan && !isRenewalCanceled) {
+          logger.warn({ currentPlan, targetPlan, orgId }, "[Billing] upgrade blocked — plan already active");
+          res.status(409).json({
+            error: "plan_already_active",
+            message: `Le plan ${plan} est déjà votre plan actuel.`,
+          });
+          return;
+        }
         const priceId    = PLAN_PRICE_IDS[targetPlan];
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
 
@@ -1007,6 +1414,18 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             ? new Date(_periodEndTs * 1000).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
             : "la prochaine échéance";
 
+          // A plan selection is also an explicit renewal decision. A scheduled
+          // downgrade does not automatically undo cancel_at_period_end, so clear
+          // it before returning success (including idempotent/race paths).
+          const clearPendingCancellation = async (): Promise<void> => {
+            if (!isRenewalCanceled) return;
+            await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false });
+            logger.info(
+              { subId: sub.id, orgId, targetPlan },
+              "[Billing] cleared pending cancellation for scheduled plan change",
+            );
+          };
+
           // A downgrade schedule cannot be created without a concrete period end
           // (Stripe rejects phase 0 with no end_date). If we cannot determine one,
           // fail with a clear, actionable message instead of a generic 500.
@@ -1019,10 +1438,49 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return;
           }
 
-          // ── Idempotency: if subscription already has an active schedule, skip ──
+          if (!currentPriceId) {
+            logger.error({ subId: sub.id, orgId, currentPlan }, "[Billing] downgrade: current Stripe price is unresolved");
+            res.status(422).json({
+              error: "Impossible d’identifier le tarif actuel de votre abonnement. Contactez le support.",
+              code: "downgrade_current_price_unresolved",
+            });
+            return;
+          }
+
+          const desiredFutureItems = [{ price: priceId, quantity: 1 }, ...nextAddonPrices];
+          const ensureScheduleTarget = async (
+            scheduleId: string,
+            knownSchedule?: unknown,
+          ): Promise<boolean> => {
+            const result = await ensureStripeScheduleTarget({
+              stripe,
+              scheduleId,
+              knownSchedule,
+              subscriptionStart: (sub as unknown as { start_date?: number }).start_date,
+              periodEnd: _periodEndTs,
+              currentItems: [
+                { price: currentPriceId, quantity: 1 },
+                ...currentAddonPrices,
+              ],
+              futureItems: desiredFutureItems,
+              targetPlan,
+              trialEnd: isTrialing ? sub.trial_end : undefined,
+            });
+            return result.alreadyTarget;
+          };
+
+          // ── Idempotency: verify an attached schedule before returning ────────
           if (sub.schedule) {
             const existingScheduleId = typeof sub.schedule === "string" ? sub.schedule : (sub.schedule as { id: string }).id;
-            logger.info({ scheduleId: existingScheduleId, orgId }, "[Billing] downgrade schedule already exists — idempotent return");
+            const alreadyTargetsSelection = await ensureScheduleTarget(existingScheduleId);
+            await clearPendingCancellation();
+            await persistOrgData(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
+            logger.info(
+              { scheduleId: existingScheduleId, orgId, targetPlan, alreadyTargetsSelection },
+              alreadyTargetsSelection
+                ? "[Billing] downgrade schedule already targets selection — idempotent return"
+                : "[Billing] existing downgrade schedule updated to new selection",
+            );
             res.json({
               ok:                   true,
               plan,
@@ -1031,44 +1489,16 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               effectiveReason:       isTrialing ? "trial_end" : "period_end",
               effectiveDate,
               trialDowngrade:        isTrialing,
-              removedIncludedAddons: [],
-              idempotent:           true,
+              removedIncludedAddons: removedAddonKeys,
+              ...(alreadyTargetsSelection ? { idempotent: true } : { rescheduled: true }),
+              ...(isRenewalCanceled ? { reactivated: true } : {}),
             });
             return;
           }
 
-          let scheduleId: string;
           try {
             const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
-            scheduleId = schedule.id;
-            // The current (phase 0) start_date is fixed by Stripe when the schedule
-            // is created from the live subscription. Passing "now" is rejected with
-            // "You can not modify the start date of the current phase" — reuse the
-            // existing phase-0 start_date instead.
-            const _existingPhase0Start = (schedule as { phases?: Array<{ start_date?: number }> }).phases?.[0]?.start_date;
-            await stripe.subscriptionSchedules.update(scheduleId, {
-              end_behavior: "release",
-              phases: [
-                {
-                  start_date:         (_existingPhase0Start ?? ("now" as unknown as number)),
-                  end_date:           _periodEndTs,
-                  items:              [
-                    { price: currentPriceId ?? undefined, quantity: 1 },
-                    ...currentAddonPrices,
-                  ],
-                    ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
-                  proration_behavior: "none",
-                },
-                {
-                  items: [
-                    { price: priceId, quantity: 1 },
-                    ...nextAddonPrices,
-                  ],
-                    metadata: { plan: targetPlan },
-                  proration_behavior: "none",
-                },
-              ],
-            });
+            await ensureScheduleTarget(schedule.id, schedule);
           } catch (schedErr: unknown) {
             // Stripe can reject the create() when a schedule is already attached
             // to this subscription (race condition or duplicate request).
@@ -1096,9 +1526,14 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             const attachedId = typeof freshSub.schedule === "string"
               ? freshSub.schedule
               : (freshSub.schedule as { id: string }).id;
+            const alreadyTargetsSelection = await ensureScheduleTarget(attachedId);
+            await clearPendingCancellation();
+            await persistOrgData(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
             logger.warn(
-              { scheduleId: attachedId, subId: sub.id, orgId },
-              "[Billing] schedule already attached (race) — idempotent downgrade return",
+              { scheduleId: attachedId, subId: sub.id, orgId, targetPlan, alreadyTargetsSelection },
+              alreadyTargetsSelection
+                ? "[Billing] schedule already attached (race) — idempotent downgrade return"
+                : "[Billing] schedule race resolved by updating target selection",
             );
             res.json({
               ok:                   true,
@@ -1109,11 +1544,13 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
               effectiveDate,
               trialDowngrade:        isTrialing,
               removedIncludedAddons: removedAddonKeys,
-              idempotent:           true,
+              ...(alreadyTargetsSelection ? { idempotent: true } : { rescheduled: true }),
+              ...(isRenewalCanceled ? { reactivated: true } : {}),
             });
             return;
           }
 
+          await clearPendingCancellation();
           // Do NOT change organizations.plan now — the subscription is still
           // on the current (higher) plan until the scheduled effective date.
           // Only store the pending change so the dashboard can show it.
@@ -1131,6 +1568,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             effectiveDate,
             trialDowngrade:        isTrialing,
             removedIncludedAddons: removedAddonKeys,
+            ...(isRenewalCanceled ? { reactivated: true } : {}),
           });
           return;
         }
@@ -1161,6 +1599,10 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           ],
           proration_behavior: prorationBehavior,
           metadata: { plan },
+          // Selecting any plan from the dashboard is an explicit decision to
+          // continue billing. Clear a pending period-end cancellation in the
+          // same atomic Stripe update, including same-plan reactivation.
+          ...(isRenewalCanceled ? { cancel_at_period_end: false } : {}),
           // Explicitly pin the trial end date so Stripe never re-anchors it on plan change.
           // Without this, some Stripe price trial settings can silently extend the period.
           ...(isTrialing && sub.trial_end ? { trial_end: sub.trial_end } : {}),
@@ -1182,6 +1624,64 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           // the webhook will reconcile. Log and continue.
           logger.error({ persistErr, orgId, plan }, "[Billing] persistOrgData failed after Stripe sub update (non-fatal)");
         }
+
+        // ── Plan write verification + repair ─────────────────────────────────
+        // persistOrgData errors are caught non-fatally above, leaving the DB
+        // stale.  Verify the plan landed and force a direct UPDATE if it didn't.
+        // This is the authoritative write for in-session plan changes — the
+        // webhook reconciles asynchronously but the user sees the result NOW.
+        const _UUID_RE_BILLING = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        try {
+          const { pool: _pgPool } = await import("@workspace/db");
+          const _vc = await _pgPool.connect();
+          try {
+            if (_UUID_RE_BILLING.test(orgId)) {
+              // UUID org: verify organizations.plan
+              const _vr = await _vc.query<{ plan: string }>(
+                `SELECT plan FROM organizations WHERE id = $1`, [orgId]
+              );
+              const _stored = (_vr.rows[0]?.plan || "").toLowerCase();
+              if (_stored !== plan) {
+                logger.error({ stored: _stored, expected: plan, orgId },
+                  "[Billing][plan-sync] organizations.plan mismatch — forcing UPDATE");
+                const _ur = await _vc.query(
+                  `UPDATE organizations SET plan = $1, updated_at = NOW() WHERE id = $2`,
+                  [plan, orgId]
+                );
+                logger.info({ rowCount: _ur.rowCount, plan, orgId },
+                  "[Billing][plan-sync] organizations.plan force-updated");
+              } else {
+                logger.info({ plan: _stored, orgId }, "[Billing][plan-sync] organizations.plan verified ✓");
+              }
+            } else {
+              // Email/legacy org: verify org_settings.plan
+              const _vr2 = await _vc.query<{ plan: string }>(
+                `SELECT plan FROM org_settings WHERE org_id = $1`, [orgId]
+              );
+              const _stored2 = (_vr2.rows[0]?.plan || "").toLowerCase();
+              if (_stored2 !== plan) {
+                logger.error({ stored: _stored2, expected: plan, orgId },
+                  "[Billing][plan-sync] org_settings.plan mismatch — forcing UPSERT");
+                await _vc.query(
+                  `INSERT INTO org_settings (org_id, plan, updated_at)
+                   VALUES ($1, $2, NOW())
+                   ON CONFLICT (org_id) DO UPDATE SET plan = EXCLUDED.plan, updated_at = NOW()`,
+                  [orgId, plan]
+                );
+                logger.info({ plan, orgId }, "[Billing][plan-sync] org_settings.plan force-upserted");
+              } else {
+                logger.info({ plan: _stored2, orgId }, "[Billing][plan-sync] org_settings.plan verified ✓");
+              }
+            }
+          } finally { _vc.release(); }
+        } catch (_verifyErr) {
+          logger.error({ err: _verifyErr, orgId, plan }, "[Billing][plan-sync] Verification query failed (non-fatal)");
+        }
+
+        // Broadcast SSE so any open dashboard tab can react immediately.
+        // Fire-and-forget — never block the HTTP response on this.
+        try { store.broadcastPlanUpdate(plan, orgId); } catch (_bcastErr) { /* non-fatal */ }
+
         logger.info(
           { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, isDowngrade, prorationBehavior, removedAddonKeys, orgId },
           "[Billing] plan change applied immediately",
@@ -1190,6 +1690,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         res.json({
           ok:                    true,
           plan,
+          ...(isRenewalCanceled ? { reactivated: true } : {}),
           ...(isDowngrade
             ? { downgrade: true, effective: "now" }
             : { upgraded:  true, effective: "now" }
@@ -1199,15 +1700,89 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         return;
       }
 
-      // stripeCustomerId exists but no active/trialing Stripe sub found:
-      // Treat as reactivation — create a checkout session reusing the existing customer.
-      // This handles data inconsistencies (DB shows "active" but Stripe has no active sub).
-      if (!isDowngrade) {
+      // stripeCustomerId exists but no active/trialing Stripe sub found.
+      // CAS 2: try server-side reactivation if customer has a reusable PM.
+      {
         const _reactPriceId = PLAN_PRICE_IDS[targetPlan];
         if (!_reactPriceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
         }
+
+        // ── Try server-side subscription create (no Checkout) ───────────────
+        const _serverReact2 = await attemptServerSideReactivation(
+          stripe, billingCtx.stripeCustomerId!, _reactPriceId, orgId, targetPlan,
+          billingCtx.stripeSubscriptionId, billingCtx.trialEndsAt,
+        );
+        if (_serverReact2.ok) {
+          const trialEndsAt = _serverReact2.trialEnd
+            ? new Date(_serverReact2.trialEnd * 1000).toISOString()
+            : null;
+          try {
+            await persistOrgData(orgId, {
+              plan: targetPlan,
+              subscriptionStatus: _serverReact2.status,
+              stripeSubscriptionId: _serverReact2.id,
+              trialEndsAt,
+              trialConsumedAt: new Date().toISOString(),
+            });
+          } catch (persistErr) {
+            logger.error({ persistErr, orgId, targetPlan }, "[Billing] server-side reactivation (no-active-sub): persistOrgData failed (non-fatal)");
+          }
+          try { store.broadcastPlanUpdate(targetPlan, orgId); } catch (_) { /* non-fatal */ }
+          logger.info({ subId: _serverReact2.id, orgId, targetPlan }, "[Billing] server-side reactivation (no-active-sub) succeeded");
+          res.json({
+            ok: true,
+            reactivated: true,
+            upgraded: true,
+            plan: targetPlan,
+            subscriptionStatus: _serverReact2.status,
+            trialEndsAt,
+            currentPeriodEnd: _serverReact2.currentPeriodEnd
+              ? new Date(_serverReact2.currentPeriodEnd * 1000).toISOString()
+              : null,
+            customerReused: true,
+          });
+          return;
+        }
+
+        if (_serverReact2.reason === "payment_failed") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_reactivation_failed",
+            code: _serverReact2.code,
+            customerReused: true,
+            targetPlan,
+          });
+          return;
+        }
+        if (_serverReact2.reason === "customer_missing") {
+          res.status(409).json({ ok: false, error: "billing_customer_missing" });
+          return;
+        }
+        if (_serverReact2.reason === "history_lookup_failed" ||
+            _serverReact2.reason === "payment_method_lookup_failed") {
+          res.status(503).json({
+            ok: false,
+            reactivation: true,
+            retryable: true,
+            error: _serverReact2.reason,
+          });
+          return;
+        }
+        if (_serverReact2.reason === "short_trial_payment_method_required") {
+          res.status(409).json({
+            ok: false,
+            reactivation: true,
+            requiresPaymentAction: true,
+            error: "payment_method_required_before_reactivation",
+          });
+          return;
+        }
+
+        // ── No PM → Checkout is the only remaining path (CAS 4) ────────────
         const _reactBucket = Math.floor(Date.now() / (30 * 60 * 1000));
         const _reactKey    = `fp-reactivation-${orgId}-${targetPlan}-${_reactBucket}`;
         const _openSess = await stripe.checkout.sessions.list({
@@ -1217,7 +1792,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         });
         const _existSess = (_openSess.data ?? []).find(
           (s: { metadata?: Record<string, string> | null; url?: string | null; id?: string }) =>
-            s.metadata?.["reactivation"] === "true" && s.metadata?.["targetPlan"] === targetPlan && s.url,
+            s.metadata?.["reactivation"] === "true" &&
+            s.metadata?.["targetPlan"] === targetPlan &&
+            (!_serverReact2.originalTrialEnd ||
+              s.metadata?.["originalTrialEnd"] === String(_serverReact2.originalTrialEnd)) &&
+            s.url,
         );
         if (_existSess) {
           logger.info({ sessionId: _existSess.id, orgId, targetPlan }, "[Billing] reactivation (no-active-sub): returning existing open session");
@@ -1230,15 +1809,21 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             mode:        "subscription",
             line_items:  [{ price: _reactPriceId, quantity: 1 }],
             success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url:  `${publicUrl}/pricing.html`,
+            cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
             metadata: {
               plan:         targetPlan,
               targetPlan,
               orgId,
               reactivation: "true",
               userId:       String(req.userId ?? ""),
+              ...(_serverReact2.originalTrialEnd
+                ? { originalTrialEnd: String(_serverReact2.originalTrialEnd) }
+                : {}),
             },
-            subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+            subscription_data: {
+              metadata: { plan: targetPlan, orgId, reactivation: "true" },
+              ...(_serverReact2.originalTrialEnd ? { trial_end: _serverReact2.originalTrialEnd } : {}),
+            },
           },
           { idempotencyKey: _reactKey },
         );
@@ -1248,26 +1833,46 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       }
     }
 
-    // No existing sub:
-    // — Downgrade (e.g. Pro trial → Standard): no Stripe billing cycle to honour,
-    //   update plan in DB immediately and return the upgrade shape.
-    // — Upgrade or same level: redirect to checkout.html to start a fresh subscription.
-    if (isDowngrade) {
-      try {
-        await persistOrgData(orgId, { plan });
-      } catch (persistErr) {
-        logger.error({ persistErr, orgId, plan, currentPlan }, "[Billing] no-sub downgrade: persistOrgData failed");
-        res.status(500).json({ error: "Échec de la mise à jour du plan — veuillez réessayer." });
+    // No existing Stripe subscription (any plan direction) — create an authenticated Checkout Session.
+    // NEVER change the plan in DB before payment confirmation.
+    // NEVER redirect to the public signup flow.
+    // The webhook is the only source of truth for plan activation.
+    {
+      const _nsPriceId = PLAN_PRICE_IDS[targetPlan];
+      if (!_nsPriceId) {
+        res.status(400).json({ error: `Plan inconnu : ${plan}` });
         return;
       }
-      logger.info({ plan, orgId, currentPlan }, "[Billing] no-sub downgrade — plan updated in DB immediately");
-      res.json({ ok: true, plan, upgraded: true, effective: "now", noSubDowngrade: true });
+      // First Checkout: do not pre-create a Stripe Customer. In subscription
+      // mode Stripe creates it only when Checkout completes; the webhook then
+      // anchors session.customer to the organization.
+      const _nsBucket = Math.floor(Date.now() / (30 * 60 * 1000));
+      const _nsKey    = `fp-nosub-checkout-${orgId}-${targetPlan}-${_nsBucket}`;
+      const _nsSess = await stripe.checkout.sessions.create(
+        {
+          mode:       "subscription",
+          line_items: [{ price: _nsPriceId, quantity: 1 }],
+          ...(billingCtx.email ? { customer_email: billingCtx.email } : {}),
+          success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url:  `${publicUrl}/dashboard.html#billing/plans`,
+          metadata: {
+            plan:         targetPlan,
+            targetPlan,
+            orgId,
+            reactivation: "true",
+            userId:       String(req.userId ?? ""),
+          },
+          subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+        },
+        { idempotencyKey: _nsKey },
+      );
+      logger.info(
+        { sessionId: _nsSess.id, orgId, targetPlan, customerReused: false },
+        "[Billing] no-sub checkout session created",
+      );
+      res.json({ reactivation: true, checkoutUrl: _nsSess.url, customerReused: false, targetPlan });
       return;
     }
-
-    // No existing sub and not a downgrade — redirect to checkout.html to start a fresh subscription.
-    logger.info({ plan, orgId }, "[Billing] upgrade: no active subscription — redirecting to checkout.html");
-    res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to upgrade");
     // Surface a specific, actionable message rather than a generic 500.
@@ -1506,7 +2111,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/checkout/annual ────────────────────────────────────────────
-router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
+router.post("/billing/checkout/annual", ownerOnly, async (req: Request, res: Response) => {
   const plan = parsePlan(req.body?.plan, res);
   if (plan === null) return;
   const addons = parseAddons(req.body?.addons, res);
@@ -1683,10 +2288,68 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   });
 });
 
+// ── GET /billing/preflight-downgrade ─────────────────────────────────────────
+// Returns whether a downgrade to the target plan is safe given current usage.
+// If any resource exceeds the target plan's limit, the downgrade is blocked.
+// Query: ?plan=standard|pro|ultra
+// Response: { allowed: boolean, conflicts: [{ resource, used, limit }], plan }
+router.get("/billing/preflight-downgrade", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId  = req.orgContext?.orgId ?? req.orgId;
+  const target = String(req.query["plan"] ?? "").toLowerCase();
+  const VALID  = ["standard", "pro", "ultra"] as const;
+  if (!VALID.includes(target as any)) {
+    res.status(400).json({ error: "plan must be one of: standard, pro, ultra" }); return;
+  }
+  if (!orgId) { res.status(401).json({ error: "orgId required" }); return; }
+
+  try {
+    const { PLAN_LIMITS } = await import("../lib/plans.js");
+    const targetLimits = PLAN_LIMITS[target] ?? PLAN_LIMITS["standard"];
+
+    // Fetch live usage for every resource that has a hard limit
+    const { checkQuota } = await import("../services/billing-service.js");
+    const [audits, monitors, reports, seats] = await Promise.all([
+      checkQuota("audits",   orgId),
+      checkQuota("monitors", orgId),
+      checkQuota("reports",  orgId),
+      checkQuota("seats",    orgId),
+    ]);
+
+    const conflicts: { resource: string; used: number; targetLimit: number }[] = [];
+    const check = (resource: string, used: number, tLimit: number) => {
+      if (used > tLimit) conflicts.push({ resource, used, targetLimit: tLimit });
+    };
+
+    check("audits",   audits.used,   targetLimits.audits);
+    check("monitors", monitors.used, targetLimits.monitors);
+    check("reports",  reports.used,  targetLimits.reports);
+    check("seats",    seats.used,    targetLimits.teamMembers);
+
+    const allowed = conflicts.length === 0;
+    res.json({
+      allowed,
+      plan: target,
+      conflicts,
+      usage: {
+        audits:   { used: audits.used,   limit: targetLimits.audits },
+        monitors: { used: monitors.used, limit: targetLimits.monitors },
+        reports:  { used: reports.used,  limit: targetLimits.reports },
+        seats:    { used: seats.used,    limit: targetLimits.teamMembers },
+      },
+      message: allowed
+        ? `Downgrade vers ${target} possible — aucun dépassement.`
+        : `Downgrade vers ${target} bloqué — ${conflicts.map(c => `${c.resource}: ${c.used}/${c.targetLimit}`).join(", ")}. Réduisez votre usage avant de downgrader.`,
+    });
+  } catch (err) {
+    logger.error({ err, orgId }, "[billing] preflight-downgrade failed");
+    res.status(500).json({ error: "Impossible de vérifier le downgrade. Réessayez." });
+  }
+});
+
 // ── POST /billing/usage-events ────────────────────────────────────────────────
 // Client-side exports (CSV, Health-Score PDF generated in-browser) report their
 // consumption here so the cumulative counters include them.
-router.post("/billing/usage-events", async (req: Request, res: Response): Promise<void> => {
+router.post("/billing/usage-events", canWrite, async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? req.orgId ?? "default";
   const kind = String((req.body as { kind?: string })?.kind ?? "");
   const CLIENT_KINDS = new Set(["export", "health_export", "pdf_export"]);
@@ -1871,7 +2534,7 @@ router.get("/billing/events", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/addon-checkout ───────────────────────────────────────────────
-router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Request, res: Response): Promise<void> => {
+router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const { addonKey = "", addonName = "" } = req.body as { addonKey?: string; addonName?: string; price?: string; quantity?: unknown };
   if (!addonKey) { res.status(400).json({ error: "addonKey required" }); return; }
   // Quantity is honoured only for quantity add-ons (QTY_ADDONS); flag add-ons are always 1.
@@ -1956,11 +2619,17 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
     if (billingCtx.stripeCustomerId) {
       addonCustomerId = billingCtx.stripeCustomerId;
     } else {
-      // Ensure a customer exists so all future webhooks can resolve orgId
-      try {
-        addonCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
-      } catch (custErr) {
-        logger.warn({ custErr, orgId }, "[Billing] addon-checkout: ensureStripeCustomer failed — proceeding without customer");
+      // Ensure a customer exists so all future webhooks can resolve orgId.
+      // If ensureStripeCustomer throws, abort rather than proceeding without a
+      // customer — a customerless session creates an orphan Stripe customer that
+      // the webhook can't map back to this org, causing "add-on non activé".
+      addonCustomerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey).catch((custErr) => {
+        logger.error({ custErr, orgId }, "[Billing] addon-checkout: ensureStripeCustomer failed — aborting checkout to prevent orphan customer");
+        return null;
+      }) ?? undefined;
+      if (!addonCustomerId) {
+        res.status(503).json({ error: "Impossible de créer le profil de facturation. Réessayez dans quelques instants." });
+        return;
       }
     }
 
@@ -1982,6 +2651,8 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
       targetType: "billing",
       metadata: { addonKey },
       orgId,
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email || null,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email || null,
     }).catch(() => {});
 
     res.json({ url: session.url });
@@ -2043,11 +2714,299 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
     logger.error({ err, orgId }, "[Billing/DeleteAccount] Failed");
     const msg = err instanceof Error ? err.message : "";
     const isStripeErr = msg.includes("Stripe") || msg.includes("stripe");
+
+    // If Stripe succeeded but DB failed, the subscription is already canceled in Stripe.
+    // Update the DB subscription status to "canceled" so the UI at least reflects reality,
+    // then return a partial-success response so the frontend can redirect.
+    if (!isStripeErr) {
+      try {
+        await persistOrgData(orgId, { subscriptionStatus: "canceled" });
+        logger.info({ orgId }, "[Billing/DeleteAccount] Subscription status force-set to canceled after partial failure");
+      } catch (persistErr) {
+        logger.warn({ persistErr, orgId }, "[Billing/DeleteAccount] Could not persist canceled status (non-fatal)");
+      }
+      // Clear session so the client must re-authenticate
+      res.clearCookie("fp_token", { path: "/", httpOnly: true, sameSite: "lax", secure: true });
+      return res.status(500).json({
+        error: "Certaines données n'ont pas pu être supprimées. Votre abonnement Stripe a bien été résilié. Contactez le support pour compléter la suppression.",
+        stripeCleared: true,
+      });
+    }
+
     res.status(500).json({
       error: isStripeErr
         ? "Échec de la résiliation Stripe. Aucune donnée n'a été supprimée. Réessayez ou contactez le support."
         : "Erreur lors de la suppression du compte. Aucune donnée n'a été supprimée.",
     });
+  }
+});
+
+// ── /billing/reconcile-subscription ─────────────────────────────────────────
+// Authenticated POST: reads the org's LIVE Stripe subscription and reconciles
+// org_addons without requiring a new purchase.
+// This fixes the case where the webhook fired but orgId could not be resolved
+// (stripe_customer_id not yet in organizations table), leaving org_addons stale
+// while Stripe correctly charges for the add-on.
+//
+// Returns the table filled in below so the caller can audit the result.
+router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  try {
+    const billingCtx = await loadBillingContext(orgId);
+    const stripeCustomerId = billingCtx.stripeCustomerId ?? null;
+    if (!stripeCustomerId) {
+      res.status(400).json({ error: "No Stripe customer ID on record for this organisation. Cannot reconcile." });
+      return;
+    }
+
+    const stripeKey = getStripeKey();
+    if (!stripeKey) {
+      res.status(503).json({ error: "Stripe not configured" });
+      return;
+    }
+    const stripe = await createStripeClient(stripeKey);
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe client unavailable" });
+      return;
+    }
+
+    // Self-heal: ensure stripe_customer_id is stored in organizations
+    const { pool: pgPool } = await import("@workspace/db");
+    const healClient = await pgPool.connect();
+    try {
+      await healClient.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL`,
+        [stripeCustomerId, orgId],
+      );
+    } finally { healClient.release(); }
+
+    // ── PHASE 1 : fetch all non-canceled subscriptions for this customer ────────
+    // Source of truth = CURRENT Stripe SubscriptionItems only.
+    // Payment history is never consulted.
+    const subs = await stripe.subscriptions.list({
+      customer: stripeCustomerId,
+      status: "all",
+      limit: 10,
+      expand: ["data.items.data.price"],
+    });
+
+    const _plansModule = await import("../lib/plans.js");
+    const getAddonForPriceId = _plansModule.getAddonForPriceId as (id: string) => string | null;
+    const FA = _plansModule.FLAG_ADDONS as unknown as Set<string>;
+    const QA = _plansModule.QTY_ADDONS as unknown as Set<string>;
+    const PIA = _plansModule.PLAN_INCLUDED_ADDONS as unknown as Record<string, Set<string>>;
+    const { activateAddon, deactivateAddon, getOrgAddons } = await import("../services/addons-service.js");
+
+    const diagItems: Array<{
+      subscriptionId: string; status: string;
+      itemId: string; priceId: string; priceAmount: number | null;
+      quantity: number; metadata: Record<string, string>;
+      addonKey: string | null; action: string;
+    }> = [];
+
+    // addonKey → quantity as seen in ALL live (non-canceled) Stripe subscriptions.
+    // QTY addons: sum quantities across subs. FLAG addons: presence = true.
+    const stripeAddonMap = new Map<string, number>(); // key → qty (1 for flag addons)
+
+    for (const sub of subs.data) {
+      if (sub.status === "canceled") continue;
+      for (const item of sub.items.data) {
+        const priceId = item.price?.id ?? "";
+        let addonKey = getAddonForPriceId(priceId);
+        if (!addonKey && (item.metadata as Record<string, string>)?.["addonKey"]) {
+          const metaKey = (item.metadata as Record<string, string>)["addonKey"];
+          if (FA.has(metaKey) || QA.has(metaKey)) addonKey = metaKey;
+        }
+        const qty = Number(item.quantity ?? 1);
+
+        if (addonKey) {
+          // Sum quantities across multiple subscriptions (rare but possible)
+          stripeAddonMap.set(addonKey, (stripeAddonMap.get(addonKey) ?? 0) + qty);
+        }
+
+        diagItems.push({
+          subscriptionId: sub.id,
+          status: sub.status,
+          itemId: item.id,
+          priceId,
+          priceAmount: item.price?.unit_amount ?? null,
+          quantity: qty,
+          metadata: (item.metadata as Record<string, string>) ?? {},
+          addonKey,
+          action: "pending",   // filled in below
+        });
+      }
+    }
+
+    // ── PHASE 2 : activate/update addons present in Stripe ───────────────────
+    // Use direct SQL (not activateAddon/Drizzle) so schema drift or ORM issues
+    // cannot silently swallow writes. activateAddon has an internal try/catch
+    // that returns false without throwing — the reconcile endpoint needs a
+    // reliable write that surfaces errors.
+    const activatedKeys = new Set<string>();
+    const phase2Client = await pgPool.connect();
+    try {
+      for (const [addonKey, qty] of stripeAddonMap.entries()) {
+        try {
+          // Step 1: UPDATE existing row (idempotent)
+          const upd = await phase2Client.query(
+            `UPDATE org_addons SET active = true, quantity = $3
+             WHERE org_id = $1 AND addon_key = $2`,
+            [orgId, addonKey, qty],
+          );
+          // Step 2: INSERT if no row existed — id is gen_random_uuid() to handle
+          // both TEXT and UUID id column types in prod (never pass a custom string id)
+          if ((upd.rowCount ?? 0) === 0) {
+            await phase2Client.query(
+              `INSERT INTO org_addons (id, org_id, addon_key, active, quantity, activated_at)
+               VALUES (gen_random_uuid(), $1, $2, true, $3, NOW())
+               ON CONFLICT DO NOTHING`,
+              [orgId, addonKey, qty],
+            );
+          }
+          activatedKeys.add(addonKey);
+          // Back-fill action in diagItems
+          for (const d of diagItems) { if (d.addonKey === addonKey) d.action = "activated"; }
+        } catch (e) {
+          const msg = `error: ${e instanceof Error ? e.message : String(e)}`;
+          for (const d of diagItems) { if (d.addonKey === addonKey) d.action = msg; }
+        }
+      }
+    } finally { phase2Client.release(); }
+    // Mark skipped (plan items or unrecognised)
+    for (const d of diagItems) {
+      if (d.action === "pending") {
+        d.action = d.addonKey === null ? "unrecognised_price_id" : "skipped";
+      }
+    }
+
+    // ── PHASE 3 : deactivate STALE PAID addons (in DB but absent from Stripe) ─
+    //
+    // Stripe is the source of truth for paid Stripe-managed addons.
+    // Three categories are exempt from deactivation:
+    //
+    //   A) PLAN_INCLUDED_ADDONS[currentPlan] — entitlement comes from the plan,
+    //      never from a SubscriptionItem. Examples on Ultra: backlinkIntelligence,
+    //      behavioralAI, aiForecasting. Beta status is irrelevant here — what
+    //      matters is whether the plan includes the addon, not its maturity level.
+    //
+    //   B) No live Stripe price ID (ADDON_PRICE_IDS[key] empty/missing) — the
+    //      addon is not Stripe-managed; there can be no SubscriptionItem to match.
+    //
+    //   C) Explicit manual grant — org_addons.metadata->>'source' IN
+    //      ('admin','legacy','grant','ops'). Entitlement deliberately outside Stripe.
+    //
+    // Everything else: if active=true in DB and absent from the union of current
+    // non-canceled Stripe SubscriptionItems → deactivate (stale paid entitlement).
+    //
+    // NOTE: beta/coming_soon status is NOT a guard. aiGbpPosting is beta but
+    // purchasable; if it disappears from Stripe it must lose its entitlement.
+    // COMING_SOON rows in org_addons are unusual but treated by the same rule.
+    //
+    // Idempotency: deactivateAddon sets active=false without touching quantity.
+    // A re-purchase via activateAddon(key, orgId, 1) correctly restores qty=1.
+
+    const billingPlan = (await loadBillingContext(orgId)).plan?.toLowerCase() ?? "";
+    // Guard A: plan-included addons for this org's current plan
+    const planIncluded: Set<string> = (PIA[billingPlan] as Set<string> | undefined) ?? new Set<string>();
+    // Guard B: live price IDs (Stripe-managed check)
+    const { ADDON_PRICE_IDS: APIDS } = await import("../lib/plans.js") as unknown as {
+      ADDON_PRICE_IDS: Record<string, string>;
+    };
+
+    // Query org_addons with metadata (getOrgAddons() strips it)
+    const phase3Client = await pgPool.connect();
+    let rawOrgAddons: Array<{ addon_key: string; active: boolean; quantity: number | null; metadata: Record<string, string> | null }> = [];
+    try {
+      const rr = await phase3Client.query(
+        `SELECT addon_key, active, quantity, metadata FROM org_addons WHERE org_id = $1`,
+        [orgId],
+      );
+      rawOrgAddons = rr.rows as typeof rawOrgAddons;
+    } finally { phase3Client.release(); }
+
+    const deactivatedKeys: string[] = [];
+    for (const row of rawOrgAddons) {
+      const dbKey = row.addon_key;
+
+      // Must be currently active
+      if (!row.active) continue;
+      // Present in Stripe → Phase 2 already set it correctly
+      if (stripeAddonMap.has(dbKey)) continue;
+
+      // Guard A — plan-included: entitlement comes from plan, not Stripe
+      if (planIncluded.has(dbKey)) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_plan_included",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: {}, addonKey: dbKey, action: "kept_plan_included" });
+        continue;
+      }
+
+      // Guard B — no Stripe price ID: not a billable Stripe-managed addon
+      if (!APIDS[dbKey]) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_no_price_id",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: {}, addonKey: dbKey, action: "kept_no_price_id" });
+        continue;
+      }
+
+      // Guard C — explicit manual/admin grant
+      const src = (row.metadata as Record<string, string> | null)?.["source"] ?? "";
+      if (["admin", "legacy", "grant", "ops"].includes(src)) {
+        diagItems.push({ subscriptionId: "DB_ONLY", status: "exempt_manual_grant",
+          itemId: "", priceId: "", priceAmount: null, quantity: row.quantity ?? 1,
+          metadata: { source: src }, addonKey: dbKey, action: "kept_manual_grant" });
+        continue;
+      }
+
+      // All guards passed → stale paid addon absent from Stripe → deactivate
+      try {
+        const wasActive = await deactivateAddon(dbKey, orgId);
+        if (wasActive) {
+          deactivatedKeys.push(dbKey);
+          diagItems.push({ subscriptionId: "DB_ONLY", status: "absent_from_stripe",
+            itemId: "", priceId: "", priceAmount: null, quantity: 0,
+            metadata: {}, addonKey: dbKey, action: "deactivated_stale" });
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // ── PHASE 4 : read final org_addons state ────────────────────────────────
+    const dbClient = await pgPool.connect();
+    let addonRows: Array<{ addon_key: string; active: boolean; quantity: number | null }> = [];
+    try {
+      const r = await dbClient.query(
+        `SELECT addon_key, active, quantity
+         FROM org_addons WHERE org_id = $1 ORDER BY addon_key`,
+        [orgId],
+      );
+      addonRows = r.rows as typeof addonRows;
+    } finally { dbClient.release(); }
+
+    logger.info({
+      orgId, stripeCustomerId,
+      activatedKeys: Array.from(activatedKeys),
+      deactivatedKeys,
+    }, "[Billing/ReconcileSubscription] Manual reconciliation completed");
+
+    res.json({
+      ok: true,
+      orgId,
+      stripeCustomerId,
+      subscriptionsChecked: subs.data.filter((s: { status: string }) => s.status !== "canceled").length,
+      activatedKeys: Array.from(activatedKeys),
+      deactivatedKeys,
+      subscriptionItems: diagItems,
+      org_addons: addonRows,
+    });
+  } catch (err) {
+    logger.error({ err, orgId }, "[Billing/ReconcileSubscription] Failed");
+    res.status(500).json({ error: "Reconciliation failed", detail: err instanceof Error ? err.message : String(err) });
   }
 });
 

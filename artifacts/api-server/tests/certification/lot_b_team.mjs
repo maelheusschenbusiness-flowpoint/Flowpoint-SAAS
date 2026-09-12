@@ -7,7 +7,7 @@
  */
 import fs   from 'fs';
 import path from 'path';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import pg   from '/home/runner/workspace/node_modules/.pnpm/pg@8.20.0/node_modules/pg/lib/index.js';
 
 const RUN  = Date.now();
@@ -16,15 +16,16 @@ const SSL  = process.env.DATABASE_URL?.includes('supabase') ? { rejectUnauthoriz
 const DB   = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: SSL });
 
 // ── SELF-CONTAINED SESSION ────────────────────────────────────────────────────
-const ORG = `qa-lot-b-${RUN}`;
+const ORG = randomUUID();
+const ORG_OWNER_ID = randomUUID();
 await DB.query(
   `INSERT INTO org_settings (org_id, plan) VALUES ($1, 'ultra') ON CONFLICT (org_id) DO UPDATE SET plan = 'ultra'`,
   [ORG]
 );
 await DB.query(`
   INSERT INTO organizations (id, name, slug, owner_user_id, status, plan, created_at, updated_at)
-  VALUES ($1,$1,$1,$1,'active','ultra',NOW(),NOW()) ON CONFLICT (id) DO NOTHING
-`, [ORG]);
+  VALUES ($1,$2,$3,$4,'active','ultra',NOW(),NOW()) ON CONFLICT (id) DO NOTHING
+`, [ORG, `QA Lot B ${RUN}`, `qa-lot-b-${RUN}`, ORG_OWNER_ID]);
 
 const SESSION_TOKEN = randomBytes(32).toString('hex');
 const SESSION_EMAIL = `qa-lot-b-owner-${RUN}@qa.internal`;
@@ -397,15 +398,16 @@ const TEST_MAIL_DIR = process.env.TEST_MAIL_DIR || '/tmp/qa_mail';
 const e2eEmail = `qa-e2e-${RUN}@qa.internal`;
 
 // Create a fresh org + owner session just for the E2E test
-const E2E_ORG = `qa-lot-b-e2e-${RUN}`;
+const E2E_ORG = randomUUID();
+const E2E_ORG_OWNER_ID = randomUUID();
 await DB.query(
   `INSERT INTO org_settings (org_id, plan) VALUES ($1, 'pro') ON CONFLICT (org_id) DO UPDATE SET plan = 'pro'`,
   [E2E_ORG]
 );
 await DB.query(`
   INSERT INTO organizations (id, name, slug, owner_user_id, status, plan, created_at, updated_at)
-  VALUES ($1,$1,$1,$1,'active','pro',NOW(),NOW()) ON CONFLICT (id) DO NOTHING
-`, [E2E_ORG]);
+  VALUES ($1,$2,$3,$4,'active','pro',NOW(),NOW()) ON CONFLICT (id) DO NOTHING
+`, [E2E_ORG, `QA Lot B E2E ${RUN}`, `qa-lot-b-e2e-${RUN}`, E2E_ORG_OWNER_ID]);
 const E2E_TOKEN = randomBytes(32).toString('hex');
 const E2E_EMAIL = `qa-e2e-owner-${RUN}@qa.internal`;
 await DB.query(`

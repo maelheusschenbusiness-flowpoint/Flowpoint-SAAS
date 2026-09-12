@@ -55,7 +55,8 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       font-size: 15px; line-height: 1.5;
     }
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; }
+    /* Auth-boot guard: body stays invisible until session check resolves. */
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; visibility: hidden; }
 
     .fp-login-wrap { width: 100%; max-width: 480px; }
 
@@ -153,6 +154,117 @@
       input[type="email"] { padding: 10px 12px; font-size: 14px; }
     }
   </style>
+  <script>
+    /* ── Auth-boot guard ────────────────────────────────────────────────────────
+       SECURITY RULES (all must hold simultaneously):
+       1. A redirect to dashboard ONLY happens when the backend explicitly confirms
+          a live session via /api/auth/session-restore — never from a client-side
+          token alone.
+       2. The body is hidden ONLY when there is a sessionStorage token to validate
+          (or during BFCache restore where a session might still be live).
+          When no credential is present we show the form immediately, avoiding an
+          unnecessary hidden state for unauthenticated visitors.
+       3. Any 401 response immediately purges the stale sessionStorage token.
+       4. Network errors are fail-open: show the form so the user can sign in.    */
+
+    // ── Cookie-presence sentinel ──────────────────────────────────────────────
+    // We cannot read the HttpOnly fp_token cookie from JS. Use a lightweight
+    // session-restore call to discover whether the cookie is still alive. We only
+    // skip the call entirely when:
+    //   a) sessionStorage holds no token (set by this tab's previous auth), AND
+    //   b) we have no indication from localStorage that a session was ever started
+    //      in this browser (fp_had_session flag written at login time).
+    // This keeps the fast path: truly anonymous visitors see the form immediately
+    // without any background request. Users with an active session (from a live
+    // or recent tab) are still correctly redirected.
+
+    function _loginCheckSession(source) {
+      var _st = null;
+      try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
+
+      // ── RULE (same as signin.html fix): only redirect when an active per-tab
+      // sessionStorage token exists. fp_had_session (localStorage) alone, a valid
+      // cookie alone, or a BFCache restore without a token are all INSUFFICIENT
+      // to trigger a redirect. The user explicitly navigating to /login.html must
+      // see the form regardless of any prior session state.
+      if (!_st) {
+        try {
+          console.log('[LOGIN AUTH TRACE]', {
+            source: source, credential: 'none',
+            decision: 'STAY_LOGIN', reason: 'no_sessionStorage_token',
+            timestamp: new Date().toISOString(),
+          });
+        } catch(_) {}
+        document.body.style.visibility = 'visible';
+        return;
+      }
+
+      // sessionStorage token present → validate with backend before deciding.
+      document.body.style.visibility = 'hidden';
+      var _traceTs = new Date().toISOString();
+      fetch('/api/auth/session-restore', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _st },
+      })
+        .then(function(r) {
+          var httpStatus = r.status;
+          if (r.ok) return r.json().catch(function() { return null; }).then(function(d) { return { data: d, httpStatus: httpStatus }; });
+          return r.json().catch(function() { return null; }).then(function() { return { data: null, httpStatus: httpStatus }; });
+        })
+        .then(function(res) {
+          var httpStatus = res.httpStatus;
+          var data = res.data;
+          var hasToken = !!(data && data.token);
+          var decision = hasToken ? 'REDIRECT_DASHBOARD' : 'STAY_LOGIN';
+          try {
+            console.log('[LOGIN AUTH TRACE]', {
+              source: source,
+              credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              httpStatus: httpStatus,
+              decision: decision,
+              reason: hasToken ? 'backend_confirmed_valid' : 'backend_rejected',
+              referrer: document.referrer || '(direct)',
+              timestamp: _traceTs,
+            });
+          } catch(_) {}
+          if (hasToken) {
+            try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
+            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
+            window.location.replace('/dashboard.html');
+          } else {
+            // Session-restore failed → purge stale auth so next visit shows form directly.
+            try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+            try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+            try { localStorage.removeItem('fp_had_session'); } catch(_) {}
+            document.body.style.visibility = 'visible';
+          }
+        })
+        .catch(function(err) {
+          try {
+            console.log('[LOGIN AUTH TRACE]', {
+              source: source, credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              decision: 'STAY_LOGIN', reason: 'network_error',
+              error: String(err), timestamp: _traceTs,
+            });
+          } catch(_) {}
+          // Network error → fail-open: show the login form.
+          document.body.style.visibility = 'visible';
+        });
+    }
+
+    window.addEventListener('DOMContentLoaded', function() { _loginCheckSession('DOMContentLoaded'); });
+
+    // ── BFCache protection (Safari / all browsers) ────────────────────────────
+    // When Safari restores from BFCache, sessionStorage survives — so if there is
+    // a token we revalidate it. If not, the early-exit above shows the form.
+    window.addEventListener('pageshow', function(evt) {
+      if (!evt.persisted) return;
+      _loginCheckSession('pageshow-BFCache');
+    });
+  </script>
 </head>
 <body>
 
@@ -301,7 +413,8 @@
         setLoading(false);
         if (r.ok) {
           form.style.display = 'none';
-          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + email + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
+          var _safeEmail = email.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + _safeEmail + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
         } else if (r.status === 503) {
           showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {
