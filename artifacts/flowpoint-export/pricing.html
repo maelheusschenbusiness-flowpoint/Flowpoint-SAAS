@@ -2111,7 +2111,37 @@
     /* ── Non-subscriber with a plan (standard checkout) ── */
     if (!isSubscribed) {
       try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
-      window.location.href = '/checkout.html?plan=' + encodeURIComponent(targetPlan);
+      /* Check the backend, not token presence alone: cookie-only sessions are
+         valid, while a stale per-tab token must go through authentication. */
+      fetch('/api/me', {
+        credentials: 'include',
+        headers: Object.assign({ 'Cache-Control': 'no-cache' }, window._fpPricingAuthHeaders())
+      }).then(function(r) {
+        if (r.ok) {
+          window.location.href = '/checkout.html?plan=' + encodeURIComponent(targetPlan);
+          return;
+        }
+        try {
+          localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+            cart: currentCart || {},
+            sellerRef: localStorage.getItem('fp_seller_ref') || '',
+            next: '/checkout.html',
+            exp: Date.now() + 1800000
+          }));
+          sessionStorage.setItem('fp_next', '/checkout.html');
+        } catch (e) {}
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      }).catch(function() {
+        try {
+          localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+            cart: currentCart || {},
+            sellerRef: localStorage.getItem('fp_seller_ref') || '',
+            next: '/checkout.html',
+            exp: Date.now() + 1800000
+          }));
+        } catch (e) {}
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      });
       return;
     }
 

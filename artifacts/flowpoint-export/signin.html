@@ -427,7 +427,7 @@
       </button>
     </form>
 
-    <p class="footer-link">Déjà un compte ? <a href="/login.html">Se connecter</a></p>
+    <p class="footer-link">Déjà un compte ? <a id="existing-account-link" href="/login.html">Se connecter</a></p>
     <p class="footer-link" style="margin-top:6px"><a href="/pricing.html">Voir les plans et tarifs →</a></p>
   </div>
 
@@ -543,6 +543,20 @@
   var _preRegisterToken = '';
   var _planBtnsLocked   = false;
 
+  /* Preserve the visitor's selected cart while the account is created. */
+  (function () {
+    try {
+      var pending = JSON.parse(localStorage.getItem('flowpoint_pending_checkout') || 'null');
+      if (pending && pending.exp > Date.now() && pending.cart) {
+        localStorage.setItem('fp_cart', JSON.stringify(pending.cart));
+        if (pending.sellerRef) localStorage.setItem('fp_seller_ref', pending.sellerRef);
+      }
+      var next = new URLSearchParams(window.location.search).get('next');
+      var link = document.getElementById('existing-account-link');
+      if (link && next && next.charAt(0) === '/') link.href = '/login.html?next=' + encodeURIComponent(next);
+    } catch (e) {}
+  })();
+
   /* ── Called when user clicks a plan card ── */
   function choosePlan(plan, btn) {
     if (_planBtnsLocked) return;
@@ -557,8 +571,14 @@
     document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = true; });
     btn.style.opacity = '0.5';
 
-    // Save plan + preRegisterToken then go to checkout
-    try { localStorage.setItem('fp_cart', JSON.stringify({ plan: plan, addons: {}, _v: 1, _updatedAt: Date.now() })); } catch(e) {}
+    // Save plan + preserve any add-ons selected before authentication.
+    var pendingCart = null;
+    try { pendingCart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+    pendingCart = pendingCart && typeof pendingCart === 'object' ? pendingCart : {};
+    pendingCart.plan = plan;
+    pendingCart.addons = pendingCart.addons && typeof pendingCart.addons === 'object' ? pendingCart.addons : {};
+    pendingCart._v = 1; pendingCart._updatedAt = Date.now();
+    try { localStorage.setItem('fp_cart', JSON.stringify(pendingCart)); } catch(e) {}
     try { sessionStorage.setItem('fp_pre_reg_token', _preRegisterToken); } catch(e) {}
     // Also persist to localStorage with a 2-hour TTL so the token survives
     // tab closure or sessionStorage loss between signin → pricing → checkout-payment.
