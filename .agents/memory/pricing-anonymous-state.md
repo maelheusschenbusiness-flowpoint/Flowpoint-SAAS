@@ -13,4 +13,10 @@ description: How pricing.html must handle stale local billing caches for logged-
 
 **How to apply:** any new surface reading `fp_dashboard_state` or `fp_cart` must respect the same gates; cart visuals always win over billing-state resets (precedence rule 2 in `applyBillingState`).
 
+**Rule 3 — checkout and Stripe-resource routes gate authentication independently.** `checkout.html` and `checkout-payment.html` must verify `/api/me` before requesting a quote or PaymentIntent; public Checkout Session and PaymentIntent routes must reject missing sessions before Stripe, and validate any pre-registration token server-side.
+
+**Why:** frontend redirects can be bypassed with a direct URL or crafted request, and treating token presence as authentication allowed stale or arbitrary browser state to reach billing.
+
+**How to apply:** keep the visitor cart in a short-lived non-user pending-intent key during auth redirects; restore it only after the magic-link cache purge, and preserve the seller reference with that intent.
+
 Related: after checkout, dashboard cache-bust triggers on `plan_changed`, `checkout=success`, `plan_activated`, `addon_success` — every checkout-return redirect must carry one of these or the dashboard shows stale plan/quotas.

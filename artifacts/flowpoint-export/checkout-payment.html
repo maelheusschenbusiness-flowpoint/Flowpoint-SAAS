@@ -213,6 +213,45 @@
   var _paymentReady = false;
   var _payBtnLabel  = 'Confirmer →';
   var _mode         = 'setup';
+  function authHeaders() {
+    try {
+      var token = sessionStorage.getItem('fp_session_token') || '';
+      return token ? { 'Authorization': 'Bearer ' + token } : {};
+    } catch (e) { return {}; }
+  }
+  function preRegisterToken() {
+    try {
+      var token = sessionStorage.getItem('fp_pre_reg_token') || '';
+      if (token) return token;
+      var stored = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+      return stored && stored.token && stored.exp > Date.now() ? stored.token : '';
+    } catch (e) { return ''; }
+  }
+  function rememberCheckoutIntent() {
+    try {
+      localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+        cart: cart,
+        sellerRef: localStorage.getItem('fp_seller_ref') || '',
+        next: '/checkout-payment.html',
+        exp: Date.now() + 1800000
+      }));
+      sessionStorage.setItem('fp_next', '/checkout-payment.html');
+    } catch (e) {}
+  }
+  async function requireAuthenticatedCheckout() {
+    var resp = null;
+    try {
+      resp = await fetch('/api/me', {
+        credentials: 'include',
+        headers: Object.assign({ 'Cache-Control': 'no-cache' }, authHeaders())
+      });
+    } catch (e) {}
+    if (resp && resp.ok) return true;
+    if (preRegisterToken()) return true;
+    rememberCheckoutIntent();
+    window.location.replace('/signin.html?next=' + encodeURIComponent('/checkout.html'));
+    return false;
+  }
 
   /* ── Helpers ── */
   function eur(minor) {
@@ -443,10 +482,13 @@
     document.getElementById('fp-pay-btn').setAttribute('data-mode', _mode);
   }
 
-  initStripe().catch(function (err) {
-    console.error('[FlowPoint Payment] initStripe error', err);
-    var msg = (err && (err.message || err.toString())) || 'erreur inconnue';
-    showAlert('Erreur de chargement : ' + msg + '. Revenez au récapitulatif et réessayez.');
+  requireAuthenticatedCheckout().then(function (allowed) {
+    if (!allowed) return;
+    return initStripe().catch(function (err) {
+      console.error('[FlowPoint Payment] initStripe error', err);
+      var msg = (err && (err.message || err.toString())) || 'erreur inconnue';
+      showAlert('Erreur de chargement : ' + msg + '. Revenez au récapitulatif et réessayez.');
+    });
   });
 
   /* ── Soumission ── */

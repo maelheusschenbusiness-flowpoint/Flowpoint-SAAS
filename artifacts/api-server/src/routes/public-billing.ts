@@ -12,6 +12,54 @@ const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
 const router = Router();
 
+/**
+ * Public billing routes are mounted before the normal org-context middleware.
+ * Resolve the caller here so an anonymous request cannot reach any quote or
+ * Stripe operation. The Bearer token is authoritative for per-tab sessions;
+ * the HttpOnly cookie remains the normal browser fallback.
+ */
+async function resolvePublicBillingOrgId(req: Request): Promise<string | undefined> {
+  const current = (req as Request & { orgId?: string }).orgId;
+  if (current && current !== "default") return current;
+
+  const authHeader = req.headers["authorization"];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cookieToken = (req as any).cookies?.["fp_token"];
+  const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
+  const token = bearerToken || (typeof cookieToken === "string" ? cookieToken.trim() : "");
+  if (!token) return undefined;
+
+  try {
+    const { getSession } = await import("../services/sessions.js");
+    const session = await getSession(token);
+    const orgId = session?.orgId && session.orgId !== "default" ? session.orgId : undefined;
+    if (orgId) (req as Request & { orgId?: string }).orgId = orgId;
+    return orgId;
+  } catch (err) {
+    logger.warn({ err }, "[PublicBilling] public session resolution failed");
+    return undefined;
+  }
+}
+
+async function isValidPreRegisterToken(token: string): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const { pool } = await import("@workspace/db");
+    const result = await pool.query(
+      `SELECT 1 FROM pending_signups
+       WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL
+       LIMIT 1`,
+      [token],
+    );
+    return result.rowCount === 1;
+  } catch (err) {
+    logger.warn({ err }, "[PublicBilling] pre-registration token validation failed");
+    return false;
+  }
+}
+
 function getPublicStripeKey(stripeKey: string): string {
   return stripeKey.startsWith("sk_test_")
     ? (process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "")
@@ -270,6 +318,16 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   if (plan === null) return;
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
+  const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  const authOrgId = await resolvePublicBillingOrgId(req);
+  if (!authOrgId && !preRegisterToken) {
+    res.status(401).json({ error: "Authentification requise avant de continuer.", code: "UNAUTHENTICATED" });
+    return;
+  }
+  if (!authOrgId && !(await isValidPreRegisterToken(preRegisterToken))) {
+    res.status(401).json({ error: "Session d'inscription invalide ou expirée.", code: "INVALID_PRE_REGISTER_TOKEN" });
+    return;
+  }
   let quote: BillingQuote;
   try {
     const trialEligible = await resolveTrialEligibility(req);
@@ -285,8 +343,6 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   // preRegisterToken: optional — two documented modes:
   //   A (token present)  → New signup: creates Stripe Customer from pending_signups record.
   //   B (token absent)   → Authenticated or anonymous session: no customer pre-linked.
-  const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken : "";
-
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
   const publishableKey = getPublicStripeKey(stripeKey);
@@ -787,6 +843,19 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
   const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  let _piReqOrgId = await resolvePublicBillingOrgId(req);
+
+  // Hard gate before quote calculation, Stripe client creation, or any
+  // customer/payment-intent lookup. A pre-registration token is the narrowly
+  // scoped credential used by the existing new-account continuation.
+  if (!_piReqOrgId && !preRegisterToken) {
+    res.status(401).json({ error: "Authentification requise avant de continuer.", code: "UNAUTHENTICATED" });
+    return;
+  }
+  if (!_piReqOrgId && !(await isValidPreRegisterToken(preRegisterToken))) {
+    res.status(401).json({ error: "Session d'inscription invalide ou expirée.", code: "INVALID_PRE_REGISTER_TOKEN" });
+    return;
+  }
 
   // A1 — Auth guard for addon-only carts (no new signup):
   // If there's no plan and no preRegisterToken, the buyer must be an authenticated
@@ -795,7 +864,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   // but as a safety net we also perform the same manual resolution that
   // checkout-session does, so pricing.html fetches without explicit credentials
   // never produce a false 401.
-  let _piReqOrgId = (req as Request & { orgId?: string }).orgId;
+  _piReqOrgId = _piReqOrgId || (req as Request & { orgId?: string }).orgId;
   if (!preRegisterToken && (!_piReqOrgId || _piReqOrgId === "default")) {
     // Manual session resolution — mirrors checkout-session logic at lines 415-449.
     try {
