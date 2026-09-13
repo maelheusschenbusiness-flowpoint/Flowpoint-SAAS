@@ -112,6 +112,19 @@ export const SELLERS_LIST_SQL = `SELECT s.id, s.seller_code, s.name, s.email, s.
                      GROUP BY seller_id) c ON c.seller_id = s.id
         ORDER BY s.created_at DESC`;
 
+/**
+ * Seller report rows. Explicit column lists (never `*`): these are the only fields the
+ * scoped seller key can read. Stripe identifiers, payout note and trial end are
+ * already-persisted values, read as-is; nothing here computes or changes a commission.
+ */
+export const SELLER_REPORT_ORGS_SQL = `SELECT o.id, o.owner_email, o.plan, o.subscription_status, o.created_at, o.trial_ends_at
+       FROM organizations o WHERE o.seller_id = $1 ORDER BY o.created_at DESC`;
+export const SELLER_REPORT_COMMISSIONS_SQL = `SELECT sc.id, sc.org_id, sc.customer_email, sc.plan,
+              sc.eligible_amount_cents, sc.commission_rate_bps, sc.commission_amount_cents,
+              sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at,
+              sc.stripe_invoice_id, sc.stripe_subscription_id, sc.paid_by, sc.notes
+       FROM seller_commissions sc WHERE sc.seller_id = $1 ORDER BY sc.attributed_at DESC`;
+
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
 router.get("/admin/stats", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
@@ -2852,17 +2865,8 @@ router.get("/admin/sellers/:code/report", async (req: Request, res: Response): P
     if (!sellerR.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
     const seller = sellerR.rows[0];
 
-    const orgs = await pool.query(
-      `SELECT o.id, o.owner_email, o.plan, o.subscription_status, o.created_at
-       FROM organizations o WHERE o.seller_id = $1 ORDER BY o.created_at DESC`, [seller.id]
-    );
-
-    const comms = await pool.query(
-      `SELECT sc.id, sc.org_id, sc.customer_email, sc.plan,
-              sc.eligible_amount_cents, sc.commission_rate_bps, sc.commission_amount_cents,
-              sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at
-       FROM seller_commissions sc WHERE sc.seller_id = $1 ORDER BY sc.attributed_at DESC`, [seller.id]
-    );
+    const orgs = await pool.query(SELLER_REPORT_ORGS_SQL, [seller.id]);
+    const comms = await pool.query(SELLER_REPORT_COMMISSIONS_SQL, [seller.id]);
 
     res.json({ ok: true, seller, organizations: orgs.rows, commissions: comms.rows });
   } catch (err) {
