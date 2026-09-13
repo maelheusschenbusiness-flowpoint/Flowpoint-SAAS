@@ -155,3 +155,4 @@
 - [Stripe live price verification](stripe-live-price-verification.md) — verify the configured price against the live account before switching a preview to real billing.
 - [Seller attribution Payment Element](seller-attribution-payment-element.md) — await seller lookup before Stripe intents and copy pending seller into every canonical activation path.
 - [Stripe key-mode in-flight isolation](stripe-key-mode-inflight.md) — ensureStripeCustomer's org-only in-flight lock must always receive the mode-aware key around login→checkout sequences.
+- [GitHub PR approval requirement](github-pr-approval.md) — FlowPoint merges require an approving review from a reviewer with write access; self-approval cannot satisfy the rule.
