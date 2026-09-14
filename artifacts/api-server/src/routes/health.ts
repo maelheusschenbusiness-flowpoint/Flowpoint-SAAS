@@ -7,8 +7,20 @@ import { getRateLimiterStats } from "../middlewares/rateLimiter.js";
 import { getPlanConfig } from "../lib/config.js";
 import { store } from "../services/store.js";
 import { resolveOpenAIConnection } from "../lib/openai-client.js";
+import path from "node:path";
 
 const router: IRouter = Router();
+
+// ── Temporary public file download ───────────────────────────────────────────
+// Serves onboarding-videos.zip for direct download on any device.
+// No auth required — the zip contains only demo video files.
+router.get("/downloads/onboarding-videos.zip", (_req, res) => {
+  // process.cwd() = artifacts/api-server/ (set by the workflow cd command)
+  const zipPath = path.resolve(process.cwd(), "onboarding-videos.zip");
+  res.download(zipPath, "onboarding-videos.zip", (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: "file not found", path: zipPath });
+  });
+});
 
 router.get("/healthz", (_req, res) => {
   res.json({ status: "ok", uptime: Math.round(process.uptime()) });
