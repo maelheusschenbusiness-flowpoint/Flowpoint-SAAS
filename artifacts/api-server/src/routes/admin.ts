@@ -4,8 +4,8 @@
  * All routes are protected by the ADMIN_KEY environment variable.
  * Clients must supply:  x-admin-key: <value of ADMIN_KEY>
  *
- * Exception, scoped: the four seller-management routes (POST/GET /admin/sellers,
- * PATCH /admin/sellers/:code, GET /admin/sellers/:code/report) also accept
+ * Exception, scoped: the five seller-management routes (POST/GET /admin/sellers,
+ * PATCH/DELETE /admin/sellers/:code, GET /admin/sellers/:code/report) also accept
  * x-seller-admin-key: <value of SELLER_ADMIN_KEY>. See requireSellerAdminKey.
  *
  * These routes are intentionally NOT gated by user session auth so that
@@ -124,6 +124,24 @@ export const SELLER_REPORT_COMMISSIONS_SQL = `SELECT sc.id, sc.org_id, sc.custom
               sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at,
               sc.stripe_invoice_id, sc.stripe_subscription_id, sc.paid_by, sc.notes
        FROM seller_commissions sc WHERE sc.seller_id = $1 ORDER BY sc.attributed_at DESC`;
+
+/**
+ * Seller hard delete, only for a seller with no history. One statement: the row goes
+ * only if no organization, pending signup or commission points at it, so the check
+ * and the delete cannot be split by a concurrent write. seller_commissions keeps its
+ * foreign key as a last guard. Anything with history is deactivated instead (PATCH).
+ */
+export const SELLER_DELETE_UNUSED_SQL = `DELETE FROM sellers s
+        WHERE s.seller_code = $1
+          AND NOT EXISTS (SELECT 1 FROM organizations o      WHERE o.seller_id = s.id)
+          AND NOT EXISTS (SELECT 1 FROM pending_signups p    WHERE p.seller_id = s.id)
+          AND NOT EXISTS (SELECT 1 FROM seller_commissions c WHERE c.seller_id = s.id)
+        RETURNING s.id, s.seller_code`;
+export const SELLER_REFERENCES_SQL = `SELECT
+          (SELECT COUNT(*) FROM organizations o      WHERE o.seller_id = s.id)::int AS organizations,
+          (SELECT COUNT(*) FROM pending_signups p    WHERE p.seller_id = s.id)::int AS pending_signups,
+          (SELECT COUNT(*) FROM seller_commissions c WHERE c.seller_id = s.id)::int AS commissions
+         FROM sellers s WHERE s.seller_code = $1`;
 
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
 router.get("/admin/stats", async (req: Request, res: Response): Promise<void> => {
@@ -2735,6 +2753,28 @@ router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promis
       ok:     true,
       seller: r.rows[0],
       link:   sellerLink((r.rows[0] as { seller_code: string }).seller_code),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── DELETE /api/admin/sellers/:code — hard delete, only without history ───────
+router.delete("/admin/sellers/:code", async (req: Request, res: Response): Promise<void> => {
+  if (!requireSellerAdminKey(req, res)) return;
+  const code = String(req.params["code"] ?? "").trim().toUpperCase();
+  if (!/^SELLER-[A-Z0-9]{1,20}$/.test(code)) {
+    res.status(400).json({ ok: false, error: "seller_code must match SELLER-[A-Z0-9]{1,20}" });
+    return;
+  }
+  try {
+    const d = await pool.query<{ id: string; seller_code: string }>(SELLER_DELETE_UNUSED_SQL, [code]);
+    if (d.rows[0]) { res.json({ ok: true, deleted: d.rows[0].seller_code }); return; }
+    const refs = await pool.query<{ organizations: number; pending_signups: number; commissions: number }>(SELLER_REFERENCES_SQL, [code]);
+    if (!refs.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
+    res.status(409).json({
+      ok: false, error: "SELLER_HAS_HISTORY", references: refs.rows[0],
+      message: "Seller has attributions or commissions; deactivate it instead to keep the history.",
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });

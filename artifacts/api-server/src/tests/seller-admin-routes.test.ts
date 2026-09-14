@@ -3,13 +3,13 @@
  *
  * Pins the scoped seller-management key and the canonical seller link.
  *
- *  1. SELLER_ADMIN_KEY (header x-seller-admin-key) opens exactly the four seller
- *     routes: POST/GET /admin/sellers, PATCH /admin/sellers/:code,
+ *  1. SELLER_ADMIN_KEY (header x-seller-admin-key) opens exactly the five seller
+ *     routes: POST/GET /admin/sellers, PATCH/DELETE /admin/sellers/:code,
  *     GET /admin/sellers/:code/report.
  *  2. It is refused on every other admin route — the route inventory is read from
  *     admin.ts itself, so a route added later is covered without editing this file —
  *     and the refusal happens before any database access.
- *  3. ADMIN_KEY (header x-admin-key) keeps working on the four seller routes.
+ *  3. ADMIN_KEY (header x-admin-key) keeps working on the five seller routes.
  *  4. Misconfiguration fails closed: missing, short, or equal to ADMIN_KEY → 503.
  *  5. Every seller response carries the canonical signin.html?fp_ref= link, never
  *     the legacy pricing.html?ref= link.
@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pool } from "@workspace/db";
-import adminRouter, { SELLERS_LIST_SQL, SELLER_REPORT_ORGS_SQL, SELLER_REPORT_COMMISSIONS_SQL, sellerLink, SELLER_LINK_BASE } from "../routes/admin.js";
+import adminRouter, { SELLERS_LIST_SQL, SELLER_REPORT_ORGS_SQL, SELLER_REPORT_COMMISSIONS_SQL, SELLER_DELETE_UNUSED_SQL, SELLER_REFERENCES_SQL, sellerLink, SELLER_LINK_BASE } from "../routes/admin.js";
 
 const ADMIN = "a".repeat(48);
 const SELLER = "s".repeat(48);
@@ -35,7 +35,7 @@ const ROUTES = [...SOURCE.matchAll(/router\.(get|post|put|patch|delete)\("([^"]+
   return { method: m[1] as "get" | "post" | "put" | "patch" | "delete", path: m[2], guard };
 });
 const SELLER_ROUTES = [
-  "POST /admin/sellers", "GET /admin/sellers", "PATCH /admin/sellers/:code", "GET /admin/sellers/:code/report",
+  "POST /admin/sellers", "GET /admin/sellers", "PATCH /admin/sellers/:code", "DELETE /admin/sellers/:code", "GET /admin/sellers/:code/report",
 ];
 const key = (r: { method: string; path: string }) => `${r.method.toUpperCase()} ${r.path}`;
 const concrete = (p: string) => p.replace(/:code/g, "SELLER-TEST1").replace(/:[a-zA-Z]+/g, "x1");
@@ -52,6 +52,7 @@ function fakeDb() {
   q.mockImplementation(async (sql: string, params?: unknown[]) => {
     if (sql.startsWith("INSERT INTO sellers")) return { rows: [{ ...SELLER_ROW, seller_code: String(params?.[0]) }] };
     if (sql === SELLERS_LIST_SQL) return { rows: [{ ...SELLER_ROW, org_count: 2, commission_count: 1, paid_cents: 0, pending_cents: 3700 }] };
+    if (sql === SELLER_DELETE_UNUSED_SQL) return { rows: [{ id: SELLER_ROW.id, seller_code: String(params?.[0]) }] };
     if (sql.trim().startsWith("UPDATE sellers")) return { rows: [{ ...SELLER_ROW, status: String(params?.[3] ?? "active") }] };
     if (sql.includes("FROM sellers WHERE seller_code")) return { rows: [SELLER_ROW] };
     if (sql.includes("FROM organizations o WHERE o.seller_id")) return { rows: [] };
@@ -79,13 +80,13 @@ describe("route inventory", () => {
     expect(ROUTES.length).toBeGreaterThan(40);
     expect(ROUTES.filter((r) => r.guard === null).map(key)).toEqual([]);
   });
-  it("the scoped guard is used by exactly the four seller routes", () => {
+  it("the scoped guard is used by exactly the five seller routes", () => {
     expect(ROUTES.filter((r) => r.guard === "requireSellerAdminKey").map(key).sort()).toEqual([...SELLER_ROUTES].sort());
-    expect((SOURCE.match(/requireSellerAdminKey\(req, res\)/g) ?? []).length).toBe(4);
+    expect((SOURCE.match(/requireSellerAdminKey\(req, res\)/g) ?? []).length).toBe(5);
   });
 });
 
-describe("SELLER_ADMIN_KEY opens the four seller routes", () => {
+describe("SELLER_ADMIN_KEY opens the five seller routes", () => {
   for (const route of SELLER_ROUTES) {
     it(`${route} → 2xx with x-seller-admin-key`, async () => {
       const [m, p] = route.split(" ");
@@ -96,7 +97,7 @@ describe("SELLER_ADMIN_KEY opens the four seller routes", () => {
   }
 });
 
-describe("ADMIN_KEY keeps working on the four seller routes", () => {
+describe("ADMIN_KEY keeps working on the five seller routes", () => {
   for (const route of SELLER_ROUTES) {
     it(`${route} → 2xx with x-admin-key`, async () => {
       const [m, p] = route.split(" ");
@@ -109,7 +110,7 @@ describe("ADMIN_KEY keeps working on the four seller routes", () => {
 
 describe("SELLER_ADMIN_KEY is refused everywhere else, before any database access", () => {
   const others = ROUTES.filter((r) => !SELLER_ROUTES.includes(key(r)));
-  it("covers every non-seller route", () => { expect(others.length).toBe(ROUTES.length - 4); });
+  it("covers every non-seller route", () => { expect(others.length).toBe(ROUTES.length - 5); });
   for (const r of others) {
     it(`${key(r)} → 403 with x-seller-admin-key`, async () => {
       const res = await call(r.method, concrete(r.path)).set("x-seller-admin-key", SELLER).send({});
@@ -247,5 +248,53 @@ describe("GET /admin/sellers/:code/report — financial fields, explicit columns
     const r = await call("post", "/admin/seller-commissions/k1/mark-paid").set("x-seller-admin-key", SELLER).send({});
     expect(r.status).toBe(403);
     expect(q).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /admin/sellers/:code — hard delete only without history", () => {
+  const refs = (r: { organizations: number; pending_signups: number; commissions: number } | null) =>
+    q.mockImplementation(async (sql: string) => {
+      if (sql === SELLER_DELETE_UNUSED_SQL) return { rows: [] };
+      if (sql === SELLER_REFERENCES_SQL) return { rows: r ? [r] : [] };
+      throw new Error(`unexpected query in delete test: ${sql.slice(0, 60)}`);
+    });
+  it("seller without history → 200, one guarded DELETE, nothing else", async () => {
+    const r = await call("delete", "/admin/sellers/seller-test1").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ok: true, deleted: "SELLER-TEST1" });
+    expect(q).toHaveBeenCalledTimes(1);
+    expect(q).toHaveBeenCalledWith(SELLER_DELETE_UNUSED_SQL, ["SELLER-TEST1"]);
+  });
+  it("the delete statement itself carries the three history guards", () => {
+    for (const t of ["organizations o", "pending_signups p", "seller_commissions c"]) {
+      expect(SELLER_DELETE_UNUSED_SQL).toMatch(new RegExp(`NOT EXISTS \\(SELECT 1 FROM ${t} +WHERE \\w\\.seller_id = s\\.id\\)`));
+    }
+    expect(SELLER_DELETE_UNUSED_SQL).toMatch(/WHERE s\.seller_code = \$1/);
+  });
+  it("seller with an attributed organization → 409 SELLER_HAS_HISTORY, not deleted", async () => {
+    refs({ organizations: 1, pending_signups: 0, commissions: 0 });
+    const r = await call("delete", "/admin/sellers/SELLER-TEST1").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toBe("SELLER_HAS_HISTORY");
+    expect(r.body.references).toEqual({ organizations: 1, pending_signups: 0, commissions: 0 });
+  });
+  it("seller with a commission → 409", async () => {
+    refs({ organizations: 0, pending_signups: 0, commissions: 2 });
+    const r = await call("delete", "/admin/sellers/SELLER-TEST1").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(409); expect(r.body.references.commissions).toBe(2);
+  });
+  it("seller with a pending signup → 409", async () => {
+    refs({ organizations: 0, pending_signups: 1, commissions: 0 });
+    const r = await call("delete", "/admin/sellers/SELLER-TEST1").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(409);
+  });
+  it("unknown seller → 404", async () => {
+    refs(null);
+    const r = await call("delete", "/admin/sellers/SELLER-NOPE").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(404);
+  });
+  it("malformed code → 400 before any database access", async () => {
+    const r = await call("delete", "/admin/sellers/ANA").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(400); expect(q).not.toHaveBeenCalled();
   });
 });
