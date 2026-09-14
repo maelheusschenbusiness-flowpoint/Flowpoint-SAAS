@@ -685,13 +685,91 @@ async function scenario4(page, token, { mark, marks, captureSkip }) {
 // ════════════════════════════════════════════════════════════════════════════
 
 async function scenario5(page, token, { mark, marks, captureSkip }) {
-  // navigate('ai') fonctionne — confirmation par inspection directe
-  await boot(page, 'ai');
-  console.log('  → readiness IA…');
-  await page.waitForFunction(() => !!(window.STATE && window.STATE.me), { timeout: 20000, polling: 300 }).catch(() => {});
-  // Attendre le textarea avec un timeout plus généreux (25s)
-  await page.waitForSelector('textarea.fp-ai-input, textarea[placeholder*="question"]', { timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(1500);
+  // Le bootstrap restaure parfois la dernière route après le premier render.
+  // Attendre la fin déterministe du chargement d'historique AVANT navigate('ai')
+  // évite que la textarea visible soit ensuite détachée du DOM.
+  const historyReady = page.waitForResponse(
+    r => r.url().includes('/api/ai/history') && r.status() === 200,
+    { timeout: 30000 },
+  );
+  await page.goto(`${BASE}/dashboard.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForFunction(
+    () => window.STATE?.loading === false && !!window.STATE?.me,
+    { timeout: 30000, polling: 200 },
+  );
+  await historyReady;
+
+  // Préparer un rapport réel avant le début de la capture pour que la future
+  // page Rapports ne montre jamais son état vide. Ce n'est pas du produit :
+  // c'est uniquement la donnée de démonstration du scénario vidéo.
+  await fetch(`${BASE}/api/reports`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'Rapport SEO — Démonstration',
+      format: 'PDF',
+      templateKey: 'seo',
+    }),
+  }).then(async r => {
+    if (!r.ok) throw new Error(`Préparation rapport HTTP ${r.status}: ${await r.text()}`);
+  });
+
+  // Synchroniser le cache frontend avant la capture. Ainsi la navigation
+  // enregistrée vers Rapports arrive directement sur l'historique réel,
+  // sans skeleton ni état vide intermédiaire.
+  await page.evaluate(async () => {
+    if (!window._fpReportsAPI?.load) throw new Error('Reports API frontend indisponible');
+    await window._fpReportsAPI.load({ force: true });
+    if (!(window.STATE?.reports?.length > 0)) {
+      throw new Error('Le rapport de préparation n’est pas visible dans STATE.reports');
+    }
+  });
+
+  await page.evaluate(() => {
+    sessionStorage.removeItem('fp:ai-history');
+    sessionStorage.removeItem('fp:ai-draft');
+    if (window.STATE) {
+      window.STATE.aiMessages = [];
+      window.STATE.aiLoading = false;
+    }
+    navigate('ai');
+  });
+
+  // Garde déterministe : même nœud connecté, visible, enabled et interactif
+  // pendant 1 seconde complète. Une simple présence DOM ne suffit pas.
+  await page.waitForFunction(() => {
+    const el = document.querySelector('#ai-input');
+    if (!el) {
+      window.__fpVideoAiNode = null;
+      window.__fpVideoAiStableSince = 0;
+      return false;
+    }
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    const ready =
+      window.STATE?.route === 'ai' &&
+      r.width > 100 &&
+      r.height > 0 &&
+      !el.disabled &&
+      el.isConnected &&
+      s.display !== 'none' &&
+      s.visibility !== 'hidden' &&
+      s.pointerEvents !== 'none';
+    if (!ready) {
+      window.__fpVideoAiNode = null;
+      window.__fpVideoAiStableSince = 0;
+      return false;
+    }
+    if (window.__fpVideoAiNode !== el) {
+      window.__fpVideoAiNode = el;
+      window.__fpVideoAiStableSince = performance.now();
+      return false;
+    }
+    return performance.now() - window.__fpVideoAiStableSince >= 1000;
+  }, { timeout: 20000, polling: 100 });
 
   await page.mouse.move(960, 600);
   await page.evaluate(() => { window._cx = 960; window._cy = 600; });
@@ -700,130 +778,107 @@ async function scenario5(page, token, { mark, marks, captureSkip }) {
 
   // BEAT 1 — Vue interface IA
   mark('start');
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1200);
 
-  // BEAT 2 — Trouver l'input (textarea.fp-ai-input détecté à left=337, top=677)
+  // BEAT 2 — clic réel puis saisie visible, caractère par caractère
   mark('find_input');
-  // Attendre explicitement l'input AI (la section AI n'a pas STATE.loading)
-  await page.waitForSelector('textarea.fp-ai-input, textarea[placeholder*="question"], textarea[placeholder*="Question"]', { timeout: 10000 }).catch(() => {});
-  await page.waitForTimeout(500);
-
   const inputPos = await page.evaluate(() => {
-    const sels = ['textarea.fp-ai-input','textarea[placeholder*="question"]','textarea[placeholder*="Question"]','textarea','.fp-chat-input'];
-    for (const sel of sels) {
-      const el = document.querySelector(sel);
-      if (el) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 50 && r.height > 0) return { x: Math.round(r.left + r.width * 0.4), y: Math.round(r.top + r.height * 0.5), found: true };
-      }
-    }
-    return null;
+    const r = document.querySelector('#ai-input').getBoundingClientRect();
+    return { x: Math.round(r.left + r.width * 0.4), y: Math.round(r.top + r.height * 0.5) };
   });
+  console.log(`    input interactif → (${inputPos.x}, ${inputPos.y})`);
+  await clk(page, inputPos.x, inputPos.y, 650);
+  mark('click_input');
 
-  if (inputPos) {
-    console.log(`    input trouvé → (${inputPos.x}, ${inputPos.y})`);
-    await clk(page, inputPos.x, inputPos.y, 500);
-    await page.waitForTimeout(300);
-    mark('click_input');
+  const question = 'Quels problèmes SEO dois-je corriger en priorité ?';
+  await page.locator('#ai-input').pressSequentially(question, { delay: 30 });
+  await page.waitForFunction(
+    expected => document.querySelector('#ai-input')?.value === expected,
+    question,
+    { timeout: 5000, polling: 50 },
+  );
+  await page.waitForTimeout(500);
+  mark('question_typed');
 
-    // Utiliser fill() — plus fiable que keyboard.type pour les textareas
-    const question = "Analyse mon site SEO et donne-moi les 3 priorites";
-    await page.locator('textarea.fp-ai-input, textarea[placeholder*="question"], textarea').first().fill(question);
-    await page.waitForTimeout(600);
-    mark('question_typed');
+  // BEAT 3 — clic réel sur Envoyer et preuve que la requête démarre
+  const aiCountBefore = await page.locator('#ai-messages .fp-ai-message.ai').count();
+  const sendPos = await page.evaluate(() => {
+    const r = document.querySelector('#ai-send').getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  });
+  mark('click_send');
+  await clk(page, sendPos.x, sendPos.y, 350);
+  await page.waitForFunction(
+    n => window.STATE?.aiLoading === true &&
+      document.querySelectorAll('#ai-messages .fp-ai-message.ai').length > n,
+    aiCountBefore,
+    { timeout: 15000, polling: 100 },
+  );
+  mark('waiting_ai');
 
-    // Chercher bouton Envoyer
-    const sendPos = await page.evaluate(() => {
-      const btns = [...document.querySelectorAll('button,input[type="submit"],[role="button"]')];
-      for (const b of btns) {
-        const txt = b.textContent?.trim() ?? '';
-        if (/envoyer|send|submit/i.test(txt) || b.type === 'submit') {
-          const r = b.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-        }
-      }
-      for (const b of btns) {
-        if (b.querySelector('svg') && !b.querySelector('input')) {
-          const r = b.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0 && r.width < 80 && r.top > 400) return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-        }
-      }
-      return null;
-    });
+  // Attendre la fin réelle : loading=false, réponse non vide (>80 caractères),
+  // nouveau message AI et aucun indicateur de frappe.
+  await page.waitForFunction(n => {
+    const aiMessages = [...document.querySelectorAll('#ai-messages .fp-ai-message.ai')];
+    const last = aiMessages.at(-1);
+    return window.STATE?.aiLoading === false &&
+      aiMessages.length > n &&
+      (last?.innerText?.trim().length ?? 0) > 80 &&
+      !document.querySelector('#ai-messages .fp-ai-typing');
+  }, aiCountBefore, { timeout: 90000, polling: 250 });
+  mark('ai_response_done');
 
-    mark('click_send');
-    if (sendPos) { await clk(page, sendPos.x, sendPos.y, 300); }
-    else { await page.keyboard.press('Enter'); }
-
-    // BEAT 3 — Attendre réponse
-    mark('waiting_ai');
-    await Promise.race([
-      page.waitForSelector('.fp-ai-message,.fp-chat-message,.fp-assistant-message,[data-role="assistant"],.fp-chat-response', { timeout: 25000 }).catch(() => null),
-      page.waitForTimeout(22000),
-    ]);
-    await page.waitForTimeout(1500);
-
-    // Laisser streamer (max 18s supplémentaires)
-    let prev = 0, stable = 0;
-    for (let i = 0; i < 36; i++) {
-      const len = await page.evaluate(() =>
-        [...document.querySelectorAll('.fp-ai-message,.fp-chat-message,.fp-assistant-message,[data-role="assistant"],.fp-chat-response')]
-          .map(m => m.textContent?.trim().length ?? 0).reduce((a, b) => a + b, 0)
-      );
-      if (len === prev) { stable++; if (stable >= 4) break; } else { stable = 0; prev = len; }
-      await page.waitForTimeout(500);
-    }
-    await page.waitForTimeout(1200);
-    mark('ai_response_done');
-
-    // BEAT 4 — Lecture réponse
-    const resp = await centerOf(page, ['.fp-ai-message,.fp-chat-message,.fp-assistant-message,[data-role="assistant"],.fp-chat-response'], { minLeft: 0, minTop: 50 });
-    await dwell(page, resp?.x ?? 960, resp?.y ?? 450, 3000, 400);
-    mark('response_read');
-  } else {
-    console.log('    input IA non trouvé — survol interface');
-    await dwell(page, 960, 450, 6000, 400);
-    mark('click_input'); mark('question_typed'); mark('click_send');
-    mark('waiting_ai'); mark('ai_response_done'); mark('response_read');
-  }
+  // BEAT 4 — réponse finale utile clairement visible
+  await page.evaluate(() => {
+    const messages = document.querySelector('#ai-messages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
+  });
+  const resp = await centerOf(page, ['#ai-messages .fp-ai-message.ai:last-child'], { minLeft: 0, minTop: 50 });
+  await dwell(page, resp?.x ?? 960, resp?.y ?? 480, 4200, 450);
+  mark('response_read');
 
   // BEAT 5 — Nav Rapports
   mark('nav_reports');
   await navClick(page, 'Rapports');
-  await page.waitForFunction(() => !!(window.STATE && window.STATE.loading === false), { timeout: 10000, polling: 300 }).catch(() => {});
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => {
+    const templates = [...document.querySelectorAll('[data-template-key]')];
+    const visibleSkeleton = [...document.querySelectorAll('.fp-skeleton,.fp-skel-block,.fp-skel-shimmer')]
+      .some(el => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      });
+    return window.STATE?.route === 'reports' &&
+      window.STATE?.loading === false &&
+      templates.length >= 6 &&
+      !visibleSkeleton &&
+      !document.querySelector('#fp-page')?.innerText.includes('Aucun rapport généré');
+  }, { timeout: 30000, polling: 150 });
   mark('reports_loaded');
 
-  // BEAT 6 — Chercher bouton Nouveau rapport (évite l'état vide)
-  const newBtn = await page.evaluate(() => {
-    for (const el of document.querySelectorAll('button,a,[role="button"]')) {
-      const txt = el.textContent?.trim() ?? '';
-      if (/nouveau|creer|cr[ée]{1,2}r|generer|gen[eé]rer|new|create/i.test(txt) && txt.length < 50) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0 && r.left > 200) return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-      }
-    }
-    return null;
+  // BEAT 6 — montrer les templates puis créer réellement un rapport Exécutif
+  const templateCountBefore = await page.evaluate(() => window.STATE?.reports?.length ?? 0);
+  const executivePos = await page.evaluate(() => {
+    const el = document.querySelector('[data-template-key="executive"]');
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
   });
-
-  if (newBtn) {
-    mark('click_new_report');
-    await clk(page, newBtn.x, newBtn.y, 500);
-    await page.waitForTimeout(800);
-    const form = await centerOf(page, ['.fp-panel,.fp-modal,[role="dialog"],.fp-form'], { minLeft: 0 });
-    await dwell(page, form?.x ?? 960, form?.y ?? 400, 3000, 400);
-    await closePanel(page).catch(() => {});
-    mark('report_form_done');
-  } else {
-    // Survoler la section même si vide
-    await dwell(page, 960, 430, 3000, 400);
-    mark('click_new_report'); mark('report_form_done');
-  }
+  await dwell(page, executivePos.x, executivePos.y, 1700, 500);
+  mark('click_new_report');
+  await page.mouse.click(executivePos.x, executivePos.y);
+  await page.waitForFunction(n => {
+    const reports = window.STATE?.reports || [];
+    return reports.length > n &&
+      reports.some(r => /Exécutif|Executif/i.test(r.name || r.title || '')) &&
+      !document.querySelector('#fp-page')?.innerText.includes('Aucun rapport généré');
+  }, templateCountBefore, { timeout: 30000, polling: 200 });
+  mark('report_form_done');
 
   // BEAT 7 — Fin
+  const reportRow = await centerOf(page, ['.fp-card [data-rid]','.fp-card'], { minLeft: 250, minTop: 400 });
+  await dwell(page, reportRow?.x ?? 960, reportRow?.y ?? 650, 3600, 450);
   mark('final');
   await go(page, 960, 430, 380);
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(1600);
   mark('done');
 }
 
@@ -971,13 +1026,16 @@ console.log(' ', JSON.stringify(sr?.inserted ?? sr).slice(0, 100));
 const token = await getToken();
 console.log('  Token ok\n');
 
-const steps = [
+const allSteps = [
   { id: 2, label: 'Audits SEO & Actions',   scenario: scenario2, dest: 'step2-audit-actions.mp4' },
   { id: 3, label: 'Monitoring & Alertes',    scenario: scenario3, dest: 'step3-monitoring-alerts.mp4' },
   { id: 4, label: 'Concurrents & Local SEO', scenario: scenario4, dest: 'step4-local-competition.mp4' },
   { id: 5, label: 'IA & Rapports',           scenario: scenario5, dest: 'step5-ai-reports.mp4' },
   { id: 6, label: 'Workflow Quotidien',       scenario: scenario6, dest: 'step6-daily.mp4' },
 ];
+const onlyStep = process.env.STEP_ONLY ? Number(process.env.STEP_ONLY) : null;
+const steps = onlyStep ? allSteps.filter(step => step.id === onlyStep) : allSteps;
+if (onlyStep && steps.length !== 1) throw new Error(`STEP_ONLY invalide: ${process.env.STEP_ONLY}`);
 
 const results = [];
 
