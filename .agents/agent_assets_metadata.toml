@@ -431,3 +431,17 @@ mtime_ms = 1789226909879
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/d57049fb-f650-4358-a8af-2ac15faa2f00/eb8c38cc-e61b-41a3-97fe-ca842594cbc0"
 storage_version_token = "1789394705312082"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "2OeUAebf7cOgC_uH9s1Fj"
+uri = "file://outputs/onboarding-video-1-flowpoint.mp4"
+type = "video"
+title = "Vidéo onboarding FlowPoint — 1"
+description = "MP4 H.264 recadré sur l’interface FlowPoint uniquement, avec la fin coupée avant les contrôles d’arrêt macOS."
+logical_id = "c8121583-448e-45ce-a205-206465a16582"
+content_hash = "sha256:8ed6860192751f83f111daa4820d6f601b841b7779dda3954e7ee269c830ba92"
+size = 4833742
+mtime_ms = 1789416910106
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/c8121583-448e-45ce-a205-206465a16582/ca5383f4-cbfc-4740-993b-feac734438b3"
+storage_version_token = "1789416941932647"
+content_type = "video/mp4"
