@@ -109,6 +109,7 @@
 - [AI confirmation card conversationId](ai-confirmation-card-convid.md) — confirmation_request SSE must embed conversationId (arrives before _ai frame); confirm handlers prefer card ID; TOOL_LABELS map for previews; errors visible in chat
 - [Dashboard i18n engine](dashboard-i18n-engine.md) — every visible French string must be an exact FP_I18N key or built from fpT() fragments; composites never match; notif dropdown is a translation root
 - [Stripe dahlia period end](stripe-dahlia-period-end.md) — 2026-04-22.dahlia: current_period_end lives on subscription ITEMS not sub; use subPeriodEnd(); never pass start_date:"now" to schedule phase 0
+- [Stripe dahlia refund payloads](stripe-dahlia-refund-payloads.md) — charge.refunded can omit invoice/payment_intent/refunds; use amount_refunded and an org-scoped ledger fallback
 - [Phase 3 background loading](dashboard-phase3-background.md) — Phase 3 (audits/monitors/reports/team) is non-blocking; `STATE.loading=false` fires after Phase 2 only; fp-backend watchdogs check `!STATE.loading`
 - [Audit retry force parameter](audit-retry-force.md) — POST /api/audits must include `force:true` on retry to bypass 409 DUPLICATE_AUDIT same-day guard
 - [Hard refresh session recovery](hard-refresh-session-recovery.md) — session-restore must fall back to cookie when Bearer is stale; both _sessionReady and dashboard init must always call session-restore (never skip when token exists)
@@ -150,3 +151,4 @@
 - [Stripe key-mode in-flight isolation](stripe-key-mode-inflight.md) — ensureStripeCustomer's org-only in-flight lock must always receive the mode-aware key around login→checkout sequences.
 - [GitHub PR approval requirement](github-pr-approval.md) — FlowPoint merges require an approving review from a reviewer with write access; self-approval cannot satisfy the rule.
 - [Seller checkout identity](seller-checkout-identity.md) — valid signup tokens outrank stale sessions; invalid tokens fall back, and UUID sessions never activate pending signups.
+- [Rebase verification](rebase-verification.md) — after a conflicted rebase, verify reflog + merge-base; a clean tree can still mean the rebase was aborted.

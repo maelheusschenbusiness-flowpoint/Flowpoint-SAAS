@@ -1515,6 +1515,18 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       }
     } catch (_e) { /* non-fatal */ }
 
+    // ── Add email aliases so the frontend email-fallback lookup works ────────
+    // byUser is keyed by canonical UUID.  The frontend also tries to look up
+    // contributions by the member's email address; without email keys in the
+    // map, that fallback always misses.  Register each member's email as an
+    // additional alias pointing to the same counts object (no duplication of
+    // data — just an extra Map entry).
+    for (const p of principalRes.rows) {
+      if (p.email && p.canonical_uid && byUser[p.canonical_uid]) {
+        byUser[p.email.toLowerCase()] = byUser[p.canonical_uid];
+      }
+    }
+
     // ── Debug log ─────────────────────────────────────────────────────────────
     try {
       const snap = Object.entries(byUser).map(([k, v]) => ({

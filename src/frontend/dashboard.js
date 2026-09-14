@@ -49515,13 +49515,20 @@ async function init() {
   window.fpAnalyzeCompetitor = async function(id, name, forceRefresh) {
     if (!id) return;
     if (!STATE.competitorAnalyses) STATE.competitorAnalyses = {};
-    // If already loading, skip
-    if (STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[id]) return;
+    // Prevent double-click / double invocation: only one active analysis per competitor at a time.
     if (!STATE._competitorAnalysisLoading) STATE._competitorAnalysisLoading = {};
+    if (STATE._competitorAnalysisLoading[id]) return;
     STATE._competitorAnalysisLoading[id] = true;
-    render(); // show spinner
+    render(); // show spinner / disable button immediately
     try {
-      const r = await apiFetch('/api/competitors/' + id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
+      // Competitor analysis runs scraping + DataForSEO + AI and can take 30–90 s on large sites.
+      // The default apiFetch timeout (15 s) fires prematurely — raise to 120 s so legitimate
+      // analyses complete without being silently aborted.
+      const r = await apiFetch('/api/competitors/' + id + '/analyze', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        timeout: 120000,
+      });
       if (r && r.ok && r.analysis) {
         STATE.competitorAnalyses[id] = r.analysis;
         showToast('success', fpT('Analyse IA terminée — ') + escHtml(name || ''));
@@ -49531,7 +49538,17 @@ async function init() {
       } else {
         showToast('error', (r && r.error) ? r.error : fpT('Erreur analyse IA'));
       }
-    } catch(e) { showToast('error', e?.message || fpT('Erreur réseau')); }
+    } catch(e) {
+      // Distinguish abort (timeout) from API/network errors — never show the raw browser abort message.
+      var _isAbort = e && (e.name === 'AbortError' || (typeof e.message === 'string' && e.message.toLowerCase().includes('abort')));
+      if (_isAbort) {
+        showToast('error', fpT('Analyse interrompue — le serveur met trop de temps à répondre. Réessayez dans un instant.'));
+      } else {
+        var _msg = e && e.message && !/^HTTP \d+$/.test(e.message) ? e.message : fpT('Erreur lors de l\'analyse IA');
+        showToast('error', _msg);
+      }
+      console.warn('[FP] fpAnalyzeCompetitor:', e && e.name, e && e.message);
+    }
     finally {
       STATE._competitorAnalysisLoading[id] = false;
       render();
@@ -57859,34 +57876,62 @@ function renderActivityFeed() {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
       const nm = t.name || t.email || 'Membre';
-      const id = String(t.id || t.userId || t.user_id || '');
-      const email = String(t.email || '').toLowerCase();
-        const _isOwner = String(t.role || '').toLowerCase() === 'owner'
-          || !!(STATE.me && (
-            (id && id === String(STATE.me.id || STATE.me.userId || ''))
-            || (email && email === String(STATE.me.email || '').toLowerCase())
-          ));
+      // Prefer the user UUID (userId / user_id) over the team_members row ID (t.id).
+      // STATE.teamContributions and STATE.teamStreaks are keyed by canonical users.id
+      // (UUID), not by the team_members row primary key.  Using t.id first causes
+      // the lookup to miss every time because the row ID != the user UUID.
+      const userUid = String(t.userId || t.user_id || '');
+      const rowId   = String(t.id || '');
+      const id      = userUid || rowId; // UUID wins; row ID is last-resort
+      const email   = String(t.email || '').toLowerCase();
+      const _isOwner = String(t.role || '').toLowerCase() === 'owner'
+        || !!(STATE.me && (
+          (id && id === String(STATE.me.id || STATE.me.userId || ''))
+          || (email && email === String(STATE.me.email || '').toLowerCase())
+        ));
+      // Lookup order: UUID → row ID → email (lowercased) → original email casing.
+      // The backend now also registers email-keyed aliases so the email fallback works.
       const contrib = (STATE.teamContributions && (
-        (id && STATE.teamContributions[id]) ||
-        (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
+        (userUid && STATE.teamContributions[userUid]) ||
+        (rowId   && STATE.teamContributions[rowId])   ||
+        (email   && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
       )) || null;
-      const audits = contrib ? Number(contrib.audits || 0) : null;
+      const audits  = contrib ? Number(contrib.audits  || 0) : null;
       const missions = contrib ? Number(contrib.missions || 0) : null;
-      const reports = contrib ? Number(contrib.reports || 0) : null;
+      const reports  = contrib ? Number(contrib.reports  || 0) : null;
+      const actions  = contrib ? (audits + missions + reports) : null;
+      // Streak: same lookup order — UUID first, then row ID, then email.
+      const streak = _isOwner
+        ? { current: Number.isFinite(Number(STATE.streak)) ? Number(STATE.streak) : 0 }
+        : ((STATE.teamStreaks && (
+            (userUid && STATE.teamStreaks[userUid]) ||
+            (rowId   && STATE.teamStreaks[rowId])   ||
+            (email   && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
+          )) || null);
+      // Productivity score: derived from actions volume + streak consistency.
+      // Formula: actions contribute 70 % of the score (each action = 2 pts, cap 70),
+      // streak contributes 30 % (each day = 3 pts, cap 30).  Result capped at 100.
+      // Only calculated when at least one source of data is confirmed (contrib found
+      // or streak returned).  Genuine zero (contrib exists, all counts = 0) → 0.
+      // Absence of data (contrib null AND streak null) → null (shown as "—").
+      var _scoreNum = null;
+      var _scoreTrend = '—';
+      if (contrib !== null || streak !== null) {
+        var _acts = actions !== null ? actions : 0;
+        var _str  = streak ? Number(streak.current || 0) : 0;
+        _scoreNum  = Math.min(100, Math.round(Math.min(_acts * 2, 70) + Math.min(_str * 3, 30)));
+        _scoreTrend = String(_scoreNum) + '/100';
+      }
       return {
         id, email,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        actions: contrib ? audits + missions + reports : null,
-        score: null, trend: '—',
+        actions,
+        score: _scoreNum,
+        trend: _scoreTrend,
         contribs: contrib ? { audits, missions, reports } : null,
-        streak: _isOwner
-          ? { current: Number.isFinite(Number(STATE.streak)) ? Number(STATE.streak) : 0 }
-          : ((STATE.teamStreaks && (
-          (id && STATE.teamStreaks[id]) ||
-          (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
-        )) || null),
+        streak,
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
@@ -57926,8 +57971,8 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:14px;font-weight:600;color:var(--fp-text-faint)">—</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('N/D')}</div>
+                  <div style="font-size:14px;font-weight:600;color:${m.score !== null ? 'var(--fp-accent)' : 'var(--fp-text-faint)'}">${m.score !== null ? m.trend : '—'}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">${m.score !== null ? fpT('Productivité') : fpT('N/D')}</div>
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px"><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#2563EB">${m.actions ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Actions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#22c55e">${m.contribs ? m.contribs.missions : '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Missions</div></div><div style="text-align:center;padding:8px;background:var(--fp-inner-card);border-radius:8px"><div style="font-size:16px;font-weight:800;color:#8b5cf6">${m.streak?.current ?? '—'}</div><div style="font-size:10px;color:var(--fp-text-faint)">Streak 🔥</div></div></div>
@@ -61685,7 +61730,7 @@ function renderLocalSEOMap() {
           <div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">
             <div style="font-size:28px;margin-bottom:8px">🗺</div>
             La carte charge les données de concurrents depuis l\'API Google Places…<br>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap','${escHtml(defKeyword)}')">Analyser maintenant</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',(document.getElementById('fp-map-keyword')||{}).value||'${escHtml(defKeyword)}')">Analyser maintenant</button>
           </div>
         `}
       </div>
@@ -61883,7 +61928,7 @@ function renderCompetitorsMap() {
         <div class="fp-card-title" style="margin-bottom:12px;position:sticky;top:0;background:var(--fp-surface);padding-bottom:8px;z-index:2">
           Classement concurrentiel <span style="font-size:10px;color:var(--fp-text-faint);font-weight:400">(${competitors.length} résultats)</span>
         </div>
-        ${competitors.length ? competitors.slice(0,20).map((c,i) => `
+        ${competitors.length ? competitors.map((c,i) => `
           <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer"
             onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.focusCompetitor('fp-competitors-map','${c.placeId}',${c.lat},${c.lng})">
             <div style="display:flex;align-items:flex-start;gap:8px">

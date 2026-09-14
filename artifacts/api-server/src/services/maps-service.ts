@@ -106,6 +106,41 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 }
 
 /**
+ * Fetches places using the Google Places Text Search API.
+ * Text Search is better suited for keyword queries (e.g. "boulangerie")
+ * and can surface different results than Nearby Search alone.
+ * Returns raw result objects — caller deduplicates by place_id.
+ */
+async function getTextSearchPlaces(lat: number, lng: number, keyword: string, radius = 5000): Promise<Array<Record<string, unknown>>> {
+  const apiKey = getMapsApiKey();
+  if (!apiKey) return [];
+  const query = encodeURIComponent(keyword.trim() || "establishment");
+  const allResults: Array<Record<string, unknown>> = [];
+  let pageToken: string | null = null;
+
+  for (let page = 0; page < 3; page++) {
+    let url: string;
+    if (pageToken) {
+      url = `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${encodeURIComponent(pageToken)}&key=${apiKey}`;
+    } else {
+      url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&location=${lat},${lng}&radius=${Math.min(radius, 50000)}&key=${apiKey}`;
+    }
+    try {
+      const res = await fetch(url);
+      const data = await res.json() as Record<string, unknown>;
+      const results = (data["results"] as Array<Record<string, unknown>>) ?? [];
+      allResults.push(...results);
+      pageToken = (data["next_page_token"] as string | undefined) ?? null;
+      if (!pageToken) break;
+      await new Promise<void>((r) => setTimeout(r, 2000));
+    } catch {
+      break;
+    }
+  }
+  return allResults;
+}
+
+/**
  * Returns nearby competitors in the flat shape the frontend map expects:
  * { placeId, name, vicinity, lat, lng, rating, reviewCount, distanceM, seoScore, threatLevel }.
  *
@@ -171,6 +206,39 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
   const SEARCH_RADIUS_PER_CENTRE = Math.min(50000, EFF_RADIUS);
 
   const seen = new Map<string, Record<string, unknown>>();
+
+  /** Normalise a raw Google Place object (Nearby or Text Search) and insert into seen. */
+  const ingestPlace = (p: Record<string, unknown>) => {
+    const pid = String(p["place_id"] ?? "");
+    if (!pid || seen.has(pid)) return;
+    // Text Search uses geometry.location; Nearby Search uses the same shape.
+    const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
+    const plat = Number(loc["lat"]);
+    const plng = Number(loc["lng"]);
+    if (!Number.isFinite(plat) || !Number.isFinite(plng)) return;
+    const dist = haversineM(lat, lng, plat, plng);
+    if (dist > EFF_RADIUS) return; // only include places inside requested radius
+    const rating = typeof p["rating"] === "number" ? p["rating"] : null;
+    const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
+    const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
+    const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
+    seen.set(pid, {
+      placeId: pid,
+      name: String(p["name"] ?? ""),
+      // Text Search returns "formatted_address", Nearby Search returns "vicinity"
+      vicinity: String(p["vicinity"] ?? p["formatted_address"] ?? ""),
+      lat: plat,
+      lng: plng,
+      rating,
+      reviewCount,
+      distanceM: dist,
+      seoScore,
+      threatLevel,
+      types: (p["types"] as string[]) ?? [],
+    });
+  };
+
+  // Phase 1: multi-centre Nearby Search (best for radius-bounded results)
   // Centres run in parallel; pagination inside getNearbyPlaces is sequential per centre
   // (with the mandatory 2 s inter-page delay). This keeps total latency bounded by
   // the slowest centre (~4 s for 3 pages) rather than multiplying across all centres.
@@ -181,34 +249,20 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
     } catch {
       raw = [];
     }
-    for (const p of raw) {
-      const pid = String(p["place_id"] ?? "");
-      if (!pid || seen.has(pid)) continue;
-      const loc = ((p["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, unknown>;
-      const plat = Number(loc["lat"]);
-      const plng = Number(loc["lng"]);
-      if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
-      const dist = haversineM(lat, lng, plat, plng);
-      if (dist > EFF_RADIUS) continue; // only include places inside requested radius
-      const rating = typeof p["rating"] === "number" ? p["rating"] : null;
-      const reviewCount = typeof p["user_ratings_total"] === "number" ? p["user_ratings_total"] : 0;
-      const seoScore = Math.min(100, Math.round(((rating ?? 0) / 5) * 60 + Math.min(40, Math.log10(reviewCount + 1) * 13)));
-      const threatLevel = seoScore >= 80 ? "critical" : seoScore >= 60 ? "high" : seoScore >= 40 ? "medium" : "low";
-      seen.set(pid, {
-        placeId: pid,
-        name: String(p["name"] ?? ""),
-        vicinity: String(p["vicinity"] ?? ""),
-        lat: plat,
-        lng: plng,
-        rating,
-        reviewCount,
-        distanceM: dist,
-        seoScore,
-        threatLevel,
-        types: (p["types"] as string[]) ?? [],
-      });
-    }
+    for (const p of raw) ingestPlace(p);
   }));
+
+  // Phase 2: Text Search from the main centre (keyword-optimised, different ranking
+  // algorithm → surfaces results Nearby Search misses).  Only run when a keyword is
+  // supplied; an empty keyword Text Search is identical to Nearby Search here.
+  if (keyword.trim()) {
+    try {
+      const textResults = await getTextSearchPlaces(lat, lng, keyword, EFF_RADIUS);
+      for (const p of textResults) ingestPlace(p);
+    } catch {
+      // Non-fatal: Nearby Search results already collected above
+    }
+  }
 
   // Return sorted by distance so nearest competitors appear first on the map
   return Array.from(seen.values()).sort(

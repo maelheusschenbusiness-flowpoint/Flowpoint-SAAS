@@ -59,7 +59,9 @@ router.get("/maps/nearby", async (req: Request, res: Response) => {
     res.status(400).json({ error: "lat and lng required" }); return;
   }
   try {
-    const places = await getNearbyPlaces(lat, lng, keyword, radius);
+    // Correct argument order: getNearbyPlaces(lat, lng, type, radius, keyword)
+    // Previously keyword was passed as `type` and keyword arg was omitted.
+    const places = await getNearbyPlaces(lat, lng, "establishment", radius, keyword);
     res.json({ places, count: places.length });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Nearby search failed";

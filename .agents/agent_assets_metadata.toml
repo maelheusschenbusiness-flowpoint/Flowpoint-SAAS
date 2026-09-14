@@ -431,3 +431,87 @@ mtime_ms = 1789226909879
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/d57049fb-f650-4358-a8af-2ac15faa2f00/eb8c38cc-e61b-41a3-97fe-ca842594cbc0"
 storage_version_token = "1789394705312082"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "2OeUAebf7cOgC_uH9s1Fj"
+uri = "file://outputs/onboarding-video-1-flowpoint.mp4"
+type = "video"
+title = "Vidéo onboarding FlowPoint — 1"
+description = "MP4 H.264 recadré sur l’interface FlowPoint uniquement, avec la fin coupée avant les contrôles d’arrêt macOS."
+logical_id = "c8121583-448e-45ce-a205-206465a16582"
+content_hash = "sha256:8ed6860192751f83f111daa4820d6f601b841b7779dda3954e7ee269c830ba92"
+size = 4833742
+mtime_ms = 1789416910106
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/c8121583-448e-45ce-a205-206465a16582/ca5383f4-cbfc-4740-993b-feac734438b3"
+storage_version_token = "1789416941932647"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "vmQ_heYkqIkoB0_3vXNUD"
+uri = "file://outputs/onboarding-video-2-flowpoint.mp4"
+type = "video"
+title = "Vidéo onboarding FlowPoint — 2"
+description = "MP4 H.264 recadré sur l'interface FlowPoint (Local SEO / Domination Locale), fin coupée avant les contrôles macOS."
+logical_id = "b3ff7ed0-e3e2-4fd0-88cd-7f3e89ed2c7e"
+content_hash = "sha256:d49c83f1c7f2fb879feb9575d788abcecd5b0c035aa58bc3db255551ffe371d7"
+size = 26119524
+mtime_ms = 1789417476869
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/b3ff7ed0-e3e2-4fd0-88cd-7f3e89ed2c7e/aaf72f14-333d-4acf-a09e-ea1f9f722b17"
+storage_version_token = "1789417515831577"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "Kc_0l25JWqul09g9nRrZ9"
+uri = "file://outputs/onboarding-video-3-flowpoint.mp4"
+type = "video"
+title = "Vidéo onboarding FlowPoint — 3"
+description = "MP4 H.264 recadré sur l'interface FlowPoint (Performance Web → Monitors → Live Analytics), fin coupée avant les contrôles macOS."
+logical_id = "567bcbe2-f670-4a55-b23f-a94d16827422"
+content_hash = "sha256:b425b1e9ff8f83a79ce7ec61f5e2493727cc1633c3bb1289604becce49049627"
+size = 7760686
+mtime_ms = 1789418332980
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/567bcbe2-f670-4a55-b23f-a94d16827422/bbf41fd7-a803-4932-8ef7-182ae766ab5f"
+storage_version_token = "1789418361474930"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "VUkFijdRkPL0LKL34vjWh"
+uri = "file://outputs/onboarding-video-4-flowpoint.mp4"
+type = "video"
+title = "Vidéo onboarding FlowPoint — 4"
+description = "MP4 H.264 3024×1724, 120 fps, 92 s. Activité → Command Center → Équipe → SEO & Growth. Fin coupée avant les contrôles macOS."
+logical_id = "23a3f8da-b94d-4fb7-9742-e45609210b33"
+content_hash = "sha256:d379d4df6adbe17f6c7acfc648f7fcc822bef895b66515a22f37be1251a5efc1"
+size = 13462928
+mtime_ms = 1789419398317
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/23a3f8da-b94d-4fb7-9742-e45609210b33/59a6ac32-0eed-4faa-8d5f-143ba73da14d"
+storage_version_token = "1789419507221603"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "CL59tSzKEKN_ujbYXsxNA"
+uri = "file://outputs/onboarding-video-5-flowpoint.mp4"
+type = "video"
+title = "Vidéo onboarding FlowPoint — 5"
+description = "MP4 H.264 3024×1724, 60 fps, 204 s. Assistant IA → Dashboard vue d'ensemble. Fin coupée avant les contrôles macOS."
+logical_id = "ac3a6c58-ed36-4ebf-a40b-cc74c34f8b0e"
+content_hash = "sha256:984d3784c7eebabccb66de32d1f22d71c64e303d301c9192a57c5e0606686d7a"
+size = 29392460
+mtime_ms = 1789419466312
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/ac3a6c58-ed36-4ebf-a40b-cc74c34f8b0e/c1a64e54-8749-4689-8351-e837959d4014"
+storage_version_token = "1789419510105569"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "nuKd9pHH7fIZT3ZkhFzh5"
+uri = "file://outputs/onboarding-flowpoint-complet.mp4"
+type = "video"
+title = "Onboarding FlowPoint — Complet (5 vidéos)"
+description = "Concaténation des 5 vidéos onboarding dans l'ordre. 7 min 46 s · 82 Mo · H.264 · sans audio."
+logical_id = "1900f54f-d145-4180-b231-afb3a1a60cc4"
+content_hash = "sha256:3546ad3397d6e0eb0330353b803e5ffd71fde9a6bcc104a567bb0f82bc668f59"
+size = 81572443
+mtime_ms = 1789419542989
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/1900f54f-d145-4180-b231-afb3a1a60cc4/228c2fc1-47ef-4047-bb1b-0724b27ffedc"
+storage_version_token = "1789419556437524"
+content_type = "video/mp4"
