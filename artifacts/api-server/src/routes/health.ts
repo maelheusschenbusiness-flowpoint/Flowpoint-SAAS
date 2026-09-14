@@ -22,6 +22,13 @@ router.get("/downloads/onboarding-videos.zip", (_req, res) => {
   });
 });
 
+router.get("/downloads/onboarding-videos-steps2-6.mp4", (_req, res) => {
+  const videoPath = path.resolve(process.cwd(), "onboarding-videos-steps2-6.mp4");
+  res.download(videoPath, "onboarding-videos-steps2-6.mp4", (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: "file not found", path: videoPath });
+  });
+});
+
 router.get("/healthz", (_req, res) => {
   res.json({ status: "ok", uptime: Math.round(process.uptime()) });
 });
