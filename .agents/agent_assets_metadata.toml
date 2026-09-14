@@ -184,14 +184,14 @@ content_type = "application/octet-stream"
 id = "9qDcT_jIvV4obRLrz7tuE"
 uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
 type = "video"
-title = "Vidéo 1 — Interface"
-description = "1920×1080 · 21s"
+title = "step1-interface.mp4 — V2 (post-audit)"
+description = "1920×1080 · 30fps · 16.2s · 1.5 Mo"
 logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
-content_hash = "sha256:6468151399cf4c9f919f41c67f9b60cb87a672366cf9806e6d9469a528f7fc61"
-size = 1870174
-mtime_ms = 1789394627509
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/c0f7502b-831e-4ce6-a0fc-a932f3e1bec5"
-storage_version_token = "1789394693244369"
+content_hash = "sha256:7b3eb506edcec50cc0326c6bf52c0605fbcee9bf7a2f9809ad9a0ca61cd7e0ab"
+size = 1531159
+mtime_ms = 1789395681766
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/b8f2303b-b78e-4295-ad36-e55ba68462c8"
+storage_version_token = "1789395696428082"
 content_type = "video/mp4"
 
 [[outputs]]
