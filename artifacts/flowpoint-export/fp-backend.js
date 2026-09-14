@@ -2501,7 +2501,10 @@ window.__fpPageLoadTs = Date.now();
       try {
         var data = await apiFetch('/api/maps/competitors?lat=' + lat + '&lng=' + lng + '&radius=' + radius + '&keyword=' + encodeURIComponent(keyword));
         if (inst._compReq !== reqV || this._mapInstances[mapId] !== inst) return;
-        if (!data || !data.competitors) return;
+        if (!data || !data.competitors) {
+          if (typeof window.showToast === 'function') window.showToast('error', 'Aucune donnée reçue du serveur');
+          return;
+        }
         window.FP_DATA = window.FP_DATA || {};
         window.FP_DATA.mapsCompetitors = data.competitors;
 
@@ -2513,10 +2516,12 @@ window.__fpPageLoadTs = Date.now();
         var map = inst.map;
         var infoWin = new google.maps.InfoWindow();
 
-        data.competitors.filter(function (c) {
+        var validCompetitors = data.competitors.filter(function (c) {
           // Never build a LatLng from NaN/undefined/null/non-numeric values
           return c && isFinite(Number(c.lat)) && isFinite(Number(c.lng));
-        }).forEach(function (c) {
+        });
+
+        validCompetitors.forEach(function (c) {
           var color = self._threatColor(c.threatLevel);
           var marker = new google.maps.Marker({
             position: { lat: Number(c.lat), lng: Number(c.lng) },
@@ -2540,12 +2545,24 @@ window.__fpPageLoadTs = Date.now();
           inst.markers.push(marker);
         });
 
+        // Feedback to user after load completes
+        if (typeof window.showToast === 'function') {
+          if (validCompetitors.length === 0) {
+            window.showToast('info', 'Aucun concurrent trouvé dans cette zone');
+          } else {
+            window.showToast('success', validCompetitors.length + ' concurrent' + (validCompetitors.length > 1 ? 's' : '') + ' trouvé' + (validCompetitors.length > 1 ? 's' : '') + ' ✓');
+          }
+        }
+
         // NOTE: do NOT call window.render() here — a full re-render replaces the
         // map container, destroys this map instance, and the MutationObserver
         // re-init would re-trigger this load in an infinite loop. Markers are
         // drawn directly on the live map; list UIs read FP_DATA.mapsCompetitors
         // on their own next render.
-      } catch (e) { console.warn('[FP Maps] competitor load error:', e.message); }
+      } catch (e) {
+        console.warn('[FP Maps] competitor load error:', e && e.message);
+        if (typeof window.showToast === 'function') window.showToast('error', 'Erreur analyse concurrents : ' + (e && e.message ? e.message : 'vérifier la configuration Maps'));
+      }
     },
 
     _loadHeatmapLayer: async function (mapId, lat, lng, radius, keyword) {
@@ -2555,7 +2572,10 @@ window.__fpPageLoadTs = Date.now();
       try {
         var data = await apiFetch('/api/maps/heatmap?lat=' + lat + '&lng=' + lng + '&radius=' + radius + '&keyword=' + encodeURIComponent(keyword));
         if (inst._heatReq !== reqV || this._mapInstances[mapId] !== inst) return;
-        if (!data || !data.zones) return;
+        if (!data || !data.zones) {
+          console.warn('[FP Maps] heatmap: empty response');
+          return;
+        }
         window.FP_DATA = window.FP_DATA || {};
         window.FP_DATA.mapsHeatmap = data.zones;
 
@@ -2574,7 +2594,10 @@ window.__fpPageLoadTs = Date.now();
           opacity: 0.7,
           gradient: ['rgba(0,0,0,0)', 'rgba(37,99,235,0.4)', 'rgba(37,99,235,0.7)', 'rgba(34,197,94,0.7)', 'rgba(251,191,36,0.8)', 'rgba(239,68,68,1)'],
         });
-      } catch (e) { console.warn('[FP Maps] heatmap load error:', e.message); }
+      } catch (e) {
+        console.warn('[FP Maps] heatmap load error:', e && e.message);
+        if (typeof window.showToast === 'function') window.showToast('error', 'Erreur chargement heatmap : ' + (e && e.message ? e.message : 'vérifier la configuration Maps'));
+      }
     },
 
     // ── Public methods (called from render HTML) ──────────────────────────────
