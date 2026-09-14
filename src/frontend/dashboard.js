@@ -61730,7 +61730,7 @@ function renderLocalSEOMap() {
           <div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">
             <div style="font-size:28px;margin-bottom:8px">🗺</div>
             La carte charge les données de concurrents depuis l\'API Google Places…<br>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap','${escHtml(defKeyword)}')">Analyser maintenant</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',(document.getElementById('fp-map-keyword')||{}).value||'${escHtml(defKeyword)}')">Analyser maintenant</button>
           </div>
         `}
       </div>
@@ -61928,7 +61928,7 @@ function renderCompetitorsMap() {
         <div class="fp-card-title" style="margin-bottom:12px;position:sticky;top:0;background:var(--fp-surface);padding-bottom:8px;z-index:2">
           Classement concurrentiel <span style="font-size:10px;color:var(--fp-text-faint);font-weight:400">(${competitors.length} résultats)</span>
         </div>
-        ${competitors.length ? competitors.slice(0,20).map((c,i) => `
+        ${competitors.length ? competitors.map((c,i) => `
           <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer"
             onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.focusCompetitor('fp-competitors-map','${c.placeId}',${c.lat},${c.lng})">
             <div style="display:flex;align-items:flex-start;gap:8px">
