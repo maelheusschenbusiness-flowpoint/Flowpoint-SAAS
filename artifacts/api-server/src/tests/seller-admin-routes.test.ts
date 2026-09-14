@@ -3,8 +3,8 @@
  *
  * Pins the scoped seller-management key and the canonical seller link.
  *
- *  1. SELLER_ADMIN_KEY (header x-seller-admin-key) opens exactly the four seller
- *     routes: POST/GET /admin/sellers, PATCH /admin/sellers/:code,
+ *  1. SELLER_ADMIN_KEY (header x-seller-admin-key) opens exactly the five seller
+ *     routes: POST/GET/DELETE /admin/sellers, PATCH /admin/sellers/:code,
  *     GET /admin/sellers/:code/report.
  *  2. It is refused on every other admin route — the route inventory is read from
  *     admin.ts itself, so a route added later is covered without editing this file —
@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pool } from "@workspace/db";
-import adminRouter, { SELLERS_LIST_SQL, SELLER_REPORT_ORGS_SQL, SELLER_REPORT_COMMISSIONS_SQL, sellerLink, SELLER_LINK_BASE } from "../routes/admin.js";
+import adminRouter, { SELLERS_LIST_SQL, SELLER_REPORT_ORGS_SQL, SELLER_REPORT_COMMISSIONS_SQL, SELLER_REPORT_METRICS_SQL, sellerLink, SELLER_LINK_BASE } from "../routes/admin.js";
 
 const ADMIN = "a".repeat(48);
 const SELLER = "s".repeat(48);
@@ -35,7 +35,8 @@ const ROUTES = [...SOURCE.matchAll(/router\.(get|post|put|patch|delete)\("([^"]+
   return { method: m[1] as "get" | "post" | "put" | "patch" | "delete", path: m[2], guard };
 });
 const SELLER_ROUTES = [
-  "POST /admin/sellers", "GET /admin/sellers", "PATCH /admin/sellers/:code", "GET /admin/sellers/:code/report",
+  "POST /admin/sellers", "GET /admin/sellers", "PATCH /admin/sellers/:code",
+  "GET /admin/sellers/:code/report", "DELETE /admin/sellers/:code",
 ];
 const key = (r: { method: string; path: string }) => `${r.method.toUpperCase()} ${r.path}`;
 const concrete = (p: string) => p.replace(/:code/g, "SELLER-TEST1").replace(/:[a-zA-Z]+/g, "x1");
@@ -54,8 +55,17 @@ function fakeDb() {
     if (sql === SELLERS_LIST_SQL) return { rows: [{ ...SELLER_ROW, org_count: 2, commission_count: 1, paid_cents: 0, pending_cents: 3700 }] };
     if (sql.trim().startsWith("UPDATE sellers")) return { rows: [{ ...SELLER_ROW, status: String(params?.[3] ?? "active") }] };
     if (sql.includes("FROM sellers WHERE seller_code")) return { rows: [SELLER_ROW] };
+    if (sql.includes("seller_financial_ledger") && !sql.trim().startsWith("SELECT 1")) return { rows: [{}] };
     if (sql.includes("FROM organizations o WHERE o.seller_id")) return { rows: [] };
     if (sql.includes("FROM seller_commissions sc WHERE sc.seller_id")) return { rows: [] };
+    if (sql.includes("COUNT(DISTINCT org_id)")) return { rows: [{}] };
+    if (sql.includes("FROM pending_signups WHERE seller_id")
+      || sql.includes("FROM organizations WHERE seller_id")
+      || sql.includes("FROM seller_commissions WHERE seller_id")) return { rows: [] };
+    if (sql.trim().startsWith("SELECT 1 FROM seller_financial_ledger")) return { rows: [] };
+    if (sql.includes("FROM seller_financial_ledger WHERE seller_id")) return { rows: [{}] };
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+    if (sql.startsWith("DELETE FROM sellers")) return { rows: [] };
     throw new Error(`unexpected query in seller test: ${sql.slice(0, 60)}`);
   });
 }
@@ -64,6 +74,7 @@ beforeEach(() => {
   process.env["ADMIN_KEY"] = ADMIN;
   process.env["SELLER_ADMIN_KEY"] = SELLER;
   q.mockReset(); c.mockReset();
+  c.mockImplementation(async () => ({ query: q, release: vi.fn() }) as any);
   fakeDb();
 });
 afterEach(() => {
@@ -81,7 +92,7 @@ describe("route inventory", () => {
   });
   it("the scoped guard is used by exactly the four seller routes", () => {
     expect(ROUTES.filter((r) => r.guard === "requireSellerAdminKey").map(key).sort()).toEqual([...SELLER_ROUTES].sort());
-    expect((SOURCE.match(/requireSellerAdminKey\(req, res\)/g) ?? []).length).toBe(4);
+     expect((SOURCE.match(/requireSellerAdminKey\(req, res\)/g) ?? []).length).toBe(5);
   });
 });
 
@@ -109,7 +120,7 @@ describe("ADMIN_KEY keeps working on the four seller routes", () => {
 
 describe("SELLER_ADMIN_KEY is refused everywhere else, before any database access", () => {
   const others = ROUTES.filter((r) => !SELLER_ROUTES.includes(key(r)));
-  it("covers every non-seller route", () => { expect(others.length).toBe(ROUTES.length - 4); });
+  it("covers every non-seller route", () => { expect(others.length).toBe(ROUTES.length - 5); });
   for (const r of others) {
     it(`${key(r)} → 403 with x-seller-admin-key`, async () => {
       const res = await call(r.method, concrete(r.path)).set("x-seller-admin-key", SELLER).send({});
@@ -228,6 +239,8 @@ describe("GET /admin/sellers/:code/report — financial fields, explicit columns
         eligible_amount_cents: 2900, commission_rate_bps: 3500, commission_amount_cents: 1015, currency: "eur", status: "paid", attribution_method: "ref_link",
         attributed_at: "2026-09-12T14:17:41Z", earned_at: "2026-09-26T15:20:00Z", paid_at: "2026-10-01T09:00:00Z",
         stripe_invoice_id: "in_1", stripe_subscription_id: "sub_1", paid_by: "virement", notes: "octobre" }] };
+      if (sql === SELLER_REPORT_METRICS_SQL) return { rows: [{ paid_clients: 1, gross_revenue_cents: 2900, net_revenue_cents: 2900 }] };
+      if (sql.includes("FROM seller_financial_ledger")) return { rows: [] };
       throw new Error(`unexpected query: ${sql.slice(0, 60)}`);
     });
     const r = await call("get", "/admin/sellers/SELLER-TEST1/report").set("x-seller-admin-key", SELLER);

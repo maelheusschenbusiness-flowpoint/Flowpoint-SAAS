@@ -184,15 +184,7 @@
 
 <!-- Logo -->
 <a href="/pricing.html" class="fp-logo">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="34" height="34" aria-hidden="true">
-    <defs><linearGradient id="fp-g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
-    </linearGradient></defs>
-    <rect width="48" height="48" rx="10" fill="url(#fp-g)"/>
-    <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-    </g>
-  </svg>
+  <img src="/assets/flowpoint-logo.svg" width="34" height="34" alt="FlowPoint" aria-hidden="true" style="display:block">
   <span class="fp-logo-name">Flow<span>Point</span></span>
 </a>
 
@@ -303,6 +295,53 @@
     try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch (e) {}
   }
   function addonCount() { return cart ? Object.keys(cart.addons || {}).length : 0; }
+  function authHeaders() {
+    try {
+      var token = sessionStorage.getItem('fp_session_token') || '';
+      return token ? { 'Authorization': 'Bearer ' + token } : {};
+    } catch (e) { return {}; }
+  }
+  function preRegisterToken() {
+    try {
+      var token = sessionStorage.getItem('fp_pre_reg_token') || '';
+      if (token) return token;
+      var stored = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+      return stored && stored.token && stored.exp > Date.now() ? stored.token : '';
+    } catch (e) { return ''; }
+  }
+  function rememberCheckoutIntent() {
+    try {
+      localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+        cart: cart,
+        sellerRef: localStorage.getItem('fp_seller_ref') || '',
+        next: '/checkout.html',
+        exp: Date.now() + 1800000
+      }));
+      sessionStorage.setItem('fp_next', '/checkout.html');
+    } catch (e) {}
+  }
+  async function requireAuthenticatedCheckout() {
+    var resp = null;
+    try {
+      resp = await fetch('/api/me', {
+        credentials: 'include',
+        headers: Object.assign({ 'Cache-Control': 'no-cache' }, authHeaders())
+      });
+    } catch (e) {}
+    if (resp && resp.ok) {
+      try {
+        var me = await resp.json();
+        _fpAuthOrgId = (me && me.email) || null;
+      } catch (e) {}
+      return true;
+    }
+    /* The pre-registration token is the existing new-account continuation.
+       Ordinary visitors must authenticate before the quote is requested. */
+    if (preRegisterToken()) return true;
+    rememberCheckoutIntent();
+    window.location.replace('/signin.html?next=' + encodeURIComponent('/checkout.html'));
+    return false;
+  }
 
   /* ── Handlers exposés à l'inline onclick : portée globale de l'IIFE ── */
 
@@ -455,7 +494,11 @@
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: cart.plan || '', addons: cart.addons || {} })
+      body: JSON.stringify({
+        plan: cart.plan || '',
+        addons: cart.addons || {},
+        preRegisterToken: preRegisterToken()
+      })
     });
     var data;
     try { data = await resp.json(); } catch (e) { throw new Error('Réponse serveur illisible (' + resp.status + ').'); }
@@ -482,6 +525,15 @@
 
   /* ── Amorçage ── */
   async function main() {
+    /* Read the selection before the auth gate so an anonymous redirect cannot
+       overwrite the visitor's cart with an empty pending intent. */
+    try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch (e) {}
+    if (!cart) {
+      var earlyParams = new URLSearchParams(window.location.search);
+      var earlyPlan = (earlyParams.get('plan') || '').toLowerCase();
+      if (earlyPlan) cart = { plan: earlyPlan, addons: {} };
+    }
+    if (!await requireAuthenticatedCheckout()) return;
     /* Identité (pour le versionnage du panier uniquement — jamais pour les prix) */
     var hasCookie = document.cookie.split(';').some(function (c) { return c.trim().indexOf('fp_token=') === 0; });
     if (hasCookie) {

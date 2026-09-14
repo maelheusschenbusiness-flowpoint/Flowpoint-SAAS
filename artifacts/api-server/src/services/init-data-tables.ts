@@ -1329,6 +1329,10 @@ export async function initDataTables(): Promise<void> {
         plan             TEXT        NOT NULL DEFAULT 'standard',
         stripe_customer_id      TEXT,
         stripe_subscription_id  TEXT,
+        subscription_status     TEXT,
+        trial_ends_at            TIMESTAMPTZ,
+        trial_started_at         TIMESTAMPTZ,
+        trial_consumed_at        TIMESTAMPTZ,
         created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -1373,6 +1377,18 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'standard';`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ;`);
+    await run(client, `
+      UPDATE organizations o SET
+        subscription_status = COALESCE(o.subscription_status, os.subscription_status),
+        trial_ends_at = COALESCE(o.trial_ends_at, os.trial_ends_at),
+        trial_started_at = COALESCE(o.trial_started_at, os.trial_started_at),
+        trial_consumed_at = COALESCE(o.trial_consumed_at, os.trial_consumed_at)
+       FROM org_settings os
+      WHERE os.org_id = o.id::text`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     // Internal QA flag — grants premium access to the single hardcoded QA org without Stripe.
@@ -3516,9 +3532,71 @@ export async function initDataTables(): Promise<void> {
     // Self-heal: add seller_id columns to existing tables
     await run(client, `ALTER TABLE pending_signups    ADD COLUMN IF NOT EXISTS seller_id TEXT`);
     await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+    await run(client, `ALTER TABLE organizations      ADD COLUMN IF NOT EXISTS seller_attribution_method TEXT NOT NULL DEFAULT 'ref_link'`);
+    await run(client, `
+      UPDATE organizations o SET seller_attribution_method = 'manual'
+       FROM seller_commissions sc
+      WHERE sc.org_id = o.id::text AND sc.attribution_method = 'manual'`);
     // Self-heal: add paid_by / notes to seller_commissions
     await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS paid_by TEXT`);
     await run(client, `ALTER TABLE seller_commissions ADD COLUMN IF NOT EXISTS notes   TEXT`);
+
+    // ── Seller financial ledger (append-only, idempotent source keys) ────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS seller_financial_ledger (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+        seller_id TEXT NOT NULL REFERENCES sellers(id),
+        org_id TEXT,
+        event_type TEXT NOT NULL,
+        source_key TEXT NOT NULL UNIQUE,
+        amount_cents INTEGER NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'eur',
+        commission_id TEXT,
+        stripe_invoice_id TEXT,
+        stripe_payment_intent_id TEXT,
+        stripe_charge_id TEXT,
+        stripe_refund_id TEXT,
+        stripe_subscription_id TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+           WHERE conname = 'seller_financial_ledger_event_type_ck'
+        ) THEN
+          ALTER TABLE seller_financial_ledger ADD CONSTRAINT seller_financial_ledger_event_type_ck
+            CHECK (event_type IN ('payment_received','refund','commission_generated',
+                                  'commission_paid','commission_reversed','commission_clawback'));
+        END IF;
+      END $$`);
+    await run(client, `CREATE INDEX IF NOT EXISTS seller_financial_ledger_seller_idx ON seller_financial_ledger(seller_id, occurred_at DESC)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS seller_financial_ledger_org_idx ON seller_financial_ledger(org_id, occurred_at DESC)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS seller_financial_ledger_stripe_idx ON seller_financial_ledger(stripe_invoice_id, stripe_payment_intent_id, stripe_charge_id)`);
+    await run(client, `DROP POLICY IF EXISTS seller_financial_ledger_app_user_all ON public.seller_financial_ledger`);
+    await run(client, `ALTER TABLE public.seller_financial_ledger ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE public.seller_financial_ledger FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      INSERT INTO seller_financial_ledger
+        (seller_id, org_id, event_type, source_key, amount_cents, currency, commission_id,
+         stripe_invoice_id, stripe_subscription_id, metadata, occurred_at)
+      SELECT seller_id, org_id, 'commission_generated', 'commission-generated:existing:' || id,
+             commission_amount_cents, currency, id, stripe_invoice_id, stripe_subscription_id,
+             jsonb_build_object('backfilled', true), COALESCE(earned_at, created_at)
+        FROM seller_commissions
+       ON CONFLICT (source_key) DO NOTHING`);
+    await run(client, `
+      INSERT INTO seller_financial_ledger
+        (seller_id, org_id, event_type, source_key, amount_cents, currency, commission_id, metadata, occurred_at)
+      SELECT seller_id, org_id, 'commission_paid', 'commission-paid:existing:' || id,
+             commission_amount_cents, currency, id,
+             jsonb_build_object('backfilled', true, 'paid_by', paid_by, 'notes', notes),
+             COALESCE(paid_at, created_at)
+        FROM seller_commissions WHERE status = 'paid'
+       ON CONFLICT (source_key) DO NOTHING`);
 
     // ── RLS: sellers + seller_commissions ────────────────────────────────────
     // DDL must run outside any transaction (PgBouncer auto-commit rule).

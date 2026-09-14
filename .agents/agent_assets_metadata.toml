@@ -184,14 +184,14 @@ content_type = "application/octet-stream"
 id = "9qDcT_jIvV4obRLrz7tuE"
 uri = "file://artifacts/flowpoint-export/onboarding/step1-interface.mp4"
 type = "video"
-title = "FlowPoint onboarding — V1 corrigée"
-description = "Vidéo V1 finale — 1920×1080, 30 fps, H.264, 40,4 secondes."
+title = "step1-interface.mp4 — V3"
+description = "1920×1080 · 30fps · 48s · 4 clics réels · 4.4 Mo"
 logical_id = "5c5c3a5d-321f-4d42-a418-9f0014cffddf"
-content_hash = "sha256:a25bed3024150e2d5e7c5dc57d27a085b3d8278c2f9d68ceb53be6fd15159900"
-size = 3763662
-mtime_ms = 1789064081675
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/e6438b94-8303-4426-986e-c20b51a8b8f3"
-storage_version_token = "1789064625573727"
+content_hash = "sha256:1647c6c0585727f7af30d610a93be6307b57a9fc8fee83ec9b41020b87d22361"
+size = 4561758
+mtime_ms = 1789397871252
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/5c5c3a5d-321f-4d42-a418-9f0014cffddf/6a0375ed-5c16-47f1-acba-aa41e03ddfb4"
+storage_version_token = "1789397888373114"
 content_type = "video/mp4"
 
 [[outputs]]
@@ -361,3 +361,73 @@ mtime_ms = 1789062807857
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/76eb192b-7c2c-4e35-9681-4c318c460a33/ccb1e99d-e081-470e-aafc-dc3da5a88090"
 storage_version_token = "1789062876574857"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "gkd_vsB8JeNpHWUzAB05L"
+uri = "file://artifacts/flowpoint-export/onboarding/step2-audit-actions.mp4"
+type = "video"
+title = "Vidéo 2 — Audits & Actions"
+description = "1920×1080"
+logical_id = "7c7b9035-8473-47fb-8318-35e538887551"
+content_hash = "sha256:c64269d2fe8fc1d65e2149205cee1d9f43350d5e962bb4843691d24deb236bbb"
+size = 1064058
+mtime_ms = 1789226909275
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/7c7b9035-8473-47fb-8318-35e538887551/29481f6a-c283-4678-bc44-2ef51b3b0548"
+storage_version_token = "1789394695766616"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "OrQLQcqaPNBqs3wvjUC-T"
+uri = "file://artifacts/flowpoint-export/onboarding/step3-monitoring-alerts.mp4"
+type = "video"
+title = "Vidéo 3 — Monitoring & Alertes"
+description = "1920×1080"
+logical_id = "7695d576-2ede-49bb-ad27-9bd05e31abd0"
+content_hash = "sha256:d5a0b78316797f4f28237fa008ace472e9a0f48254457e0ceced5958f17e7a36"
+size = 1008640
+mtime_ms = 1789226909475
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/7695d576-2ede-49bb-ad27-9bd05e31abd0/3f471ea9-da92-45d9-b32e-c5d6ae942a64"
+storage_version_token = "1789394697941700"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "Loz_grBVyjLWBdPaq7lY-"
+uri = "file://artifacts/flowpoint-export/onboarding/step4-local-competition.mp4"
+type = "video"
+title = "Vidéo 4 — Concurrence locale"
+description = "1920×1080"
+logical_id = "da0729f4-b939-4084-89af-6bdb40172e44"
+content_hash = "sha256:577cf2ebde902668595ee9135f0e0e38b38851e06ca418cfce79fdf6965b8e26"
+size = 1347361
+mtime_ms = 1789226909643
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/da0729f4-b939-4084-89af-6bdb40172e44/2b417314-a2b3-4ae3-9592-b0134a71d043"
+storage_version_token = "1789394700547511"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "1stnOoXzAIQxAjpLmOkN1"
+uri = "file://artifacts/flowpoint-export/onboarding/step5-ai-reports.mp4"
+type = "video"
+title = "Vidéo 5 — IA & Rapports"
+description = "1920×1080"
+logical_id = "53402934-d0b6-4c42-bfd2-9b0d9b9ec707"
+content_hash = "sha256:d2027f16005d90ea1c7907561855a19bd9418eed4f6f53847a688e1830bd2c3a"
+size = 1410869
+mtime_ms = 1789226909667
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/53402934-d0b6-4c42-bfd2-9b0d9b9ec707/0bc95782-d779-4909-8a97-6870cb197666"
+storage_version_token = "1789394702826206"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "XMXsh0HP9m6MhcDv47QRk"
+uri = "file://artifacts/flowpoint-export/onboarding/step6-daily.mp4"
+type = "video"
+title = "Vidéo 6 — Routine quotidienne"
+description = "1920×1080"
+logical_id = "d57049fb-f650-4358-a8af-2ac15faa2f00"
+content_hash = "sha256:174f21018f2112d40fc018ce1f1e4615a208394d8f64ec1e07899490f8e25538"
+size = 1935241
+mtime_ms = 1789226909879
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:637b3722-0749-4a98-8b79-abfeb0a1d3ce/d57049fb-f650-4358-a8af-2ac15faa2f00/eb8c38cc-e61b-41a3-97fe-ca842594cbc0"
+storage_version_token = "1789394705312082"
+content_type = "video/mp4"
