@@ -238,7 +238,16 @@
         headers: Object.assign({ 'Cache-Control': 'no-cache' }, authHeaders())
       });
     } catch (e) {}
-    if (resp && resp.ok) return true;
+    if (resp && resp.ok) {
+      // A logged-in account owns the checkout identity. Remove a stale
+      // signup token left by an earlier seller-link flow before creating the
+      // PaymentIntent/SetupIntent.
+      try {
+        sessionStorage.removeItem('fp_pre_reg_token');
+        localStorage.removeItem('fp_pre_reg_token');
+      } catch (e) {}
+      return true;
+    }
     if (preRegisterToken()) return true;
     rememberCheckoutIntent();
     window.location.replace('/signin.html?next=' + encodeURIComponent('/checkout.html'));

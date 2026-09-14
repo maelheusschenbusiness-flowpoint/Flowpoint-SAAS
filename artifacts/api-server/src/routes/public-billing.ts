@@ -843,7 +843,16 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   const addons = parseAddonsPub(req.body?.addons, res);
   if (addons === null) return;
   const preRegisterToken   = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
-  let _piReqOrgId = await resolvePublicBillingOrgId(req);
+  // A valid pre-registration token is the explicit identity for a new seller
+  // signup. This must win over an unrelated old browser session; otherwise the
+  // PaymentIntent is created for the old account and finalize-checkout sees a
+  // Customer mismatch. An expired/invalid token falls back to the session.
+  const _hasValidPreRegisterToken = preRegisterToken
+    ? await isValidPreRegisterToken(preRegisterToken)
+    : false;
+  let _piReqOrgId = _hasValidPreRegisterToken
+    ? undefined
+    : await resolvePublicBillingOrgId(req);
 
   // Hard gate before quote calculation, Stripe client creation, or any
   // customer/payment-intent lookup. A pre-registration token is the narrowly
@@ -947,7 +956,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
 
   // Derive orgId (= email) from pending_signups so the webhook can activate the account
   let piOrgId: string | undefined;
-  if (preRegisterToken) {
+  if (preRegisterToken && !_piReqOrgId) {
     try {
       const { pool: pgPool } = await import("@workspace/db");
       const lookupClient = await pgPool.connect();
@@ -968,8 +977,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     plan:                planKey,
     addons:              JSON.stringify(addons),
     flowpoint_cart:      "true",
-    ...(preRegisterToken   ? { pre_register_token:    preRegisterToken            } : {}),
-    ...(piOrgId            ? { orgId:                 piOrgId                     } : {}),
+    ...(preRegisterToken && !_piReqOrgId ? { pre_register_token: preRegisterToken } : {}),
+    ...(_piReqOrgId       ? { orgId: _piReqOrgId, org_id: _piReqOrgId } : {}),
+    ...(!_piReqOrgId && piOrgId ? { orgId: piOrgId, org_id: piOrgId } : {}),
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
   };
 
@@ -1021,7 +1031,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     let preRegCustomerId: string | undefined;
     /* defaultValues sent back to the frontend to pre-fill the Stripe Address Element */
     let _piDefaultValues: { name: string; email: string; country: string } | null = null;
-    if (preRegisterToken) {
+    if (preRegisterToken && !_piReqOrgId) {
       try {
         const { pool: _piPool } = await import("@workspace/db");
         // Hold a single client open for the entire customer-resolution section.
@@ -1180,7 +1190,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     // deleted-customer scenarios (e.g. after an ops purge that removed the Stripe customer
     // but left the DB record intact). This prevents "No such customer" 500 errors during
     // checkout when the stored stripe_customer_id no longer exists in Stripe.
-    if (!preRegCustomerId && !preRegisterToken) {
+    if (!preRegCustomerId && (!preRegisterToken || _piReqOrgId)) {
       const _authOrgId = _piReqOrgId;
       if (_authOrgId && _authOrgId !== "default") {
         try {
@@ -1314,8 +1324,28 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     ? ((req.body as Record<string, unknown>).preRegisterToken as string).trim()
     : "";
   let _authenticatedOrgId: string | null = null;
+  let _preRegisterTokenIsValid = false;
 
-  if (_fckToken) {
+  // A valid signup token is authoritative over a stale cookie/session. It is
+  // scoped to one pending signup and is the only credential that can activate
+  // that signup after payment.
+  if (preRegisterToken) {
+    try {
+      const { pool: _preRegPool } = await import("@workspace/db");
+      const _preRegC = await _preRegPool.connect();
+      try {
+        const _preRegR = await _preRegC.query<{ email: string }>(
+          `SELECT email FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+          [preRegisterToken],
+        );
+        _preRegisterTokenIsValid = !!_preRegR.rows[0]?.email;
+      } finally { _preRegC.release(); }
+    } catch (preRegValidationErr) {
+      logger.warn({ preRegValidationErr }, "[PublicBilling/finalize-checkout] pre-register token validation failed");
+    }
+  }
+
+  if (_fckToken && !_preRegisterTokenIsValid) {
     try {
       const { pool: _sp } = await import("@workspace/db");
       const _sc = await _sp.connect();
@@ -1394,6 +1424,16 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       logger.warn({ _pathCErr },
         "[PublicBilling/finalize-checkout] Path C: PI/SI metadata recovery failed (non-fatal)");
     }
+  }
+
+  // If a browser carries both an existing authenticated session and an old
+  // signup token, the session's UUID organization is authoritative. Do not
+  // let that stale token trigger a second-account activation or make the
+  // finalize path compare the session org with a pending-signup Customer.
+  const _fcHasUuidSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(_authenticatedOrgId || "");
+  if (_fcHasUuidSession && preRegisterToken) {
+    logger.info({ orgId: _authenticatedOrgId }, "[PublicBilling/finalize-checkout] ignoring stale pre-register token for authenticated UUID session");
+    preRegisterToken = "";
   }
 
   if (!_authenticatedOrgId) {
@@ -2206,7 +2246,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // ── Pre-registration: activate new user account and deliver magic link ────
     // A successful finalization must never claim that a login email was sent
     // before the account, token and delivery have all completed successfully.
-    const _fcActToken = preRegisterToken || intentMeta["pre_register_token"] || "";
+    // Never activate a pending signup from an existing UUID session. This
+    // also protects retries of PaymentIntents created before the producer-side
+    // Customer anchor fix.
+    const _fcActToken = _fcHasUuidSession ? "" : (preRegisterToken || intentMeta["pre_register_token"] || "");
     logger.info({
       step: "FC-0",
       intentId: (intentId as string)?.slice(0, 20),

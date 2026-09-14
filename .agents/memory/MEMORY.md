@@ -16,9 +16,7 @@
 - [pool.query() org_id audit](pool-query-orgid-audit.md) — all pool.query() on tenant tables need explicit org_id; RLS bypassed for postgres superuser; pg_class.relforcerowsecurity not pg_tables.forcedrowsecurity
 - [Stripe checkout add_invoice_items](stripe-checkout-invoice-items.md) — add_invoice_items invalid in checkout.sessions.create() (2026-04-22.dahlia); use stripe.invoiceItems.create() before session instead
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create
-- [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 32925-line file (read tool capped at 14681); use bash sed -n for lines > 14681, always get exact context before editing
 - [Settings plan casing & real data](settings-plan-casing.md) — plan stored lowercase in DB; me.ts must normalize to Title Case; team member map needs id field; security vuln fallback uses twoFactorEnabled
-- [FlowPoint dynamic dates](flowpoint-dynamic-dates.md) — CUR_MONTH/PREV_MONTH constants at IIFE top; all section titles use these, never hardcode month strings
 - [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
 - [AI provider strict mode](ai-provider-strict-mode.md) — strictProvider=true dans aiChat/aiStream désactive fallback cross-provider; uniquement /ai/chat; matrice provider×mode dans ai-provider-matrix.ts
@@ -77,9 +75,7 @@
 - [SSE two registries — store vs events.ts](sse-two-registries-bug.md) — store.broadcast() and /api/events are DISJOINT; events.ts must bridge via store.addSseClient() on connect + removeSseClient on close
 - [Response cache org key](response-cache-org-key.md) — withCache keyed by URL only leaked org-scoped responses cross-tenant; cache keys must include req.orgId
 - [Bare :not([data-theme]) pitfall](css-not-theme-selector.md) — dark-only rules must be html:not([data-theme="light"]); bare :not() matches any ancestor and leaks into light mode
-- [Mobile viewport overflow / iOS zoom-out](mobile-viewport-overflow.md) — hidden absolute checkboxes escape scroll clips, fixed bars at left:sidebar-w inflate min-content; debug by hiding subtrees vs scrollWidth
 - [Scheduled audits cron](audit-schedule-cron.md) — atomic next_run<=now claim (never equality), bigint vs timestamp dual mode, only the cron advances next_run; audits status 'error' = low-score bucket too
-- [Export branding preview](export-branding-preview.md) — --fp-surface n'existe pas (use --fp-bg-sidebar); fpOpenExportPreview module-level; pdf.ts logo fetch SSRF-hardened via validateMonitorUrl helpers
 - [Billing V5 checkout-session auth fix](billing-v5-checkout-auth.md) — public checkout-session was missing auth-user orgId/customer lookup; webhook fallback for ai_credits_only type
 - [Supabase users schema gap](supabase-users-schema-gap.md) — first_name/last_name absent from prod users table; every new CREATE TABLE column MUST have a matching ALTER TABLE self-heal entry
 - [Stripe webhook HMAC signing](stripe-webhook-hmac.md) — use raw whsec_... string directly as HMAC key (no strip, no base64 decode); whsec_ prefix is part of the key material; confirmed 2026-08-15
@@ -148,12 +144,9 @@
 - [Public billing Customer anchor](public-billing-auth-anchor.md) — public billing runs before orgContext; resolve authenticated sessions before creating Stripe intents and reuse organizations.stripe_customer_id
 - [Clean reset AI schema bootstrap](clean-reset-ai-schema.md) — AI billing tables must be created before strict migration checks or a fresh database cannot boot
 - [Render/Stripe historical purge boundary](render-stripe-historical-purge.md) — app.flowpoint.pro may use a separate Render DB; scan deleted Stripe Customers through subscription metadata, not only current DB links
-- [FFmpeg still-image zoompan duration](ffmpeg-zoompan-duration.md) — with looped still inputs, zoompan d must stay 1 or each source frame is duplicated and short clips become extremely long.
 - [Plan vs add-on notifications](plan-addon-notification-separation.md) — bundled plan entitlements reuse add-on activation events; typed plan actions must suppress only their technical add-on toasts.
-- [Continuous FFmpeg zooms](ffmpeg-continuous-zoom.md) — animate scale with eval=frame and crop to output size; segment fades cause visible black flashes.
 - [Stripe TEST public key and return](stripe-test-key-and-return.md) — TEST must return pk_test matching sk_test; confirmSetup/confirmPayment may succeed without redirect.
-- [Stripe live price verification](stripe-live-price-verification.md) — verify the configured price against the live account before switching a preview to real billing.
 - [Seller attribution Payment Element](seller-attribution-payment-element.md) — await seller lookup before Stripe intents and copy pending seller into every canonical activation path.
 - [Stripe key-mode in-flight isolation](stripe-key-mode-inflight.md) — ensureStripeCustomer's org-only in-flight lock must always receive the mode-aware key around login→checkout sequences.
 - [GitHub PR approval requirement](github-pr-approval.md) — FlowPoint merges require an approving review from a reviewer with write access; self-approval cannot satisfy the rule.
-- [Onboarding video AI bootstrap](onboarding-video-ai-bootstrap.md) — wait for AI history and stable textarea identity; condense only long fixed-camera response waits.
+- [Seller checkout identity](seller-checkout-identity.md) — valid signup tokens outrank stale sessions; invalid tokens fall back, and UUID sessions never activate pending signups.
