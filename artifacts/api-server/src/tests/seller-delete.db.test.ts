@@ -18,7 +18,7 @@ describe.skipIf(!URL)("seller hard delete on a real PostgreSQL", () => {
   const schema = `seller_delete_${randomBytes(4).toString("hex")}`;
   const client = new pg.Client({ connectionString: URL });
   const snapshot = async () => {
-    const all = await Promise.all(["sellers", "organizations", "pending_signups", "seller_commissions"].map((t) =>
+    const all = await Promise.all(["sellers", "organizations", "pending_signups", "seller_commissions", "seller_financial_ledger"].map((t) =>
       client.query(`SELECT * FROM ${t} ORDER BY id`).then((r) => [t, r.rows] as const)));
     return Object.fromEntries(all);
   };
@@ -35,9 +35,10 @@ describe.skipIf(!URL)("seller hard delete on a real PostgreSQL", () => {
     await client.query(`CREATE TABLE seller_commissions (
       id TEXT PRIMARY KEY, seller_id TEXT NOT NULL REFERENCES sellers(id), org_id TEXT NOT NULL UNIQUE,
       commission_amount_cents INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending')`);
-    // E: nothing. O: one organization. P: one pending signup. C: pending commission. K: paid commission, org gone.
+    // E: nothing. O: one organization. P: one pending signup. C: pending commission. K: paid commission, org gone. L: financial ledger only.
+    await client.query(`CREATE TABLE seller_financial_ledger (id TEXT PRIMARY KEY, seller_id TEXT NOT NULL, event_type TEXT NOT NULL, amount_cents INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`INSERT INTO sellers (id, seller_code) VALUES
-      ('E','SELLER-E'),('O','SELLER-O'),('P','SELLER-P'),('C','SELLER-C'),('K','SELLER-K'),('X','SELLER-X')`);
+      ('E','SELLER-E'),('O','SELLER-O'),('P','SELLER-P'),('C','SELLER-C'),('K','SELLER-K'),('L','SELLER-L'),('X','SELLER-X')`);
     await client.query(`INSERT INTO organizations (id, seller_id) VALUES ('o1','O'),('c1','C'),('x1','X'),('n1',NULL)`);
     await client.query(`INSERT INTO pending_signups (token, id, seller_id) VALUES ('t1','t1','P'),('t2','t2',NULL)`);
     await client.query(`INSERT INTO seller_commissions (id, seller_id, org_id, commission_amount_cents, status) VALUES
@@ -61,10 +62,11 @@ describe.skipIf(!URL)("seller hard delete on a real PostgreSQL", () => {
   });
 
   for (const [code, refs] of [
-    ["SELLER-O", { organizations: 1, pending_signups: 0, commissions: 0 }],
-    ["SELLER-P", { organizations: 0, pending_signups: 1, commissions: 0 }],
-    ["SELLER-C", { organizations: 1, pending_signups: 0, commissions: 1 }],
-    ["SELLER-K", { organizations: 0, pending_signups: 0, commissions: 1 }],
+    ["SELLER-O", { organizations: 1, pending_signups: 0, commissions: 0, financial_ledger: 0 }],
+    ["SELLER-P", { organizations: 0, pending_signups: 1, commissions: 0, financial_ledger: 0 }],
+    ["SELLER-C", { organizations: 1, pending_signups: 0, commissions: 1, financial_ledger: 0 }],
+    ["SELLER-K", { organizations: 0, pending_signups: 0, commissions: 1, financial_ledger: 0 }],
+    ["SELLER-L", { organizations: 0, pending_signups: 0, commissions: 0, financial_ledger: 1 }],
   ] as const) {
     it(`${code} has history: nothing deleted, references reported`, async () => {
       const before = await snapshot();

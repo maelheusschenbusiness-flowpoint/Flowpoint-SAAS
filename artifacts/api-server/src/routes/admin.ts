@@ -136,11 +136,13 @@ export const SELLER_DELETE_UNUSED_SQL = `DELETE FROM sellers s
           AND NOT EXISTS (SELECT 1 FROM organizations o      WHERE o.seller_id = s.id)
           AND NOT EXISTS (SELECT 1 FROM pending_signups p    WHERE p.seller_id = s.id)
           AND NOT EXISTS (SELECT 1 FROM seller_commissions c WHERE c.seller_id = s.id)
+          AND NOT EXISTS (SELECT 1 FROM seller_financial_ledger l WHERE l.seller_id = s.id)
         RETURNING s.id, s.seller_code`;
 export const SELLER_REFERENCES_SQL = `SELECT
           (SELECT COUNT(*) FROM organizations o      WHERE o.seller_id = s.id)::int AS organizations,
           (SELECT COUNT(*) FROM pending_signups p    WHERE p.seller_id = s.id)::int AS pending_signups,
-          (SELECT COUNT(*) FROM seller_commissions c WHERE c.seller_id = s.id)::int AS commissions
+          (SELECT COUNT(*) FROM seller_commissions c WHERE c.seller_id = s.id)::int AS commissions,
+          (SELECT COUNT(*) FROM seller_financial_ledger l WHERE l.seller_id = s.id)::int AS financial_ledger
          FROM sellers s WHERE s.seller_code = $1`;
 
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
@@ -2770,7 +2772,7 @@ router.delete("/admin/sellers/:code", async (req: Request, res: Response): Promi
   try {
     const d = await pool.query<{ id: string; seller_code: string }>(SELLER_DELETE_UNUSED_SQL, [code]);
     if (d.rows[0]) { res.json({ ok: true, deleted: d.rows[0].seller_code }); return; }
-    const refs = await pool.query<{ organizations: number; pending_signups: number; commissions: number }>(SELLER_REFERENCES_SQL, [code]);
+    const refs = await pool.query<{ organizations: number; pending_signups: number; commissions: number; financial_ledger: number }>(SELLER_REFERENCES_SQL, [code]);
     if (!refs.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
     res.status(409).json({
       ok: false, error: "SELLER_HAS_HISTORY", references: refs.rows[0],
