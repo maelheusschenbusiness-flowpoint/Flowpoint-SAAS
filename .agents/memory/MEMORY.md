@@ -151,3 +151,4 @@
 - [Stripe key-mode in-flight isolation](stripe-key-mode-inflight.md) — ensureStripeCustomer's org-only in-flight lock must always receive the mode-aware key around login→checkout sequences.
 - [GitHub PR approval requirement](github-pr-approval.md) — FlowPoint merges require an approving review from a reviewer with write access; self-approval cannot satisfy the rule.
 - [Seller checkout identity](seller-checkout-identity.md) — valid signup tokens outrank stale sessions; invalid tokens fall back, and UUID sessions never activate pending signups.
+- [Rebase verification](rebase-verification.md) — after a conflicted rebase, verify reflog + merge-base; a clean tree can still mean the rebase was aborted.
