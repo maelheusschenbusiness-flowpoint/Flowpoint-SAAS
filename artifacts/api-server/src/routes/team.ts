@@ -1476,19 +1476,41 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     }
 
     // ── Step 2a: audits.created_by ────────────────────────────────────────────
+    // Mirror the missions attribution rule: NULL / '' / 'system' / unresolvable
+    // created_by values are attributed to the explicit org owner rather than
+    // silently dropped.  This is the root cause of audits showing 0 in Performance
+    // even when real audit rows exist in the current month.
+    // Use += (not Math.max) so that multiple created_by groups belonging to the
+    // same owner (one UUID row + one email row) are summed, not capped.
     try {
-      const auditCounts = await pool.query<{ created_by: string; cnt: number }>(
+      const auditCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM audits
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')${periodFilter}
+         WHERE org_id = $1${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
+      const _ownerUidForAudits =
+        principalRes.rows.find(p => p.is_owner)?.canonical_uid ?? null;
+      let _unattributedAudits = 0;
       for (const row of auditCounts.rows) {
-        const uid = resolve(row.created_by);
-        if (!uid) continue;
+        const cb = row.created_by;
+        if (!cb || cb === "system" || cb === "") {
+          _unattributedAudits += Number(row.cnt ?? 0);
+          continue;
+        }
+        const uid = resolve(cb);
+        if (!uid) {
+          // created_by doesn't resolve to any known member — attribute to owner
+          _unattributedAudits += Number(row.cnt ?? 0);
+          continue;
+        }
         ensure(uid);
-        byUser[uid].audits = Math.max(byUser[uid].audits, Number(row.cnt ?? 0));
+        byUser[uid].audits += Number(row.cnt ?? 0);
+      }
+      if (_unattributedAudits > 0 && _ownerUidForAudits) {
+        ensure(_ownerUidForAudits);
+        byUser[_ownerUidForAudits].audits += _unattributedAudits;
       }
     } catch (_e) { /* created_by column may not exist yet on older schema — non-fatal */ }
 
@@ -1536,19 +1558,37 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     } catch (_e) { /* non-fatal */ }
 
     // ── Step 2c: reports.created_by ───────────────────────────────────────────
+    // Same attribution rule as audits: NULL / '' / 'system' / unresolvable rows
+    // go to the explicit org owner.  Use += so multiple identity groups for the
+    // same owner are summed rather than capped.
     try {
-      const reportCounts = await pool.query<{ created_by: string; cnt: number }>(
+      const reportCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM reports
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')${periodFilter}
+         WHERE org_id = $1${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
+      const _ownerUidForReports =
+        principalRes.rows.find(p => p.is_owner)?.canonical_uid ?? null;
+      let _unattributedReports = 0;
       for (const row of reportCounts.rows) {
-        const uid = resolve(row.created_by);
-        if (!uid) continue;
+        const cb = row.created_by;
+        if (!cb || cb === "system" || cb === "") {
+          _unattributedReports += Number(row.cnt ?? 0);
+          continue;
+        }
+        const uid = resolve(cb);
+        if (!uid) {
+          _unattributedReports += Number(row.cnt ?? 0);
+          continue;
+        }
         ensure(uid);
-        byUser[uid].reports = Math.max(byUser[uid].reports, Number(row.cnt ?? 0));
+        byUser[uid].reports += Number(row.cnt ?? 0);
+      }
+      if (_unattributedReports > 0 && _ownerUidForReports) {
+        ensure(_ownerUidForReports);
+        byUser[_ownerUidForReports].reports += _unattributedReports;
       }
     } catch (_e) { /* non-fatal */ }
 
