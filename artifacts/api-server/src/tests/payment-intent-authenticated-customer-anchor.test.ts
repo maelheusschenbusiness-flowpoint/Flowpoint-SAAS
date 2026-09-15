@@ -40,5 +40,6 @@ describe("authenticated payment-intent Customer anchor", () => {
     const customerBlock = routeSource.slice(start, end);
     expect(customerBlock).toContain("const _authOrgId = _piReqOrgId;");
     expect(customerBlock).toContain("ensureStripeCustomer");
+    expect(customerBlock).toContain("(!preRegisterToken || _piReqOrgId)");
   });
 });

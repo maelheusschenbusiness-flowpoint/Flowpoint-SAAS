@@ -718,6 +718,73 @@ export async function activateNewSignup(opts: {
   }
 }
 
+// ── Invoice shape compatibility ───────────────────────────────────────────
+// Stripe API ≥ 2025-03-31.basil moved invoice.subscription and
+// invoice.subscription_details to invoice.parent.subscription_details, and a
+// line item's price from line.price to line.pricing.price_details.price.
+// Read the current shape first, then fall back to the legacy one so older
+// events (and endpoints pinned to an older API version) keep working.
+export function invoiceSubscriptionDetails(invoice: Record<string, unknown>): {
+  subscriptionId: string | null;
+  metadata: Record<string, string>;
+} {
+  const parent  = invoice["parent"] as Record<string, unknown> | null | undefined;
+  const current = parent?.["subscription_details"] as Record<string, unknown> | null | undefined;
+  const legacy  = invoice["subscription_details"] as Record<string, unknown> | null | undefined;
+  const rawSub  = current?.["subscription"] ?? invoice["subscription"] ?? null;
+  const subscriptionId = typeof rawSub === "string"
+    ? rawSub
+    : ((rawSub as { id?: string } | null)?.id ?? null);
+  const metadata = (current?.["metadata"] ?? legacy?.["metadata"] ?? {}) as Record<string, string>;
+  return { subscriptionId, metadata };
+}
+
+export function invoiceLinePriceId(line: Record<string, unknown>): string | null {
+  const priceDetails = (line["pricing"] as Record<string, unknown> | null | undefined)?.["price_details"] as Record<string, unknown> | undefined;
+  const raw = priceDetails?.["price"] ?? line["price"] ?? null;
+  if (typeof raw === "string") return raw;
+  const id = (raw as { id?: string } | null)?.id;
+  return id ? String(id) : null;
+}
+
+// ── Pending-signup activation barrier ─────────────────────────────────────
+// For a new pre-registered signup, finalize-checkout creates the Stripe
+// subscription BEFORE it commits the canonical UUID organization (FC-4).
+// Stripe can deliver customer.subscription.* inside that window, while the
+// customer still resolves to the pre-registration key (email, via
+// org_settings). The subscription handler writes organizations.id (UUID), so
+// instead of failing with 22P02 and depending on a Stripe retry, wait for the
+// in-flight activation to commit and use the canonical organizations.id.
+// Org and pending signup are read in ONE statement: FC-4 creates the org and
+// consumes the signup in the same transaction, so the snapshot is consistent.
+const PENDING_ACTIVATION_WAIT_MS = 5000;
+const PENDING_ACTIVATION_POLL_MS = 250;
+
+export async function awaitPendingSignupActivation(
+  email: string,
+  opts: { timeoutMs?: number; pollMs?: number } = {},
+): Promise<{ status: "activated"; orgId: string } | { status: "no_pending_signup" } | { status: "timeout" }> {
+  const timeoutMs = opts.timeoutMs ?? PENDING_ACTIVATION_WAIT_MS;
+  const pollMs    = opts.pollMs    ?? PENDING_ACTIVATION_POLL_MS;
+  const { pool: pgPool } = await import("@workspace/db");
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const r = await pgPool.query<{ org_id: string | null; pending: boolean }>(
+      `SELECT
+         (SELECT id::text FROM organizations
+           WHERE lower(owner_email) = lower($1) ORDER BY created_at DESC LIMIT 1) AS org_id,
+         EXISTS (SELECT 1 FROM pending_signups
+           WHERE lower(email) = lower($1) AND consumed_at IS NULL AND expires_at > NOW()) AS pending`,
+      [email]
+    );
+    const row = r.rows[0];
+    if (row?.org_id) return { status: "activated", orgId: row.org_id };
+    if (!row?.pending) return { status: "no_pending_signup" };
+    if (Date.now() >= deadline) return { status: "timeout" };
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripeKey = getStripeKey();
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
@@ -800,10 +867,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
     }
 
-    // Try 3: subscription metadata
-    if (!orgId && obj["subscription"]) {
-      const subMeta = (obj["subscription_details"] as Record<string, unknown>)?.["metadata"] as Record<string, string> | undefined;
-      const subOrgId = subMeta?.["orgId"] ?? subMeta?.["org_id"] ?? "";
+    // Try 3: subscription metadata (invoice snapshot, current or legacy shape)
+    const { subscriptionId: _t3SubId, metadata: subMeta } = invoiceSubscriptionDetails(obj);
+    if (!orgId && _t3SubId) {
+      const subOrgId = subMeta["orgId"] ?? subMeta["org_id"] ?? "";
       if (subOrgId && subOrgId !== "default") {
         orgId = subOrgId;
         resolvedVia = "subscription_metadata";
@@ -858,6 +925,26 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       } finally { cc.release(); }
     } catch (canonErr) {
       logger.warn({ canonErr }, "[Webhook] orgId canonicalization failed — using raw orgId");
+    }
+  }
+
+  // ── Subscription event for a signup whose UUID org is still being activated ──
+  // See awaitPendingSignupActivation. Resolve canonically BEFORE any UUID query,
+  // idempotency claim or write; if activation does not commit in time, answer
+  // 503 without touching the DB so the event is delivered again intact.
+  if (orgId && !UUID_RE_WH.test(orgId) &&
+      (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated")) {
+    const activation = await awaitPendingSignupActivation(orgId);
+    if (activation.status === "activated") {
+      logger.info({ from: orgId.includes("@") ? "email" : "non-uuid", to: activation.orgId, resolvedVia, type: event.type },
+        "[Webhook] orgId canonicalized after pending signup activation committed");
+      orgId = activation.orgId;
+      resolvedVia += "+pending_signup_activation";
+    } else if (activation.status === "timeout") {
+      logger.error({ type: event.type, eventId: (event as unknown as { id?: string }).id, resolvedVia },
+        "[Webhook] canonical organization still pending activation — returning 503, no DB writes performed");
+      res.status(503).json({ received: false, error: "Organization activation pending" });
+      return;
     }
   }
 
@@ -973,6 +1060,68 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
   try {
   switch (event.type) {
+
+    case "charge.refunded":
+    case "refund.created": {
+      // Refund delivery differs by Stripe API/version: charge.refunded carries
+      // the charge and refund.created carries the refund. Resolve both through
+      // the immutable payment event, then append exactly one refund fact.
+      const chargeRefundRows = ((obj["refunds"] as Record<string, unknown> | undefined)?.["data"] as Array<Record<string, unknown>> | undefined) ?? [];
+      const chargeObjectId = String(obj["id"] ?? "");
+      const chargeId = event.type === "charge.refunded"
+        ? (chargeObjectId || null)
+        : (obj["charge"] ? String(obj["charge"]) : null);
+      const refundRows = event.type === "charge.refunded" && chargeRefundRows.length > 0
+        ? chargeRefundRows
+        : [obj];
+      const { findAttributedPayment, recordRefundAndCommissionReversal } =
+        await import("../services/seller-financial-ledger.js");
+      for (const refundRow of refundRows) {
+        // When chargeRefundRows is empty (Stripe dahlia: refunds not expanded in webhook),
+        // refundRow === obj (the charge). refundRow["id"] is then the charge ID, not the
+        // refund ID. In that case derive the refund ID from the charge's latest refund.
+        const rowId = String(refundRow["id"] ?? "");
+        const refundId = rowId.startsWith("re_") ? rowId
+          : (chargeId ? `re:${chargeId}:${Date.now()}` : rowId); // synthetic key for idempotency
+        const paymentIntentId = refundRow["payment_intent"] ? String(refundRow["payment_intent"]) : (obj["payment_intent"] ? String(obj["payment_intent"]) : null);
+        let invoiceId = refundRow["invoice"] ? String(refundRow["invoice"]) : (obj["invoice"] ? String(obj["invoice"]) : null);
+        // Dahlia: chargeRefundRows is empty → refundRow === obj (the charge object).
+        // obj["amount"] is the total charge amount, NOT the refund amount.
+        // Always use obj["amount_refunded"] for partial refund accuracy in that case.
+        const amount = Number(
+          chargeRefundRows.length === 0 && event.type === "charge.refunded"
+            ? obj["amount_refunded"]
+            : (refundRow["amount"] ?? (event.type === "charge.refunded" ? obj["amount_refunded"] : 0))
+        );
+        if (!amount) continue;
+
+        // Dahlia (2026-04-22): charge.invoice / charge.payment_intent absent from payload.
+        // Fall back to org-scoped lookup. If we still don't have a real refund ID,
+        // fetch it from Stripe (refunds.list is not affected by dahlia changes).
+        let realRefundId = refundId;
+        if (!realRefundId.startsWith("re_") && chargeId && stripeKey) {
+          try {
+            const { default: _StripeClient } = await import("stripe");
+            const _sClient = new _StripeClient(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+            const _refunds = await _sClient.refunds.list({ charge: chargeId, limit: 1 });
+            if (_refunds.data[0]) realRefundId = _refunds.data[0].id;
+          } catch (e) {
+            logger.warn({ chargeId, err: e }, "[Webhook/seller] Could not list refunds for refund ID resolution");
+          }
+        }
+
+        const payment = await findAttributedPayment({ invoiceId, paymentIntentId, chargeId, orgId });
+        if (!payment) {
+          logger.info({ refundId: rowId, chargeId, paymentIntentId, invoiceId, orgId }, "[Webhook/seller] Refund is not an attributed plan payment");
+          continue;
+        }
+        await recordRefundAndCommissionReversal({
+          payment, refundId: realRefundId, refundAmountCents: amount, currency: payment.currency,
+          paymentIntentId, chargeId, sourceEventType: event.type,
+        });
+      }
+      break;
+    }
 
     case "checkout.session.completed": {
       const meta = (obj["metadata"] as Record<string,string>) ?? {};
@@ -1744,7 +1893,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       // P0-1 + P0-3: persist to DB, no store.me mutation
-      await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
+      // A €0 invoice (trial start, add-on trial month) does not mean the
+      // subscription is active: Stripe keeps it `trialing` and the
+      // customer.subscription.* events own that state. Only a real payment
+      // (first charge after trial, renewal, past_due recovery) confirms `active`.
+      const _invAmountPaid  = Number(obj["amount_paid"] || 0);
+      if (_invAmountPaid > 0) {
+        await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
+      } else {
+        logger.info({ orgId, billingReason: obj["billing_reason"] },
+          "[Webhook] invoice.payment_succeeded: €0 invoice — subscription status left to customer.subscription.* events");
+      }
       store.broadcast({ type: "payment_succeeded" }, orgId);
 
       // Persist active add-ons from subscription (if subscription is in the event).
@@ -1754,27 +1913,22 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         await persistAddonsFromSubscription(obj, orgId, invCustomerId, /* reconcileDeactivations */ false).catch(() => {});
       }
 
-      // ── Seller attribution: commission on first real subscription payment ────
-      // Rules:
-      //   • Only for plan subscriptions (not addonSub, not ai_credits)
-      //   • Only if amount_paid > 0 (skip trial/free periods)
-      //   • Only if organizations.seller_id is set
-      //   • Only once per org (ON CONFLICT DO NOTHING)
-      //   • Triggers on billing_reason=subscription_create (direct paid) OR
-      //     subscription_cycle (first payment after trial end)
-      const _invAmountPaid  = Number(obj["amount_paid"] || 0);
+      // ── Seller financial ledger: every real plan payment ───────────────────
+      // Revenue is recurring; acquisition commission is not.  The ledger uses
+      // the Stripe invoice as its durable source key, independently of the
+      // webhook delivery id, so retries and equivalent event replays are safe.
       const _invBillingReason = String(obj["billing_reason"] || "");
-      const _isFirstPaymentTrigger =
-        (_invBillingReason === "subscription_create" || _invBillingReason === "subscription_cycle")
-        && _invAmountPaid > 0;
-
-      if (_isFirstPaymentTrigger) {
-        (async () => {
-          try {
-            // Check if this is an addon subscription (skip — no commission on addons)
-            const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
-            const _subMeta    = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
-            if (_subMeta["addonSub"] === "true") return;
+      if (_invAmountPaid > 0) {
+        {
+            // Add-on subscriptions and AI credit payments are not seller plan
+            // revenue.  A plan subscription may still have add-on lines; only
+            // dedicated addonSub invoices are excluded here.
+            const { subscriptionId: _invSubId, metadata: _subMeta } = invoiceSubscriptionDetails(obj);
+            const _sellerExcluded = _subMeta["addonSub"] === "true" || _subMeta["type"] === "ai_credits"
+                || String((obj["metadata"] as Record<string, unknown> | undefined)?.["type"] ?? "") === "ai_credits";
+            if (_sellerExcluded) {
+              logger.info({ orgId }, "[Webhook/seller] Add-on/AI credit payment excluded from seller ledger");
+            } else {
 
             const { pool: _commPool } = await import("@workspace/db");
 
@@ -1784,20 +1938,39 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             );
             const _orgRow     = _orgSellerR.rows[0];
             const _sellerUUID = _orgRow?.seller_id ?? null;
-            if (!_sellerUUID) return; // no seller attributed to this org
-
-            // Guard: commission already exists for this org?
-            const _existComm = await _commPool.query(
-              `SELECT id FROM seller_commissions WHERE org_id = $1 LIMIT 1`, [orgId]
+            if (!_sellerUUID) {
+              logger.info({ orgId }, "[Webhook/seller] Payment has no seller attribution");
+            } else {
+            const _attrR = await _commPool.query<{ seller_attribution_method: "ref_link" | "manual" | null }>(
+              `SELECT seller_attribution_method FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
             );
-            if (_existComm.rows[0]) return; // idempotent — already recorded
+            const _attributionMethod = _attrR.rows[0]?.seller_attribution_method === "manual" ? "manual" : "ref_link";
 
             const _invId       = obj["id"]           ? String(obj["id"])           : null;
-            const _invSubId    = obj["subscription"]  ? String(obj["subscription"]) : null;
             const _invCurrency = obj["currency"]      ? String(obj["currency"])     : "eur";
+            // Stripe API 2026-04-22.dahlia removes invoice.charge and invoice.payment_intent;
+            // they are now nested under invoice.payments[0].payment (type InvoicePayment).
+            const _dahliaPayments = (obj["payments"] as { data?: Array<Record<string,unknown>> } | undefined)?.data ?? [];
+            const _dahliaFirst    = (_dahliaPayments[0] as Record<string,unknown> | undefined) ?? {};
+            const _dahliaPiObj    = (_dahliaFirst["payment"] as Record<string,unknown> | undefined) ?? {};
+            const _piId     = obj["payment_intent"]
+              ? String(obj["payment_intent"])
+              : (_dahliaPiObj["id"]  ? String(_dahliaPiObj["id"])  : null);
+            const _chargeId = obj["charge"]
+              ? String(obj["charge"])
+              : (_dahliaPiObj["charge"] ? String(_dahliaPiObj["charge"]) : null);
+            const { recordPaymentReceived: _recordPayment, recordCommissionGenerated: _recordGenerated } =
+              await import("../services/seller-financial-ledger.js");
+            await _recordPayment({
+              sellerId: _sellerUUID, orgId, sourceKey: `payment:${_invId ?? `${orgId}:${_piId ?? _invBillingReason}`}`,
+              amountCents: _invAmountPaid, currency: _invCurrency,
+              stripeInvoiceId: _invId, stripePaymentIntentId: _piId,
+              stripeChargeId: _chargeId, stripeSubscriptionId: _invSubId,
+              metadata: { billing_reason: _invBillingReason },
+            });
 
             const { recordCommission: _rcInv } = await import("../services/seller-attribution.js");
-            await _rcInv({
+            const _commissionInserted = await _rcInv({
               sellerId:             _sellerUUID,
               orgId:                orgId!,
               customerEmail:        _orgRow?.owner_email ?? "",
@@ -1807,14 +1980,26 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
               plan:                 _orgRow?.plan ?? "standard",
               eligibleAmountCents:  _invAmountPaid,
               currency:             _invCurrency,
-              attributionMethod:    "ref_link",
+              attributionMethod:    _attributionMethod,
             });
-            logger.info({ orgId, sellerId: _sellerUUID, amountCents: _invAmountPaid },
-              "[Webhook/seller] Commission recorded from first subscription payment");
-          } catch (_rcInvErr) {
-            logger.warn({ _rcInvErr, orgId }, "[Webhook/seller] Commission recording failed (non-fatal)");
-          }
-        })().catch(() => {});
+            if (_commissionInserted) {
+              const _commRow = await _commPool.query<{ id: string; commission_amount_cents: number }>(
+                `SELECT id, commission_amount_cents FROM seller_commissions WHERE org_id = $1 LIMIT 1`, [orgId]);
+              if (_commRow.rows[0]) {
+                await _recordGenerated({
+                  sellerId: _sellerUUID, orgId, commissionId: _commRow.rows[0].id,
+                  sourceKey: `commission-generated:${orgId}`,
+                  amountCents: Number(_commRow.rows[0].commission_amount_cents),
+                  currency: _invCurrency, stripeInvoiceId: _invId,
+                  stripePaymentIntentId: _piId, stripeSubscriptionId: _invSubId,
+                });
+              }
+            }
+            logger.info({ orgId, sellerId: _sellerUUID, amountCents: _invAmountPaid, commissionInserted: _commissionInserted },
+              "[Webhook/seller] Payment revenue recorded; acquisition commission is first-payment only");
+            }
+            }
+        }
       }
 
       // ── Email routing based on billing_reason ─────────────────────────────
@@ -1859,8 +2044,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         // checking whether any invoice line item's price ID matches a known plan-tier
         // price (Standard / Pro / Ultra).  If NONE match → add-on-only mutation →
         // send addon confirmation, never sendPlanChanged.
-        const _subDetails = obj["subscription_details"] as Record<string, unknown> | undefined;
-        const _subMeta = (_subDetails?.["metadata"] as Record<string, string>) ?? {};
+        const { metadata: _subMeta } = invoiceSubscriptionDetails(obj);
         const _isAddonSub = _subMeta["addonSub"] === "true";
 
         let _isAddonOnlyInvoice = false;
@@ -1872,8 +2056,8 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             // (live only) which caused test-mode plan changes to be misclassified as
             // addon-only and trigger the wrong email.
             const _hasPlanLine = _lineData.some(l => {
-              const priceId = (l["price"] as Record<string, unknown> | null)?.["id"];
-              return priceId && getPlanForPriceId(String(priceId)) !== null;
+              const priceId = invoiceLinePriceId(l);
+              return priceId && getPlanForPriceId(priceId) !== null;
             });
             // Add-on-only if there are lines but none is a plan price
             _isAddonOnlyInvoice = _lineData.length > 0 && !_hasPlanLine;

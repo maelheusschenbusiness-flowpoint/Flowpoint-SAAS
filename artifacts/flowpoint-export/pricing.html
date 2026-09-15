@@ -1622,7 +1622,35 @@
     }
     _cart._v = 1; _cart._updatedAt = Date.now();
     try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
-    window.location.href = '/checkout.html' + (_cart.plan ? '?plan=' + encodeURIComponent(_cart.plan) : '');
+    /* Auth gate — block anonymous visitors before reaching checkout */
+    var _tok = '';
+    try { _tok = sessionStorage.getItem('fp_session_token') || localStorage.getItem('fp_session_token') || ''; } catch(e) {}
+    var _dest = '/checkout.html' + (_cart.plan ? '?plan=' + encodeURIComponent(_cart.plan) : '');
+    var _savePending = function() {
+      try {
+        localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+          cart: _cart,
+          sellerRef: localStorage.getItem('fp_seller_ref') || '',
+          next: '/checkout.html',
+          exp: Date.now() + 1800000
+        }));
+        sessionStorage.setItem('fp_next', '/checkout.html');
+      } catch(e) {}
+    };
+    fetch('/api/me', {
+      credentials: 'include',
+      headers: _tok ? { 'Authorization': 'Bearer ' + _tok } : {}
+    }).then(function(r) {
+      if (r.ok) {
+        window.location.href = _dest;
+      } else {
+        _savePending();
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      }
+    }).catch(function() {
+      _savePending();
+      window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+    });
   };
 
   /* ── Toggle plan card extra features ── */
@@ -2111,7 +2139,37 @@
     /* ── Non-subscriber with a plan (standard checkout) ── */
     if (!isSubscribed) {
       try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
-      window.location.href = '/checkout.html?plan=' + encodeURIComponent(targetPlan);
+      /* Check the backend, not token presence alone: cookie-only sessions are
+         valid, while a stale per-tab token must go through authentication. */
+      fetch('/api/me', {
+        credentials: 'include',
+        headers: Object.assign({ 'Cache-Control': 'no-cache' }, window._fpPricingAuthHeaders())
+      }).then(function(r) {
+        if (r.ok) {
+          window.location.href = '/checkout.html?plan=' + encodeURIComponent(targetPlan);
+          return;
+        }
+        try {
+          localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+            cart: currentCart || {},
+            sellerRef: localStorage.getItem('fp_seller_ref') || '',
+            next: '/checkout.html',
+            exp: Date.now() + 1800000
+          }));
+          sessionStorage.setItem('fp_next', '/checkout.html');
+        } catch (e) {}
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      }).catch(function() {
+        try {
+          localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+            cart: currentCart || {},
+            sellerRef: localStorage.getItem('fp_seller_ref') || '',
+            next: '/checkout.html',
+            exp: Date.now() + 1800000
+          }));
+        } catch (e) {}
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      });
       return;
     }
 
