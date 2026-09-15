@@ -268,6 +268,7 @@ const STATE = {
   teamChatPendingFiles: [], // pending attachment chips for team chat composer
   streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
   teamStreaks: {}, // per-member streaks keyed by user UUID (loaded in Phase 3)
+  teamContributionTotals: null,
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
   alertRules: [],
@@ -2010,7 +2011,7 @@ async function loadData(options = {}) {
     'reports'  in _preloaded ? Promise.resolve(_preloaded.reports)  : apiFetch('/api/reports'),
     'team'     in _preloaded ? Promise.resolve(_preloaded.team)     : apiFetch('/api/team'),
     apiFetch('/api/team/streaks').catch(() => null),
-    apiFetch('/api/team/contributions').catch(() => null),
+    apiFetch('/api/team/contributions?period=month').catch(() => null),
   ]).then(function([_auRes, _moRes, _reRes, _teRes, _streaksRes, _contribRes]) {
     if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
     if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
@@ -2024,6 +2025,7 @@ async function loadData(options = {}) {
     // Per-user real contribution counts from DB (audits, missions, reports)
     if (_contribRes && _contribRes.status === 'fulfilled' && _contribRes.value && _contribRes.value.contributions) {
       STATE.teamContributions = _contribRes.value.contributions;
+      STATE.teamContributionTotals = _contribRes.value.totals || null;
     }
     const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
     const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
@@ -57797,6 +57799,32 @@ function renderAlertsCenter() {
 // ─────────────────────────────────────────────────────────────────
 // NEW PAGE: ACTIVITY FEED
 // ─────────────────────────────────────────────────────────────────
+// Canonical team-member identity lookup shared by Activity > Team and
+// Team > Performance. /api/team exposes both a row id and users.id; only
+// users.id is the primary key used by /api/team/contributions.
+function fpTeamMetricIdentity(member) {
+  const userId = String(member?.userId || member?.user_id || '');
+  const id = String(member?.id || '');
+  const email = String(member?.email || '').toLowerCase();
+  const me = STATE.me || {};
+  const meId = String(me.id || me.userId || '');
+  const meEmail = String(me.email || '').toLowerCase();
+  const isOwner = String(member?.role || '').toLowerCase() === 'owner'
+    || (!!meId && (userId === meId || id === meId))
+    || (!!meEmail && email === meEmail);
+  return { userId, id, email, isOwner };
+}
+
+function fpTeamMetricContribution(member) {
+  const metrics = STATE.teamContributions;
+  if (!metrics || typeof metrics !== 'object') return null;
+  const { userId, id, email } = fpTeamMetricIdentity(member);
+  return (userId && metrics[userId])
+    || (id && metrics[id])
+    || (email && metrics[email])
+    || null;
+}
+
 function renderActivityFeed() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
@@ -57806,6 +57834,9 @@ function renderActivityFeed() {
   const activityTotal = Number.isFinite(Number(STATE.activityTotal))
     ? Number(STATE.activityTotal)
     : (Array.isArray(STATE.activityEvents) ? STATE.activityEvents.length : 0);
+  const openMissionCount = (STATE.missions || []).filter(m =>
+    !['done', 'completed', 'dismissed', 'stale'].includes(String(m.status || '').toLowerCase())
+  ).length;
 
   const colors = { success:'#22c55e', error:'#ef4444', info:'#2563EB', warning:'#f59e0b', purple:'#8b5cf6', cyan:'#06b6d4' };
   const _fAS = i => { const s = STATE.audits||[]; const u = (s.length>0?(s[i%s.length]?.url||''):'').replace(/^https?:\/\//,''); return u||'votre-site.fr'; };
@@ -57859,22 +57890,15 @@ function renderActivityFeed() {
     const _mColors = ['#2563EB','#8b5cf6','#22c55e','#f59e0b','#06b6d4'];
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map((t, i) => {
       const nm = t.name || t.email || 'Membre';
-      const id = String(t.id || t.userId || t.user_id || '');
-      const email = String(t.email || '').toLowerCase();
-        const _isOwner = String(t.role || '').toLowerCase() === 'owner'
-          || !!(STATE.me && (
-            (id && id === String(STATE.me.id || STATE.me.userId || ''))
-            || (email && email === String(STATE.me.email || '').toLowerCase())
-          ));
-      const contrib = (STATE.teamContributions && (
-        (id && STATE.teamContributions[id]) ||
-        (email && (STATE.teamContributions[email] || STATE.teamContributions[t.email]))
-      )) || null;
+      const identity = fpTeamMetricIdentity(t);
+      const { userId, id, email } = identity;
+      const _isOwner = identity.isOwner;
+      const contrib = fpTeamMetricContribution(t);
       const audits = contrib ? Number(contrib.audits || 0) : null;
       const missions = contrib ? Number(contrib.missions || 0) : null;
       const reports = contrib ? Number(contrib.reports || 0) : null;
       return {
-        id, email,
+        id, userId, email,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
@@ -57884,20 +57908,20 @@ function renderActivityFeed() {
         streak: _isOwner
           ? { current: Number.isFinite(Number(STATE.streak)) ? Number(STATE.streak) : 0 }
           : ((STATE.teamStreaks && (
-          (id && STATE.teamStreaks[id]) ||
-          (email && (STATE.teamStreaks[email] || STATE.teamStreaks[t.email]))
+           (email && STATE.teamStreaks[email])
         )) || null),
       };
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
     const _orgActs = activityTotal;
-    const _orgScore = STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0;
+    const _orgScore = Number.isFinite(Number(STATE.overview?.seoScore ?? STATE.overview?.avgScore))
+      ? Number(STATE.overview.seoScore ?? STATE.overview.avgScore) : null;
     const _membersWithContribs = members.filter(m => m.contribs).length;
     return `
       ${isPro
         ? aiBlock((_membersWithContribs > 0
               ? _membersWithContribs + ' membre(s) avec contributions persistées.'
-              : fpT('Aucune contribution individuelle enregistrée.')) + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + _orgScore + '/100.',
+              : fpT('Aucune contribution individuelle enregistrée.')) + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + (_orgScore === null ? fpT('N/D') : _orgScore + '/100') + '.',
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
@@ -57905,8 +57929,8 @@ function renderActivityFeed() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Membres actifs', String(members.length), 'cette semaine', 'up')}
         ${statCard('Actions totales', String(activityTotal), 'cette organisation', activityTotal > 0 ? 'up' : 'neutral')}
-        ${statCard('Score productivité', displayStat(null, '82/100'), PREVIEW_MODE ? '+8 pts vs S-1' : 'Analyse en cours', 'neutral')}
-        ${statCard('Missions ouvertes', displayStat(STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : null, '4'), STATE.missions && STATE.missions.length > 0 ? 'missions actives' : PREVIEW_MODE ? 'dont 2 prioritaires' : 'Aucune mission', 'neutral')}
+        ${statCard('Score productivité', displayStat(null, null, 'N/D'), 'Analyse en cours', 'neutral')}
+        ${statCard('Missions ouvertes', displayStat(openMissionCount > 0 ? String(openMissionCount) : null, null, 'N/D'), openMissionCount > 0 ? 'missions actives' : 'Aucune mission', 'neutral')}
       </div>
 
       <!-- MEMBER CARDS -->
@@ -62038,43 +62062,53 @@ function renderTeamPerformance() {
   const _roleColors = { owner:'#f59e0b', admin:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#64748b', member:'#64748b' };
   const teamData = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const metrics = teamData.map((t, i) => {
-    const isOwner = t.role === 'owner' || (!teamData.some(m => m.role === 'owner') && (t.id === STATE.me?.id || t.email === STATE.me?.email));
-    const memberId = t.id || t.userId || '';
-    const memberStreak = STATE.teamStreaks && STATE.teamStreaks[memberId];
+    const identity = fpTeamMetricIdentity(t);
+    const isOwner = identity.isOwner;
+    const memberStreak = STATE.teamStreaks && (
+      STATE.teamStreaks[identity.userId] ||
+      STATE.teamStreaks[identity.id] ||
+      STATE.teamStreaks[identity.email]
+    );
     const ownStreak = Number(STATE.streak);
     const streakVal = isOwner
       ? (Number.isFinite(ownStreak) && ownStreak >= 0 ? ownStreak : 0)
       : (memberStreak ? memberStreak.current : '—');
-    const _uid = t.id || t.userId || t.email || '';
-    const _contrib = (STATE.teamContributions && _uid && STATE.teamContributions[_uid]) ? STATE.teamContributions[_uid] : null;
+    const _contrib = fpTeamMetricContribution(t);
     return {
       name: t.name || t.email || 'Membre',
       role: t.role || 'member',
       roleColor: _roleColors[t.role] || '#64748b',
-      audits:   _contrib != null ? _contrib.audits   : (isOwner ? (STATE.audits ? STATE.audits.length : 0) : '—'),
-      missions: _contrib != null ? _contrib.missions : (isOwner ? ((STATE.missions||[]).filter(m=>m.status==='done'||m.status==='completed').length) : '—'),
-      reports:  _contrib != null ? _contrib.reports  : (isOwner ? (STATE.reports ? STATE.reports.length : 0) : '—'),
-      score: isOwner ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : '—',
+      audits:   _contrib != null ? Number(_contrib.audits || 0) : '—',
+      missions: _contrib != null ? Number(_contrib.missions || 0) : '—',
+      reports:  _contrib != null ? Number(_contrib.reports || 0) : '—',
+      score: isOwner
+        ? (STATE.userScore ?? STATE.overview?.seoScore ?? STATE.overview?.avgScore ?? '—')
+        : '—',
       streak: streakVal,
     };
   });
-  const totalAudits = STATE.audits ? STATE.audits.length : 0;
-  const totalReports = STATE.reports ? STATE.reports.length : 0;
-  const avgScore = STATE.overview ? (STATE.overview.seoScore || STATE.overview.avgScore || 0) : 0;
+  const totalAudits = Number.isFinite(Number(STATE.teamContributionTotals?.audits))
+    ? Number(STATE.teamContributionTotals.audits) : null;
+  const totalReports = Number.isFinite(Number(STATE.teamContributionTotals?.reports))
+    ? Number(STATE.teamContributionTotals.reports) : null;
+  const avgScore = Number.isFinite(Number(STATE.overview?.seoScore ?? STATE.overview?.avgScore))
+    ? Number(STATE.overview.seoScore ?? STATE.overview.avgScore) : null;
   const topName = metrics.length > 0 ? metrics[0].name.split(' ')[0] : null;
-  const aiMsg = topName
-    ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore}/100</strong>.`
-    : `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore}/100.`;
+  const aiMsg = topName && totalAudits !== null && totalReports !== null
+    ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore === null ? fpT('N/D') : avgScore + '/100'}</strong>.`
+    : totalAudits !== null && totalReports !== null
+      ? `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore === null ? fpT('N/D') : avgScore + '/100'}.`
+      : 'Les métriques d’équipe sont indisponibles pour le moment.';
   return `
     <div class="fp-section-header">
       <div><h1>Performance Équipe</h1><div class="fp-section-sub">Activité et contributions individuelles · ${CUR_MONTH}</div></div>
     </div>
     ${aiBlock(aiMsg, [])}
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Audits équipe', String(totalAudits), 'ce mois', totalAudits > 0 ? 'up' : 'neutral')}
+      ${statCard('Audits équipe', displayStat(totalAudits, null, 'N/D'), 'ce mois', totalAudits > 0 ? 'up' : 'neutral')}
       ${statCard('Membres actifs', String(teamData.length), 'dans l\'espace', 'neutral')}
-      ${statCard('Rapports générés', String(totalReports), 'tous membres', totalReports > 0 ? 'up' : 'neutral')}
-      ${statCard('Score SEO moyen', avgScore ? avgScore + '/100' : '—', 'basé sur les audits', avgScore >= 70 ? 'up' : avgScore > 0 ? 'down' : 'neutral')}
+      ${statCard('Rapports générés', displayStat(totalReports, null, 'N/D'), 'ce mois · tous membres', totalReports > 0 ? 'up' : 'neutral')}
+      ${statCard('Score SEO moyen', avgScore === null ? fpT('N/D') : avgScore + '/100', 'basé sur les audits', avgScore >= 70 ? 'up' : avgScore > 0 ? 'down' : 'neutral')}
     </div>
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
