@@ -1482,19 +1482,50 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     } catch (_e) { /* created_by column may not exist yet on older schema — non-fatal */ }
 
     // ── Step 2b: missions.created_by ──────────────────────────────────────────
+    // Root cause: missions created before the created_by column was added have
+    // created_by = NULL. They resolve to no uid and show 0 for the owner in
+    // Performance, while STATE.missions (loaded org-wide) shows the real count.
+    // Fix: count unattributed org missions (NULL/empty/system created_by) and
+    // attribute them to the org owner as the most likely creator.
     try {
-      const missionCounts = await pool.query<{ created_by: string; cnt: number }>(
+      const missionCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM missions
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         WHERE org_id = $1
          GROUP BY created_by`,
         [orgId]
       );
+      // Resolve owner canonical uid for unattributed fallback
+      let _ownerCanonicalUid: string | null = null;
+      for (const p of principalRes.rows) {
+        // Owner row has no team_members entry — it comes from the organizations UNION half.
+        // Its canonical_uid is either the owner UUID or owner email.
+        if (p.canonical_uid && p.canonical_uid.trim()) {
+          _ownerCanonicalUid = p.canonical_uid;
+          break; // First resolved principal is the org owner (UNION order)
+        }
+      }
+      let _unattributedMissions = 0;
       for (const row of missionCounts.rows) {
-        const uid = resolve(row.created_by);
-        if (!uid) continue;
+        const cb = row.created_by;
+        if (!cb || cb === "system" || cb === "") {
+          // Unattributed: accumulate for owner fallback
+          _unattributedMissions += Number(row.cnt ?? 0);
+          continue;
+        }
+        const uid = resolve(cb);
+        if (!uid) {
+          // created_by value doesn't resolve to any member — attribute to owner
+          _unattributedMissions += Number(row.cnt ?? 0);
+          continue;
+        }
         ensure(uid);
-        byUser[uid].missions = Math.max(byUser[uid].missions, Number(row.cnt ?? 0));
+        byUser[uid].missions += Number(row.cnt ?? 0);
+      }
+      // Add unattributed missions to the owner
+      if (_unattributedMissions > 0 && _ownerCanonicalUid) {
+        ensure(_ownerCanonicalUid);
+        byUser[_ownerCanonicalUid].missions += _unattributedMissions;
       }
     } catch (_e) { /* non-fatal */ }
 
