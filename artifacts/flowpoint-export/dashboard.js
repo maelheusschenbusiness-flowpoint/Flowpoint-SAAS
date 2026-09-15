@@ -18162,32 +18162,32 @@ function toggleTheme() {
 const FP_ONBOARDING_STEPS = [
   {
     id: 'interface',
-    title: 'Prenez vos repères',
-    desc:  'Visualisez la santé de votre portefeuille et accédez rapidement aux fonctions principales depuis un espace unique.',
+    title: 'Découvrez FlowPoint',
+    desc:  'Explorez l\'interface centrale et accédez rapidement à tous vos espaces de travail depuis un tableau de bord unifié.',
     videoUrl: '/onboarding/onboarding-video-1-flowpoint.mp4'
   },
   {
     id: 'audit-actions',
-    title: 'Passez du diagnostic à l\'action',
-    desc:  'Lancez un audit SEO, identifiez les problèmes prioritaires puis transformez les recommandations en missions suivies.',
+    title: 'Audit & Actions prioritaires',
+    desc:  'Lancez un audit SEO complet, identifiez les problèmes critiques et transformez chaque recommandation en mission suivie.',
     videoUrl: '/onboarding/onboarding-video-2-flowpoint.mp4'
   },
   {
     id: 'monitoring-alerts',
-    title: 'Surveillez et soyez alerté',
-    desc:  'Contrôlez la disponibilité et la latence de vos sites, puis centralisez les incidents et alertes critiques.',
+    title: 'Performance Web & Surveillance',
+    desc:  'Contrôlez la disponibilité de vos sites, analysez vos performances et consultez votre trafic en temps réel.',
     videoUrl: '/onboarding/onboarding-video-3-flowpoint.mp4'
   },
   {
     id: 'local-competition',
-    title: 'Pilotez votre visibilité locale',
-    desc:  'Repérez vos opportunités Google Maps et comparez votre présence locale avec celle de vos concurrents.',
+    title: 'Pilotage & Croissance',
+    desc:  'Centralisez votre activité, collaborez avec votre équipe et développez votre visibilité SEO locale et organique.',
     videoUrl: '/onboarding/onboarding-video-4-flowpoint.mp4'
   },
   {
     id: 'ai-reports',
-    title: 'Accélérez avec le Copilot',
-    desc:  'Interrogez l\'Assistant IA avec le contexte de votre workspace, puis générez des rapports prêts à partager.',
+    title: 'IA & Tableau de bord',
+    desc:  'Dialoguez avec votre Assistant IA contextuel et pilotez l\'ensemble de votre croissance depuis une vue unifiée.',
     videoUrl: '/onboarding/onboarding-video-5-flowpoint.mp4'
   }
 ];
@@ -49607,10 +49607,17 @@ async function init() {
     window.fpLoadCompetitorAnalysis(id);
   };
 
-  window.fpCreateMissionFromOpportunity = async function(title, desc) {
+  window.fpCreateMissionFromOpportunity = async function(title, desc, btn) {
     if (!title) return;
+    if (!STATE._fpMissionCreating) STATE._fpMissionCreating = new Set();
+    if (!STATE._fpMissionCreated)  STATE._fpMissionCreated  = new Set();
+    var _key = String(title);
+    // Double-click guard + already-created guard
+    if (STATE._fpMissionCreating.has(_key) || STATE._fpMissionCreated.has(_key)) return;
+    STATE._fpMissionCreating.add(_key);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Création…'; }
     try {
-      const r = await apiFetch('/api/missions', {
+      var r = await apiFetch('/api/missions', {
         method: 'POST',
         body: JSON.stringify({
           title: title,
@@ -49623,12 +49630,28 @@ async function init() {
           effort: 'medium',
         }),
       });
+      STATE._fpMissionCreating.delete(_key);
       if (r && r.id) {
+        STATE._fpMissionCreated.add(_key);
+        if (btn) { btn.disabled = true; btn.textContent = '✓ Créée'; btn.className = btn.className.replace('fp-btn-primary','fp-btn-ghost'); }
         showToast('success', fpT('Mission créée : ') + escHtml(title));
+      } else if (r && r.error === 'Mission already exists') {
+        STATE._fpMissionCreated.add(_key);
+        if (btn) { btn.disabled = true; btn.textContent = '✓ Créée'; btn.className = btn.className.replace('fp-btn-primary','fp-btn-ghost'); }
+        showToast('success', fpT('Mission déjà créée'));
       } else {
+        if (btn) { btn.disabled = false; btn.textContent = '✚ Créer une mission'; }
         showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de la création de la mission'));
       }
-    } catch(e) { showToast('error', fpT('Erreur réseau')); }
+    } catch(e) {
+      STATE._fpMissionCreating.delete(_key);
+      if (btn) { btn.disabled = false; btn.textContent = '✚ Créer une mission'; }
+      var _msg = e && e.status === 401 ? fpT('Session expirée — rechargez la page')
+               : e && e.status === 403 ? fpT('Accès refusé')
+               : (e && e.message && !/unauthorized/i.test(e.message)) ? e.message
+               : fpT('Erreur réseau — réessayez');
+      showToast('error', _msg);
+    }
   };
 
   // ── Fix 2: AI Competitor Suggestions ────────────────────────────────────────
@@ -54571,7 +54594,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
-          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
+          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px;margin-top:16px">
             <div class="fp-card" style="border-left:3px solid #22c55e">
               <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
               ${(analysis.you_better||[]).length===0
@@ -54586,7 +54609,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${(analysis.opportunities||[]).length>0 ? `
-          <div class="fp-card fp-mb-16">
+          <div class="fp-card fp-mb-16" style="margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:12px">💡 Opportunités recommandées</div>
             <div style="display:flex;flex-direction:column;gap:10px">
               ${(analysis.opportunities).map((op,i)=>`
@@ -54596,17 +54619,14 @@ function renderCompetitor() {
                     <div style="flex:1">
                       <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(String(op.title||''))}</div>
                       <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(String(op.description||''))}</div>
-                      <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px"
-                        onclick="window.fpCreateMissionFromOpportunity('${escHtml(String(op.missionTitle||op.title||''))}','${escHtml(String(op.missionDesc||op.description||''))}')">
-                        ✚ Créer une mission
-                      </button>
+                      ${(function(){var _k=String(op.missionTitle||op.title||'');var _d=String(op.missionDesc||op.description||'');var _done=STATE._fpMissionCreated&&STATE._fpMissionCreated.has(_k);return '<button class="fp-btn '+(_done?'fp-btn-ghost':'fp-btn-primary')+' fp-btn-sm" style="font-size:10px"'+(_done?' disabled':' onclick="window.fpCreateMissionFromOpportunity(\''+escHtml(_k)+'\',\''+escHtml(_d)+'\',this)"')+'>'+(_done?'✓ Créée':'✚ Créer une mission')+'</button>';})()} 
                     </div>
                   </div>
                 </div>`).join('')}
             </div>
           </div>` : ''}
           ${(analysis.feature_matrix||[]).length>0 ? `
-          <div class="fp-card fp-mb-16">
+          <div class="fp-card fp-mb-16" style="margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:12px">📊 Matrice fonctionnalités</div>
             <div style="overflow-x:auto">
               <table class="fp-table" style="width:100%">
@@ -54629,7 +54649,7 @@ function renderCompetitor() {
               ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
           </div>
-          <div class="fp-card fp-mb-16">
+          <div class="fp-card fp-mb-16" style="margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:8px">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px">
               ${[
@@ -54645,7 +54665,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${(analysis.sources||[]).length>0 ? `
-          <div class="fp-card" style="opacity:0.85">
+          <div class="fp-card fp-mb-16" style="opacity:0.85;margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:10px;font-size:11px">🔍 Sources & niveau de confiance</div>
             <div style="display:flex;flex-direction:column;gap:6px">
               ${(analysis.sources).slice(0,6).map(s=>{
@@ -54692,7 +54712,7 @@ function renderCompetitor() {
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
         </div>
       ` : ''}
-      <div class="fp-card fp-mb-20" style="padding:14px 16px">
+      <div class="fp-card fp-mb-20" style="padding:14px 16px;margin-top:16px">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span class="fp-badge fp-badge--ghost">${escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1))}</span>
           <span style="font-size:12px;color:var(--fp-text-muted)">${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}</span>
