@@ -57914,13 +57914,14 @@ function renderActivityFeed() {
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
     const _orgActs = activityTotal;
-    const _orgScore = STATE.overview ? (STATE.overview.seoScore||STATE.overview.avgScore||0) : 0;
+    const _orgScore = Number.isFinite(Number(STATE.overview?.seoScore ?? STATE.overview?.avgScore))
+      ? Number(STATE.overview.seoScore ?? STATE.overview.avgScore) : null;
     const _membersWithContribs = members.filter(m => m.contribs).length;
     return `
       ${isPro
         ? aiBlock((_membersWithContribs > 0
               ? _membersWithContribs + ' membre(s) avec contributions persistées.'
-              : fpT('Aucune contribution individuelle enregistrée.')) + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + _orgScore + '/100.',
+              : fpT('Aucune contribution individuelle enregistrée.')) + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + (_orgScore === null ? fpT('N/D') : _orgScore + '/100') + '.',
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
@@ -57928,8 +57929,8 @@ function renderActivityFeed() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Membres actifs', String(members.length), 'cette semaine', 'up')}
         ${statCard('Actions totales', String(activityTotal), 'cette organisation', activityTotal > 0 ? 'up' : 'neutral')}
-        ${statCard('Score productivité', displayStat(null, '82/100'), PREVIEW_MODE ? '+8 pts vs S-1' : 'Analyse en cours', 'neutral')}
-        ${statCard('Missions ouvertes', displayStat(openMissionCount > 0 ? String(openMissionCount) : null, '4'), openMissionCount > 0 ? 'missions actives' : PREVIEW_MODE ? 'dont 2 prioritaires' : 'Aucune mission', 'neutral')}
+        ${statCard('Score productivité', displayStat(null, null, 'N/D'), 'Analyse en cours', 'neutral')}
+        ${statCard('Missions ouvertes', displayStat(openMissionCount > 0 ? String(openMissionCount) : null, null, 'N/D'), openMissionCount > 0 ? 'missions actives' : 'Aucune mission', 'neutral')}
       </div>
 
       <!-- MEMBER CARDS -->
@@ -62080,7 +62081,9 @@ function renderTeamPerformance() {
       audits:   _contrib != null ? Number(_contrib.audits || 0) : '—',
       missions: _contrib != null ? Number(_contrib.missions || 0) : '—',
       reports:  _contrib != null ? Number(_contrib.reports || 0) : '—',
-      score: isOwner ? (STATE.userScore || (STATE.overview && (STATE.overview.seoScore||STATE.overview.avgScore)) || 0) : '—',
+      score: isOwner
+        ? (STATE.userScore ?? STATE.overview?.seoScore ?? STATE.overview?.avgScore ?? '—')
+        : '—',
       streak: streakVal,
     };
   });
@@ -62088,12 +62091,13 @@ function renderTeamPerformance() {
     ? Number(STATE.teamContributionTotals.audits) : null;
   const totalReports = Number.isFinite(Number(STATE.teamContributionTotals?.reports))
     ? Number(STATE.teamContributionTotals.reports) : null;
-  const avgScore = STATE.overview ? (STATE.overview.seoScore || STATE.overview.avgScore || 0) : 0;
+  const avgScore = Number.isFinite(Number(STATE.overview?.seoScore ?? STATE.overview?.avgScore))
+    ? Number(STATE.overview.seoScore ?? STATE.overview.avgScore) : null;
   const topName = metrics.length > 0 ? metrics[0].name.split(' ')[0] : null;
   const aiMsg = topName && totalAudits !== null && totalReports !== null
-    ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore}/100</strong>.`
+    ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore === null ? fpT('N/D') : avgScore + '/100'}</strong>.`
     : totalAudits !== null && totalReports !== null
-      ? `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore}/100.`
+      ? `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore === null ? fpT('N/D') : avgScore + '/100'}.`
       : 'Les métriques d’équipe sont indisponibles pour le moment.';
   return `
     <div class="fp-section-header">
@@ -62104,7 +62108,7 @@ function renderTeamPerformance() {
       ${statCard('Audits équipe', displayStat(totalAudits, null, 'N/D'), 'ce mois', totalAudits > 0 ? 'up' : 'neutral')}
       ${statCard('Membres actifs', String(teamData.length), 'dans l\'espace', 'neutral')}
       ${statCard('Rapports générés', displayStat(totalReports, null, 'N/D'), 'ce mois · tous membres', totalReports > 0 ? 'up' : 'neutral')}
-      ${statCard('Score SEO moyen', avgScore ? avgScore + '/100' : '—', 'basé sur les audits', avgScore >= 70 ? 'up' : avgScore > 0 ? 'down' : 'neutral')}
+      ${statCard('Score SEO moyen', avgScore === null ? fpT('N/D') : avgScore + '/100', 'basé sur les audits', avgScore >= 70 ? 'up' : avgScore > 0 ? 'down' : 'neutral')}
     </div>
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
