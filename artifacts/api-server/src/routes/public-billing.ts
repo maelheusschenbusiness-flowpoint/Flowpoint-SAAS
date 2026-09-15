@@ -853,6 +853,10 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   let _piReqOrgId = _hasValidPreRegisterToken
     ? undefined
     : await resolvePublicBillingOrgId(req);
+  // orgContext has already set req.orgId from any fp_token cookie in this browser.
+  // With a valid signup token that stale session must not come back later in this
+  // request (quote trial eligibility, Customer resolution, intent metadata).
+  if (_hasValidPreRegisterToken) (req as Request & { orgId?: string }).orgId = undefined;
 
   // Hard gate before quote calculation, Stripe client creation, or any
   // customer/payment-intent lookup. A pre-registration token is the narrowly
@@ -1151,6 +1155,28 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
             const _piNewC = await stripe.customers.create(_piCustomerData);
             preRegCustomerId = _piNewC.id;
             logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
+          }
+
+          // Observability — snapshot active subscriptions on the resolved customer so that
+          // a subsequent 409 in finalize-checkout can be correlated back to this moment.
+          // No logic change: fire-and-forget, errors are non-fatal.
+          if (preRegCustomerId) {
+            try {
+              const _piSubSnap = await stripe.subscriptions.list({ customer: preRegCustomerId, status: "all", limit: 10 });
+              const _piActiveSubs = _piSubSnap.data.filter(
+                (s: { status: string; cancel_at_period_end: boolean }) =>
+                  (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
+                  !s.cancel_at_period_end
+              );
+              logger.info({
+                customerId:      preRegCustomerId,
+                totalSubs:       _piSubSnap.data.length,
+                activeOrTrialing: _piActiveSubs.length,
+                activeSubIds:    _piActiveSubs.map((s: { id: string }) => s.id),
+              }, "[PublicBilling] payment-intent: resolved customer sub snapshot");
+            } catch (_piSubSnapErr) {
+              logger.warn({ err: String(_piSubSnapErr) }, "[PublicBilling] payment-intent: sub snapshot failed (non-fatal)");
+            }
           }
 
           // Persist inside the FOR UPDATE transaction — atomic write-back ensures any
@@ -2089,6 +2115,22 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
           !s.cancel_at_period_end
       );
+      // Observability — log subscription state before idempotency decision so that
+      // payment-intent customerId and finalize-checkout customerId can be correlated.
+      logger.info({
+        customerId,
+        planKey,
+        planPriceId,
+        totalSubsFetched:  _allSubs.data.length,
+        activeOrTrialing:  _activeOrTrialing.length,
+        activeSubSummary:  _activeOrTrialing.map((s: Stripe.Subscription) => ({
+          id:      s.id,
+          status:  s.status,
+          priceId: s.items.data[0]?.price.id ?? null,
+        })),
+        preRegisterToken: preRegisterToken ? preRegisterToken.slice(0, 8) + "…" : null,
+      }, "[PublicBilling] finalize: sub state before idempotency check");
+
       const _samePlanReusable = _activeOrTrialing.find(
         (s: Stripe.Subscription) => s.items.data.some((item: Stripe.SubscriptionItem) => item.price.id === planPriceId)
       );
