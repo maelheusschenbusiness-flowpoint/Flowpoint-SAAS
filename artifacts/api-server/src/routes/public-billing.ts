@@ -853,6 +853,10 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   let _piReqOrgId = _hasValidPreRegisterToken
     ? undefined
     : await resolvePublicBillingOrgId(req);
+  // orgContext has already set req.orgId from any fp_token cookie in this browser.
+  // With a valid signup token that stale session must not come back later in this
+  // request (quote trial eligibility, Customer resolution, intent metadata).
+  if (_hasValidPreRegisterToken) (req as Request & { orgId?: string }).orgId = undefined;
 
   // Hard gate before quote calculation, Stripe client creation, or any
   // customer/payment-intent lookup. A pre-registration token is the narrowly
