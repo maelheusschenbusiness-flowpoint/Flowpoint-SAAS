@@ -102,6 +102,7 @@
           if (res.data.success) {
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
           try { sessionStorage.removeItem('fp_pre_reg_token'); } catch(e) {}
+          try { localStorage.removeItem('fp_pre_reg_token'); } catch(e) {}
           document.getElementById('fp-spinner').style.display = 'none';
 
           /* Email delivery failed but account was created — offer manual login */

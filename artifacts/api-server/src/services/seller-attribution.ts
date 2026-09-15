@@ -34,7 +34,7 @@ export interface CommissionOpts {
   attributionMethod:      "ref_link" | "manual";
 }
 
-const COMMISSION_RATE_BPS = 3700; // 37 % non-récurrent — snapshotted per commission row
+const COMMISSION_RATE_BPS = 3500; // 35 % non-récurrent — snapshotted per commission row
 
 // ── Seller validation ─────────────────────────────────────────────────────────
 
@@ -93,10 +93,10 @@ export async function resolveSellerIdFromToken(token: string): Promise<string | 
  *
  * Non-recurring: only the first successful call creates a commission.
  */
-export async function recordCommission(opts: CommissionOpts): Promise<void> {
+export async function recordCommission(opts: CommissionOpts): Promise<boolean> {
   const commissionAmountCents = Math.round(opts.eligibleAmountCents * COMMISSION_RATE_BPS / 10000);
   try {
-    await pool.query(
+    const inserted = await pool.query(
       `INSERT INTO seller_commissions
          (seller_id, org_id, customer_email, stripe_customer_id,
           stripe_subscription_id, stripe_checkout_session_id,
@@ -127,6 +127,7 @@ export async function recordCommission(opts: CommissionOpts): Promise<void> {
       { orgId: opts.orgId, sellerId: opts.sellerId, commissionAmountCents },
       "[SellerAttrib] Commission recorded (or already existed — idempotent)"
     );
+    return (inserted.rowCount ?? 0) > 0;
   } catch (err) {
     // Fire-and-forget callers must not propagate — log and move on
     logger.error({ err, opts }, "[SellerAttrib] recordCommission failed (non-fatal)");

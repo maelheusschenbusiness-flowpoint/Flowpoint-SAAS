@@ -108,7 +108,8 @@ export default defineConfig({
       // P0 admin purge — SAVEPOINT fix + 7 regression tests
       "src/tests/admin-purge-all-clients.test.ts",
       "src/tests/billing-checkout-session-dedup.test.ts",
-      "src/tests/seller-attribution.test.ts",
+       "src/tests/seller-attribution.test.ts",
+       "src/tests/seller-financial-ledger.test.ts",
       // Seller admin: scoped SELLER_ADMIN_KEY, canonical fp_ref link, exact list totals
       "src/tests/seller-admin-routes.test.ts",
       "src/tests/seller-list-totals.db.test.ts",
@@ -128,6 +129,8 @@ export default defineConfig({
       // Checkout abandonné — gardes contre les mutations prématurées
       "src/tests/checkout-abandon-guards.test.ts",
       "src/tests/auth-login-verify-stripe-mode.test.ts",
+      // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
+      "src/tests/stripe-webhook-pending-activation.test.ts",
     ],
     environment: "node",
     globals:     false,

@@ -16,6 +16,7 @@ import { Router, type Request, type Response } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
+import { markCommissionPaid } from "../services/seller-financial-ledger.js";
 
 const router = Router();
 
@@ -97,20 +98,102 @@ export const sellerLink = (code: string): string =>
 export const SELLERS_LIST_SQL = `SELECT s.id, s.seller_code, s.name, s.email, s.status, s.created_at,
               COALESCE(o.org_count, 0)::int        AS org_count,
               COALESCE(c.commission_count, 0)::int AS commission_count,
-              COALESCE(c.paid_cents, 0)::int       AS paid_cents,
-              COALESCE(c.pending_cents, 0)::int    AS pending_cents
+              COALESCE(f.commissions_paid_cents, 0)::int AS paid_cents,
+               COALESCE(c.pending_cents, 0)::int    AS pending_cents,
+               COALESCE(f.gross_revenue_cents, 0)::int AS gross_revenue_cents,
+               COALESCE(f.refunded_revenue_cents, 0)::int AS refunded_revenue_cents,
+  COALESCE(f.net_revenue_cents, 0)::int AS net_revenue_cents,
+               COALESCE(f.commissions_generated_cents, 0)::int AS commissions_generated_cents,
+               COALESCE(f.commissions_reversed_cents, 0)::int AS commissions_reversed_cents,
+               COALESCE(ps.signup_count, 0)::int AS attributed_signups,
+               COALESCE(ps.signup_started_count, 0)::int AS signup_started,
+               COALESCE(ps.signup_abandoned_count, 0)::int AS signup_abandoned,
+               COALESCE(tr.trials_started, 0)::int AS trials_started,
+               COALESCE(tr.active_trials, 0)::int AS active_trials,
+               COALESCE(f.paid_clients, 0)::int AS paid_clients
          FROM sellers s
          LEFT JOIN (SELECT seller_id, COUNT(*) AS org_count
                       FROM organizations
                      WHERE seller_id IS NOT NULL
                      GROUP BY seller_id) o ON o.seller_id = s.id
-         LEFT JOIN (SELECT seller_id,
+         LEFT JOIN (
+                    SELECT sc.seller_id,
                            COUNT(*) AS commission_count,
-                           SUM(commission_amount_cents) FILTER (WHERE status = 'paid')    AS paid_cents,
-                           SUM(commission_amount_cents) FILTER (WHERE status = 'pending') AS pending_cents
-                      FROM seller_commissions
-                     GROUP BY seller_id) c ON c.seller_id = s.id
+                           SUM(GREATEST(sc.commission_amount_cents - COALESCE(r.reversed_cents, 0), 0))
+                             FILTER (WHERE sc.status = 'pending') AS pending_cents
+                      FROM seller_commissions sc
+                      LEFT JOIN (
+                                 SELECT commission_id, SUM(amount_cents) AS reversed_cents
+                                   FROM seller_financial_ledger
+                                  WHERE event_type IN ('commission_reversed','commission_clawback')
+                                  GROUP BY commission_id
+                                ) r ON r.commission_id = sc.id
+                     GROUP BY sc.seller_id
+                   ) c ON c.seller_id = s.id
+          LEFT JOIN (SELECT seller_id,
+                            SUM(amount_cents) FILTER (WHERE event_type = 'payment_received') AS gross_revenue_cents,
+                            SUM(amount_cents) FILTER (WHERE event_type = 'refund') AS refunded_revenue_cents,
+                            COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'payment_received'), 0)
+                              - COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'refund'), 0) AS net_revenue_cents,
+                            SUM(amount_cents) FILTER (WHERE event_type = 'commission_generated') AS commissions_generated_cents,
+                            SUM(amount_cents) FILTER (WHERE event_type = 'commission_paid') AS commissions_paid_cents,
+                            SUM(amount_cents) FILTER (WHERE event_type IN ('commission_reversed','commission_clawback')) AS commissions_reversed_cents,
+                            COUNT(DISTINCT org_id) FILTER (WHERE event_type = 'payment_received') AS paid_clients
+                       FROM seller_financial_ledger GROUP BY seller_id) f ON f.seller_id = s.id
+          LEFT JOIN (SELECT seller_id,
+                            COUNT(*) FILTER (WHERE consumed_at IS NOT NULL) AS signup_count,
+                            COUNT(*) AS signup_started_count,
+                            COUNT(*) FILTER (WHERE consumed_at IS NULL) AS signup_abandoned_count
+                       FROM pending_signups GROUP BY seller_id) ps
+            ON ps.seller_id = s.id
+          LEFT JOIN (SELECT o.seller_id,
+                            COUNT(*) FILTER (WHERE o.trial_started_at IS NOT NULL) AS trials_started,
+                            COUNT(*) FILTER (WHERE o.subscription_status = 'trialing'
+                                               AND (o.trial_ends_at IS NULL OR o.trial_ends_at > NOW())) AS active_trials
+                       FROM organizations o
+                      WHERE o.seller_id IS NOT NULL GROUP BY o.seller_id) tr ON tr.seller_id = s.id
         ORDER BY s.created_at DESC`;
+
+/**
+ * Seller report rows. Explicit column lists (never `*`): these are the only fields the
+ * scoped seller key can read. Stripe identifiers, payout note and trial end are
+ * already-persisted values, read as-is; nothing here computes or changes a commission.
+ */
+export const SELLER_REPORT_ORGS_SQL = `SELECT o.id, o.owner_email, o.plan, o.subscription_status, o.created_at, o.trial_ends_at
+       FROM organizations o WHERE o.seller_id = $1 ORDER BY o.created_at DESC`;
+export const SELLER_REPORT_COMMISSIONS_SQL = `SELECT sc.id, sc.org_id, sc.customer_email, sc.plan,
+              sc.eligible_amount_cents, sc.commission_rate_bps, sc.commission_amount_cents,
+              sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at,
+              sc.stripe_invoice_id, sc.stripe_subscription_id, sc.paid_by, sc.notes
+       FROM seller_commissions sc WHERE sc.seller_id = $1 ORDER BY sc.attributed_at DESC`;
+export const SELLER_REPORT_METRICS_SQL = `SELECT
+  COUNT(DISTINCT org_id) FILTER (WHERE event_type = 'payment_received')::int AS paid_clients,
+  COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'payment_received'),0)::int AS gross_revenue_cents,
+  COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'refund'),0)::int AS refunded_revenue_cents,
+  (COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'payment_received'),0)
+    - COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'refund'),0))::int AS net_revenue_cents,
+  COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'commission_generated'),0)::int AS commissions_generated_cents,
+  COALESCE(SUM(amount_cents) FILTER (WHERE event_type = 'commission_paid'),0)::int AS commissions_paid_cents,
+  COALESCE(SUM(amount_cents) FILTER (WHERE event_type IN ('commission_reversed','commission_clawback')),0)::int AS commissions_reversed_cents,
+  (SELECT COALESCE(SUM(GREATEST(sc.commission_amount_cents - COALESCE(r.reversed_cents, 0), 0)),0)::int
+     FROM seller_commissions sc
+     LEFT JOIN (
+                SELECT commission_id, SUM(amount_cents) AS reversed_cents
+                  FROM seller_financial_ledger
+                 WHERE event_type IN ('commission_reversed','commission_clawback')
+                 GROUP BY commission_id
+               ) r ON r.commission_id = sc.id
+    WHERE sc.seller_id = $1 AND sc.status = 'pending') AS commissions_pending_cents,
+  (SELECT COUNT(*) FILTER (WHERE consumed_at IS NOT NULL)::int FROM pending_signups WHERE seller_id = $1) AS attributed_signups,
+  (SELECT COUNT(*)::int FROM pending_signups WHERE seller_id = $1) AS signup_started,
+  (SELECT COUNT(*) FILTER (WHERE consumed_at IS NULL)::int FROM pending_signups WHERE seller_id = $1) AS signup_abandoned,
+  (SELECT COUNT(*)::int FROM organizations WHERE seller_id = $1) AS attributed_organizations,
+  (SELECT COUNT(*) FILTER (WHERE o.trial_started_at IS NOT NULL)::int FROM organizations o
+    WHERE o.seller_id = $1) AS trials_started,
+  (SELECT COUNT(*) FILTER (WHERE o.subscription_status = 'trialing'
+                              AND (o.trial_ends_at IS NULL OR o.trial_ends_at > NOW()))::int
+     FROM organizations o WHERE o.seller_id = $1) AS active_trials
+  FROM seller_financial_ledger WHERE seller_id = $1`;
 
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
 router.get("/admin/stats", async (req: Request, res: Response): Promise<void> => {
@@ -2728,24 +2811,61 @@ router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promis
   }
 });
 
+// ── DELETE /api/admin/sellers/:code — delete only a truly virgin seller ───────
+// Historical sellers are never physically removed: attribution and ledger rows
+// must remain queryable even after a seller is deactivated.
+router.delete("/admin/sellers/:code", async (req: Request, res: Response): Promise<void> => {
+  if (!requireSellerAdminKey(req, res)) return;
+  const code = String(req.params["code"] ?? "").trim().toUpperCase();
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const sellerR = await client.query(`SELECT id, seller_code FROM sellers WHERE seller_code = $1 LIMIT 1 FOR UPDATE`, [code]);
+      if (!sellerR.rows[0]) {
+        await client.query("ROLLBACK");
+        res.status(404).json({ ok: false, error: "Seller not found" });
+        return;
+      }
+      const sellerId = String(sellerR.rows[0].id);
+      const checks = await Promise.all([
+        client.query(`SELECT 1 FROM pending_signups WHERE seller_id = $1 LIMIT 1`, [sellerId]),
+        client.query(`SELECT 1 FROM organizations WHERE seller_id = $1 LIMIT 1`, [sellerId]),
+        client.query(`SELECT 1 FROM seller_commissions WHERE seller_id = $1 LIMIT 1`, [sellerId]),
+        client.query(`SELECT 1 FROM seller_financial_ledger WHERE seller_id = $1 LIMIT 1`, [sellerId]),
+      ]);
+      if (checks.some(c => (c.rowCount ?? c.rows.length) > 0)) {
+        await client.query("ROLLBACK");
+        res.status(409).json({
+          ok: false,
+          error: "Seller has attribution history or pending data; deactivate instead of deleting",
+          requires_deactivation: true,
+        });
+        return;
+      }
+      await client.query(`DELETE FROM sellers WHERE id = $1`, [sellerId]);
+      await client.query("COMMIT");
+      res.json({ ok: true, deleted: true, seller_code: code });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── POST /api/admin/seller-commissions/:id/mark-paid ─────────────────────────
 router.post("/admin/seller-commissions/:id/mark-paid", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
   const { id } = req.params as { id: string };
   const { paid_by, notes } = req.body as Record<string, string | undefined>;
   try {
-    const r = await pool.query(
-      `UPDATE seller_commissions
-          SET status  = 'paid',
-              paid_at = COALESCE(paid_at, NOW()),
-              paid_by = COALESCE($2, paid_by),
-              notes   = COALESCE($3, notes)
-        WHERE id = $1
-        RETURNING id, status, commission_amount_cents, eligible_amount_cents, paid_at, paid_by, notes`,
-      [id, paid_by ?? null, notes ?? null]
-    );
-    if (!r.rows[0]) { res.status(404).json({ ok: false, error: "Commission not found" }); return; }
-    res.json({ ok: true, commission: r.rows[0] });
+    const result = await markCommissionPaid({ commissionId: id, paidBy: paid_by ?? null, notes: notes ?? null });
+    if (!result.found) { res.status(404).json({ ok: false, error: "Commission not found" }); return; }
+    res.json({ ok: true, commission: result.commission });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }
@@ -2794,7 +2914,9 @@ router.post("/admin/seller-attributions", async (req: Request, res: Response): P
 
     // Update organizations.seller_id (FIRST_TOUCH — do not overwrite existing)
     const updR = await pool.query(
-      `UPDATE organizations SET seller_id = $1 WHERE id = $2 AND (seller_id IS NULL OR seller_id = '')
+     `UPDATE organizations
+         SET seller_id = $1, seller_attribution_method = 'manual'
+       WHERE id = $2 AND (seller_id IS NULL OR seller_id = '')
        RETURNING id, stripe_customer_id, subscription_status`,
       [seller.id, org_id]
     );
@@ -2852,19 +2974,22 @@ router.get("/admin/sellers/:code/report", async (req: Request, res: Response): P
     if (!sellerR.rows[0]) { res.status(404).json({ ok: false, error: "Seller not found" }); return; }
     const seller = sellerR.rows[0];
 
-    const orgs = await pool.query(
-      `SELECT o.id, o.owner_email, o.plan, o.subscription_status, o.created_at
-       FROM organizations o WHERE o.seller_id = $1 ORDER BY o.created_at DESC`, [seller.id]
+    const orgs = await pool.query(SELLER_REPORT_ORGS_SQL, [seller.id]);
+    const comms = await pool.query(SELLER_REPORT_COMMISSIONS_SQL, [seller.id]);
+    const metricsR = await pool.query(SELLER_REPORT_METRICS_SQL, [seller.id]);
+    const metrics = metricsR.rows[0] ?? {};
+    const historyR = await pool.query(
+      `SELECT id, org_id, event_type, source_key, amount_cents, currency, commission_id,
+              stripe_invoice_id, stripe_payment_intent_id, stripe_charge_id,
+              stripe_refund_id, stripe_subscription_id, metadata, occurred_at, created_at
+         FROM seller_financial_ledger WHERE seller_id = $1
+        ORDER BY occurred_at DESC, created_at DESC`, [seller.id],
     );
-
-    const comms = await pool.query(
-      `SELECT sc.id, sc.org_id, sc.customer_email, sc.plan,
-              sc.eligible_amount_cents, sc.commission_rate_bps, sc.commission_amount_cents,
-              sc.currency, sc.status, sc.attribution_method, sc.attributed_at, sc.earned_at, sc.paid_at
-       FROM seller_commissions sc WHERE sc.seller_id = $1 ORDER BY sc.attributed_at DESC`, [seller.id]
-    );
-
-    res.json({ ok: true, seller, organizations: orgs.rows, commissions: comms.rows });
+    const history = historyR.rows;
+    res.json({
+      ok: true, seller, organizations: orgs.rows, commissions: comms.rows,
+      metrics, history, financial_history: history,
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }

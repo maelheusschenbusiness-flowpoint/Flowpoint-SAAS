@@ -102,3 +102,20 @@ describe("FC-C5 — preRegisterToken flows into _fcPrt for activateNewSignup", (
     expect(src).toMatch(/_fcPrt\s*=\s*preRegisterToken\s*\|\|/);
   });
 });
+
+describe("FC-C6 — seller signup identity cannot conflict with an existing session", () => {
+  it("uses a valid pre-registration token before resolving a stale browser session", () => {
+    expect(src).toContain("const _hasValidPreRegisterToken = preRegisterToken");
+    expect(src).toContain("let _piReqOrgId = _hasValidPreRegisterToken");
+    expect(src).toContain("if (_fckToken && !_preRegisterTokenIsValid)");
+  });
+
+  it("does not activate a pending signup from an authenticated UUID session", () => {
+    expect(src).toContain(
+      'const _fcHasUuidSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(_authenticatedOrgId || "");',
+    );
+    expect(src).toContain(
+      'const _fcActToken = _fcHasUuidSession ? "" : (preRegisterToken || intentMeta["pre_register_token"] || "");',
+    );
+  });
+});

@@ -33,6 +33,15 @@
     } catch (e) { /* non-fatal */ }
   }
 
+  function readPendingCheckout() {
+    try {
+      var pending = JSON.parse(localStorage.getItem('flowpoint_pending_checkout') || 'null');
+      var valid = pending && pending.exp > Date.now() && pending.cart &&
+        pending.cart._v === 1 && pending.cart.addons && typeof pending.cart.addons === 'object';
+      return valid ? pending : null;
+    } catch (e) { return ''; }
+  }
+
   var token = getParam('token');
 
   if (!token) {
@@ -41,9 +50,23 @@
     return;
   }
 
+  var pendingCheckout = readPendingCheckout();
+  var pendingCheckoutNext = pendingCheckout
+    ? (pendingCheckout.next === '/checkout-payment.html' ? pendingCheckout.next : '/checkout.html')
+    : '';
   // Purge cache immediately — before calling the API — so the dashboard
   // cannot read stale localStorage from a previously logged-in user.
   purgeUserCache();
+  /* Restore only the short-lived, validated checkout intent after the account
+     boundary has been purged. It contains a plan/add-on selection, never user
+     credentials or billing data. */
+  if (pendingCheckout) {
+    try {
+      localStorage.setItem('fp_cart', JSON.stringify(pendingCheckout.cart));
+      if (pendingCheckout.sellerRef) localStorage.setItem('fp_seller_ref', pendingCheckout.sellerRef);
+      localStorage.removeItem('flowpoint_pending_checkout');
+    } catch (e) {}
+  }
 
   // POST — not GET — so that email-scanner prefetch (SafeLinks, Barracuda, etc.)
   // cannot consume the single-use token when they pre-crawl the login-verify.html URL.
@@ -82,10 +105,7 @@
       } catch(e) { /* non-fatal */ }
       show('fp-success');
       setTimeout(function () {
-        // The overview is the stable first screen for every magic-link session.
-        // Do not honour fp_next here: it is browser-local state and can belong
-        // to an account that has since been deleted and recreated.
-        var next = '/dashboard.html';
+        var next = pendingCheckoutNext || '/dashboard.html';
         // Cache-bust to prevent browser serving stale dashboard from disk cache
         var sep = next.indexOf('?') === -1 ? '?' : '&';
         window.location.replace(next + sep + '_cb=' + Date.now());
