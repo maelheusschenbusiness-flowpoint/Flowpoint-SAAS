@@ -268,7 +268,6 @@ const STATE = {
   teamChatPendingFiles: [], // pending attachment chips for team chat composer
   streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
   teamStreaks: {}, // per-member streaks keyed by user UUID (loaded in Phase 3)
-  teamContributionsLoaded: false, // true only when the canonical backend metric response succeeded
   teamContributionTotals: null,
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
@@ -2027,7 +2026,6 @@ async function loadData(options = {}) {
     if (_contribRes && _contribRes.status === 'fulfilled' && _contribRes.value && _contribRes.value.contributions) {
       STATE.teamContributions = _contribRes.value.contributions;
       STATE.teamContributionTotals = _contribRes.value.totals || null;
-      STATE.teamContributionsLoaded = true;
     }
     const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud  && _aud.length  > 0) ? _aud  : (PREVIEW_MODE ? MOCK_AUDITS   : []);
     const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon  && _mon.length  > 0) ? _mon  : (PREVIEW_MODE ? MOCK_MONITORS : []);
@@ -62135,7 +62133,6 @@ function renderTeamPerformance() {
   const metrics = teamData.map((t, i) => {
     const identity = fpTeamMetricIdentity(t);
     const isOwner = identity.isOwner;
-    const memberId = identity.userId || identity.id || identity.email;
     const memberStreak = STATE.teamStreaks && (
       STATE.teamStreaks[identity.userId] ||
       STATE.teamStreaks[identity.id] ||
@@ -62157,26 +62154,26 @@ function renderTeamPerformance() {
       streak: streakVal,
     };
   });
-   const totalAudits = Number.isFinite(Number(STATE.teamContributionTotals?.audits))
-     ? Number(STATE.teamContributionTotals.audits) : null;
-   const totalReports = Number.isFinite(Number(STATE.teamContributionTotals?.reports))
-     ? Number(STATE.teamContributionTotals.reports) : null;
+  const totalAudits = Number.isFinite(Number(STATE.teamContributionTotals?.audits))
+    ? Number(STATE.teamContributionTotals.audits) : null;
+  const totalReports = Number.isFinite(Number(STATE.teamContributionTotals?.reports))
+    ? Number(STATE.teamContributionTotals.reports) : null;
   const avgScore = STATE.overview ? (STATE.overview.seoScore || STATE.overview.avgScore || 0) : 0;
   const topName = metrics.length > 0 ? metrics[0].name.split(' ')[0] : null;
-   const aiMsg = topName && totalAudits !== null && totalReports !== null
-     ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore}/100</strong>.`
-     : totalAudits !== null && totalReports !== null
-       ? `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore}/100.`
-       : 'Les métriques d’équipe sont indisponibles pour le moment.';
+  const aiMsg = topName && totalAudits !== null && totalReports !== null
+    ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore}/100</strong>.`
+    : totalAudits !== null && totalReports !== null
+      ? `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore}/100.`
+      : 'Les métriques d’équipe sont indisponibles pour le moment.';
   return `
     <div class="fp-section-header">
       <div><h1>Performance Équipe</h1><div class="fp-section-sub">Activité et contributions individuelles · ${CUR_MONTH}</div></div>
     </div>
     ${aiBlock(aiMsg, [])}
     <div class="fp-stat-row fp-mb-20">
-       ${statCard('Audits équipe', displayStat(totalAudits, null, 'N/D'), 'ce mois', totalAudits > 0 ? 'up' : 'neutral')}
+      ${statCard('Audits équipe', displayStat(totalAudits, null, 'N/D'), 'ce mois', totalAudits > 0 ? 'up' : 'neutral')}
       ${statCard('Membres actifs', String(teamData.length), 'dans l\'espace', 'neutral')}
-       ${statCard('Rapports générés', displayStat(totalReports, null, 'N/D'), 'ce mois · tous membres', totalReports > 0 ? 'up' : 'neutral')}
+      ${statCard('Rapports générés', displayStat(totalReports, null, 'N/D'), 'ce mois · tous membres', totalReports > 0 ? 'up' : 'neutral')}
       ${statCard('Score SEO moyen', avgScore ? avgScore + '/100' : '—', 'basé sur les audits', avgScore >= 70 ? 'up' : avgScore > 0 ? 'down' : 'neutral')}
     </div>
     ${metrics.length === 0 ? `
