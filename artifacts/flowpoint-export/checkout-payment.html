@@ -231,6 +231,11 @@
     } catch (e) {}
   }
   async function requireAuthenticatedCheckout() {
+    // A signup token from this browser (seller link / signup) is the identity for
+    // this checkout, even if an older FlowPoint session is still open here. It is
+    // kept, never dropped because /api/me answers: the server checks it (unexpired,
+    // unconsumed) and only falls back to the session when it is not valid.
+    if (preRegisterToken()) return true;
     var resp = null;
     try {
       resp = await fetch('/api/me', {
@@ -238,17 +243,7 @@
         headers: Object.assign({ 'Cache-Control': 'no-cache' }, authHeaders())
       });
     } catch (e) {}
-    if (resp && resp.ok) {
-      // A logged-in account owns the checkout identity. Remove a stale
-      // signup token left by an earlier seller-link flow before creating the
-      // PaymentIntent/SetupIntent.
-      try {
-        sessionStorage.removeItem('fp_pre_reg_token');
-        localStorage.removeItem('fp_pre_reg_token');
-      } catch (e) {}
-      return true;
-    }
-    if (preRegisterToken()) return true;
+    if (resp && resp.ok) return true;
     rememberCheckoutIntent();
     window.location.replace('/signin.html?next=' + encodeURIComponent('/checkout.html'));
     return false;
