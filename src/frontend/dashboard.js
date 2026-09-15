@@ -18164,31 +18164,31 @@ const FP_ONBOARDING_STEPS = [
     id: 'interface',
     title: 'Prenez vos repères',
     desc:  'Visualisez la santé de votre portefeuille et accédez rapidement aux fonctions principales depuis un espace unique.',
-    videoUrl: '/onboarding/step1-interface.mp4'
+    videoUrl: '/onboarding/onboarding-video-1-flowpoint.mp4'
   },
   {
     id: 'audit-actions',
     title: 'Passez du diagnostic à l\'action',
     desc:  'Lancez un audit SEO, identifiez les problèmes prioritaires puis transformez les recommandations en missions suivies.',
-    videoUrl: '/onboarding/step2-audit-actions.mp4'
+    videoUrl: '/onboarding/onboarding-video-2-flowpoint.mp4'
   },
   {
     id: 'monitoring-alerts',
     title: 'Surveillez et soyez alerté',
     desc:  'Contrôlez la disponibilité et la latence de vos sites, puis centralisez les incidents et alertes critiques.',
-    videoUrl: '/onboarding/step3-monitoring-alerts.mp4'
+    videoUrl: '/onboarding/onboarding-video-3-flowpoint.mp4'
   },
   {
     id: 'local-competition',
     title: 'Pilotez votre visibilité locale',
     desc:  'Repérez vos opportunités Google Maps et comparez votre présence locale avec celle de vos concurrents.',
-    videoUrl: '/onboarding/step4-local-competition.mp4'
+    videoUrl: '/onboarding/onboarding-video-4-flowpoint.mp4'
   },
   {
     id: 'ai-reports',
     title: 'Accélérez avec le Copilot',
     desc:  'Interrogez l\'Assistant IA avec le contexte de votre workspace, puis générez des rapports prêts à partager.',
-    videoUrl: '/onboarding/step5-ai-reports.mp4'
+    videoUrl: '/onboarding/onboarding-video-5-flowpoint.mp4'
   }
 ];
 let _fpOnboardingStepIdx = 0;
@@ -50983,7 +50983,7 @@ function renderMissionsAI() {
                 '<div style="font-size:11px;color:var(--fp-text-muted);white-space:nowrap">' + escHtml(m.gain) + '</div>' +
                 (alreadyCreated
                   ? '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="navigate(\'missions\')">✓ Créée →</button>'
-                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=\'Création…\';b.disabled=true;apiAction(\'POST\',\'/api/missions\',{title:title,source:\'ai\',status:\'todo\',priority:\'high\',category:cat}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',\'Mission créée !\');}else{b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');}}).catch(function(){b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');});})(this)">+ Créer</button>'
+                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=\'Création…\';b.disabled=true;apiAction(\'POST\',\'/api/missions\',{title:title,source:\'ai\',status:\'todo\',priority:\'high\',category:cat}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);_fpDeleteApiCachePath(\'/api/missions\');b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',\'Mission créée !\');}else{b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');}}).catch(function(){b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');});})(this)">+ Créer</button>'
                 ) +
               '</div>' +
             '</div>';
