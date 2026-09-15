@@ -2505,6 +2505,15 @@ window.__fpPageLoadTs = Date.now();
         window.FP_DATA = window.FP_DATA || {};
         window.FP_DATA.mapsCompetitors = data.competitors;
 
+        // Refresh the side-panel competitor list without a full page render
+        // (a full render would destroy the map container).
+        if (typeof window.fpRefreshCompetitorList === 'function') {
+          try { window.fpRefreshCompetitorList(data.competitors); } catch (_) {}
+        }
+        if (typeof window.showToast === 'function' && data.competitors.length > 0) {
+          window.showToast('success', data.competitors.length + ' concurrent(s) détecté(s)');
+        }
+
         // Clear old markers
         inst.markers.forEach(function (m) { m.setMap(null); });
         inst.markers = [];
