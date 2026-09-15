@@ -97,7 +97,66 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     expect(capturedOrg.every(o => o === ORG_ID)).toBe(true);
   });
 
-  it("2. genuine zero (tables fulfilled, no rows) → 200 empty contributions", async () => {
+  it("2. attributes historical NULL missions to the explicit owner, not the first member", async () => {
+    const businessQueries: string[] = [];
+    queryHandler = async (sql) => {
+      if (/canonical_uid/.test(sql) && /FROM team_members tm/.test(sql)) {
+        return { rows: [
+          { canonical_uid: "member-1", email: "member@example.com", is_owner: false },
+          { canonical_uid: "owner-1", email: "owner@example.com", is_owner: true },
+        ] };
+      }
+      if (/FROM audits/.test(sql)) return { rows: [
+        { created_by: "owner-1", cnt: 1 },
+        { created_by: "member-1", cnt: 2 },
+      ] };
+      if (/FROM missions/.test(sql)) {
+        businessQueries.push(sql);
+        return { rows: [
+          { created_by: null, cnt: 3 },
+          { created_by: "owner-1", cnt: 2 },
+          { created_by: "member-1", cnt: 4 },
+        ] };
+      }
+      if (/FROM reports/.test(sql)) return { rows: [
+        { created_by: "owner-1", cnt: 1 },
+      ] };
+      return { rows: [] };
+    };
+
+    const res = await request(makeApp()).get("/api/team/contributions?period=month");
+    expect(res.status).toBe(200);
+    expect(res.body.period).toBe("month");
+    expect(res.body.contributions["owner-1"]).toEqual({
+      audits: 1, missions: 5, reports: 1, monitors: 0,
+    });
+    expect(res.body.contributions["member-1"]).toEqual({
+      audits: 2, missions: 4, reports: 0, monitors: 0,
+    });
+    expect(businessQueries[0]).toContain("created_at >= date_trunc('month', CURRENT_TIMESTAMP)");
+  });
+
+  it("3. returns canonical zero metrics for every known principal", async () => {
+    queryHandler = async (sql) => {
+      if (/canonical_uid/.test(sql) && /FROM team_members tm/.test(sql)) {
+        return { rows: [
+          { canonical_uid: "owner-1", email: "owner@example.com", is_owner: true },
+          { canonical_uid: "member-1", email: "member@example.com", is_owner: false },
+        ] };
+      }
+      return { rows: [] };
+    };
+
+    const res = await request(makeApp()).get("/api/team/contributions?period=month");
+    expect(res.status).toBe(200);
+    expect(res.body.contributions).toEqual({
+      "owner-1": { audits: 0, missions: 0, reports: 0, monitors: 0 },
+      "member-1": { audits: 0, missions: 0, reports: 0, monitors: 0 },
+    });
+    expect(res.body.totals).toEqual({ audits: 0, missions: 0, reports: 0, monitors: 0 });
+  });
+
+  it("4. genuine zero (tables fulfilled, no principals) → 200 empty contributions", async () => {
     queryHandler = async () => ({ rows: [] });
     const res = await request(makeApp()).get("/api/team/contributions");
     expect(res.status).toBe(200);
@@ -105,12 +164,26 @@ describe("GET /api/team/contributions — real per-member counts", () => {
     expect(res.body.contributions).toEqual({});
   });
 
-  it("3. backend failure → 503, not false-empty", async () => {
+  it("5. backend failure → 503, not false-empty", async () => {
     queryHandler = async () => { throw new Error("db down"); };
     const res = await request(makeApp()).get("/api/team/contributions");
     expect(res.status).toBe(503);
     expect(res.body.ok).toBe(false);
     expect(res.body.error).toBe("contributions_unavailable");
+  });
+});
+
+describe("team metric source contract", () => {
+  it("6. both dashboard builds use the canonical monthly contribution response", () => {
+    const sourceRoot = path.resolve(process.cwd(), "../../src/frontend/dashboard.js");
+    const exportRoot = path.resolve(process.cwd(), "../flowpoint-export/dashboard.js");
+    for (const file of [sourceRoot, exportRoot]) {
+      const source = fs.readFileSync(file, "utf8");
+      expect(source).toContain("function fpTeamMetricContribution");
+      expect(source).toContain("/api/team/contributions?period=month");
+      expect(source).toContain("const _contrib = fpTeamMetricContribution(t);");
+      expect(source).not.toMatch(/missions:\s*_contrib\s*!=\s*null\s*\?\s*_contrib\.missions\s*:\s*\(isOwner/);
+    }
   });
 });
 

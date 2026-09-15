@@ -1335,6 +1335,10 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     res.status(401).json({ ok: false, error: "Authentication required" });
     return;
   }
+  const period = req.query.period === "month" ? "month" : "all";
+  const periodFilter = period === "month"
+    ? " AND created_at >= date_trunc('month', CURRENT_TIMESTAMP)"
+    : "";
   try {
     // ── Temporary diagnostic: trace owner identity chain ──────────────────────
     // Helps debug why the org owner shows 0 contributions despite activity_log
@@ -1413,7 +1417,7 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
 
     // ── Step 1: build principal map ──────────────────────────────────────────
     const principalRes = await pool.query<{
-      canonical_uid: string; email: string;
+      canonical_uid: string; email: string; is_owner: boolean;
     }>(
       `SELECT
          COALESCE(
@@ -1421,17 +1425,19 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
            (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(tm.email) LIMIT 1),
            tm.user_id
          ) AS canonical_uid,
-         LOWER(tm.email) AS email
+         LOWER(tm.email) AS email,
+         false AS is_owner
        FROM team_members tm
        WHERE tm.org_id = $1
-       UNION
+        UNION ALL
        SELECT
          COALESCE(
            NULLIF(o.owner_user_id, ''),
            (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
            o.owner_email
          ) AS canonical_uid,
-         LOWER(o.owner_email) AS email
+          LOWER(o.owner_email) AS email,
+          true AS is_owner
        FROM organizations o WHERE o.id::text = $1`,
       [orgId]
     );
@@ -1463,13 +1469,18 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     const ensure = (uid: string) => {
       if (!byUser[uid]) byUser[uid] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
     };
+    // A valid empty result is still a real zero for every known principal.
+    // This keeps both team views on the same zero/N-D contract.
+    for (const p of principalRes.rows) {
+      if (p.canonical_uid && p.canonical_uid.trim()) ensure(p.canonical_uid);
+    }
 
     // ── Step 2a: audits.created_by ────────────────────────────────────────────
     try {
       const auditCounts = await pool.query<{ created_by: string; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM audits
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
@@ -1491,20 +1502,15 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       const missionCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM missions
-         WHERE org_id = $1
+         WHERE org_id = $1${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
-      // Resolve owner canonical uid for unattributed fallback
-      let _ownerCanonicalUid: string | null = null;
-      for (const p of principalRes.rows) {
-        // Owner row has no team_members entry — it comes from the organizations UNION half.
-        // Its canonical_uid is either the owner UUID or owner email.
-        if (p.canonical_uid && p.canonical_uid.trim()) {
-          _ownerCanonicalUid = p.canonical_uid;
-          break; // First resolved principal is the org owner (UNION order)
-        }
-      }
+      // Resolve the owner explicitly. UNION row order is not a business rule:
+      // taking the first principal could attribute historical missions to a
+      // random member when an organization had several members.
+      const _ownerCanonicalUid =
+        principalRes.rows.find(p => p.is_owner)?.canonical_uid ?? null;
       let _unattributedMissions = 0;
       for (const row of missionCounts.rows) {
         const cb = row.created_by;
@@ -1534,7 +1540,7 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
       const reportCounts = await pool.query<{ created_by: string; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM reports
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
@@ -1556,7 +1562,16 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
         "[team/contributions] real-table resolved");
     } catch (_) { /* non-fatal */ }
 
-    res.json({ ok: true, contributions: byUser });
+    const totals = Object.values(byUser).reduce(
+      (sum, value) => ({
+        audits: sum.audits + value.audits,
+        missions: sum.missions + value.missions,
+        reports: sum.reports + value.reports,
+        monitors: sum.monitors + value.monitors,
+      }),
+      { audits: 0, missions: 0, reports: 0, monitors: 0 },
+    );
+    res.json({ ok: true, period, contributions: byUser, totals });
   } catch (err) {
     logger.error({ err }, "[team/contributions] failed");
     res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
