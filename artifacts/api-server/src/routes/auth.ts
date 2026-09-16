@@ -94,7 +94,7 @@ async function resolveOrCreateLegacyOrg({
     subscriptionStatus?: string | null;
     orgName?: string | null;
   } | null;
-  authProvider?: "magic_link" | "google";
+  authProvider?: "magic_link" | "google" | "github" | "apple";
 }): Promise<{ orgId: string; userUuid: string }> {
 
   const client = await pool.connect();
@@ -1801,7 +1801,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   let sessionToken: string;
   try {
     sessionToken = await createSession({
-      userId:    sessionOrgId,
+      userId:    sessionUserUuid!,
       orgId:     sessionOrgId,
       email,
       role:      sessionRole,
@@ -2130,7 +2130,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // Direct OAuth login = org creator → owner role.
     const sessionToken = await createSession({
-      userId: googleIdentity.orgId, orgId: googleIdentity.orgId, userUuid: googleIdentity.userUuid,
+      userId: googleIdentity.userUuid, orgId: googleIdentity.orgId, userUuid: googleIdentity.userUuid,
       email: resolvedEmail, role: "owner",
        ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
@@ -2232,8 +2232,18 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // Direct OAuth login = org creator → owner role.
+    const githubIdentity = await resolveOrCreateLegacyOrg({
+      email: resolvedEmail,
+      userUuid: undefined,
+      orgSettings: await loadOrgSettings(resolvedEmail).catch(() => null),
+      authProvider: "github",
+    });
     const sessionToken = await createSession({
-      userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner",
+      userId: githubIdentity.userUuid,
+      orgId: githubIdentity.orgId,
+      userUuid: githubIdentity.userUuid,
+      email: resolvedEmail,
+      role: "owner",
        ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -2606,9 +2616,16 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
     }
 
     // ── Step 5: create session ──────────────────────────────────────────────────
+    const appleIdentity = await resolveOrCreateLegacyOrg({
+      email: resolvedEmail,
+      userUuid: undefined,
+      orgSettings: await loadOrgSettings(resolvedEmail).catch(() => null),
+      authProvider: "apple",
+    });
     const sessionToken = await createSession({
-      userId:    resolvedEmail,
-      orgId:     resolvedEmail,
+      userId:    appleIdentity.userUuid,
+      orgId:     appleIdentity.orgId,
+      userUuid:  appleIdentity.userUuid,
       email:     resolvedEmail,
       role:      "owner",
       ipAddress: req.ip ?? undefined,

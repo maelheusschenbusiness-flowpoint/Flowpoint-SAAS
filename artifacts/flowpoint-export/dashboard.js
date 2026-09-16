@@ -266,8 +266,8 @@ const STATE = {
   msgAttachment: null,
   msgAttachmentFile: null,
   teamChatPendingFiles: [], // pending attachment chips for team chat composer
-  streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
-  teamStreaks: {}, // per-member streaks keyed by user UUID (loaded in Phase 3)
+  streak: 0, // authoritative value is loaded from /api/me/streak
+  teamStreaks: {}, // per-member values loaded from /api/team/streaks
   teamContributionTotals: null,
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
@@ -2017,7 +2017,7 @@ async function loadData(options = {}) {
     if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
     if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
     if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/teams failed:', _teRes.reason?.message || _teRes.reason); }
-    // Per-member streaks from member_activity_days table
+    // Per-member streaks from the canonical user_activity_days table
     if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
       STATE.teamStreaks = {};
       (_streaksRes.value.streaks).forEach(function(s) { if (s.userId) STATE.teamStreaks[s.userId] = s; });
@@ -2179,7 +2179,6 @@ async function loadData(options = {}) {
 
   const _prefs = _prefsRes.status === 'fulfilled' ? _prefsRes.value : null;
   if (_prefs) {
-    if (typeof _prefs.streak === 'number') STATE.streak = _prefs.streak;
     if (_prefs.pinned && typeof _prefs.pinned === 'object') STATE.pinned = _prefs.pinned;
     var _serverHasItems = _clRes?.status === 'fulfilled' && Array.isArray(_clRes.value?.items) && _clRes.value.items.length > 0;
     var _serverHasExtra = _clRes?.status === 'fulfilled' && _clRes.value?.extra && Object.keys(_clRes.value.extra).length > 0;
@@ -2311,12 +2310,10 @@ async function loadData(options = {}) {
 
   // ── Fix 5: Real streak from /api/me/streak ───────────────────────────────────
   // Always fetch the authoritative streak from the backend — never compute client-side.
-  let _streakApiResolved = false;
   await apiFetch('/api/me/streak').then(function(r) {
     if (r && typeof r === 'object') {
       if (typeof r.current === 'number') STATE.streak = r.current;
       if (typeof r.best === 'number') STATE.streakBest = r.best;
-      _streakApiResolved = typeof r.current === 'number';
     }
   }).catch(function() {});
   // The sidebar is outside #fp-page and is not rebuilt by render().
@@ -2327,11 +2324,6 @@ async function loadData(options = {}) {
   await apiFetch('/api/progression').then(function(r) {
     if (r && typeof r === 'object') {
       STATE.progression = r;
-      // Sync counts from real API into derived STATE fields if not already set
-      if (!_streakApiResolved && typeof r.streak === 'object' && r.streak) {
-        if (typeof r.streak.current === 'number') STATE.streak = r.streak.current;
-        if (typeof r.streak.best === 'number') STATE.streakBest = r.streak.best;
-      }
     }
   }).catch(function() {});
   try { renderSidebarStatus(); } catch(_) {}
@@ -48004,7 +47996,6 @@ async function init() {
       STATE.settings         = JSON.parse(fpTenantRead('fp:settings',         _defSettings) || '{}');
       STATE.overviewRange    = fpTenantRead('fp:overview-range', '7d') || '7d';
       STATE.freeModules      = JSON.parse(fpTenantRead('fp:free-modules',     _defModules) || '{}');
-      STATE.streak           = parseInt(fpTenantRead('fp:streak',         '0') || '0', 10);
       STATE.activityLastSeen = parseInt(fpTenantRead('fp:activity-last-seen','0') || '0', 10);
       STATE.pushNotifEnabled = fpTenantRead('fp:push-notif', '') === '1';
       STATE.searchHistory    = JSON.parse(fpTenantRead('fp:search-hist',      '[]') || '[]');
@@ -57886,6 +57877,16 @@ function fpTeamMetricContribution(member) {
     || null;
 }
 
+function fpTeamMetricStreak(member) {
+  const streaks = STATE.teamStreaks;
+  if (!streaks || typeof streaks !== 'object') return null;
+  const { userId, id, email } = fpTeamMetricIdentity(member);
+  return (userId && streaks[userId])
+    || (id && streaks[id])
+    || (email && streaks[email])
+    || null;
+}
+
 // ─────────────────────────────────────────────────────────────────
 function renderActivityFeed() {
   const sub = STATE.subRoute;
@@ -57968,13 +57969,7 @@ function renderActivityFeed() {
         actions: totalActions,
         score: null, trend: '—',
         contribs: contrib ? { audits, missions, reports } : null,
-         streak: _isOwner
-          ? { current: Number.isFinite(Number(STATE.streak)) ? Number(STATE.streak) : 0 }
-          : ((STATE.teamStreaks && (
-          (userId && STATE.teamStreaks[userId]) ||
-          (id    && STATE.teamStreaks[id])     ||
-           (email && STATE.teamStreaks[email])
-        )) || null),
+        streak: fpTeamMetricStreak(t),
       };
     });
     // Score 0-100 calculé relativement au max du groupe
@@ -62134,15 +62129,10 @@ function renderTeamPerformance() {
   const metrics = teamData.map((t, i) => {
     const identity = fpTeamMetricIdentity(t);
     const isOwner = identity.isOwner;
-    const memberStreak = STATE.teamStreaks && (
-      STATE.teamStreaks[identity.userId] ||
-      STATE.teamStreaks[identity.id] ||
-      STATE.teamStreaks[identity.email]
-    );
-    const ownStreak = Number(STATE.streak);
-    const streakVal = isOwner
-      ? (Number.isFinite(ownStreak) && ownStreak >= 0 ? ownStreak : 0)
-      : (memberStreak ? memberStreak.current : '—');
+    const memberStreak = fpTeamMetricStreak(t);
+    const streakVal = memberStreak && typeof memberStreak.current === 'number'
+      ? memberStreak.current
+      : (isOwner && Number.isFinite(Number(STATE.streak)) ? Number(STATE.streak) : '—');
     const _contrib = fpTeamMetricContribution(t);
     return {
       name: t.name || t.email || 'Membre',

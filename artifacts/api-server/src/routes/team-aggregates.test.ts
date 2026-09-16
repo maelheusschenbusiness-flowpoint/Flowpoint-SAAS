@@ -573,6 +573,11 @@ describe("team metric source contract", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("GET /api/team/streaks — all members, error vs genuine zero", () => {
   beforeEach(() => vi.clearAllMocks());
+  const OK_UID = "00000000-0000-4000-8000-000000000001";
+  const ERR_UID = "00000000-0000-4000-8000-000000000002";
+  const ZERO_UID = "00000000-0000-4000-8000-000000000003";
+  const OWNER_UID = "00000000-0000-4000-8000-000000000010";
+  const MEMBER_UID = "00000000-0000-4000-8000-000000000011";
 
   it("4. member identity selection has NO LIMIT clause (static guard)", () => {
     const src = fs.readFileSync(path.resolve(process.cwd(), "src/routes/team.ts"), "utf8");
@@ -586,15 +591,15 @@ describe("GET /api/team/streaks — all members, error vs genuine zero", () => {
       if (/FROM user_prefs/.test(sql)) return { rows: [{ settings: { timezone: "UTC" } }] };
       if (/FROM organization_members/.test(sql)) {
         return { rows: [
-          { user_id: "u-ok",   email: "ok@example.com",  name: "Ok User",   role: "member" },
-          { user_id: "u-err",  email: "err@example.com", name: "Err User",  role: "member" },
-          { user_id: "u-zero", email: "z@example.com",   name: "Zero User", role: "member" },
+          { user_id: OK_UID,   email: "ok@example.com",  name: "Ok User",   role: "member" },
+          { user_id: ERR_UID,  email: "err@example.com", name: "Err User",  role: "member" },
+          { user_id: ZERO_UID, email: "z@example.com",   name: "Zero User", role: "member" },
         ] };
       }
-      if (/FROM member_activity_days/.test(sql)) {
+      if (/FROM user_activity_days/.test(sql)) {
         const uid = values?.[1];
-        if (uid === "u-err") throw new Error("activity read failed");
-        if (uid === "u-ok") {
+        if (uid === ERR_UID) throw new Error("activity read failed");
+        if (uid === OK_UID) {
           const today = new Date()
             .toLocaleString("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" })
             .slice(0, 10);
@@ -611,11 +616,11 @@ describe("GET /api/team/streaks — all members, error vs genuine zero", () => {
       (res.body.streaks as Array<Record<string, unknown>>).map(s => [s.userId, s])
     );
     expect(Object.keys(byUser)).toHaveLength(3);
-    expect(byUser["u-ok"].current).toBe(1);
-    expect(byUser["u-ok"].error).toBeUndefined();
-    expect(byUser["u-zero"].current).toBe(0);
-    expect(byUser["u-zero"].error).toBeUndefined();
-    expect(byUser["u-err"].error).toBe(true);
+     expect(byUser[OK_UID].current).toBe(1);
+     expect(byUser[OK_UID].error).toBeUndefined();
+     expect(byUser[ZERO_UID].current).toBe(0);
+     expect(byUser[ZERO_UID].error).toBeUndefined();
+     expect(byUser[ERR_UID].error).toBe(true);
   });
 
   it("6. owner uses user_activity_days, matching /api/me/streak", async () => {
@@ -624,12 +629,12 @@ describe("GET /api/team/streaks — all members, error vs genuine zero", () => {
       if (/FROM user_prefs/.test(sql)) return { rows: [{ settings: { timezone: "UTC" } }] };
       if (/FROM organization_members/.test(sql)) {
         return { rows: [
-          { user_id: "owner-uuid",  email: "owner@example.com",  name: "Owner",  role: "member" },
-          { user_id: "member-uuid", email: "member@example.com", name: "Member", role: "member" },
+          { user_id: OWNER_UID,  email: "owner@example.com",  name: "Owner",  role: "member" },
+          { user_id: MEMBER_UID, email: "member@example.com", name: "Member", role: "member" },
         ] };
       }
       if (/FROM organizations o/.test(sql)) {
-        return { rows: [{ user_id: "owner-uuid", email: "owner@example.com", name: "Owner" }] };
+        return { rows: [{ user_id: OWNER_UID, email: "owner@example.com", name: "Owner" }] };
       }
       if (/activity_days/.test(sql)) {
         activityQueries.push({ sql, values });
@@ -640,8 +645,8 @@ describe("GET /api/team/streaks — all members, error vs genuine zero", () => {
 
     const res = await request(makeApp()).get("/api/team/streaks");
     expect(res.status).toBe(200);
-    expect(res.body.streaks.find((s: Row) => s.userId === "owner-uuid")?.role).toBe("owner");
-    expect(activityQueries.find(q => q.values?.[1] === "owner-uuid")?.sql).toContain("FROM user_activity_days");
-    expect(activityQueries.find(q => q.values?.[1] === "member-uuid")?.sql).toContain("FROM member_activity_days");
+    expect(res.body.streaks.find((s: Row) => s.userId === OWNER_UID)?.role).toBe("owner");
+    expect(activityQueries.find(q => q.values?.[1] === OWNER_UID)?.sql).toContain("FROM user_activity_days");
+    expect(activityQueries.find(q => q.values?.[1] === MEMBER_UID)?.sql).toContain("FROM user_activity_days");
   });
 });
