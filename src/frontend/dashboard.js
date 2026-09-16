@@ -611,6 +611,46 @@ function _fpSessionFetchOptions(options = {}) {
   };
 }
 
+function _fpClearClientAuthState() {
+  [
+    'token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user',
+    'fp:last-route', 'fp:last-sub', 'fp:last-org-id', 'fp:last-account-id',
+    'fp_had_session',
+  ].forEach(function(k) {
+    try { localStorage.removeItem(k); } catch(_) {}
+  });
+  try {
+    sessionStorage.removeItem('fp_session_token');
+    sessionStorage.removeItem('fp_tab_uid');
+    sessionStorage.removeItem('fp-state-cache');
+  } catch(_) {}
+  try {
+    if (typeof window.__fpCancelSessionRestore === 'function') window.__fpCancelSessionRestore();
+  } catch(_) {}
+  try { _fpResetDashboardCaches(); } catch(_) {}
+}
+
+async function _fpHandleLogout(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (window.__fpLogoutInFlight) return;
+  window.__fpLogoutInFlight = true;
+  try {
+    showToast('info', fpT('Déconnexion…'));
+    // Do not use apiFetch here: a 401 on logout must never trigger session
+    // recovery and restore the dashboard. The server clears the HttpOnly cookie.
+    await fetch('/api/auth/logout', _fpSessionFetchOptions({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch(_) {
+    // Local logout must still complete if the server is unreachable.
+  } finally {
+    _fpClearClientAuthState();
+    window.location.replace('/login.html');
+  }
+}
+
 // ── Session-reset debounce guard ──────────────────────────────────────────────
 // A single transient 401 from a background poll (audit, activity, GA4 live)
 // must NOT immediately destroy the session.  We count background 401s and only
@@ -18449,23 +18489,6 @@ function bindGlobalEvents() {
     window.__fpSidebarBound = true;
     $('#fp-sidebar-collapse')?.addEventListener('click', toggleSidebar);
   }
-
-  // Logout — révocation session côté serveur avant redirection
-  $('#fp-logout-btn')?.addEventListener('click', async () => {
-    try { if (typeof window.__fpCancelSessionRestore === 'function') window.__fpCancelSessionRestore(); } catch(_) {}
-    try { _fpResetDashboardCaches(); } catch(_) {}
-    try {
-      localStorage.removeItem('fp:last-org-id');
-      localStorage.removeItem('fp:last-account-id');
-      history.replaceState({}, '', window.location.pathname);
-    } catch(_) {}
-    // Clear last-route so the next session (or a re-registration) always starts
-    // at the overview, not at whatever page this account was last visiting.
-    // Route keys are tenant-namespaced — next login reads the correct org's last route.
-    showToast('info', fpT('Déconnexion…'));
-    try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
-    setTimeout(() => { window.location.replace('/login.html'); }, 1200);
-  });
 
   // Messages button
   $('#fp-msg-btn')?.addEventListener('click', e => {
@@ -48547,6 +48570,7 @@ async function init() {
       await fetch('/api/auth/logout', _fpSessionFetchOptions({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
       }));
     } catch (_) { /* non-fatal — still clear local state */ }
     ['token', 'fp_token', 'fp-token', 'fp-auth', 'fp-session', 'fp-user', 'fp_tab_uid',
@@ -67058,6 +67082,14 @@ document.addEventListener('click', function _navDelegation(e) {
     if (ov) ov.classList.remove('show');
     if (hb) { hb.classList.remove('open'); hb.setAttribute('aria-expanded', 'false'); }
   }
+});
+
+// Logout must be wired at document scope. bindGlobalEvents() runs after async
+// bootstrap and can be skipped when an earlier load fails or is interrupted.
+document.addEventListener('click', function _logoutDelegation(e) {
+  var logoutButton = e.target && e.target.closest && e.target.closest('#fp-logout-btn');
+  if (!logoutButton) return;
+  _fpHandleLogout(e);
 });
 
 // ── Wire analyze button after render (delegated — avoids function redeclaration hoisting conflict) ──
