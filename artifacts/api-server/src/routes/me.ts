@@ -14,6 +14,11 @@ import {
   BILLING_DATA_UNAVAILABLE_CODE,
 } from "./me-entitlement.js";
 import { isUUIDFormat } from "../lib/validate-org-id.js";
+import {
+  computeUserStreak,
+  getActivityTimezone,
+  recordActivityDay,
+} from "../services/activity-streak.js";
 
 const router = Router();
 
@@ -97,7 +102,11 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 
   // Record today's activity for streak reliability — every dashboard load counts,
   // regardless of whether /api/me/streak or /api/me/prefs is reached later.
-  recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
+  recordActivityDay(
+    orgDb(req),
+    orgId,
+    req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined,
+  ).catch(() => {});
 
   // Canonical timezone + language from user_prefs.settings (written by PATCH /api/me/settings).
   // Queried unconditionally so they appear even when org_settings row is missing
@@ -570,149 +579,18 @@ router.put("/me/addons", ownerOnly, async (req: Request, res: Response): Promise
   res.json({ ok: true, addons: currentAddons, limits });
 });
 
-// ── Streak helpers ─────────────────────────────────────────────────────────────
-
-type DbFn = (sql: string, vals?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
-
-/**
- * Record one row per org per day in user_activity_days (cheap upsert, idempotent).
- * Timezone: from user_prefs.settings.timezone, fallback Europe/Brussels.
- * Falls back to a direct pool.query (superuser — bypasses RLS) when the
- * RLS-scoped orgDb insert is blocked or fails, so streaks are never silently lost.
- */
-async function recordActivityDay(db: DbFn, orgId: string, userId?: string): Promise<void> {
-  let tz = "Europe/Brussels";
-  try {
-    const tzRow = await db(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
-    if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
-  } catch { /* non-fatal — fall through with default tz */ }
-
-  // Use the real userId when available; fall back to org_id so org-level streak always records.
-  const activityUserId = userId && !userId.startsWith("apikey:") ? userId : orgId;
-
-  // Primary path: RLS-scoped insert (org-level streak)
-  let inserted = false;
-  try {
-    await db(
-      `INSERT INTO user_activity_days (org_id, user_id, day)
-       VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
-       ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-      [orgId, activityUserId, tz]
-    );
-    inserted = true;
-  } catch { /* fall through to pool fallback */ }
-
-  // Fallback: direct pool.query bypasses RLS
-  if (!inserted) {
-    try {
-      await pool.query(
-        `INSERT INTO user_activity_days (org_id, user_id, day)
-         VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
-         ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-        [orgId, activityUserId, tz]
-      );
-    } catch { /* non-fatal */ }
-  }
-
-  // Per-member streak tracking — record with actual user UUID when available
-  const effectiveUserId = userId && !userId.startsWith("apikey:") ? userId : orgId;
-  if (effectiveUserId !== orgId) {
-    try {
-      await pool.query(
-        `INSERT INTO member_activity_days (org_id, user_id, day)
-         VALUES ($1, $2, (NOW() AT TIME ZONE $3)::date)
-         ON CONFLICT (org_id, user_id, day) DO NOTHING`,
-        [orgId, effectiveUserId, tz]
-      );
-    } catch { /* non-fatal — table created on first boot */ }
-  }
-}
-
-/**
- * Compute {current, best} streak from user_activity_days.
- * Today counts if present; if today absent, start from yesterday
- * so the streak never decreases during the same calendar day.
- */
-async function computeStreakFromTable(db: DbFn, orgId: string, tz: string, userId?: string): Promise<{ current: number; best: number; rowCount: number }> {
-  // Primary path via orgDb; if it returns empty (RLS/withOrgDb poison on Supabase), fall back to pool.
-  // userId filter is mandatory: streak is personal, never org-wide.
-  const userFilter = userId ? "AND user_id=$3" : "";
-  const userParams = userId ? [orgId, tz, userId] : [orgId, tz];
-  let actRes = await db(
-    `SELECT day::text AS d FROM user_activity_days
-     WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
-     ORDER BY d DESC`,
-    userParams
-  ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
-  if (actRes.rows.length === 0) {
-    // Pool.query bypasses RLS entirely — use it as fallback so Supabase pooled-connection
-    // SET LOCAL ROLE failures never silently return [] and reset the streak to 0.
-    try {
-      const poolRes = await pool.query(
-        `SELECT day::text AS d FROM user_activity_days
-         WHERE org_id=$1 ${userFilter} AND day >= (NOW() AT TIME ZONE $2)::date - INTERVAL '365 days'
-         ORDER BY d DESC`,
-        userParams
-      );
-      actRes = poolRes as { rows: Record<string, unknown>[] };
-    } catch { /* non-fatal — table may not exist yet */ }
-  }
-  // rowCount=0 means the table is accessible but empty for this org —
-  // callers must NOT overwrite a previously-stored positive streak with 0 in this case.
-  if (actRes.rows.length === 0) return { current: 0, best: 0, rowCount: 0 };
-
-  const activeDays = new Set(actRes.rows.map((row: Record<string, unknown>) => String(row["d"]).slice(0, 10)));
-  // today in the org's timezone
-  const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
-  const startOffset = activeDays.has(todayStr) ? 0 : 1;
-
-  let current = 0;
-  for (let d = startOffset; d < 365; d++) {
-    const dt = new Date(Date.now() - d * 86_400_000);
-    const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
-    if (activeDays.has(dayStr)) { current++; } else { break; }
-  }
-
-  const sortedDays = Array.from(activeDays).sort();
-  let best = 0;
-  let run = 0;
-  for (let i = 0; i < sortedDays.length; i++) {
-    if (i === 0) { run = 1; }
-    else {
-      const prev = new Date(sortedDays[i - 1]!);
-      const curr = new Date(sortedDays[i]!);
-      const diff = Math.round((curr.getTime() - prev.getTime()) / 86_400_000);
-      run = diff === 1 ? run + 1 : 1;
-    }
-    if (run > best) best = run;
-  }
-  if (current > best) best = current;
-  return { current, best, rowCount: actRes.rows.length };
-}
-
 // ── GET /api/me/streak ─────────────────────────────────────────────────────────
 // Returns { current, best } from real user_activity_days rows.
 router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
-    // [FIX] Pass real userId so member_activity_days is populated for team-streak display.
-    await recordActivityDay(orgDb(req), orgId, req.orgContext?.userId);
-    let tz = "Europe/Brussels";
-    let storedStreak = 0;
-    try {
-      const tzRow = await orgDb(req)(`SELECT settings, streak FROM user_prefs WHERE org_id=$1`, [orgId]);
-      const s = tzRow.rows[0]?.["settings"] as Record<string, unknown> | null;
-      if (s && typeof s["timezone"] === "string" && s["timezone"]) tz = s["timezone"];
-      storedStreak = typeof tzRow.rows[0]?.["streak"] === "number" ? (tzRow.rows[0]["streak"] as number) : 0;
-    } catch { /* non-fatal */ }
-    const userId = req.orgContext?.userId ?? req.userId ?? undefined;
-    const streak = await computeStreakFromTable(orgDb(req), orgId, tz, userId);
-    // Never return 0 if the activity table is empty for this org —
-    // that means the row insertion hasn't happened yet (RLS race), not a genuine gap.
-    const safeStreak = (streak.rowCount === 0 && storedStreak > 0) ? storedStreak : streak.current;
-    res.json({ current: safeStreak, best: Math.max(streak.best, safeStreak) });
+    const userId = req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined;
+    const db = orgDb(req);
+    await recordActivityDay(db, orgId, userId);
+    const timezone = await getActivityTimezone(db, orgId);
+    const streak = await computeUserStreak(db, orgId, userId, timezone);
+    res.json({ current: streak.current, best: streak.best });
   } catch {
     res.json({ current: 0, best: 0 });
   }
@@ -723,81 +601,15 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
-    // Record today's activity (cheap upsert, non-fatal)
-    recordActivityDay(orgDb(req), orgId, req.orgContext?.userId ?? undefined).catch(() => {});
+    const db = orgDb(req);
+    const userId = req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined;
+    await recordActivityDay(db, orgId, userId);
 
-    const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const r = await db(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };
-
-    // Determine timezone
-    let tz = "Europe/Brussels";
-    const settingsObj = row["settings"] as Record<string, unknown> | null;
-    if (settingsObj && typeof settingsObj["timezone"] === "string" && settingsObj["timezone"]) {
-      tz = settingsObj["timezone"];
-    }
-
-    // Compute streak from user_activity_days (authoritative).
-    // Fall back to legacy activity_logs, then to stored value.
-    // [FIX] Pass canonical userId — streak is personal, not org-wide.
-    // Without userId, computeStreakFromTable returns the org aggregate (all members combined).
-    const userId = typeof req.orgContext?.userId === "string"
-      ? req.orgContext.userId
-      : undefined;
-    let finalStreak: number;
-    let querySucceeded = false;
-    let computedStreak = 0;
-    try {
-      const { current } = await computeStreakFromTable(orgDb(req), orgId, tz, userId);
-      querySucceeded = true;
-      computedStreak = current;
-      finalStreak = current;
-    } catch {
-      // user_activity_days not yet available — fall back to activity_logs
-      try {
-        const actRes = await orgDb(req)(
-          `SELECT DISTINCT DATE(created_at AT TIME ZONE $2) AS d
-           FROM activity_logs
-           WHERE org_id = $1
-             AND created_at >= NOW() - INTERVAL '365 days'
-           ORDER BY d DESC`,
-          [orgId, tz]
-        );
-        querySucceeded = true;
-        if (actRes.rows.length > 0) {
-          const activeDays = new Set(actRes.rows.map((r2: Record<string, unknown>) => String(r2["d"]).slice(0, 10)));
-          const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
-          const startOffset = activeDays.has(todayStr) ? 0 : 1;
-          let s = 0;
-          for (let d = startOffset; d < 365; d++) {
-            const dt = new Date(Date.now() - d * 86_400_000);
-            const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
-            if (activeDays.has(dayStr)) { s++; } else { break; }
-          }
-          computedStreak = s;
-        }
-        finalStreak = computedStreak;
-      } catch {
-        finalStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
-      }
-    }
-
-    const storedStreak = typeof row["streak"] === "number" ? (row["streak"] as number) : 0;
-    // Never write 0 to user_prefs when the activity table returned no rows for this org —
-    // that means the INSERT hasn't landed yet (RLS race / first boot), not a genuine gap.
-    const tableWasEmpty = querySucceeded && computedStreak === 0 && storedStreak > 0;
-    if (tableWasEmpty) {
-      // Keep stored streak; also upsert it to refresh updated_at so it stays authoritative.
-      finalStreak = storedStreak;
-    } else if (querySucceeded && computedStreak !== storedStreak) {
-      orgDb(req)(
-        `INSERT INTO user_prefs (org_id, streak, updated_at)
-         VALUES ($1, $2, now())
-         ON CONFLICT (org_id) DO UPDATE SET streak = $2, updated_at = now()`,
-        [orgId, finalStreak]
-      ).catch(() => {});
-    }
-
-    res.json({ ...row, streak: finalStreak });
+    const timezone = await getActivityTimezone(db, orgId);
+    const streak = await computeUserStreak(db, orgId, userId, timezone);
+    res.json({ ...row, streak: streak.current });
   } catch {
     res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
   }

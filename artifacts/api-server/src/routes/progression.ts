@@ -6,6 +6,7 @@
 import { Router, type Request, type Response } from "express";
 import { requireOrgId } from "../lib/require-org-id.js";
 import { logger } from "../lib/logger.js";
+import { computeUserStreak } from "../services/activity-streak.js";
 
 const router = Router();
 
@@ -18,70 +19,6 @@ const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 /** Safe integer count from a DB row */
 function rowCount(rows: Record<string, unknown>[], col = "c"): number {
   return Number(rows[0]?.[col] ?? 0) || 0;
-}
-
-/** Compute streak {current,best} from user_activity_days */
-async function computeStreak(
-  db: (sql: string, vals?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>,
-  orgId: string
-): Promise<{ current: number; best: number }> {
-  try {
-    const actRes = await db(
-      `SELECT day::text AS d FROM user_activity_days
-       WHERE org_id=$1 AND day >= NOW()::date - INTERVAL '365 days'
-       ORDER BY d DESC`,
-      [orgId]
-    );
-    if (actRes.rows.length === 0) return { current: 0, best: 0 };
-
-    const activeDays = new Set(actRes.rows.map((r: Record<string, unknown>) => String(r["d"]).slice(0, 10)));
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const startOffset = activeDays.has(todayStr) ? 0 : 1;
-
-    let current = 0;
-    for (let d = startOffset; d < 365; d++) {
-      const dayStr = new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
-      if (activeDays.has(dayStr)) { current++; } else { break; }
-    }
-
-    const sortedDays = Array.from(activeDays).sort();
-    let best = 0;
-    let run = 0;
-    for (let i = 0; i < sortedDays.length; i++) {
-      if (i === 0) { run = 1; }
-      else {
-        const prev = new Date(sortedDays[i - 1]!);
-        const curr = new Date(sortedDays[i]!);
-        const diff = Math.round((curr.getTime() - prev.getTime()) / 86_400_000);
-        run = diff === 1 ? run + 1 : 1;
-      }
-      if (run > best) best = run;
-    }
-    if (current > best) best = current;
-    return { current, best };
-  } catch {
-    // Fallback to activity_logs if user_activity_days not yet available
-    try {
-      const actRes = await db(
-        `SELECT DISTINCT DATE(created_at AT TIME ZONE 'Europe/Brussels') AS d
-         FROM activity_logs WHERE org_id=$1 AND created_at >= NOW() - INTERVAL '365 days'
-         ORDER BY d DESC`,
-        [orgId]
-      );
-      if (actRes.rows.length === 0) return { current: 0, best: 0 };
-      const activeDays = new Set(actRes.rows.map((r: Record<string, unknown>) => String(r["d"]).slice(0, 10)));
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const startOffset = activeDays.has(todayStr) ? 0 : 1;
-      let current = 0;
-      for (let d = startOffset; d < 365; d++) {
-        const dayStr = new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
-        if (activeDays.has(dayStr)) { current++; } else { break; }
-      }
-      return { current, best: current };
-    } catch {
-      return { current: 0, best: 0 };
-    }
-  }
 }
 
 router.get("/progression", async (req: Request, res: Response): Promise<void> => {
@@ -109,7 +46,11 @@ router.get("/progression", async (req: Request, res: Response): Promise<void> =>
       db(`SELECT COUNT(*)::int AS c FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] })),
       db(`SELECT COUNT(*)::int AS c FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]).catch(() => ({ rows: [] })),
       db(`SELECT COUNT(*)::int AS c FROM competitors WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] })),
-      computeStreak(db, orgId),
+      computeUserStreak(
+        db,
+        orgId,
+        req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined,
+      ),
     ]);
 
     const auditsCount      = rowCount(auditsRes.rows);
