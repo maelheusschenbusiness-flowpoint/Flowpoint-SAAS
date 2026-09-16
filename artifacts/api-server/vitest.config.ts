@@ -123,6 +123,8 @@ export default defineConfig({
        "src/tests/dashboard-plan-notification.test.ts",
       // finalize-checkout Path C: PI/SI metadata pre_register_token recovery
       "src/tests/finalize-checkout-path-c.test.ts",
+      // P0 2026-09-15: a valid signup token wins over a stale browser session
+      "src/tests/signup-token-over-stale-session.test.ts",
       "src/tests/onboarding-frontend.test.ts",
       // Smart billing upgrade routing: server-side reactivation vs Checkout
       "src/tests/billing-upgrade-reactivation.test.ts",

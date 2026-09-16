@@ -1335,6 +1335,10 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     res.status(401).json({ ok: false, error: "Authentication required" });
     return;
   }
+  const period = req.query.period === "month" ? "month" : "all";
+  const periodFilter = period === "month"
+    ? " AND created_at >= date_trunc('month', CURRENT_TIMESTAMP)"
+    : "";
   try {
     // ── Temporary diagnostic: trace owner identity chain ──────────────────────
     // Helps debug why the org owner shows 0 contributions despite activity_log
@@ -1413,7 +1417,7 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
 
     // ── Step 1: build principal map ──────────────────────────────────────────
     const principalRes = await pool.query<{
-      canonical_uid: string; email: string;
+      canonical_uid: string; email: string; is_owner: boolean;
     }>(
       `SELECT
          COALESCE(
@@ -1421,17 +1425,19 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
            (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(tm.email) LIMIT 1),
            tm.user_id
          ) AS canonical_uid,
-         LOWER(tm.email) AS email
+         LOWER(tm.email) AS email,
+         false AS is_owner
        FROM team_members tm
        WHERE tm.org_id = $1
-       UNION
+        UNION ALL
        SELECT
          COALESCE(
            NULLIF(o.owner_user_id, ''),
            (SELECT u.id::text FROM users u WHERE LOWER(u.email) = LOWER(o.owner_email) LIMIT 1),
            o.owner_email
          ) AS canonical_uid,
-         LOWER(o.owner_email) AS email
+          LOWER(o.owner_email) AS email,
+          true AS is_owner
        FROM organizations o WHERE o.id::text = $1`,
       [orgId]
     );
@@ -1463,55 +1469,126 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
     const ensure = (uid: string) => {
       if (!byUser[uid]) byUser[uid] = { audits: 0, missions: 0, reports: 0, monitors: 0 };
     };
+    // A valid empty result is still a real zero for every known principal.
+    // This keeps both team views on the same zero/N-D contract.
+    for (const p of principalRes.rows) {
+      if (p.canonical_uid && p.canonical_uid.trim()) ensure(p.canonical_uid);
+    }
 
     // ── Step 2a: audits.created_by ────────────────────────────────────────────
+    // Mirror the missions attribution rule: NULL / '' / 'system' / unresolvable
+    // created_by values are attributed to the explicit org owner rather than
+    // silently dropped.  This is the root cause of audits showing 0 in Performance
+    // even when real audit rows exist in the current month.
+    // Use += (not Math.max) so that multiple created_by groups belonging to the
+    // same owner (one UUID row + one email row) are summed, not capped.
     try {
-      const auditCounts = await pool.query<{ created_by: string; cnt: number }>(
+      const auditCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM audits
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         WHERE org_id = $1${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
+      const _ownerUidForAudits =
+        principalRes.rows.find(p => p.is_owner)?.canonical_uid ?? null;
+      let _unattributedAudits = 0;
       for (const row of auditCounts.rows) {
-        const uid = resolve(row.created_by);
-        if (!uid) continue;
+        const cb = row.created_by;
+        if (!cb || cb === "system" || cb === "") {
+          _unattributedAudits += Number(row.cnt ?? 0);
+          continue;
+        }
+        const uid = resolve(cb);
+        if (!uid) {
+          // created_by doesn't resolve to any known member — attribute to owner
+          _unattributedAudits += Number(row.cnt ?? 0);
+          continue;
+        }
         ensure(uid);
-        byUser[uid].audits = Math.max(byUser[uid].audits, Number(row.cnt ?? 0));
+        byUser[uid].audits += Number(row.cnt ?? 0);
+      }
+      if (_unattributedAudits > 0 && _ownerUidForAudits) {
+        ensure(_ownerUidForAudits);
+        byUser[_ownerUidForAudits].audits += _unattributedAudits;
       }
     } catch (_e) { /* created_by column may not exist yet on older schema — non-fatal */ }
 
     // ── Step 2b: missions.created_by ──────────────────────────────────────────
+    // Root cause: missions created before the created_by column was added have
+    // created_by = NULL. They resolve to no uid and show 0 for the owner in
+    // Performance, while STATE.missions (loaded org-wide) shows the real count.
+    // Fix: count unattributed org missions (NULL/empty/system created_by) and
+    // attribute them to the org owner as the most likely creator.
     try {
-      const missionCounts = await pool.query<{ created_by: string; cnt: number }>(
+      const missionCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM missions
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         WHERE org_id = $1${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
+      // Resolve the owner explicitly. UNION row order is not a business rule:
+      // taking the first principal could attribute historical missions to a
+      // random member when an organization had several members.
+      const _ownerCanonicalUid =
+        principalRes.rows.find(p => p.is_owner)?.canonical_uid ?? null;
+      let _unattributedMissions = 0;
       for (const row of missionCounts.rows) {
-        const uid = resolve(row.created_by);
-        if (!uid) continue;
+        const cb = row.created_by;
+        if (!cb || cb === "system" || cb === "") {
+          // Unattributed: accumulate for owner fallback
+          _unattributedMissions += Number(row.cnt ?? 0);
+          continue;
+        }
+        const uid = resolve(cb);
+        if (!uid) {
+          // created_by value doesn't resolve to any member — attribute to owner
+          _unattributedMissions += Number(row.cnt ?? 0);
+          continue;
+        }
         ensure(uid);
-        byUser[uid].missions = Math.max(byUser[uid].missions, Number(row.cnt ?? 0));
+        byUser[uid].missions += Number(row.cnt ?? 0);
+      }
+      // Add unattributed missions to the owner
+      if (_unattributedMissions > 0 && _ownerCanonicalUid) {
+        ensure(_ownerCanonicalUid);
+        byUser[_ownerCanonicalUid].missions += _unattributedMissions;
       }
     } catch (_e) { /* non-fatal */ }
 
     // ── Step 2c: reports.created_by ───────────────────────────────────────────
+    // Same attribution rule as audits: NULL / '' / 'system' / unresolvable rows
+    // go to the explicit org owner.  Use += so multiple identity groups for the
+    // same owner are summed rather than capped.
     try {
-      const reportCounts = await pool.query<{ created_by: string; cnt: number }>(
+      const reportCounts = await pool.query<{ created_by: string | null; cnt: number }>(
         `SELECT created_by, COUNT(*)::int AS cnt
          FROM reports
-         WHERE org_id = $1 AND created_by IS NOT NULL AND created_by NOT IN ('system','')
+         WHERE org_id = $1${periodFilter}
          GROUP BY created_by`,
         [orgId]
       );
+      const _ownerUidForReports =
+        principalRes.rows.find(p => p.is_owner)?.canonical_uid ?? null;
+      let _unattributedReports = 0;
       for (const row of reportCounts.rows) {
-        const uid = resolve(row.created_by);
-        if (!uid) continue;
+        const cb = row.created_by;
+        if (!cb || cb === "system" || cb === "") {
+          _unattributedReports += Number(row.cnt ?? 0);
+          continue;
+        }
+        const uid = resolve(cb);
+        if (!uid) {
+          _unattributedReports += Number(row.cnt ?? 0);
+          continue;
+        }
         ensure(uid);
-        byUser[uid].reports = Math.max(byUser[uid].reports, Number(row.cnt ?? 0));
+        byUser[uid].reports += Number(row.cnt ?? 0);
+      }
+      if (_unattributedReports > 0 && _ownerUidForReports) {
+        ensure(_ownerUidForReports);
+        byUser[_ownerUidForReports].reports += _unattributedReports;
       }
     } catch (_e) { /* non-fatal */ }
 
@@ -1525,7 +1602,16 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
         "[team/contributions] real-table resolved");
     } catch (_) { /* non-fatal */ }
 
-    res.json({ ok: true, contributions: byUser });
+    const totals = Object.values(byUser).reduce(
+      (sum, value) => ({
+        audits: sum.audits + value.audits,
+        missions: sum.missions + value.missions,
+        reports: sum.reports + value.reports,
+        monitors: sum.monitors + value.monitors,
+      }),
+      { audits: 0, missions: 0, reports: 0, monitors: 0 },
+    );
+    res.json({ ok: true, period, contributions: byUser, totals });
   } catch (err) {
     logger.error({ err }, "[team/contributions] failed");
     res.status(503).json({ ok: false, error: "contributions_unavailable", retryable: true });
