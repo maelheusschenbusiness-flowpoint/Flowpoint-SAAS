@@ -2380,42 +2380,35 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
 });
 
 router.post("/auth/logout", async (req: Request, res: Response) => {
-  // Resolve both tokens so we can nuke every session for this user, regardless
-  // of which tab/token the client is currently using.
+  // Normal logout is session-scoped. The Security action that explicitly closes
+  // every session opts into `{ all: true }`.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cookieToken: string = (req as any).cookies?.fp_token ?? "";
   const authHeader  = req.headers["authorization"] ?? "";
   const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
     ? authHeader.slice(7).trim()
     : "";
+  const logoutAll = req.body?.all === true;
+  const tokens = Array.from(new Set([bearerToken, cookieToken].filter(Boolean)));
 
-  // Resolve the canonical session (Bearer preferred; cookie as fallback) to
-  // get the userId so we can nuke ALL sessions for this account — not just the
-  // current tab's token.  This is the critical path: if logout only deleted the
-  // Bearer session while the cookie session remained live, navigating to login.html
-  // would immediately redirect back to dashboard via the still-valid cookie.
-  const primaryToken = bearerToken || cookieToken;
-  let nukedByUserId = false;
-  if (primaryToken) {
-    const session = await getSession(primaryToken);
-    if (session?.userId) {
-      await invalidateAllSessions(session.userId);
-      nukedByUserId = true;
-      logger.info({ userId: session.userId.slice(0, 8), via: bearerToken ? "bearer" : "cookie" },
-        "[Auth] All sessions revoked on logout (invalidateAllSessions)");
+  // Try both credentials independently. A stale sessionStorage Bearer must not
+  // prevent the still-valid HttpOnly cookie from being revoked.
+  let resolvedSession: Awaited<ReturnType<typeof getSession>> = null;
+  for (const token of tokens) {
+    const session = await getSession(token);
+    if (session) {
+      resolvedSession = session;
+      break;
     }
   }
-  // Belt-and-suspenders: if we couldn't resolve a userId (e.g. DB hiccup),
-  // fall back to deleting each token individually so the tokens at least become
-  // invalid in the DB.
-  if (!nukedByUserId) {
-    const delPromises: Promise<void>[] = [];
-    if (bearerToken) delPromises.push(deleteSession(bearerToken));
-    if (cookieToken && cookieToken !== bearerToken) delPromises.push(deleteSession(cookieToken));
-    if (delPromises.length) {
-      await Promise.allSettled(delPromises);
-      logger.info("[Auth] Session(s) revoked on logout (fallback individual delete)");
-    }
+
+  if (logoutAll && resolvedSession?.userId) {
+    await invalidateAllSessions(resolvedSession.userId);
+    logger.info({ userId: resolvedSession.userId.slice(0, 8) },
+      "[Auth] All sessions revoked on logout (invalidateAllSessions)");
+  } else if (tokens.length) {
+    await Promise.allSettled(tokens.map(deleteSession));
+    logger.info({ tokenCount: tokens.length }, "[Auth] Current session(s) revoked on logout");
   }
 
   // Always clear the HttpOnly cookie, even when the DB delete failed, so the

@@ -10,6 +10,8 @@ const teamSource = readFileSync(resolve(servicesDir, "../routes/team.ts"), "utf8
 const meSource = readFileSync(resolve(servicesDir, "../routes/me.ts"), "utf8");
 const progressionSource = readFileSync(resolve(servicesDir, "../routes/progression.ts"), "utf8");
 const activitySource = readFileSync(resolve(servicesDir, "./activity-streak.ts"), "utf8");
+const dashboardSource = readFileSync(resolve(servicesDir, "../../../flowpoint-export/dashboard.js"), "utf8");
+const dashboardHtml = readFileSync(resolve(servicesDir, "../../../flowpoint-export/dashboard.html"), "utf8");
 
 describe("canonical session identity contract", () => {
   it("A-C: magic-link owner sessions keep users.id separate from organizations.id", () => {
@@ -76,5 +78,29 @@ describe("canonical session identity contract", () => {
     expect(teamSource).toContain("const canonicalUserId = req.orgContext?.userUuid ?? req.userUuid");
     expect(teamSource).toContain('code: "CANONICAL_IDENTITY_REQUIRED"');
     expect(teamSource).toContain("userUuid:  canonicalUserId");
+  });
+});
+
+describe("logout contract", () => {
+  it("revokes the current session by default and all sessions only explicitly", () => {
+    expect(authSource).toContain("const logoutAll = req.body?.all === true");
+    expect(authSource).toContain("const tokens = Array.from(new Set([bearerToken, cookieToken].filter(Boolean)))");
+    expect(authSource).toContain("if (logoutAll && resolvedSession?.userId)");
+    expect(authSource).toContain("await Promise.allSettled(tokens.map(deleteSession))");
+    expect(authSource).toContain("res.clearCookie(\"fp_token\"");
+  });
+
+  it("handles the primary logout through global delegation without auth recovery", () => {
+    expect(dashboardHtml).toContain('<button type="button" class="fp-icon-btn" id="fp-logout-btn"');
+    expect(dashboardSource).toContain("function _fpHandleLogout(event)");
+    expect(dashboardSource).toContain("document.addEventListener('click', function _logoutDelegation(e)");
+    expect(dashboardSource).toContain("await fetch('/api/auth/logout', _fpSessionFetchOptions({");
+    expect(dashboardSource).not.toContain("try { await window.apiFetch('/api/auth/logout'");
+    expect(dashboardSource).toContain("sessionStorage.removeItem('fp_session_token')");
+    expect(dashboardSource).toContain("window.location.replace('/login.html')");
+  });
+
+  it("keeps the explicit all-sessions action separate", () => {
+    expect(dashboardSource).toContain("body: JSON.stringify({ all: true })");
   });
 });
