@@ -24,6 +24,10 @@ import { canAdmin }                             from "../middlewares/requireRole
 import { createSession, SESSION_TTL_MS, updateSessionsRole } from "../services/sessions.js";
 import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
 import { store }                                from "../services/store.js";
+import {
+  computeUserStreak,
+  getActivityTimezone,
+} from "../services/activity-streak.js";
 
 // ── Public router (registered before requireAuth in index.ts) ─────────────────
 export const publicTeamRouter = Router();
@@ -1296,11 +1300,22 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
 
     const role = isOwner ? "owner" : memberRole;
 
+    const canonicalUserId = req.orgContext?.userUuid ?? req.userUuid;
+    if (!canonicalUserId) {
+      res.status(401).json({
+        ok: false,
+        code: "CANONICAL_IDENTITY_REQUIRED",
+        error: "Reconnectez-vous avant de changer d'organisation.",
+      });
+      return;
+    }
+
     const sessionToken = await createSession({
-      userId:    callerEmail,
+      userId:    canonicalUserId,
       orgId:     targetOrgId,
       email:     callerEmail,
       role,
+      userUuid:  canonicalUserId,
       ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -1618,18 +1633,15 @@ router.get("/team/contributions", async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /api/team/streaks — per-member streak from member_activity_days ──────
+// ── GET /api/team/streaks — per-member streak from canonical activity days ───
 router.get("/team/streaks", async (req: Request, res: Response) => {
   const orgId = (req as OrgReq).orgId;
   if (!orgId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
-    const tz = await (async () => {
-      try {
-        const r = await pool.query(`SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`, [orgId]);
-        const s = r.rows[0]?.["settings"] as Record<string, unknown> | null;
-        return (s && typeof s["timezone"] === "string") ? s["timezone"] : "Europe/Brussels";
-      } catch { return "Europe/Brussels"; }
-    })();
+    const tz = await getActivityTimezone(
+      (sql, values) => pool.query(sql, values),
+      orgId,
+    );
 
     // Get ALL active members with their canonical user UUIDs.
     // NO LIMIT — every active member's streak must be computed; capping at 50
@@ -1707,71 +1719,21 @@ router.get("/team/streaks", async (req: Request, res: Response) => {
       const uid = member.user_id;
       const base = { userId: uid, email: member.email, name: member.name.trim(), role: member.role };
       try {
-        // The owner uses the same authoritative org activity source as
-        // /api/me/streak. Other members use their canonical per-user rows.
-        const isCurrentOwner = uid === ownerUserId;
-        // Both owner and members use their own canonical user_id filter.
-        // The previous "AND $2::text = $2::text" tautology for the owner was a bug
-        // that aggregated ALL rows for the org, inflating the owner's streak.
-        const activityTable = isCurrentOwner ? "user_activity_days" : "member_activity_days";
-        const identityClause = "AND user_id=$2";
-        const actRes = await pool.query<{ d: string }>(
-          `SELECT day::text AS d FROM ${activityTable}
-           WHERE org_id=$1
-              ${identityClause}
-              AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
-           ORDER BY d DESC`,
-          [orgId, uid, tz]
+        // Every member, including the explicit owner, uses the same canonical
+        // table and their own canonical user_id.
+        const streak = await computeUserStreak(
+          (sql, values) => pool.query(sql, values),
+          orgId,
+          uid,
+          tz,
         );
         logger.info(
-          { userId: uid.slice(0, 8), email: member.email, activityRowsFound: actRes.rows.length },
+          { userId: uid.slice(0, 8), email: member.email, activityRowsFound: streak.rowCount },
           "[STREAK DEBUG]"
         );
-        if (actRes.rows.length === 0 && !isCurrentOwner) {
-          // member_activity_days empty for this member — check user_activity_days
-          // as fallback. This covers members who visited before member_activity_days
-          // was introduced, or whose writes went only to user_activity_days.
-          try {
-            const fallbackRes = await pool.query<{ d: string }>(
-              `SELECT day::text AS d FROM user_activity_days
-               WHERE org_id=$1 AND user_id=$2
-                 AND day >= (NOW() AT TIME ZONE $3)::date - INTERVAL '365 days'
-               ORDER BY d DESC`,
-              [orgId, uid, tz]
-            );
-            if (fallbackRes.rows.length > 0) {
-              actRes.rows.push(...fallbackRes.rows);
-              logger.info({ userId: uid.slice(0, 8), fallbackRows: fallbackRes.rows.length }, "[STREAK] member_activity_days empty — used user_activity_days fallback");
-            }
-          } catch { /* non-fatal fallback */ }
-        }
-        if (actRes.rows.length === 0) {
-          // Genuine zero: table accessible, member simply has no active days.
-          logger.info({ userId: uid.slice(0, 8), email: member.email, calculatedCurrentStreak: 0, bestStreak: 0 }, "[STREAK DEBUG]");
-          streaks.push({ ...base, current: 0, best: 0 });
-          continue;
-        }
-        const activeDays = new Set(actRes.rows.map(r => String(r.d).slice(0, 10)));
-        const todayStr = new Date().toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
-        const startOffset = activeDays.has(todayStr) ? 0 : 1;
-        let current = 0;
-        for (let d = startOffset; d < 365; d++) {
-          const dt = new Date(Date.now() - d * 86_400_000);
-          const dayStr = dt.toLocaleString("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).slice(0, 10);
-          if (activeDays.has(dayStr)) { current++; } else { break; }
-        }
-        const sorted = Array.from(activeDays).sort();
-        let best = 0, run = 0;
-        for (let i = 0; i < sorted.length; i++) {
-          if (i === 0) { run = 1; } else {
-            const diff = Math.round((new Date(sorted[i]!).getTime() - new Date(sorted[i-1]!).getTime()) / 86_400_000);
-            run = diff === 1 ? run + 1 : 1;
-          }
-          if (run > best) best = run;
-        }
-        streaks.push({ ...base, current, best: Math.max(best, current) });
+        streaks.push({ ...base, current: streak.current, best: streak.best });
         logger.info(
-          { member: base.name.slice(0, 20), userId: uid.slice(0, 8), email: base.email.slice(0, 20), streakDays: current, best: Math.max(best, current) },
+          { member: base.name.slice(0, 20), userId: uid.slice(0, 8), email: base.email.slice(0, 20), streakDays: streak.current, best: streak.best },
           "[TEAM PERFORMANCE DEBUG]"
         );
       } catch (memberErr) {

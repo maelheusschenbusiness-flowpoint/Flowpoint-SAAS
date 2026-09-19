@@ -3367,6 +3367,18 @@ export async function initDataTables(): Promise<void> {
     await run(client, `DROP POLICY IF EXISTS "mad_insert" ON "member_activity_days"`);
     await run(client, `CREATE POLICY "mad_select" ON "member_activity_days" FOR SELECT USING (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
     await run(client, `CREATE POLICY "mad_insert" ON "member_activity_days" FOR INSERT WITH CHECK (COALESCE(org_id,'default') = current_setting('app.current_org_id', true))`);
+    // Consolidate the former per-member duplicate into the canonical table.
+    // Legacy org-id-as-user rows are intentionally excluded because they have
+    // no safe user attribution.
+    await run(client, `
+      INSERT INTO user_activity_days (org_id, user_id, day)
+      SELECT org_id, user_id, day
+      FROM member_activity_days
+      WHERE user_id <> org_id
+        AND user_id NOT IN ('', 'default', 'service', 'system')
+        AND user_id NOT LIKE 'apikey:%'
+      ON CONFLICT (org_id, user_id, day) DO NOTHING
+    `);
 
     // ── team_channels — persisted channel registry for team chat ─────────────────
     // Channels survive even when they have zero messages.
