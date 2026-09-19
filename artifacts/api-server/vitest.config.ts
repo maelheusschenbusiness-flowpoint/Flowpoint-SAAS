@@ -89,6 +89,10 @@ export default defineConfig({
       // P0 — addon lifecycle guards: coming_soon, removed, plan-restricted
       // P0/P1 — streak owner vs member isolation
       "src/routes/streak-owner-member.test.ts",
+      // Canonical activity-day source, identity, and timezone-safe streak semantics
+      "src/services/activity-streak.test.ts",
+      // Canonical user_id/org_id session contract and legacy-session policy
+      "src/services/session-identity-canonical.test.ts",
       // Task #628 — Activity real aggregates: pagination contract + per-member counts/streaks
       "src/routes/activity-pagination.test.ts",
       "src/routes/team-aggregates.test.ts",

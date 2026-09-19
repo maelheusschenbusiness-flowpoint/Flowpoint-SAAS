@@ -101,15 +101,35 @@ export async function getSession(token: string): Promise<SessionData | null> {
       );
       if (!res.rows[0]) return null;
       const row = res.rows[0];
+      const rawUserId = String(row.user_id ?? "");
+      const userUuid = row.user_id_v2 ? String(row.user_id_v2) : undefined;
+
+      // A legacy session whose user_id is the organization id cannot be
+      // attributed to a person safely: the organization may contain an owner
+      // and several members.  Refuse it so session-restore forces a clean
+      // login instead of silently turning an ambiguous session into owner
+      // activity.  Migrated sessions with an explicit user_id_v2 remain valid.
+      if (
+        !userUuid
+        && rawUserId
+        && (rawUserId === String(row.org_id ?? "") || rawUserId.includes("@"))
+      ) {
+        logger.warn(
+          { tokenPrefix: token.slice(0, 8), orgId: String(row.org_id ?? "").slice(0, 8) },
+          "[sessions] Refusing legacy session with user_id equal to org_id",
+        );
+        return null;
+      }
+
       return {
         token,
-        userId: row.user_id,
+        userId: userUuid ?? rawUserId,
         orgId: row.org_id,
         email: row.email,
         role: row.role,
         createdAt: new Date(row.created_at).getTime(),
         expiresAt: new Date(row.expires_at).getTime(),
-        userUuid: row.user_id_v2 ?? undefined,
+        userUuid,
       };
     } finally {
       client.release();
@@ -136,7 +156,14 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
   try {
     const client = await pool.connect();
     try {
-      await client.query(`DELETE FROM user_sessions WHERE user_id = $1`, [userId]);
+      // Login callers pass the email, while newer callers may pass users.id.
+      // Match both the canonical id and the session email so legacy sessions
+      // with user_id=org_id are also invalidated on the next clean login.
+      await client.query(
+        `DELETE FROM user_sessions
+         WHERE user_id = $1 OR LOWER(email) = LOWER($1)`,
+        [userId],
+      );
     } finally {
       client.release();
     }
