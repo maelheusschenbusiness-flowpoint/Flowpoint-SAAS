@@ -5269,7 +5269,7 @@ function renderMsgDropdown() {
   ${attach ? `<div class="fp-msg-attachment">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
     <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(attach)}</span>
-    <button class="fp-msg-attachment-remove" id="fp-msg-rm-attach"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <button class="fp-msg-attachment-remove" id="fp-msg-rm-attach" aria-label="${fpT('Retirer la pièce jointe')}" title="${fpT('Retirer la pièce jointe')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>` : ''}
   <div class="fp-msg-compose">
     <input type="file" id="fp-msg-file" style="display:none" accept="*/*"/>
