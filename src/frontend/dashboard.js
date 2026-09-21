@@ -18233,6 +18233,53 @@ const FP_ONBOARDING_STEPS = [
 ];
 let _fpOnboardingStepIdx = 0;
 
+// ── Competitor map list refresh (called by fp-backend after _loadCompetitorMarkers) ──
+// Met à jour la liste latérale sans détruire le container de la carte.
+window.fpRefreshCompetitorList = function(competitors) {
+  var layout = document.getElementById('fp-comp-map-layout');
+  if (!layout) return;
+  var listPanel = layout.querySelector('.fp-card[style*="overflow-y:auto"]') || layout.children[1];
+  if (!listPanel) return;
+  var threatColor = function(t){return t==='critical'?'#ef4444':t==='high'?'#f59e0b':t==='medium'?'#2563EB':'#22c55e';};
+  var threatLabel = function(t){return t==='critical'?'Critique':t==='high'?'Élevé':t==='medium'?'Moyen':'Faible';};
+  if (!competitors || !competitors.length) {
+    listPanel.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--fp-text-muted)"><div style="font-size:32px;margin-bottom:8px">🔍</div><div style="font-size:12px">Aucun concurrent détecté pour ce secteur.</div></div>';
+    return;
+  }
+  var rows = competitors.slice(0,20).map(function(c,i){
+    var col = threatColor(c.threatLevel);
+    var lbl = threatLabel(c.threatLevel);
+    var dist = c.distanceM < 1000 ? c.distanceM+'m' : (c.distanceM/1000).toFixed(1)+'km';
+    return '<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer" onclick="typeof window.FP_MAPS_API!==\'undefined\'&&window.FP_MAPS_API.focusCompetitor(\'fp-competitors-map\',\''+c.placeId+'\','+c.lat+','+c.lng+')">'
+      + '<div style="display:flex;align-items:flex-start;gap:8px">'
+      + '<div style="width:22px;height:22px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0">'+(i+1)+'</div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+String(c.name||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>'
+      + '<div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+String(c.vicinity||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<span style="font-size:10px;color:#f59e0b;font-weight:700">★'+c.rating+'</span>'
+      + '<span style="font-size:10px;color:var(--fp-text-faint)">'+c.reviewCount+' avis</span>'
+      + '<span style="font-size:10px;color:var(--fp-text-faint)">'+dist+'</span>'
+      + '<span style="font-size:10px;padding:1px 6px;border-radius:5px;background:'+col+'18;color:'+col+';font-weight:700">'+lbl+'</span>'
+      + '</div></div>'
+      + '<div style="text-align:right;flex-shrink:0">'
+      + '<div style="font-size:16px;font-weight:900;color:'+col+';font-family:var(--fp-font-head)">'+c.seoScore+'</div>'
+      + '<div style="font-size:9px;color:var(--fp-text-faint)">score SEO</div>'
+      + '</div></div>'
+      + '<div class="fp-progress-track" style="margin-top:6px;height:3px"><div class="fp-progress-fill" style="width:'+c.seoScore+'%;background:'+col+'"></div></div>'
+      + '</div>';
+  });
+  listPanel.innerHTML = '<div class="fp-card-title" style="margin-bottom:12px;position:sticky;top:0;background:var(--fp-surface);padding-bottom:8px;z-index:2">Classement concurrentiel <span style="font-size:10px;color:var(--fp-text-faint);font-weight:400">('+competitors.length+' résultats)</span></div>' + rows.join('');
+  var critEl = document.querySelector('.fp-stat-card:nth-child(1) [style*="font-size:28px"]');
+  var highEl = document.querySelector('.fp-stat-card:nth-child(2) [style*="font-size:28px"]');
+  var medEl  = document.querySelector('.fp-stat-card:nth-child(3) [style*="font-size:28px"]');
+  var lowEl  = document.querySelector('.fp-stat-card:nth-child(4) [style*="font-size:28px"]');
+  if(critEl) critEl.textContent = competitors.filter(function(c){return c.threatLevel==='critical';}).length || '—';
+  if(highEl) highEl.textContent = competitors.filter(function(c){return c.threatLevel==='high';}).length || '—';
+  if(medEl)  medEl.textContent  = competitors.filter(function(c){return c.threatLevel==='medium';}).length || '—';
+  if(lowEl)  lowEl.textContent  = competitors.filter(function(c){return c.threatLevel==='low';}).length || '—';
+};
+
 // showOnboarding() — appelé dans init() et après chargement de STATE.me.
 // Retourne immédiatement si STATE.me n'est pas encore chargé (pas de flash).
 function showOnboarding() {
@@ -49583,10 +49630,17 @@ async function init() {
     window.fpLoadCompetitorAnalysis(id);
   };
 
-  window.fpCreateMissionFromOpportunity = async function(title, desc) {
+  window.fpCreateMissionFromOpportunity = async function(title, desc, btn) {
     if (!title) return;
+    if (!STATE._fpMissionCreating) STATE._fpMissionCreating = new Set();
+    if (!STATE._fpMissionCreated)  STATE._fpMissionCreated  = new Set();
+    var _key = String(title);
+    // Double-click guard + already-created guard
+    if (STATE._fpMissionCreating.has(_key) || STATE._fpMissionCreated.has(_key)) return;
+    STATE._fpMissionCreating.add(_key);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Création…'; }
     try {
-      const r = await apiFetch('/api/missions', {
+      var r = await apiFetch('/api/missions', {
         method: 'POST',
         body: JSON.stringify({
           title: title,
@@ -49599,12 +49653,28 @@ async function init() {
           effort: 'medium',
         }),
       });
+      STATE._fpMissionCreating.delete(_key);
       if (r && r.id) {
+        STATE._fpMissionCreated.add(_key);
+        if (btn) { btn.disabled = true; btn.textContent = '✓ Créée'; btn.className = btn.className.replace('fp-btn-primary','fp-btn-ghost'); }
         showToast('success', fpT('Mission créée : ') + escHtml(title));
+      } else if (r && r.error === 'Mission already exists') {
+        STATE._fpMissionCreated.add(_key);
+        if (btn) { btn.disabled = true; btn.textContent = '✓ Créée'; btn.className = btn.className.replace('fp-btn-primary','fp-btn-ghost'); }
+        showToast('success', fpT('Mission déjà créée'));
       } else {
+        if (btn) { btn.disabled = false; btn.textContent = '✚ Créer une mission'; }
         showToast('error', (r && r.error) ? r.error : fpT('Erreur lors de la création de la mission'));
       }
-    } catch(e) { showToast('error', fpT('Erreur réseau')); }
+    } catch(e) {
+      STATE._fpMissionCreating.delete(_key);
+      if (btn) { btn.disabled = false; btn.textContent = '✚ Créer une mission'; }
+      var _msg = e && e.status === 401 ? fpT('Session expirée — rechargez la page')
+               : e && e.status === 403 ? fpT('Accès refusé')
+               : (e && e.message && !/unauthorized/i.test(e.message)) ? e.message
+               : fpT('Erreur réseau — réessayez');
+      showToast('error', _msg);
+    }
   };
 
   // ── Fix 2: AI Competitor Suggestions ────────────────────────────────────────
@@ -50957,7 +51027,7 @@ function renderMissionsAI() {
                 '<div style="font-size:11px;color:var(--fp-text-muted);white-space:nowrap">' + escHtml(m.gain) + '</div>' +
                 (alreadyCreated
                   ? '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="navigate(\'missions\')">✓ Créée →</button>'
-                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=\'Création…\';b.disabled=true;apiAction(\'POST\',\'/api/missions\',{title:title,source:\'ai\',status:\'todo\',priority:\'high\',category:cat}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',\'Mission créée !\');}else{b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');}}).catch(function(){b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');});})(this)">+ Créer</button>'
+                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=\'Création…\';b.disabled=true;apiAction(\'POST\',\'/api/missions\',{title:title,source:\'ai\',status:\'todo\',priority:\'high\',category:cat}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);_fpDeleteApiCachePath(\'/api/missions\');b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',\'Mission créée !\');}else{b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');}}).catch(function(){b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');});})(this)">+ Créer</button>'
                 ) +
               '</div>' +
             '</div>';
@@ -54547,7 +54617,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
-          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
+          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px;margin-top:16px">
             <div class="fp-card" style="border-left:3px solid #22c55e">
               <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
               ${(analysis.you_better||[]).length===0
@@ -54562,7 +54632,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${(analysis.opportunities||[]).length>0 ? `
-          <div class="fp-card fp-mb-16">
+          <div class="fp-card fp-mb-16" style="margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:12px">💡 Opportunités recommandées</div>
             <div style="display:flex;flex-direction:column;gap:10px">
               ${(analysis.opportunities).map((op,i)=>`
@@ -54572,17 +54642,14 @@ function renderCompetitor() {
                     <div style="flex:1">
                       <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(String(op.title||''))}</div>
                       <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(String(op.description||''))}</div>
-                      <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px"
-                        onclick="window.fpCreateMissionFromOpportunity('${escHtml(String(op.missionTitle||op.title||''))}','${escHtml(String(op.missionDesc||op.description||''))}')">
-                        ✚ Créer une mission
-                      </button>
+                      ${(function(){var _k=String(op.missionTitle||op.title||'');var _d=String(op.missionDesc||op.description||'');var _done=STATE._fpMissionCreated&&STATE._fpMissionCreated.has(_k);return '<button class="fp-btn '+(_done?'fp-btn-ghost':'fp-btn-primary')+' fp-btn-sm" style="font-size:10px"'+(_done?' disabled':' onclick="window.fpCreateMissionFromOpportunity(\''+escHtml(_k)+'\',\''+escHtml(_d)+'\',this)"')+'>'+(_done?'✓ Créée':'✚ Créer une mission')+'</button>';})()} 
                     </div>
                   </div>
                 </div>`).join('')}
             </div>
           </div>` : ''}
           ${(analysis.feature_matrix||[]).length>0 ? `
-          <div class="fp-card fp-mb-16">
+          <div class="fp-card fp-mb-16" style="margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:12px">📊 Matrice fonctionnalités</div>
             <div style="overflow-x:auto">
               <table class="fp-table" style="width:100%">
@@ -54595,7 +54662,7 @@ function renderCompetitor() {
               </table>
             </div>
           </div>` : ''}
-          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px">
+          <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px;margin-top:16px">
             <div class="fp-card">
               <div class="fp-card-title" style="margin-bottom:8px">💪 Forces détectées</div>
               ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
@@ -54605,7 +54672,7 @@ function renderCompetitor() {
               ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
           </div>
-          <div class="fp-card fp-mb-16">
+          <div class="fp-card fp-mb-16" style="margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:8px">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px">
               ${[
@@ -54621,7 +54688,7 @@ function renderCompetitor() {
             </div>
           </div>
           ${(analysis.sources||[]).length>0 ? `
-          <div class="fp-card" style="opacity:0.85">
+          <div class="fp-card fp-mb-16" style="opacity:0.85;margin-top:16px">
             <div class="fp-card-title" style="margin-bottom:10px;font-size:11px">🔍 Sources & niveau de confiance</div>
             <div style="display:flex;flex-direction:column;gap:6px">
               ${(analysis.sources).slice(0,6).map(s=>{
@@ -54668,7 +54735,7 @@ function renderCompetitor() {
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_showAddCompetitor()">${fpT('Ajouter un concurrent')}</button>
         </div>
       ` : ''}
-      <div class="fp-card fp-mb-20" style="padding:14px 16px">
+      <div class="fp-card fp-mb-20" style="padding:14px 16px;margin-top:16px">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span class="fp-badge fp-badge--ghost">${escHtml(knownPlan.charAt(0).toUpperCase() + knownPlan.slice(1))}</span>
           <span style="font-size:12px;color:var(--fp-text-muted)">${competitors.length} / ${competitorLimit} ${fpT('concurrents utilisés')}</span>
@@ -57850,6 +57917,7 @@ function fpTeamMetricStreak(member) {
     || null;
 }
 
+// ─────────────────────────────────────────────────────────────────
 function renderActivityFeed() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
@@ -57922,16 +57990,22 @@ function renderActivityFeed() {
       const audits = contrib ? Number(contrib.audits || 0) : null;
       const missions = contrib ? Number(contrib.missions || 0) : null;
       const reports = contrib ? Number(contrib.reports || 0) : null;
+      const totalActions = contrib ? audits + missions + reports : null;
       return {
         id, userId, email,
         name: nm, role: t.role || 'member',
         avatar: nm.slice(0,2).toUpperCase(),
         color: _mColors[i % _mColors.length],
-        actions: contrib ? audits + missions + reports : null,
+        actions: totalActions,
         score: null, trend: '—',
         contribs: contrib ? { audits, missions, reports } : null,
         streak: fpTeamMetricStreak(t),
       };
+    });
+    // Score 0-100 calculé relativement au max du groupe
+    const _maxActions = Math.max(1, ...members.map(m => m.actions || 0));
+    members.forEach(function(m) {
+      if (m.actions !== null) m.score = Math.round((m.actions / _maxActions) * 100);
     });
     const teamActs = liveFeed.filter(a => a.cat === 'team');
     const _orgActs = activityTotal;
