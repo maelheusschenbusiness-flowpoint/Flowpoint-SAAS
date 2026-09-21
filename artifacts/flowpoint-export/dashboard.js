@@ -18187,7 +18187,7 @@ function toggleTheme() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ONBOARDING — Visite guidée vidéo (5 étapes)
+// ONBOARDING — Visite guidée vidéo (6 étapes)
 // ─────────────────────────────────────────────────────────────────
 // Configuration centralisée : remplacez videoUrl par l'URL finale de chaque vidéo.
 // null = placeholder "Vidéo bientôt disponible".
@@ -18196,33 +18196,39 @@ function toggleTheme() {
 const FP_ONBOARDING_STEPS = [
   {
     id: 'interface',
-    title: 'Découvrez FlowPoint',
-    desc:  'Explorez l\'interface centrale et accédez rapidement à tous vos espaces de travail depuis un tableau de bord unifié.',
-    videoUrl: '/onboarding/onboarding-video-1-flowpoint.mp4'
+    title: 'Prenez vos repères',
+    desc:  'Visualisez la santé de votre portefeuille et accédez rapidement aux fonctions principales depuis un espace unique.',
+    videoUrl: '/onboarding/step1-interface.mp4'
   },
   {
     id: 'audit-actions',
-    title: 'Audit & Actions prioritaires',
-    desc:  'Lancez un audit SEO complet, identifiez les problèmes critiques et transformez chaque recommandation en mission suivie.',
-    videoUrl: '/onboarding/onboarding-video-2-flowpoint.mp4'
+    title: 'Passez du diagnostic à l\'action',
+    desc:  'Lancez un audit SEO, identifiez les problèmes prioritaires puis transformez les recommandations en missions suivies.',
+    videoUrl: '/onboarding/step2-audit-actions.mp4'
   },
   {
     id: 'monitoring-alerts',
-    title: 'Performance Web & Surveillance',
-    desc:  'Contrôlez la disponibilité de vos sites, analysez vos performances et consultez votre trafic en temps réel.',
-    videoUrl: '/onboarding/onboarding-video-3-flowpoint.mp4'
+    title: 'Surveillez et soyez alerté',
+    desc:  'Contrôlez la disponibilité et la latence de vos sites, puis centralisez les incidents et alertes critiques.',
+    videoUrl: '/onboarding/step3-monitoring-alerts.mp4'
   },
   {
     id: 'local-competition',
-    title: 'Pilotage & Croissance',
-    desc:  'Centralisez votre activité, collaborez avec votre équipe et développez votre visibilité SEO locale et organique.',
-    videoUrl: '/onboarding/onboarding-video-4-flowpoint.mp4'
+    title: 'Pilotez votre visibilité locale',
+    desc:  'Repérez vos opportunités Google Maps et comparez votre présence locale avec celle de vos concurrents.',
+    videoUrl: '/onboarding/step4-local-competition.mp4'
   },
   {
     id: 'ai-reports',
-    title: 'IA & Tableau de bord',
-    desc:  'Dialoguez avec votre Assistant IA contextuel et pilotez l\'ensemble de votre croissance depuis une vue unifiée.',
-    videoUrl: '/onboarding/onboarding-video-5-flowpoint.mp4'
+    title: 'Accélérez avec le Copilot',
+    desc:  'Interrogez l\'Assistant IA avec le contexte de votre workspace, puis générez des rapports prêts à partager.',
+    videoUrl: '/onboarding/step5-ai-reports.mp4'
+  },
+  {
+    id: 'daily',
+    title: 'Gardez le cap chaque jour',
+    desc:  'Consultez les événements, traitez les actions prioritaires et mesurez régulièrement la progression de vos indicateurs.',
+    videoUrl: '/onboarding/step6-daily.mp4'
   }
 ];
 let _fpOnboardingStepIdx = 0;
