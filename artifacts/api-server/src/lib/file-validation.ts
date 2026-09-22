@@ -3,7 +3,7 @@ import path from "path";
 export function sanitizeFilename(raw: string): string {
   const base = path.basename(raw).replace(/[/\\]/g, "");
   const safe = base.replace(/[^a-zA-Z0-9 ._\-]/g, "_").replace(/\.{2,}/g, ".");
-  return safe.slice(0, 200) || "file";
+  return safe.slice(0, 200) || "unnamed";
 }
 
 export function extractExtension(filename: string): string {
