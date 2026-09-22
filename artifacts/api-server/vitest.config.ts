@@ -137,6 +137,7 @@ export default defineConfig({
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
+      "src/lib/file-validation.extract-extension.test.ts",
     ],
     environment: "node",
     globals:     false,
