@@ -26,6 +26,18 @@ export interface PlanDefinition {
    Every surface (dashboard, pricing.html, backend, /api/me) reads from here.
    Do NOT duplicate these numbers anywhere else.
    ════════════════════════════════════════════════════════════════════════════ */
+/**
+ * Catalogue des offres d'abonnement, indexé par identifiant de plan
+ * (`standard`, `pro`, …), chaque entrée étant une {@link PlanDefinition}
+ * complète : libellé, prix mensuel en euros, badge et accroche marketing,
+ * quotas d'usage ({@link PlanLimits}), crédits et tokens IA, liste des
+ * fonctionnalités incluses et liste des fonctionnalités verrouillées.
+ *
+ * Sert de source de vérité unique pour toutes les surfaces du produit
+ * (dashboard, page de tarifs, backend, `/api/me`) : les contrôles de quota
+ * et l'affichage des offres doivent lire ces valeurs plutôt que de les
+ * redéfinir localement.
+ */
 export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
   standard: {
     id: "standard",
