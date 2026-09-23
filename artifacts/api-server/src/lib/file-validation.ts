@@ -7,7 +7,9 @@ export function sanitizeFilename(raw: string): string {
 }
 
 export function extractExtension(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() ?? "";
+  const idx = filename.lastIndexOf(".");
+  if (idx < 0) return "";
+  return filename.slice(idx + 1).toLowerCase();
 }
 
 export function buildExtToMimes(allowedMime: Record<string, string>): Record<string, string[]> {
