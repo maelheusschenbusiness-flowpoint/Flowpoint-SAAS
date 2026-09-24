@@ -4066,6 +4066,19 @@ export const RECOMMENDATION_UI_LANGUAGES = new Set([
   "fr", "en", "es", "de", "it", "pt", "nl", "pl", "sv", "ro", "cs",
 ]);
 
+/**
+ * Normalise une valeur de langue vers un code d'interface supporte.
+ *
+ * Accepte n'importe quelle valeur : seules les chaines sont traitees, toute
+ * autre valeur renvoie `null`. La chaine est nettoyee (espaces retires, mise
+ * en minuscules) puis tronquee a son premier segment, la separation se faisant
+ * sur `-` ou `_` : une variante regionale comme `fr-BE` (ou `fr_BE`) est donc
+ * ramenee a sa langue de base `fr`.
+ *
+ * @param value - Valeur a normaliser (type inconnu).
+ * @returns Le code de langue de base s'il appartient a
+ * {@link RECOMMENDATION_UI_LANGUAGES}, sinon `null`.
+ */
 export function normalizeRecommendationLanguage(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const code = value.trim().toLowerCase().split(/[-_]/)[0] ?? "";
