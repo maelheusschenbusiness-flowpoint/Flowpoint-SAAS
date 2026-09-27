@@ -12723,7 +12723,7 @@ function renderSettings() {
                             <div style="display:flex;gap:4px;justify-content:center">
                               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._testWebhook('${escHtml(i.id)}','${escHtml(i.name)}')">🧪 Test</button>
                               <button class="fp-toggle${i.active?' on':''}" onclick="window._toggleWebhook('${escHtml(i.id)}',${!i.active})" style="transform:scale(0.8)"></button>
-                              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._deleteWebhook('${escHtml(i.id)}')">✕</button>
+                              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" aria-label="Supprimer le webhook" title="Supprimer le webhook" onclick="window._deleteWebhook('${escHtml(i.id)}')">✕</button>
                             </div>
                           </td>
                         </tr>
