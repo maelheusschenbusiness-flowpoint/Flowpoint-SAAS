@@ -493,7 +493,7 @@
         style="position:absolute;left:8px;bottom:8px;width:28px;height:28px;border-radius:7px;border:1px solid var(--fp-border);background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--fp-text-muted);flex-shrink:0;z-index:1;transition:background 0.15s">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
       </label>
-      <input type="file" id="fp-ai-attach-input" hidden accept="image/*,.pdf,.txt,.csv,.docx,.xlsx"
+      <input type="file" id="fp-ai-attach-input" hidden accept=".png,.jpg,.webp,.pdf,.txt,.csv,.docx,.xlsx"
         onchange="if(this.files[0]){const n=this.files[0].name;const badge=document.getElementById('fp-ai-attach-badge');if(badge){badge.textContent='📎 '+n;badge.style.display='inline-flex';}window._fpAiAttach=this.files[0];this.value=''}">
       <textarea
         id="fp-ai-chat-input"
