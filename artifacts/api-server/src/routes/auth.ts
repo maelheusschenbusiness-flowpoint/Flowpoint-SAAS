@@ -7,6 +7,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
@@ -652,9 +653,14 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       const userStatus = userRow.rows[0].status;
       if (userStatus === "pending") {
         logger.warn({ email }, "[Auth] login-request: user pending activation (Stripe not completed)");
+        // /signin.html can now accept this email again (pre-register no longer
+        // refuses a pending row), so sending the prospect there resumes the
+        // signup instead of bouncing them back here.
         res.status(402).json({
-          error: "Votre compte est en attente d'activation. Vérifiez votre email après avoir finalisé votre paiement sur /signin.html, ou complétez votre inscription.",
+          error: "Votre inscription n'a pas été finalisée. Reprenez-la pour activer votre compte.",
+          code: "SIGNUP_PENDING",
           redirectTo: "/signin.html",
+          resumable: true,
         });
         return;
       }
@@ -1049,12 +1055,29 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       `SELECT id, status FROM users WHERE lower(email) = $1 LIMIT 1`,
       [normalizedEmail]
     );
-    if (_activeUser.rows.length > 0) {
+    // A `pending` row is NOT an existing account: it is a signup that reached
+    // Stripe and never came back. Treating it as one closed the only two doors
+    // at once — login refuses `pending` with 402 → /signin.html, and this guard
+    // refused the retry with 409 → /login.html — so the prospect bounced between
+    // the two pages for ever and the lead was lost. The status was already read
+    // here and simply never looked at.
+    //
+    // Letting a pending retry through is safe: the transaction below deletes the
+    // caller's own unconsumed pending_signups rows before inserting a fresh one,
+    // and checkout-session/payment-intent reuse the canonical Stripe Customer
+    // recorded on those rows (ONE_CUSTOMER_INVARIANT), so no second customer,
+    // org or subscription can appear. An `active` or `suspended` account is still
+    // refused, exactly as before.
+    const _existingStatus = _activeUser.rows[0]?.status ?? "";
+    if (_activeUser.rows.length > 0 && _existingStatus !== "pending") {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
         redirectTo: "/login.html",
       });
       return;
+    }
+    if (_existingStatus === "pending") {
+      logger.info({ email: normalizedEmail }, "[Auth/PreRegister] pending signup resuming — guard passed");
     }
 
     // Also catch invited team members who may have no org_settings row
@@ -1923,7 +1946,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   const publicUrl = getPublicUrl();
 
   if (oauthError) {
-    res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`);
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`, req.query));
     return;
   }
   if (!code) {
@@ -1963,7 +1986,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const resolvedEmail = user.email ?? user.sub ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Google login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
       return;
     }
 
@@ -2093,12 +2116,12 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
             }
           } catch (preRegErr) {
             logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
-            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
             return;
           }
           if (!googlePreRegToken) {
             logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
-            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
             return;
           }
           const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
@@ -2121,7 +2144,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       }
     } catch (err) {
       logger.error({ err }, "[Auth] Google login — identity provisioning failed");
-      res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
       return;
     }
 
@@ -2153,7 +2176,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     res.redirect(redirectAfterLogin);
   } catch (err) {
     logger.error({ err }, "[Auth] Google login callback failed");
-    res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
   }
 });
 
@@ -2197,7 +2220,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     const resolvedEmail = user.email ?? user.login ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ login: user.login }, "[Auth] GitHub login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
       return;
     }
 
@@ -2581,7 +2604,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
 
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Apple login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
       return;
     }
 
