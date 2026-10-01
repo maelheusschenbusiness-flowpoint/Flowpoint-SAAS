@@ -1,16 +1,77 @@
+import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
-import { createRateLimit } from "../middlewares/rateLimiter.js";
+import { publicCheckoutRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
 
-const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
-
 const router = Router();
+
+/**
+ * Stripe idempotency key for one checkout attempt.
+ *
+ * Without one, a double-clicked pay button or a retried request creates a second
+ * PaymentIntent or Session: the prospect sees two charges pending, and support
+ * has to reconcile them. The key is derived from what the attempt *is* — who is
+ * buying, what is in the cart, and for how much — so a retry of the same attempt
+ * returns Stripe's original object, while a genuinely changed cart gets a new
+ * one. It changes nothing about price, trial or quote: the same parameters are
+ * sent either way.
+ */
+function checkoutIdempotencyKey(parts: {
+  scope: string;
+  actor: string;
+  plan: string;
+  addons: Record<string, unknown>;
+  amountCents: number;
+}): string {
+  const addonFingerprint = Object.keys(parts.addons)
+    .sort()
+    .map((key) => `${key}=${String((parts.addons as Record<string, unknown>)[key])}`)
+    .join(",");
+  const material = [parts.scope, parts.actor, parts.plan, addonFingerprint, String(parts.amountCents)].join("|");
+  return "fp_" + createHash("sha256").update(material).digest("hex").slice(0, 48);
+}
+
+/**
+ * Turn a Stripe failure into something the page can act on.
+ *
+ * Every error used to collapse into `500 "Erreur lors de la création du
+ * paiement."`, which tells a prospect holding a declined card to retry forever
+ * and tells us nothing. The mapping keeps the message user-safe — no Stripe
+ * internals, no PII — while giving the frontend a `code` to branch on and the
+ * correct HTTP class, so a client error is no longer reported as our outage.
+ */
+export function describeStripeFailure(err: unknown): { status: number; code: string; error: string; retryable: boolean } {
+  const type = (err as { type?: string } | null)?.type ?? "";
+  const declineCode = (err as { decline_code?: string } | null)?.decline_code ?? "";
+
+  if (type === "StripeCardError") {
+    return {
+      status: 402,
+      code: declineCode ? `card_declined:${declineCode}` : "card_declined",
+      error: "Votre carte a été refusée. Vérifiez vos informations ou utilisez un autre moyen de paiement.",
+      retryable: true,
+    };
+  }
+  if (type === "StripeRateLimitError") {
+    return { status: 503, code: "provider_rate_limited", error: "Service de paiement momentanément saturé. Réessayez dans quelques instants.", retryable: true };
+  }
+  if (type === "StripeConnectionError" || type === "StripeAPIError") {
+    return { status: 503, code: "provider_unavailable", error: "Service de paiement momentanément indisponible. Réessayez dans quelques instants.", retryable: true };
+  }
+  if (type === "StripeIdempotencyError") {
+    return { status: 409, code: "idempotency_conflict", error: "Cette tentative de paiement a changé en cours de route. Rechargez la page et recommencez.", retryable: false };
+  }
+  if (type === "StripeInvalidRequestError") {
+    return { status: 400, code: "invalid_request", error: "Cette demande de paiement est invalide. Rechargez la page et recommencez.", retryable: false };
+  }
+  return { status: 500, code: "payment_setup_failed", error: "Erreur lors de la création du paiement.", retryable: true };
+}
 
 /**
  * Public billing routes are mounted before the normal org-context middleware.
@@ -784,7 +845,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "checkout_session",
+          actor: preRegisterToken || authOrgId || "anonymous",
+          plan,
+          addons: addons as Record<string, unknown>,
+          amountCents: quote.amountDueTodayMinor,
+        }),
+      });
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
@@ -802,7 +871,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "checkout_session",
+          actor: preRegisterToken || authOrgId || "anonymous",
+          plan,
+          addons: addons as Record<string, unknown>,
+          amountCents: quote.amountDueTodayMinor,
+        }),
+      });
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
@@ -821,7 +898,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "checkout_session",
+          actor: preRegisterToken || authOrgId || "anonymous",
+          plan,
+          addons: addons as Record<string, unknown>,
+          amountCents: quote.amountDueTodayMinor,
+        }),
+      });
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
@@ -1263,6 +1348,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
            removes Stripe Link and redirect-based wallets from the Payment Element */
         automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         metadata,
+      }, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "payment_intent",
+          actor: preRegisterToken || _piReqOrgId || preRegCustomerId || "anonymous",
+          plan: planKey,
+          addons: addons as Record<string, unknown>,
+          amountCents: immediateAmountCents,
+        }),
       });
       logger.info({ plan: planKey, addonCount: quote.lines.filter(l => l.kind === "addon").length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
       res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
@@ -1279,6 +1372,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         usage: "off_session",
         metadata,
+      }, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "setup_intent",
+          actor: preRegisterToken || _piReqOrgId || preRegCustomerId || "anonymous",
+          plan: planKey,
+          addons: addons as Record<string, unknown>,
+          amountCents: 0,
+        }),
       });
       logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
       res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues, quote, setupIntentId: si.id });
@@ -1287,8 +1388,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
 
     res.status(400).json({ error: "Panier invalide." });
   } catch (err) {
-    logger.error({ err }, "[PublicBilling] payment-intent failed");
-    res.status(500).json({ error: "Erreur lors de la création du paiement." });
+    const failure = describeStripeFailure(err);
+    logger.error({ err, code: failure.code }, "[PublicBilling] payment-intent failed");
+    res.status(failure.status).json({ error: failure.error, code: failure.code, retryable: failure.retryable });
   }
 });
 
