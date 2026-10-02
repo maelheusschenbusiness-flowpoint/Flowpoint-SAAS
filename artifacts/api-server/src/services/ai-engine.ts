@@ -4,14 +4,10 @@ import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { loadOrgData } from "./org-data.js";
 import { PLAN_AI_CREDITS, PLAN_AI_TOKENS } from "../lib/plans.js";
-import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 import {
   getFeatureBaseCost,
-  getModelConfig,
-  getModelMultiplier,
   computeRealCostEur,
   computeCreditsDebited,
-  CREDIT_EUR_RATE,
   type AIProviderId,
 } from "../config/ai-config.js";
 
