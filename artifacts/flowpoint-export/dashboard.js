@@ -12532,12 +12532,10 @@ function renderSettings() {
     const gbpConn = window.fpIsConnected ? window.fpIsConnected('gbp') : !!(STATE.gbp?.connected);
     const ga4Conn = window.fpIsConnected ? window.fpIsConnected('ga4') : !!(window.FP_DATA?.ga4?.connected);
     const gscConn = window.fpIsConnected ? window.fpIsConnected('gsc') : !!(STATE.gsc?.connected);
-    const ghConn  = !!(STATE.github?.connected);
 
     const activeTab = window._intgTab || 'hub';
 
     const platColor = p => ({zapier:'#ff6640',make:'#6d00cc',slack:'#4a154b',notion:'#ffffff',hubspot:'#ff7a59',airtable:'#18bfff',email:'#2563EB',custom:'#22c55e',pipedrive:'#22c55e',shopify:'#96bf48',monday:'#f62b54',discord:'#5865f2',n8n:'#ea5e00',mailchimp:'#ffe01b',linkedin:'#0a66c2',teams:'#5059c9',intercom:'#1f8eed',klaviyo:'#000000',twilio:'#f22f46',salesforce:'#00a1e0',zendesk:'#17494d',freshdesk:'#25c16f',pagerduty:'#06ac38'})[p] || '#6b7280';
-    const platIcon  = p => ({zapier:'⚡',make:'🔄',slack:'💬',notion:'📋',hubspot:'🎯',airtable:'📊',email:'📧',custom:'🔗',webhook:'🔌'})[p] || '🔌';
     const platSvgIcon = id => {
       const ic = {
         zapier:     `<div style="width:32px;height:32px;border-radius:8px;background:#FF4F00;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="3.2" stroke-linecap="round"><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7"/></svg></div>`,
