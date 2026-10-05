@@ -648,6 +648,28 @@
       googleSignupLink.href = '/api/auth/google/login?seller_code=' + encodeURIComponent(sellerRefParam);
     }
   }
+  /* Conversion B: the opaque lead id of an outreach email (22 characters
+     [A-Za-z0-9_-]). Kept in sessionStorage; the first one wins. Anything else
+     is ignored — it never blocks or changes the signup. */
+  var fpLidValue = null;
+  try {
+    var _fpLidRe = /^[A-Za-z0-9_-]{22}$/;
+    var _fpLidStored = sessionStorage.getItem('fp_lid') || '';
+    var _fpLidParam = urlParams.get('fp_lid') || '';
+    if (_fpLidRe.test(_fpLidStored)) {
+      fpLidValue = _fpLidStored;
+    } else if (_fpLidRe.test(_fpLidParam)) {
+      fpLidValue = _fpLidParam;
+      sessionStorage.setItem('fp_lid', fpLidValue);
+    }
+  } catch (_) {}
+  if (fpLidValue) {
+    var googleLeadLink = document.getElementById('btn-google-oauth');
+    if (googleLeadLink) {
+      googleLeadLink.href += (googleLeadLink.href.indexOf('?') === -1 ? '?' : '&') +
+        'fp_lid=' + encodeURIComponent(fpLidValue);
+    }
+  }
   if (googleSignupParam === '1' && preRegTokenParam) {
     _preRegisterToken = preRegTokenParam;
     // Clean URL so a refresh doesn't re-trigger
@@ -700,7 +722,8 @@
         email: email, companyName: companyName, country: country,
         address: address, city: city, postalCode: postalCode,
         phone: phone || undefined, vat: vat || undefined,
-        seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})() })
+        seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})(),
+        fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})() })
     })
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {

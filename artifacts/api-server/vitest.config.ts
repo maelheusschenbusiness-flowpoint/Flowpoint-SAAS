@@ -12,6 +12,8 @@ export default defineConfig({
   test: {
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
+      // Conversion B — fp_lid attribution
+      "src/tests/conversion-b-fp-lid.test.ts",
       // Conversion A — funnel fixes
       "src/lib/carry-params.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",

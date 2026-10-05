@@ -8,6 +8,7 @@ import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
+import { normalizeFpLid } from "../lib/fp-lid.js";
 
 const router = Router();
 
@@ -2525,7 +2526,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           try {
             const _fcActR0 = await _fcActC0.query(
               `SELECT email, first_name, last_name, company_name, country, address, city,
-                      postal_code, phone, vat, seller_id, consumed_at, expires_at
+                      postal_code, phone, vat, seller_id, fp_lid, consumed_at, expires_at
                FROM pending_signups
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
@@ -2674,14 +2675,18 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             // path, because finalize-checkout can activate the account before the
             // payment webhook is delivered.
             const _fcSellerId = _fcSignup["seller_id"] ?? null;
+            // Conversion B: the lead id is copied in the same transaction that consumes
+            // the pending signup, so it survives the pending row's cleanup. First wins.
+            const _fcFpLid = normalizeFpLid(_fcSignup["fp_lid"]);
             await _fcActTxC.query(
               `INSERT INTO organizations
-                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id)
-               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10)
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id,fp_lid)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,$11)
                ON CONFLICT (id) DO UPDATE
                  SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
                      stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
                       seller_id=COALESCE(organizations.seller_id,EXCLUDED.seller_id),
+                     fp_lid=COALESCE(organizations.fp_lid,EXCLUDED.fp_lid),
                      updated_at=NOW()`,
               [
                 _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
@@ -2690,6 +2695,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                 _fcAEmail, customerId ?? null,
                 trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
                  _fcSellerId,
+                _fcFpLid,
               ]
             );
             logger.info({ step: "FC-4b-ok" }, "[FC] step-4b: organization upserted");
