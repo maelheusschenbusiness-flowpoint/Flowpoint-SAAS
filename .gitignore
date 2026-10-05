@@ -38,3 +38,7 @@ context_dump*.txt
 .env
 .env.*
 !.env.example
+
+# Sorties de scripts de test executes a la racine (e2e-test.mjs, captures QA)
+/*.png
+/screenshots/
