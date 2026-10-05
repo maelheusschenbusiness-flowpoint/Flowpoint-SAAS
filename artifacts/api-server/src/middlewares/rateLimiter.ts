@@ -225,14 +225,73 @@ export const reportRateLimit  = createRateLimit('reportsPerHour');
 export const exportRateLimit  = createRateLimit('exportsPerHour');
 export const webhookRateLimit = createRateLimit('webhooksPerMinute');
 
+/** The caller's address, as the proxy reports it. One place, so every per-IP
+ *  bucket keys on exactly the same string. */
+export function clientIp(req: Request): string {
+  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+    ?? req.ip
+    ?? "unknown";
+}
+
+/**
+ * Per-IP limiter for endpoints that have no org to key on.
+ *
+ * WHY this exists: the public checkout endpoints were limited with
+ * `createRateLimit`, which keys on `getOrgId(req)`. An anonymous prospect has no
+ * org, so that call returns the literal `'default'` and every prospect in the
+ * world shared one bucket — one scanner hammering the endpoint, or one burst of
+ * visitors after a campaign send, returned 429 to unrelated people in the middle
+ * of paying. Keying on the caller's address keeps the ceiling while making one
+ * prospect's traffic unable to lock out another's.
+ */
+export function createIpRateLimit(
+  bucket: string,
+  limit: number,
+  windowMs: number,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const key = `${bucket}:${clientIp(req)}`;
+    const now = Date.now();
+    const existing = windows.get(key);
+
+    if (!existing || now - existing.windowStart >= windowMs) {
+      windows.set(key, { count: 1, windowStart: now });
+      next();
+      return;
+    }
+
+    existing.count++;
+    const resetInMs = windowMs - (now - existing.windowStart);
+
+    if (existing.count > limit) {
+      logger.warn({ bucket, count: existing.count, limit }, "[RateLimit] Per-IP limit exceeded");
+      res.status(429).json({
+        ok: false,
+        error: "Too many attempts. Please wait a moment and retry.",
+        code: "RATE_LIMIT_EXCEEDED",
+        details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), bucket },
+      });
+      return;
+    }
+
+    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, limit - existing.count)));
+    next();
+  };
+}
+
+/**
+ * Public checkout / payment-intent limiter — per IP, not per org.
+ * 20 per minute leaves ample room for a real signup (quote, intent, retries,
+ * a changed cart) while bounding what one address can drive.
+ */
+export const publicCheckoutRateLimit = createIpRateLimit("public_checkout", 20, 60_000);
+
 /**
  * Strict per-IP rate limiter for auth endpoints (login, register).
  * 10 attempts per 15 minutes per IP — prevents brute-force and credential stuffing.
  */
 export function authRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-    ?? req.ip
-    ?? "unknown";
+  const ip = clientIp(req);
   const key = `auth:${ip}`;
   const LIMIT = 10;
   const WINDOW_MS = 15 * 60_000;
