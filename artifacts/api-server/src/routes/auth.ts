@@ -7,6 +7,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
@@ -15,6 +16,7 @@ import { Resend } from "resend";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { getStripeKey } from "../services/stripe-factory.js";
+import { normalizeFpLid } from "../lib/fp-lid.js";
 
 const router = Router();
 
@@ -652,9 +654,14 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       const userStatus = userRow.rows[0].status;
       if (userStatus === "pending") {
         logger.warn({ email }, "[Auth] login-request: user pending activation (Stripe not completed)");
+        // /signin.html can now accept this email again (pre-register no longer
+        // refuses a pending row), so sending the prospect there resumes the
+        // signup instead of bouncing them back here.
         res.status(402).json({
-          error: "Votre compte est en attente d'activation. Vérifiez votre email après avoir finalisé votre paiement sur /signin.html, ou complétez votre inscription.",
+          error: "Votre inscription n'a pas été finalisée. Reprenez-la pour activer votre compte.",
+          code: "SIGNUP_PENDING",
           redirectTo: "/signin.html",
+          resumable: true,
         });
         return;
       }
@@ -996,6 +1003,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     country, address, city, postalCode,
     phone, vat,
     seller_code: _rawSellerCode,
+    fp_lid: _rawFpLid,
   } = req.body as Record<string, string | undefined>;
 
   // Honeypot — bots fill hidden fields, humans don't
@@ -1049,12 +1057,29 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       `SELECT id, status FROM users WHERE lower(email) = $1 LIMIT 1`,
       [normalizedEmail]
     );
-    if (_activeUser.rows.length > 0) {
+    // A `pending` row is NOT an existing account: it is a signup that reached
+    // Stripe and never came back. Treating it as one closed the only two doors
+    // at once — login refuses `pending` with 402 → /signin.html, and this guard
+    // refused the retry with 409 → /login.html — so the prospect bounced between
+    // the two pages for ever and the lead was lost. The status was already read
+    // here and simply never looked at.
+    //
+    // Letting a pending retry through is safe: the transaction below deletes the
+    // caller's own unconsumed pending_signups rows before inserting a fresh one,
+    // and checkout-session/payment-intent reuse the canonical Stripe Customer
+    // recorded on those rows (ONE_CUSTOMER_INVARIANT), so no second customer,
+    // org or subscription can appear. An `active` or `suspended` account is still
+    // refused, exactly as before.
+    const _existingStatus = _activeUser.rows[0]?.status ?? "";
+    if (_activeUser.rows.length > 0 && _existingStatus !== "pending") {
       res.status(409).json({
         error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
         redirectTo: "/login.html",
       });
       return;
+    }
+    if (_existingStatus === "pending") {
+      logger.info({ email: normalizedEmail }, "[Auth/PreRegister] pending signup resuming — guard passed");
     }
 
     // Also catch invited team members who may have no org_settings row
@@ -1118,12 +1143,16 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 
     // DELETE all non-consumed rows for this email (expired or abandoned checkouts).
     // RETURNING lets us collect Stripe customer IDs for async cleanup.
-    const _cleaned = await client.query<{ stripe_customer_id: string | null }>(
+    const _cleaned = await client.query<{ stripe_customer_id: string | null; fp_lid: string | null }>(
       `DELETE FROM pending_signups
        WHERE lower(email) = lower($1) AND consumed_at IS NULL
-       RETURNING stripe_customer_id`,
+       RETURNING stripe_customer_id, fp_lid`,
       [normalizedEmail]
     );
+    // Conversion B: the first attribution wins — a retry never replaces it.
+    const _earlierFpLid = (_cleaned.rows as { fp_lid?: string | null }[])
+      .map(r => normalizeFpLid(r.fp_lid))
+      .find((v): v is string => v !== null) ?? null;
     const _staleCustomerIds = (_cleaned.rows as { stripe_customer_id: string | null }[])
       .map(r => r.stripe_customer_id)
       .filter((id): id is string => Boolean(id));
@@ -1162,14 +1191,16 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 
     await client.query(
       `INSERT INTO pending_signups
-         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW() + INTERVAL '2 hours')`,
+         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')`,
       [
         preToken, normalizedEmail, fn, ln, company,
         countryVal, addressVal, cityVal, postalVal,
         String(phone || "").trim() || null,
         String(vat   || "").trim() || null,
         _preRegSellerId,
+        // Conversion B: opaque lead id, strictly validated; anything else is NULL.
+        _earlierFpLid ?? normalizeFpLid(_rawFpLid),
       ]
     );
 
@@ -1904,6 +1935,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : null;
   const rawSellerCode = String(req.query["seller_code"] ?? "").trim().toUpperCase();
   const sellerCode = /^SELLER-[A-Z0-9]{1,20}$/.test(rawSellerCode) ? rawSellerCode : null;
+  const fpLid = normalizeFpLid(req.query["fp_lid"]);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -1912,7 +1944,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode })).toString("base64"),
+    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid })).toString("base64"),
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -1923,7 +1955,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   const publicUrl = getPublicUrl();
 
   if (oauthError) {
-    res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`);
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`, req.query));
     return;
   }
   if (!code) {
@@ -1963,7 +1995,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const resolvedEmail = user.email ?? user.sub ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Google login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
       return;
     }
 
@@ -1973,6 +2005,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
     let planFromState: string | null = null;
     let sellerIdFromState: string | null = null;
+    let fpLidFromState: string | null = null;
     try {
       const rawState = String(req.query["state"] ?? "");
       if (rawState) {
@@ -1980,7 +2013,9 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
           plan?: string;
           redirect_to?: string | null;
           seller_code?: string | null;
+          fp_lid?: string | null;
         };
+        fpLidFromState = normalizeFpLid(stateObj.fp_lid);
         if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
           planFromState = stateObj.plan;
           logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
@@ -2072,20 +2107,25 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
             const _gpClient = await pool.connect();
             try {
               // Invalidate any existing non-consumed pending signup for this email
-              await _gpClient.query(
+              const _gpInvalidated = await _gpClient.query<{ fp_lid: string | null }>(
                 `UPDATE pending_signups SET consumed_at = NOW()
-                 WHERE email = $1 AND consumed_at IS NULL`,
+                 WHERE email = $1 AND consumed_at IS NULL
+                 RETURNING fp_lid`,
                 [resolvedEmail],
               );
+              // Conversion B: the first attribution wins over the one in this OAuth state.
+              const _gpFpLid = ((_gpInvalidated?.rows ?? []) as { fp_lid?: string | null }[])
+                .map(r => normalizeFpLid(r.fp_lid))
+                .find((v): v is string => v !== null) ?? fpLidFromState;
               // Insert a fresh pending_signups row
               googlePreRegToken = generateToken();
               await _gpClient.query(
                 `INSERT INTO pending_signups
-                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,NOW(),NOW() + INTERVAL '2 hours')
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
+                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,$7,NOW(),NOW() + INTERVAL '2 hours')
                  ON CONFLICT (token) DO NOTHING`,
                 // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState],
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
               );
               logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
             } finally {
@@ -2093,12 +2133,12 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
             }
           } catch (preRegErr) {
             logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
-            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
             return;
           }
           if (!googlePreRegToken) {
             logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
-            res.redirect(`${publicUrl}/signin.html?error=google_signup_retry`);
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
             return;
           }
           const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
@@ -2121,7 +2161,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       }
     } catch (err) {
       logger.error({ err }, "[Auth] Google login — identity provisioning failed");
-      res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
       return;
     }
 
@@ -2153,7 +2193,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     res.redirect(redirectAfterLogin);
   } catch (err) {
     logger.error({ err }, "[Auth] Google login callback failed");
-    res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
   }
 });
 
@@ -2197,7 +2237,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     const resolvedEmail = user.email ?? user.login ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ login: user.login }, "[Auth] GitHub login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
       return;
     }
 
@@ -2581,7 +2621,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
 
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Apple login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/login.html?error=access_denied`);
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
       return;
     }
 

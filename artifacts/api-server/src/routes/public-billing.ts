@@ -1,16 +1,180 @@
+import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
-import { createRateLimit } from "../middlewares/rateLimiter.js";
+import { publicCheckoutRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
-
-const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
+import { normalizeFpLid } from "../lib/fp-lid.js";
 
 const router = Router();
+
+/**
+ * Stripe idempotency key for one checkout attempt.
+ *
+ * Without one, a double-clicked pay button or a retried request creates a second
+ * PaymentIntent or Session: the prospect sees two pending charges and support has
+ * to reconcile them.
+ *
+ * The key covers what the attempt *is* — who is buying, what is in the cart, for
+ * how much — plus the window it happens in. The window is what keeps a technical
+ * retry deduplicated without freezing a legitimate new attempt, and it is not
+ * optional: a Checkout Session is single-use, so replaying one that has since
+ * been completed or expired would hand the prospect a dead URL, and a second
+ * genuine purchase of the same AI credit pack would silently replay the first
+ * PaymentIntent and never charge. Both are legitimate attempts that a key
+ * without time would have blocked for as long as Stripe retains it.
+ *
+ * So: same cart, same minute → one Stripe object. Same cart, later → a new
+ * attempt, as the prospect intends. Different cart → a different key, always.
+ */
+const ATTEMPT_WINDOW_MS = 10 * 60_000;
+
+export function checkoutIdempotencyKey(parts: {
+  scope: string;
+  actor: string;
+  plan: string;
+  addons: Record<string, unknown>;
+  amountCents: number;
+  now?: number;
+}): string {
+  const addonFingerprint = Object.keys(parts.addons)
+    .sort()
+    .map((key) => `${key}=${String((parts.addons as Record<string, unknown>)[key])}`)
+    .join(",");
+  const window = Math.floor((parts.now ?? Date.now()) / ATTEMPT_WINDOW_MS);
+  const material = [
+    parts.scope,
+    parts.actor,
+    parts.plan,
+    addonFingerprint,
+    String(parts.amountCents),
+    String(window),
+  ].join("|");
+  return "fp_" + createHash("sha256").update(material).digest("hex").slice(0, 48);
+}
+
+/**
+ * Turn a Stripe failure into something the page can act on — and nothing more.
+ *
+ * Every failure used to collapse into one 500: a prospect holding a declined card
+ * was told to retry for ever, and we learnt nothing. The mapping gives the page a
+ * code to branch on and the correct HTTP class.
+ *
+ * What reaches the browser is an allowlist, by construction. The message is one of
+ * the literals below — never `err.message`, never a stack, never a Stripe payload,
+ * never an identifier. The decline reason is read from a fixed set too: it comes
+ * from the provider, and a value we have not vetted must not be reflected to a
+ * client, so anything unrecognised degrades to plain `card_declined`. An unknown
+ * error class gets the generic answer; its detail lives only in the server log.
+ */
+const CLIENT_SAFE_DECLINE_CODES = new Set([
+  "insufficient_funds",
+  "card_not_supported",
+  "currency_not_supported",
+  "expired_card",
+  "incorrect_cvc",
+  "incorrect_number",
+  "invalid_account",
+  "lost_card",
+  "stolen_card",
+  "do_not_honor",
+  "generic_decline",
+  "processing_error",
+  "authentication_required",
+  "transaction_not_allowed",
+  "try_again_later",
+  "withdrawal_count_limit_exceeded",
+]);
+
+export type StripeFailureView = {
+  status: number;
+  code: string;
+  error: string;
+  retryable: boolean;
+};
+
+const FAILURE_VIEWS: Record<string, StripeFailureView> = {
+  StripeCardError: {
+    status: 402,
+    code: "card_declined",
+    error: "Votre carte a été refusée. Vérifiez vos informations ou utilisez un autre moyen de paiement.",
+    retryable: true,
+  },
+  StripeRateLimitError: {
+    status: 503,
+    code: "provider_rate_limited",
+    error: "Service de paiement momentanément saturé. Réessayez dans quelques instants.",
+    retryable: true,
+  },
+  StripeConnectionError: {
+    status: 503,
+    code: "provider_unavailable",
+    error: "Service de paiement momentanément indisponible. Réessayez dans quelques instants.",
+    retryable: true,
+  },
+  StripeAPIError: {
+    status: 503,
+    code: "provider_unavailable",
+    error: "Service de paiement momentanément indisponible. Réessayez dans quelques instants.",
+    retryable: true,
+  },
+  StripeIdempotencyError: {
+    status: 409,
+    code: "idempotency_conflict",
+    error: "Cette tentative de paiement a changé en cours de route. Rechargez la page et recommencez.",
+    retryable: false,
+  },
+  StripeInvalidRequestError: {
+    status: 400,
+    code: "invalid_request",
+    error: "Cette demande de paiement est invalide. Rechargez la page et recommencez.",
+    retryable: false,
+  },
+};
+
+const GENERIC_FAILURE: StripeFailureView = {
+  status: 500,
+  code: "payment_setup_failed",
+  error: "Erreur lors de la création du paiement.",
+  retryable: true,
+};
+
+export function describeStripeFailure(err: unknown): StripeFailureView {
+  const type = (err as { type?: string } | null)?.type ?? "";
+  const view = FAILURE_VIEWS[type];
+  if (!view) return { ...GENERIC_FAILURE };
+  if (type !== "StripeCardError") return { ...view };
+
+  const declineCode = (err as { decline_code?: unknown } | null)?.decline_code;
+  const vetted = typeof declineCode === "string" && CLIENT_SAFE_DECLINE_CODES.has(declineCode)
+    ? declineCode
+    : "";
+  return { ...view, code: vetted ? `card_declined:${vetted}` : view.code };
+}
+
+/**
+ * The curated fields of a provider failure that may be written to our logs.
+ *
+ * The error object carries the request payload, and a card failure can carry the
+ * payment method it was raised on. Logging the whole thing would put a customer
+ * identifier and a card fingerprint into the log line for ever; these five
+ * fields are enough to diagnose and carry no cardholder data.
+ */
+export function stripeFailureLogFields(err: unknown): Record<string, string> {
+  const e = (err ?? {}) as Record<string, unknown>;
+  const pick = (name: string): string => (typeof e[name] === "string" ? (e[name] as string) : "");
+  return {
+    stripeType: pick("type"),
+    stripeCode: pick("code"),
+    stripeDeclineCode: pick("decline_code"),
+    stripeRequestId: pick("requestId"),
+    stripeStatusCode: typeof e["statusCode"] === "number" ? String(e["statusCode"]) : "",
+  };
+}
 
 /**
  * Public billing routes are mounted before the normal org-context middleware.
@@ -784,7 +948,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "checkout_session",
+          actor: preRegisterToken || authOrgId || "anonymous",
+          plan,
+          addons: addons as Record<string, unknown>,
+          amountCents: quote.amountDueTodayMinor,
+        }),
+      });
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
@@ -802,7 +974,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "checkout_session",
+          actor: preRegisterToken || authOrgId || "anonymous",
+          plan,
+          addons: addons as Record<string, unknown>,
+          amountCents: quote.amountDueTodayMinor,
+        }),
+      });
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
@@ -821,7 +1001,15 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "checkout_session",
+          actor: preRegisterToken || authOrgId || "anonymous",
+          plan,
+          addons: addons as Record<string, unknown>,
+          amountCents: quote.amountDueTodayMinor,
+        }),
+      });
       respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
@@ -1263,6 +1451,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
            removes Stripe Link and redirect-based wallets from the Payment Element */
         automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         metadata,
+      }, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "payment_intent",
+          actor: preRegisterToken || _piReqOrgId || preRegCustomerId || "anonymous",
+          plan: planKey,
+          addons: addons as Record<string, unknown>,
+          amountCents: immediateAmountCents,
+        }),
       });
       logger.info({ plan: planKey, addonCount: quote.lines.filter(l => l.kind === "addon").length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
       res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
@@ -1279,6 +1475,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         automatic_payment_methods: { enabled: true, allow_redirects: "never" },
         usage: "off_session",
         metadata,
+      }, {
+        idempotencyKey: checkoutIdempotencyKey({
+          scope: "setup_intent",
+          actor: preRegisterToken || _piReqOrgId || preRegCustomerId || "anonymous",
+          plan: planKey,
+          addons: addons as Record<string, unknown>,
+          amountCents: 0,
+        }),
       });
       logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
       res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues, quote, setupIntentId: si.id });
@@ -1287,8 +1491,12 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
 
     res.status(400).json({ error: "Panier invalide." });
   } catch (err) {
-    logger.error({ err }, "[PublicBilling] payment-intent failed");
-    res.status(500).json({ error: "Erreur lors de la création du paiement." });
+    const failure = describeStripeFailure(err);
+    logger.error(
+      { ...stripeFailureLogFields(err), code: failure.code },
+      "[PublicBilling] payment-intent failed",
+    );
+    res.status(failure.status).json({ error: failure.error, code: failure.code, retryable: failure.retryable });
   }
 });
 
@@ -2318,7 +2526,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           try {
             const _fcActR0 = await _fcActC0.query(
               `SELECT email, first_name, last_name, company_name, country, address, city,
-                      postal_code, phone, vat, seller_id, consumed_at, expires_at
+                      postal_code, phone, vat, seller_id, fp_lid, consumed_at, expires_at
                FROM pending_signups
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
@@ -2467,14 +2675,18 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             // path, because finalize-checkout can activate the account before the
             // payment webhook is delivered.
             const _fcSellerId = _fcSignup["seller_id"] ?? null;
+            // Conversion B: the lead id is copied in the same transaction that consumes
+            // the pending signup, so it survives the pending row's cleanup. First wins.
+            const _fcFpLid = normalizeFpLid(_fcSignup["fp_lid"]);
             await _fcActTxC.query(
               `INSERT INTO organizations
-                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id)
-               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10)
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id,fp_lid)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,$11)
                ON CONFLICT (id) DO UPDATE
                  SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
                      stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
                       seller_id=COALESCE(organizations.seller_id,EXCLUDED.seller_id),
+                     fp_lid=COALESCE(organizations.fp_lid,EXCLUDED.fp_lid),
                      updated_at=NOW()`,
               [
                 _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
@@ -2483,6 +2695,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                 _fcAEmail, customerId ?? null,
                 trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
                  _fcSellerId,
+                _fcFpLid,
               ]
             );
             logger.info({ step: "FC-4b-ok" }, "[FC] step-4b: organization upserted");
