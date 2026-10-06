@@ -15,6 +15,7 @@ import { requestId } from "./middlewares/requestId.js";
 import { orgContext }    from "./middlewares/orgContext.js";
 import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
+import { withCarriedParams } from "./lib/carry-params.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -315,8 +316,12 @@ app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
 
 // ── Frontend page routes ──────────────────────────────────────────────────────
 // Landing / Signup page — public marketing & auth entry point
-app.get("/index.html", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
-app.get("/", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
+// The allow-listed funnel parameters (fp_ref, plan, fp_lid…) survive this hop:
+// a link to the app root must not lose where the prospect came from.
+app.get("/index.html", (req: Request, res: Response) =>
+  res.redirect(301, withCarriedParams("/signin.html", req.query as Record<string, unknown>)));
+app.get("/", (req: Request, res: Response) =>
+  res.redirect(301, withCarriedParams("/signin.html", req.query as Record<string, unknown>)));
 app.get(["/index", "/signup", "/inscription", "/signin", "/signin.html"], servePage("signin.html"));
 // Dashboard — primary app entry point (authenticated)
 // Server-side gate: if no fp_token cookie is present the visitor is definitely
