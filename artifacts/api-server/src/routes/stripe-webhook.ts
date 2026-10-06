@@ -11,6 +11,7 @@ import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
+import { normalizeFpLid } from "../lib/fp-lid.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -401,7 +402,7 @@ export async function activateNewSignup(opts: {
   let signupRow: Record<string, string | null> | null = null;
   try {
     const r = await dbClient.query(
-      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id
+      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid
        FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
       [preRegToken]
     );
@@ -549,18 +550,21 @@ export async function activateNewSignup(opts: {
     // Seller attribution: propagate seller_id from pending_signup → organization.
     // Pure data propagation — does not affect plan, trial, customer, or billing logic.
     const _wbSellerId = (signupRow["seller_id"] as string | null) ?? null;
+    // Conversion B: opaque lead id, copied before the pending row is consumed. First wins.
+    const _wbFpLid = normalizeFpLid(signupRow["fp_lid"]);
 
     const orgInsert = await activateClient.query<{ id: string }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
-          owner_email, stripe_customer_id, trial_ends_at, seller_id)
-       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10)
+          owner_email, stripe_customer_id, trial_ends_at, seller_id, fp_lid)
+       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (id) DO UPDATE
          SET status              = 'active',
              plan                = EXCLUDED.plan,
              subscription_status = EXCLUDED.subscription_status,
              stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, organizations.stripe_customer_id),
              seller_id           = COALESCE(organizations.seller_id, EXCLUDED.seller_id),
+             fp_lid              = COALESCE(organizations.fp_lid, EXCLUDED.fp_lid),
              updated_at          = NOW()
        RETURNING id`,
       [
@@ -574,6 +578,7 @@ export async function activateNewSignup(opts: {
         customerId ?? null,
         isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
         _wbSellerId,
+        _wbFpLid,
       ]
     );
     newOrgId = orgInsert.rows[0]?.id ?? orgUUID;

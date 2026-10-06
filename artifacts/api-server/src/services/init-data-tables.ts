@@ -1992,6 +1992,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at);`);
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at      TIMESTAMPTZ`);
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
+    // Conversion B: opaque lead id carried from the outreach email to the organization.
+    await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
+    await run(client, `ALTER TABLE organizations   ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
 
     // ── Deduplicate & purge before creating unique index ──────────────────────
     // Step 1: Delete expired unconsumed rows. These have consumed_at IS NULL but

@@ -28,6 +28,12 @@
       } catch(e){}
     })();
   </script>
+  <script>/* Conversion B — keep the outreach lead id (22 chars) for signin.html; first one wins */
+  (function(){try{
+    var _l=new URLSearchParams(window.location.search).get('fp_lid')||'';
+    if(/^[A-Za-z0-9_-]{22}$/.test(_l)&&!/^[A-Za-z0-9_-]{22}$/.test(sessionStorage.getItem('fp_lid')||'')){sessionStorage.setItem('fp_lid',_l);}
+  }catch(e){}})();
+  </script>
   <script>/* Seller Attribution — legacy pricing links bridge into signup */
   (function(){try{
     var _u=new URLSearchParams(window.location.search);
