@@ -178,6 +178,8 @@ async function main() {
         await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ`);
         // stripe_customer_id: stored after first Stripe Customer creation so retries reuse the same customer
         await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
+        // fp_lid: Conversion B opaque lead id (22 chars), copied to organizations.fp_lid on activation
+        await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
         // SECURITY: RLS enabled with no public policies → deny-all for anon/authenticated.
         // Backend pool.query() uses BYPASSRLS superuser and is unaffected.
         // This prevents the `token` column from being exposed via PostgREST.
