@@ -30,6 +30,9 @@ const CREATED = Math.floor(Date.parse("2026-10-06T18:30:00.000Z") / 1000);
 let orgFpLid: string | null;
 let billingClaim: boolean;
 let metadataWrites: Record<string, unknown>[];
+// Les ecritures de `markEventStatus`, isolees : c'est la seule attendue avant la
+// reponse, donc la seule qu'un arret du processus ne peut pas escamoter.
+let statusWrites: Record<string, unknown>[];
 
 const emitted: Record<string, unknown>[] = [];
 let emitOutcome: string;
@@ -50,6 +53,17 @@ function fakeQuery(sql: string, p?: unknown[]): { rows: unknown[]; rowCount: num
   if (/INSERT INTO billing_events/i.test(q)) {
     return { rows: billingClaim ? [{ status: null }] : [], rowCount: billingClaim ? 1 : 0 };
   }
+  // `markEventStatus` : statut en $2, metadonnees supplementaires en $3.
+  if (/UPDATE billing_events SET metadata = jsonb_set/i.test(q)) {
+    const write = {
+      status: String((p ?? [])[1] ?? ""),
+      ...JSON.parse(String((p ?? [])[2] ?? "{}")) as Record<string, unknown>,
+    };
+    statusWrites.push(write);
+    metadataWrites.push(write);
+    return { rows: [], rowCount: 1 };
+  }
+  // `noteEmission` : fusion jsonb simple, champs en $2.
   if (/UPDATE billing_events SET metadata/i.test(q)) {
     metadataWrites.push(JSON.parse(String((p ?? [])[1] ?? "{}")));
     return { rows: [], rowCount: 1 };
@@ -131,7 +145,7 @@ const checkout = () => ({
 });
 
 beforeEach(() => {
-  emitted.length = 0; metadataWrites = [];
+  emitted.length = 0; metadataWrites = []; statusWrites = [];
   orgFpLid = FP_LID; billingClaim = true; emitOutcome = "sent";
   vi.clearAllMocks();
 });
@@ -183,6 +197,33 @@ describe("paid exclut ce qui n est pas un premier paiement positif", () => {
     expect(emitted).toHaveLength(0);
   });
 
+  // Les trois gardes ci-dessus laissaient passer le RENOUVELLEMENT d'un add-on :
+  // montant positif, `billing_reason: "subscription_cycle"`, abonnement
+  // renseigne. Les add-ons vivent sur leur propre abonnement Stripe, marque
+  // `metadata.addonSub` — c'est ainsi que `services/addon-stripe-sync.ts`
+  // reconnait l'abonnement principal. Renouvele avant le premier prelevement du
+  // plan, il verrouillait « payant » sur un paiement qui n'est pas la conversion.
+  it("le renouvellement d un add-on n emet rien (marqueur sur l abonnement)", async () => {
+    await deliver(invoice({ subscription_details: { metadata: { addonSub: "true", orgId: ORG } } }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("le renouvellement d un add-on n emet rien (marqueur sur une ligne)", async () => {
+    await deliver(invoice({ lines: { data: [{ metadata: { addonSub: "true" } }] } }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("une facture de l abonnement principal emet toujours paid", async () => {
+    // Le garde-fou vise le marqueur, pas la presence de metadonnees : sans
+    // marqueur on emet, car un signal absent n'est pas un signal negatif et
+    // perdre la conversion coute plus cher qu'en compter une de trop.
+    await deliver(invoice({
+      subscription_details: { metadata: { orgId: ORG } },
+      lines: { data: [{ metadata: { plan: "standard" } }] },
+    }));
+    expect(emitted.map((e) => e["stage"])).toEqual(["paid"]);
+  });
+
   it("un abonnement payant d emblee n emet pas trial", async () => {
     await deliver(subscription({ status: "active" }));
     expect(emitted.filter((e) => e["stage"] === "trial")).toHaveLength(0);
@@ -220,6 +261,46 @@ describe("un jalon perdu reste rattrapable", () => {
       aiLabOccurredAt: "2026-10-06T18:30:00.000Z",
       aiLabEmitted: false,
     });
+  });
+
+  // Le coeur de la garantie : l'intention et la marque `processed` partent dans
+  // UNE SEULE ecriture, celle qui est attendue avant la reponse. Inscrite plus
+  // tard, dans la tache detachee, elle disparaissait avec le processus — et le
+  // jalon devenait invisible, puisque Stripe ne rejoue pas un evenement deja
+  // traite. Ici, ou les deux sont en base, ou aucune, et alors Stripe reessaie.
+  it("l intention voyage dans la MEME ecriture que la marque processed", async () => {
+    await deliver(invoice());
+    expect(statusWrites).toHaveLength(1);
+    expect(statusWrites[0]).toMatchObject({
+      status: "processed",
+      aiLabStage: "paid",
+      aiLabOccurredAt: "2026-10-06T18:30:00.000Z",
+      aiLabEmitted: false,
+    });
+  });
+
+  it("cette ecriture precede l appel a AI Lab", async () => {
+    await deliver(invoice());
+    // Si l'intention etait ecrite apres l'emission, un arret entre les deux
+    // laisserait un jalon emis sans trace, ou une trace sans jalon.
+    expect(metadataWrites.indexOf(statusWrites[0]!)).toBe(0);
+    expect(emitted).toHaveLength(1);
+  });
+
+  it("un evenement sans jalon n inscrit aucune intention", async () => {
+    await deliver(invoice({ amount_paid: 0 }));
+    expect(statusWrites).toHaveLength(1);
+    expect(statusWrites[0]).toMatchObject({ status: "processed" });
+    expect(statusWrites[0]!["aiLabStage"]).toBeUndefined();
+  });
+
+  it("l intention est inscrite meme si l organisation n a pas de fp_lid", async () => {
+    // L'emission s'arrete faute de `fp_lid`, mais l'etape prouvee par Stripe,
+    // elle, est un fait : elle reste lisible en base.
+    orgFpLid = null;
+    await deliver(invoice());
+    expect(statusWrites[0]).toMatchObject({ aiLabStage: "paid", aiLabEmitted: false });
+    expect(emitted).toHaveLength(0);
   });
 
   it("un succes marque le jalon comme emis", async () => {
