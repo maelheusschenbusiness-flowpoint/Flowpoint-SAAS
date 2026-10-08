@@ -12,6 +12,7 @@ import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../service
 import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { emitConversionEvent, type ConversionStage } from "../lib/conversion-events.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -376,10 +377,28 @@ async function persistAddonsFromSubscription(
   }
 }
 
+/**
+ * L'etape de funnel que prouve cet evenement Stripe, ou `null`.
+ *
+ * Trois types seulement, et `trial` demande en plus que l'abonnement soit
+ * reellement en essai : `customer.subscription.created` arrive aussi pour un
+ * abonnement payant d'emblee, et le compter comme essai ferait entrer dans
+ * l'etape « essai » des prospects qui ne l'ont jamais vue.
+ */
+function conversionStageFor(type: string, obj: Record<string, unknown>): ConversionStage | null {
+  if (type === "invoice.payment_succeeded") return "paid";
+  if (type === "checkout.session.completed") return "checkout";
+  if (type === "customer.subscription.created" || type === "customer.subscription.updated") {
+    return obj["status"] === "trialing" ? "trial" : null;
+  }
+  return null;
+}
+
 // ── Shared activation helper — called by checkout.session.completed AND
 //    payment_intent.succeeded / setup_intent.succeeded (new checkout-payment.html flow).
 //    Idempotent: all DB writes use ON CONFLICT DO NOTHING / DO UPDATE.
 //    Exported for QA fixture endpoint (qa-fixtures.ts /qa/billing/activate-signup).
+
 export async function activateNewSignup(opts: {
   preRegToken:  string;
   orgId:        string;   // email = orgId in FlowPoint
@@ -2207,6 +2226,51 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
   // Handler completed successfully — record processed so future replays no-op.
   await markEventStatus("processed");
+
+  // AI Lab — jalons `checkout`, `trial` et `paid`, en meilleur effort.
+  //
+  // Un seul point d'emission pour les trois, et il est ici a dessein : on
+  // n'annonce un jalon qu'apres un traitement reussi. Un doublon est deja sorti
+  // plus haut, et un echec est parti en 500 — ni l'un ni l'autre n'arrive ici.
+  //
+  // `fp_lid` est RESOLU depuis `organizations`, ou Conversion B l'a copie a
+  // l'activation. Il n'est pas copie dans Stripe : le webhook connait deja
+  // `orgId`, la base est la source de verite, et dupliquer le jeton chez un
+  // tiers creerait un second endroit a maintenir sans rien apporter.
+  //
+  // `occurred_at` vient de `event.created`, qui est stable par definition : un
+  // rejeu Stripe porte le meme identifiant ET le meme horodatage, donc AI Lab
+  // le reconnait comme doublon au lieu d'y voir une collision d'identifiant.
+  void (async () => {
+    try {
+      const stage = conversionStageFor(event.type, obj);
+      if (!stage || !orgId || !eventId) return;
+      const { pool: _cePool } = await import("@workspace/db");
+      const _ceClient = await _cePool.connect();
+      let fpLid: string | null = null;
+      try {
+        const found = await _ceClient.query<{ fp_lid: string | null }>(
+          `SELECT fp_lid FROM organizations WHERE id = $1`, [orgId]);
+        fpLid = normalizeFpLid(found.rows[0]?.fp_lid);
+      } finally {
+        _ceClient.release();
+      }
+      if (!fpLid) return;
+      const created = (event as unknown as { created?: number }).created;
+      if (typeof created !== "number" || !Number.isFinite(created)) return;
+      await emitConversionEvent({
+        eventId: `stripe:${eventId}`,
+        stage,
+        source: "stripe",
+        fpLid,
+        occurredAt: new Date(created * 1000).toISOString(),
+      });
+    } catch (err) {
+      // Rien ne remonte : la mesure ne peut pas compromettre un encaissement.
+      logger.warn({ err: (err as Error)?.name }, "[AI Lab] conversion emission skipped (non-fatal)");
+    }
+  })();
+
   res.json({ received: true });
 }
 
