@@ -31,13 +31,17 @@ const SOURCE = readFileSync(join(here, "../routes/admin.ts"), "utf8");
 /** Every route declared in admin.ts with the guard that opens its handler. */
 const ROUTES = [...SOURCE.matchAll(/router\.(get|post|put|patch|delete)\("([^"]+)"/g)].map((m) => {
   const after = SOURCE.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 400);
-  const guard = /require(?:Seller)?AdminKey/.exec(after)?.[0] ?? null;
+  // Trois gardes existent desormais : admin complet, vendeurs, et Croissance —
+  // chacun dans son propre en-tete, chacun n'ouvrant que ses routes.
+  const guard = /require(?:Seller|Growth)?AdminKey/.exec(after)?.[0] ?? null;
   return { method: m[1] as "get" | "post" | "put" | "patch" | "delete", path: m[2], guard };
 });
 const SELLER_ROUTES = [
   "POST /admin/sellers", "GET /admin/sellers", "PATCH /admin/sellers/:code",
   "GET /admin/sellers/:code/report", "DELETE /admin/sellers/:code",
 ];
+/** La seule route ouverte par GROWTH_ADMIN_KEY, et elle est en lecture seule. */
+const GROWTH_ROUTES = ["GET /admin/growth/daily"];
 const key = (r: { method: string; path: string }) => `${r.method.toUpperCase()} ${r.path}`;
 const concrete = (p: string) => p.replace(/:code/g, "SELLER-TEST1").replace(/:[a-zA-Z]+/g, "x1");
 
@@ -94,6 +98,13 @@ describe("route inventory", () => {
     expect(ROUTES.filter((r) => r.guard === "requireSellerAdminKey").map(key).sort()).toEqual([...SELLER_ROUTES].sort());
      expect((SOURCE.match(/requireSellerAdminKey\(req, res\)/g) ?? []).length).toBe(5);
   });
+  it("the growth guard is used by exactly the one growth route", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireGrowthAdminKey").map(key).sort()).toEqual([...GROWTH_ROUTES].sort());
+    expect((SOURCE.match(/requireGrowthAdminKey\(req, res\)/g) ?? []).length).toBe(1);
+  });
+  it("the growth route is read-only: no write verb carries the growth guard", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireGrowthAdminKey" && r.method !== "get")).toEqual([]);
+  });
 });
 
 describe("SELLER_ADMIN_KEY opens the four seller routes", () => {
@@ -134,6 +145,39 @@ describe("SELLER_ADMIN_KEY is refused everywhere else, before any database acces
       expect(q).not.toHaveBeenCalled();
     });
   }
+});
+
+describe("GROWTH_ADMIN_KEY est refusee partout ailleurs", () => {
+  const GROWTH = "g".repeat(48);
+  const others = ROUTES.filter((r) => !GROWTH_ROUTES.includes(key(r)));
+  it("couvre toutes les autres routes", () => { expect(others.length).toBe(ROUTES.length - 1); });
+  for (const r of others) {
+    it(`${key(r)} → 403 avec x-growth-admin-key`, async () => {
+      process.env["GROWTH_ADMIN_KEY"] = GROWTH;
+      const res = await call(r.method, concrete(r.path)).set("x-growth-admin-key", GROWTH).send({});
+      expect(res.status).toBe(403);
+      expect(q).not.toHaveBeenCalled();
+      expect(c).not.toHaveBeenCalled();
+      delete process.env["GROWTH_ADMIN_KEY"];
+    });
+  }
+  it("la cle vendeurs n ouvre pas la route Croissance", async () => {
+    const res = await call("get", "/admin/growth/daily").set("x-seller-admin-key", SELLER).send({});
+    expect(res.status).toBe(403);
+    expect(q).not.toHaveBeenCalled();
+  });
+  it("une cle Croissance egale a la cle admin echoue fermee", async () => {
+    process.env["GROWTH_ADMIN_KEY"] = ADMIN;
+    const res = await call("get", "/admin/growth/daily").set("x-growth-admin-key", ADMIN).send({});
+    expect(res.status).toBe(503);
+    expect(q).not.toHaveBeenCalled();
+    delete process.env["GROWTH_ADMIN_KEY"];
+  });
+  it("GROWTH_ADMIN_KEY absente → 503, jamais 200", async () => {
+    const res = await call("get", "/admin/growth/daily").set("x-growth-admin-key", GROWTH).send({});
+    expect(res.status).toBe(503);
+    expect(q).not.toHaveBeenCalled();
+  });
 });
 
 describe("scoped key fails closed", () => {

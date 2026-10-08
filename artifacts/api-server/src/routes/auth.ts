@@ -17,6 +17,7 @@ import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
 
 const router = Router();
 
@@ -1189,10 +1190,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       }
     }
 
-    await client.query(
+    // `created_at` est relu : c'est l'horodatage que l'emission AI Lab doit porter.
+    // AI Lab exige qu'un meme `event_id` decrive un evenement immuable, horodatage
+    // compris — un `Date.now()` cote emetteur transformerait un rejeu en collision.
+    const _preRegInserted = await client.query<{ created_at: Date; fp_lid: string | null }>(
       `INSERT INTO pending_signups
          (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
+       RETURNING created_at, fp_lid`,
       [
         preToken, normalizedEmail, fn, ln, company,
         countryVal, addressVal, cityVal, postalVal,
@@ -1205,6 +1210,30 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     );
 
     await client.query("COMMIT");
+
+    // AI Lab — jalon `signup`, apres le COMMIT et en meilleur effort.
+    //
+    // Apres, parce qu'un jalon ne doit annoncer que ce qui est reellement
+    // enregistre. En meilleur effort, parce qu'une indisponibilite d'AI Lab ne
+    // peut pas faire echouer une inscription : `emitConversionEvent` ne leve
+    // jamais, et l'appel est detache pour ne pas meme ajouter sa latence ici.
+    //
+    // L'identifiant derive du jeton par condensat : le jeton de pre-inscription
+    // est un secret de courte duree, et l'envoyer tel quel le ferait sortir de
+    // son perimetre sans rien apporter.
+    {
+      const _emitFpLid = normalizeFpLid(_preRegInserted.rows[0]?.fp_lid);
+      const _emitAt = _preRegInserted.rows[0]?.created_at;
+      if (_emitFpLid && _emitAt) {
+        void emitConversionEvent({
+          eventId: stableEventId("signup", preToken),
+          stage: "signup",
+          source: "saas",
+          fpLid: _emitFpLid,
+          occurredAt: new Date(_emitAt).toISOString(),
+        });
+      }
+    }
 
     // Fire-and-forget: delete any orphaned Stripe customers from abandoned checkouts.
     if (_staleCustomerIds.length > 0) {

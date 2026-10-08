@@ -14,6 +14,12 @@ export default defineConfig({
     include: [
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
+      // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
+      "src/tests/ai-lab-conversion-emitters.test.ts",
+      // Les handlers eux-memes : prouve que quelqu un appelle l emetteur.
+      "src/tests/ai-lab-conversion-handlers.test.ts",
+      // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
+      "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
       "src/lib/carry-params.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
