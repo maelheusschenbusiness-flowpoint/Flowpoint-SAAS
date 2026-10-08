@@ -401,11 +401,24 @@ async function persistAddonsFromSubscription(
  * En l'absence de marqueur, on emet : un signal absent n'est pas un signal
  * negatif, et perdre la conversion serait le plus couteux des deux.
  */
+function isAddonMetadata(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object") return false;
+  const m = meta as Record<string, unknown>;
+  // Marqueur de `services/addon-stripe-sync.ts` : `metadata.addonSub = "true"`.
+  if (m["addonSub"]) return true;
+  // Marqueur du parcours public reel : `finalize-checkout` etiquette l'abonnement
+  // d'add-on `source: "checkout_payment_addons"` et NE POSE PAS `addonSub`.
+  // C'est deja ainsi que `public-billing.ts` le reconnait et l'ecarte quand il
+  // cherche l'abonnement de plan (lignes 1899 et 1908).
+  return String(m["source"] ?? "").startsWith("checkout_payment_addons");
+}
+
 function isAddonInvoice(obj: Record<string, unknown>): boolean {
   const details = obj["subscription_details"] as { metadata?: Record<string, unknown> } | undefined;
-  if (details?.metadata?.["addonSub"]) return true;
+  if (isAddonMetadata(details?.metadata)) return true;
+  if (isAddonMetadata(obj["subscription_metadata"])) return true;
   const lines = (obj["lines"] as { data?: Array<{ metadata?: Record<string, unknown> }> } | undefined)?.data ?? [];
-  return lines.some((line) => Boolean(line?.metadata?.["addonSub"]));
+  return lines.some((line) => isAddonMetadata(line?.metadata));
 }
 
 /**
@@ -446,6 +459,12 @@ function conversionStageFor(type: string, obj: Record<string, unknown>): Convers
   }
   if (type === "checkout.session.completed") return "checkout";
   if (type === "customer.subscription.created" || type === "customer.subscription.updated") {
+    // Un abonnement d'add-on nait `trialing` par construction : `finalize-checkout`
+    // lui pose `trial_end = +30 jours` parce que le premier mois a deja ete
+    // encaisse par PaymentIntent. Ce n'est pas un essai de plan, et le prendre
+    // pour tel verrouillait « essai » sur un prospect qui n'en a jamais eu —
+    // definitivement, le funnel ne retenant qu'un jalon par etape.
+    if (isAddonMetadata(obj["metadata"])) return null;
     return obj["status"] === "trialing" ? "trial" : null;
   }
   return null;

@@ -213,6 +213,25 @@ describe("paid exclut ce qui n est pas un premier paiement positif", () => {
     expect(emitted).toHaveLength(0);
   });
 
+  // Le marqueur `addonSub` ne couvrait que les add-ons de `addon-stripe-sync`.
+  // Le parcours public reel — `finalize-checkout`, celui qu'appellent
+  // `checkout-payment.html` et `checkout-return.html` — cree l'abonnement
+  // d'add-on avec `source: "checkout_payment_addons"` et SANS `addonSub`
+  // (public-billing.ts:2404). Sa facture de renouvellement passait donc toutes
+  // les gardes. Mesure E2E : elle produisait un faux jalon `paid`.
+  it("le renouvellement d un add-on du parcours public n emet rien", async () => {
+    await deliver(invoice({
+      subscription_details: { metadata: { plan: "standard", source: "checkout_payment_addons" } },
+      lines: { data: [{ metadata: { source: "checkout_payment_addons" } }] },
+    }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("le marqueur sur les metadonnees d abonnement de la facture compte aussi", async () => {
+    await deliver(invoice({ subscription_metadata: { addonSub: "true" } }));
+    expect(emitted).toHaveLength(0);
+  });
+
   it("une facture de l abonnement principal emet toujours paid", async () => {
     // Le garde-fou vise le marqueur, pas la presence de metadonnees : sans
     // marqueur on emet, car un signal absent n'est pas un signal negatif et
@@ -227,6 +246,36 @@ describe("paid exclut ce qui n est pas un premier paiement positif", () => {
   it("un abonnement payant d emblee n emet pas trial", async () => {
     await deliver(subscription({ status: "active" }));
     expect(emitted.filter((e) => e["stage"] === "trial")).toHaveLength(0);
+  });
+
+  // `customer.subscription.created` n'avait AUCUNE garde add-on. Or l'abonnement
+  // d'add-on nait `trialing` par construction : `finalize-checkout` lui pose
+  // `trial_end = +30 jours` parce que le premier mois est deja encaisse par
+  // PaymentIntent. Mesure E2E : il produisait un faux jalon `trial` pour un
+  // prospect sans aucun essai de plan.
+  it("un abonnement d add-on ne declare pas un essai (parcours public)", async () => {
+    await deliver(subscription({
+      status: "trialing",
+      metadata: { orgId: ORG, plan: "standard", source: "checkout_payment_addons" },
+    }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("un abonnement d add-on dedie ne declare pas un essai (addon-stripe-sync)", async () => {
+    await deliver(subscription({
+      status: "trialing", metadata: { orgId: ORG, addonSub: "true" },
+    }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("l abonnement de PLAN du parcours public declare bien son essai", async () => {
+    // `finalize-checkout` etiquette le plan `source: "checkout_payment"` — sans
+    // le suffixe `_addons`. La garde doit distinguer les deux.
+    await deliver(subscription({
+      status: "trialing",
+      metadata: { orgId: ORG, plan: "standard", source: "checkout_payment" },
+    }));
+    expect(emitted.map((e) => e["stage"])).toEqual(["trial"]);
   });
 });
 
