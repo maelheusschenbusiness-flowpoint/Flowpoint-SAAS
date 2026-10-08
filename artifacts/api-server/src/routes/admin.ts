@@ -85,6 +85,41 @@ function requireSellerAdminKey(req: Request, res: Response): boolean {
   return true;
 }
 
+// ── Growth reporting: its own scoped key ──────────────────────────────────────
+// La clé vendeurs n'ouvre QUE les cinq routes vendeurs, et c'est un invariant
+// teste. Le rapport Croissance a donc sa propre cle, dans son propre en-tete,
+// `x-growth-admin-key`. Elle n'ouvre qu'une route, en LECTURE SEULE : l'AI Lab
+// qui la detient ne peut ni creer, ni modifier, ni annuler un abonnement, un
+// paiement, une commission ou un vendeur. Donner la cle admin complete au pont
+// aurait fait l'inverse du moindre privilege.
+const GROWTH_ADMIN_KEY_MIN_LEN = 32;
+
+function requireGrowthAdminKey(req: Request, res: Response): boolean {
+  const provided = req.headers["x-growth-admin-key"];
+  // Pas d'en-tete dedie, ou un x-admin-key present : le controle admin complet.
+  if (provided === undefined || req.headers["x-admin-key"] !== undefined) {
+    return requireAdminKey(req, res);
+  }
+  const key = process.env["GROWTH_ADMIN_KEY"];
+  if (!key || key.length < GROWTH_ADMIN_KEY_MIN_LEN) {
+    res.status(503).json({
+      ok: false,
+      error: `GROWTH_ADMIN_KEY is not configured on this server (minimum ${GROWTH_ADMIN_KEY_MIN_LEN} chars)`,
+    });
+    return false;
+  }
+  if (key === process.env["ADMIN_KEY"] || key === process.env["SELLER_ADMIN_KEY"]) {
+    // Une cle egale a une autre ne limite rien.
+    res.status(503).json({ ok: false, error: "GROWTH_ADMIN_KEY must differ from ADMIN_KEY and SELLER_ADMIN_KEY" });
+    return false;
+  }
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
+    res.status(403).json({ ok: false, error: "Invalid x-growth-admin-key header" });
+    return false;
+  }
+  return true;
+}
+
 /** Canonical seller link: the signin page reads fp_ref and carries the attribution. */
 export const SELLER_LINK_BASE = "https://app.flowpoint.pro/signin.html";
 export const sellerLink = (code: string): string =>
@@ -2780,6 +2815,107 @@ router.get("/admin/sellers", async (req: Request, res: Response): Promise<void> 
   }
 });
 
+/**
+ * Les faits commerciaux par jour ouvre, pour le calendrier Croissance de l'AI Lab.
+ *
+ * LECTURE SEULE, et rien d'autre : un `SELECT` sur les faits que le webhook
+ * Stripe verifie a deja inscrits dans `billing_events.metadata`. Cette route ne
+ * cree, ne modifie et n'annule aucun abonnement, aucun paiement, aucune
+ * commission — et l'AI Lab, qui est son seul appelant, n'a aucun moyen d'en
+ * demander davantage.
+ *
+ * Les chiffres ne sont pas recalcules ici : ils ont ete etablis au moment de
+ * l'evenement, par le seul composant qui voyait l'abonnement. Agreger a la
+ * lecture evite de dependre d'un etat Stripe qui a peut-etre change depuis.
+ *
+ * Idempotence : `stripe_event_id` est unique, donc un webhook recu dix fois ne
+ * produit qu'une ligne. Rejouer cette lecture, ou la rejouer sur une fenetre
+ * plus large, redonne exactement les memes totaux — c'est ce qui permet la
+ * reconciliation.
+ *
+ * Le perimetre est l'activite commerciale GLOBALE de FlowPoint : tous les
+ * abonnements, qu'un `fp_lid` les attribue ou non. C'est volontairement un autre
+ * perimetre que le funnel de conversion, qui ne suit que les prospects attribues.
+ */
+export const GROWTH_DAILY_SQL = `
+  SELECT metadata->>'growthDay' AS day,
+         fact.key               AS metric,
+         SUM((fact.value)::bigint)::bigint AS value,
+         COUNT(*)::int          AS events
+    FROM billing_events,
+         jsonb_each(metadata->'growthFacts') AS fact
+   WHERE metadata->>'growthDay' BETWEEN $1 AND $2
+     AND jsonb_typeof(metadata->'growthFacts') = 'object'
+   GROUP BY 1, 2
+   ORDER BY 1, 2`;
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// ── GET /api/admin/growth/daily?from=AAAA-MM-JJ&to=AAAA-MM-JJ ─────────────────
+router.get("/admin/growth/daily", async (req: Request, res: Response): Promise<void> => {
+  if (!requireGrowthAdminKey(req, res)) return;
+  const from = String(req.query["from"] ?? "").trim();
+  const to   = String(req.query["to"] ?? "").trim();
+  if (!DAY_RE.test(from) || !DAY_RE.test(to)) {
+    res.status(400).json({ ok: false, error: "from and to must be AAAA-MM-JJ" });
+    return;
+  }
+  if (from > to) {
+    res.status(400).json({ ok: false, error: "from must not be after to" });
+    return;
+  }
+  try {
+    const [daily, sellers] = await Promise.all([
+      pool.query(GROWTH_DAILY_SQL, [from, to]),
+      // Le registre vendeurs est la source des vendeurs, pas la campagne
+      // Smartlead Sellers : un prospect demarche n'est pas un vendeur recrute.
+      // `deactivated_at` n'est renseigne qu'a partir de son introduction : les
+      // desactivations anterieures ne sont pas datables, et on ne les devine pas.
+      pool.query(
+        `SELECT to_char(created_at AT TIME ZONE 'Europe/Brussels', 'YYYY-MM-DD') AS day,
+                COUNT(*)::int AS value
+           FROM sellers
+          WHERE to_char(created_at AT TIME ZONE 'Europe/Brussels', 'YYYY-MM-DD') BETWEEN $1 AND $2
+          GROUP BY 1
+          UNION ALL
+         SELECT to_char(deactivated_at AT TIME ZONE 'Europe/Brussels', 'YYYY-MM-DD') AS day,
+                -COUNT(*)::int AS value
+           FROM sellers
+          WHERE deactivated_at IS NOT NULL
+            AND to_char(deactivated_at AT TIME ZONE 'Europe/Brussels', 'YYYY-MM-DD') BETWEEN $1 AND $2
+          GROUP BY 1`,
+        [from, to]
+      ),
+    ]);
+    const days: Record<string, Record<string, number>> = {};
+    const put = (day: string, metric: string, value: number): void => {
+      if (!DAY_RE.test(String(day ?? "")) || value === 0) return;
+      (days[day] ??= {})[metric] = (days[day]![metric] ?? 0) + value;
+    };
+    for (const r of daily.rows) put(String(r.day), String(r.metric), Number(r.value));
+    for (const r of sellers.rows) {
+      const v = Number(r.value);
+      put(String(r.day), v >= 0 ? "sellers_new" : "sellers_lost", Math.abs(v));
+    }
+    res.json({
+      ok: true, from, to, days,
+      // Dit franchement ce que chaque metrique vaut, pour que l'AI Lab n'affiche
+      // jamais un chiffre plus sur qu'il ne l'est.
+      coverage: {
+        complete: ["clients_new", "clients_churned", "trials_started", "trials_converted",
+                   "mrr_gained_cents", "mrr_lost_cents", "sellers_new"],
+        partial:  ["sellers_lost"],
+        detail: {
+          sellers_lost: "Date de desactivation disponible seulement depuis l'ajout de la colonne : les desactivations anterieures ne sont pas datables.",
+          mrr_gained_cents: "Lu sur les lignes d'abonnement, intervalle normalise au mois. Les add-ons sont exclus : ils ne sont pas l'abonnement principal.",
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 // ── PATCH /api/admin/sellers/:code — update seller (name / email / status) ────
 router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promise<void> => {
   if (!requireSellerAdminKey(req, res)) return;
@@ -2791,10 +2927,21 @@ router.patch("/admin/sellers/:code", async (req: Request, res: Response): Promis
   }
   try {
     const r = await pool.query(
+      // `deactivated_at` ne bouge qu'a la TRANSITION : il se pose quand le
+      // vendeur quitte l'etat actif et s'efface quand il y revient. Repasser le
+      // meme statut ne le redate pas, donc une seconde requete identique ne
+      // deplace pas une perte deja comptee dans le calendrier Croissance.
+      // Le statut lui-meme garde exactement le comportement precedent.
       `UPDATE sellers
           SET name       = COALESCE($2, name),
               email      = COALESCE($3, email),
               status     = COALESCE($4, status),
+              deactivated_at = CASE
+                WHEN $4::text IS NULL THEN deactivated_at
+                WHEN $4 = 'active'  THEN NULL
+                WHEN status = 'active' THEN NOW()
+                ELSE deactivated_at
+              END,
               updated_at = NOW()
         WHERE seller_code = $1
         RETURNING id, seller_code, name, email, status`,
