@@ -3519,6 +3519,13 @@ export async function initDataTables(): Promise<void> {
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Quand un vendeur a cesse d'etre actif. `updated_at` ne pouvait pas servir :
+    // il bouge a chaque changement de nom ou d'email, et daterait une perte le
+    // jour d'une correction de libelle. Nullable et renseigne seulement a la
+    // transition : les desactivations anterieures a cette colonne ne sont pas
+    // datables, et le rapport le dit plutot que de deviner une date.
+    await run(client, `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;`);
+    await run(client, `CREATE INDEX IF NOT EXISTS sellers_deactivated_at_idx ON sellers(deactivated_at);`);
     await run(client, `
       CREATE TABLE IF NOT EXISTS seller_commissions (
         id                          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,

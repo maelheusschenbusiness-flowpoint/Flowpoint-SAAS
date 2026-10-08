@@ -13,6 +13,7 @@ import { getStripeKey, createStripeClient } from "../services/stripe-factory.js"
 import { loadOrgSettings } from "../services/org-settings.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { emitConversionEvent, type ConversionStage } from "../lib/conversion-events.js";
+import { growthFactsFor } from "../lib/growth-facts.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -2361,9 +2362,26 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const _aiLabCreated = (event as unknown as { created?: number }).created;
   const _aiLabOccurredAt = typeof _aiLabCreated === "number" && Number.isFinite(_aiLabCreated)
     ? new Date(_aiLabCreated * 1000).toISOString() : null;
-  await markEventStatus("processed", _aiLabStages.length > 0 && _aiLabOccurredAt
-    ? { aiLabStages: _aiLabStages, aiLabOccurredAt: _aiLabOccurredAt, aiLabEmitted: false }
-    : undefined);
+  // Les faits commerciaux du calendrier Croissance voyagent avec la meme marque,
+  // pour la meme raison : l'ecriture est deja attendue, elle est atomique avec le
+  // `processed`, et `billing_events.stripe_event_id` est unique — un webhook recu
+  // dix fois ne peut donc pas doubler un chiffre. Aucune table nouvelle, aucune
+  // requete supplementaire, et rien de la facturation n'est touche : on compte.
+  const _growth = growthFactsFor({
+    type: event.type,
+    obj: obj as Record<string, unknown>,
+    previousAttributes: (event as unknown as { data?: { previous_attributes?: Record<string, unknown> } })
+      .data?.previous_attributes,
+    createdUnix: typeof _aiLabCreated === "number" ? _aiLabCreated : NaN,
+    isAddon: isAddonMetadata((obj as Record<string, unknown>)["metadata"]),
+    isPlanSub: parsePlanFromSubscription(obj as Record<string, unknown>) !== null,
+  });
+  await markEventStatus("processed", {
+    ...(_aiLabStages.length > 0 && _aiLabOccurredAt
+      ? { aiLabStages: _aiLabStages, aiLabOccurredAt: _aiLabOccurredAt, aiLabEmitted: false }
+      : {}),
+    ...(_growth ? { growthDay: _growth.day, growthFacts: _growth.facts } : {}),
+  });
 
   // AI Lab — jalons `checkout`, `trial` et `paid`, en meilleur effort.
   //
