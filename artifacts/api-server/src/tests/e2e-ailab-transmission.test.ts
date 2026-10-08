@@ -180,7 +180,7 @@ describe("E2E — les quatre jalons traversent vraiment le reseau", () => {
   it("paid : invoice.payment_succeeded emet vers AI Lab", async () => {
     const r = await deliverStripe(paidEvent());
     expect(r.status).toBe(200);
-    expect(statusWrites[0]).toMatchObject({ status: "processed", aiLabStage: "paid" });
+    expect(statusWrites[0]).toMatchObject({ status: "processed", aiLabStages: ["paid"] });
   });
 
   it("redelivraison : les memes evenements ne peuvent pas gonfler le funnel", async () => {
@@ -207,7 +207,7 @@ describe("E2E — resilience : AI Lab en panne ne bloque jamais FlowPoint", () =
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ received: true });
     // L'intention reste inscrite : le jalon est rattrapable.
-    expect(statusWrites[0]).toMatchObject({ aiLabStage: "paid", aiLabEmitted: false });
+    expect(statusWrites[0]).toMatchObject({ aiLabStages: ["paid"], aiLabEmitted: false });
   });
 
   it("AI Lab lent (timeout 2 s) : le webhook n attend pas et repond 200", async () => {
@@ -258,13 +258,45 @@ describe("E2E — l add-on du parcours reel ne produit aucun jalon", () => {
     orgFpLid = FP_LID_B;
     const r = await deliverStripe(addonSubCreated());
     expect(r.status).toBe(200);
-    expect(statusWrites[0]!["aiLabStage"]).toBeUndefined();
+    expect(statusWrites[0]!["aiLabStages"]).toBeUndefined();
   });
 
   it("facture de renouvellement d un add-on : un jalon paid part-il ?", async () => {
     orgFpLid = FP_LID_B;
     const r = await deliverStripe(addonRenewalInvoice());
     expect(r.status).toBe(200);
-    expect(statusWrites[0]!["aiLabStage"]).toBeUndefined();
+    expect(statusWrites[0]!["aiLabStages"]).toBeUndefined();
+  });
+});
+
+/**
+ * Le cas decisif : l'abonnement PRINCIPAL tel que `finalize-checkout` le cree.
+ *
+ * Aucune Checkout Session n'existe dans ce parcours, donc `checkout` ne pouvait
+ * pas arriver. Cette creation d'abonnement doit desormais faire arriver DEUX
+ * jalons — l'engagement, puis l'essai — sous deux identifiants distincts.
+ */
+const FP_LID_C = process.env["E2E_FP_LID_C"]!;
+const planSubCreated = (status: string) => ({
+  id: `evt_e2e_plan_${status}`, type: "customer.subscription.created", created: CREATED,
+  data: { object: { id: "sub_e2e_plan", object: "subscription", customer: CUS, status,
+                    metadata: { orgId: ORG, plan: "standard", source: "checkout_payment" },
+                    items: { data: [] } } } });
+
+describe("E2E — l abonnement principal du parcours PaymentIntent", () => {
+  it("sa creation en essai fait arriver checkout PUIS trial", async () => {
+    orgFpLid = FP_LID_C;
+    const r = await deliverStripe(planSubCreated("trialing"));
+    expect(r.status).toBe(200);
+    expect(statusWrites[0]).toMatchObject({
+      status: "processed", aiLabStages: ["checkout", "trial"] });
+    expect(statusWrites.length).toBe(1);
+  });
+
+  it("une creation en incomplete ne fait rien arriver", async () => {
+    orgFpLid = FP_LID_C;
+    const r = await deliverStripe(planSubCreated("incomplete"));
+    expect(r.status).toBe(200);
+    expect(statusWrites[0]!["aiLabStages"]).toBeUndefined();
   });
 });
