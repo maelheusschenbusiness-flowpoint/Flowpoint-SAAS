@@ -381,6 +381,56 @@ describe("checkout suit le parcours PaymentIntent reel", () => {
   });
 });
 
+describe("Croissance — les faits commerciaux voyagent avec la marque processed", () => {
+  // Meme ecriture attendue, meme atomicite, meme idempotence : `stripe_event_id`
+  // est unique, donc un webhook recu dix fois ne double aucun chiffre. Aucune
+  // table nouvelle, aucune requete supplementaire.
+  const planSub = (over: Record<string, unknown> = {}) => subscription({
+    metadata: { orgId: ORG, plan: "standard", source: "checkout_payment" },
+    items: { data: [{ price: { unit_amount: 4900, recurring: { interval: "month" } }, quantity: 1 }] },
+    ...over });
+
+  it("un abonnement payant cree inscrit le client et le MRR", async () => {
+    await deliver(planSub({ status: "active" }));
+    expect(statusWrites[0]).toMatchObject({
+      status: "processed", growthDay: "2026-10-06",
+      growthFacts: { clients_new: 1, mrr_gained_cents: 4900 } });
+  });
+
+  it("un essai inscrit l essai, sans client ni MRR", async () => {
+    await deliver(planSub({ status: "trialing" }));
+    expect(statusWrites[0]!["growthFacts"]).toEqual({ trials_started: 1 });
+  });
+
+  it("un add-on n inscrit aucun fait commercial", async () => {
+    await deliver(planSub({ status: "active", metadata: { orgId: ORG, source: "checkout_payment_addons" } }));
+    expect(statusWrites[0]!["growthFacts"]).toBeUndefined();
+    expect(statusWrites[0]!["growthDay"]).toBeUndefined();
+  });
+
+  it("une facture payee n inscrit aucun fait : l encaisse n est pas le MRR", async () => {
+    await deliver(invoice());
+    expect(statusWrites[0]!["growthFacts"]).toBeUndefined();
+    // Le jalon du funnel, lui, est bien la : les deux perimetres cohabitent.
+    expect(statusWrites[0]).toMatchObject({ aiLabStages: ["paid"] });
+  });
+
+  it("les deux perimetres cohabitent dans la meme ecriture", async () => {
+    // Le funnel suit les prospects attribues ; Croissance suit l activite
+    // globale. Memes sources, perimetres statistiques distincts.
+    await deliver(planSub({ status: "active" }));
+    expect(statusWrites).toHaveLength(1);
+    expect(statusWrites[0]).toMatchObject({
+      aiLabStages: ["checkout"], growthFacts: { clients_new: 1 } });
+  });
+
+  it("un evenement deja traite n inscrit rien du tout", async () => {
+    billingClaim = false;
+    await deliver(planSub({ status: "active" }));
+    expect(statusWrites).toHaveLength(0);
+  });
+});
+
 describe("rien n est emis sans transition metier reussie", () => {
   it("un evenement deja traite n emet rien", async () => {
     // La revendication d'idempotence echoue : le webhook sort en doublon avant
