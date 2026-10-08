@@ -401,11 +401,24 @@ async function persistAddonsFromSubscription(
  * En l'absence de marqueur, on emet : un signal absent n'est pas un signal
  * negatif, et perdre la conversion serait le plus couteux des deux.
  */
+function isAddonMetadata(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object") return false;
+  const m = meta as Record<string, unknown>;
+  // Marqueur de `services/addon-stripe-sync.ts` : `metadata.addonSub = "true"`.
+  if (m["addonSub"]) return true;
+  // Marqueur du parcours public reel : `finalize-checkout` etiquette l'abonnement
+  // d'add-on `source: "checkout_payment_addons"` et NE POSE PAS `addonSub`.
+  // C'est deja ainsi que `public-billing.ts` le reconnait et l'ecarte quand il
+  // cherche l'abonnement de plan (lignes 1899 et 1908).
+  return String(m["source"] ?? "").startsWith("checkout_payment_addons");
+}
+
 function isAddonInvoice(obj: Record<string, unknown>): boolean {
   const details = obj["subscription_details"] as { metadata?: Record<string, unknown> } | undefined;
-  if (details?.metadata?.["addonSub"]) return true;
+  if (isAddonMetadata(details?.metadata)) return true;
+  if (isAddonMetadata(obj["subscription_metadata"])) return true;
   const lines = (obj["lines"] as { data?: Array<{ metadata?: Record<string, unknown> }> } | undefined)?.data ?? [];
-  return lines.some((line) => Boolean(line?.metadata?.["addonSub"]));
+  return lines.some((line) => isAddonMetadata(line?.metadata));
 }
 
 /**
@@ -436,19 +449,68 @@ function isAddonInvoice(obj: Record<string, unknown>): boolean {
  * `(prospect, etape)` du funnel qui tranche : le premier passage gagne, et c'est
  * bien le premier paiement reel. Les suivants arrivent en doublons inoffensifs.
  */
-function conversionStageFor(type: string, obj: Record<string, unknown>): ConversionStage | null {
+/**
+ * Les etats dans lesquels un abonnement principal qui vient de naitre prouve un
+ * checkout abouti. `incomplete` et `incomplete_expired` en sont exclus a
+ * dessein : Stripe les donne quand le paiement n'a PAS abouti, et
+ * `addon-stripe-sync.ts` cree justement ses abonnements en
+ * `payment_behavior: "default_incomplete"`. `canceled`, `unpaid` et `paused`
+ * ne sont pas des entrees dans le funnel.
+ */
+const CHECKOUT_SUBSCRIPTION_STATUSES = new Set(["trialing", "active", "past_due"]);
+
+function conversionStagesFor(type: string, obj: Record<string, unknown>): ConversionStage[] {
   if (type === "invoice.payment_succeeded") {
-    if (Number(obj["amount_paid"] ?? 0) <= 0) return null;
-    if (obj["billing_reason"] === "subscription_update") return null;
-    if (!obj["subscription"]) return null;
-    if (isAddonInvoice(obj)) return null;
-    return "paid";
+    if (Number(obj["amount_paid"] ?? 0) <= 0) return [];
+    if (obj["billing_reason"] === "subscription_update") return [];
+    if (!obj["subscription"]) return [];
+    if (isAddonInvoice(obj)) return [];
+    return ["paid"];
   }
-  if (type === "checkout.session.completed") return "checkout";
+  // Conserve pour les parcours qui passent encore par une Checkout Session
+  // hebergee (`/public/checkout-session`, et les mises a niveau de
+  // `billing.ts`). Le parcours public actuel ne la declenche jamais.
+  if (type === "checkout.session.completed") return ["checkout"];
   if (type === "customer.subscription.created" || type === "customer.subscription.updated") {
-    return obj["status"] === "trialing" ? "trial" : null;
+    // Un abonnement d'add-on nait `trialing` par construction : `finalize-checkout`
+    // lui pose `trial_end = +30 jours` parce que le premier mois a deja ete
+    // encaisse par PaymentIntent. Ce n'est pas un essai de plan, et le prendre
+    // pour tel verrouillait « essai » sur un prospect qui n'en a jamais eu —
+    // definitivement, le funnel ne retenant qu'un jalon par etape.
+    if (isAddonMetadata(obj["metadata"])) return [];
+    const stages: ConversionStage[] = [];
+    // ── `checkout` : le parcours public reel ne cree AUCUNE Checkout Session ──
+    //
+    // Les pages du funnel appellent `/public/payment-intent` puis
+    // `/public/finalize-checkout` (checkout-payment.html, checkout-return.html).
+    // Rien n'appelle `/public/checkout-session`, donc
+    // `checkout.session.completed` ne part jamais et l'etape restait vide.
+    //
+    // L'evenement serveur fiable qui marque l'engagement, dans ce parcours, est
+    // la CREATION de l'abonnement principal : `finalize-checkout` ne la fait
+    // qu'apres un moyen de paiement valide, et Stripe l'emet signee.
+    //
+    // Trois garde-fous :
+    //   - `created` seulement, jamais `updated` : l'engagement a lieu une fois.
+    //     Un changement de plan ou de quantite n'est pas un nouveau checkout.
+    //   - abonnement PRINCIPAL : `parsePlanFromSubscription` est le mecanisme
+    //     deja utilise par ce fichier pour reconnaitre un abonnement de plan.
+    //     Un abonnement d'add-on ou de credits n'en est pas un.
+    //   - etat abouti : voir `CHECKOUT_SUBSCRIPTION_STATUSES`.
+    //
+    // Les doublons restent impossibles de deux cotes : Stripe ne cree
+    // l'abonnement qu'une fois, et le funnel ne garde qu'un jalon par
+    // `(prospect, etape)` — un second abonnement arrive en doublon inoffensif.
+    if (type === "customer.subscription.created"
+        && parsePlanFromSubscription(obj) !== null
+        && CHECKOUT_SUBSCRIPTION_STATUSES.has(String(obj["status"] ?? ""))) {
+      stages.push("checkout");
+    }
+    // `trial` inchange : un abonnement reellement en essai, add-ons exclus.
+    if (obj["status"] === "trialing") stages.push("trial");
+    return stages;
   }
-  return null;
+  return [];
 }
 
 // ── Shared activation helper — called by checkout.session.completed AND
@@ -2295,17 +2357,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   // l'horodatage sont connus sans appel ni requete, et les inscrire ici les rend
   // indissociables du `processed`. Un arret du processus juste apres ne peut plus
   // laisser un jalon perdu sans trace.
-  const _aiLabStage = conversionStageFor(event.type, obj as Record<string, unknown>);
+  const _aiLabStages = conversionStagesFor(event.type, obj as Record<string, unknown>);
   const _aiLabCreated = (event as unknown as { created?: number }).created;
   const _aiLabOccurredAt = typeof _aiLabCreated === "number" && Number.isFinite(_aiLabCreated)
     ? new Date(_aiLabCreated * 1000).toISOString() : null;
-  await markEventStatus("processed", _aiLabStage && _aiLabOccurredAt
-    ? { aiLabStage: _aiLabStage, aiLabOccurredAt: _aiLabOccurredAt, aiLabEmitted: false }
+  await markEventStatus("processed", _aiLabStages.length > 0 && _aiLabOccurredAt
+    ? { aiLabStages: _aiLabStages, aiLabOccurredAt: _aiLabOccurredAt, aiLabEmitted: false }
     : undefined);
 
   // AI Lab — jalons `checkout`, `trial` et `paid`, en meilleur effort.
   //
-  // Un seul point d'emission pour les trois, et il est ici a dessein : on
+  // Un seul point d'emission pour tous, et il est ici a dessein : on
   // n'annonce un jalon qu'apres un traitement reussi. Un doublon est deja sorti
   // plus haut, et un echec est parti en 500 — ni l'un ni l'autre n'arrive ici.
   //
@@ -2319,9 +2381,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   // le reconnait comme doublon au lieu d'y voir une collision d'identifiant.
   void (async () => {
     try {
-      const stage = _aiLabStage;
+      const stages = _aiLabStages;
       const occurredAt = _aiLabOccurredAt;
-      if (!stage || !occurredAt || !orgId || !eventId) return;
+      if (stages.length === 0 || !occurredAt || !orgId || !eventId) return;
       const { pool: _cePool } = await import("@workspace/db");
       const _ceClient = await _cePool.connect();
       let fpLid: string | null = null;
@@ -2354,8 +2416,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // de l'evenement Stripe.
       //
       // Aucune table nouvelle : un jalon perdu se lit desormais par une simple
-      // requete sur les donnees persistees — les evenements de ces trois types
-      // dont `metadata->>'aiLabEmitted'` n'est pas `true`.
+      // requete sur les donnees persistees — les evenements porteurs de
+      // `metadata->'aiLabStages'` dont `metadata->>'aiLabEmitted'` n'est pas
+      // `true`.
       const noteEmission = async (fields: Record<string, unknown>): Promise<void> => {
         const c = await _cePool.connect();
         try {
@@ -2369,20 +2432,29 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         }
       };
 
-      const outcome = await emitConversionEvent({
-        eventId: `stripe:${eventId}`,
-        stage,
-        source: "stripe",
-        fpLid,
-        occurredAt,
-      });
-      // `sent` et `duplicate` sont tous deux des succes : le jalon est chez AI
-      // Lab. Tout le reste reste marque non emis, donc rattrapable.
-      if (outcome === "sent" || outcome === "duplicate") {
-        await noteEmission({ aiLabEmitted: true, aiLabOutcome: outcome });
-      } else {
-        await noteEmission({ aiLabOutcome: outcome });
+      // Un meme evenement peut prouver DEUX etapes : la creation de l'abonnement
+      // principal en essai prouve a la fois le checkout et l'essai. L'identifiant
+      // porte donc l'etape — `event_id` est la cle primaire chez AI Lab, et deux
+      // jalons distincts ne peuvent pas la partager. Il reste stable au rejeu,
+      // puisque l'identifiant Stripe et l'etape le sont tous les deux.
+      const outcomes: Record<string, string> = {};
+      let allDelivered = true;
+      for (const stage of stages) {
+        const outcome = await emitConversionEvent({
+          eventId: `stripe:${eventId}:${stage}`,
+          stage,
+          source: "stripe",
+          fpLid,
+          occurredAt,
+        });
+        outcomes[stage] = outcome;
+        // `sent` et `duplicate` sont tous deux des succes : le jalon est chez AI
+        // Lab. Tout le reste reste marque non emis, donc rattrapable.
+        if (outcome !== "sent" && outcome !== "duplicate") allDelivered = false;
       }
+      await noteEmission(allDelivered
+        ? { aiLabEmitted: true, aiLabOutcomes: outcomes }
+        : { aiLabOutcomes: outcomes });
     } catch (err) {
       // Rien ne remonte : la mesure ne peut pas compromettre un encaissement.
       logger.warn({ err: (err as Error)?.name }, "[AI Lab] conversion emission skipped (non-fatal)");

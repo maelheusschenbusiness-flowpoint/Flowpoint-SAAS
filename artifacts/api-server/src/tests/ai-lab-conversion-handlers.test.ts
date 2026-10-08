@@ -155,7 +155,7 @@ describe("le webhook emet les bons jalons", () => {
     await deliver(invoice());
     expect(emitted).toHaveLength(1);
     expect(emitted[0]).toMatchObject({
-      eventId: "stripe:evt_AILAB_PAID",
+      eventId: "stripe:evt_AILAB_PAID:paid",
       stage: "paid",
       source: "stripe",
       fpLid: FP_LID,
@@ -213,6 +213,25 @@ describe("paid exclut ce qui n est pas un premier paiement positif", () => {
     expect(emitted).toHaveLength(0);
   });
 
+  // Le marqueur `addonSub` ne couvrait que les add-ons de `addon-stripe-sync`.
+  // Le parcours public reel — `finalize-checkout`, celui qu'appellent
+  // `checkout-payment.html` et `checkout-return.html` — cree l'abonnement
+  // d'add-on avec `source: "checkout_payment_addons"` et SANS `addonSub`
+  // (public-billing.ts:2404). Sa facture de renouvellement passait donc toutes
+  // les gardes. Mesure E2E : elle produisait un faux jalon `paid`.
+  it("le renouvellement d un add-on du parcours public n emet rien", async () => {
+    await deliver(invoice({
+      subscription_details: { metadata: { plan: "standard", source: "checkout_payment_addons" } },
+      lines: { data: [{ metadata: { source: "checkout_payment_addons" } }] },
+    }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("le marqueur sur les metadonnees d abonnement de la facture compte aussi", async () => {
+    await deliver(invoice({ subscription_metadata: { addonSub: "true" } }));
+    expect(emitted).toHaveLength(0);
+  });
+
   it("une facture de l abonnement principal emet toujours paid", async () => {
     // Le garde-fou vise le marqueur, pas la presence de metadonnees : sans
     // marqueur on emet, car un signal absent n'est pas un signal negatif et
@@ -227,6 +246,138 @@ describe("paid exclut ce qui n est pas un premier paiement positif", () => {
   it("un abonnement payant d emblee n emet pas trial", async () => {
     await deliver(subscription({ status: "active" }));
     expect(emitted.filter((e) => e["stage"] === "trial")).toHaveLength(0);
+  });
+
+  // `customer.subscription.created` n'avait AUCUNE garde add-on. Or l'abonnement
+  // d'add-on nait `trialing` par construction : `finalize-checkout` lui pose
+  // `trial_end = +30 jours` parce que le premier mois est deja encaisse par
+  // PaymentIntent. Mesure E2E : il produisait un faux jalon `trial` pour un
+  // prospect sans aucun essai de plan.
+  it("un abonnement d add-on ne declare pas un essai (parcours public)", async () => {
+    await deliver(subscription({
+      status: "trialing",
+      metadata: { orgId: ORG, plan: "standard", source: "checkout_payment_addons" },
+    }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("un abonnement d add-on dedie ne declare pas un essai (addon-stripe-sync)", async () => {
+    await deliver(subscription({
+      status: "trialing", metadata: { orgId: ORG, addonSub: "true" },
+    }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("l abonnement de PLAN du parcours public declare checkout puis essai", async () => {
+    // `finalize-checkout` etiquette le plan `source: "checkout_payment"` — sans
+    // le suffixe `_addons`. La garde doit distinguer les deux. Et sa creation
+    // prouve DEUX etapes : l'engagement, puis l'essai.
+    await deliver(subscription({
+      status: "trialing",
+      metadata: { orgId: ORG, plan: "standard", source: "checkout_payment" },
+    }));
+    expect(emitted.map((e) => e["stage"])).toEqual(["checkout", "trial"]);
+    expect(emitted.map((e) => e["eventId"])).toEqual([
+      "stripe:evt_AILAB_SUB:checkout", "stripe:evt_AILAB_SUB:trial"]);
+  });
+});
+
+describe("checkout suit le parcours PaymentIntent reel", () => {
+  // Les pages du funnel appellent `/public/payment-intent` puis
+  // `/public/finalize-checkout` (checkout-payment.html:360,
+  // checkout-return.html:94). Rien n'appelle `/public/checkout-session`, donc
+  // `checkout.session.completed` ne part JAMAIS dans ce parcours et l'etape
+  // restait vide. L'evenement serveur fiable est la creation de l'abonnement
+  // principal, que `finalize-checkout` ne fait qu'apres un moyen de paiement
+  // valide.
+  const planSub = (over: Record<string, unknown> = {}) => subscription({
+    metadata: { orgId: ORG, plan: "standard", source: "checkout_payment" }, ...over });
+
+  it("un abonnement principal cree sans essai emet checkout", async () => {
+    await deliver(planSub({ status: "active" }));
+    expect(emitted.map((e) => e["stage"])).toEqual(["checkout"]);
+  });
+
+  it("un abonnement reconnu par son prix, sans metadata.plan, emet checkout", async () => {
+    // `parsePlanFromSubscription` retombe sur les items : c'est le mecanisme
+    // deja utilise par ce fichier, et il couvre les abonnements sans metadonnee.
+    await deliver(subscription({
+      status: "active", metadata: { orgId: ORG },
+      items: { data: [{ price: { id: "price_x", metadata: { plan: "pro" } } }] },
+    }));
+    expect(emitted.map((e) => e["stage"])).toEqual(["checkout"]);
+  });
+
+  // ── garde-fou 1 : les doublons ──
+  it("une MISE A JOUR d abonnement n emet jamais checkout", async () => {
+    // L'engagement a lieu une fois. Un changement de plan, de quantite ou de
+    // moyen de paiement n'est pas un nouveau checkout.
+    await deliver({ ...planSub({ status: "active" }), type: "customer.subscription.updated" });
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("une mise a jour vers trialing emet trial, jamais checkout", async () => {
+    await deliver({ ...planSub({ status: "trialing" }), type: "customer.subscription.updated" });
+    expect(emitted.map((e) => e["stage"])).toEqual(["trial"]);
+  });
+
+  // ── garde-fou 2 : les add-ons ──
+  it("la creation d un abonnement d add-on n emet pas checkout", async () => {
+    await deliver(subscription({
+      status: "active", metadata: { orgId: ORG, plan: "standard", source: "checkout_payment_addons" } }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("la creation d un add-on dedie n emet pas checkout", async () => {
+    await deliver(subscription({
+      status: "trialing", metadata: { orgId: ORG, plan: "standard", addonSub: "true" } }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  // ── garde-fou 3 : les evenements non pertinents ──
+  it("un abonnement qui n est pas un plan n emet pas checkout", async () => {
+    // Ni metadata.plan, ni item reconnaissable : credits, achat ponctuel.
+    await deliver(subscription({ status: "active", metadata: { orgId: ORG, type: "ai_credits" } }));
+    expect(emitted).toHaveLength(0);
+  });
+
+  it.each(["incomplete", "incomplete_expired", "canceled", "unpaid", "paused"])(
+    "un abonnement cree en %s n emet pas checkout", async (status) => {
+      // `incomplete` est l'etat que Stripe donne quand le paiement n'a PAS
+      // abouti — et `addon-stripe-sync.ts` cree justement ses abonnements en
+      // `payment_behavior: "default_incomplete"`.
+      await deliver(planSub({ status }));
+      expect(emitted).toHaveLength(0);
+    });
+
+  it("une Checkout Session hebergee emet toujours checkout", async () => {
+    // Les mises a niveau de `billing.ts` et `/public/checkout-session` passent
+    // encore par la : ce chemin ne doit pas regresser.
+    await deliver(checkout());
+    expect(emitted.map((e) => e["stage"])).toEqual(["checkout"]);
+  });
+
+  it("les deux jalons d une meme creation portent des identifiants distincts", async () => {
+    // `event_id` est la cle primaire chez AI Lab : deux jalons ne peuvent pas la
+    // partager. Et il reste stable au rejeu, l identifiant Stripe et l etape l etant.
+    await deliver(planSub({ status: "trialing" }));
+    const ids = emitted.map((e) => e["eventId"]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(["stripe:evt_AILAB_SUB:checkout", "stripe:evt_AILAB_SUB:trial"]);
+  });
+
+  it("l intention persistee porte les DEUX etapes", async () => {
+    await deliver(planSub({ status: "trialing" }));
+    expect(statusWrites[0]).toMatchObject({
+      status: "processed", aiLabStages: ["checkout", "trial"], aiLabEmitted: false });
+  });
+
+  it("une seule etape en panne laisse l ensemble non emis, donc rattrapable", async () => {
+    emitOutcome = "unreachable";
+    await deliver(planSub({ status: "trialing" }));
+    const last = metadataWrites.at(-1)!;
+    expect(last["aiLabEmitted"]).toBeUndefined();
+    expect(last).toMatchObject({ aiLabOutcomes: { checkout: "unreachable", trial: "unreachable" } });
   });
 });
 
@@ -257,7 +408,7 @@ describe("un jalon perdu reste rattrapable", () => {
   it("l intention est inscrite avant l appel, avec l horodatage exact", async () => {
     await deliver(invoice());
     expect(metadataWrites[0]).toMatchObject({
-      aiLabStage: "paid",
+      aiLabStages: ["paid"],
       aiLabOccurredAt: "2026-10-06T18:30:00.000Z",
       aiLabEmitted: false,
     });
@@ -273,7 +424,7 @@ describe("un jalon perdu reste rattrapable", () => {
     expect(statusWrites).toHaveLength(1);
     expect(statusWrites[0]).toMatchObject({
       status: "processed",
-      aiLabStage: "paid",
+      aiLabStages: ["paid"],
       aiLabOccurredAt: "2026-10-06T18:30:00.000Z",
       aiLabEmitted: false,
     });
@@ -291,7 +442,7 @@ describe("un jalon perdu reste rattrapable", () => {
     await deliver(invoice({ amount_paid: 0 }));
     expect(statusWrites).toHaveLength(1);
     expect(statusWrites[0]).toMatchObject({ status: "processed" });
-    expect(statusWrites[0]!["aiLabStage"]).toBeUndefined();
+    expect(statusWrites[0]!["aiLabStages"]).toBeUndefined();
   });
 
   it("l intention est inscrite meme si l organisation n a pas de fp_lid", async () => {
@@ -299,13 +450,13 @@ describe("un jalon perdu reste rattrapable", () => {
     // elle, est un fait : elle reste lisible en base.
     orgFpLid = null;
     await deliver(invoice());
-    expect(statusWrites[0]).toMatchObject({ aiLabStage: "paid", aiLabEmitted: false });
+    expect(statusWrites[0]).toMatchObject({ aiLabStages: ["paid"], aiLabEmitted: false });
     expect(emitted).toHaveLength(0);
   });
 
   it("un succes marque le jalon comme emis", async () => {
     await deliver(invoice());
-    expect(metadataWrites.at(-1)).toMatchObject({ aiLabEmitted: true, aiLabOutcome: "sent" });
+    expect(metadataWrites.at(-1)).toMatchObject({ aiLabEmitted: true, aiLabOutcomes: { paid: "sent" } });
   });
 
   it("un doublon compte aussi comme emis", async () => {
@@ -319,7 +470,7 @@ describe("un jalon perdu reste rattrapable", () => {
     await deliver(invoice());
     const last = metadataWrites.at(-1)!;
     expect(last["aiLabEmitted"]).toBeUndefined();
-    expect(last).toMatchObject({ aiLabOutcome: "unreachable" });
+    expect(last).toMatchObject({ aiLabOutcomes: { paid: "unreachable" } });
     // L'intention porte toujours `aiLabEmitted: false` : c'est ce que la requete
     // de rattrapage cherche.
     expect(metadataWrites[0]).toMatchObject({ aiLabEmitted: false });
