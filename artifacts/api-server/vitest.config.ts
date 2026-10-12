@@ -27,6 +27,7 @@ export default defineConfig({
       "src/lib/startup-retry.test.ts",
       "src/startup-bootstrap.test.ts",
       "src/tests/pdf_white_label.test.ts",
+      "src/tests/onboarding-six-steps.test.ts",
       "src/tests/whitelabel-color-escape.test.ts",
       "src/tests/rbac-default-role.test.ts",
       "src/tests/cmd-palette-rbac.test.ts",
