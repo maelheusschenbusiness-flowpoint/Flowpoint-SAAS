@@ -3598,15 +3598,27 @@ const MENU_ROUTES = new Set([
   'billing','settings','ai',
 ]);
 let _cmdIndexCache = null;
+// Le role sous lequel l'index a ete construit. L'index etait mis en cache UNE
+// fois, avant meme que `STATE.me` soit resolu, et n'etait jamais reconstruit :
+// tout filtrage par permission serait reste fige sur le premier role connu —
+// c'est-a-dire sur aucun.
+let _cmdIndexRole = null;
 function _cmdBuildIndex() {
-  if (_cmdIndexCache) return _cmdIndexCache;
+  const role = (STATE.me?.role || 'viewer').toLowerCase();
+  if (_cmdIndexCache && _cmdIndexRole === role) return _cmdIndexCache;
+  _cmdIndexRole = role;
   // 1. Static items — keep only entries whose route is in the sidebar menu
-  const base = CMD_ITEMS.filter(i => !i.route || MENU_ROUTES.has(i.route));
+  //    ET que le role courant a le droit d'atteindre. Sans ce filtre, la palette
+  //    proposait `billing`, `settings`, `team` et leurs sous-pages a un membre
+  //    ou un lecteur dont la navigation laterale les masque : la structure de
+  //    l'offre fuyait, et le raccourci menait vers une route interdite.
+  const base = CMD_ITEMS.filter(i => (!i.route || MENU_ROUTES.has(i.route)) && (!i.route || _fpCanAccess(i.route)));
   // 2. Sub-pages: generate one entry per sub-nav tab of each menu page
   const subs = [];
   try {
     if (typeof SUB_NAVS !== 'undefined' && typeof PAGE_NAMES !== 'undefined') {
       MENU_ROUTES.forEach(route => {
+        if (!_fpCanAccess(route)) return;
         const tabs = SUB_NAVS[route];
         if (!Array.isArray(tabs)) return;
         tabs.forEach(t => {
