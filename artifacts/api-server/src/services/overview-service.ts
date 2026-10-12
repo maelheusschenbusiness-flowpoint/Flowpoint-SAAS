@@ -90,7 +90,16 @@ export interface OverviewMetrics {
 const _cache = new Map<string, { data: OverviewMetrics; expiresAt: number }>();
 
 export async function getOverviewMetrics(orgId = "default", range = 30, rangeLabel = "30d"): Promise<OverviewMetrics> {
-  const cacheKey = `${orgId}:${rangeLabel}`;
+  // La cle suit `range`, et non `rangeLabel`, pour la raison que le commentaire
+  // ci-dessus enonce depuis toujours. `rangeLabel` n'entre nulle part ailleurs :
+  // la charge utile porte `range`, et toutes les requetes s'en servent.
+  //
+  // Le piege etait dans la valeur par defaut : `rangeLabel = "30d"`. Un appelant
+  // ecrivant `getOverviewMetrics(org, 7)` rangeait sept jours de donnees sous la
+  // cle `org:30d`, servies ensuite pendant 60 s a toute demande de trente jours.
+  // Un seul appelant existe aujourd'hui et passe les deux, donc rien n'est casse
+  // en production — mais le defaut attendait le deuxieme appelant.
+  const cacheKey = `${orgId}:${range}`;
   const cached = _cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
