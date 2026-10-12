@@ -94,13 +94,19 @@ const _FP_ROUTE_PERM = {
   deployments:'settings', 'repository-health':'settings',
 };
 function _fpRolePerms() {
-  const role = (STATE.me?.role || 'owner').toLowerCase();
+  // Repli sur `viewer`, pas `owner`. Tant que `STATE.me` n'est pas resolu — au
+  // premier rendu, ou si la requete echoue — l'utilisateur etait traite en
+  // PROPRIETAIRE : navigation complete visible et garde de route ouverte. Un
+  // role INCONNU retombait deja sur `viewer` (ligne suivante) : le defaut sur
+  // absence etait donc plus permissif que le defaut sur valeur invalide.
+  const role = (STATE.me?.role || 'viewer').toLowerCase();
   return _FP_ROLE_PERMS[role] || _FP_ROLE_PERMS.viewer;
 }
 function _fpCanAccess(route) {
   if (!route) return true;
   // Owners always have full access
-  if ((STATE.me?.role || 'owner') === 'owner') return true;
+  // Meme raison, et meme repli : un role absent n'ouvre plus le raccourci owner.
+  if ((STATE.me?.role || 'viewer') === 'owner') return true;
   const permKey = _FP_ROUTE_PERM[route];
   if (!permKey) return true; // overview, missions, growth, ai, activity-feed = open
   return !!_fpRolePerms()[permKey];
@@ -3592,15 +3598,27 @@ const MENU_ROUTES = new Set([
   'billing','settings','ai',
 ]);
 let _cmdIndexCache = null;
+// Le role sous lequel l'index a ete construit. L'index etait mis en cache UNE
+// fois, avant meme que `STATE.me` soit resolu, et n'etait jamais reconstruit :
+// tout filtrage par permission serait reste fige sur le premier role connu —
+// c'est-a-dire sur aucun.
+let _cmdIndexRole = null;
 function _cmdBuildIndex() {
-  if (_cmdIndexCache) return _cmdIndexCache;
+  const role = (STATE.me?.role || 'viewer').toLowerCase();
+  if (_cmdIndexCache && _cmdIndexRole === role) return _cmdIndexCache;
+  _cmdIndexRole = role;
   // 1. Static items — keep only entries whose route is in the sidebar menu
-  const base = CMD_ITEMS.filter(i => !i.route || MENU_ROUTES.has(i.route));
+  //    ET que le role courant a le droit d'atteindre. Sans ce filtre, la palette
+  //    proposait `billing`, `settings`, `team` et leurs sous-pages a un membre
+  //    ou un lecteur dont la navigation laterale les masque : la structure de
+  //    l'offre fuyait, et le raccourci menait vers une route interdite.
+  const base = CMD_ITEMS.filter(i => (!i.route || MENU_ROUTES.has(i.route)) && (!i.route || _fpCanAccess(i.route)));
   // 2. Sub-pages: generate one entry per sub-nav tab of each menu page
   const subs = [];
   try {
     if (typeof SUB_NAVS !== 'undefined' && typeof PAGE_NAMES !== 'undefined') {
       MENU_ROUTES.forEach(route => {
+        if (!_fpCanAccess(route)) return;
         const tabs = SUB_NAVS[route];
         if (!Array.isArray(tabs)) return;
         tabs.forEach(t => {
@@ -8569,6 +8587,16 @@ function renderReports() {
     const _wl = STATE.settings?.wlBranding || STATE.whiteLabel || STATE.branding || null;
     const _orgName = STATE.me?.orgName || STATE.me?.name || 'Mon Agence';
     const _orgUrl  = STATE.me?.website || STATE.me?.url  || 'https://mon-agence.fr';
+// Une couleur de marque vient des reglages du workspace : elle est ecrite par
+// l'utilisateur. Injectee telle quelle dans un attribut `style="…"` delimite par
+// des guillemets doubles, un guillemet dans la valeur permettait d'en sortir.
+//
+// La garde n'est pas inventee ici : `services/pdf.ts` applique DEJA exactement
+// ce motif a la meme valeur. On aligne simplement le second consommateur sur le
+// premier, avec le meme repli.
+function _fpSafeColor(v) {
+  return (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) ? v : '#2563EB';
+}
     const brandFields = _wl ? [
       { label: 'Logo agence',         type: 'upload', val: _wl.logo||'—',                                                  locked: false },
       { label: 'Couleur principale',  type: 'color',  val: _wl.primaryColor||'#2563EB',                                    locked: false },
@@ -8673,7 +8701,7 @@ function renderReports() {
                 ${f.locked ? '<span style="font-size:10px;color:#8b5cf6">🔒 Ultra</span>' : ''}
               </div>
               ${f.type === 'color'
-                ? `<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:5px;background:${f.val};flex-shrink:0"></div><span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">${f.val}</span></div>`
+                ? `<div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:5px;background:${_fpSafeColor(f.val)};flex-shrink:0"></div><span style="font-size:12px;font-weight:600;color:var(--fp-text-soft)">${escHtml(f.val)}</span></div>`
                 : `<div style="font-size:12px;color:var(--fp-text-soft);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.val)}</div>`
               }
               ${!f.locked ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%;margin-top:8px" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},60)">${fpT('Modifier')}</button>` : ''}
