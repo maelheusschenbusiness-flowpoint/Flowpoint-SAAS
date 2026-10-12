@@ -94,13 +94,19 @@ const _FP_ROUTE_PERM = {
   deployments:'settings', 'repository-health':'settings',
 };
 function _fpRolePerms() {
-  const role = (STATE.me?.role || 'owner').toLowerCase();
+  // Repli sur `viewer`, pas `owner`. Tant que `STATE.me` n'est pas resolu — au
+  // premier rendu, ou si la requete echoue — l'utilisateur etait traite en
+  // PROPRIETAIRE : navigation complete visible et garde de route ouverte. Un
+  // role INCONNU retombait deja sur `viewer` (ligne suivante) : le defaut sur
+  // absence etait donc plus permissif que le defaut sur valeur invalide.
+  const role = (STATE.me?.role || 'viewer').toLowerCase();
   return _FP_ROLE_PERMS[role] || _FP_ROLE_PERMS.viewer;
 }
 function _fpCanAccess(route) {
   if (!route) return true;
   // Owners always have full access
-  if ((STATE.me?.role || 'owner') === 'owner') return true;
+  // Meme raison, et meme repli : un role absent n'ouvre plus le raccourci owner.
+  if ((STATE.me?.role || 'viewer') === 'owner') return true;
   const permKey = _FP_ROUTE_PERM[route];
   if (!permKey) return true; // overview, missions, growth, ai, activity-feed = open
   return !!_fpRolePerms()[permKey];
