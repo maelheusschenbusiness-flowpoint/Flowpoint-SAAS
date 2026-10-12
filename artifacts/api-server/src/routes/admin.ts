@@ -801,7 +801,10 @@ router.post("/admin/ai-usage-seed", async (req: Request, res: Response): Promise
 
   const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
   const resetAt = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString();
-  const id = `amu_${orgId}_${month}`;
+  // Id non déterministe : un id dérivé de (org_id, month) fait collisionner
+  // deux écritures concurrentes sur la clé primaire, que l'arbitre
+  // ON CONFLICT (org_id, month) ne couvre pas. Voir monthlyUsageRowId().
+  const id = `amu_${orgId}_${month}_${Math.random().toString(36).slice(2, 8)}`;
 
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
     res.status(400).json({ ok: false, error: "orgId must be a UUID (ai_monthly_usage.org_id is UUID with FK to organizations)" });
