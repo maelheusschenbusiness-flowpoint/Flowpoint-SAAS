@@ -61,22 +61,31 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 // RBAC — Role-Based Access Control for invited team members
 // DB role → UI permission flags (controls sidebar visibility + route guards)
 //   owner  : full access (all ✓)
-//   admin  : = Manager  (audits ✓  monitors ✓  reports ✓  billing ✗  team ✓  settings ✗)
-//   member : = Editor   (audits ✓  monitors ✓  reports ✗  billing ✗  team ✗  settings ✗)
-//             Editor can SEE monitors (read), but backend canAdmin blocks creation/mutation.
-//   viewer :            (audits ✓  — overview/missions/activity/audits read-only, all else ✗)
-//             Backend canAdmin/canWrite blocks all mutations for viewer.
+//   admin  : = Manager  (lecture : audits ✓ monitors ✓ rapports ✓ statistiques ✓
+//                        — membres ✗ facturation ✗ réglages sensibles ✗)
+//   member : = Editor   (mêmes lectures que Manager ; écrit les ressources)
+//   viewer :            (mêmes lectures ; AUCUNE écriture)
+//             Les écritures sont refusées par le backend : canWrite exclut
+//             viewer, ownerOnly réserve membres et facturation au propriétaire.
 // ─────────────────────────────────────────────────────────────────
 const _FP_ROLE_PERMS = {
-  // Source de vérité RBAC — ne pas modifier sans validation product :
-  // Owner   : tout
-  // Manager : Audits + Monitors + Rapports + Équipe
-  // Editor  : Audits + Rapports (PAS Monitors)
-  // Viewer  : aucun des 6 modules
+  // Source de vérité RBAC — politique V1 validée par le produit.
+  // Cette table gouverne la LECTURE (navigation, routes visibles). Les écritures
+  // sont gouvernées par le backend : canWrite exclut viewer, ownerOnly réserve
+  // l'administration des membres et la facturation au propriétaire.
+  //
+  //   Owner   : tout
+  //   Manager : consulte audits, monitors, rapports, statistiques ; écrit les
+  //             ressources ; NI membres, NI facturation, NI réglages sensibles
+  //   Editor  : mêmes lectures que Manager ; écrit les ressources
+  //   Viewer  : mêmes lectures ; AUCUNE écriture (refusée côté backend)
+  //
+  // Les trois rôles non-propriétaires partagent donc la même surface de lecture.
+  // Ce qui les distingue vit dans les gardes d'écriture, pas ici.
   owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  },
-  admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:true,   settings:false },
-  member: { audits:true,  monitors:false, reports:true,  billing:false, team:false,  settings:false },
-  viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false },
+  admin:  { audits:true,  monitors:true,  reports:true,  billing:false, team:false,  settings:false },
+  member: { audits:true,  monitors:true,  reports:true,  billing:false, team:false,  settings:false },
+  viewer: { audits:true,  monitors:true,  reports:true,  billing:false, team:false,  settings:false },
 };
 // Routes that require a specific permission key (absent = open to all roles)
 const _FP_ROUTE_PERM = {
