@@ -34,7 +34,15 @@ export interface OverviewMetrics {
   revenueLeaks: number;
   revenueLeakAmount: number;
   avgLatency: number;
-  uptime: number;
+  /**
+   * Disponibilite moyenne des monitors, ou `null` quand il n'y en a aucun.
+   *
+   * Elle valait 100 sans aucun monitor : un workspace qui ne surveille rien
+   * s'affichait « 100 % de disponibilite ». Le fichier s'interdit pourtant ce
+   * genre de chiffre ailleurs — `seoScoreDelta` est explicitement « null when no
+   * prior-period data — never fabricated ». Meme regle ici.
+   */
+  uptime: number | null;
   competitors: number;
   trendsUp: number;
   trendsDown: number;
@@ -82,7 +90,16 @@ export interface OverviewMetrics {
 const _cache = new Map<string, { data: OverviewMetrics; expiresAt: number }>();
 
 export async function getOverviewMetrics(orgId = "default", range = 30, rangeLabel = "30d"): Promise<OverviewMetrics> {
-  const cacheKey = `${orgId}:${rangeLabel}`;
+  // La cle suit `range`, et non `rangeLabel`, pour la raison que le commentaire
+  // ci-dessus enonce depuis toujours. `rangeLabel` n'entre nulle part ailleurs :
+  // la charge utile porte `range`, et toutes les requetes s'en servent.
+  //
+  // Le piege etait dans la valeur par defaut : `rangeLabel = "30d"`. Un appelant
+  // ecrivant `getOverviewMetrics(org, 7)` rangeait sept jours de donnees sous la
+  // cle `org:30d`, servies ensuite pendant 60 s a toute demande de trente jours.
+  // Un seul appelant existe aujourd'hui et passe les deux, donc rien n'est casse
+  // en production — mais le defaut attendait le deuxieme appelant.
+  const cacheKey = `${orgId}:${range}`;
   const cached = _cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -293,8 +310,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       : 0;
     const uptime = monitorRows.length > 0
       ? Math.round((monitorRows.reduce((s: number, r: { avg_uptime: string }) => s + Number(r.avg_uptime ?? 100), 0) / monitorRows.length) * 10) / 10
-      : 100;
-    const monitorUptime = monitorRows.length > 0 ? uptime : null;
+      : null;
+    // `monitorUptime` disait deja la verite ; `uptime` la contredisait dans le
+    // meme objet. Les deux portent desormais la meme valeur, et l'ecart ne peut
+    // plus reapparaitre.
+    const monitorUptime = uptime;
 
     const missionsCompleted = Number(missionRows.find((r: { status: string }) => r.status === "done")?.count ?? 0);
     const missionsTodo      = Number(missionRows.find((r: { status: string }) => r.status === "todo")?.count ?? 0);
