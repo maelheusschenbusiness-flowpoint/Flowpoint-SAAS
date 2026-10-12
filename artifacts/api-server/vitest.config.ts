@@ -28,6 +28,7 @@ export default defineConfig({
       "src/startup-bootstrap.test.ts",
       "src/tests/pdf_white_label.test.ts",
       "src/tests/rbac-policy-v1.test.ts",
+      "src/tests/onboarding-six-steps.test.ts",
       "src/tests/whitelabel-color-escape.test.ts",
       "src/tests/rbac-default-role.test.ts",
       "src/tests/cmd-palette-rbac.test.ts",
