@@ -51,6 +51,7 @@ export default defineConfig({
       "src/services/ga4-connection-status.test.ts",
       "src/routes/overview.test.ts",
       "src/tests/overview-cache-key.test.ts",
+      "src/tests/overview-uptime-honest.test.ts",
       "src/routes/growth-objectives.test.ts",
       "src/services/ensure-stripe-customer.test.ts",
       "src/agent/ai-tool-gate.test.ts",

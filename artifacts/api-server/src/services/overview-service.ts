@@ -34,7 +34,15 @@ export interface OverviewMetrics {
   revenueLeaks: number;
   revenueLeakAmount: number;
   avgLatency: number;
-  uptime: number;
+  /**
+   * Disponibilite moyenne des monitors, ou `null` quand il n'y en a aucun.
+   *
+   * Elle valait 100 sans aucun monitor : un workspace qui ne surveille rien
+   * s'affichait « 100 % de disponibilite ». Le fichier s'interdit pourtant ce
+   * genre de chiffre ailleurs — `seoScoreDelta` est explicitement « null when no
+   * prior-period data — never fabricated ». Meme regle ici.
+   */
+  uptime: number | null;
   competitors: number;
   trendsUp: number;
   trendsDown: number;
@@ -302,8 +310,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       : 0;
     const uptime = monitorRows.length > 0
       ? Math.round((monitorRows.reduce((s: number, r: { avg_uptime: string }) => s + Number(r.avg_uptime ?? 100), 0) / monitorRows.length) * 10) / 10
-      : 100;
-    const monitorUptime = monitorRows.length > 0 ? uptime : null;
+      : null;
+    // `monitorUptime` disait deja la verite ; `uptime` la contredisait dans le
+    // meme objet. Les deux portent desormais la meme valeur, et l'ecart ne peut
+    // plus reapparaitre.
+    const monitorUptime = uptime;
 
     const missionsCompleted = Number(missionRows.find((r: { status: string }) => r.status === "done")?.count ?? 0);
     const missionsTodo      = Number(missionRows.find((r: { status: string }) => r.status === "todo")?.count ?? 0);
