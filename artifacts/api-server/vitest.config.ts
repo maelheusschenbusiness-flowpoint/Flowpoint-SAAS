@@ -28,6 +28,7 @@ export default defineConfig({
       "src/startup-bootstrap.test.ts",
       "src/tests/pdf_white_label.test.ts",
       "src/tests/whitelabel-color-escape.test.ts",
+      "src/tests/rbac-default-role.test.ts",
       "src/tests/session_restore_precedence.test.ts",
       "src/tests/signup-session-dashboard-refresh.test.ts",
       "src/services/ai-economy.test.ts",
