@@ -33,10 +33,11 @@ describe.each(COPIES)("repli RBAC (%s)", (_n, path) => {
     expect(js).toContain("(STATE.me?.role || 'viewer') === 'owner'");
   });
 
-  it("la table des permissions n est pas modifiee", () => {
-    // La politique produit reste intacte : seul le REPLI change.
+  it("la table suit la politique V1 validee", () => {
+    // Le proprietaire garde tout ; un viewer CONSULTE audits, monitors et
+    // rapports mais n'atteint ni les membres, ni la facturation, ni les reglages.
     expect(js).toContain("owner:  { audits:true,  monitors:true,  reports:true,  billing:true,  team:true,   settings:true  }");
-    expect(js).toContain("viewer: { audits:false, monitors:false, reports:false, billing:false, team:false,  settings:false }");
+    expect(js).toContain("viewer: { audits:true,  monitors:true,  reports:true,  billing:false, team:false,  settings:false }");
   });
 
   it("un role inconnu retombe toujours sur viewer", () => {
@@ -52,10 +53,17 @@ describe("le comportement du repli", () => {
     // eslint-disable-next-line no-new-func
     new Function("STATE", `${table}\n${fn}\nreturn _fpRolePerms();`)({ me });
 
-  it("profil non resolu : aucun module n est ouvert", () => {
+  it("profil non resolu : aucun module SENSIBLE n est ouvert", () => {
+    // L'enjeu de ce correctif est qu'un profil non resolu ne soit pas traite en
+    // PROPRIETAIRE. Il retombe sur `viewer`, qui depuis la politique V1 consulte
+    // audits, monitors et rapports — une lecture, deja protegee par la session
+    // et par l'isolation d'organisation cote backend. Ce qui doit rester ferme,
+    // ce sont les membres, la facturation et les reglages.
     for (const me of [null, undefined, {}, { role: "" }]) {
       const p = make(me);
-      expect(Object.values(p).every((v) => v === false), JSON.stringify(me)).toBe(true);
+      expect(p.team, JSON.stringify(me)).toBe(false);
+      expect(p.billing, JSON.stringify(me)).toBe(false);
+      expect(p.settings, JSON.stringify(me)).toBe(false);
     }
   });
 
@@ -64,6 +72,6 @@ describe("le comportement du repli", () => {
   });
 
   it("un role inconnu reste viewer", () => {
-    expect(Object.values(make({ role: "pirate" })).every((v) => v === false)).toBe(true);
+    expect(make({ role: "pirate" })).toEqual(make({ role: "viewer" }));
   });
 });

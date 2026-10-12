@@ -79,8 +79,12 @@ describe("le filtrage se comporte comme attendu", () => {
     expect(routes("member")).not.toContain("settings");
   });
 
-  it("un viewer ne voit aucune des trois routes protegees", () => {
-    expect(routes("viewer")).toEqual([]);
+  it("un viewer voit les audits mais NI la facturation NI les reglages", () => {
+    // Politique V1 : le viewer consulte, il n'administre pas.
+    const r = routes("viewer");
+    expect(r).toContain("audits");
+    expect(r).not.toContain("billing");
+    expect(r).not.toContain("settings");
   });
 
   it("la palette propose EXACTEMENT ce que la navigation autorise", () => {
