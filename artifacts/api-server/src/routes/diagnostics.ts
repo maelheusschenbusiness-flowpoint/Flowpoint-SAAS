@@ -148,7 +148,6 @@ router.get("/diagnostics", async (_req, res) => {
     GITHUB_CLIENT_ID:             process.env["GITHUB_CLIENT_ID"],
     GITHUB_CLIENT_SECRET:         process.env["GITHUB_CLIENT_SECRET"],
     JWT_SECRET:                   process.env["JWT_SECRET"],
-    MONGO_URI:                    process.env["MONGO_URI"],
     SUPABASE_URL:                 process.env["SUPABASE_URL"],
     SUPABASE_SERVICE_ROLE_KEY:    process.env["SUPABASE_SERVICE_ROLE_KEY"],
     ADMIN_KEY:                    process.env["ADMIN_KEY"],

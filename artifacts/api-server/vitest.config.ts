@@ -27,6 +27,7 @@ export default defineConfig({
       "src/lib/startup-retry.test.ts",
       "src/startup-bootstrap.test.ts",
       "src/tests/pdf_white_label.test.ts",
+      "src/tests/no-mongo-vestige.test.ts",
       "src/tests/session_restore_precedence.test.ts",
       "src/tests/signup-session-dashboard-refresh.test.ts",
       "src/services/ai-economy.test.ts",
