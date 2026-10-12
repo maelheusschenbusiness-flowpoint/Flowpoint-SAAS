@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import express, { type NextFunction, type Request, type Response } from "express";
 import request from "supertest";
 
@@ -133,7 +134,14 @@ function protectedApp() {
 }
 
 describe("DELETE /team/:id — member access revocation", () => {
+  // `requireAuth` desactive l'authentification quand `API_SECRET_KEY` est absent
+  // et qu'on n'est pas en production : un jeton revoque passait alors la garde,
+  // et le test mesurait ce contournement de developpement au lieu de la
+  // revocation. Il doit s'executer dans la configuration ou l'authentification
+  // est ACTIVE — c'est la seule ou « revoquer » veut dire quelque chose.
+  const PREVIOUS_SECRET = process.env["API_SECRET_KEY"];
   beforeEach(() => {
+    process.env["API_SECRET_KEY"] = "test-only-service-secret-0123456789";
     sessions.clear();
     canonicalMemberships.clear();
     teamMemberStatus.clear();
@@ -142,6 +150,21 @@ describe("DELETE /team/:id — member access revocation", () => {
     teamMemberStatus.set(key(ORG_A, MEMBER_EMAIL), "active");
     sessions.set("org-a-token", { userId: ORG_A, orgId: ORG_A, email: MEMBER_EMAIL, role: "member", userUuid: MEMBER_UUID });
     sessions.set("org-b-token", { userId: ORG_B, orgId: ORG_B, email: MEMBER_EMAIL, role: "member", userUuid: MEMBER_UUID });
+  });
+
+  afterEach(() => {
+    if (PREVIOUS_SECRET === undefined) delete process.env["API_SECRET_KEY"];
+    else process.env["API_SECRET_KEY"] = PREVIOUS_SECRET;
+  });
+
+  it("sans API_SECRET_KEY, l authentification est desactivee — comportement assume", () => {
+    // Ce test existe pour que personne ne retire la ligne ci-dessus en croyant
+    // qu'elle ne sert a rien. Le contournement est intentionnel en developpement
+    // et ferme en production (503 si la cle manque), mais il rend TOUT test de
+    // revocation sans objet s'il n'est pas neutralise.
+    const src = readFileSync(new URL("../middlewares/requireAuth.ts", import.meta.url), "utf8");
+    expect(src).toContain("API_SECRET_KEY not set. Auth is disabled in development.");
+    expect(src).toContain('res.status(503).json({ error: "Authentication unavailable: server is not configured" })');
   });
 
   it("revokes the removed member's existing org-A token while preserving their org-B token", async () => {
