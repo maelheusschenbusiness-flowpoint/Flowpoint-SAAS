@@ -38,6 +38,7 @@ export default defineConfig({
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
       "src/lib/plan-price-mode.test.ts",
+      "src/services/cancel-at-period-end-db.test.ts",
       "src/services/publishable-key-mode.test.ts",
       "src/services/ai-economy.test.ts",
       "src/services/ai-engine.credit-calc.test.ts",
