@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getPlanPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
@@ -1217,7 +1217,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         // State C: subscription truly ended. Try server-side reactivation first
         // (customer has a reusable PM → no Checkout required). Fall through to
         // Checkout only when Checkout is genuinely necessary.
-        const priceId = PLAN_PRICE_IDS[targetPlan];
+        const priceId = getPlanPriceId(targetPlan);
         if (!priceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
@@ -1362,7 +1362,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           });
           return;
         }
-        const priceId    = PLAN_PRICE_IDS[targetPlan];
+        const priceId    = getPlanPriceId(targetPlan);
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
 
         const planItem = sub.items.data.find((item: SubItem) => planPriceIdSet.has(item.price.id));
@@ -1395,7 +1395,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           // item now would downgrade the user's access immediately. A schedule
           // preserves the remaining trial days and changes the price only when
           // the trial ends (or at the next paid renewal).
-          const currentPriceId = planItem?.price?.id ?? PLAN_PRICE_IDS[currentPlan];
+          const currentPriceId = planItem?.price?.id ?? getPlanPriceId(currentPlan);
 
           const currentAddonPrices = sub.items.data
             .filter((item: SubItem) => !planPriceIdSet.has(item.price.id))
@@ -1703,7 +1703,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       // stripeCustomerId exists but no active/trialing Stripe sub found.
       // CAS 2: try server-side reactivation if customer has a reusable PM.
       {
-        const _reactPriceId = PLAN_PRICE_IDS[targetPlan];
+        const _reactPriceId = getPlanPriceId(targetPlan);
         if (!_reactPriceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
@@ -1838,7 +1838,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     // NEVER redirect to the public signup flow.
     // The webhook is the only source of truth for plan activation.
     {
-      const _nsPriceId = PLAN_PRICE_IDS[targetPlan];
+      const _nsPriceId = getPlanPriceId(targetPlan);
       if (!_nsPriceId) {
         res.status(400).json({ error: `Plan inconnu : ${plan}` });
         return;
@@ -2150,7 +2150,7 @@ router.post("/billing/checkout/annual", ownerOnly, async (req: Request, res: Res
     const stripe = await createStripeClient(stripeKey);
 
     const annualPriceEnvKey = `STRIPE_PRICE_${plan.toUpperCase()}_ANNUAL`;
-    const annualPriceId = process.env[annualPriceEnvKey] || PLAN_PRICE_IDS[plan.toLowerCase()];
+    const annualPriceId = process.env[annualPriceEnvKey] || getPlanPriceId(plan, stripeKey);
 
     if (!annualPriceId) {
       res.status(400).json({ error: `No annual price configured for plan: ${plan}` });
