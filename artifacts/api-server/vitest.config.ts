@@ -35,6 +35,7 @@ export default defineConfig({
       "src/tests/no-mongo-vestige.test.ts",
       "src/tests/session_restore_precedence.test.ts",
       "src/tests/signup-session-dashboard-refresh.test.ts",
+      "src/services/checkout-post-tokens-rls-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
       "src/lib/plan-price-mode.test.ts",

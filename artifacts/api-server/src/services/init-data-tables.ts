@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { ensureCheckoutPostTokensSchema } from "./init-checkout-post-tokens.js";
 import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
          aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
@@ -862,6 +863,14 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE POLICY "be_select" ON billing_events FOR SELECT USING (org_id = current_setting('app.current_org_id', true))`);
     await run(client, `DROP POLICY IF EXISTS "be_insert" ON billing_events`);
     await run(client, `DROP POLICY IF EXISTS "be_update" ON billing_events`);
+
+    // ── checkout_post_tokens — jeton de premiere session apres paiement ───────
+    // Pose ici, dans le chemin autoritaire du schema, donc AVANT le
+    // durcissement RLS (etape 11) et l'audit d'isolation (etape 12) de
+    // migrate.mjs. Jusqu'ici la table n'etait creee qu'au demarrage du serveur,
+    // apres la migration : l'audit ne la voyait pas, et elle existait sans
+    // policy. Schema et policies sont poses par la meme fonction.
+    await ensureCheckoutPostTokensSchema(client);
 
     // ── AI billing tables — create before any self-healing ALTERs ─────────────
     // These tables used to be assumed to exist from an external/legacy schema.
