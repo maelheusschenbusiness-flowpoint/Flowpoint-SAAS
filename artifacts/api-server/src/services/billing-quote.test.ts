@@ -5,6 +5,8 @@ import {
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
   PLAN_PRICE_IDS,
+  PLAN_PRICE_IDS_TEST,
+  getPlanPriceId,
 } from "../lib/plans.js";
 import { createBillingQuote, quoteToStripeLineItems, TRIAL_DAYS } from "./billing-quote.js";
 
@@ -171,7 +173,25 @@ describe("billing quote — inclusions", () => {
     const items = quoteToStripeLineItems(q);
 
     expect(items).toHaveLength(1); // the plan, nothing else
-    expect(items[0]!.price).toBe(PLAN_PRICE_IDS[planId]);
+    // The quote resolves the plan price for the ACTIVE Stripe mode, so the
+    // assertion has to use the same resolver. Pinning the live map instead made
+    // this test pass or fail on the environment it ran in: green in CI, red in
+    // any shell carrying the Stripe test credentials.
+    expect(items[0]!.price).toBe(getPlanPriceId(planId));
+  });
+
+  it("resolves the plan price for the active Stripe mode — in both modes", () => {
+    // Pinned explicitly rather than read from the environment: the mode is an
+    // argument here, so neither mode can go unverified in a given shell.
+    const planId = Object.keys(PLAN_DEFINITIONS)[0]!;
+
+    expect(getPlanPriceId(planId, "sk_live_x")).toBe(PLAN_PRICE_IDS[planId]);
+
+    const testPrice = PLAN_PRICE_IDS_TEST[planId];
+    expect(getPlanPriceId(planId, "sk_test_x")).toBe(testPrice ?? PLAN_PRICE_IDS[planId]);
+    // Un prix de test absent ne doit jamais faire tomber le checkout de test
+    // sur un prix live : la seule issue acceptable est le prix live declare.
+    if (testPrice) expect(testPrice).not.toBe(PLAN_PRICE_IDS[planId]);
   });
 
   it("rejects an unknown plan or add-on rather than quoting a guess", () => {
