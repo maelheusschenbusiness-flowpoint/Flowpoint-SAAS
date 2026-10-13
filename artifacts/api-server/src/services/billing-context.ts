@@ -34,6 +34,10 @@ export interface BillingContext {
   trialConsumedAt: string | null;
   /** Fin de la periode de facturation deja payee (ISO) */
   currentPeriodEnd: string | null;
+  /** true quand l'abonnement est programme pour s'arreter en fin de periode */
+  cancelAtPeriodEnd: boolean;
+  /** Date de l'arret programme (ISO) */
+  cancelAt: string | null;
   /** Email de contact depuis organizations.owner_email */
   email: string | null;
   /** Prénom depuis organizations.owner_first_name */
@@ -174,6 +178,8 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   }
 
   const currentPeriodEnd    = orgData.currentPeriodEnd ?? null;
+  const cancelAtPeriodEnd   = orgData.cancelAtPeriodEnd === true;
+  const cancelAt            = orgData.cancelAt ?? null;
   const hasPremiumAccess    = statusGrantsAccess(normalised);
   const hasPaidAccess       = isQaOrg || grantsPaidAccess({ status: normalised, currentPeriodEnd });
   const inPaidGracePeriod   = !hasPremiumAccess && hasPaidAccess
@@ -192,6 +198,8 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     trialEndsAt,
     trialConsumedAt,
     currentPeriodEnd,
+    cancelAtPeriodEnd,
+    cancelAt,
     email:                 orgData?.email ?? null,
     firstName:             orgData?.firstName ?? null,
     orgName:               orgData?.orgName ?? null,

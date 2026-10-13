@@ -43,6 +43,10 @@ export interface OrgBillingData {
   trialStartedAt: string | null;
   /** ISO timestamp de fin de la periode de facturation deja payee */
   currentPeriodEnd: string | null;
+  /** true quand l'abonnement est programme pour s'arreter en fin de periode */
+  cancelAtPeriodEnd: boolean;
+  /** ISO timestamp de l'arret programme (Stripe: cancel_at) */
+  cancelAt: string | null;
   /** Add-ons actifs (JSONB) */
   addons: Record<string, unknown>;
   /** Plan différé (scheduled downgrade) */
@@ -71,6 +75,8 @@ export type PersistOrgFields = {
   trialEndsAt?: string | null;
   trialConsumedAt?: string | null;
   currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  cancelAt?: string | null;
   trialStartedAt?: string | null;
   addons?: Record<string, unknown>;
   pendingPlan?: string | null;
@@ -103,6 +109,8 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         trial_consumed_at: string | null;
         trial_started_at: string | null;
         current_period_end: string | null;
+        cancel_at_period_end: boolean | null;
+        cancel_at: string | null;
         addons: Record<string, unknown> | null;
         pending_plan: string | null;
         pending_plan_date: string | null;
@@ -113,6 +121,7 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
       }>(
         `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
                 trial_ends_at, trial_consumed_at, trial_started_at, current_period_end,
+                cancel_at_period_end, cancel_at,
                 addons, pending_plan, pending_plan_date,
                 owner_email, owner_first_name, name, is_internal_qa
          FROM organizations WHERE id = $1 LIMIT 1`,
@@ -183,6 +192,8 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
           currentPeriodEnd:     row.current_period_end
                                   ? new Date(row.current_period_end).toISOString()
                                   : null,
+          cancelAtPeriodEnd:    row.cancel_at_period_end === true,
+          cancelAt:             row.cancel_at ? new Date(row.cancel_at).toISOString() : null,
           addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
           pendingPlan:          row.pending_plan ?? null,
           pendingPlanDate:      row.pending_plan_date ?? null,
@@ -215,6 +226,8 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
       trialConsumedAt:      legacy.trialConsumedAt ?? null,
       trialStartedAt:       null,
       currentPeriodEnd:     null,
+      cancelAtPeriodEnd:    false,
+      cancelAt:             null,
       addons:               (typeof legacy.addons === "object" && legacy.addons !== null) ? legacy.addons as Record<string, unknown> : {},
       pendingPlan:          legacy.pendingPlan ?? null,
       pendingPlanDate:      legacy.pendingPlanDate ?? null,
@@ -265,6 +278,8 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
   if (fields.trialConsumedAt !== undefined)       { sets.push(`trial_consumed_at = $${n++}`);      vals.push(fields.trialConsumedAt); }
   if (fields.trialStartedAt !== undefined)        { sets.push(`trial_started_at = $${n++}`);       vals.push(fields.trialStartedAt); }
   if (fields.currentPeriodEnd !== undefined)      { sets.push(`current_period_end = $${n++}`);     vals.push(fields.currentPeriodEnd); }
+  if (fields.cancelAtPeriodEnd !== undefined)     { sets.push(`cancel_at_period_end = $${n++}`);   vals.push(fields.cancelAtPeriodEnd); }
+  if (fields.cancelAt !== undefined)              { sets.push(`cancel_at = $${n++}`);              vals.push(fields.cancelAt); }
   if (fields.pendingPlan !== undefined)           { sets.push(`pending_plan = $${n++}`);            vals.push(fields.pendingPlan); }
   if (fields.pendingPlanDate !== undefined)       { sets.push(`pending_plan_date = $${n++}`);      vals.push(fields.pendingPlanDate); }
   if (fields.ownerEmail !== undefined)            { sets.push(`owner_email = $${n++}`);            vals.push(fields.ownerEmail); }
