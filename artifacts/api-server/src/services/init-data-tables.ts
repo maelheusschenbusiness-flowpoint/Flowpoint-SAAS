@@ -1,4 +1,6 @@
 import { pool } from "@workspace/db";
+import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
+         aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
 
 // Structural type matching pg.PoolClient — avoids importing "pg" directly
@@ -938,70 +940,23 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_feature_idx ON ai_usage_logs(feature, created_at DESC);`);
 
     // ── ai_usage_logs — index UNIQUE d'idempotence (anti double-facturation) ──
-    // recordCompletedUsage() insère avec ON CONFLICT DO NOTHING et n'incrémente
-    // ai_monthly_usage que si la ligne a été réellement insérée : toute
-    // l'idempotence de la facturation IA repose sur cet index. Il manquait ici,
-    // et migrations/*.sql ne s'exécutent pas en production — un requestId rejoué
-    // débitait donc les crédits une seconde fois.
-    // L'unicité est scopée à l'organisation : la table est en FORCE ROW LEVEL
-    // SECURITY, un index global ferait perdre silencieusement (ON CONFLICT DO
-    // NOTHING) la consommation d'une org à cause d'une ligne invisible
-    // appartenant à une autre. Voir migrations/019_*.sql.
-    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;`);
-    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key_quarantined TEXT;`);
-    await run(client, `
-      CREATE TABLE IF NOT EXISTS ai_usage_logs_idempotency_quarantine (
-        log_id          TEXT PRIMARY KEY,
-        org_id          TEXT        NOT NULL,
-        idempotency_key TEXT        NOT NULL,
-        kept_log_id     TEXT        NOT NULL,
-        group_size      INTEGER     NOT NULL,
-        quarantined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    // Doublons déjà présents : mis en quarantaine, JAMAIS supprimés. La clé de
-    // la ligne non canonique est conservée dans idempotency_key_quarantined et
-    // tracée pour audit ; l'index partiel ignore ensuite ces lignes.
-    await run(client, `
-      WITH ranked AS (
-        SELECT id, org_id::text AS org_text, idempotency_key,
-               first_value(id) OVER (PARTITION BY org_id, idempotency_key ORDER BY created_at, id) AS kept_id,
-               count(*)        OVER (PARTITION BY org_id, idempotency_key)                        AS group_size
-        FROM ai_usage_logs WHERE idempotency_key IS NOT NULL
-      ),
-      losers AS (SELECT * FROM ranked WHERE group_size > 1 AND id <> kept_id),
-      trace AS (
-        INSERT INTO ai_usage_logs_idempotency_quarantine
-          (log_id, org_id, idempotency_key, kept_log_id, group_size)
-        SELECT id, org_text, idempotency_key, kept_id, group_size FROM losers
-        ON CONFLICT (log_id) DO NOTHING
-        RETURNING log_id
-      )
-      UPDATE ai_usage_logs AS l
-         SET idempotency_key_quarantined = COALESCE(l.idempotency_key_quarantined, l.idempotency_key),
-             idempotency_key             = NULL
-        FROM losers
-       WHERE l.id = losers.id;
-    `);
-    await run(client, `
-      CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_logs_org_idem_uidx
-        ON ai_usage_logs (org_id, idempotency_key)
-        WHERE idempotency_key IS NOT NULL;
-    `);
-    await run(client, `DROP INDEX IF EXISTS ai_usage_logs_idempotency_key_idx;`);
+    // Toute l'idempotence de la facturation IA repose sur cet index : il
+    // manquait ici, et migrations/*.sql ne s'exécutent pas en production.
+    // Le DDL est partagé avec initAiMigration (qui, lui, s'exécute aussi au
+    // démarrage « fast path ») pour que les deux chemins produisent le même
+    // état. Voir ai-usage-idempotency-schema.ts et migrations/019_*.sql.
+    for (const step of AI_USAGE_IDEMPOTENCY_STATEMENTS) {
+      await run(client, step.sql);
+    }
     // run() n'échoue jamais : l'absence de l'index serait sinon silencieuse
-    // alors qu'elle rouvre le double débit. Vérification explicite et bruyante.
+    // alors qu'elle casse l'écriture de consommation. Vérification bruyante.
     try {
-      const idem = await client.query<{ n: string }>(
-        `SELECT count(*)::text AS n FROM pg_indexes
-          WHERE tablename = 'ai_usage_logs' AND indexname = 'ai_usage_logs_org_idem_uidx'`
-      );
-      if (Number(idem.rows[0]?.n ?? 0) === 0) {
-        logger.error({},
-          "[init-data-tables] ai_usage_logs_org_idem_uidx ABSENT — l'idempotence de la facturation IA n'est pas garantie, un rejeu peut débiter deux fois les crédits");
+      if (!(await aiUsageIdempotencyIndexExists(client))) {
+        logger.error({ index: AI_USAGE_IDEMPOTENCY_INDEX },
+          "[init-data-tables] index d'idempotence ABSENT — le débit des crédits IA n'est pas protégé contre le rejeu");
       }
     } catch (err) {
-      logger.warn({ err }, "[init-data-tables] vérification de ai_usage_logs_org_idem_uidx impossible");
+      logger.warn({ err }, "[init-data-tables] vérification de l'index d'idempotence impossible");
     }
 
     // ── ai_monthly_usage — credits/cost columns missing from original CREATE TABLE ──

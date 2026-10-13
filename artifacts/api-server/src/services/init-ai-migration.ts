@@ -1,4 +1,6 @@
 import { pool } from "@workspace/db";
+import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
+         aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
 
 const LOG = "[AI migration]";
@@ -151,15 +153,24 @@ export async function initAiMigration(): Promise<void> {
     await run("ai_rate_limit_windows RLS", `ALTER TABLE public.ai_rate_limit_windows ENABLE ROW LEVEL SECURITY`);
     await tenantPolicies("ai_rate_limit_windows");
 
-    // ── 016 : idempotency_key on ai_usage_logs ───────────────────────────────────
-    await run("ai_usage_logs idempotency_key column", `
-      ALTER TABLE public.ai_usage_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT
-    `);
-    await run("ai_usage_logs idempotency_key unique index", `
-      CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_logs_idempotency_key_idx
-        ON public.ai_usage_logs (idempotency_key)
-        WHERE idempotency_key IS NOT NULL
-    `);
+    // ── 016 → 019 : idempotence de la facturation IA ─────────────────────────────
+    // L'index était créé GLOBALEMENT sur idempotency_key. Deux organisations
+    // ayant utilisé la même clé le rendent incréable : `run` étant strict,
+    // initAiMigration levait et migrate.mjs sortait en 1 — Pre-Deploy en échec,
+    // déploiement bloqué. L'unicité est désormais scopée à (org_id,
+    // idempotency_key), les doublons historiques sont mis en quarantaine sans
+    // qu'aucune ligne ne soit supprimée, et l'index global est retiré.
+    // Ce DDL est partagé avec initDataTables : ce chemin-ci est le seul exécuté
+    // au démarrage « fast path », il doit donc poser le schéma complet.
+    for (const step of AI_USAGE_IDEMPOTENCY_STATEMENTS) {
+      await run(step.label, step.sql);
+    }
+    if (!(await aiUsageIdempotencyIndexExists(client))) {
+      // Contrat de ce module : une réparation de schéma ratée ne doit pas
+      // laisser le serveur accepter du trafic de facturation.
+      throw new Error(
+        `${LOG} ${AI_USAGE_IDEMPOTENCY_INDEX} absent after DDL — AI credit idempotency is not enforced`);
+    }
 
     // ── 018 : align AI billing tables with the code contract ────────────────────
     // Production (Supabase) predates the current schema: ai_credit_purchases was
