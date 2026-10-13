@@ -1458,6 +1458,40 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'`);
     await run(client, `ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
     await run(client, `CREATE INDEX IF NOT EXISTS user_prefs_org_idx ON user_prefs(org_id)`);
+
+    // ── connectors ────────────────────────────────────────────────────────────
+    // Table requise par runCanonicalSystemSeeds() et lue par routes/connectors.ts,
+    // mais creee jusqu'ici uniquement par migrations/002 et 005 — qui ne
+    // s'executent pas en production et se contredisent (002 : type/name/enabled ;
+    // 005 : provider/status/connected/tokens). Sur une base vierge, migrate.mjs
+    // sortait en 1 a l'etape des seeds : `relation "connectors" does not exist`.
+    // La forme retenue est celle que le code utilise aujourd'hui (005 + org_id) ;
+    // les ADD COLUMN completent une base creee avec la forme 002, sans rien
+    // supprimer ni renommer.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS connectors (
+        id             TEXT        PRIMARY KEY,
+        org_id         TEXT,
+        provider       TEXT,
+        status         TEXT        NOT NULL DEFAULT 'disconnected',
+        connected      BOOLEAN     NOT NULL DEFAULT false,
+        access_token   TEXT,
+        refresh_token  TEXT,
+        webhook_secret TEXT,
+        config         TEXT                 DEFAULT '{}',
+        last_sync      TEXT,
+        sync_status    TEXT                 DEFAULT 'idle',
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    for (const col of [
+      "org_id TEXT", "provider TEXT", "status TEXT NOT NULL DEFAULT 'disconnected'",
+      "connected BOOLEAN NOT NULL DEFAULT false", "access_token TEXT", "refresh_token TEXT",
+      "webhook_secret TEXT", "last_sync TEXT", "sync_status TEXT DEFAULT 'idle'",
+    ]) {
+      await run(client, `ALTER TABLE connectors ADD COLUMN IF NOT EXISTS ${col}`);
+    }
+    await run(client, `CREATE INDEX IF NOT EXISTS connectors_provider_idx ON connectors(provider)`);
     await run(client, `ALTER TABLE user_prefs ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE user_prefs NO FORCE ROW LEVEL SECURITY`);
     for (const op of ["select", "insert", "update", "delete"]) {
@@ -2715,6 +2749,27 @@ export async function initDataTables(): Promise<void> {
           default_role TEXT        NOT NULL DEFAULT 'member',
           created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
+      `);
+      // Reconciliation de la colonne legacy `provider`.
+      // migrations/002_dashboard_tables.sql cree sso_providers avec
+      // `provider TEXT NOT NULL` — un schema anterieur au contrat actuel.
+      // sso-service.ts insere (id, org_id, type, name, client_id, issuer,
+      // enabled, default_role, created_at) et ne renseigne PAS `provider` :
+      // sur toute base issue de ces migrations, la creation d'un fournisseur
+      // SSO echoue en 23502 (verifie). La colonne et ses donnees sont
+      // conservees ; seule la contrainte NOT NULL est levee.
+      await run(client, `
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'sso_providers'
+              AND column_name = 'provider' AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE public.sso_providers ALTER COLUMN provider DROP NOT NULL;
+            RAISE NOTICE '[init-data-tables] sso_providers.provider : NOT NULL leve (colonne legacy conservee)';
+          END IF;
+        END $$
       `);
       await run(client, `CREATE INDEX IF NOT EXISTS sso_providers_org_idx ON sso_providers(org_id)`);
       await applyTenantRls("sso_providers");
