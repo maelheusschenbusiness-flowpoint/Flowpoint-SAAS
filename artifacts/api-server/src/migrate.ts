@@ -25,6 +25,7 @@ import { initAutomationTables }  from "./services/init-automation.js";
 import { initMonitorsTables }    from "./services/init-monitors.js";
 import { initDataTables }        from "./services/init-data-tables.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
+import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -226,6 +227,28 @@ async function migrate() {
     process.exit(1);
   }
   console.log("  ✓ Toute table portant org_id a RLS active et une policy d'isolation");
+
+  // Une policy peut mentionner org_id et rester inerte : l'audit ci-dessus se
+  // contente de voir `org_id` dans le predicat, sans verifier QUELLE variable
+  // il lit. Trois policies lisaient current_setting('app.org_id'), que
+  // l'application ne pose jamais — elle pose app.current_org_id. Mesure : la
+  // table renvoyait 0 ligne sur 1 sous app_user. Une table dont la SEULE
+  // isolation est branchee sur une variable morte n'est pas isolee.
+  const divergentes = await findMisalignedOrgPolicies(pool);
+  const cassees = divergentes.filter((d) => !d.alsoCorrectlyIsolated);
+  for (const d of divergentes.filter((x) => x.alsoCorrectlyIsolated)) {
+    console.warn(`  ! ${d.table}.${d.policy} lit une variable que l'application ne pose pas (table isolee par ailleurs)`);
+  }
+  if (cassees.length > 0) {
+    for (const d of cassees) {
+      console.error(`  ✗ ${d.table}.${d.policy} — seule isolation, branchee sur une variable morte : ${d.predicate}`);
+    }
+    console.error("\n✗ Des policies lisent une variable que l'application ne pose pas — migration refusee");
+    console.error(`  Attendu : current_setting('${TENANT_GUC}', true)`);
+    await pool.end();
+    process.exit(1);
+  }
+  console.log("  ✓ Toutes les policies d'isolation lisent app.current_org_id");
 
   // ── Summary ─────────────────────────────────────────────────────────────────
   section("Post-migration summary");
