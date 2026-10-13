@@ -36,6 +36,8 @@ const ULTRA_BILLING: OrgBillingData = {
   trialConsumedAt: "2024-01-01T00:00:00.000Z",
   trialStartedAt: "2024-01-01T00:00:00.000Z",
   currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+  cancelAt: null,
   addons: {},
   pendingPlan: null,
   pendingPlanDate: null,
