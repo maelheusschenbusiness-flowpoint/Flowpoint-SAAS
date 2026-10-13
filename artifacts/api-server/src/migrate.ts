@@ -24,6 +24,7 @@ import { initMissionsTables }    from "./services/init-missions.js";
 import { initAutomationTables }  from "./services/init-automation.js";
 import { initMonitorsTables }    from "./services/init-monitors.js";
 import { initDataTables }        from "./services/init-data-tables.js";
+import { initPhase1Users } from "./services/init-phase1-users.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -42,7 +43,7 @@ async function migrate() {
   console.log("=".repeat(60));
 
   // ── 1. Verify connectivity ──────────────────────────────────────────────────
-  section("[1/12] Database connectivity");
+  section("[1/13] Database connectivity");
   try {
     const res = await pool.query<{ version: string }>("SELECT version()");
     console.log(`  ✓ Connected — ${res.rows[0]?.version?.split(" ").slice(0, 2).join(" ")}`);
@@ -64,7 +65,7 @@ async function migrate() {
   } catch { /* non bloquant : on restera sur les seuils stricts */ }
 
   // ── 2. app_user role + grants ───────────────────────────────────────────────
-  section("[2/12] app_user role (init-rls-setup)");
+  section("[2/13] app_user role (init-rls-setup)");
   try {
     await initRlsSetup();
     console.log("  ✓ Done");
@@ -74,7 +75,7 @@ async function migrate() {
   }
 
   // ── 3. Probe SET ROLE ───────────────────────────────────────────────────────
-  section("[3/12] app_user role probe");
+  section("[3/13] app_user role probe");
   try {
     await probeAppUserRole();
     console.log("  ✓ Done");
@@ -84,7 +85,7 @@ async function migrate() {
   }
 
   // ── 4. RLS tenant-isolation policies ───────────────────────────────────────
-  section("[4/12] RLS migration (tenant-isolation policies)");
+  section("[4/13] RLS migration (tenant-isolation policies)");
   try {
     await runRlsMigrationIfNeeded();
     console.log("  ✓ Done");
@@ -101,30 +102,70 @@ async function migrate() {
   //     ✗ relation "organizations" does not exist
   // Sans effet sur une base existante, ou organizations est deja la ; mais un
   // environnement ne pouvait pas etre recree depuis zero.
-  section("[5/12] init-data-tables (tables de base)");
+  section("[5/13] init-data-tables (tables de base)");
   try { await initDataTables();  console.log("  ✓ init-data-tables done"); }
   catch (err: any) { console.error(`  ✗ initDataTables: ${err.message}`); process.exit(1); }
 
   // ── 6–8. Domain tables ──────────────────────────────────────────────────────
-  section("[6/12] init-missions");
+  // ── 6. Tables d'identite — users + organization_members ────────────────────
+  // Elles n'etaient posees qu'au demarrage du serveur, par une etape marquee
+  // non fatale. migrate.mjs, qui est la porte de deploiement, sortait donc en 0
+  // sur une base ou les deux tables que l'application interroge n'existaient
+  // pas : mesure sur base vierge, apres un migrate reussi,
+  //   SELECT id FROM users …               → relation "users" does not exist
+  //   SELECT role FROM organization_members → relation … does not exist
+  // Une porte ne peut pas refuser un schema qu'elle ne pose pas.
+  //
+  // Placee APRES init-data-tables, dont elle depend : la reprise de l'existant
+  // lit organizations, org_settings et team_members. Et AVANT le durcissement
+  // RLS, pour que les deux tables y passent comme toutes les autres.
+  section("[6/13] init-phase1-users (identite : users, organization_members)");
+  try { await initPhase1Users(); }
+  catch (err: any) { console.error(`  ✗ initPhase1Users: ${err.message}`); process.exit(1); }
+
+  // init-phase1-users avale chaque erreur DDL en silence (son run() a un catch
+  // vide, par choix : les instructions sont idempotentes et bruyantes). L'appel
+  // ne peut donc presque jamais echouer, et une porte qui se contente de
+  // l'appeler ne verifie rien. On verifie le resultat.
+  // relkind = 'r' : une VUE nommee `users` satisferait to_regclass tout en
+  // faisant echouer les INSERT de l'application — et elle suffirait a faire
+  // sauter le CREATE TABLE IF NOT EXISTS en silence.
+  const identite = await pool.query<{ users: boolean; membres: boolean }>(`
+    SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' AND c.relname = 'users'                AND c.relkind = 'r') AS users,
+           EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' AND c.relname = 'organization_members' AND c.relkind = 'r') AS membres
+  `);
+  const _idOk = identite.rows[0]?.users === true && identite.rows[0]?.membres === true;
+  if (!_idOk) {
+    console.error(`  ✗ users=${identite.rows[0]?.users} organization_members=${identite.rows[0]?.membres}`);
+    console.error("\n✗ Les tables d'identite sont absentes — migration refusee");
+    console.error("  L'application interroge ces deux tables ; laisser passer le deploiement");
+    console.error("  ferait demarrer un serveur qui repond 500 sur l'authentification.");
+    await pool.end();
+    process.exit(1);
+  }
+  console.log("  ✓ users + organization_members presentes");
+
+  section("[7/13] init-missions");
   try { await initMissionsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[7/12] init-automation");
+  section("[8/13] init-automation");
   try { await initAutomationTables(); console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[8/12] init-monitors");
+  section("[9/13] init-monitors");
   try { await initMonitorsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
   // ── 9. AI migration — apres les tables de base qu'elle fait evoluer ─────────
-  section("[9/12] init-ai-migration");
+  section("[10/13] init-ai-migration");
   try { await initAiMigration(); console.log("  ✓ init-ai-migration done"); }
   catch (err: any) { console.error(`  ✗ initAiMigration: ${err.message}`); process.exit(1); }
 
   // ── 9. Canonical global system seed catalog ─────────────────────────────────
-  section("[10/12] Canonical global system seeds");
+  section("[11/13] Canonical global system seeds");
   try {
     const seeded = await runCanonicalSystemSeeds();
     console.log(`  ✓ org_settings default: ${seeded.orgSettings}`);
@@ -143,7 +184,7 @@ async function migrate() {
   // passe est donc rejouee ici, une fois le schema pose — elle est idempotente.
   // Placee APRES les seeds : FORCE ROW LEVEL SECURITY s'applique aussi au
   // proprietaire, et durcir avant les seeds les ferait echouer.
-  section("[11/12] Durcissement RLS (apres creation des tables)");
+  section("[12/13] Durcissement RLS (apres creation des tables)");
   try { await runRlsMigrationIfNeeded(); console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ RLS hardening failed: ${err.message}`); process.exit(1); }
 
@@ -151,7 +192,7 @@ async function migrate() {
   // Un compte de policies ne dit rien de ce qui est reellement protege. On
   // verifie, table par table, que toute table portant org_id a RLS active ET
   // au moins une policy qui isole sur org_id.
-  section("[12/12] Audit d'isolation inter-organisations");
+  section("[13/13] Audit d'isolation inter-organisations");
   const audit = await pool.query<{ table_name: string; rls: boolean; policies: number; isolated: boolean }>(`
     WITH sensibles AS (
       SELECT c.relname AS table_name, c.relrowsecurity AS rls
