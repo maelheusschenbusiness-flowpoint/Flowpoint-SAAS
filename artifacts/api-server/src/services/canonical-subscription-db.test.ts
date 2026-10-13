@@ -170,9 +170,20 @@ describe("persistance canonique de l'abonnement", () => {
     try {
       const r = await c.query(`SELECT count(*)::int AS n FROM organizations WHERE owner_email = $1`, [EMAIL]);
       expect((r.rows[0] as { n: number }).n).toBe(1);
-      const u = await c.query(`SELECT count(*)::int AS n FROM users WHERE email = $1`, [EMAIL]);
-      // Aucun utilisateur cree par l'ancrage.
-      expect((u.rows[0] as { n: number }).n).toBe(0);
+      // `users` est creee au demarrage du serveur, pas par migrate.mjs. Sur une
+      // base fraichement migree elle n'existe pas, et un SELECT direct faisait
+      // echouer ce test sur l'etat de la base plutot que sur le comportement de
+      // l'ancrage. La presence est donc verifiee d'abord, dans une requete
+      // separee : une reference a une relation absente echoue des l'analyse,
+      // meme dans une branche CASE qui ne sera pas evaluee.
+      const usersPresent = await c.query<{ present: boolean }>(
+        `SELECT to_regclass('public.users') IS NOT NULL AS present`
+      );
+      if (usersPresent.rows[0]?.present === true) {
+        const u = await c.query(`SELECT count(*)::int AS n FROM users WHERE email = $1`, [EMAIL]);
+        // Aucun utilisateur cree par l'ancrage.
+        expect((u.rows[0] as { n: number }).n).toBe(0);
+      }
     } finally { c.release(); }
     expect((await canonical())?.["sub"]).toBe(SUB);
   });
