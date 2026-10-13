@@ -9,6 +9,7 @@ import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
+import { ensureCheckoutPostTokensSchema } from "./services/init-checkout-post-tokens.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
@@ -237,39 +238,11 @@ async function main() {
         await client.query(
           `DELETE FROM magic_link_tokens WHERE expires_at < NOW() - INTERVAL '1 day' OR used = true`
         ).catch(() => {});
-        // checkout_post_tokens: single-use token created by webhook after org creation.
-        // SECURITY: token_hash = SHA256(stripe_session_id) — raw session ID never stored in plaintext.
-        // Expiry: 15 minutes (spec requirement). Row is DELETED on consumption (not merely flagged).
-        // Migration: if old schema (stripe_session_id PK, no token_hash column) exists, drop + recreate.
-        await client.query(`
-          DO $$ BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM information_schema.columns
-              WHERE table_name = 'checkout_post_tokens' AND column_name = 'token_hash'
-            ) THEN
-              DROP TABLE IF EXISTS checkout_post_tokens;
-            END IF;
-          END $$
-        `);
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS checkout_post_tokens (
-            token_hash         TEXT        PRIMARY KEY,           -- SHA256(stripe_session_id)
-            stripe_session_id  TEXT        UNIQUE NOT NULL,       -- kept for Stripe event idempotency
-            stripe_event_id    TEXT,
-            org_id             TEXT        NOT NULL,
-            email              TEXT        NOT NULL,
-            pre_register_token TEXT,
-            created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            expires_at         TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '15 minutes'
-          )
-        `);
-        await client.query(`CREATE INDEX IF NOT EXISTS cpt_org_idx     ON checkout_post_tokens(org_id)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS cpt_expires_idx ON checkout_post_tokens(expires_at)`);
-        // SECURITY: RLS enabled with no public policies → deny-all for anon/authenticated.
-        // Backend pool.query() uses BYPASSRLS superuser and is unaffected.
-        // token_hash (SHA256 of Stripe session ID) must never be accessible via PostgREST.
-        await client.query(`ALTER TABLE checkout_post_tokens ENABLE ROW LEVEL SECURITY`);
-        await client.query(`ALTER TABLE checkout_post_tokens FORCE ROW LEVEL SECURITY`);
+        // checkout_post_tokens : schema ET policies d'isolation poses ensemble.
+        // Voir services/init-checkout-post-tokens.ts — la table portait org_id
+        // sans aucune policy tant qu'une passe RLS ulterieure n'etait pas
+        // passee, et l'ordre de ces deux etapes asynchrones n'etait pas garanti.
+        await ensureCheckoutPostTokensSchema(client);
         logger.info("[startup] new-signup-schema ensured (pending_signups, checkout_post_tokens, postal_code, vat)");
       } finally { client.release(); }
     }).catch((err: unknown) => {
