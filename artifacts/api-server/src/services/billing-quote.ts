@@ -7,6 +7,7 @@ import {
   COMING_SOON_ADDONS,
   REMOVED_ADDONS,
   isPlanAllowedAddon,
+  getPlanPriceId,
 } from "../lib/plans.js";
 
 /** Free-trial length granted to first-time subscribers. Single source of truth. */
@@ -134,7 +135,7 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
   const lines: QuoteLine[] = [];
 
   if (planDefinition) {
-    const priceId = PLAN_PRICE_IDS[plan];
+    const priceId = getPlanPriceId(plan);
     if (!priceId) throw new Error("MISSING_PRICE_ID");
     const unitAmountMinor = Math.round(planDefinition.priceEur * 100);
     lines.push({

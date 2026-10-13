@@ -113,18 +113,26 @@ vi.mock("../middlewares/requireRole.js", () => ({
   canWrite:  (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-vi.mock("../lib/plans.js", () => ({
-  PLAN_PRICE_IDS: {
+vi.mock("../lib/plans.js", () => {
+  const PLAN_PRICE_IDS = {
     standard: PRICE_STD,
     pro:      PRICE_PRO,
     ultra:    "price_ultra_live",
-  },
-  ADDON_PRICE_IDS:     {},
-  FLAG_ADDONS:         [],
-  QTY_ADDONS:          [],
-  PLAN_LIMITS:         { standard: {}, pro: {}, ultra: {} },
-  PLAN_INCLUDED_ADDONS: { standard: new Set(), pro: new Set(), ultra: new Set() },
-}));
+  } as Record<string, string>;
+  return {
+    PLAN_PRICE_IDS,
+    // billing.ts resout desormais le prix du plan par getPlanPriceId(), qui
+    // bascule sur les prix de TEST quand la cle active est sk_test_. Ces cas
+    // portent sur le comportement en mode LIVE : le mock rend donc les memes
+    // identifiants que PLAN_PRICE_IDS, quelle que soit la cle.
+    getPlanPriceId: (plan: string) => PLAN_PRICE_IDS[String(plan ?? "").toLowerCase()],
+    ADDON_PRICE_IDS:     {},
+    FLAG_ADDONS:         [],
+    QTY_ADDONS:          [],
+    PLAN_LIMITS:         { standard: {}, pro: {}, ultra: {} },
+    PLAN_INCLUDED_ADDONS: { standard: new Set(), pro: new Set(), ultra: new Set() },
+  };
+});
 
 // ── Stripe factory: injectable per test ───────────────────────────────────────
 let _stripeMock: Record<string, unknown> = {};

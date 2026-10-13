@@ -1,3 +1,4 @@
+import { getStripeKey } from "../services/stripe-factory.js";
 export interface PlanLimits {
   audits: number;
   monitors: number;
@@ -178,6 +179,29 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
  * In test mode (sk_test_ key active) → prefer ADDON_PRICE_IDS_TEST[key].
  * In live mode or when no test override exists → fall back to ADDON_PRICE_IDS[key].
  */
+/**
+ * Identifiant de prix Stripe du PLAN, conscient du mode.
+ *
+ * Symetrique de getAddonPriceId() pour les add-ons. Il manquait : tous les
+ * appelants lisaient PLAN_PRICE_IDS directement, c'est-a-dire les prix LIVE.
+ * En mode test, Stripe refusait donc la creation d'abonnement :
+ *   No such price: 'price_1StW0A9…'; a similar object exists in live mode,
+ *   but a test mode key was used to make this request.  (resource_missing)
+ * PLAN_PRICE_IDS_TEST existait mais n'etait utilise que par la resolution
+ * inverse getPlanForPriceId(). Consequence : le parcours payant etait
+ * impossible a certifier en mode test.
+ *
+ * Le mode est resolu par getStripeKey(), le selecteur canonique, sauf si
+ * l'appelant fournit explicitement la cle qu'il utilise pour son appel Stripe.
+ */
+export function getPlanPriceId(plan: string, stripeKey?: string): string | undefined {
+  const key = String(plan ?? "").toLowerCase();
+  const activeKey = stripeKey ?? getStripeKey();
+  const isTestMode = activeKey.startsWith("sk_test_");
+  if (isTestMode && PLAN_PRICE_IDS_TEST[key]) return PLAN_PRICE_IDS_TEST[key];
+  return PLAN_PRICE_IDS[key] || undefined;
+}
+
 export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
   const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
   if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];

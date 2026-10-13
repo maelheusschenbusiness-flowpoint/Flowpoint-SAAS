@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { publicCheckoutRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
@@ -238,7 +238,9 @@ function getPublicStripeKey(stripeKey: string): string {
 router.get("/billing/plans", async (req: Request, res: Response): Promise<void> => {
   const plans = Object.values(PLAN_CONFIG).map((p) => ({
     ...p,
-    priceId: PLAN_PRICE_IDS[p.id] ?? "",
+    // Catalogue expose au client : le priceId doit suivre le mode actif,
+    // sinon le navigateur recoit un prix live avec une cle de test.
+    priceId: getPlanPriceId(p.id) ?? "",
   }));
 
   const orgId = (req as Request & { orgId?: string }).orgId;
@@ -435,7 +437,7 @@ function buildLineItems(
   const oneTimeItems: Array<{ price: string; quantity: number }> = [];
 
   /* Plan */
-  const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
+  const planPriceId = getPlanPriceId(plan);
   if (planPriceId) subscriptionItems.push({ price: planPriceId, quantity: 1 });
 
   /* Resolve the Stripe key once so getAddonPriceId() can prefer test-mode overrides */
@@ -2292,7 +2294,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     }
 
     /* ── 3a. Plan subscription — trial only for confirmed first-time subscribers ── */
-    const planPriceId = PLAN_PRICE_IDS[planKey];
+    const planPriceId = getPlanPriceId(planKey);
     if (!planPriceId) {
       res.status(400).json({ error: "Plan introuvable dans Stripe." });
       return;
