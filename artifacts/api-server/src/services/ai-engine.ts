@@ -1,4 +1,5 @@
 import { pool, withOrgDb, withOrgDbClient } from "@workspace/db";
+import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
@@ -93,6 +94,23 @@ function planCreditLimit(plan?: string | null): number {
   return PLAN_AI_CREDITS[(plan ?? "standard").toLowerCase()] ?? PLAN_AI_CREDITS.standard;
 }
 
+/** Id de ligne pour ai_monthly_usage.
+ *
+ *  L'identité métier d'une ligne est (org_id, month) — c'est la contrainte
+ *  UNIQUE qui sert d'arbitre aux upserts. L'id ne doit donc PAS être une
+ *  fonction déterministe de (org_id, month) : deux écritures concurrentes
+ *  initialisant le même mois entraient alors en collision sur la CLÉ PRIMAIRE,
+ *  index que l'arbitre `ON CONFLICT (org_id, month)` ne couvre pas. Postgres
+ *  levait 23505 (ai_monthly_usage_pkey) au lieu d'absorber le conflit : la
+ *  transaction de facturation était annulée, la consommation IA déjà servie
+ *  par le provider n'était pas comptabilisée, et consumeAICredits (fail-closed)
+ *  bloquait la requête. L'id n'est lu par aucun chemin de code ; seule sa
+ *  préfixation reste utile au diagnostic.
+ */
+function monthlyUsageRowId(orgId: string, month: string): string {
+  return `amu_${orgId}_${month}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function getOrCreateMonthlyUsage(rawOrgId = "default"): Promise<{
   creditsUsed: number;
   creditsLimit: number;
@@ -146,7 +164,7 @@ export async function getOrCreateMonthlyUsage(rawOrgId = "default"): Promise<{
          (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
        VALUES ($1,$2,$3,0,0,0,0,$4,NOW())
        ON CONFLICT (org_id, month) DO NOTHING`,
-      [`amu_${orgId}_${month}`, orgId, month, monthResetDate()]
+      [monthlyUsageRowId(orgId, month), orgId, month, monthResetDate()]
     );
     return [null, creditsExtra];
   });
@@ -341,7 +359,10 @@ export async function recordCompletedUsage(opts: {
     ? opts.fixedCreditCost
     : computeCreditsDebited({ feature, model, realCostEur });
   const month       = currentMonth();
-  const logId       = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  // Entropie élargie : le conflit est désormais arbitré sur la clé
+  // d'idempotence, donc une collision de cet id lèverait une erreur au lieu
+  // d'être absorbée — ce qui est correct, mais doit rester improbable.
+  const logId       = `aul_${Date.now()}_${randomUUID()}`;
   const idemKey     = opts.requestId ?? null;
   const metaJson    = opts.metadata ? JSON.stringify(opts.metadata) : null;
 
@@ -367,6 +388,10 @@ export async function recordCompletedUsage(opts: {
   // and therefore does NOT double-increment ai_monthly_usage. If either
   // statement fails, the whole transaction rolls back — the log and the
   // aggregate can never diverge.
+  // The conflict target is explicit — an untargeted ON CONFLICT DO NOTHING also
+  // swallowed a primary-key collision on the generated logId, silently dropping
+  // a legitimate usage row and its aggregate increment. Only a replayed
+  // idempotency key may be ignored; anything else must surface.
   let recorded = false;
   try {
     const recordUsage = async (client: PoolClient) => {
@@ -375,7 +400,7 @@ export async function recordCompletedUsage(opts: {
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata, idempotency_key)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-         ON CONFLICT DO NOTHING
+         ON CONFLICT (org_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
          RETURNING id`,
         [logId, orgId, userId, provider, model, feature,
          creditsDeb, creditsDeb,
@@ -400,7 +425,7 @@ export async function recordCompletedUsage(opts: {
                request_count  = ai_monthly_usage.request_count  + 1,
                tokens_used    = ai_monthly_usage.tokens_used    + $6,
                updated_at     = NOW()`,
-        [`amu_${orgId}_${month}`, orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
+        [monthlyUsageRowId(orgId, month), orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
       );
       return true;
     };

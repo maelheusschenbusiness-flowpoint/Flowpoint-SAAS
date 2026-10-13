@@ -1,4 +1,6 @@
 import { pool } from "@workspace/db";
+import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
+         aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
 
 // Structural type matching pg.PoolClient — avoids importing "pg" directly
@@ -936,6 +938,26 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_provider_idx ON ai_usage_logs(provider, created_at DESC);`);
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_model_idx ON ai_usage_logs(model, created_at DESC);`);
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_feature_idx ON ai_usage_logs(feature, created_at DESC);`);
+
+    // ── ai_usage_logs — index UNIQUE d'idempotence (anti double-facturation) ──
+    // Toute l'idempotence de la facturation IA repose sur cet index : il
+    // manquait ici, et migrations/*.sql ne s'exécutent pas en production.
+    // Le DDL est partagé avec initAiMigration (qui, lui, s'exécute aussi au
+    // démarrage « fast path ») pour que les deux chemins produisent le même
+    // état. Voir ai-usage-idempotency-schema.ts et migrations/019_*.sql.
+    for (const step of AI_USAGE_IDEMPOTENCY_STATEMENTS) {
+      await run(client, step.sql);
+    }
+    // run() n'échoue jamais : l'absence de l'index serait sinon silencieuse
+    // alors qu'elle casse l'écriture de consommation. Vérification bruyante.
+    try {
+      if (!(await aiUsageIdempotencyIndexExists(client))) {
+        logger.error({ index: AI_USAGE_IDEMPOTENCY_INDEX },
+          "[init-data-tables] index d'idempotence ABSENT — le débit des crédits IA n'est pas protégé contre le rejeu");
+      }
+    } catch (err) {
+      logger.warn({ err }, "[init-data-tables] vérification de l'index d'idempotence impossible");
+    }
 
     // ── ai_monthly_usage — credits/cost columns missing from original CREATE TABLE ──
     await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used INTEGER NOT NULL DEFAULT 0;`);
