@@ -289,6 +289,11 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         hasPaidAccess:       _hasPaidAccess,
         inPaidGracePeriod:   _inPaidGrace,
         currentPeriodEnd:    _currentPeriodEnd,
+        // Annulation programmee : permet d'afficher « se termine le … » et de
+        // distinguer un abonnement actif qui se renouvelle d'un actif qui
+        // s'arrete. Absent jusqu'ici, donc invisible du dashboard.
+        cancelAtPeriodEnd:   billingData?.cancelAtPeriodEnd === true,
+        cancelAt:            billingData?.cancelAt ?? null,
         mustCompleteBilling: !statusGrantsAccess(normStatus),
         onboardingCompletedAt: await (async () => {
           try {
