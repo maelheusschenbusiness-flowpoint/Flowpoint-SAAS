@@ -1393,6 +1393,9 @@ export async function initDataTables(): Promise<void> {
     `);
     // Additive columns on existing organizations table (safe re-runs)
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';`);
+    // Filigrane d'ordonnancement des evenements d'abonnement Stripe : empeche
+    // un evenement ancien relivre d'ecraser un etat de facturation plus recent.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS last_subscription_event_at TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_user_id TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';`);

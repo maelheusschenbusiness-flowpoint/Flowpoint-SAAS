@@ -17,6 +17,73 @@ import { growthFactsFor } from "../lib/growth-facts.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
+/**
+ * Garde d'ordonnancement pour les evenements d'abonnement.
+ *
+ * Stripe ne garantit PAS l'ordre de livraison : une relivraison ou un retard
+ * reseau peut faire arriver un `customer.subscription.updated` ancien APRES un
+ * plus recent. Sans garde, le handler ecrasait l'etat courant avec l'etat
+ * perime — un client Pro paye repassait en Standard/trialing.
+ *
+ * Compare-and-set atomique sur organizations.last_subscription_event_at :
+ * l'UPDATE ne renvoie une ligne que si l'evenement est au moins aussi recent
+ * que le dernier applique. Deux livraisons concurrentes se serialisent donc
+ * sur la ligne, sans verrou applicatif.
+ *
+ * `<=` et non `<` : deux evenements de la meme seconde doivent tous deux
+ * passer — Stripe horodate a la seconde et en rejeter un ferait perdre une
+ * transition legitime.
+ *
+ * Retourne true quand l'evenement doit etre applique.
+ *
+ * Exporte pour le test de regression stripe-webhook-ordering-db.test.ts.
+ */
+export async function claimSubscriptionEventOrder(orgId: string, eventCreatedUnix: number | null): Promise<boolean> {
+  // Sans horodatage exploitable, on ne peut pas ordonner : on applique.
+  if (!orgId || orgId === "default" || !eventCreatedUnix || !Number.isFinite(eventCreatedUnix)) return true;
+  try {
+    const { pool: pgPool } = await import("@workspace/db");
+    const client = await pgPool.connect();
+    try {
+      const claimed = await client.query(
+        `UPDATE organizations
+            SET last_subscription_event_at = to_timestamp($2::double precision)
+          WHERE (id::text = $1 OR owner_email = $1)
+            AND (last_subscription_event_at IS NULL
+                 OR last_subscription_event_at <= to_timestamp($2::double precision))
+          RETURNING id`,
+        [orgId, eventCreatedUnix]
+      );
+      if (claimed.rowCount && claimed.rowCount > 0) return true;
+      // 0 ligne : soit l'evenement est perime, soit l'org n'existe pas encore.
+      // Le second cas doit passer (l'activation cree la ligne juste apres).
+      const exists = await client.query(
+        `SELECT 1 FROM organizations WHERE id::text = $1 OR owner_email = $1 LIMIT 1`,
+        [orgId]
+      );
+      if (exists.rowCount === 0) return true;
+      logger.warn({ orgId, eventCreatedUnix },
+        "[Webhook] evenement d'abonnement perime (anterieur au dernier applique) — etat NON ecrase");
+      return false;
+    } finally { client.release(); }
+  } catch (err) {
+    // Fail-open : une garde indisponible ne doit pas bloquer une transition
+    // de facturation legitime. Le defaut corrige est une regression d'etat,
+    // pas une absence d'etat.
+    // La colonne absente est signalee en ERROR : la protection est alors
+    // inactive et silencieuse. Elle est posee par initDataTables (donc par
+    // migrate.mjs en Pre-Deploy) et par migrations/020_*.sql ; un demarrage
+    // en « fast path » sur une base qui n'a jamais migre ne la cree pas.
+    if ((err as { code?: string })?.code === "42703") {
+      logger.error({ orgId },
+        "[Webhook] organizations.last_subscription_event_at ABSENTE — la protection contre les evenements d'abonnement perimes est INACTIVE (appliquer migrations/020 ou migrate.mjs)");
+    } else {
+      logger.warn({ err, orgId }, "[Webhook] garde d'ordonnancement indisponible — evenement applique");
+    }
+    return true;
+  }
+}
+
 async function persistSubscriptionMeta(opts: {
   subscriptionStatus?: string;
   stripeCustomerId?: string;
@@ -980,6 +1047,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   }
 
   logger.info({ type: event.type }, "[Webhook] Received Stripe event");
+  // `created` (secondes unix) sert de filigrane d'ordonnancement ; absent des
+  // payloads de test minimaux, auquel cas la garde laisse passer.
+  const _evtCreatedRaw = (event as unknown as { created?: unknown }).created;
+  const _evtCreatedUnix = typeof _evtCreatedRaw === "number" ? _evtCreatedRaw : null;
   const obj = event.data.object;
 
   // ── Resolve orgId from Stripe customer ID → org_settings lookup ───────────
@@ -1852,6 +1923,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         }
       }
 
+      // Garde d'ordonnancement : ne jamais ecraser un etat plus recent.
+      if (!(await claimSubscriptionEventOrder(orgId, _evtCreatedUnix))) {
+        logger.info({ orgId, type: event.type, eventId: (event as { id?: string }).id },
+          "[Webhook] subscription event ignore (perime) — aucun ecrasement de plan/statut");
+        break;
+      }
       await persistSubscriptionMeta(updatePayload);
 
       // ── Verify DB plan after persist ─────────────────────────────────────
@@ -2000,6 +2077,13 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       if (deletedIsPlanSub) {
         logger.info({ orgId }, "[Webhook] Plan subscription deleted — downgrading to standard");
 
+        // Garde d'ordonnancement : une suppression ancienne relivree ne doit pas
+        // annuler un abonnement souscrit depuis.
+        if (!(await claimSubscriptionEventOrder(orgId, _evtCreatedUnix))) {
+          logger.info({ orgId, type: event.type },
+            "[Webhook] subscription.deleted ignore (perime) — abonnement courant conserve");
+          break;
+        }
         // P0-4: persist plan='standard' and status='canceled'
         await persistSubscriptionMeta({ orgId, subscriptionStatus: "canceled", plan: "standard" });
 
