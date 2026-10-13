@@ -67,6 +67,13 @@ vi.mock("@workspace/db", () => ({
     connect: async () => ({
       query: async (sql: string, values: unknown[] = []) => {
         dbQueries.push({ sql, values });
+  // Verrou anti-double-facturation (checkout_subscription_claims) : le stub
+  // accorde la propriete, comme le ferait un INSERT reel qui a insere.
+  if (/checkout_subscription_claims/.test(sql)) {
+    return /^\s*INSERT/i.test(sql)
+      ? { rows: [{ subscription_id: null, inserted: true }], rowCount: 1 }
+      : { rows: [], rowCount: 0 };
+  }
         if (/FROM user_sessions/.test(sql)) {
           return values[0] === "tok-subscriber"
             ? { rows: [{ org_id: "org-uuid-1" }] }
@@ -80,6 +87,13 @@ vi.mock("@workspace/db", () => ({
     }),
     query: async (sql: string, values: unknown[] = []) => {
       dbQueries.push({ sql, values });
+  // Verrou anti-double-facturation (checkout_subscription_claims) : le stub
+  // accorde la propriete, comme le ferait un INSERT reel qui a insere.
+  if (/checkout_subscription_claims/.test(sql)) {
+    return /^\s*INSERT/i.test(sql)
+      ? { rows: [{ subscription_id: null, inserted: true }], rowCount: 1 }
+      : { rows: [], rowCount: 0 };
+  }
       if (/FROM organizations WHERE id::text/.test(sql)) {
         return canonicalAnchorCustomer
           ? { rows: [{ stripe_customer_id: canonicalAnchorCustomer, subscription_status: "active" }] }

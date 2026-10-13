@@ -864,6 +864,32 @@ export async function initDataTables(): Promise<void> {
     await run(client, `DROP POLICY IF EXISTS "be_insert" ON billing_events`);
     await run(client, `DROP POLICY IF EXISTS "be_update" ON billing_events`);
 
+    // ── checkout_subscription_claims — un checkout = un abonnement ────────────
+    // Verrou atomique de la creation d'abonnement Stripe. Sans elle, trois
+    // appels concurrents de finalize-checkout creent trois abonnements : mesure
+    // faite en mode test, trois lignes `trialing` sur le meme prix. Voir
+    // services/checkout-subscription-claim.ts.
+    // Backend-only : RLS active ET forcee, aucune policy publique — deni
+    // implicite pour anon/authenticated, comme pending_signups.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS checkout_subscription_claims (
+        attempt_key      TEXT PRIMARY KEY,
+        intent_id        TEXT        NOT NULL,
+        plan             TEXT        NOT NULL DEFAULT '',
+        price_id         TEXT        NOT NULL DEFAULT '',
+        org_ref          TEXT,
+        subscription_id  TEXT,
+        attempts         INTEGER     NOT NULL DEFAULT 1,
+        claimed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        claim_expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        settled_at       TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS checkout_subscription_claims_intent_idx ON checkout_subscription_claims(intent_id);`);
+    await run(client, `ALTER TABLE checkout_subscription_claims ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE checkout_subscription_claims FORCE ROW LEVEL SECURITY`);
+
     // ── checkout_post_tokens — jeton de premiere session apres paiement ───────
     // Pose ici, dans le chemin autoritaire du schema, donc AVANT le
     // durcissement RLS (etape 11) et l'audit d'isolation (etape 12) de
@@ -1416,6 +1442,12 @@ export async function initDataTables(): Promise<void> {
     // suspendu garde l'acces aux fonctionnalites payantes jusqu'a cette date
     // (politique produit appliquee par middlewares/requirePaidAccess.ts).
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;`);
+    // Annulation programmee en fin de periode. Stripe la porte sur
+    // l'abonnement (cancel_at_period_end + cancel_at) ; FlowPoint ne la
+    // persistait pas, donc ne pouvait ni l'afficher ni distinguer « actif qui
+    // se renouvelle » de « actif qui s'arrete le <date> ».
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cancel_at TIMESTAMPTZ;`);
     // Colonnes lues par loadOrgData() mais creees jusqu'ici uniquement par
     // migrations/*.sql — qui ne s'executent pas en production. Sur une base
     // posee par initDataTables seul, le SELECT de loadOrgData echouait, donc

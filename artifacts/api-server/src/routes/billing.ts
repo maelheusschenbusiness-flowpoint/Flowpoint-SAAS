@@ -5,7 +5,7 @@ import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getPlanPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
-import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
@@ -2459,7 +2459,10 @@ router.post("/billing/ai-credits-intent", billingCheckoutRateLimit, ownerOnly, a
 
   const orgId = req.orgId ?? "default";
   const stripeKey = getStripeKey();
-  const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
+  // Selecteur unique, aligne sur le mode de stripeKey : une cle du mauvais
+  // mode est ignoree (rend ""), ce qui declenche le 503 explicite ci-dessous
+  // plutot qu'un echec silencieux dans Stripe.js.
+  const publishableKey = getPublishableKey(stripeKey);
 
   if (!stripeKey || !publishableKey) {
     logger.error({ orgId, pack }, "[Billing] Stripe keys missing — AI credits in-app payment unavailable");
@@ -2504,8 +2507,7 @@ router.post("/billing/ai-credits-intent", billingCheckoutRateLimit, ownerOnly, a
 
 // ── GET /billing/config ──────────────────────────────────────────────────────
 router.get("/billing/config", (_req: Request, res: Response) => {
-  const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
-  res.json({ publishableKey });
+  res.json({ publishableKey: getPublishableKey() });
 });
 
 // ── GET /billing/events (SSE) ─────────────────────────────────────────────────
