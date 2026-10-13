@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { subPeriodEnd } from "./billing.js";
 import { createHash } from "crypto";
 
 function sha256hex(s: string): string {
@@ -27,10 +28,12 @@ async function persistSubscriptionMeta(opts: {
   /** ISO timestamp: set when the first real Stripe trialing subscription is confirmed */
   trialConsumedAt?: string;
   trialStartedAt?: string;
+  /** Fin de la periode de facturation deja payee (ISO) */
+  currentPeriodEnd?: string;
 }): Promise<void> {
-  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt, trialConsumedAt, trialStartedAt } = opts;
+  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt, trialConsumedAt, trialStartedAt, currentPeriodEnd } = opts;
 
-  if (!subscriptionStatus && !stripeCustomerId && !stripeSubscriptionId && !plan) return;
+  if (!subscriptionStatus && !stripeCustomerId && !stripeSubscriptionId && !plan && !currentPeriodEnd) return;
 
   // Guard: refuse writes to "default" — they would corrupt or shadow other orgs
   if (!orgId || orgId === "default") {
@@ -47,6 +50,7 @@ async function persistSubscriptionMeta(opts: {
     if (trialEndsAt)           fields.trialEndsAt           = trialEndsAt;
     if (trialConsumedAt)       fields.trialConsumedAt       = trialConsumedAt;
     if (trialStartedAt)        fields.trialStartedAt        = trialStartedAt;
+    if (currentPeriodEnd)      fields.currentPeriodEnd      = currentPeriodEnd;
 
     await persistOrgData(orgId, fields);
     logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to organizations");
@@ -1831,6 +1835,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       };
       if (newPlan) updatePayload.plan = newPlan;
 
+      // Fin de la periode deja payee : indispensable pour honorer l'acces
+      // d'un abonnement annule ou suspendu jusqu'au terme paye. On reutilise
+      // subPeriodEnd() (billing.ts), qui connait les deux emplacements de
+      // current_period_end selon la version d'API Stripe.
+      {
+        const _periodEnd = subPeriodEnd(obj);
+        if (_periodEnd !== null) {
+          updatePayload.currentPeriodEnd = new Date(_periodEnd * 1000).toISOString();
+        }
+      }
+
       // Set trial_consumed_at when a real Stripe trialing subscription is first created.
       // This distinguishes real Stripe trials from old fake DB trials set at signup.
       // Only set once (idempotent: skip if already consumed).
@@ -2001,7 +2016,14 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         logger.info({ orgId }, "[Webhook] Plan subscription deleted — downgrading to standard");
 
         // P0-4: persist plan='standard' and status='canceled'
-        await persistSubscriptionMeta({ orgId, subscriptionStatus: "canceled", plan: "standard" });
+        // La periode deja payee est conservee (et rafraichie si Stripe la
+        // fournit) : l'acces reste du jusqu'a son terme. Elle n'est jamais
+        // remise a NULL ici — ce serait retirer un acces deja paye.
+        const _delPeriodEnd = subPeriodEnd(obj);
+        await persistSubscriptionMeta({
+          orgId, subscriptionStatus: "canceled", plan: "standard",
+          ...(_delPeriodEnd !== null ? { currentPeriodEnd: new Date(_delPeriodEnd * 1000).toISOString() } : {}),
+        });
 
         // Disable all add-ons in org_addons table (base subscription is gone)
         try {

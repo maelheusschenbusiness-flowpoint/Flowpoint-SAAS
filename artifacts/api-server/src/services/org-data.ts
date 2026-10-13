@@ -41,6 +41,8 @@ export interface OrgBillingData {
   trialConsumedAt: string | null;
   /** ISO timestamp quand le trial a démarré */
   trialStartedAt: string | null;
+  /** ISO timestamp de fin de la periode de facturation deja payee */
+  currentPeriodEnd: string | null;
   /** Add-ons actifs (JSONB) */
   addons: Record<string, unknown>;
   /** Plan différé (scheduled downgrade) */
@@ -68,6 +70,7 @@ export type PersistOrgFields = {
   stripeSubscriptionId?: string | null;
   trialEndsAt?: string | null;
   trialConsumedAt?: string | null;
+  currentPeriodEnd?: string | null;
   trialStartedAt?: string | null;
   addons?: Record<string, unknown>;
   pendingPlan?: string | null;
@@ -99,6 +102,7 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         trial_ends_at: string | null;
         trial_consumed_at: string | null;
         trial_started_at: string | null;
+        current_period_end: string | null;
         addons: Record<string, unknown> | null;
         pending_plan: string | null;
         pending_plan_date: string | null;
@@ -108,7 +112,7 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         is_internal_qa: boolean;
       }>(
         `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
-                trial_ends_at, trial_consumed_at, trial_started_at,
+                trial_ends_at, trial_consumed_at, trial_started_at, current_period_end,
                 addons, pending_plan, pending_plan_date,
                 owner_email, owner_first_name, name, is_internal_qa
          FROM organizations WHERE id = $1 LIMIT 1`,
@@ -176,6 +180,9 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
           trialStartedAt:       row.trial_started_at
                                   ? new Date(row.trial_started_at).toISOString()
                                   : _legacyTrialStartedAt,
+          currentPeriodEnd:     row.current_period_end
+                                  ? new Date(row.current_period_end).toISOString()
+                                  : null,
           addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
           pendingPlan:          row.pending_plan ?? null,
           pendingPlanDate:      row.pending_plan_date ?? null,
@@ -207,6 +214,7 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
       trialEndsAt:          legacy.trialEndsAt ?? null,
       trialConsumedAt:      legacy.trialConsumedAt ?? null,
       trialStartedAt:       null,
+      currentPeriodEnd:     null,
       addons:               (typeof legacy.addons === "object" && legacy.addons !== null) ? legacy.addons as Record<string, unknown> : {},
       pendingPlan:          legacy.pendingPlan ?? null,
       pendingPlanDate:      legacy.pendingPlanDate ?? null,
@@ -256,6 +264,7 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
   if (fields.trialEndsAt !== undefined)           { sets.push(`trial_ends_at = $${n++}`);          vals.push(fields.trialEndsAt); }
   if (fields.trialConsumedAt !== undefined)       { sets.push(`trial_consumed_at = $${n++}`);      vals.push(fields.trialConsumedAt); }
   if (fields.trialStartedAt !== undefined)        { sets.push(`trial_started_at = $${n++}`);       vals.push(fields.trialStartedAt); }
+  if (fields.currentPeriodEnd !== undefined)      { sets.push(`current_period_end = $${n++}`);     vals.push(fields.currentPeriodEnd); }
   if (fields.pendingPlan !== undefined)           { sets.push(`pending_plan = $${n++}`);            vals.push(fields.pendingPlan); }
   if (fields.pendingPlanDate !== undefined)       { sets.push(`pending_plan_date = $${n++}`);      vals.push(fields.pendingPlanDate); }
   if (fields.ownerEmail !== undefined)            { sets.push(`owner_email = $${n++}`);            vals.push(fields.ownerEmail); }

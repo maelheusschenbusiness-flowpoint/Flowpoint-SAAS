@@ -13,6 +13,7 @@ import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { requestId } from "./middlewares/requestId.js";
 import { orgContext }    from "./middlewares/orgContext.js";
+import { requirePaidAccess } from "./middlewares/requirePaidAccess.js";
 import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
 import { withCarriedParams } from "./lib/carry-params.js";
@@ -445,6 +446,13 @@ app.get(["/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], 
 });
 
 app.use("/", staticCache, express.static(dashboardDir, { index: false }));
+
+// ── 9b. Acces aux fonctionnalites payantes ───────────────────────────────────
+// Monte avant le router : la regle s'applique a TOUTES les routes payantes,
+// y compris les appels directs a l'API. L'allowlist du middleware preserve
+// l'authentification, le compte, la facturation, la reactivation, les routes
+// publiques et les webhooks. Voir middlewares/requirePaidAccess.ts.
+app.use("/api", requirePaidAccess);
 
 // ── 10. All API routes ────────────────────────────────────────────────────────
 app.use("/api", router);

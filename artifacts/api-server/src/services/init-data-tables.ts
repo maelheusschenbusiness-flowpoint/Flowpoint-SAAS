@@ -1400,6 +1400,20 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status TEXT;`);
+    // Fin de la periode de facturation deja payee : un abonnement annule ou
+    // suspendu garde l'acces aux fonctionnalites payantes jusqu'a cette date
+    // (politique produit appliquee par middlewares/requirePaidAccess.ts).
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;`);
+    // Colonnes lues par loadOrgData() mais creees jusqu'ici uniquement par
+    // migrations/*.sql — qui ne s'executent pas en production. Sur une base
+    // posee par initDataTables seul, le SELECT de loadOrgData echouait, donc
+    // tout etat de facturation etait illisible (503 en production).
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS addons JSONB;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pending_plan TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pending_plan_date TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_first_name TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_last_name TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS website TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ;`);

@@ -63797,7 +63797,11 @@ function renderGA4Conversion() {
   }
 
   // Paywall guard — show upgrade card instead of loading errors when billing expired.
-  const _cvPremium = STATE.me?.hasPremiumAccess ?? STATE.me?.canAccessPremium ?? true;
+  // Aucune autorisation implicite : un etat d'abonnement inconnu ne donne JAMAIS
+  // acces. Tant que /me n'est pas charge, on affiche le squelette de chargement
+  // plutot qu'un acces suppose ; une fois charge, l'absence du drapeau vaut non.
+  if (!STATE.me) return _fpConvLoadingSkeleton();
+  const _cvPremium = STATE.me.hasPremiumAccess ?? STATE.me.canAccessPremium ?? false;
   if (_cvPremium === false) {
     return `<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Événements de conversion, revenus et landing pages</div></div></div>
     <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">

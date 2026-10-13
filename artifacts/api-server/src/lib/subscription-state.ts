@@ -144,6 +144,49 @@ export function statusGrantsAccess(status: SubscriptionStatus): boolean {
 }
 
 /**
+ * Statuts pour lesquels une periode deja payee peut encore couvrir l'acces.
+ * Un abonnement interrompu n'annule pas la periode que le client a payee :
+ * tant que `current_period_end` est dans le futur, l'acces reste du.
+ */
+const PAID_PERIOD_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
+  "past_due", "unpaid", "canceled", "paused",
+]);
+
+/** true quand la periode deja payee couvre encore l'instant present. */
+export function paidPeriodStillValid(
+  status: SubscriptionStatus,
+  currentPeriodEnd: string | null,
+  now: Date = new Date(),
+): boolean {
+  if (!PAID_PERIOD_STATUSES.has(status) || !currentPeriodEnd) return false;
+  const end = new Date(currentPeriodEnd);
+  if (Number.isNaN(end.getTime())) return false;
+  return end > now;
+}
+
+/**
+ * Regle d'acces aux fonctionnalites payantes — SOURCE UNIQUE.
+ *
+ * Politique produit :
+ *  - essai valide (trialing)            → acces selon le plan
+ *  - abonnement actif                   → acces selon le plan et ses quotas
+ *  - essai expire sans abonnement       → bloque (normalise en incomplete/none)
+ *  - expire / annule / suspendu         → bloque, SAUF si la periode deja
+ *                                         payee reste valide
+ *
+ * Toute route payante et tout affichage d'entitlement passent par ici : il n'y
+ * a pas de second systeme de permissions.
+ */
+export function grantsPaidAccess(input: {
+  status: SubscriptionStatus;
+  currentPeriodEnd?: string | null;
+  now?: Date;
+}): boolean {
+  if (statusGrantsAccess(input.status)) return true;
+  return paidPeriodStillValid(input.status, input.currentPeriodEnd ?? null, input.now);
+}
+
+/**
  * SQL to normalise:
  * 1. Active without subscription (impossible state from old DEFAULT 'active' bug)
  * 2. Trialing without subscription AND without trial_consumed_at (old fake DB trial)

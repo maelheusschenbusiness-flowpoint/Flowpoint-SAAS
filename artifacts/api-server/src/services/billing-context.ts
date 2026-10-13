@@ -11,7 +11,7 @@
 import { pool } from "@workspace/db";
 import { PLAN_INCLUDED_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { loadOrgData } from "./org-data.js";
-import { normalizeSubscriptionStatus, statusGrantsAccess } from "../lib/subscription-state.js";
+import { normalizeSubscriptionStatus, statusGrantsAccess, grantsPaidAccess, paidPeriodStillValid } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
 
 export interface BillingContext {
@@ -32,6 +32,8 @@ export interface BillingContext {
    * NULL = aucun vrai trial Stripe n'a jamais été déclenché.
    */
   trialConsumedAt: string | null;
+  /** Fin de la periode de facturation deja payee (ISO) */
+  currentPeriodEnd: string | null;
   /** Email de contact depuis organizations.owner_email */
   email: string | null;
   /** Prénom depuis organizations.owner_first_name */
@@ -48,6 +50,14 @@ export interface BillingContext {
   // ── Flags dérivés ────────────────────────────────────────────────────────
   /** true quand status est "active" ou "trialing" (vrai trial Stripe) */
   hasPremiumAccess: boolean;
+  /**
+   * true quand les fonctionnalites payantes sont ouvertes : hasPremiumAccess,
+   * OU une periode deja payee qui court encore (abonnement annule/suspendu
+   * avant la fin de la periode facturee). Source unique : grantsPaidAccess().
+   */
+  hasPaidAccess: boolean;
+  /** true quand l'acces ne tient qu'a la periode deja payee */
+  inPaidGracePeriod: boolean;
   /**
    * true quand le compte n'a jamais consommé de trial ET n'a pas d'historique Stripe.
    * Calculé à partir de trialConsumedAt IS NULL AND stripeSubscriptionId IS NULL.
@@ -163,8 +173,14 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     );
   }
 
+  const currentPeriodEnd    = orgData.currentPeriodEnd ?? null;
   const hasPremiumAccess    = statusGrantsAccess(normalised);
+  const hasPaidAccess       = isQaOrg || grantsPaidAccess({ status: normalised, currentPeriodEnd });
+  const inPaidGracePeriod   = !hasPremiumAccess && hasPaidAccess
+                              && paidPeriodStillValid(normalised, currentPeriodEnd);
   const canStartTrial       = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
+  // Le client doit regulariser des que l'acces ne vient plus d'un abonnement
+  // vivant — y compris pendant la periode payee restante, qui expire bientot.
   const mustCompleteBilling = !hasPremiumAccess;
 
   return {
@@ -175,6 +191,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     stripeSubscriptionId,
     trialEndsAt,
     trialConsumedAt,
+    currentPeriodEnd,
     email:                 orgData?.email ?? null,
     firstName:             orgData?.firstName ?? null,
     orgName:               orgData?.orgName ?? null,
@@ -182,6 +199,8 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     pendingPlan:           orgData?.pendingPlan     ?? null,
     pendingPlanDate:       orgData?.pendingPlanDate ?? null,
     hasPremiumAccess,
+    hasPaidAccess,
+    inPaidGracePeriod,
     canStartTrial,
     mustCompleteBilling,
   };
@@ -194,6 +213,7 @@ export async function resolveBillingAccess(orgId: string): Promise<{
   status: string;
   hasDashboardAccess: boolean;
   hasPremiumAccess: boolean;
+  hasPaidAccess: boolean;
   mustCompleteBilling: boolean;
   canStartTrial: boolean;
   currentPlan: string;
@@ -205,10 +225,11 @@ export async function resolveBillingAccess(orgId: string): Promise<{
     status:              ctx.subscriptionStatus ?? "pending_billing",
     hasDashboardAccess:  true,
     hasPremiumAccess:    ctx.hasPremiumAccess,
+    hasPaidAccess:       ctx.hasPaidAccess,
     mustCompleteBilling: ctx.mustCompleteBilling,
     canStartTrial:       ctx.canStartTrial,
     currentPlan:         ctx.plan,
     trialEndsAt:         ctx.trialEndsAt,
-    currentPeriodEnd:    null,
+    currentPeriodEnd:    ctx.currentPeriodEnd,
   };
 }
