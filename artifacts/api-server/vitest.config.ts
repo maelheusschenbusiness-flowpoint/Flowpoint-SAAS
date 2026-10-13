@@ -41,6 +41,7 @@ export default defineConfig({
       "src/services/ai-usage-tracking-db.test.ts",
       "src/services/ai-usage-idempotency-db.test.ts",
       "src/services/ai-usage-failclosed.test.ts",
+      "src/middlewares/requirePaidAccess-db.test.ts",
       "src/routes/ai-classifier.test.ts",
       "src/routes/ai-chat-failclosed.test.ts",
       "src/routes/ai-chat-ratelimit.test.ts",

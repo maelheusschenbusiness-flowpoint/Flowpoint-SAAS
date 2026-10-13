@@ -6,7 +6,7 @@ import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
-import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
+import { normalizeSubscriptionStatus, grantsPaidAccess, statusGrantsAccess } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
 import {
   loadMeEntitlement,
@@ -191,6 +191,11 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       const _isQaOrg = orgId === _QA_ORG_UUID && billingData?.isInternalQa === true;
       const normStatus = _isQaOrg ? "trialing" as const : _normStatusBase;
 
+      // ── Acces aux fonctionnalites payantes — meme regle que le middleware ──
+      const _currentPeriodEnd = billingData?.currentPeriodEnd ?? null;
+      const _hasPaidAccess    = grantsPaidAccess({ status: normStatus, currentPeriodEnd: _currentPeriodEnd });
+      const _inPaidGrace      = !statusGrantsAccess(normStatus) && _hasPaidAccess;
+
       // Read addons from org_addons table (single source of truth — Correction 8).
       // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
       // org_addons load failure into a 503 rather than a suppressed empty array —
@@ -277,8 +282,14 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         trialEndsAt:         rawTrialEndsAt,
         stripeCustomerId:    rawStripeCustomerId,
         canStartTrial:       _canStartTrial,
-        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
-        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
+        // Source unique : grantsPaidAccess() — plus de liste de statuts en dur.
+        // `past_due` n'ouvre plus l'acces par principe : il l'ouvre seulement
+        // tant que la periode deja payee court (politique produit).
+        hasPremiumAccess:    _hasPaidAccess,
+        hasPaidAccess:       _hasPaidAccess,
+        inPaidGracePeriod:   _inPaidGrace,
+        currentPeriodEnd:    _currentPeriodEnd,
+        mustCompleteBilling: !statusGrantsAccess(normStatus),
         onboardingCompletedAt: await (async () => {
           try {
             const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId]);
