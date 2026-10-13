@@ -58,6 +58,64 @@ export const AI_USAGE_IDEMPOTENCY_STATEMENTS: ReadonlyArray<{ label: string; sql
         quarantined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`,
   },
+  /* ── Isolation de la table de quarantaine ─────────────────────────────────
+     Elle etait creee sans RLS, contrairement a la regle du depot — toute table
+     portant org_id active RLS a sa creation. Consequence constatee le
+     13/10/2026 sur la production : le Security Advisor Supabase la signalait
+     en ERROR (« is public, but RLS has not been enabled »), seule table du
+     schema public dans ce cas, et le role `anon` — dont la cle est publique
+     par construction, elle part dans le navigateur — y detenait SELECT,
+     INSERT, UPDATE, DELETE et TRUNCATE. La table etait vide (0 ligne), donc
+     rien n'a fuite ; mais elle se remplit de org_id et de cles d'idempotence
+     des qu'un double debit est mis en quarantaine.
+
+     Pourquoi la passe RLS generique ne l'avait pas rattrapee : elle active RLS
+     sur toute table et pose 4 policies sur celles qui portent org_id, mais
+     elle ne tourne ni sur le chemin rapide de demarrage — celui de la
+     production — ni sans migrate.mjs, qui n'est pas cable en Pre-Deploy. La
+     protection doit donc etre posee la ou la table est creee. */
+  {
+    label: "ai_usage_logs_idempotency_quarantine RLS enabled",
+    sql: `ALTER TABLE public.ai_usage_logs_idempotency_quarantine ENABLE ROW LEVEL SECURITY`,
+  },
+  {
+    label: "ai_usage_logs_idempotency_quarantine RLS forced",
+    sql: `ALTER TABLE public.ai_usage_logs_idempotency_quarantine FORCE ROW LEVEL SECURITY`,
+  },
+  {
+    // Memes noms et meme predicat que la passe generique, pour qu'un rejeu de
+    // celle-ci soit un no-op. app.current_org_id est la variable que withOrgDb
+    // pose — la seule que l'application pose.
+    label: "ai_usage_logs_idempotency_quarantine tenant policies",
+    sql: `
+      DO $$
+      DECLARE op TEXT;
+      BEGIN
+        FOREACH op IN ARRAY ARRAY['select','insert','update','delete'] LOOP
+          EXECUTE format('DROP POLICY IF EXISTS %I ON public.ai_usage_logs_idempotency_quarantine', 'tenant_' || op);
+        END LOOP;
+        EXECUTE 'CREATE POLICY tenant_select ON public.ai_usage_logs_idempotency_quarantine FOR SELECT USING     (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))';
+        EXECUTE 'CREATE POLICY tenant_insert ON public.ai_usage_logs_idempotency_quarantine FOR INSERT WITH CHECK (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))';
+        EXECUTE 'CREATE POLICY tenant_update ON public.ai_usage_logs_idempotency_quarantine FOR UPDATE USING     (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))';
+        EXECUTE 'CREATE POLICY tenant_delete ON public.ai_usage_logs_idempotency_quarantine FOR DELETE USING     (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))';
+      END $$`,
+  },
+  {
+    /* Defense en profondeur, et seulement cela : RLS est le controle qui
+       protege. Le droit d'ECRITURE de `anon` ne vient pas de ce depot — notre
+       passe generique ne lui accorde que SELECT — donc le retirer tient dans
+       le temps, tandis qu'un REVOKE du SELECT serait repose au prochain
+       passage. Le role peut ne pas exister (PostgreSQL hors Supabase) : on
+       verifie avant. */
+    label: "ai_usage_logs_idempotency_quarantine anon write privileges revoked",
+    sql: `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+          REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+            ON public.ai_usage_logs_idempotency_quarantine FROM anon;
+        END IF;
+      END $$`,
+  },
   {
     label: "ai_usage_logs duplicate idempotency keys quarantined (no row deleted)",
     sql: `
