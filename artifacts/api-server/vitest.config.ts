@@ -69,6 +69,7 @@ export default defineConfig({
       "src/routes/white-label.test.ts",
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
+      "src/routes/stripe-webhook-ordering-db.test.ts",
       "src/services/google-oauth-scopes.test.ts",
       "src/services/monitor-addon-quota.test.ts",
       "src/routes/addon-activate-quantity.test.ts",
