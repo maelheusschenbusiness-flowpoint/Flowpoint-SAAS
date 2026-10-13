@@ -1,3 +1,4 @@
+import { logger } from "../lib/logger.js";
 /**
  * stripe-factory.ts — Stripe client factory with test injection support.
  *
@@ -88,4 +89,65 @@ export function getStripeCheckoutModeLog(key: string): {
     stripeKeyType: isTest ? "sk_test" : isLive ? "sk_live" : "unknown",
     expectedSessionPrefix: isTest ? "cs_test" : isLive ? "cs_live" : "unknown",
   };
+}
+
+/**
+ * CLE PUBLIABLE renvoyee au navigateur — SELECTEUR UNIQUE.
+ *
+ * La cle publiable doit toujours appartenir au MEME compte et au MEME mode que
+ * la cle secrete qui a cree l'intent. Une pk_live_ laisse Stripe.js se charger
+ * mais empeche un SetupIntent de TEST de produire un Payment Element utilisable
+ * (et inversement) : l'echec se produit dans le navigateur, loin de sa cause.
+ *
+ * Avant centralisation, trois routes lisaient
+ * `STRIPE_PUBLISHABLE_KEY ?? PUBLIC_STRIPE_API_KEY` sans tenir compte du mode
+ * (routes/index.ts, deux routes de billing.ts) tandis que le parcours public
+ * avait son propre helper conscient du mode. Un operateur en mode test avec une
+ * pk_live_ configuree pour la production livrait donc une cle live avec un
+ * intent de test.
+ *
+ * GARANTIE : le prefixe de la cle rendue correspond toujours au mode actif.
+ * En cas de desaccord, la fonction rend "" — le front a un garde explicite
+ * pour la cle vide ("Configuration Stripe manquante") alors qu'une cle du
+ * mauvais mode echouerait en silence dans Stripe.js.
+ */
+export function getPublishableKey(stripeKey?: string): string {
+  const activeKey = stripeKey ?? getStripeKey();
+  const isTest = activeKey.startsWith("sk_test_");
+
+  if (isTest) {
+    const k = process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "";
+    if (!k) return "";
+    if (!k.startsWith("pk_test_")) {
+      // Jamais de pk_live_ avec un intent de test.
+      logger.error({ expected: "pk_test_", variable: "STRIPE_TEST_PUBLISHABLE_KEY" },
+        "[Stripe] cle publiable de mauvais mode en mode TEST — ignoree");
+      return "";
+    }
+    return k;
+  }
+
+  const k = process.env["STRIPE_PUBLISHABLE_KEY"] || process.env["PUBLIC_STRIPE_API_KEY"] || "";
+  if (!k) return "";
+  if (k.startsWith("pk_test_")) {
+    // Jamais de pk_test_ avec un intent live.
+    logger.error({ expected: "pk_live_", variable: "STRIPE_PUBLISHABLE_KEY | PUBLIC_STRIPE_API_KEY" },
+      "[Stripe] cle publiable de mauvais mode en mode LIVE — ignoree");
+    return "";
+  }
+  return k;
+}
+
+/** Diagnostic sans secret : le mode des deux cles concorde-t-il ? */
+export function getStripeKeyPairMode(stripeKey?: string): {
+  secretMode: "TEST" | "LIVE" | "UNKNOWN";
+  publishableMode: "TEST" | "LIVE" | "MISSING";
+  coherent: boolean;
+} {
+  const activeKey = stripeKey ?? getStripeKey();
+  const secretMode = activeKey.startsWith("sk_test_") ? "TEST"
+    : activeKey.startsWith("sk_live_") ? "LIVE" : "UNKNOWN";
+  const pub = getPublishableKey(activeKey);
+  const publishableMode = !pub ? "MISSING" : pub.startsWith("pk_test_") ? "TEST" : "LIVE";
+  return { secretMode, publishableMode, coherent: publishableMode === secretMode };
 }
