@@ -374,32 +374,54 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
     return;
   }
   try {
+    // Resolution via loadOrgData() : `organizations` est la source de verite,
+    // avec repli sur org_settings pour les comptes legacy. Cet alias lisait
+    // auparavant org_settings SEUL, par UUID — or une organisation dont la
+    // ligne org_settings n'est encore clee QUE par e-mail (etat produit par
+    // l'activation de compte avant tout evenement d'abonnement) n'y figure
+    // pas. Le resultat etait un 401 "organization data not found" sur une
+    // session parfaitement valide : /auth/session repondait authenticated,
+    // /me repondait 200, et ce seul alias refusait. Aucun changement du
+    // systeme d'authentification : la session, le cookie, la resolution de
+    // session et le contexte organisationnel sont inchanges.
+    const { loadOrgData }     = await import("../services/org-data.js");
     const { loadOrgSettings } = await import("../services/org-settings.js");
-    const dbData = await loadOrgSettings(orgId);
-    if (dbData) {
-      const plan = dbData.plan.toLowerCase();
+    const orgData = await loadOrgData(orgId);
+    // org_settings reste consulte en complement : il porte les champs de
+    // profil et d'usage que `organizations` n'a pas (lastName, usage...).
+    const dbData = await loadOrgSettings(orgId).catch(() => null);
+    if (orgData || dbData) {
+      const planRaw = orgData?.plan ?? dbData?.plan ?? "standard";
+      const plan = planRaw.toLowerCase();
       const { PLAN_LIMITS } = await import("../lib/plans.js");
       const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
-      const firstName = dbData.firstName || (req.orgContext?.email?.split("@")[0] ?? "");
+      const firstName = orgData?.firstName || dbData?.firstName
+        || (req.orgContext?.email?.split("@")[0] ?? "");
       res.json({
-        id: dbData.orgId || orgId,
+        id: orgId,
         firstName,
-        lastName: dbData.lastName ?? "",
-        email: req.orgContext?.email ?? "",
-        plan: dbData.plan,
+        lastName: dbData?.lastName ?? "",
+        email: req.orgContext?.email ?? orgData?.email ?? "",
+        plan: planRaw,
         role: req.orgContext?.role ?? "owner",
-        org: { name: dbData.orgName, website: dbData.website ?? "" },
-        subscriptionStatus: dbData.subscriptionStatus,
-        trialEndsAt: dbData.trialEndsAt,
-        usage: dbData.usage,
-        addons: dbData.addons,
+        org: { name: orgData?.orgName ?? dbData?.orgName, website: dbData?.website ?? "" },
+        subscriptionStatus: orgData?.subscriptionStatus ?? dbData?.subscriptionStatus ?? null,
+        trialEndsAt: orgData?.trialEndsAt ?? dbData?.trialEndsAt ?? null,
+        usage: dbData?.usage,
+        addons: orgData?.addons ?? dbData?.addons,
         limits,
-        createdAt: dbData.createdAt ?? new Date().toISOString(),
+        createdAt: dbData?.createdAt ?? new Date().toISOString(),
       });
       return;
     }
-  } catch { /* fall through */ }
-  res.status(401).json({ error: "Unauthorized: organization data not found" });
+  } catch (err) {
+    // Une panne de lecture n'est pas une absence de session : la journaliser
+    // au lieu de la faire passer silencieusement pour un 401.
+    logger.error({ err, orgId }, "[Auth] /auth/me : lecture des donnees d'organisation impossible");
+    res.status(503).json({ error: "Organization data temporarily unavailable", retryable: true });
+    return;
+  }
+  res.status(404).json({ error: "Organization not found" });
 });
 
 function getPublicUrl(): string {
