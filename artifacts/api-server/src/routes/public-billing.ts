@@ -6,7 +6,7 @@ import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { publicCheckoutRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
-import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
@@ -225,10 +225,11 @@ async function isValidPreRegisterToken(token: string): Promise<boolean> {
   }
 }
 
+// Delegue au selecteur unique (services/stripe-factory.ts). Ce helper local
+// etait conscient du mode, contrairement aux trois autres routes — d'ou
+// l'incoherence. Il ne verifiait pas non plus le prefixe de la cle rendue.
 function getPublicStripeKey(stripeKey: string): string {
-  return stripeKey.startsWith("sk_test_")
-    ? (process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "")
-    : (process.env["PUBLIC_STRIPE_API_KEY"] || "");
+  return getPublishableKey(stripeKey);
 }
 
 // ── GET /api/billing/plans ────────────────────────────────────────────────────

@@ -97,10 +97,15 @@ async function persistSubscriptionMeta(opts: {
   trialStartedAt?: string;
   /** Fin de la periode de facturation deja payee (ISO) */
   currentPeriodEnd?: string;
+  /** Annulation programmee en fin de periode */
+  cancelAtPeriodEnd?: boolean;
+  /** Date de l'arret programme (ISO) */
+  cancelAt?: string | null;
 }): Promise<void> {
-  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt, trialConsumedAt, trialStartedAt, currentPeriodEnd } = opts;
+  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt, trialConsumedAt, trialStartedAt, currentPeriodEnd, cancelAtPeriodEnd, cancelAt } = opts;
 
-  if (!subscriptionStatus && !stripeCustomerId && !stripeSubscriptionId && !plan && !currentPeriodEnd) return;
+  if (!subscriptionStatus && !stripeCustomerId && !stripeSubscriptionId && !plan && !currentPeriodEnd
+      && cancelAtPeriodEnd === undefined && cancelAt === undefined) return;
 
   // Guard: refuse writes to "default" — they would corrupt or shadow other orgs
   if (!orgId || orgId === "default") {
@@ -118,6 +123,10 @@ async function persistSubscriptionMeta(opts: {
     if (trialConsumedAt)       fields.trialConsumedAt       = trialConsumedAt;
     if (trialStartedAt)        fields.trialStartedAt        = trialStartedAt;
     if (currentPeriodEnd)      fields.currentPeriodEnd      = currentPeriodEnd;
+    // Booleen : comparaison explicite a undefined, sinon le retour a false
+    // (annulation levee) ne serait jamais persiste.
+    if (cancelAtPeriodEnd !== undefined) fields.cancelAtPeriodEnd = cancelAtPeriodEnd;
+    if (cancelAt !== undefined)          fields.cancelAt          = cancelAt;
 
     await persistOrgData(orgId, fields);
     logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to organizations");
@@ -1954,6 +1963,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         }
       }
 
+      // Annulation programmee en fin de periode : portee par l'abonnement
+      // Stripe. Elle n'etait pas persistee, donc invisible de FlowPoint —
+      // impossible d'afficher « se termine le … » ni de distinguer un
+      // abonnement actif qui se renouvelle d'un actif qui s'arrete.
+      // Toujours ecrite, y compris false, pour qu'une annulation levee soit
+      // reflatee immediatement.
+      updatePayload.cancelAtPeriodEnd = obj["cancel_at_period_end"] === true;
+      updatePayload.cancelAt = typeof obj["cancel_at"] === "number"
+        ? new Date((obj["cancel_at"] as number) * 1000).toISOString()
+        : null;
+
       // Set trial_consumed_at when a real Stripe trialing subscription is first created.
       // This distinguishes real Stripe trials from old fake DB trials set at signup.
       // Only set once (idempotent: skip if already consumed).
@@ -2144,6 +2164,8 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         await persistSubscriptionMeta({
           orgId, subscriptionStatus: "canceled", plan: "standard",
           ...(_delPeriodEnd !== null ? { currentPeriodEnd: new Date(_delPeriodEnd * 1000).toISOString() } : {}),
+          // L'annulation a eu lieu : il n'y a plus d'annulation PROGRAMMEE.
+          cancelAtPeriodEnd: false, cancelAt: null,
         });
 
         // Disable all add-ons in org_addons table (base subscription is gone)

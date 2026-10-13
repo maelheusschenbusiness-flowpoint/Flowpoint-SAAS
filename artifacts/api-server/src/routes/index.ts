@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction, type IRouter } from "express";
+import { getPublishableKey } from "../services/stripe-factory.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import healthRouter from "./health.js";
 import eventsRouter from "./events.js";
@@ -88,7 +89,8 @@ router.use(authRouter);
 
 // Public Stripe config (publishable key, billing/config) — no API key required.
 router.get("/billing/config", (_req, res) => {
-  res.json({ publishableKey: process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "" });
+  // Selecteur unique : la cle publiable suit le mode de la cle secrete active.
+  res.json({ publishableKey: getPublishableKey() });
 });
 
 // Google OAuth callbacks — must be public; Google redirects here without our Bearer token.
