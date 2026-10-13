@@ -35,6 +35,9 @@ export default defineConfig({
       "src/tests/no-mongo-vestige.test.ts",
       "src/tests/session_restore_precedence.test.ts",
       "src/tests/signup-session-dashboard-refresh.test.ts",
+      // P0 anti-double-facturation : un checkout = un abonnement.
+      "src/services/checkout-subscription-claim-db.test.ts",
+      "src/routes/checkout-single-subscription.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
       "src/lib/plan-price-mode.test.ts",
