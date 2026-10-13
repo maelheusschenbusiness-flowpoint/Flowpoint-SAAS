@@ -39,6 +39,7 @@ export default defineConfig({
       "src/services/checkout-subscription-claim-db.test.ts",
       "src/routes/checkout-single-subscription.test.ts",
       "src/services/checkout-post-tokens-rls-db.test.ts",
+      "src/services/identity-schema-gate-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
       "src/lib/plan-price-mode.test.ts",
