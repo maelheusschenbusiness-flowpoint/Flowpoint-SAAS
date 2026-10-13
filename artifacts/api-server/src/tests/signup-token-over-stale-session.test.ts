@@ -61,6 +61,13 @@ vi.mock("../middlewares/rateLimiter.js", () => ({
 const PENDING: Record<string, { email: string; stripe_customer_id: string | null }> = {};
 const sessionLookups: string[] = [];
 function answer(sql: string, values: unknown[] = []) {
+  // Verrou anti-double-facturation (checkout_subscription_claims) : le stub
+  // accorde la propriete, comme le ferait un INSERT reel qui a insere.
+  if (/checkout_subscription_claims/.test(sql)) {
+    return /^\s*INSERT/i.test(sql)
+      ? { rows: [{ subscription_id: null, inserted: true }], rowCount: 1 }
+      : { rows: [], rowCount: 0 };
+  }
   if (/FROM user_sessions/.test(sql)) {
     sessionLookups.push(String(values[0]));
     return { rows: values[0] === "tok-old" ? [{ org_id: OLD_ORG }] : [], rowCount: values[0] === "tok-old" ? 1 : 0 };

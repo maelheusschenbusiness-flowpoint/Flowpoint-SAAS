@@ -113,6 +113,9 @@ const NEEDS_ORG_ID_SET = new Set(NEEDS_ORG_ID);
 const BACKEND_ONLY_TABLES: readonly string[] = [
   "pending_signups",
   "checkout_post_tokens",
+  // Verrou de creation d'abonnement : ecrit par finalize-checkout via pool
+  // (superuser), jamais par une session client.
+  "checkout_subscription_claims",
   // schema_migrations is infrastructure — never accessible to anon/authenticated.
   // ENABLE RLS with no public policies = implicit deny-all for client roles.
   // init-data-tables.ts also enables RLS inline so it activates on first boot.
