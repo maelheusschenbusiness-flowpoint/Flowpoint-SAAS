@@ -148,3 +148,47 @@ describe("initialisation PostgreSQL — contrat de schema", () => {
     } finally { c.release(); }
   });
 });
+
+describe("isolation inter-organisations — invariant de schema", () => {
+  it("4 — toute table portant org_id a RLS active et une policy d'isolation sur org_id", async () => {
+    if (!dbUp) return;
+    const c = await pool.connect();
+    try {
+      // Pas un seuil numerique : l'invariant est verifie table par table.
+      // Mesure avant correction, sur une base installee par migrate.mjs seul :
+      // 37 tables sensibles sans RLS ni policy (audits, monitors, reports,
+      // missions, team_members, org_secrets, connectors, notifications…).
+      const r = await c.query(`
+        WITH sensibles AS (
+          SELECT cl.relname AS table_name, cl.relrowsecurity AS rls
+          FROM pg_class cl
+          JOIN pg_namespace n ON n.oid = cl.relnamespace
+          JOIN information_schema.columns col
+            ON col.table_schema = 'public' AND col.table_name = cl.relname
+           AND col.column_name = 'org_id'
+          WHERE n.nspname = 'public' AND cl.relkind = 'r'
+        ), pol AS (
+          SELECT tablename,
+                 COUNT(*)::int AS policies,
+                 BOOL_OR(COALESCE(qual,'') || COALESCE(with_check,'') ~ 'org_id') AS isolated
+          FROM pg_policies WHERE schemaname = 'public' GROUP BY tablename
+        )
+        SELECT s.table_name, s.rls, COALESCE(p.policies,0) AS policies,
+               COALESCE(p.isolated,false) AS isolated
+        FROM sensibles s LEFT JOIN pol p ON p.tablename = s.table_name
+        WHERE NOT s.rls OR COALESCE(p.policies,0) = 0 OR NOT COALESCE(p.isolated,false)
+        ORDER BY s.table_name
+      `);
+      const failing = (r.rows as Array<{ table_name: string; rls: boolean; policies: number; isolated: boolean }>)
+        .map((x) => `${x.table_name}(rls=${x.rls},policies=${x.policies},isolated=${x.isolated})`);
+      expect(failing, `tables sensibles non isolees : ${failing.join(", ")}`).toEqual([]);
+
+      // Garde-fou : la requete doit bien voir des tables sensibles, sinon
+      // l'assertion ci-dessus passerait pour une raison vide.
+      const total = await c.query(
+        `SELECT COUNT(DISTINCT table_name)::int AS n FROM information_schema.columns
+          WHERE table_schema = 'public' AND column_name = 'org_id'`);
+      expect((total.rows[0] as { n: number }).n).toBeGreaterThan(50);
+    } finally { c.release(); }
+  });
+});
