@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { ensureCheckoutPostTokensSchema } from "./init-checkout-post-tokens.js";
+import { repairOrgGucPolicies } from "./rls-guc-repair.js";
 import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
          aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
@@ -889,6 +890,18 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS checkout_subscription_claims_intent_idx ON checkout_subscription_claims(intent_id);`);
     await run(client, `ALTER TABLE checkout_subscription_claims ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE checkout_subscription_claims FORCE ROW LEVEL SECURITY`);
+
+    // ── Policies branchees sur la variable que withOrgDb pose ─────────────────
+    // Les CREATE POLICY d'origine sont gardes par IF NOT EXISTS : corriger leur
+    // SQL ne repare aucune base existante. Voir services/rls-guc-repair.ts.
+    try {
+      const { repaired } = await repairOrgGucPolicies(client);
+      if (repaired.length > 0) {
+        logger.info({ repaired }, "[init-data-tables] policies reposees sur app.current_org_id");
+      }
+    } catch (err) {
+      logger.error({ err }, "[init-data-tables] reparation des policies impossible");
+    }
 
     // ── checkout_post_tokens — jeton de premiere session apres paiement ───────
     // Pose ici, dans le chemin autoritaire du schema, donc AVANT le
