@@ -810,6 +810,43 @@ export async function activateNewSignup(opts: {
     await activateClient.query("COMMIT");
     logger.info({ orgId: newOrgId, userId, email }, "[Webhook/activate] User + org + membership activated");
 
+    // ── Reprise de l'etat de facturation deja etabli par finalize-checkout ────
+    // Ordre reel du parcours : finalize-checkout cree l'abonnement Stripe et
+    // persiste son etat AVANT que cette organisation n'existe (l'activation est
+    // declenchee par le webhook de l'intent). Son ancrage sur la ligne
+    // canonique echouait donc silencieusement — mesure : 0 ancrage reussi — et
+    // `organizations` restait sans stripe_subscription_id ni current_period_end.
+    // L'etat n'etait alors porte que par org_settings[e-mail], c'est-a-dire la
+    // ligne legacy : un paiement reussi laissait l'organisation sans abonnement
+    // canonique, et les droits ne tenaient qu'a la completion de lecture.
+    //
+    // On reprend ici l'etat deja etabli, sans rien creer : aucun utilisateur ni
+    // organisation supplementaire, et aucune valeur vide n'ecrase une valeur
+    // existante (COALESCE cote SQL, champs omis cote persistOrgData).
+    try {
+      const { loadOrgSettings } = await import("../services/org-settings.js");
+      const legacy = await loadOrgSettings(orgId).catch(() => null);
+      if (legacy?.stripeSubscriptionId) {
+        const { persistOrgData } = await import("../services/org-data.js");
+        await persistOrgData(newOrgId, {
+          stripeSubscriptionId: legacy.stripeSubscriptionId,
+          ...(legacy.plan               ? { plan: legacy.plan } : {}),
+          ...(legacy.subscriptionStatus ? { subscriptionStatus: legacy.subscriptionStatus } : {}),
+          ...(legacy.stripeCustomerId   ? { stripeCustomerId: legacy.stripeCustomerId } : {}),
+          ...(legacy.trialEndsAt        ? { trialEndsAt: legacy.trialEndsAt } : {}),
+          ...(legacy.trialConsumedAt    ? { trialConsumedAt: legacy.trialConsumedAt } : {}),
+        });
+        logger.info({ orgId: newOrgId, subscriptionId: legacy.stripeSubscriptionId },
+          "[Webhook/activate] etat de facturation repris sur la ligne canonique");
+      }
+    } catch (err) {
+      // Non fatal : le webhook customer.subscription.* reste un second filet.
+      // Journalise en ERROR car l'organisation reste alors sans abonnement
+      // canonique, ce qui est precisement le defaut a empecher.
+      logger.error({ err, orgId: newOrgId },
+        "[Webhook/activate] reprise de l'etat de facturation impossible — organisation sans abonnement canonique");
+    }
+
     // Seller attribution (beta): propagate seller metadata to Stripe Customer + Subscription.
     // Commission is NOT created here — it is deferred to invoice.payment_succeeded so that
     // the real first-payment amount can be used (prevents €0 commission on trial signups).

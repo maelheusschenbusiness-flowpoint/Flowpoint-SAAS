@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { subPeriodEnd } from "./billing.js";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
@@ -2425,11 +2426,15 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // ── Persist subscription to DB immediately (don't wait for webhook delay) ──
     try {
       const { persistOrgData: _fcPod } = await import("../services/org-data.js");
+      const _fcPeriodEnd = subPeriodEnd(planSubscription);
       await _fcPod(_authenticatedOrgId, {
         subscriptionStatus:   grantTrial ? "trialing" : "active",
         stripeCustomerId:     customerId!,
         stripeSubscriptionId: planSubscription.id,
         plan:                 planKey,
+        // Periode deja payee : indispensable au controle d'acces (periode de
+        // grace) et absente de cette ecriture jusqu'ici.
+        ...(_fcPeriodEnd !== null ? { currentPeriodEnd: new Date(_fcPeriodEnd * 1000).toISOString() } : {}),
         ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
         // Mark trial consumed so canStartTrial stays definitively false even if
         // stripeSubscriptionId is later cleared (e.g. resource_missing reconciliation).
@@ -2460,15 +2465,25 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
         if (_fcAnchorUuid) {
           const { persistOrgData: _fcPodFull } = await import("../services/org-data.js");
+          const _fcAnchorPeriodEnd = subPeriodEnd(planSubscription);
           await _fcPodFull(_fcAnchorUuid, {
             stripeCustomerId:     customerId!,
             stripeSubscriptionId: planSubscription.id,
             subscriptionStatus:   grantTrial ? "trialing" : "active",
             plan:                 planKey,
             trialConsumedAt:      new Date().toISOString(),
+            ...(_fcAnchorPeriodEnd !== null ? { currentPeriodEnd: new Date(_fcAnchorPeriodEnd * 1000).toISOString() } : {}),
             ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
           });
           logger.info({ orgId: _fcAnchorUuid, customerId, planKey }, "[PublicBilling] finalize: full billing state anchored to UUID org");
+        } else {
+          // Cas normal du parcours d'inscription : l'activation (declenchee par
+          // le webhook de l'intent) n'a pas encore cree l'organisation. L'etat
+          // vient d'etre persiste sur org_settings[e-mail] ; activateNewSignup
+          // le reprend sur la ligne canonique. Journalise pour que la fenetre
+          // soit visible au lieu d'etre muette.
+          logger.info({ orgId: _authenticatedOrgId, subscriptionId: planSubscription.id },
+            "[PublicBilling] finalize: organisation canonique pas encore creee — l'activation reprendra l'etat de facturation");
         }
       } catch (_fcAnchorErr) {
         logger.warn({ _fcAnchorErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: UUID org full anchor failed (non-fatal)");
@@ -2725,6 +2740,41 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             await _fcActTxC.query("COMMIT");
             _fcActivationCommitted = true;
             logger.info({ step: "FC-4-COMMITTED", orgId: _fcAOrgId, userId: _fcUserId, plan: planKey }, "[FC] TRANSACTION COMMITTED — user + org activated");
+
+            // ── Ancrage canonique de l'abonnement ────────────────────────────
+            // L'organisation vient d'etre creee ICI, c'est-a-dire APRES que
+            // l'abonnement Stripe a ete cree et persiste plus haut. L'ancrage
+            // tente plus tot ne trouvait donc aucune organisation (mesure : 0
+            // ancrage reussi) et `organizations` restait sans
+            // stripe_subscription_id ni current_period_end : l'etat n'existait
+            // que sur org_settings[e-mail], la ligne legacy. Un paiement
+            // reussi laissait ainsi l'organisation sans abonnement canonique,
+            // et les droits ne tenaient qu'a la completion de lecture.
+            //
+            // On ancre maintenant, une fois l'organisation committee. Aucune
+            // creation : l'organisation et l'utilisateur existent deja.
+            if (planSubscription?.id) {
+              try {
+                const _fcAnchorPeriod = subPeriodEnd(planSubscription);
+                const { persistOrgData: _fcPodAnchor } = await import("../services/org-data.js");
+                await _fcPodAnchor(_fcAOrgId, {
+                  plan:                 planKey,
+                  subscriptionStatus:   grantTrial ? "trialing" : "active",
+                  stripeSubscriptionId: planSubscription.id,
+                  ...(customerId ? { stripeCustomerId: customerId } : {}),
+                  ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
+                  trialConsumedAt:      new Date().toISOString(),
+                  ...(_fcAnchorPeriod !== null ? { currentPeriodEnd: new Date(_fcAnchorPeriod * 1000).toISOString() } : {}),
+                });
+                logger.info({ step: "FC-4f-ok", orgId: _fcAOrgId, subscriptionId: planSubscription.id },
+                  "[FC] abonnement ancre sur la ligne canonique organizations");
+              } catch (_fcAnchorErr) {
+                // ERROR et non warn : sans cet ancrage, l'organisation reste
+                // sans abonnement canonique, ce qui est le defaut a empecher.
+                logger.error({ _fcAnchorErr, orgId: _fcAOrgId },
+                  "[FC] ancrage canonique de l'abonnement IMPOSSIBLE — organisation sans abonnement canonique");
+              }
+            }
 
             // ── Step 4f: Propagate signup contact/address into org_settings ──
             // (non-fatal — profile data only, never billing data). Without this,
