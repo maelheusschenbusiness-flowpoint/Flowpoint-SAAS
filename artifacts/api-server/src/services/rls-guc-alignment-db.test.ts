@@ -175,17 +175,59 @@ describe("acces sous app_user — lecture, ecriture, isolation", () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
-  it("CONTROLE NEGATIF — avec l'ancienne variable, app_user ne verrait rien", async () => {
-    // Refait exactement la situation d'avant : la policy lit app.org_id, que
-    // l'application ne pose pas. Sans ce controle, les tests ci-dessus
-    // pourraient passer pour une raison etrangere a la correction.
+  it("CONTROLE NEGATIF — sans la variable que l'application pose, app_user ne voit rien", async () => {
+    // Deux controles negatifs, au niveau de la CONFIGURATION reelle : aucune
+    // policy n'est touchee. Ils ne dependent donc pas du nombre de policies
+    // portees par la table, et c'est ce qui les rend fiables.
     const c = await pool.connect();
     try {
       await c.query("BEGIN");
-      await c.query(`DROP POLICY IF EXISTS "usage_events_org_isolation" ON usage_events`);
+      await c.query(`INSERT INTO usage_events (org_id, kind) VALUES ($1,'audit_created')`, [ORG_A]);
+
+      // 1. Aucune variable de tenant posee : la ligne existe, elle reste invisible.
+      await c.query("SET LOCAL ROLE app_user");
+      const sansGuc = await c.query<{ n: number }>(`SELECT count(*)::int AS n FROM usage_events`);
+      expect(sansGuc.rows[0]!.n, "une ligne est visible sans variable de tenant").toBe(0);
+      await c.query("RESET ROLE");
+
+      // 2. Seule l'ANCIENNE variable est posee : elle ne donne aucun acces.
+      await c.query(`SET LOCAL "app.org_id" = '${ORG_A}'`);
+      await c.query("SET LOCAL ROLE app_user");
+      const ancienne = await c.query<{ n: number }>(`SELECT count(*)::int AS n FROM usage_events`);
+      expect(ancienne.rows[0]!.n, "l'ancienne variable app.org_id ouvre encore l'acces").toBe(0);
+    } finally {
+      await c.query("ROLLBACK").catch(() => {});
+      c.release();
+    }
+  });
+
+  it("CONTROLE NEGATIF — une table dont TOUTES les policies lisent la variable morte ne montre rien", async () => {
+    // Refait la situation d'avant la correction. Le piege, et la raison pour
+    // laquelle ce controle echouait : les policies PERMISSIVE s'additionnent en
+    // OR. Mesure du 14/10/2026 sur une copie de production migree, `usage_events`
+    // en portait CINQ — `usage_events_org_isolation` plus les quatre `tenant_*`
+    // posees par la passe de durcissement. N'en casser qu'une ne prouvait donc
+    // rien : `tenant_select` lisait toujours app.current_org_id et laissait
+    // passer la ligne. On les remplace ici TOUTES par une seule, branchee sur la
+    // variable morte, ce qui restitue l'intention d'origine du controle.
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      const avant = await c.query<{ policyname: string }>(
+        `SELECT policyname FROM pg_policies WHERE schemaname='public' AND tablename='usage_events'`
+      );
+      expect(avant.rowCount, "aucune policy sur usage_events : le controle ne prouverait rien").toBeGreaterThan(0);
+      for (const row of avant.rows) {
+        await c.query(`DROP POLICY IF EXISTS "${row.policyname}" ON usage_events`);
+      }
       await c.query(`CREATE POLICY "usage_events_org_isolation" ON usage_events
                        USING (org_id = current_setting('app.org_id', true))
                        WITH CHECK (org_id = current_setting('app.org_id', true))`);
+      const restantes = await c.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_policies WHERE schemaname='public' AND tablename='usage_events'`
+      );
+      expect(restantes.rows[0]!.n, "une policy survivante fausserait le controle").toBe(1);
+
       await c.query(`INSERT INTO usage_events (org_id, kind) VALUES ($1,'audit_created')`, [ORG_A]);
       await c.query(`SET LOCAL "${TENANT_GUC}" = '${ORG_A}'`);
       await c.query("SET LOCAL ROLE app_user");
@@ -195,11 +237,25 @@ describe("acces sous app_user — lecture, ecriture, isolation", () => {
       await c.query("ROLLBACK").catch(() => {});
       c.release();
     }
-    // La policy correcte est toujours en place apres l'annulation.
+    // Les policies d'origine sont toutes revenues apres l'annulation, et la
+    // policy nommee lit bien la variable que l'application pose.
     const res = await pool.query<{ predicat: string }>(
       `SELECT COALESCE(qual,'') AS predicat FROM pg_policies
         WHERE tablename='usage_events' AND policyname='usage_events_org_isolation'`
     );
     expect(res.rows[0]!.predicat).toContain(TENANT_GUC);
+  });
+
+  it("toute policy d'isolation de usage_events lit la variable que l'application pose", async () => {
+    // Corollaire de ce qui precede : puisque les permissives s'additionnent, il
+    // ne suffit pas qu'UNE policy soit correcte — aucune ne doit ouvrir plus.
+    const r = await pool.query<{ policyname: string; qual: string | null }>(
+      `SELECT policyname, qual FROM pg_policies
+        WHERE schemaname='public' AND tablename='usage_events' AND cmd <> 'INSERT'`
+    );
+    expect(r.rowCount).toBeGreaterThan(0);
+    for (const row of r.rows) {
+      expect(row.qual ?? "", `${row.policyname} n'isole pas sur ${TENANT_GUC}`).toContain(TENANT_GUC);
+    }
   });
 });
