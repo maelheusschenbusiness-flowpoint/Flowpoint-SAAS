@@ -27,6 +27,7 @@ import { initDataTables }        from "./services/init-data-tables.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { stampSchemaGate } from "./services/schema-gate-status.js";
 import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
+import { reconcileSchema, reconcileDefaults } from "./services/init-schema-reconcile.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -45,7 +46,7 @@ async function migrate() {
   console.log("=".repeat(60));
 
   // ── 1. Verify connectivity ──────────────────────────────────────────────────
-  section("[1/13] Database connectivity");
+  section("[1/14] Database connectivity");
   try {
     const res = await pool.query<{ version: string }>("SELECT version()");
     console.log(`  ✓ Connected — ${res.rows[0]?.version?.split(" ").slice(0, 2).join(" ")}`);
@@ -67,7 +68,7 @@ async function migrate() {
   } catch { /* non bloquant : on restera sur les seuils stricts */ }
 
   // ── 2. app_user role + grants ───────────────────────────────────────────────
-  section("[2/13] app_user role (init-rls-setup)");
+  section("[2/14] app_user role (init-rls-setup)");
   try {
     await initRlsSetup();
     console.log("  ✓ Done");
@@ -77,7 +78,7 @@ async function migrate() {
   }
 
   // ── 3. Probe SET ROLE ───────────────────────────────────────────────────────
-  section("[3/13] app_user role probe");
+  section("[3/14] app_user role probe");
   try {
     await probeAppUserRole();
     console.log("  ✓ Done");
@@ -87,7 +88,7 @@ async function migrate() {
   }
 
   // ── 4. RLS tenant-isolation policies ───────────────────────────────────────
-  section("[4/13] RLS migration (tenant-isolation policies)");
+  section("[4/14] RLS migration (tenant-isolation policies)");
   try {
     await runRlsMigrationIfNeeded();
     console.log("  ✓ Done");
@@ -104,7 +105,7 @@ async function migrate() {
   //     ✗ relation "organizations" does not exist
   // Sans effet sur une base existante, ou organizations est deja la ; mais un
   // environnement ne pouvait pas etre recree depuis zero.
-  section("[5/13] init-data-tables (tables de base)");
+  section("[5/14] init-data-tables (tables de base)");
   try { await initDataTables();  console.log("  ✓ init-data-tables done"); }
   catch (err: any) { console.error(`  ✗ initDataTables: ${err.message}`); process.exit(1); }
 
@@ -121,7 +122,7 @@ async function migrate() {
   // Placee APRES init-data-tables, dont elle depend : la reprise de l'existant
   // lit organizations, org_settings et team_members. Et AVANT le durcissement
   // RLS, pour que les deux tables y passent comme toutes les autres.
-  section("[6/13] init-phase1-users (identite : users, organization_members)");
+  section("[6/14] init-phase1-users (identite : users, organization_members)");
   try { await initPhase1Users(); }
   catch (err: any) { console.error(`  ✗ initPhase1Users: ${err.message}`); process.exit(1); }
 
@@ -149,25 +150,64 @@ async function migrate() {
   }
   console.log("  ✓ users + organization_members presentes");
 
-  section("[7/13] init-missions");
+  section("[7/14] init-missions");
   try { await initMissionsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[8/13] init-automation");
+  section("[8/14] init-automation");
   try { await initAutomationTables(); console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[9/13] init-monitors");
+  section("[9/14] init-monitors");
   try { await initMonitorsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  // ── 9. AI migration — apres les tables de base qu'elle fait evoluer ─────────
-  section("[10/13] init-ai-migration");
+  // ── 10. AI migration — apres les tables de base qu'elle fait evoluer ─────────
+  section("[10/14] init-ai-migration");
   try { await initAiMigration(); console.log("  ✓ init-ai-migration done"); }
   catch (err: any) { console.error(`  ✗ initAiMigration: ${err.message}`); process.exit(1); }
 
-  // ── 9. Canonical global system seed catalog ─────────────────────────────────
-  section("[11/13] Canonical global system seeds");
+  // ── 11. Reconciliation du schema ───────────────────────────────────────────
+  // Apres TOUS les initialiseurs de domaine : les colonnes ajoutees ici visent
+  // des tables que init-missions, init-automation et init-monitors creent, et
+  // qui n'existent donc pas plus tot sur une base vierge. Avant le durcissement
+  // RLS, pour que les tables creees y passent comme les autres.
+  section("[11/14] Reconciliation du schema (tables et colonnes manquantes)");
+  try {
+    const recClient = await pool.connect();
+    try {
+      const rec = await reconcileSchema(recClient);
+      if (rec.failures.length > 0) {
+        console.error(`  \u2717 ${rec.failures.length} echec(s) — marqueur NON pose, le bloc sera rejoue`);
+        for (const f of rec.failures.slice(0, 8)) console.error(`    ${f}`);
+        await pool.end();
+        process.exit(1);
+      }
+      console.log(rec.applied
+        ? `  \u2713 ${rec.created.length} table(s) creee(s), ${rec.columns} colonne(s) ajoutee(s)`
+        : "  \u2713 deja applique");
+
+      // Bloc 2, marqueur independant : le bloc 1 peut etre deja marque sur une
+      // copie de production alors que les defaults, eux, manquent encore.
+      const def = await reconcileDefaults(recClient);
+      if (def.failures.length > 0) {
+        console.error(`  \u2717 defaults : ${def.failures.length} echec(s) — marqueur NON pose`);
+        for (const f of def.failures.slice(0, 8)) console.error(`    ${f}`);
+        await pool.end();
+        process.exit(1);
+      }
+      console.log(def.applied
+        ? `  \u2713 ${def.defaults} default(s) restaure(s)`
+        : "  \u2713 defaults deja appliques");
+    } finally { recClient.release(); }
+  } catch (err: any) {
+    console.error(`  \u2717 reconciliation impossible : ${err.message}`);
+    await pool.end();
+    process.exit(1);
+  }
+
+  // ── 12. Canonical global system seed catalog ────────────────────────────────
+  section("[12/14] Canonical global system seeds");
   try {
     const seeded = await runCanonicalSystemSeeds();
     console.log(`  ✓ org_settings default: ${seeded.orgSettings}`);
@@ -178,7 +218,7 @@ async function migrate() {
     process.exit(1);
   }
 
-  // ── 11. Durcissement RLS APRES creation des tables ──────────────────────────
+  // ── 13. Durcissement RLS APRES creation des tables ──────────────────────────
   // L'etape 4 tourne avant que les tables n'existent : sur une installation
   // initiale elle ne protege rien. Mesure sur une base vierge : 37 tables
   // portant org_id (audits, monitors, reports, missions, team_members,
@@ -186,15 +226,15 @@ async function migrate() {
   // passe est donc rejouee ici, une fois le schema pose — elle est idempotente.
   // Placee APRES les seeds : FORCE ROW LEVEL SECURITY s'applique aussi au
   // proprietaire, et durcir avant les seeds les ferait echouer.
-  section("[12/13] Durcissement RLS (apres creation des tables)");
+  section("[13/14] Durcissement RLS (apres creation des tables)");
   try { await runRlsMigrationIfNeeded(); console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ RLS hardening failed: ${err.message}`); process.exit(1); }
 
-  // ── 12. Audit d'isolation par table — PAS un seuil numerique ───────────────
+  // ── 14. Audit d'isolation par table — PAS un seuil numerique ───────────────
   // Un compte de policies ne dit rien de ce qui est reellement protege. On
   // verifie, table par table, que toute table portant org_id a RLS active ET
   // au moins une policy qui isole sur org_id.
-  section("[13/13] Audit d'isolation inter-organisations");
+  section("[14/14] Audit d'isolation inter-organisations");
   const audit = await pool.query<{ table_name: string; rls: boolean; policies: number; isolated: boolean }>(`
     WITH sensibles AS (
       SELECT c.relname AS table_name, c.relrowsecurity AS rls
