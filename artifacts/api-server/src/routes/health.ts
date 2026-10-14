@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { evaluateReadiness } from "../services/readiness.js";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool } from "@workspace/db";
 import { cache } from "../lib/cache.js";
@@ -31,6 +32,17 @@ router.get("/downloads/onboarding-videos-steps2-6.mp4", (_req, res) => {
 
 router.get("/healthz", (_req, res) => {
   res.json({ status: "ok", uptime: Math.round(process.uptime()) });
+});
+
+// ── GET /healthz/ready — la sonde destinee a Render ───────────────────────────
+// `/healthz` ne touche pas la base : un serveur dont l'initialisation de schema
+// a echoue y repond « ok ». `/healthz/deep` interroge six services tiers : une
+// panne chez l'un d'eux ferait redemarrer une instance saine. Celle-ci ne
+// regarde que PostgreSQL et la validite du schema, tolere une coupure passagere
+// de la base, et refuse immediatement un schema invalide.
+router.get("/healthz/ready", async (_req, res) => {
+  const verdict = await evaluateReadiness(pool);
+  res.status(verdict.httpStatus).json(verdict.body);
 });
 
 router.get("/health", (_req, res) => {
