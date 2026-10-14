@@ -246,6 +246,50 @@ describe("acces sous app_user — lecture, ecriture, isolation", () => {
     expect(res.rows[0]!.predicat).toContain(TENANT_GUC);
   });
 
+  it("aucune policy permissive n'ouvre une table portant org_id", async () => {
+    // Deux trous reels mesures le 14/10/2026 sur une copie de production :
+    //   google_product_connections.tenant_insert : WITH CHECK (true) pour PUBLIC.
+    //     SELECT, UPDATE et DELETE isolaient, l'INSERT acceptait n'importe quel
+    //     org_id — une organisation pouvait ecrire une ligne attribuee a une autre.
+    //   seller_commissions_app_user_all : FOR ALL USING (true) pour app_user.
+    //     Les PERMISSIVE s'additionnent en OR : elle annulait les quatre tenant_*
+    //     et ouvrait les commissions de toutes les organisations.
+    // Le contexte rend ces trous serieux : anon et authenticated disposent des
+    // droits DML complets sur 121 tables publiques (defaut Supabase), donc RLS est
+    // la seule barriere.
+    const r = await pool.query<{ tablename: string; policyname: string; cmd: string }>(
+      `SELECT p.tablename, p.policyname, p.cmd
+         FROM pg_policies p
+         JOIN information_schema.columns c
+           ON c.table_schema = 'public' AND c.table_name = p.tablename AND c.column_name = 'org_id'
+        WHERE p.schemaname = 'public'
+          AND p.permissive = 'PERMISSIVE'
+          AND (COALESCE(p.qual,'') = 'true' OR COALESCE(p.with_check,'') = 'true')
+        ORDER BY 1, 2`
+    );
+    const ouvertes = r.rows.map((x) => `${x.tablename}.${x.policyname}[${x.cmd}]`);
+    expect(ouvertes, "des policies ouvrent une table portant org_id").toEqual([]);
+  });
+
+  it("l'INSERT de google_product_connections exige l'organisation courante", async () => {
+    const r = await pool.query<{ with_check: string | null }>(
+      `SELECT with_check FROM pg_policies
+        WHERE schemaname='public' AND tablename='google_product_connections' AND policyname='tenant_insert'`
+    );
+    if (r.rowCount === 0) return;           // table absente de cette base
+    expect(r.rows[0]!.with_check ?? "").toContain(TENANT_GUC);
+    expect(r.rows[0]!.with_check ?? "").not.toBe("true");
+  });
+
+  it("aucune policy ne redonne a app_user un acces global aux commissions", async () => {
+    const r = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_policies
+        WHERE schemaname='public' AND tablename='seller_commissions'
+          AND policyname='seller_commissions_app_user_all'`
+    );
+    expect(r.rows[0]!.n).toBe(0);
+  });
+
   it("toute policy d'isolation de usage_events lit la variable que l'application pose", async () => {
     // Corollaire de ce qui precede : puisque les permissives s'additionnent, il
     // ne suffit pas qu'UNE policy soit correcte — aucune ne doit ouvrir plus.
