@@ -12,6 +12,7 @@ import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { ensureCheckoutPostTokensSchema } from "./services/init-checkout-post-tokens.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
+import { reportSchemaGateStatus } from "./services/schema-gate-status.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
@@ -126,7 +127,11 @@ async function main() {
     // ── Fast path: Pre-Deploy has already run. ─────────────────────────────
     // Only probe the app_user role (cheap: 2 queries) so withOrgDb() knows
     // whether to use SET ROLE or GUC-only mode.
-    logger.info("[startup] Schema already migrated — skipping full init (Pre-Deploy completed)");
+    // Ce chemin est choisi sur un seul signal : la table `audits` existe. Cela
+    // ne dit RIEN de l'execution de migrate.mjs — l'ancien message affirmait
+    // « Pre-Deploy completed », ce qui est faux sur un service sans Pre-Deploy
+    // configure (cas constate en production le 13/10/2026).
+    logger.info("[startup] table `audits` presente — init complet non rejoue (voir [schema-gate] pour l'etat reel de la porte)");
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
     // Always run phase1-users on fast-path: adds first_name/last_name/status columns.
     // NEVER fatal — a warning is enough; the inline self-heal in finalize-checkout is the real gate.
@@ -374,6 +379,12 @@ async function main() {
   })();
 
   // ── All critical steps succeeded — safe to open port and start crons ────────
+  // ── Sonde d'observabilite du schema — ne refuse jamais le demarrage ────────
+  // migrate.mjs peut refuser une base : il tourne avant la mise en ligne. Ici,
+  // un refus ferait tomber un service en production ; on se contente donc de
+  // dire ce qui est, et de le dire fort.
+  await reportSchemaGateStatus(pool);
+
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
