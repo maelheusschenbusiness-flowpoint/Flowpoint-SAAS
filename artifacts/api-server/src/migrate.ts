@@ -25,9 +25,9 @@ import { initAutomationTables }  from "./services/init-automation.js";
 import { initMonitorsTables }    from "./services/init-monitors.js";
 import { initDataTables }        from "./services/init-data-tables.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
-import { reconcileSchema, reconcileDefaults } from "./services/init-schema-reconcile.js";
-import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
 import { stampSchemaGate } from "./services/schema-gate-status.js";
+import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
+import { reconcileSchema, reconcileDefaults } from "./services/init-schema-reconcile.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
