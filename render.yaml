@@ -1,0 +1,151 @@
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  CONFIGURATION CIBLE — NE PAS APPLIQUER COMME BLUEPRINT EN L'ETAT        ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+#
+# Ce fichier DOCUMENTE la configuration des services FlowPoint. Il n'est pas
+# applique : la presence d'un render.yaml dans le depot ne change rien tant
+# qu'aucun Blueprint ne pointe sur ce depot. Voir docs/render-config-target.md
+# pour les ecarts avec la configuration en vigueur et la procedure.
+#
+# POURQUOI IL NE DOIT PAS ETRE APPLIQUE TEL QUEL
+#
+# Les services ci-dessous ont ete crees a la main dans le tableau de bord. La
+# documentation Render est explicite : creer un Blueprint sur un depot dont les
+# noms de services existent deja NE LES ADOPTE PAS — « Render appends a suffix
+# to the name of each new resource to prevent collisions with your existing
+# resources ». Un Blueprint applique ici creerait donc des services EN DOUBLE
+# (Flowpoint-Main-1, flowpoint-test-1…), avec leurs propres variables — et le
+# trafic de production continuerait d'etre servi par le service d'origine.
+#
+# La seule voie sure est l'inverse : ajouter un a un les services EXISTANTS au
+# Blueprint depuis leur page Render (« add an existing Render resource to your
+# Blueprint »), apres quoi chaque synchronisation leur applique ce fichier. Et
+# une ressource ne doit etre geree que par un seul Blueprint.
+#
+# CE QUI N'EST PAS DECRIT ICI, DELIBEREMENT
+#
+#   - Flowpoint-SAAS (srv-d6306rkoud1c73d8jrhg) : ancien service, plan free,
+#     SUSPENDU. Un Blueprint ne sait pas exprimer « suspendu ».
+#   - Flowpoint-SAAS-CronJob1/2/3 : SUSPENDUS, et leurs commandes de demarrage
+#     visent des fichiers qui n'existent plus dans le depot (`npm run cron`,
+#     `monthly-cron.js`, `src/cron/monthlyMonitoringReport.js`). Les decrire ici
+#     reviendrait a graver une configuration cassee, et une adoption pourrait
+#     les reactiver. A statuer separement.
+#
+# AUCUNE VALEUR DE SECRET N'APPARAIT DANS CE FICHIER. Les variables sensibles
+# sont declarees avec `sync: false` : leur valeur reste dans le tableau de bord.
+# Render conserve les variables deja presentes qui ne sont pas declarees ici
+# (« The resource retains any existing environment variable values that aren't
+# overwritten by the Blueprint »).
+
+services:
+  # ── Production ────────────────────────────────────────────────────────────
+  # Sert https://flowpoint-saas-1.onrender.com. Parametres operationnels repris
+  # a l'identique de la configuration en vigueur (relevee le 13/10/2026).
+  - type: web
+    name: Flowpoint-Main
+    runtime: node
+    repo: https://github.com/maelheusschenbusiness-flowpoint/Flowpoint-SAAS
+    branch: Flowpoint
+    region: oregon
+    plan: starter
+    numInstances: 1
+    autoDeployTrigger: commit
+    buildCommand: npm install -g pnpm@10 && cd artifacts/api-server && pnpm install --no-frozen-lockfile --config.catalogs=false && pnpm run build
+    startCommand: cd artifacts/api-server && pnpm run start
+
+    # ÉCART ASSUME — sonde de disponibilite.
+    # En vigueur : /api/healthz, qui ne touche pas la base. Chaque etape
+    # d'initialisation du schema etant non fatale, un serveur dont tout a
+    # echoue y repond « ok » et est mis en ligne.
+    # Cible : /api/healthz/ready (PR #151), qui verifie PostgreSQL et la
+    # validite du schema, tolere 3 echecs consecutifs de la base et refuse
+    # immediatement un schema invalide.
+    # A N'ACTIVER QU'APRES : fusion de la PR #151, deploiement, et
+    # certification du comportement de Render pendant une indisponibilite
+    # PostgreSQL reelle sur flowpoint-test (voir docs/render-config-target.md).
+    healthCheckPath: /api/healthz/ready
+
+    # ÉCART ASSUME — Pre-Deploy, VOLONTAIREMENT COMMENTE.
+    # Aucune commande Pre-Deploy n'est configuree aujourd'hui : migrate.mjs ne
+    # tourne donc jamais, et ni l'audit d'isolation ni le durcissement RLS ne
+    # sont appliques en production.
+    # Une fois active, migrate.mjs REFUSE le deploiement quand le schema est
+    # invalide. C'est l'objectif — et le risque : sur une base dont l'etat n'a
+    # pas ete verifie, cette commande bloquerait TOUS les deploiements, y
+    # compris un correctif urgent.
+    # NE DECOMMENTER QU'APRES avoir execute migrate.mjs avec succes sur une
+    # COPIE RESTAUREE de cette base (runbook, phases 1 et 2).
+    # preDeployCommand: cd artifacts/api-server && pnpm run migrate
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Requises au demarrage (lib/env.ts refuse de demarrer sans elles).
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # Parcours payant. STRIPE_LIVE_API_KEY est copiee sur STRIPE_SECRET_KEY
+      # au demarrage ; PUBLIC_STRIPE_API_KEY est la cle publiable live servie
+      # au navigateur (verifie : /api/billing/config renvoie bien un pk_live_).
+      - key: STRIPE_LIVE_API_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PUBLIC_STRIPE_API_KEY
+        sync: false
+      # Lien magique : sans transport, personne ne peut se connecter.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      # Les autres variables en vigueur ne sont pas declarees ici : leur
+      # inventaire vit dans GET /api/diagnostics, qui les reduit a set/not_set
+      # sans jamais exposer de valeur. Render les conserve telles quelles.
+
+  # ── Test ──────────────────────────────────────────────────────────────────
+  # Sert https://flowpoint-test.onrender.com, suit Test-Replit. C'est ici que
+  # chaque ecart ci-dessus doit etre certifie avant la production.
+  - type: web
+    name: flowpoint-test
+    runtime: node
+    repo: https://github.com/maelheusschenbusiness-flowpoint/Flowpoint-SAAS
+    branch: Test-Replit
+    region: oregon
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: commit
+    buildCommand: cd artifacts/api-server && npx --yes pnpm@10 install --no-frozen-lockfile --config.catalogs=false && npx --yes pnpm@10 run build
+    startCommand: cd artifacts/api-server && pnpm run start
+
+    # ÉCART ASSUME — ce service n'a AUCUNE sonde aujourd'hui : Render ne peut
+    # pas distinguer un demarrage reussi d'un demarrage degrade.
+    healthCheckPath: /api/healthz/ready
+
+    # Pre-Deploy actif ICI, et seulement ici : un refus de la porte bloque un
+    # deploiement de test, pas la production. C'est l'environnement ou l'on
+    # observe ce que migrate.mjs dit d'un schema reel avant d'y soumettre la
+    # production.
+    preDeployCommand: cd artifacts/api-server && pnpm run migrate
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # Mode test Stripe — jamais de cle live sur cet environnement.
+      - key: STRIPE_TEST_MODE
+        value: "true"
+      - key: STRIPE_TEST_KEY
+        sync: false
+      - key: STRIPE_TEST_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_TEST_PUBLISHABLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
