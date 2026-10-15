@@ -26,6 +26,7 @@ import { initMonitorsTables }    from "./services/init-monitors.js";
 import { initDataTables }        from "./services/init-data-tables.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
+import { stampSchemaGate } from "./services/schema-gate-status.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -249,6 +250,18 @@ async function migrate() {
     process.exit(1);
   }
   console.log("  ✓ Toutes les policies d'isolation lisent app.current_org_id");
+
+  // Estampille : le demarrage pourra dire si la porte a tourne sur cette base,
+  // au lieu d'affirmer « Pre-Deploy completed » sur la seule existence d'une
+  // table. Posee ici, donc seulement quand tout ce qui precede a reussi.
+  try {
+    await stampSchemaGate(pool);
+    console.log("  ✓ Porte estampillee (schema_migrations)");
+  } catch (err: any) {
+    // L'estampille est une trace, pas une garantie : son echec ne doit pas
+    // refuser une migration par ailleurs complete.
+    console.warn(`  ! Estampille de la porte impossible : ${err.message}`);
+  }
 
   // ── Summary ─────────────────────────────────────────────────────────────────
   section("Post-migration summary");
