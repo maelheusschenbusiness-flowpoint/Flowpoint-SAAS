@@ -38,8 +38,8 @@ async function ensureTable(): Promise<void> {
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'usage_events' AND policyname = 'usage_events_org_isolation') THEN
           CREATE POLICY usage_events_org_isolation ON usage_events
-            USING (org_id = current_setting('app.org_id', true))
-            WITH CHECK (org_id = current_setting('app.org_id', true));
+            USING (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$`);
     _tableReady = true;

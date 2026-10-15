@@ -42,8 +42,17 @@ import { logger } from "../lib/logger.js";
 
 const LOG = "[rls-migration]";
 
-/** GUC set by withOrgDb() inside every authenticated transaction. */
-const GUC = `current_setting('app.current_org_id', true)`;
+/**
+ * GUC set by withOrgDb() inside every authenticated transaction.
+ *
+ * Encapsule dans un `SELECT` a dessein : PostgreSQL evalue alors l'expression
+ * UNE fois par requete (InitPlan) au lieu d'une fois par ligne. C'est la forme
+ * que Supabase recommande sous l'alerte « Auth RLS Initialization Plan », qui
+ * visait ici users, subscriptions et usage. La semantique est identique — meme
+ * valeur, meme comparaison — donc le comportement de securite ne change pas :
+ * seul le nombre d'evaluations change.
+ */
+const GUC = `(SELECT current_setting('app.current_org_id', true))`;
 
 /**
  * Tables that must carry an org_id column for tenant isolation.

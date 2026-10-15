@@ -519,7 +519,7 @@ async function ensureAiUsageOutboxTable(): Promise<void> {
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ai_usage_pending_writes') THEN
           CREATE POLICY org_isolation ON ai_usage_pending_writes
-            USING (org_id = current_setting('app.org_id', true));
+            USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$`);
     _outboxTableReady = true;

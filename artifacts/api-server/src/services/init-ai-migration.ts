@@ -132,7 +132,7 @@ export async function initAiMigration(): Promise<void> {
         ) THEN
           CREATE POLICY ai_recommendations_org_isolation
             ON public.ai_recommendations
-            USING (org_id = current_setting('app.org_id', true));
+            USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$
     `);
