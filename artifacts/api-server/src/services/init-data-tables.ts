@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { ensureCheckoutPostTokensSchema } from "./init-checkout-post-tokens.js";
+import { repairOrgGucPolicies } from "./rls-guc-repair.js";
 import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
          aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
@@ -474,7 +475,8 @@ export async function initDataTables(): Promise<void> {
             USING (org_id = current_setting('app.current_org_id', true));
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_insert') THEN
-          CREATE POLICY tenant_insert ON google_product_connections FOR INSERT TO PUBLIC WITH CHECK (true);
+          CREATE POLICY tenant_insert ON google_product_connections FOR INSERT TO PUBLIC
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_update') THEN
           CREATE POLICY tenant_update ON google_product_connections FOR UPDATE TO PUBLIC
@@ -889,6 +891,18 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS checkout_subscription_claims_intent_idx ON checkout_subscription_claims(intent_id);`);
     await run(client, `ALTER TABLE checkout_subscription_claims ENABLE ROW LEVEL SECURITY`);
     await run(client, `ALTER TABLE checkout_subscription_claims FORCE ROW LEVEL SECURITY`);
+
+    // ── Policies branchees sur la variable que withOrgDb pose ─────────────────
+    // Les CREATE POLICY d'origine sont gardes par IF NOT EXISTS : corriger leur
+    // SQL ne repare aucune base existante. Voir services/rls-guc-repair.ts.
+    try {
+      const { repaired } = await repairOrgGucPolicies(client);
+      if (repaired.length > 0) {
+        logger.info({ repaired }, "[init-data-tables] policies reposees sur app.current_org_id");
+      }
+    } catch (err) {
+      logger.error({ err }, "[init-data-tables] reparation des policies impossible");
+    }
 
     // ── checkout_post_tokens — jeton de premiere session apres paiement ───────
     // Pose ici, dans le chemin autoritaire du schema, donc AVANT le
@@ -2998,7 +3012,8 @@ export async function initDataTables(): Promise<void> {
             USING (org_id = current_setting('app.current_org_id', true));
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_insert') THEN
-          CREATE POLICY tenant_insert ON google_product_connections FOR INSERT TO PUBLIC WITH CHECK (true);
+          CREATE POLICY tenant_insert ON google_product_connections FOR INSERT TO PUBLIC
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='google_product_connections' AND policyname='tenant_update') THEN
           CREATE POLICY tenant_update ON google_product_connections FOR UPDATE TO PUBLIC
@@ -3772,14 +3787,27 @@ export async function initDataTables(): Promise<void> {
             FOR ALL TO app_user USING (true) WITH CHECK (true);
         END IF;
       END $$`);
+    // seller_commissions porte org_id et a deja les quatre policies tenant_* qui
+    // l'isolent. Une policy FOR ALL USING (true) s'y ajoutait pour app_user : les
+    // PERMISSIVE s'additionnent en OR, elle ANNULAIT donc les quatre autres et
+    // ouvrait les commissions de toutes les organisations a tout porteur du role.
+    // Elle n'est plus creee, et la reparation ci-dessous la retire des bases ou
+    // elle existe deja — `IF NOT EXISTS` protegeait la creation, donc une base
+    // existante aurait garde la version fautive indefiniment.
+    await run(client, `DROP POLICY IF EXISTS seller_commissions_app_user_all ON public.seller_commissions`);
     await run(client, `
       DO $$ BEGIN
-        IF NOT EXISTS (
+        -- Meme nature : l'INSERT de google_product_connections acceptait n'importe
+        -- quel org_id alors que SELECT, UPDATE et DELETE isolaient. Une organisation
+        -- pouvait donc ecrire une connexion attribuee a une autre.
+        IF EXISTS (
           SELECT 1 FROM pg_policies
-          WHERE schemaname='public' AND tablename='seller_commissions' AND policyname='seller_commissions_app_user_all'
+          WHERE schemaname='public' AND tablename='google_product_connections'
+            AND policyname='tenant_insert' AND COALESCE(with_check,'') = 'true'
         ) THEN
-          CREATE POLICY seller_commissions_app_user_all ON public.seller_commissions
-            FOR ALL TO app_user USING (true) WITH CHECK (true);
+          DROP POLICY tenant_insert ON public.google_product_connections;
+          CREATE POLICY tenant_insert ON public.google_product_connections FOR INSERT TO PUBLIC
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$`);
     await run(client, `
