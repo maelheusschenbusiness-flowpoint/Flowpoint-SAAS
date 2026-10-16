@@ -2127,6 +2127,28 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
             const { pool: _commPool } = await import("@workspace/db");
 
+            // `organizations.id` est de type UUID. Un identifiant encore sous sa
+            // forme de pre-inscription (courriel) ne peut donc correspondre a
+            // aucune ligne : la requete ci-dessous ne renvoie pas zero ligne,
+            // elle leve 22P02 / string_to_uuid, et cette exception remonte
+            // jusqu'au `catch` du gestionnaire, qui repond 500. Stripe reessaie,
+            // la cause ne bouge pas, et l'echec se repete a chaque livraison.
+            //
+            // Constate en production sur le service de test Render le
+            // 2026-10-15, toutes les heures : `invoice.payment_succeeded` pour
+            // l'organisation de certification `cert-...@flowpoint.test`, qui n'a
+            // jamais eu de ligne `organizations`. L'etat d'abonnement etait
+            // pourtant deja persiste juste avant — seule l'attribution vendeur
+            // faisait echouer la livraison entiere.
+            //
+            // Rien de commercial ne change : sans ligne `organizations`, il n'y
+            // a pas de `seller_id`, donc aucune commission a enregistrer. Ce
+            // qui change, c'est qu'on le constate au lieu de le faire lever.
+            if (!UUID_RE_WH.test(String(orgId))) {
+              logger.info({ type: event.type, shape: String(orgId).includes("@") ? "email" : "non-uuid" },
+                "[Webhook/seller] Non-canonical orgId — no organizations row, seller ledger skipped");
+            } else {
+
             // Load seller_id from organizations
             const _orgSellerR = await _commPool.query<{ seller_id: string | null; owner_email: string; plan: string }>(
               `SELECT seller_id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
@@ -2193,6 +2215,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             logger.info({ orgId, sellerId: _sellerUUID, amountCents: _invAmountPaid, commissionInserted: _commissionInserted },
               "[Webhook/seller] Payment revenue recorded; acquisition commission is first-payment only");
             }
+            }            // fin de la garde d'identifiant canonique
             }
         }
       }

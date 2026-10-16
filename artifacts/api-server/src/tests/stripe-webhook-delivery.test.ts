@@ -45,6 +45,16 @@ let persistCalls: Array<{ orgId: string; fields: Record<string, unknown> }>;
 let mailCalls: string[];
 let addonCalls: string[];
 let activeStripeKey: string;
+let customerOrg: string;              // ce que la resolution par client Stripe rend
+let orgRowExists: boolean;            // une ligne `organizations` existe-t-elle
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `organizations.id` est de type UUID : un parametre non UUID leve 22P02. */
+function pgUuidError(): Error {
+  return Object.assign(new Error("invalid input syntax for type uuid"), {
+    code: "22P02", routine: "string_to_uuid", severity: "ERROR", file: "uuid.c",
+  });
+}
 
 /** Les requetes mutantes, et elles seules : c'est ce qu'un doublon dupliquerait. */
 function isMutation(sql: string): boolean {
@@ -74,13 +84,22 @@ async function fakeQuery(sql: string, params: unknown[] = []) {
     return { rows: [], rowCount: e ? 1 : 0 };
   }
 
+  // Reproduit le typage de production AVANT toute reponse : toute requete
+  // `organizations ... WHERE id = $1` avec un parametre non UUID leve 22P02.
+  if (/\borganizations\b/i.test(s) && /\bWHERE id ?= ?\$1/i.test(s)) {
+    if (!UUID_RE.test(String((params as unknown[])[0]))) throw pgUuidError();
+  }
+  // Instantane combine organisation canonique + inscription en attente.
+  if (/pending_signups/i.test(s) && /organizations/i.test(s)) {
+    return { rows: [{ org_id: orgRowExists ? ORG : null, pending: false }], rowCount: 1 };
+  }
   if (/SELECT seller_id, owner_email, plan FROM organizations/i.test(s)) {
     return { rows: [{ seller_id: null, owner_email: "client@example.com", plan: "pro" }], rowCount: 1 };
   }
   if (/SELECT fp_lid FROM organizations/i.test(s)) return { rows: [{ fp_lid: null }], rowCount: 1 };
   if (/SELECT plan FROM organizations/i.test(s)) return { rows: [{ plan: "pro" }], rowCount: 1 };
   if (/SELECT id FROM organizations WHERE lower\(owner_email\)/i.test(s)) {
-    return { rows: [{ id: ORG }], rowCount: 1 };
+    return { rows: orgRowExists ? [{ id: ORG }] : [], rowCount: orgRowExists ? 1 : 0 };
   }
   return { rows: [], rowCount: 0 };
 }
@@ -109,7 +128,7 @@ vi.mock("../services/stripe-factory.js", () => ({
 }));
 
 vi.mock("../services/org-data.js", () => ({
-  findOrgByStripeCustomer: vi.fn(async () => ORG),
+  findOrgByStripeCustomer: vi.fn(async () => customerOrg),
   persistOrgData: vi.fn(async (orgId: string, fields: Record<string, unknown>) => {
     persistCalls.push({ orgId, fields });
   }),
@@ -243,6 +262,8 @@ beforeEach(() => {
   mailCalls = [];
   addonCalls = [];
   activeStripeKey = LIVE_KEY;
+  customerOrg = ORG;
+  orgRowExists = true;
   process.env["STRIPE_WEBHOOK_SECRET"] = LIVE_SECRET;
   delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
   delete process.env["STRIPE_TEST_WEBHOOK_SECRET"];
@@ -416,6 +437,72 @@ describe("Signature et separation des environnements", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ received: true });
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe("Un identifiant d'organisation non canonique ne boucle pas en 500", () => {
+  const CERT_ORG = "cert-1791896177@flowpoint.test";
+
+  beforeEach(() => {
+    // La situation constatee en production : le client Stripe resout vers une
+    // cle en forme de courriel, et AUCUNE ligne `organizations` ne porte ce
+    // courriel — l'organisation de certification n'en a jamais eu.
+    customerOrg  = CERT_ORG;
+    orgRowExists = false;
+  });
+
+  it("REPRO : `invoice.payment_succeeded` pour une organisation inexistante repond 200, pas 500", async () => {
+    // Avant le correctif : 22P02 / string_to_uuid dans le registre vendeur,
+    // 500, et Stripe reessayait toutes les heures sans fin.
+    const res = await deliver({ ...EVENTS["paiement reussi"]!, id: "evt_1UQjLP9eqtbj6iPBQCjFLHd5" });
+    await settle();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ received: true });
+    // L'evenement est clos : le rejeu Stripe s'arrete la, au lieu de revenir
+    // toutes les heures sur la meme exception.
+    expect(billingEvents.get("evt_1UQjLP9eqtbj6iPBQCjFLHd5")?.status).toBe("processed");
+    // L'ecriture d'etat sous la cle de pre-inscription est CONSERVEE : c'est le
+    // comportement existant pour une organisation qui n'a encore que ses
+    // reglages, et le correctif ne la supprime pas.
+    expect(persistCalls.map((c) => c.orgId)).toEqual([CERT_ORG]);
+    // Aucune commission n'est enregistree : sans ligne `organizations`, il n'y
+    // a pas de vendeur a crediter.
+    expect(writes.filter((w) => /seller_commissions|seller_/i.test(w))).toEqual([]);
+  });
+
+  it("aucune famille d'evenement ne boucle sur un identifiant non canonique", async () => {
+    for (const [label, event] of Object.entries(EVENTS)) {
+      const res = await deliver({ ...event, id: `evt_noncanon_${label.replace(/\W+/g, "_")}` });
+      await settle();
+      expect(res.statusCode, `${label} doit repondre 200`).toBe(200);
+    }
+    // Aucune des cinq ne touche une table du registre vendeur, qui est typee
+    // sur `organizations.id`.
+    expect(writes.filter((w) => /seller_/i.test(w))).toEqual([]);
+  });
+
+  it("une inscription en cours garde son 503 et son nouvel envoi", async () => {
+    // La regle ne doit pas avaler le cas legitime : quand une inscription est en
+    // attente, l'evenement d'abonnement doit repartir en 503 pour etre relivre
+    // une fois l'organisation creee.
+    const { pool } = await import("@workspace/db");
+    const spy = vi.spyOn(pool, "query").mockImplementation(async (sql: unknown, p?: unknown) => {
+      const t = String(sql).replace(/\s+/g, " ");
+      if (/pending_signups/i.test(t) && /organizations/i.test(t)) {
+        return { rows: [{ org_id: null, pending: true }], rowCount: 1 } as never;
+      }
+      return fakeQuery(String(sql), (p as unknown[]) ?? []) as never;
+    });
+    try {
+      const res = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_pending_signup_wait" });
+      expect(res.statusCode).toBe(503);
+      expect(writes).toEqual([]);
+      expect(billingEvents.size).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  }, 30_000);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
