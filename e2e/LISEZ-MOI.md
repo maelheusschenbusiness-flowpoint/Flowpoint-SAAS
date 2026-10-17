@@ -22,6 +22,8 @@ jamais du depot.
 | `ENABLE_QA_FIXTURES=true` | provisionner l'organisation de recette |
 | `ADMIN_KEY` (≥ 32 caracteres) | proteger ce provisionnement |
 | `NODE_ENV` ≠ `production` | la route de connexion ne rend le lien magique qu'ici |
+| `ENABLE_DEV_AUTH=true` | ouvrir une session pour un rôle donné (`07-roles`) |
+| `BETTERSTACK_API_TOKEN` (valeur factice) | sans jeton, les routes BetterStack répondent 503 **avant** la garde de rôle, qui devient alors inobservable |
 
 En production, `POST /api/auth/login-request` ne renvoie **jamais** le lien :
 ces tests ne peuvent donc pas viser la production, et le socle le **refuse**
@@ -58,3 +60,19 @@ d'echouer. Cette limite est une protection : elle n'est pas contournee.
 La visite guidee d'onboarding recouvre la navigation sur un compte neuf : le
 socle la referme (`fermerVisite`). C'est voulu et refermable — un test le
 verifie.
+
+## Les rôles
+
+`07-roles` ouvre trois sessions — propriétaire, administrateur, membre — par la
+porte `POST /api/auth/dev-session`, et compare les réponses du **serveur** à la
+même opération. Masquer un bouton n'est pas une protection.
+
+Un code 4xx autre que 403 n'est pas un refus d'autorisation : c'est la garde
+franchie, puis un refus en aval (donnée invalide, ressource absente, service
+tiers non configuré). Les tests distinguent les deux, sinon ils confondraient
+« interdit » et « cassé ». Et chaque test qui vérifie un refus vérifie aussi
+qu'un rôle supérieur **passe** : sinon une garde qui bloque tout le monde
+paraîtrait correcte.
+
+Ce parcours exige les gardes de rôle BetterStack apportées par la PR #161 : sur
+une branche qui ne les contient pas, le test du membre échoue en le disant.
