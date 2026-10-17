@@ -179,6 +179,18 @@ export default defineConfig({
       "src/tests/stripe-webhook-pending-activation.test.ts",
     ],
     environment: "node",
+    // DETERMINISME : les fichiers ne s'executent pas en parallele.
+    //
+    // Mesure du 17/10/2026 : plusieurs fichiers modifient le schema PARTAGE
+    // de la base de test — DROP TABLE, DROP puis CREATE POLICY — pendant que
+    // d'autres verifient un invariant GLOBAL sur toutes les tables portant
+    // org_id. Resultat, la suite rendait 0, 4 ou 9 echecs selon le passage,
+    // pour des raisons etrangeres au produit.
+    //
+    // Cout mesure : 46 s au lieu de 11 s. C'est le prix d'un resultat sur
+    // lequel on peut fonder une decision, et il est paye une fois par
+    // verification, pas par personne.
+    fileParallelism: false,
     globals:     false,
     reporters:   ["verbose"],
     // Mock heavy deps that would require a real DB connection
