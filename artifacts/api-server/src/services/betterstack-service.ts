@@ -1,5 +1,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { checkQuota } from "./billing-service.js";
+import { BS_OWNERSHIP_TABLE } from "./init-bs-ownership.js";
 
 const BS_BASE = "https://uptime.betterstack.com/api/v2";
 const TOKEN = process.env.BETTERSTACK_API_TOKEN;
@@ -166,7 +168,7 @@ export class MonitorIntrouvable extends Error {
 export async function monitorsDeLOrganisation(orgId: string): Promise<Set<string>> {
   try {
     const r = await pool.query<{ bs_id: string }>(
-      `SELECT bs_id FROM bs_monitor_ownership WHERE org_id = $1`,
+      `SELECT bs_id FROM ${BS_OWNERSHIP_TABLE} WHERE org_id = $1`,
       [orgId]
     );
     return new Set(r.rows.map((x) => String(x.bs_id)));
@@ -188,7 +190,7 @@ async function exigerAppartenance(bsId: string, orgId: string): Promise<void> {
 /** Enregistre l'appartenance d'un moniteur cree depuis FlowPoint. */
 export async function enregistrerAppartenance(bsId: string, orgId: string, via: "created" | "backfill_url"): Promise<void> {
   await pool.query(
-    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via)
+    `INSERT INTO ${BS_OWNERSHIP_TABLE} (bs_id, org_id, claimed_via)
      VALUES ($1, $2, $3)
      ON CONFLICT (bs_id) DO NOTHING`,   // un moniteur deja attribue ne change pas de main
     [String(bsId), orgId, via]
@@ -221,6 +223,36 @@ export async function getMonitor(bsId: string, orgId: string): Promise<BSMonitor
   return res.data;
 }
 
+/** Levee quand le plafond de moniteurs de l'organisation est atteint. */
+export class PlafondMoniteursAtteint extends Error {
+  readonly statusCode = 402;
+  constructor(readonly utilise: number, readonly limite: number, readonly plan: string) {
+    super(`Quota de monitors atteint (${utilise}/${limite} sur le plan ${plan}).`);
+    this.name = "PlafondMoniteursAtteint";
+  }
+}
+
+/** Levee quand l'appartenance ne peut pas etre enregistree. */
+export class AppartenanceNonEnregistrable extends Error {
+  readonly statusCode = 503;
+  constructor() {
+    super("Monitor ownership registry unavailable");
+    this.name = "AppartenanceNonEnregistrable";
+  }
+}
+
+/**
+ * Compte les moniteurs BetterStack deja attribues a cette organisation.
+ * Jete si la table est illisible : sans compte fiable, on ne cree pas.
+ */
+async function compterMoniteurs(orgId: string): Promise<number> {
+  const r = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::int AS n FROM ${BS_OWNERSHIP_TABLE} WHERE org_id = $1`,
+    [orgId]
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
+
 export async function createMonitor(orgId: string, payload: {
   url: string;
   name: string;
@@ -231,14 +263,42 @@ export async function createMonitor(orgId: string, payload: {
   verify_ssl?: boolean;
   follow_redirects?: boolean;
 }): Promise<BSMonitor> {
+  // Le compte BetterStack est partage et facture a FlowPoint. La creation
+  // native passe par canAdmin + checkQuota + relecture atomique ; celle-ci ne
+  // passait par rien. Mesure du 17/10/2026 : une organisation pouvait creer un
+  // nombre illimite de moniteurs payants.
+  const { limit, plan } = await checkQuota("monitors", orgId);
+  let deja: number;
+  try {
+    deja = await compterMoniteurs(orgId);
+  } catch (err) {
+    // Table absente ou base injoignable : on ne sait ni combien il y en a, ni
+    // ou inscrire le proprietaire. Creer ici produirait un moniteur payant
+    // sans proprietaire, invisible et irrecuperable.
+    logger.error({ err, orgId }, "[BS] registre d'appartenance illisible — creation refusee");
+    throw new AppartenanceNonEnregistrable();
+  }
+  if (deja >= limit) throw new PlafondMoniteursAtteint(deja, limit, plan);
+
   const res = await bsRequest<BSSingleResponse<BSMonitor>>("/monitors", {
     method: "POST",
     body: JSON.stringify({ data: { type: "monitor", attributes: payload } }),
   });
   cache.delete(`monitors:${orgId}`);
+
   // Un moniteur cree depuis FlowPoint a un proprietaire demontre : c'est le
-  // seul cas ou l'appartenance s'etablit toute seule.
-  await enregistrerAppartenance(String(res.data.id), orgId, "created");
+  // seul cas ou l'appartenance s'etablit toute seule. Si l'enregistrement
+  // echoue malgre le controle ci-dessus, le moniteur distant existe deja : on
+  // le supprime pour ne pas laisser un moniteur facture sans proprietaire.
+  try {
+    await enregistrerAppartenance(String(res.data.id), orgId, "created");
+  } catch (err) {
+    logger.error({ err, orgId }, "[BS] appartenance non enregistree — retrait du moniteur distant");
+    await bsRequest<unknown>(`/monitors/${res.data.id}`, { method: "DELETE" }).catch((err2: unknown) =>
+      logger.error({ err: err2, orgId }, "[BS] retrait du moniteur distant impossible — moniteur orphelin chez BetterStack")
+    );
+    throw new AppartenanceNonEnregistrable();
+  }
   return res.data;
 }
 

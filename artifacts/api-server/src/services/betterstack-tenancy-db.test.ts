@@ -57,7 +57,14 @@ beforeAll(async () => {
 afterAll(async () => {
   await pool.query(`DELETE FROM bs_monitor_ownership WHERE org_id LIKE 'bs-%' OR bs_id = 'M-ORPHELIN'`);
 });
-beforeEach(() => { appels.length = 0; });
+beforeEach(async () => {
+  appels.length = 0;
+  // Idempotent : un autre fichier de la suite refait le schema en parallele.
+  await ensureBsOwnershipSchema(pool);
+  await pool.query(
+    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via) VALUES ('M-A',$1,'created'), ('M-B',$2,'created')
+     ON CONFLICT (bs_id) DO UPDATE SET org_id = EXCLUDED.org_id`, [A, B]);
+});
 
 describe("A ne peut rien faire sur les moniteurs de B", () => {
   const interdits: Array<[string, () => Promise<unknown>]> = [

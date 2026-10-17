@@ -122,3 +122,21 @@ export async function proposerAttributions(
   }
   return propositions;
 }
+
+/**
+ * Le registre d'appartenance est-il present et interrogeable dans CET
+ * environnement ?
+ *
+ * Le code d'isolation depend de cette table. Il est fail-closed — sans elle,
+ * toute operation client est refusee — mais il faut pouvoir constater laquelle
+ * des deux situations est en cours avant de s'appuyer sur la fonctionnalite.
+ * Cette sonde ne lit aucune donnee : elle verifie seulement que la table repond.
+ */
+export async function registreAppartenancePresent(db: Queryable | PoolClient): Promise<boolean> {
+  try {
+    await db.query(`SELECT 1 FROM ${BS_OWNERSHIP_TABLE} WHERE false`);
+    return true;
+  } catch {
+    return false;
+  }
+}
