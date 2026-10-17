@@ -52,13 +52,42 @@ export async function ensureBsOwnershipSchema(db: Queryable | PoolClient): Promi
   // passe ulterieure qui pourrait passer avant la creation.
   await db.query(`ALTER TABLE bs_monitor_ownership ENABLE ROW LEVEL SECURITY`);
   await db.query(`ALTER TABLE bs_monitor_ownership FORCE ROW LEVEL SECURITY`);
-  for (const op of ["select", "insert", "update", "delete"] as const) {
-    await db.query(`DROP POLICY IF EXISTS "tenant_${op}" ON bs_monitor_ownership`);
+  // Les policies sont creees SI ELLES MANQUENT — jamais supprimees puis
+  // recreees.
+  //
+  // Mesure du 17/10/2026 : la version precedente faisait
+  // `DROP POLICY IF EXISTS` puis `CREATE POLICY`. Entre les deux, la table
+  // portait RLS active SANS aucune policy. Deux appelants simultanes ouvraient
+  // donc cette fenetre l'un a l'autre — observe dans la suite de tests, ou
+  // deux fichiers tombaient un passage sur deux. Le meme scenario existe en
+  // production des que deux instances demarrent en meme temps.
+  //
+  // La fenetre est fail-closed (RLS sans policy refuse tout), donc jamais une
+  // fuite ; mais elle rend le demarrage non deterministe, et c'est suffisant
+  // pour la supprimer.
+  const policies: Array<[string, string]> = [
+    ["tenant_select", `FOR SELECT USING     (${ORG} = ${GUC})`],
+    ["tenant_insert", `FOR INSERT WITH CHECK (${ORG} = ${GUC})`],
+    ["tenant_update", `FOR UPDATE USING     (${ORG} = ${GUC})`],
+    ["tenant_delete", `FOR DELETE USING     (${ORG} = ${GUC})`],
+  ];
+  for (const [nom, clause] of policies) {
+    const existe = await db.query(
+      `SELECT 1 FROM pg_policy p
+         JOIN pg_class c ON c.oid = p.polrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = 'bs_monitor_ownership' AND p.polname = $1`,
+      [nom]
+    );
+    if ((existe.rowCount ?? existe.rows.length) > 0) continue;
+    try {
+      await db.query(`CREATE POLICY "${nom}" ON bs_monitor_ownership ${clause}`);
+    } catch (err) {
+      // 42710 = duplicate_object : un autre appelant vient de la creer. C'est
+      // le resultat voulu, pas une erreur.
+      if ((err as { code?: string }).code !== "42710") throw err;
+    }
   }
-  await db.query(`CREATE POLICY "tenant_select" ON bs_monitor_ownership FOR SELECT USING     (${ORG} = ${GUC})`);
-  await db.query(`CREATE POLICY "tenant_insert" ON bs_monitor_ownership FOR INSERT WITH CHECK (${ORG} = ${GUC})`);
-  await db.query(`CREATE POLICY "tenant_update" ON bs_monitor_ownership FOR UPDATE USING     (${ORG} = ${GUC})`);
-  await db.query(`CREATE POLICY "tenant_delete" ON bs_monitor_ownership FOR DELETE USING     (${ORG} = ${GUC})`);
 }
 
 /* ═════════ Attribution des moniteurs preexistants ═════════

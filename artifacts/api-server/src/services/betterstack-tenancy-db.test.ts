@@ -32,7 +32,7 @@ vi.stubGlobal("fetch", vi.fn(async (url: string) => {
   return {
     ok: true, status: 200,
     headers: { get: () => null },
-    json: async () => ({ data: [{ id: "M-A", attributes: {} }, { id: "M-B", attributes: {} }, { id: "M-ORPHELIN", attributes: {} }] }),
+    json: async () => ({ data: [{ id: M_A, attributes: {} }, { id: M_B, attributes: {} }, { id: M_ORPHELIN, attributes: {} }] }),
   } as unknown as Response;
 }));
 
@@ -43,36 +43,51 @@ import {
   pauseMonitor, resumeMonitor, monitorsDeLOrganisation,
 } from "./betterstack-service.js";
 
-const A = `bs-A-${Date.now()}`;
-const B = `bs-B-${Date.now()}`;
+// Les identifiants sont propres a CE fichier.
+//
+// Mesure du 17/10/2026 : le nettoyage effacait `org_id LIKE 'bs-%'`, motif qui
+// englobe les organisations `bs-creation-%` d'un AUTRE fichier de test. La
+// suite tournant en parallele, chaque fichier vidait les lignes de l'autre en
+// pleine execution : neuf tests tombaient un passage sur deux, pour une raison
+// etrangere au produit. Les prefixes sont desormais disjoints, et chaque
+// fichier ne nettoie que ce qu'il a pose.
+const JEU = `bsiso-${Date.now()}`;
+const A = `${JEU}-A`;
+const B = `${JEU}-B`;
+/** Les identifiants BetterStack simules, propres a ce fichier. */
+const M_A = `${JEU}-M-A`;
+const M_B = `${JEU}-M-B`;
+const M_ORPHELIN = `${JEU}-M-ORPHELIN`;
 
 beforeAll(async () => {
   await ensureBsOwnershipSchema(pool);
-  await pool.query(`DELETE FROM bs_monitor_ownership WHERE org_id LIKE 'bs-%'`);
+  await pool.query(`DELETE FROM bs_monitor_ownership WHERE org_id = ANY($1) OR bs_id = ANY($2)`,
+    [[A, B], [M_A, M_B, M_ORPHELIN]]);
   await pool.query(
-    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via) VALUES ('M-A',$1,'created'), ('M-B',$2,'created')
-     ON CONFLICT (bs_id) DO UPDATE SET org_id = EXCLUDED.org_id`, [A, B]);
+    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via) VALUES ($3,$1,'created'), ($4,$2,'created')
+     ON CONFLICT (bs_id) DO UPDATE SET org_id = EXCLUDED.org_id`, [A, B, M_A, M_B]);
   // M-ORPHELIN n'est volontairement attribue a personne.
 });
 afterAll(async () => {
-  await pool.query(`DELETE FROM bs_monitor_ownership WHERE org_id LIKE 'bs-%' OR bs_id = 'M-ORPHELIN'`);
+  await pool.query(`DELETE FROM bs_monitor_ownership WHERE org_id = ANY($1) OR bs_id = ANY($2)`,
+    [[A, B], [M_A, M_B, M_ORPHELIN]]);
 });
 beforeEach(async () => {
   appels.length = 0;
   // Idempotent : un autre fichier de la suite refait le schema en parallele.
   await ensureBsOwnershipSchema(pool);
   await pool.query(
-    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via) VALUES ('M-A',$1,'created'), ('M-B',$2,'created')
-     ON CONFLICT (bs_id) DO UPDATE SET org_id = EXCLUDED.org_id`, [A, B]);
+    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via) VALUES ($3,$1,'created'), ($4,$2,'created')
+     ON CONFLICT (bs_id) DO UPDATE SET org_id = EXCLUDED.org_id`, [A, B, M_A, M_B]);
 });
 
 describe("A ne peut rien faire sur les moniteurs de B", () => {
   const interdits: Array<[string, () => Promise<unknown>]> = [
-    ["voir",       () => getMonitor("M-B", A)],
-    ["modifier",   () => updateMonitor("M-B", A, { pronunciation_name: "detourne" } as never)],
-    ["supprimer",  () => deleteMonitor("M-B", A)],
-    ["suspendre",  () => pauseMonitor("M-B", A)],
-    ["reactiver",  () => resumeMonitor("M-B", A)],
+    ["voir",       () => getMonitor(M_B, A)],
+    ["modifier",   () => updateMonitor(M_B, A, { pronunciation_name: "detourne" } as never)],
+    ["supprimer",  () => deleteMonitor(M_B, A)],
+    ["suspendre",  () => pauseMonitor(M_B, A)],
+    ["reactiver",  () => resumeMonitor(M_B, A)],
   ];
   for (const [action, lancer] of interdits) {
     it(`A ne peut pas ${action} le moniteur de B`, async () => {
@@ -84,41 +99,51 @@ describe("A ne peut rien faire sur les moniteurs de B", () => {
   it("la liste de A ne contient jamais le moniteur de B", async () => {
     const vus = await listMonitors(A);
     const ids = vus.map((m) => String(m.id));
-    expect(ids).toContain("M-A");
-    expect(ids, "le moniteur de B a fuite dans la liste de A").not.toContain("M-B");
+    expect(ids).toContain(M_A);
+    expect(ids, "le moniteur de B a fuite dans la liste de A").not.toContain(M_B);
   });
 });
 
 describe("un moniteur sans proprietaire n'appartient a personne", () => {
   it("il n'apparait dans la liste d'aucune organisation", async () => {
-    expect((await listMonitors(A)).map((m) => String(m.id))).not.toContain("M-ORPHELIN");
-    expect((await listMonitors(B)).map((m) => String(m.id))).not.toContain("M-ORPHELIN");
+    expect((await listMonitors(A)).map((m) => String(m.id))).not.toContain(M_ORPHELIN);
+    expect((await listMonitors(B)).map((m) => String(m.id))).not.toContain(M_ORPHELIN);
   });
 
   it("aucune organisation ne peut le modifier, donc aucune ne peut se l'approprier", async () => {
-    await expect(updateMonitor("M-ORPHELIN", A, {} as never)).rejects.toThrow(/not found/i);
-    await expect(updateMonitor("M-ORPHELIN", B, {} as never)).rejects.toThrow(/not found/i);
+    await expect(updateMonitor(M_ORPHELIN, A, {} as never)).rejects.toThrow(/not found/i);
+    await expect(updateMonitor(M_ORPHELIN, B, {} as never)).rejects.toThrow(/not found/i);
     expect(appels).toEqual([]);
   });
 });
 
 describe("l'organisation proprietaire garde son acces", () => {
   it("A agit sur son propre moniteur, et l'appel part", async () => {
-    await expect(updateMonitor("M-A", A, { pronunciation_name: "renomme" } as never)).resolves.toBeDefined();
+    await expect(updateMonitor(M_A, A, { pronunciation_name: "renomme" } as never)).resolves.toBeDefined();
     expect(appels.length, "aucun appel n'est parti alors que l'acces est legitime").toBeGreaterThan(0);
   });
 });
 
 describe("comportements degrades : le doute ne profite jamais a l'appelant", () => {
   it("table absente : tout est refuse, rien ne fuite", async () => {
-    await pool.query(`ALTER TABLE bs_monitor_ownership RENAME TO bs_monitor_ownership_tmp`);
+    // La premiere version RENOMMAIT la table pour simuler son absence. Deux
+    // consequences mesurees le 17/10/2026 : un passage interrompu laissait
+    // `bs_monitor_ownership_tmp` derriere lui et bloquait tous les passages
+    // suivants ; et surtout, la suite tournant en parallele, un autre fichier
+    // lisait la table pendant qu'elle etait renommee — sept tests tombaient
+    // pour une raison qui n'avait rien a voir avec le produit.
+    //
+    // On simule donc l'absence a la SOURCE, sans toucher au schema partage :
+    // la requete echoue, exactement comme avec une table absente.
+    const espion = vi.spyOn(pool, "query").mockRejectedValue(
+      new Error('relation "bs_monitor_ownership" does not exist') as never);
     try {
       expect(await monitorsDeLOrganisation(A)).toEqual(new Set());
-      await expect(updateMonitor("M-A", A, {} as never)).rejects.toThrow(/not found/i);
+      await expect(updateMonitor(M_A, A, {} as never)).rejects.toThrow(/not found/i);
       expect(await listMonitors(A)).toEqual([]);
       expect(appels.filter((u) => u.includes("PATCH")), "une mutation est partie sans appartenance lisible").toEqual([]);
     } finally {
-      await pool.query(`ALTER TABLE bs_monitor_ownership_tmp RENAME TO bs_monitor_ownership`);
+      espion.mockRestore();
     }
   });
 

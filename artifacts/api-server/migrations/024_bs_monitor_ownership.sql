@@ -25,16 +25,33 @@ CREATE INDEX IF NOT EXISTS bs_own_org_idx ON bs_monitor_ownership(org_id);
 ALTER TABLE bs_monitor_ownership ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bs_monitor_ownership FORCE  ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "tenant_select" ON bs_monitor_ownership;
-DROP POLICY IF EXISTS "tenant_insert" ON bs_monitor_ownership;
-DROP POLICY IF EXISTS "tenant_update" ON bs_monitor_ownership;
-DROP POLICY IF EXISTS "tenant_delete" ON bs_monitor_ownership;
-
-CREATE POLICY "tenant_select" ON bs_monitor_ownership FOR SELECT
-  USING      (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true));
-CREATE POLICY "tenant_insert" ON bs_monitor_ownership FOR INSERT
-  WITH CHECK (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true));
-CREATE POLICY "tenant_update" ON bs_monitor_ownership FOR UPDATE
-  USING      (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true));
-CREATE POLICY "tenant_delete" ON bs_monitor_ownership FOR DELETE
-  USING      (COALESCE(org_id::text, 'default') = current_setting('app.current_org_id', true));
+-- Les policies sont creees SI ELLES MANQUENT. Un DROP suivi d'un CREATE
+-- laisserait, entre les deux, une table avec RLS active et AUCUNE policy :
+-- fail-closed, donc jamais une fuite, mais un demarrage non deterministe des
+-- que deux instances s'executent en meme temps.
+DO $$
+DECLARE
+  p record;
+BEGIN
+  FOR p IN
+    SELECT * FROM (VALUES
+      ('tenant_select', 'FOR SELECT USING      (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))'),
+      ('tenant_insert', 'FOR INSERT WITH CHECK (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))'),
+      ('tenant_update', 'FOR UPDATE USING      (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))'),
+      ('tenant_delete', 'FOR DELETE USING      (COALESCE(org_id::text, ''default'') = current_setting(''app.current_org_id'', true))')
+    ) AS t(nom, clause)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policy pol
+        JOIN pg_class c ON c.oid = pol.polrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relname = 'bs_monitor_ownership' AND pol.polname = p.nom
+    ) THEN
+      BEGIN
+        EXECUTE format('CREATE POLICY %I ON bs_monitor_ownership %s', p.nom, p.clause);
+      EXCEPTION WHEN duplicate_object THEN
+        NULL;   -- un autre appelant vient de la creer : resultat voulu
+      END;
+    END IF;
+  END LOOP;
+END $$;

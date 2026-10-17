@@ -197,7 +197,16 @@ describe("5. la migration BetterStack reste distincte de la migration V1", () =>
     const sql = readFileSync(path.join(racine, "migrations/024_bs_monitor_ownership.sql"), "utf8");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS bs_monitor_ownership");
     expect(sql).toContain("FORCE  ROW LEVEL SECURITY");
-    expect((sql.match(/CREATE POLICY/g) ?? []).length).toBe(4);
+    // Les quatre policies sont nommees, et creees SI ELLES MANQUENT. Un
+    // `DROP POLICY` suivi d'un `CREATE POLICY` laisserait entre les deux une
+    // table avec RLS active et aucune policy : fail-closed, donc jamais une
+    // fuite, mais un demarrage non deterministe des que deux instances
+    // s'executent en meme temps.
+    for (const nom of ["tenant_select", "tenant_insert", "tenant_update", "tenant_delete"]) {
+      expect(sql, `${nom} absente de la migration`).toContain(nom);
+    }
+    expect(sql, "la migration supprime des policies avant de les recreer").not.toMatch(/DROP\s+POLICY/i);
+    expect(sql).toMatch(/CREATE POLICY/);
   });
 
   it("la table porte RLS forcee et ses quatre policies", async () => {
