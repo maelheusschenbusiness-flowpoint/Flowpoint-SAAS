@@ -317,7 +317,6 @@ router.patch("/ai/preferences", async (req: Request, res: Response): Promise<voi
       },
     });
   } catch (err) {
-    const { logger } = await import("../lib/logger.js");
     logger.error({ err, orgId }, "[AI Prefs] PATCH /ai/preferences failed");
     res.status(500).json({ ok: false, code: "PREFS_SAVE_FAILED" });
   }
