@@ -17,6 +17,7 @@ import { initAgentTables } from "./services/init-agent-tables.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
+import { fetchBorne, DELAIS } from "./lib/fetch-borne.js";
 const PORT = env.PORT;
 
 // ── Schema health check ────────────────────────────────────────────────────────
@@ -356,9 +357,9 @@ async function main() {
     const domain    = fromAddr.split("@")[1] ?? "";
     logger.info(`[Resend] Configured from="${resendFrom}" domain="${domain}" — verify SPF/DKIM in Resend dashboard if emails fail`);
     try {
-      const resp = await fetch("https://api.resend.com/domains", {
+      const resp = await fetchBorne("https://api.resend.com/domains", {
         headers: { Authorization: `Bearer ${resendKey}` },
-      });
+      }, DELAIS.courriel);
       if (!resp.ok) {
         logger.warn({ status: resp.status }, "[Resend] Could not list domains — check RESEND_API_KEY");
         return;

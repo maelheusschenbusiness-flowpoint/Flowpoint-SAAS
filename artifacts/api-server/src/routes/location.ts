@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { logger } from "../lib/logger.js";
 
+import { fetchBorne, DELAIS, estDepassementDeDelai } from "../lib/fetch-borne.js";
 const router = Router();
 
 // ── GET /api/org/location ─────────────────────────────────────────────────────
@@ -126,9 +127,20 @@ async function googleGeocode(params: string): Promise<{ ok: boolean; status: str
   const key = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
   if (!key) return { ok: false, status: "NO_SERVER_KEY" };
   const url = `https://maps.googleapis.com/maps/api/geocode/json?${params}&language=fr&key=${key}`;
-  const r = await fetch(url);
+  // Cette fonction ne doit jamais lever : son appelant compte sur `ok: false`
+  // pour basculer sur Nominatim. Un delai depasse est donc rendu comme un
+  // echec ordinaire, et le repli s'applique.
+  // Le type `Response` importe ici est celui d'Express : on prend donc le
+  // type de retour reel de la sortie reseau.
+  let r: Awaited<ReturnType<typeof fetchBorne>>;
+  try {
+    r = await fetchBorne(url, {}, DELAIS.cartographie);
+  } catch (err) {
+    return { ok: false, status: estDepassementDeDelai(err) ? "TIMEOUT" : "NETWORK_ERROR" };
+  }
   if (!r.ok) return { ok: false, status: `HTTP_${r.status}` };
-  const data = await r.json() as { status: string; results?: Array<Record<string, unknown>> };
+  const data = await r.json().catch(() => null) as { status: string; results?: Array<Record<string, unknown>> } | null;
+  if (!data) return { ok: false, status: "BAD_RESPONSE" };
   if (data.status === "OK" && data.results?.[0]) return { ok: true, status: "OK", result: data.results[0] };
   return { ok: false, status: data.status };
 }
@@ -157,7 +169,7 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
       }
       // Explicit opt-in fallback
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${Number(lat)}&lon=${Number(lng)}&accept-language=fr`;
-      const r = await fetch(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } });
+      const r = await fetchBorne(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } }, DELAIS.cartographie);
       if (!r.ok) throw new Error(`Nominatim reverse ${r.status}`);
       const data = await r.json() as Record<string, unknown>;
       const addr = (data.address ?? {}) as Record<string, string>;
@@ -192,7 +204,7 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
       // Explicit opt-in fallback
       const encoded = encodeURIComponent(address.trim());
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1&accept-language=fr&addressdetails=1`;
-      const r = await fetch(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } });
+      const r = await fetchBorne(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } }, DELAIS.cartographie);
       if (!r.ok) throw new Error(`Nominatim search ${r.status}`);
       const data = await r.json() as Record<string, unknown>[];
       if (!data[0]) {

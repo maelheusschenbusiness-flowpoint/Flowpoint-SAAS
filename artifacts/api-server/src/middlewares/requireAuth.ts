@@ -55,13 +55,35 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
   }
 
   if (!provided) {
-    if (!serviceSecret && !isProduction) {
+    // CONTOURNEMENT DE DEVELOPPEMENT, SUR DEMANDE EXPLICITE SEULEMENT.
+    //
+    // Mesure du 17/10/2026, pendant la mise en place des tests E2E : la
+    // condition etait `!serviceSecret && !isProduction`. Autrement dit, toute
+    // instance ou API_SECRET_KEY n'etait pas renseignee et ou NODE_ENV ne
+    // valait pas exactement "production" servait l'INTEGRALITE de l'API privee
+    // a un appelant anonyme. Constate en local : /api/missions et /api/reports
+    // repondaient 200 sans aucune credential.
+    //
+    // Les deux instances deployees repondent bien 401 — elles posent
+    // NODE_ENV=production — donc ce n'etait pas une faille en production. Mais
+    // l'ouverture dependait de l'ABSENCE d'une variable, c'est-a-dire d'un
+    // oubli. Une variable oubliee sur un futur environnement d'apercu aurait
+    // tout ouvert, en silence.
+    //
+    // Elle demande desormais une intention declaree, et refuse de s'appliquer
+    // en production meme si le drapeau est pose.
+    const contournementDemande = process.env["ALLOW_UNAUTHENTICATED_DEV"] === "true";
+    if (contournementDemande && !isProduction) {
       if (!MISSING_KEY_WARNING_SHOWN.shown) {
-        logger.warn("[Auth] API_SECRET_KEY not set. Auth is disabled in development.");
+        logger.warn("[Auth] ALLOW_UNAUTHENTICATED_DEV=true — l'authentification est DESACTIVEE sur cette instance.");
         MISSING_KEY_WARNING_SHOWN.shown = true;
       }
       next();
       return;
+    }
+    if (!serviceSecret && !isProduction && !MISSING_KEY_WARNING_SHOWN.shown) {
+      logger.warn("[Auth] API_SECRET_KEY absente. L'API privee reste FERMEE — posez ALLOW_UNAUTHENTICATED_DEV=true pour l'ouvrir en developpement.");
+      MISSING_KEY_WARNING_SHOWN.shown = true;
     }
     // Normal unauthenticated browser request — not a security event
     logger.debug({ method: req.method, url: req.url?.split("?")[0] }, "[Auth] 401 no credentials");
