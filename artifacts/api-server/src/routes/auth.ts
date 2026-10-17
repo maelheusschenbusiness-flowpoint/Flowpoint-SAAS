@@ -2749,8 +2749,22 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
   }
   const { email = "test@flowpoint.pro", orgId = "default", role = "admin" } = (req.body as { email?: string; orgId?: string; role?: string }) || {};
   try {
+    // Ces deux portes existent pour Playwright. Elles posaient `userId: email`
+    // et aucun `userUuid` : les sessions produites etaient rejetees par la
+    // resolution d'organisation, et toute requete repondait 401. Elles ne
+    // servaient donc plus a rien — mesure du 18/10/2026.
+    //
+    // On resout l'UUID depuis `users`, comme le fait la verification de lien.
+    // Sans lui, la matrice des roles n'est testable qu'en ecrivant a la main
+    // dans `user_sessions`.
+    const _devUser = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    const _devUuid = _devUser.rows[0]?.id;
     const token = await createSession({
-      userId: email, orgId, email, role,
+      userId: _devUuid ?? email, orgId, email, role,
+      ...(_devUuid ? { userUuid: _devUuid } : {}),
       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -2785,8 +2799,22 @@ router.get("/auth/dev-login", async (req: Request, res: Response) => {
   const role     = (req.query["role"]   as string) || "admin";
   const redirect = (req.query["redirect"] as string) || "/dashboard.html";
   try {
+    // Ces deux portes existent pour Playwright. Elles posaient `userId: email`
+    // et aucun `userUuid` : les sessions produites etaient rejetees par la
+    // resolution d'organisation, et toute requete repondait 401. Elles ne
+    // servaient donc plus a rien — mesure du 18/10/2026.
+    //
+    // On resout l'UUID depuis `users`, comme le fait la verification de lien.
+    // Sans lui, la matrice des roles n'est testable qu'en ecrivant a la main
+    // dans `user_sessions`.
+    const _devUser = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    const _devUuid = _devUser.rows[0]?.id;
     const token = await createSession({
-      userId: email, orgId, email, role,
+      userId: _devUuid ?? email, orgId, email, role,
+      ...(_devUuid ? { userUuid: _devUuid } : {}),
       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
