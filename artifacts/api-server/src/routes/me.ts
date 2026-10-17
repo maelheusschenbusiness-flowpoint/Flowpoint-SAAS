@@ -926,51 +926,25 @@ router.get("/settings/api-keys", async (req: Request, res: Response): Promise<vo
 router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const tables = [
-    // Core SEO & audit data
-    "audits", "audit_schedules", "reports", "report_exports",
-    // Monitoring
-    "monitors", "monitor_checks", "monitor_incidents",
-    "alert_rules", "alert_events",
-    // Keywords, calendar, team
-    "tracked_keywords", "calendar_events",
-    "team_messages", "team_files",
-    // Automations & workflows
-    "automation_integrations", "automation_workflows", "automation_runs",
-    "automation_logs", "workflow_runs", "incoming_webhooks",
-    // AI & missions
-    "missions", "mission_history", "mission_ai_logs",
-    "ai_usage_logs", "ai_monthly_usage",
-    // Analytics & SEO tools
-    "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
-    "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
-    "behavior_events", "behavior_sessions",
-    "traffic_sources", "traffic_losses",
-    "cro_scores", "cro_experiments", "revenue_leaks",
-    // Competitors & Local SEO
-    "competitors", "competitor_analysis", "competitor_map_results",
-    "gbp_profiles", "local_pack_history",
-    // Notifications, activity, misc
-    "notifications",
-    "org_checklist",
-    "overview_insights_cache", "overview_insights_rl",
-    "activity_log", "share_tokens", "growth_objectives",
-  ];
+  // La liste etait ecrite a la main : mesure du 17/10/2026, elle couvrait 38
+  // des 114 tables portant org_id. Un client qui demandait la purge de ses
+  // donnees en conservait donc 76 tables. La liste est desormais DECOUVERTE
+  // dans information_schema, moins les tables du compte lui-meme — identite,
+  // droits et facturation, nommees dans TABLES_COMPTE_A_PRESERVER.
+  const { decouvrirTablesOrganisation, TABLES_COMPTE_A_PRESERVER } =
+    await import("../services/account-deletion.js");
   const { pool: pgPool } = await import("@workspace/db");
   const client = await pgPool.connect();
   let deleted = 0;
   try {
-    const existCheck = await client.query<{ tablename: string }>(
-      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
-      [tables]
-    );
-    const existing = new Set(existCheck.rows.map(r => r.tablename));
+    const cibles = await decouvrirTablesOrganisation(client, { exclure: TABLES_COMPTE_A_PRESERVER });
     await client.query("BEGIN");
     try {
-      for (const t of tables.filter(t => existing.has(t))) {
+      for (const { table, colonne } of cibles) {
         const r = await client.query(
-          // ai_usage_logs.org_id is UUID; explicit cast handles all column types safely
-          `DELETE FROM ${t} WHERE org_id::text = $1`,
+          // org_id est `text` dans la plupart des tables et `uuid` dans huit
+          // d'entre elles : le cast couvre les deux.
+          `DELETE FROM ${table} WHERE ${colonne}::text = $1`,
           [orgId]
         );
         deleted += r.rowCount ?? 0;

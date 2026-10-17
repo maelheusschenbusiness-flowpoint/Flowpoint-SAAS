@@ -1775,60 +1775,17 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
       // Verified against information_schema + Supabase REST API.
       // Absent tables (psi_cache, tracked_keywords_history, etc.) are excluded;
       // .catch() swallows errors for any that were provisioned after this list was built.
-      for (const tbl of [
-        // Core audits / performance
-        "audits","audit_schedules","audit_trail","pagespeed_history","pagespeed_results",
-        // Monitors
-        "monitors","monitor_checks","monitor_incidents","monitor_logs",
-        // Alerts & keywords
-        "alert_rules","alert_events","ranking_alerts",
-        "tracked_keywords","keyword_clusters","keyword_history","keyword_opportunities",
-        // Missions
-        "missions","mission_history","mission_ai_logs",
-        "ai_generated_missions","ai_setup_logs","ai_recommendations",
-        "mission_impact_scores","mission_priorities","mission_templates",
-        // Reports
-        "reports","report_exports","report_templates",
-        // Calendar
-        "calendar_events",
-        // Team
-        "team_members","team_messages","team_files","team_channels",
-        // Automation
-        "automation_integrations","automation_workflows","automation_runs",
-        "automation_logs","automation_templates","workflow_runs","incoming_webhooks",
-        // Google / OAuth
-        "google_tokens","google_oauth_states","google_accounts",
-        "google_locations","google_reviews","google_product_connections",
-        // GitHub
-        "github_connections",
-        // Competitors
-        "competitors","competitor_map_results","competitor_movements","competitor_rankings",
-        // Funnels / growth
-        "funnels","funnel_steps","growth_objectives","seo_forecasts","share_tokens",
-        // Org config & billing
-        "org_addons","org_checklist","org_secrets","org_auth_config",
-        "subscriptions","org_member_permissions","sso_providers",
-        // Checkout & overview cache
-        "checkout_post_tokens","overview_insights_cache","overview_insights_rl",
-        // AI
-        "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
-        "ai_chat_history","ai_action_logs","ai_action_proposals",
-        "ai_autopilot_grants","ai_usage_pending_writes","ai_workspace_profiles",
-        "ai_market_reports","ai_review_replies",
-        // Activity / notifications
-        "activity_logs","notifications","user_prefs","user_activity_days",
-        "login_audits","permission_logs","access_audits",
-        // Onboarding
-        "onboarding_sessions",
-        // Other business data
-        "local_pack_history","local_heatmaps","industry_signals",
-        "connectors","dataforseo_quota","reviews","roles",
-        "market_opportunities","market_trends","usage_events",
-        "gbp_locations","gbp_posts",
-        // Legacy org settings
-        "org_settings",
-      ] as const) {
-        await safeDeleteUUIDSP(tbl, "org_id", orgIdsToDelete);
+      // La liste etait ecrite a la main. Mesure du 17/10/2026 : elle couvrait
+      // 91 des 114 tables portant org_id — 23 oubliees, dont les lignes
+      // restaient en base apres la suppression de l'organisation. Une liste
+      // litterale se perime a la table suivante ; c'est la cause structurelle
+      // des lignes orphelines mesurees en production. Les tables sont
+      // desormais decouvertes dans information_schema, comme le fait deja le
+      // chemin de suppression declenche par le client.
+      const { decouvrirTablesOrganisation } = await import("../services/account-deletion.js");
+      for (const { table, colonne } of await decouvrirTablesOrganisation(client)) {
+        if (table === "organizations" || table === "organization_members") continue; // traitees plus bas
+        await safeDeleteUUIDSP(table, colonne, orgIdsToDelete);
       }
 
       // organization_members uses `organization_id` (not `org_id`) — handle separately.
@@ -2603,15 +2560,17 @@ router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise
     const ownerUserId = ownerRes.rows[0]?.owner_user_id ?? null;
 
     // Delete all data associated with this org
-    const tables = ["monitors","audits","reports","org_addons","org_settings","notifications",
-      "team_members","team_invitations","usage_events","org_checklist","billing_events",
-      "calendar_events","alert_rules","alert_events"];
+    // Cette liste comptait quatorze tables sur les 114 portant org_id : mesure
+    // du 17/10/2026, cent tables etaient oubliees a chaque suppression d'une
+    // organisation de recette. Decouverte dynamique, comme ailleurs.
+    const { decouvrirTablesOrganisation } = await import("../services/account-deletion.js");
     let totalDeleted = 0;
-    for (const t of tables) {
+    for (const { table, colonne } of await decouvrirTablesOrganisation(pool)) {
+      if (table === "organizations") continue; // supprimee en dernier, plus bas
       try {
-        const r = await pool.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId]);
+        const r = await pool.query(`DELETE FROM ${table} WHERE ${colonne}::text = $1`, [orgId]);
         totalDeleted += r.rowCount ?? 0;
-      } catch { /* table may not exist — skip */ }
+      } catch { /* contrainte ou table absente — ignoree */ }
     }
     // Delete organization + owner user (if QA user)
     await pool.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId]);
