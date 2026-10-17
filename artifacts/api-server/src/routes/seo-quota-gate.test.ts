@@ -21,6 +21,11 @@ import path from "node:path";
 const quotaMock = vi.fn();
 vi.mock("../services/dataforseo-service.js", () => ({
   checkAndIncrementQuota: quotaMock,
+  verifierEtConsommerQuota: async (...a: unknown[]) =>
+    (await quotaMock(...a)) ? { autorise: true, utilise: 1, limite: 1000 }
+                            : { autorise: false, motif: "plafond", utilise: 1000, limite: 1000 },
+  rembourserQuota: vi.fn(async () => undefined),
+  suivreAppelsPayants: async (fn: () => Promise<unknown>) => ({ resultat: await fn(), appelsReussis: 1 }),
   getQuotaUsage: () => ({ used: 1000, limit: 1000, resetAt: "demain" }),
   getQuotaUsageFromDB: async () => ({ used: 1000, limit: 1000, resetAt: "demain" }),
 }));
@@ -89,8 +94,18 @@ describe("le code de production porte bien le await", () => {
     path.join(import.meta.dirname ?? __dirname, "seo.ts"), "utf8");
 
   it("withQuota attend le resultat du quota", () => {
-    expect(src).toMatch(/if\s*\(\s*!\(\s*await\s+checkAndIncrementQuota\(/);
+    // Le defaut d'origine : `if (!checkAndIncrementQuota(...))` sans await.
+    expect(src).toMatch(/const\s+verdict\s*=\s*await\s+verifierEtConsommerQuota\(/);
     expect(src).not.toMatch(/if\s*\(\s*!checkAndIncrementQuota\(/);
+    expect(src).not.toMatch(/if\s*\(\s*!verifierEtConsommerQuota\(/);
+  });
+
+  it("withQuota distingue le plafond (429) de la verification impossible (503)", () => {
+    // Fail-closed : une base injoignable ne doit pas se presenter comme un
+    // plafond atteint, et ne doit jamais autoriser l'appel payant.
+    expect(src).toMatch(/motif\s*===\s*"indisponible"/);
+    expect(src).toMatch(/status\(503\)/);
+    expect(src).toMatch(/QUOTA_CHECK_UNAVAILABLE/);
   });
 
   it("les onze endpoints payants passent toujours par withQuota", () => {
