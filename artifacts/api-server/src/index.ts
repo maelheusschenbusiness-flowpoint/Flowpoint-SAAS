@@ -10,6 +10,7 @@ import { initDataTables } from "./services/init-data-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { ensureCheckoutPostTokensSchema } from "./services/init-checkout-post-tokens.js";
+import { ensureBsOwnershipSchema } from "./services/init-bs-ownership.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { reportSchemaGateStatus } from "./services/schema-gate-status.js";
@@ -248,6 +249,17 @@ async function main() {
         // sans aucune policy tant qu'une passe RLS ulterieure n'etait pas
         // passee, et l'ordre de ces deux etapes asynchrones n'etait pas garanti.
         await ensureCheckoutPostTokensSchema(client);
+        // Appartenance des moniteurs BetterStack. Volontairement best-effort
+        // et independante de la migration V1 : si la table manque, le service
+        // BetterStack refuse tout (voir monitorsDeLOrganisation) et le
+        // monitoring natif n'est pas affecte. Le journal dit laquelle des deux
+        // situations est en cours, pour que la presence soit verifiable.
+        try {
+          await ensureBsOwnershipSchema(client);
+          logger.info("[startup] bs_monitor_ownership ensured");
+        } catch (err: unknown) {
+          logger.error({ err }, "[startup] bs_monitor_ownership ABSENTE — BetterStack refusera toute operation client");
+        }
         logger.info("[startup] new-signup-schema ensured (pending_signups, checkout_post_tokens, postal_code, vat)");
       } finally { client.release(); }
     }).catch((err: unknown) => {
