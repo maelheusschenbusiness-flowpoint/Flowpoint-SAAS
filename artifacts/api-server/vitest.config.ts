@@ -21,6 +21,7 @@ export default defineConfig({
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
+      "src/lib/logger-redaction.test.ts",
       "src/lib/carry-params.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
