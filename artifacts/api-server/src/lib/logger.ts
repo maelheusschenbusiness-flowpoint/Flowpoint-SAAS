@@ -39,6 +39,12 @@ const CHAMPS_SENSIBLES = [
   "authorization", "cookie", "setupIntentSecret",
   "privateKey", "signingSecret", "webhookSecret", "signature",
   "connectionString", "databaseUrl", "dbUrl",
+  // Un lien de connexion est une credential rejouable, pas une URL anodine.
+  // Mesure du 17/10/2026 : routes/auth.ts journalise `debugLink` quand aucun
+  // transport courriel n'est configure. Ce chemin est verrouille par
+  // `!isProduction` et ne se declenche donc jamais en production — la cle est
+  // masquee quand meme, pour que le prochain site d'appel n'ait rien a savoir.
+  "debugLink", "verifyPath", "magicLink", "loginLink", "inviteUrl", "resetLink",
 ];
 
 /** `API_KEY`, `api-key`, `apiKey` et `apikey` designent la meme chose. */
@@ -68,6 +74,8 @@ const MOTIFS_VALEURS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, CENSURE],
   // Chaine de connexion portant un mot de passe
   [/\b([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+):[^@\s/]+@/gi, `$1:${CENSURE}@`],
+  // Lien de connexion ou d'invitation portant un jeton
+  [/([?&]token=)[A-Za-z0-9._~+/=-]{16,}/g, `$1${CENSURE}`],
 ];
 
 function masquerChaine(valeur: string): string {

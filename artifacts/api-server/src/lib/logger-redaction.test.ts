@@ -133,6 +133,27 @@ describe("les secrets reconnaissables a leur forme, sous une cle anodine", () =>
   });
 });
 
+describe("un lien de connexion est une credential, pas une URL", () => {
+  const LIEN = "https://flowpoint.pro/login-verify.html?token=" + "a".repeat(64);
+
+  it("la cle `debugLink` est masquee", () => {
+    expect(brut({ debugLink: LIEN })).not.toContain("aaaaaaaa");
+  });
+
+  it("les autres portes d'entree le sont aussi", () => {
+    for (const cle of ["verifyPath", "magicLink", "loginLink", "inviteUrl", "resetLink"]) {
+      expect(brut({ [cle]: LIEN }), `${cle} n'est pas masque`).not.toContain("aaaaaaaa");
+    }
+  });
+
+  it("un lien a jeton sous une cle anodine est masque par sa forme", () => {
+    const sortie = brut({ cible: LIEN });
+    expect(sortie).not.toContain("aaaaaaaa");
+    // Le chemin reste lisible : on doit pouvoir savoir de quel lien il s'agit.
+    expect(sortie).toContain("login-verify.html");
+  });
+});
+
 describe("masquer ne doit jamais casser ni aveugler le journal", () => {
   it("err.type, err.message et err.stack restent presents", () => {
     const sortie = journaliser({ err: new Error("message lisible") });
