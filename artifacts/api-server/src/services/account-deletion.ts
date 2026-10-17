@@ -798,23 +798,37 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
     // so they are absent from fullyDeleted and not caught above.
     // Delete them explicitly so re-registration with the same email works.
     if (email) {
+      // IMPORTANT : exclure les utilisateurs PRESERVES.
+      //
+      // `users.status` vaut 'pending' PAR DEFAUT dans ce schema. Sans cette
+      // exclusion, ce nettoyage effacait tout utilisateur portant cet e-mail
+      // et encore 'pending' — y compris celui que la resolution venait tout
+      // juste de preserver parce qu'il appartient a une AUTRE organisation.
+      //
+      // Mesure du 17/10/2026, revalidation a deux organisations : l'issue
+      // etait l'une ou l'autre, les deux fausses. Soit l'utilisateur
+      // multi-organisations etait efface et perdait l'acces a son autre
+      // organisation ; soit une cle etrangere vers `users` faisait echouer la
+      // transaction entiere, et la suppression ne supprimait RIEN en silence.
+      const _puPreserves = preservedMultiOrg.length > 0 ? preservedMultiOrg : [""];
+      const _puPredicat = `lower(email)=lower($1) AND status='pending' AND id::text <> ALL($2::text[])`;
       const _puBefore = await client.query(
-        `SELECT COUNT(*)::int AS n FROM users WHERE lower(email)=lower($1) AND status='pending'`,
-        [email],
+        `SELECT COUNT(*)::int AS n FROM users WHERE ${_puPredicat}`,
+        [email, _puPreserves],
       );
       const _puCount = (_puBefore.rows[0] as { n: number }).n;
       if (_puCount > 0) {
         const _puDel = (await client.query(
-          `DELETE FROM users WHERE lower(email)=lower($1) AND status='pending'`,
-          [email],
+          `DELETE FROM users WHERE ${_puPredicat}`,
+          [email, _puPreserves],
         )) as unknown as { rowCount: number };
         const _puAfter = await client.query(
-          `SELECT COUNT(*)::int AS n FROM users WHERE lower(email)=lower($1) AND status='pending'`,
-          [email],
+          `SELECT COUNT(*)::int AS n FROM users WHERE ${_puPredicat}`,
+          [email, _puPreserves],
         );
         tableRecords.push({
           table: "users",
-          predicate: "lower(email)=lower($1) AND status='pending'",
+          predicate: _puPredicat,
           rowsBefore: _puCount,
           rowsDeleted: _puDel.rowCount ?? 0,
           rowsAfter: (_puAfter.rows[0] as { n: number }).n,

@@ -108,6 +108,8 @@ export default defineConfig({
       "src/services/account-deletion-session-kill.test.ts",
       // Le mecanisme de suppression cree-t-il encore des orphelins ? (17/10/2026)
       "src/services/org-deletion-orphans-db.test.ts",
+      // Revalidation a DEUX organisations : tables partagees et relations indirectes.
+      "src/services/org-deletion-two-orgs-db.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",
