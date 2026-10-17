@@ -145,21 +145,78 @@ interface BSSingleResponse<T> {
 }
 
 // ── Monitors ──────────────────────────────────────────────────────────────────
+/* ═════════ Isolation multi-locataire ═════════
+ * Le compte BetterStack est partage. L'appartenance d'un moniteur a une
+ * organisation vit donc chez nous, dans `bs_monitor_ownership`, et c'est elle
+ * — jamais l'identifiant fourni par le client — qui autorise une operation.
+ */
+
+/** Erreur portant son propre statut HTTP, pour que la route n'ait rien a deviner. */
+export class MonitorIntrouvable extends Error {
+  readonly statusCode = 404;
+  constructor() {
+    // 404 et non 403 : confirmer l'existence d'un moniteur qu'on n'a pas le
+    // droit de toucher renseignerait deja l'appelant sur le parc d'autrui.
+    super("Monitor not found");
+    this.name = "MonitorIntrouvable";
+  }
+}
+
+/** Identifiants des moniteurs appartenant a cette organisation. */
+export async function monitorsDeLOrganisation(orgId: string): Promise<Set<string>> {
+  try {
+    const r = await pool.query<{ bs_id: string }>(
+      `SELECT bs_id FROM bs_monitor_ownership WHERE org_id = $1`,
+      [orgId]
+    );
+    return new Set(r.rows.map((x) => String(x.bs_id)));
+  } catch (err) {
+    // Table absente ou base injoignable : on ne sait pas a qui appartient quoi.
+    // On refuse donc TOUT plutot que de laisser passer — un doute sur
+    // l'appartenance ne doit jamais se resoudre en faveur de l'appelant.
+    logger.error({ err, orgId }, "[BS] appartenance illisible — acces refuse par defaut");
+    return new Set();
+  }
+}
+
+/** Leve si le moniteur n'appartient pas explicitement a cette organisation. */
+async function exigerAppartenance(bsId: string, orgId: string): Promise<void> {
+  const possedes = await monitorsDeLOrganisation(orgId);
+  if (!possedes.has(String(bsId))) throw new MonitorIntrouvable();
+}
+
+/** Enregistre l'appartenance d'un moniteur cree depuis FlowPoint. */
+export async function enregistrerAppartenance(bsId: string, orgId: string, via: "created" | "backfill_url"): Promise<void> {
+  await pool.query(
+    `INSERT INTO bs_monitor_ownership (bs_id, org_id, claimed_via)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (bs_id) DO NOTHING`,   // un moniteur deja attribue ne change pas de main
+    [String(bsId), orgId, via]
+  );
+}
+
 export async function listMonitors(orgId: string): Promise<BSMonitor[]> {
   const cacheKey = `monitors:${orgId}`;
   const cached = getCache<BSMonitor[]>(cacheKey);
   if (cached) return cached;
 
   const res = await bsRequest<BSListResponse<BSMonitor>>("/monitors?per_page=250");
-  const monitors = res.data || [];
-  setCache(cacheKey, monitors, 30_000);
+  const tous = res.data || [];
 
-  // Persist to DB
+  // Le compte BetterStack est partage : l'appel renvoie TOUT le parc. On ne
+  // garde que ce qui appartient explicitement a cette organisation. Un moniteur
+  // sans proprietaire n'est a personne et reste invisible — c'est ce qui
+  // empeche la premiere organisation qui liste de s'approprier le parc.
+  const possedes = await monitorsDeLOrganisation(orgId);
+  const monitors = tous.filter((m) => possedes.has(String(m.id)));
+
+  setCache(cacheKey, monitors, 30_000);
   await syncMonitorsToDB(monitors, orgId);
   return monitors;
 }
 
-export async function getMonitor(bsId: string): Promise<BSMonitor> {
+export async function getMonitor(bsId: string, orgId: string): Promise<BSMonitor> {
+  await exigerAppartenance(bsId, orgId);
   const res = await bsRequest<BSSingleResponse<BSMonitor>>(`/monitors/${bsId}`);
   return res.data;
 }
@@ -179,10 +236,14 @@ export async function createMonitor(orgId: string, payload: {
     body: JSON.stringify({ data: { type: "monitor", attributes: payload } }),
   });
   cache.delete(`monitors:${orgId}`);
+  // Un moniteur cree depuis FlowPoint a un proprietaire demontre : c'est le
+  // seul cas ou l'appartenance s'etablit toute seule.
+  await enregistrerAppartenance(String(res.data.id), orgId, "created");
   return res.data;
 }
 
 export async function updateMonitor(bsId: string, orgId: string, attrs: Partial<BSMonitor["attributes"]>): Promise<BSMonitor> {
+  await exigerAppartenance(bsId, orgId);
   const res = await bsRequest<BSSingleResponse<BSMonitor>>(`/monitors/${bsId}`, {
     method: "PATCH",
     body: JSON.stringify({ data: { type: "monitor", attributes: attrs } }),
@@ -192,22 +253,26 @@ export async function updateMonitor(bsId: string, orgId: string, attrs: Partial<
 }
 
 export async function deleteMonitor(bsId: string, orgId: string): Promise<void> {
+  await exigerAppartenance(bsId, orgId);
   await bsRequest<unknown>(`/monitors/${bsId}`, { method: "DELETE" });
   cache.delete(`monitors:${orgId}`);
 }
 
 export async function pauseMonitor(bsId: string, orgId: string): Promise<void> {
+  await exigerAppartenance(bsId, orgId);
   await bsRequest<unknown>(`/monitors/${bsId}/pause`, { method: "POST" });
   cache.delete(`monitors:${orgId}`);
 }
 
 export async function resumeMonitor(bsId: string, orgId: string): Promise<void> {
+  await exigerAppartenance(bsId, orgId);
   await bsRequest<unknown>(`/monitors/${bsId}/resume`, { method: "POST" });
   cache.delete(`monitors:${orgId}`);
 }
 
 // ── Monitor SLA ───────────────────────────────────────────────────────────────
-export async function getMonitorSLA(bsId: string, fromDate?: string, toDate?: string): Promise<unknown> {
+export async function getMonitorSLA(bsId: string, orgId: string, fromDate?: string, toDate?: string): Promise<unknown> {
+  await exigerAppartenance(bsId, orgId);
   const cacheKey = `sla:${bsId}:${fromDate}:${toDate}`;
   const cached = getCache<unknown>(cacheKey);
   if (cached) return cached;

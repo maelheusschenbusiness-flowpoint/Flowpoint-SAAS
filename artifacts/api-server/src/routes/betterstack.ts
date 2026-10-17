@@ -38,7 +38,9 @@ router.get("/betterstack/stats", async (req, res) => {
     res.json(stats);
   } catch (err) {
     logger.error({ err }, "[BS] stats error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -51,18 +53,22 @@ router.get("/betterstack/monitors", async (req, res) => {
     res.json({ data: monitors, count: monitors.length });
   } catch (err) {
     logger.error({ err }, "[BS] list monitors error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
 router.get("/betterstack/monitors/:id", async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
-    const monitor = await getMonitor(req.params.id);
+    const monitor = await getMonitor(req.params.id, (req as unknown as { orgId?: string }).orgId ?? "default");
     res.json(monitor);
   } catch (err) {
     logger.error({ err }, "[BS] get monitor error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -79,7 +85,9 @@ router.post("/betterstack/monitors", async (req, res) => {
     res.status(201).json(monitor);
   } catch (err) {
     logger.error({ err }, "[BS] create monitor error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -91,7 +99,9 @@ router.patch("/betterstack/monitors/:id", async (req, res) => {
     res.json(monitor);
   } catch (err) {
     logger.error({ err }, "[BS] update monitor error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -103,7 +113,9 @@ router.delete("/betterstack/monitors/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "[BS] delete monitor error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -114,7 +126,9 @@ router.post("/betterstack/monitors/:id/pause", async (req, res) => {
     await pauseMonitor(req.params.id, orgId);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -125,7 +139,9 @@ router.post("/betterstack/monitors/:id/resume", async (req, res) => {
     await resumeMonitor(req.params.id, orgId);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -133,10 +149,12 @@ router.get("/betterstack/monitors/:id/sla", async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
     const { from, to } = req.query as { from?: string; to?: string };
-    const data = await getMonitorSLA(req.params.id, from, to);
+    const data = await getMonitorSLA(req.params.id, (req as unknown as { orgId?: string }).orgId ?? "default", from, to);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -147,7 +165,9 @@ router.get("/betterstack/monitors/:id/response-times", async (req, res) => {
     const data = await getResponseTimes(req.params.id, period);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -166,7 +186,9 @@ router.get("/betterstack/incidents", async (req, res) => {
     res.json({ data: incidents, count: incidents.length });
   } catch (err) {
     logger.error({ err }, "[BS] list incidents error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -176,7 +198,9 @@ router.get("/betterstack/incidents/:id", async (req, res) => {
     const incident = await getIncident(req.params.id);
     res.json(incident);
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -186,7 +210,9 @@ router.post("/betterstack/incidents/:id/acknowledge", async (req, res) => {
     await acknowledgeIncident(req.params.id);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -199,7 +225,9 @@ router.get("/betterstack/heartbeats", async (req, res) => {
     res.json({ data: hbs, count: hbs.length });
   } catch (err) {
     logger.error({ err }, "[BS] list heartbeats error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -212,7 +240,9 @@ router.post("/betterstack/heartbeats", async (req, res) => {
     const hb = await createHeartbeat(orgId, { name, period, grace, email });
     res.status(201).json(hb);
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -225,7 +255,9 @@ router.get("/betterstack/status-pages", async (req, res) => {
     res.json({ data: pages, count: pages.length });
   } catch (err) {
     logger.error({ err }, "[BS] list status pages error");
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
@@ -238,7 +270,9 @@ router.post("/betterstack/status-pages", async (req, res) => {
     const page = await createStatusPage(orgId, { name, subdomain, custom_domain });
     res.status(201).json(page);
   } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+    // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
+      // croire a une panne alors que l'acces est simplement refuse.
+      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 

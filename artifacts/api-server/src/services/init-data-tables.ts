@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { ensureCheckoutPostTokensSchema } from "./init-checkout-post-tokens.js";
+import { ensureBsOwnershipSchema } from "./init-bs-ownership.js";
 import { repairOrgGucPolicies } from "./rls-guc-repair.js";
 import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
          aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
@@ -911,6 +912,9 @@ export async function initDataTables(): Promise<void> {
     // apres la migration : l'audit ne la voyait pas, et elle existait sans
     // policy. Schema et policies sont poses par la meme fonction.
     await ensureCheckoutPostTokensSchema(client);
+    // Appartenance des moniteurs BetterStack : table posee par le meme chemin,
+    // donc visible de l'audit d'isolation de migrate.mjs.
+    await ensureBsOwnershipSchema(client);
 
     // ── AI billing tables — create before any self-healing ALTERs ─────────────
     // These tables used to be assumed to exist from an external/legacy schema.
