@@ -122,7 +122,12 @@ function withQuota(handler: (req: import("express").Request, res: import("expres
     const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
     const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
 
-    if (!checkAndIncrementQuota(orgId, plan)) {
+    // `checkAndIncrementQuota` est async : sans `await`, l'expression testee
+    // etait une Promise, toujours vraie, donc `!promise` toujours faux. La
+    // branche 429 ne se declenchait JAMAIS, et le plafond de 1000 requetes
+    // DataForSEO par jour et par organisation n'etait applique sur aucun des
+    // onze endpoints enveloppes par withQuota.
+    if (!(await checkAndIncrementQuota(orgId, plan))) {
       const { used, limit } = getQuotaUsage(orgId, plan);
       res.status(429).json({
         error: "Quota API DataForSEO dépassé pour aujourd'hui",
