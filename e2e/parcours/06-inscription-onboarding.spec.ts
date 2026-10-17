@@ -1,5 +1,5 @@
 import { test, expect, request } from "@playwright/test";
-import { allerA, fermerVisite } from "../socle/aides.js";
+import { allerA, fermerVisite, compteRecette } from "../socle/aides.js";
 
 /**
  * Parcours 8 — INSCRIPTION et ONBOARDING.
@@ -107,15 +107,37 @@ test("les trois etapes de demarrage mènent chacune a une vue reelle", async ({ 
   }
 });
 
-test("la visite guidee recouvre la navigation, et se referme", async ({ page }) => {
+test("la visite guidee recouvre la navigation, et se referme", async ({ page, baseURL }) => {
+  // La visite ne s'ouvre qu'une fois : le SERVEUR est source de verite, via
+  // `user_prefs.settings->>'onboardingCompletedAt'`. Des que la visite a ete
+  // parcourue ou passee une fois, elle ne revient plus — et ce test etait donc
+  // ignore sur tout compte deja utilise.
+  //
+  // Le produit expose un endpoint d'administration pour remettre ce drapeau a
+  // zero : on s'en sert, pour que ce test s'EXECUTE au lieu d'etre ignore.
+  // L'endpoint exige `confirmEmail` identique a l'adresse du proprietaire
+  // resolue — une garde volontaire contre une remise a zero sur le mauvais
+  // compte. On la respecte plutot que de la contourner.
+  const { orgId, email } = compteRecette();
+  const cleAdmin = process.env["E2E_ADMIN_KEY"] ?? "";
+  const remise = await page.request.post(`${baseURL}/api/admin/reset-onboarding`, {
+    headers: { "x-admin-key": cleAdmin, "Content-Type": "application/json" },
+    data: { orgId, dryRun: false, confirmEmail: email },
+  });
+
   await page.goto("/dashboard.html");
   await page.waitForSelector('[data-route="overview"]', { timeout: 25_000 });
   await page.waitForTimeout(5_000);
 
   const visite = page.locator("#fp-onboarding");
-  if (await visite.count() === 0 || !(await visite.isVisible().catch(() => false))) {
-    test.skip(true, "la visite ne s'ouvre pas sur ce compte (deja parcourue)");
-    return;
+  const ouverte = await visite.count() > 0 && await visite.isVisible().catch(() => false);
+  if (!ouverte) {
+    // Si la remise a zero a echoue, on le DIT : un test ignore sans raison
+    // explicite est un trou qui ne se voit pas.
+    expect(remise.ok(),
+      `la visite ne s'ouvre pas et la remise a zero a echoue (${remise.status()}) — ` +
+      `le parcours d'onboarding n'est donc PAS couvert sur ce passage`).toBe(true);
+    throw new Error("la visite ne s'est pas ouverte malgre la remise a zero du drapeau serveur");
   }
 
   // Tant qu'elle est ouverte, la barre laterale est inatteignable : c'est voulu,
