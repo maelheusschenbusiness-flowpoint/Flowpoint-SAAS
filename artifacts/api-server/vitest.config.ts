@@ -22,6 +22,7 @@ export default defineConfig({
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
       "src/routes/seo-quota-gate.test.ts",
+      "src/services/dataforseo-quota-db.test.ts",
       "src/lib/carry-params.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",

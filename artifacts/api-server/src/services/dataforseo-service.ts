@@ -92,14 +92,60 @@ async function _persistQuota(orgId: string, today: string, used: number): Promis
   } catch { /* non-fatal */ } finally { client.release(); }
 }
 
+/**
+ * Consomme du quota et dit si l'appel payant est autorise.
+ *
+ * Le compteur vivait uniquement en memoire de processus. Deux consequences
+ * mesurees le 17/10/2026 :
+ *
+ *   - un REDEMARRAGE remettait le plafond a zero. `_quotaMemory` est vide au
+ *     demarrage et cette fonction ne lisait jamais la base : apres chaque
+ *     deploiement Render, les 1000 requetes payantes quotidiennes repartaient
+ *     de zero, en silence.
+ *   - avec PLUSIEURS INSTANCES, chacune comptait pour elle : le plafond reel
+ *     aurait valu N fois le plafond annonce. Le service tourne aujourd'hui en
+ *     une seule instance, mais le compteur ne devait pas dependre de cela.
+ *
+ * L'increment se fait donc EN BASE, en une seule instruction : PostgreSQL
+ * serialise les ecritures concurrentes sur la meme ligne, et la valeur
+ * retournee est le compte reel, partage et durable. La memoire ne sert plus
+ * que de cache de lecture.
+ *
+ * Le repli en memoire est conserve pour le seul cas ou la base est
+ * injoignable : couper la fonctionnalite SEO parce que PostgreSQL hoquette
+ * serait pire que de compter approximativement pendant quelques secondes.
+ */
 export async function checkAndIncrementQuota(orgId = "default", planOrUnits?: string | number, units = 1): Promise<boolean> {
   // Callers pass either (orgId, plan, units) or the shorthand (orgId, units).
   const effectiveUnits = typeof planOrUnits === "number" ? planOrUnits : units;
+  const today = new Date().toISOString().slice(0, 10);
   const key = _quotaKey(orgId);
-  const current = (_quotaMemory.get(key) ?? 0) + effectiveUnits;
-  _quotaMemory.set(key, current);
-  _persistQuota(orgId, new Date().toISOString().slice(0, 10), current).catch(() => {});
-  return current <= MAX_DAILY_REQUESTS;
+
+  try {
+    const client = await pool.connect();
+    try {
+      const r = await client.query<{ requests_used: number }>(
+        `INSERT INTO dataforseo_quota (org_id, date, requests_used, created_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (org_id, date)
+         DO UPDATE SET requests_used = dataforseo_quota.requests_used + EXCLUDED.requests_used
+         RETURNING requests_used`,
+        [orgId, today, effectiveUnits]
+      );
+      const used = Number(r.rows[0]?.requests_used ?? effectiveUnits);
+      _quotaMemory.set(key, used);
+      return used <= MAX_DAILY_REQUESTS;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    // Repli : on compte en memoire, et on le dit. Un quota approximatif vaut
+    // mieux qu'une fonctionnalite coupee, mais cela ne doit pas passer inapercu.
+    logger.warn({ err, orgId }, "[DataForSEO] quota non persiste — repli sur le compteur en memoire");
+    const current = (_quotaMemory.get(key) ?? 0) + effectiveUnits;
+    _quotaMemory.set(key, current);
+    return current <= MAX_DAILY_REQUESTS;
+  }
 }
 
 export function getQuotaUsage(
