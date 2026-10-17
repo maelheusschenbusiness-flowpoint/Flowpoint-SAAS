@@ -1,4 +1,5 @@
 import { logger }                from "../lib/logger.js";
+import { humanSize }            from "../lib/human-size.js";
 import { AI_ATTACHMENT_LIMITS } from "../config/ai-attachments.js";
 import {
   sanitizeFilename,
@@ -235,7 +236,7 @@ export async function resolveAIAttachments(
     if (sizeBytes > AI_ATTACHMENT_LIMITS.maxFileSizeBytes) {
       return attachmentError(
         "ATTACHMENT_TOO_LARGE",
-        `Une pièce jointe dépasse la limite de ${AI_ATTACHMENT_LIMITS.maxFileSizeBytes / 1024 / 1024} Mo.`,
+        `Une pièce jointe dépasse la limite de ${humanSize(AI_ATTACHMENT_LIMITS.maxFileSizeBytes)}.`,
         413,
       );
     }
