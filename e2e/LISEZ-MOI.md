@@ -76,3 +76,30 @@ paraîtrait correcte.
 
 Ce parcours exige les gardes de rôle BetterStack apportées par la PR #161 : sur
 une branche qui ne les contient pas, le test du membre échoue en le disant.
+
+## Le paiement Stripe
+
+`08-paiement-stripe` **ne déclenche aucun paiement**. Il s'arrête à la création
+de la session : l'URL obtenue n'est pas ouverte, aucune carte n'est saisie.
+
+Trois tests tournent toujours, sans aucune clé : une session simulée doit être
+marquée `mock: true`, le tunnel exige une authentification ou un jeton de
+pré-inscription valide, et le repli simulé est impossible en production.
+
+Deux tests exigent des clés de **test** et s'abandonnent en nommant ce qui
+manque — un parcours non couvert doit se voir. Pour les activer, posez sur le
+serveur cible :
+
+```
+STRIPE_TEST_MODE=true
+STRIPE_TEST_SECRET_KEY=sk_test_…      (ou STRIPE_TEST_KEY)
+STRIPE_TEST_PUBLISHABLE_KEY=pk_test_…
+STRIPE_TEST_WEBHOOK_SECRET=whsec_…
+STRIPE_TEST_PRICE_ID_STANDARD=price_…
+STRIPE_TEST_PRICE_ID_PRO=price_…
+STRIPE_TEST_PRICE_ID_ULTRA=price_…
+```
+
+Aucune clé **live** ne doit jamais être posée sur une cible de test. Le produit
+refuse de mélanger les modes — `getPublishableKey` ignore une clé du mauvais
+mode — et un test le vérifie.
