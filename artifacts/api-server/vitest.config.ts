@@ -22,6 +22,8 @@ export default defineConfig({
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
       "src/lib/carry-params.test.ts",
+      // Resilience des APIs externes : toute sortie reseau est bornee (17/10/2026).
+      "src/lib/fetch-borne.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
       "src/lib/startup-retry.test.ts",
