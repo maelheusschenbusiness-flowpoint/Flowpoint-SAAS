@@ -87,6 +87,63 @@ const TERMINAL_TABLES = new Set([
   "users",
 ]);
 
+/**
+ * Tables a PRESERVER quand on purge les donnees produit en gardant le compte
+ * (`DELETE /api/settings/data`). Tout le reste part.
+ *
+ * La liste est volontairement courte et nommee : ce sont l'identite, le droit
+ * d'acces et la facturation. Les oublier serait pire qu'un orphelin — le
+ * client perdrait son plan ou son acces.
+ */
+export const TABLES_COMPTE_A_PRESERVER = new Set<string>([
+  // Identite et appartenance
+  "organizations", "organization_members", "users", "user_sessions",
+  // Reglages et image de marque de l'organisation
+  "org_settings", "org_secrets", "org_auth_config", "sso_providers",
+  // Droits
+  "roles", "org_member_permissions",
+  // Facturation : plan, options, historique comptable
+  "subscriptions", "org_addons", "billing_events",
+  "ai_credit_purchases", "checkout_post_tokens",
+  // Infrastructure
+  "schema_migrations", "canonical_seeds",
+]);
+
+/**
+ * Tables portant une colonne de rattachement a une organisation, DECOUVERTES
+ * a l'execution.
+ *
+ * Mesure du 17/10/2026 : le schema compte 113 tables portant `org_id`, et
+ * trois chemins de suppression portaient une liste ECRITE A LA MAIN —
+ * `POST /admin/purge-all-clients` en oubliait 23, `DELETE /api/settings/data`
+ * 76, et `POST /admin/delete-qa-org` 100. Une liste litterale se perime a la
+ * table suivante ; c'est la cause structurelle des lignes orphelines
+ * mesurees en production.
+ *
+ * `exclure` permet d'ecarter explicitement ce qu'un chemin doit conserver.
+ */
+export async function decouvrirTablesOrganisation(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
+  options: { exclure?: ReadonlySet<string> } = {},
+): Promise<Array<{ table: string; colonne: string }>> {
+  const res = await client.query(
+    `SELECT c.table_name, MIN(c.column_name) AS column_name
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'public'
+        AND t.table_type   = 'BASE TABLE'
+        AND c.column_name  = ANY($1)
+      GROUP BY c.table_name
+      ORDER BY c.table_name`,
+    [[...ORG_COLUMNS]],
+  );
+  const exclure = options.exclure ?? NEVER_DELETE;
+  return (res.rows as Array<{ table_name: string; column_name: string }>)
+    .filter((r) => !exclure.has(r.table_name))
+    .map((r) => ({ table: r.table_name, colonne: r.column_name }));
+}
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface DeletionTarget {

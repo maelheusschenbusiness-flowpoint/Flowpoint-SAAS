@@ -106,6 +106,8 @@ export default defineConfig({
        "src/routes/team-member-removal-security.test.ts",
       // Account deletion — early session revocation (preKillSessions) patch
       "src/services/account-deletion-session-kill.test.ts",
+      // Le mecanisme de suppression cree-t-il encore des orphelins ? (17/10/2026)
+      "src/services/org-deletion-orphans-db.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",
