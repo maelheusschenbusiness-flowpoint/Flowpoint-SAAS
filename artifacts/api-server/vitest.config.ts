@@ -21,6 +21,11 @@ export default defineConfig({
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
+      "src/routes/seo-quota-gate.test.ts",
+      "src/services/dataforseo-quota-db.test.ts",
+      // Politique fail-closed des appels payants DataForSEO (17/10/2026).
+      "src/routes/seo-quota-failclosed.test.ts",
+      "src/services/dataforseo-quota-failclosed-db.test.ts",
       "src/lib/carry-params.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
