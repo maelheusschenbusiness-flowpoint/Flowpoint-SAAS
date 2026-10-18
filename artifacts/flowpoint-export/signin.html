@@ -689,13 +689,88 @@
 
      Rien ici ne peut bloquer l'inscription : tout est en try/catch et la
      requete n'est jamais attendue. ──────────────────────────────────────── */
+  var FP_TRACKING_SOURCES = ['smartlead', 'google', 'direct', 'social', 'other_campaign'];
+  var FP_TRACKING_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  var FP_TRACKING_FALLBACK_RE = /^fp-[a-z0-9]+-[a-z0-9]+$/i;
+
+  function fpConsent() {
+    try {
+      return document.cookie.split(';').some(function (cookie) {
+        return cookie.trim() === 'fp_analytics_consent=accepted';
+      });
+    } catch (e) { return false; }
+  }
+
+  function fpValidVisitorId(value) {
+    return typeof value === 'string' &&
+      (FP_TRACKING_UUID_RE.test(value) || FP_TRACKING_FALLBACK_RE.test(value));
+  }
+
+  function fpValidSource(value) {
+    return typeof value === 'string' && FP_TRACKING_SOURCES.indexOf(value) !== -1;
+  }
+
+  function fpClassifySource(source, medium, hasCampaign) {
+    var normalized = (source || '').split(/[._-]/, 1)[0].toLowerCase();
+    var normalizedMedium = (medium || '').toLowerCase();
+    var paid = /^(cpc|ppc|paid|ads|paid-social)$/.test(normalizedMedium);
+
+    if (/smartlead/.test(source || '')) return 'smartlead';
+    if (['facebook', 'instagram', 'linkedin', 'twitter', 'x', 'tiktok',
+         'youtube', 'pinterest', 'threads', 'reddit'].indexOf(normalized) !== -1 ||
+        /^(social|social-paid|social-organic)$/.test(normalizedMedium)) return 'social';
+    if (normalized === 'google' && !paid) return 'google';
+    if (source || medium || hasCampaign) return 'other_campaign';
+
+    try {
+      if (!document.referrer) return 'direct';
+      var host = new URL(document.referrer).hostname.toLowerCase();
+      if (/smartlead/.test(host)) return 'smartlead';
+      if (/(^|\.)google\.[a-z.]+$/.test(host)) return 'google';
+      if (['facebook.com', 'instagram.com', 'linkedin.com', 'twitter.com',
+           'x.com', 'tiktok.com', 'youtube.com', 'youtu.be', 'pinterest.com',
+           'threads.net', 'reddit.com', 't.co'].some(function (domain) {
+        return host === domain || host.endsWith('.' + domain);
+      })) return 'social';
+      return 'other_campaign';
+    } catch (e) { return 'direct'; }
+  }
+
+  function fpIngestAttribution() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (fpConsent()) {
+        var incomingVisitorId = params.get('fp_vid');
+        var incomingSource = params.get('fp_src');
+        if (fpValidVisitorId(incomingVisitorId)) {
+          localStorage.setItem('fp_vid', incomingVisitorId);
+        }
+        if (fpValidSource(incomingSource)) {
+          localStorage.setItem('fp_source', incomingSource);
+        }
+      }
+
+      if (params.has('fp_vid') || params.has('fp_src')) {
+        params.delete('fp_vid');
+        params.delete('fp_src');
+        var remainingQuery = params.toString();
+        window.history.replaceState(
+          window.history.state,
+          '',
+          window.location.pathname + (remainingQuery ? '?' + remainingQuery : '') + window.location.hash
+        );
+      }
+    } catch (e) { /* attribution is optional and must never block signup */ }
+  }
+
   function fpVid() {
+    if (!fpConsent()) return '';
     try {
       var v = localStorage.getItem('fp_vid');
-      if (!v) {
+      if (!fpValidVisitorId(v)) {
         v = (window.crypto && window.crypto.randomUUID)
               ? window.crypto.randomUUID()
-              : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+              : 'fp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
         localStorage.setItem('fp_vid', v);
       }
       return v;
@@ -703,12 +778,18 @@
   }
 
   function fpSource() {
+    if (!fpConsent()) return '';
     try {
+      var stored = localStorage.getItem('fp_source');
+      if (fpValidSource(stored)) return stored;
       var q = new URLSearchParams(window.location.search);
-      var s = q.get('utm_source') || q.get('fp_src') || q.get('fp_ref') || '';
-      if (s) return s.slice(0, 60);
-      if (document.referrer) return new URL(document.referrer).hostname.slice(0, 60);
-      return 'direct';
+      var source = fpClassifySource(
+        q.get('utm_source') || '',
+        q.get('utm_medium') || '',
+        q.has('utm_campaign') || q.has('gclid') || q.has('fbclid')
+      );
+      localStorage.setItem('fp_source', source);
+      return source;
     } catch (e) { return ''; }
   }
 
@@ -725,6 +806,7 @@
     } catch (e) { /* ignore */ }
   }
 
+  fpIngestAttribution();
   fpEtape('signup_started');
 
   /* ── Step 1: form submit → POST /auth/pre-register ── */
@@ -776,7 +858,7 @@
         // `signup_started`. Sans ce lien, les deux etapes ne se joignent pas et
         // le taux d'abandon du formulaire reste incalculable. Champ purement
         // additionnel — aucun champ du formulaire n'est modifie.
-        visiteurId: fpVid() })
+        visiteurId: fpVid() || undefined })
     })
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {

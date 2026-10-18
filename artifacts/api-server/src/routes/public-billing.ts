@@ -1637,6 +1637,28 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: immediateAmountCents,
         }),
       });
+      const _funnelCookieConsent =
+        (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"] === "accepted";
+      const _funnelVisitorId = typeof req.body?.visiteurId === "string" &&
+        (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.body.visiteurId) ||
+         /^fp-[a-z0-9]+-[a-z0-9]+$/i.test(req.body.visiteurId))
+          ? req.body.visiteurId
+          : null;
+      const _funnelSource = ["smartlead", "google", "direct", "social", "other_campaign"]
+        .includes(req.body?.source)
+          ? req.body.source
+          : null;
+      if (_funnelCookieConsent && _funnelVisitorId) {
+        // Mesure uniquement apres la creation reussie du PaymentIntent existant.
+        // La cle derivee du PI rend les rejeux du meme resultat idempotents.
+        void enregistrerEtape({
+          etape: "checkout_started",
+          visiteurId: _funnelVisitorId,
+          source: _funnelSource,
+          plan: planKey,
+          cleIdempotence: `checkout_started:${pi.id}`,
+        });
+      }
       logger.info({ plan: planKey, addonCount: quote.lines.filter(l => l.kind === "addon").length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
       res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
       return;

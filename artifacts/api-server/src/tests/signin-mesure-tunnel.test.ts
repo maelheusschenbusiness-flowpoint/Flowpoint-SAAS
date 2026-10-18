@@ -22,10 +22,65 @@ import { join } from "node:path";
 import { Script } from "node:vm";
 
 const PAGE = readFileSync(join(process.cwd(), "../flowpoint-export/signin.html"), "utf8");
+const CHECKOUT_PAGE = readFileSync(join(process.cwd(), "../flowpoint-export/checkout-payment.html"), "utf8");
+const PAYMENT_INTENT_ROUTE = readFileSync(join(process.cwd(), "src/routes/public-billing.ts"), "utf8");
 
 /** Les blocs de script en ligne, pour en verifier la syntaxe. */
 function blocsEnLigne(): string[] {
   return [...PAGE.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
+}
+
+function executerMesure(cookie: string) {
+  const debut = PAGE.indexOf("var FP_TRACKING_SOURCES =");
+  const fin = PAGE.indexOf("/* ── Step 1: form submit", debut);
+  const script = PAGE.slice(debut, fin);
+  const stockage = new Map<string, string>();
+  const requetes: Array<{ url: string; options: { body: string } }> = [];
+  const contexte: Record<string, unknown> = {
+    URL,
+    URLSearchParams,
+    JSON,
+    Date,
+    Math,
+    document: { cookie, referrer: "" },
+    localStorage: {
+      getItem: (key: string) => stockage.get(key) ?? null,
+      setItem: (key: string, value: string) => stockage.set(key, value),
+    },
+    fetch: (url: string, options: { body: string }) => {
+      requetes.push({ url, options });
+      return { catch: () => undefined };
+    },
+    window: {
+      crypto: { randomUUID: () => "11111111-1111-4111-8111-111111111111" },
+      location: {
+        search: "?fp_vid=123e4567-e89b-42d3-a456-426614174000&fp_src=smartlead&plan=pro",
+        pathname: "/signin.html",
+        hash: "",
+      },
+      history: {
+        state: null,
+        replaceState: () => undefined,
+      },
+    },
+  };
+
+  new Script(`${script}\nglobalThis.__visitorId = fpVid();\nglobalThis.__source = fpSource();`).runInNewContext(contexte);
+  return { contexte, stockage, requetes };
+}
+
+function executerAttributionCheckout(cookie: string, visitorId: string, source: string) {
+  const debut = CHECKOUT_PAGE.indexOf("function fpFunnelAttribution()");
+  const fin = CHECKOUT_PAGE.indexOf("async function initStripe()", debut);
+  const stockage = new Map<string, string>([["fp_vid", visitorId], ["fp_source", source]]);
+  const contexte: Record<string, unknown> = {
+    document: { cookie },
+    localStorage: {
+      getItem: (key: string) => stockage.get(key) ?? null,
+    },
+  };
+  new Script(`${CHECKOUT_PAGE.slice(debut, fin)}\nglobalThis.__attribution = fpFunnelAttribution();`).runInNewContext(contexte);
+  return contexte.__attribution as Record<string, unknown>;
 }
 
 describe("la mesure est posee et exploitable", () => {
@@ -62,6 +117,78 @@ describe("la mesure est posee et exploitable", () => {
                             "postalCode", "address", "city", "phone", "vat"]) {
       expect(fn, `la mesure transmet ${interdit}`).not.toContain(interdit);
     }
+  });
+
+  it("reprend un identifiant et une source valides seulement avec le consentement", () => {
+    const avecConsentement = executerMesure("fp_analytics_consent=accepted");
+    expect(avecConsentement.contexte.__visitorId).toBe("123e4567-e89b-42d3-a456-426614174000");
+    expect(avecConsentement.contexte.__source).toBe("smartlead");
+    expect(JSON.parse(avecConsentement.requetes[0].options.body)).toMatchObject({
+      etape: "signup_started",
+      visiteurId: "123e4567-e89b-42d3-a456-426614174000",
+      source: "smartlead",
+    });
+
+    const sansConsentement = executerMesure("fp_analytics_consent=refused");
+    expect(sansConsentement.contexte.__visitorId).toBe("");
+    expect(sansConsentement.stockage.has("fp_vid")).toBe(false);
+    expect(sansConsentement.requetes).toHaveLength(0);
+  });
+
+  it("ignore les identifiants et sources reçus qui ne respectent pas les formats attendus", () => {
+    const debut = PAGE.indexOf("var FP_TRACKING_SOURCES =");
+    const helper = PAGE.slice(debut, PAGE.indexOf("function fpIngestAttribution()", debut));
+    const contexte: Record<string, unknown> = {};
+    new Script(`${helper}\nglobalThis.__validId = fpValidVisitorId('not-an-id');\nglobalThis.__validSource = fpValidSource('customer@example.com');`)
+      .runInNewContext(contexte);
+    expect(contexte.__validId).toBe(false);
+    expect(contexte.__validSource).toBe(false);
+  });
+
+  it("le Checkout transmet le meme identifiant uniquement avec consentement", () => {
+    const attribution = executerAttributionCheckout(
+      "fp_analytics_consent=accepted",
+      "123e4567-e89b-42d3-a456-426614174000",
+      "smartlead",
+    );
+    expect(attribution).toEqual({
+      visiteurId: "123e4567-e89b-42d3-a456-426614174000",
+      source: "smartlead",
+    });
+    expect(executerAttributionCheckout(
+      "fp_analytics_consent=refused",
+      "123e4567-e89b-42d3-a456-426614174000",
+      "smartlead",
+    )).toEqual({});
+    expect(executerAttributionCheckout(
+      "fp_analytics_consent=accepted",
+      "not-an-id",
+      "not-a-source",
+    )).toEqual({});
+  });
+
+  it("checkout_started est ajouté après le PaymentIntent existant, avec consentement et idempotence", () => {
+    const creation = PAYMENT_INTENT_ROUTE.indexOf("const pi = await stripe.paymentIntents.create");
+    const emission = PAYMENT_INTENT_ROUTE.indexOf('etape: "checkout_started"', creation);
+    expect(creation).toBeGreaterThan(-1);
+    expect(emission).toBeGreaterThan(creation);
+    const bloc = PAYMENT_INTENT_ROUTE.slice(creation, PAYMENT_INTENT_ROUTE.indexOf("if (hasPlan) {", creation));
+    expect(bloc).toContain('cookies?.["fp_analytics_consent"] === "accepted"');
+    expect(bloc).toContain("cleIdempotence: `checkout_started:${pi.id}`");
+    expect(bloc).toContain("if (_funnelCookieConsent && _funnelVisitorId)");
+    expect(bloc.match(/stripe\.paymentIntents\.create/g)).toHaveLength(1);
+  });
+
+  it("checkout_completed reste lié à Checkout Session, tandis que trial_activated vient des webhooks d'abonnement", () => {
+    const webhook = readFileSync(join(process.cwd(), "src/routes/stripe-webhook.ts"), "utf8");
+    const sessionCase = webhook.indexOf('case "checkout.session.completed"');
+    const checkoutCompleted = webhook.indexOf('etape: "checkout_completed"', sessionCase);
+    const subscriptionCase = webhook.indexOf('case "customer.subscription.created":');
+    const trialActivated = webhook.indexOf('"trial_activated"', subscriptionCase);
+    expect(sessionCase).toBeGreaterThan(-1);
+    expect(checkoutCompleted).toBeGreaterThan(sessionCase);
+    expect(subscriptionCase).toBeGreaterThan(-1);
+    expect(trialActivated).toBeGreaterThan(subscriptionCase);
   });
 });
 
