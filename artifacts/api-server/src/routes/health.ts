@@ -8,6 +8,7 @@ import { getRateLimiterStats } from "../middlewares/rateLimiter.js";
 import { getPlanConfig } from "../lib/config.js";
 import { store } from "../services/store.js";
 import { resolveOpenAIConnection } from "../lib/openai-client.js";
+import { withTimeout } from "../lib/with-timeout.js";
 import path from "node:path";
 
 const router: IRouter = Router();
@@ -117,10 +118,7 @@ router.get("/healthz/deep", async (_req, res) => {
   // ── Database — real query, 3 s timeout ───────────────────────────────────
   const dbStart = Date.now();
   try {
-    await Promise.race([
-      pool.query("SELECT 1"),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timed out after 3000ms")), 3000)),
-    ]);
+    await withTimeout(pool.query("SELECT 1"), 3000, new Error("timed out after 3000ms"));
     checks.database = { status: "ok", latencyMs: Date.now() - dbStart, detail: "SELECT 1 succeeded" };
   } catch (err) {
     checks.database = { status: "down", latencyMs: Date.now() - dbStart, detail: safeErrMsg(err) };

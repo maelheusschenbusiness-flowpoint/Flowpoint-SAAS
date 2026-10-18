@@ -37,6 +37,7 @@
  */
 
 import { logger } from "../lib/logger.js";
+import { withTimeout } from "../lib/with-timeout.js";
 
 export type Queryable = {
   query: (
@@ -93,14 +94,8 @@ export function resetReadinessState(): void {
 /** Un `SELECT 1` qui ne peut pas pendre : la sonde doit repondre, toujours. */
 export async function probeDatabase(db: Queryable, timeoutMs = DB_PROBE_TIMEOUT_MS): Promise<DbProbe> {
   const start = Date.now();
-  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
-      db.query("SELECT 1"),
-      new Promise((_, reject) =>
-        (timeout = setTimeout(() => reject(new Error(`timeout apres ${timeoutMs}ms`)), timeoutMs))
-      ),
-    ]);
+    await withTimeout(db.query("SELECT 1"), timeoutMs, new Error(`timeout apres ${timeoutMs}ms`));
     return { ok: true, latencyMs: Date.now() - start, detail: "SELECT 1" };
   } catch (err) {
     // Le message d'erreur de la base peut contenir des elements de connexion :
@@ -108,8 +103,6 @@ export async function probeDatabase(db: Queryable, timeoutMs = DB_PROBE_TIMEOUT_
     const code = (err as { code?: string } | null)?.code;
     const detail = code ? `echec (${code})` : (err as Error)?.message?.slice(0, 60) ?? "echec";
     return { ok: false, latencyMs: Date.now() - start, detail };
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
 }
 
