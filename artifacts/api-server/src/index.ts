@@ -1,6 +1,8 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { getStripeKey } from "./services/stripe-factory.js";
+import { plansRepliantSurPrixLive } from "./lib/plans.js";
+import { verifierCibleBase, lireCible } from "./services/garde-cible-base.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -63,6 +65,38 @@ async function main() {
     }
   }
 
+  // ── 0 bis. La base visee est-elle bien celle de ce service ? ──────────────
+  //
+  // Ce serveur modifie le schema a chaque demarrage (initDataTables,
+  // initRlsSetup, runRlsMigrationIfNeeded, initPhase1Users, reconcileSchema).
+  // Un DATABASE_URL copie d'un service a l'autre suffirait donc a reecrire le
+  // schema d'une base qui n'est pas la sienne. La garde arrive avant toute
+  // ecriture, et avant meme la premiere connexion.
+  {
+    try {
+      const { verifiee, cible } = verifierCibleBase();
+      if (verifiee && cible) {
+        logger.info(`[Base] cible declaree confirmee : ${cible.hote}/${cible.base}`);
+      } else {
+        // Garde non armee. On journalise la destination REELLE — hote et nom de
+        // base seulement, jamais l'utilisateur ni le mot de passe — pour que
+        // l'exploitant puisse lire la valeur a declarer et armer la garde.
+        const reelle = lireCible(process.env["DATABASE_URL"]);
+        logger.warn(
+          `[Base] DB_HOTE_ATTENDU non posee — ce service modifie le schema au demarrage ` +
+          `sans verifier sa cible. Destination actuelle : ${reelle ? `${reelle.hote}/${reelle.base}` : "illisible"}. ` +
+          `Posez DB_HOTE_ATTENDU a cette valeur pour armer la garde.`
+        );
+      }
+    } catch (err) {
+      logger.fatal(
+        { err: (err as Error).message },
+        "[Base] FATAL : la base visee ne correspond pas a la declaration de ce service."
+      );
+      process.exit(1);
+    }
+  }
+
   // ── 0. Stripe configuration safety guard ──────────────────────────────────
   //
   // Refuse to start if NODE_ENV=production is active with test-mode Stripe
@@ -101,8 +135,13 @@ async function main() {
 
     // Safe startup log — mode only, never the key value
     const stripeMode   = isTestKey ? "TEST" : "LIVE";
+    // STRIPE_TEST_WEBHOOK_SECRET compte ici : depuis le 18/10/2026 le routeur
+    // de webhook la traite comme un candidat de meme rang que la principale.
+    // Sans elle, ce journal annoncait « NOT CONFIGURED » sur un environnement
+    // de test ou la verification fonctionne.
     const webhookSec   = process.env["STRIPE_WEBHOOK_SECRET"]
                       || process.env["STRIPE_WEBHOOK_SECRET_RENDER"]
+                      || process.env["STRIPE_TEST_WEBHOOK_SECRET"]
                       || "";
     const webhookMode  = webhookSec
       ? (isTestKey ? "TEST (test-endpoint secret active)" : "LIVE")
@@ -114,6 +153,24 @@ async function main() {
     logger.info(
       `[Stripe] mode: ${stripeMode} | webhook: ${webhookMode} | publishable: ${pubDisplay}`
     );
+
+    // En mode test, un plan sans STRIPE_TEST_PRICE_ID_* retombe sur son prix
+    // LIVE. Stripe refuse alors la session Checkout (« No such price … exists
+    // in live mode »). Mesure du 18/10/2026 sur flowpoint-test : `pro` et
+    // `ultra` etaient dans ce cas, et seul `standard` fonctionnait. Rien ne le
+    // signalait avant l'echec cote Stripe.
+    const replis = plansRepliantSurPrixLive(activeKey);
+    if (replis.length > 0) {
+      logger.error(
+        {
+          plans:               replis.map((r) => r.plan),
+          variablesAttendues:  replis.map((r) => r.variableAttendue),
+        },
+        "[Stripe] MODE TEST : " + replis.length + " plan(s) retombent sur un prix LIVE. " +
+        "Stripe refusera leur session Checkout. Posez : " +
+        replis.map((r) => r.variableAttendue).join(", ")
+      );
+    }
   }
 
   // 1. Verify the DB is reachable before any init that assumes a connection.
