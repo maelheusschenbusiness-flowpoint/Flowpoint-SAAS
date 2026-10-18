@@ -341,6 +341,27 @@
   }
 
   /* ── Init Stripe : un seul appel renvoie l'intent ET le devis ── */
+  function fpFunnelAttribution() {
+    try {
+      var consented = document.cookie.split(';').some(function (cookie) {
+        return cookie.trim() === 'fp_analytics_consent=accepted';
+      });
+      if (!consented) return {};
+
+      var visitorId = localStorage.getItem('fp_vid') || '';
+      var validVisitorId =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(visitorId) ||
+        /^fp-[a-z0-9]+-[a-z0-9]+$/i.test(visitorId);
+      var source = localStorage.getItem('fp_source') || '';
+      var validSource = ['smartlead', 'google', 'direct', 'social', 'other_campaign'].indexOf(source) !== -1;
+      if (!validVisitorId) return {};
+      return {
+        visiteurId: visitorId,
+        source: validSource ? source : undefined,
+      };
+    } catch (e) { return {}; }
+  }
+
   async function initStripe() {
     renderSummaryLoading();
 
@@ -357,6 +378,7 @@
     }
 
     /* La durée d'essai n'est PAS envoyée : le serveur seul en décide. */
+    var funnelAttribution = fpFunnelAttribution();
     var resp = await fetch('/api/public/payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -365,6 +387,8 @@
         addons:           addons,
         preRegisterToken: preRegToken,
         billingAddress:   null,
+        visiteurId:       funnelAttribution.visiteurId,
+        source:           funnelAttribution.source,
       })
     });
 
