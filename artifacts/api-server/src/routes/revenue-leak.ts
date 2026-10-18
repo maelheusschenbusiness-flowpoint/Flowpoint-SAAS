@@ -23,7 +23,8 @@ async function loadRevenueOpportunities(req: Request, siteUrl?: string) {
     siteClause = " AND site_url = $2";
   }
   const { rows } = await db(req)(
-    `SELECT page, session_id, event_type, scroll_depth
+    `SELECT page, session_id AS "sessionId", event_type AS "eventType",
+            scroll_depth AS "scrollDepth"
        FROM behavior_events
       WHERE org_id = $1${siteClause}
         AND created_at >= now() - interval '30 days'

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { pool } from "@workspace/db";
 import { ensureCheckoutPostTokensSchema } from "./init-checkout-post-tokens.js";
 import { repairOrgGucPolicies } from "./rls-guc-repair.js";
@@ -1703,6 +1704,214 @@ export async function initDataTables(): Promise<void> {
         ADD CONSTRAINT team_invitations_status_check
         CHECK (status IN ('pending','accepted','revoked','expired'));
     `);
+
+    // ── Behavioral tables — create current schema and upgrade legacy tables ──
+    // The API uses these tables directly. Historical SQL migration 002 creates
+    // an older site_id/url/data shape, while clean environments may have none.
+    // Keep this bootstrap additive so both shapes converge without dropping data.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS behavior_events (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        session_id TEXT NOT NULL DEFAULT '',
+        site_url TEXT NOT NULL DEFAULT '',
+        page TEXT NOT NULL DEFAULT '/',
+        event_type TEXT NOT NULL DEFAULT '',
+        element TEXT,
+        x_pos INTEGER,
+        y_pos INTEGER,
+        scroll_depth INTEGER,
+        time_on_page INTEGER,
+        metadata JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run(client, `
+      ALTER TABLE behavior_events
+        ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default',
+        ADD COLUMN IF NOT EXISTS session_id TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS site_url TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS page TEXT NOT NULL DEFAULT '/',
+        ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS element TEXT,
+        ADD COLUMN IF NOT EXISTS x_pos INTEGER,
+        ADD COLUMN IF NOT EXISTS y_pos INTEGER,
+        ADD COLUMN IF NOT EXISTS scroll_depth INTEGER,
+        ADD COLUMN IF NOT EXISTS time_on_page INTEGER,
+        ADD COLUMN IF NOT EXISTS metadata JSONB,
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_events' AND column_name='site_id') THEN
+          EXECUTE 'UPDATE behavior_events SET site_url=site_id WHERE site_url='''' AND site_id IS NOT NULL';
+          EXECUTE 'ALTER TABLE behavior_events ALTER COLUMN site_id SET DEFAULT ''''';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_events' AND column_name='url') THEN
+          EXECUTE 'UPDATE behavior_events SET page=url WHERE (page='''' OR page=''''/'''') AND url IS NOT NULL AND url<>''''';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_events' AND column_name='data') THEN
+          EXECUTE 'UPDATE behavior_events SET metadata=data WHERE metadata IS NULL';
+        END IF;
+      END $$;
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_events_org_site_created_idx ON behavior_events(org_id,site_url,created_at DESC)`);
+
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS behavior_sessions (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        site_url TEXT NOT NULL,
+        user_agent TEXT,
+        device_type TEXT DEFAULT 'desktop',
+        country TEXT,
+        page_views INTEGER NOT NULL DEFAULT 1,
+        bounce BOOLEAN NOT NULL DEFAULT true,
+        engagement_score INTEGER NOT NULL DEFAULT 0,
+        rage_clicks INTEGER NOT NULL DEFAULT 0,
+        exit_page TEXT,
+        started_at TIMESTAMPTZ,
+        ended_at TIMESTAMPTZ
+      )
+    `);
+    await run(client, `
+      ALTER TABLE behavior_sessions
+        ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default',
+        ADD COLUMN IF NOT EXISTS site_url TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS user_agent TEXT,
+        ADD COLUMN IF NOT EXISTS device_type TEXT DEFAULT 'desktop',
+        ADD COLUMN IF NOT EXISTS country TEXT,
+        ADD COLUMN IF NOT EXISTS page_views INTEGER NOT NULL DEFAULT 1,
+        ADD COLUMN IF NOT EXISTS bounce BOOLEAN NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS engagement_score INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS rage_clicks INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS exit_page TEXT,
+        ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_sessions' AND column_name='site_id') THEN
+          EXECUTE 'UPDATE behavior_sessions SET site_url=site_id WHERE site_url='''' AND site_id IS NOT NULL';
+          EXECUTE 'ALTER TABLE behavior_sessions ALTER COLUMN site_id SET DEFAULT ''''';
+        END IF;
+      END $$;
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_sessions_org_site_idx ON behavior_sessions(org_id,site_url)`);
+
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS behavior_insights (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        site_url TEXT NOT NULL,
+        insight_type TEXT NOT NULL DEFAULT '',
+        severity TEXT NOT NULL DEFAULT 'medium',
+        title TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        affected_pages JSONB DEFAULT '[]',
+        estimated_impact TEXT,
+        ai_suggestion TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run(client, `
+      ALTER TABLE behavior_insights
+        ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default',
+        ADD COLUMN IF NOT EXISTS site_url TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS insight_type TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'medium',
+        ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS affected_pages JSONB DEFAULT '[]',
+        ADD COLUMN IF NOT EXISTS estimated_impact TEXT,
+        ADD COLUMN IF NOT EXISTS ai_suggestion TEXT,
+        ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open',
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_insights' AND column_name='site_id') THEN
+          EXECUTE 'UPDATE behavior_insights SET site_url=site_id WHERE site_url='''' AND site_id IS NOT NULL';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_insights' AND column_name='type') THEN
+          EXECUTE 'UPDATE behavior_insights SET insight_type=type WHERE insight_type='''' AND type IS NOT NULL';
+          EXECUTE 'ALTER TABLE behavior_insights ALTER COLUMN type SET DEFAULT ''''';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_insights' AND column_name='site_id') THEN
+          EXECUTE 'ALTER TABLE behavior_insights ALTER COLUMN site_id SET DEFAULT ''''';
+        END IF;
+      END $$;
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_insights_org_site_created_idx ON behavior_insights(org_id,site_url,created_at DESC)`);
+
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS behavior_site_tokens (
+        token_hash TEXT NOT NULL,
+        site_url TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      )
+    `);
+    await run(client, `
+      ALTER TABLE behavior_site_tokens
+        ADD COLUMN IF NOT EXISTS token_hash TEXT,
+        ADD COLUMN IF NOT EXISTS site_url TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default',
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+        ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ
+    `);
+    const tokenColumnRows = await client.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_site_tokens'`,
+    );
+    const tokenColumns = new Set(tokenColumnRows.rows.map((row) => row.column_name));
+    if (tokenColumns.has("token")) {
+      const siteParts = ["NULLIF(site_url, '')"];
+      if (tokenColumns.has("domain")) siteParts.push("NULLIF(domain, '')");
+      if (tokenColumns.has("site_id")) siteParts.push("NULLIF(site_id, '')");
+      const activeExpr = tokenColumns.has("active") ? "active" : "true";
+      const legacyTokens = await client.query<{ token: string | null; site_url: string | null; active: boolean }>(
+        `SELECT token, COALESCE(${siteParts.join(", ")}) AS site_url, ${activeExpr} AS active
+           FROM behavior_site_tokens WHERE token_hash IS NULL`,
+      );
+      for (const row of legacyTokens.rows) {
+        if (!row.token || !row.site_url) {
+          throw new Error("behavior_site_tokens contains a legacy row without a token or site URL; refusing to discard it");
+        }
+        const siteUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(row.site_url) ? row.site_url : `https://${row.site_url}`;
+        const hashInput = row.active === false ? `revoked:${row.token}` : row.token;
+        const tokenHash = createHash("sha256").update(hashInput).digest("hex");
+        await client.query(
+          `UPDATE behavior_site_tokens SET token_hash=$1, site_url=$2, token='migrated:' || $1
+            WHERE token_hash IS NULL AND token=$3`,
+          [tokenHash, siteUrl, row.token],
+        );
+      }
+    }
+    const unresolvedTokens = await client.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM behavior_site_tokens WHERE token_hash IS NULL OR site_url=''`,
+    );
+    if ((unresolvedTokens.rows[0]?.n ?? 0) > 0) {
+      throw new Error("behavior_site_tokens has rows that cannot be upgraded safely");
+    }
+    await run(client, `ALTER TABLE behavior_site_tokens ALTER COLUMN token_hash SET NOT NULL`);
+    await run(client, `ALTER TABLE behavior_site_tokens ALTER COLUMN site_url SET NOT NULL`);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_site_tokens' AND column_name='site_id') THEN
+          EXECUTE 'ALTER TABLE behavior_site_tokens ALTER COLUMN site_id SET DEFAULT gen_random_uuid()::text';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_site_tokens' AND column_name='token') THEN
+          EXECUTE 'ALTER TABLE behavior_site_tokens ALTER COLUMN token SET DEFAULT (''migrated:'' || gen_random_uuid()::text)';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_site_tokens' AND column_name='domain') THEN
+          EXECUTE 'ALTER TABLE behavior_site_tokens ALTER COLUMN domain SET DEFAULT ''''';
+        END IF;
+      END $$;
+    `);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS behavior_site_tokens_site_url_uidx ON behavior_site_tokens(site_url)`);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS behavior_site_tokens_token_hash_uidx ON behavior_site_tokens(token_hash)`);
 
     // ── behavior_events / behavior_sessions / behavior_insights — org_id column ─
     // Wave 4 Lot 4B-S: add org_id to behavioral tables that were created without it.
