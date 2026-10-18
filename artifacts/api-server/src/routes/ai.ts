@@ -58,6 +58,7 @@ import { filterDestinations, validateNavAction, REGISTRY_VERSION } from "../agen
 import { buildNavPromptSection, NavMarkerFilter, sanitizeNavText } from "../agent/nav-agent.js";
 import { createNavigationProposal, createPendingToolProposal } from "../agent/proposals.js";
 import { resolvePlanFromDB } from "../middlewares/planGate.js";
+import { withTimeout } from "../lib/with-timeout.js";
 // ── AI Agents Phase 2 — tool calling ──────────────────────────────────────────
 import { MISSION_TOOLS, type AIToolCall, type ToolDef } from "../agent/mission-tools.js";
 // ── AI Agents Phase 3 — outils calendrier ─────────────────────────────────────
@@ -1549,16 +1550,15 @@ async function runToolCallingLoop(opts: {
 
     let roundResult: ToolCallingResult;
     try {
-      roundResult = await Promise.race([
+      roundResult = await withTimeout(
         aiChatWithTools(
           nativeMessages
             ? { provider, model, tools: _roundTools, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
             : { provider, model, tools: _roundTools, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
         ),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("ROUND_TIMEOUT")), thisRoundTimeout)
-        ),
-      ]);
+        thisRoundTimeout,
+        new Error("ROUND_TIMEOUT"),
+      );
       // Carry system prompt for Anthropic/Gemini continuation rounds
       if (round === 0 && roundResult.systemPrompt) {
         carriedSystemPrompt = roundResult.systemPrompt;
@@ -1669,12 +1669,11 @@ async function runToolCallingLoop(opts: {
 
       if (toolDef.confirmationLevel === "none") {
         // Execute with per-tool timeout (allows long async tools like run_audit ≤ 95 s)
-        const execResult = await Promise.race([
+        const execResult = await withTimeout(
           executeTool(toolCall, ctx),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("TOOL_TIMEOUT")), TOOL_TIMEOUT_MS)
-          ),
-        ]).catch((err: Error) => {
+          TOOL_TIMEOUT_MS,
+          new Error("TOOL_TIMEOUT"),
+        ).catch((err: Error) => {
           const isTimeout = err.message === "TOOL_TIMEOUT";
           logger.warn({ toolName: toolCall.name, isTimeout, errCode: isTimeout ? AI_ERROR.TOOL_EXECUTION_TIMEOUT : AI_ERROR.TOOL_ERROR }, "[tool-loop] tool execution failed/timed out");
           return {

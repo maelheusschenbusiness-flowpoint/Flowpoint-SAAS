@@ -37,6 +37,7 @@
  */
 
 import { logger } from "../lib/logger.js";
+import { withTimeout } from "../lib/with-timeout.js";
 
 export type Queryable = {
   query: (
@@ -94,12 +95,7 @@ export function resetReadinessState(): void {
 export async function probeDatabase(db: Queryable, timeoutMs = DB_PROBE_TIMEOUT_MS): Promise<DbProbe> {
   const start = Date.now();
   try {
-    await Promise.race([
-      db.query("SELECT 1"),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`timeout apres ${timeoutMs}ms`)), timeoutMs)
-      ),
-    ]);
+    await withTimeout(db.query("SELECT 1"), timeoutMs, new Error(`timeout apres ${timeoutMs}ms`));
     return { ok: true, latencyMs: Date.now() - start, detail: "SELECT 1" };
   } catch (err) {
     // Le message d'erreur de la base peut contenir des elements de connexion :

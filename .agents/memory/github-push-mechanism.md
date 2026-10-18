@@ -61,3 +61,11 @@ If normal Base64 blob uploads are blocked by an intermediate Cloudflare filter, 
 **Why:** Normal Git Data, Contents, and GraphQL uploads can all be blocked for the same source content, while the separator form reaches GitHub and produces the intended blob.
 
 **How to apply:** Compute the expected Git blob SHA from `sha1("blob " + byteLength + "\0" + bytes)`, upload the separated Base64 string, and refuse to build or publish the tree unless GitHub's returned blob SHA exactly matches the expected SHA.
+
+## Publishing a PR branch from a stale local base
+
+When a local branch is behind the target branch, create the Git Data commit with the current target-branch commit as its parent and overlay only the intended changed paths. Compare the resulting PR diff against the target branch, then fetch the published PR branch locally before further edits.
+
+**Why:** The target can advance between the local fetch and publication; copying a whole stale file can silently remove changes made upstream.
+
+**How to apply:** Re-read the target ref immediately before creating the commit, verify changed paths and unexpected deletions in the PR diff, and sync the local working branch to the published PR ref before continuing.

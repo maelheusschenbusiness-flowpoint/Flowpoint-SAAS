@@ -52,6 +52,8 @@ export default defineConfig({
       "src/services/checkout-post-tokens-rls-db.test.ts",
       "src/services/identity-schema-gate-db.test.ts",
       "src/services/readiness-db.test.ts",
+      "src/services/readiness-timeout.test.ts",
+      "src/lib/with-timeout.test.ts",
       "src/services/quarantine-table-rls-db.test.ts",
       "src/services/schema-gate-status-db.test.ts",
       "src/services/rls-guc-alignment-db.test.ts",
@@ -88,6 +90,8 @@ export default defineConfig({
       "src/services/ai-usage-tracking-db.test.ts",
       "src/services/ai-usage-idempotency-db.test.ts",
       "src/services/ai-usage-failclosed.test.ts",
+      "src/services/ai-provider-stream.test.ts",
+      "src/tests/dashboard-responsive-ux.test.ts",
       "src/middlewares/requirePaidAccess-db.test.ts",
       // Le contournement d'authentification de developpement exige une intention (17/10/2026).
       "src/middlewares/requireAuth-dev-bypass.test.ts",
