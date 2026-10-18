@@ -28,37 +28,46 @@ touchée, et rien n'est contourné.
 reste une seule action — approuver. La fusion suit toute seule, même plusieurs
 minutes plus tard.
 
-## Les deux gardes, et pourquoi elles existent
+## Le mécanisme qui fonctionne, vérifié le 18/10/2026
 
-**Pas de fork.** Ce dépôt est **public**. Sans cette garde, un contributeur
-extérieur pourrait faire fusionner son code automatiquement dans
-`Test-Replit`. Une PR venant d'un fork est donc refusée, et reste à traiter à
-la main.
+Au moment d'ouvrir la PR, on arme la fusion automatique de GitHub :
 
-**Pas de `Flowpoint`.** Le déclencheur est restreint à `Test-Replit`, et une
-garde explicite revérifie la cible. La production n'est jamais concernée.
+```bash
+gh pr merge <numero> --repo <depot> --auto --merge
+```
 
-## Pourquoi `pull_request_target` et pas `pull_request`
+GitHub fusionne ensuite **de lui-même**, dès que toutes les conditions du
+ruleset sont réunies. Aucune surveillance, aucun clic ultérieur.
 
-Contre-intuitif, mais c'est le choix sûr **ici** : avec `pull_request_target`,
-le fichier de workflow exécuté est celui de la branche **de base**. Une PR ne
-peut donc pas modifier ce workflow pour s'accorder plus de droits. Avec
-`pull_request`, le workflow viendrait de la PR elle-même.
+**Preuve** — PR #173 : fusion automatique armée à 15:06 alors que la CI était
+`pending` ; CI verte ; fusionnée par GitHub à **15:08:15** (commit `72cbc337`),
+sans aucune intervention.
 
-Le danger habituel de `pull_request_target` est d'exécuter le code de la PR
-avec un jeton privilégié. Ce workflow **ne fait aucun `checkout`** : il se
-borne à un appel d'API. C'est ce qui rend ce déclencheur approprié, et un test
-de ce dépôt vérifierait l'absence de `checkout` si l'on venait à l'ajouter.
+## Le workflow a été retiré, et voici pourquoi
 
-## Prérequis : un réglage de dépôt
+Un workflow `fusion-automatique.yml` avait été ajouté (PR #172) pour armer la
+fusion automatique à l'ouverture de chaque PR, y compris celles qu'on n'ouvre
+pas soi-même. Mesure après fusion : **il ne s'est jamais enregistré ni
+déclenché** — l'API Actions ne connaît qu'un seul workflow, `ci.yml`, et aucune
+exécution n'existe pour la PR #173.
 
-Le réglage **« Allow auto-merge »** doit être actif (Settings → General →
-Pull Requests). Il est aujourd'hui à `false`.
+La cause de ce non-enregistrement n'est pas établie. Ce qui l'est, en revanche,
+c'est qu'il n'aurait de toute façon pas pu agir : le réglage de dépôt
+`default_workflow_permissions` vaut **`read`**, et un bloc `permissions:` ne
+peut que *restreindre* ce maximum, jamais l'élargir. Le jeton n'aurait pas eu
+le droit d'écrire sur la PR.
 
-Ce n'est pas une protection : il autorise seulement l'usage de la
-fonctionnalité. Il n'abaisse aucune exigence, et GitHub continue d'imposer la
-CI et la revue. Tant qu'il est inactif, le workflow échoue proprement en le
-disant, et rien d'autre ne change.
+Un workflow inerte est pire qu'aucun workflow : il laisse croire à une
+capacité qui n'existe pas. Il a donc été retiré.
+
+### Ce qu'il faudrait pour le faire revivre
+
+Passer `default_workflow_permissions` à `write` pour tout le dépôt. Sur un
+dépôt **public**, cela élargit le jeton de *tous* les workflows, pas seulement
+celui-là. Le gain serait limité aux PR qu'on n'ouvre pas soi-même — puisque
+pour les autres, la commande ci-dessus suffit et ne coûte rien.
+
+C'est un arbitrage à trancher, pas une évidence. Il n'est pas appliqué.
 
 ## L'approbation obligatoire a été retirée — décision du 18/10/2026
 
