@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { optionsSslPostgres } from "./ssl-supabase.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   pgTable, text, integer, boolean, timestamp, real, bigint, jsonb,
@@ -6,8 +7,14 @@ import {
 
 // ── Connection ────────────────────────────────────────────────────────────────
 
+// La racine Supabase n'est pas dans le magasin public : sans elle, la connexion
+// au pooler echoue en `SELF_SIGNED_CERT_IN_CHAIN`. Voir ssl-supabase.ts — la
+// verification reste ACTIVE, la racine est ajoutee au magasin, pas substituee.
+const sslPostgres = optionsSslPostgres();
+
 export const pool = new Pool({
   connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
+  ...(sslPostgres === undefined ? {} : { ssl: sslPostgres }),
   max: 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,

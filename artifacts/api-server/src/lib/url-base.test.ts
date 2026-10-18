@@ -31,18 +31,19 @@ describe("construction depuis les variables separees", () => {
     const url = construireDepuisVariablesPg(env({ ...BASE }));
     expect(url).toBe(
       "postgresql://postgres.rrjllaiodpvtsphrtdqd:motdepasse@" +
-      "aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require"
+      "aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
     );
   });
 
-  it("le port et le mode SSL peuvent etre imposes", () => {
-    const url = construireDepuisVariablesPg(env({ ...BASE, PGPORT: "6543", PGSSLMODE: "verify-full" }));
-    expect(url).toContain(":6543/");
-    expect(url).toContain("sslmode=verify-full");
+  it("le port peut etre impose", () => {
+    expect(construireDepuisVariablesPg(env({ ...BASE, PGPORT: "6543" }))).toContain(":6543/");
   });
 
-  it("TLS est exige par defaut — Supabase refuse une connexion en clair", () => {
-    expect(construireDepuisVariablesPg(env({ ...BASE }))).toContain("sslmode=require");
+  it("l'URL ne porte AUCUN sslmode — c'est le pool qui decide", () => {
+    // Deux sources de verite pour le meme reglage produiraient un comportement
+    // ambigu selon la version de pg. Voir lib/db/src/ssl-supabase.ts.
+    expect(construireDepuisVariablesPg(env({ ...BASE, PGSSLMODE: "verify-full" })))
+      .not.toContain("sslmode");
   });
 
   it("il manque une variable : rien n'est construit", () => {

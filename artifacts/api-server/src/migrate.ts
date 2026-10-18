@@ -31,7 +31,7 @@ import { initPhase1Users } from "./services/init-phase1-users.js";
 import { stampSchemaGate } from "./services/schema-gate-status.js";
 import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
 import { reconcileSchema, reconcileDefaults } from "./services/init-schema-reconcile.js";
-import { verifierCibleBase } from "./services/garde-cible-base.js";
+import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -45,7 +45,11 @@ async function migrate() {
   console.log("=".repeat(60));
   console.log("FlowPoint — full migration runner");
   console.log("=".repeat(60));
-  console.log(`  DATABASE_URL host : ${process.env["DATABASE_URL"]?.replace(/\/\/[^@]+@/, "//***@") ?? "(not set)"}`);
+  // Le masquage precedent — remplacer `//…@` — ne coupait qu'au PREMIER `@`.
+  // Mesure du 18/10/2026 : avec un PGHOST contenant une chaine de connexion,
+  // un second `@` suivait, et l'identifiant survivait au masquage. On ne
+  // journalise donc plus que l'hote et la base, par la description sure.
+  console.log(`  Cible            : ${decrireCibleSurement(lireCible(process.env["DATABASE_URL"]))}`);
   console.log(`  Timestamp         : ${new Date().toISOString()}`);
   console.log("=".repeat(60));
 
@@ -54,7 +58,7 @@ async function migrate() {
   // de s'executer sur une base que l'appelant n'a pas declaree.
   try {
     const { verifiee, cible } = verifierCibleBase();
-    if (verifiee && cible) console.log(`  ✓ Cible declaree confirmee : ${cible.hote}/${cible.base}`);
+    if (verifiee && cible) console.log(`  ✓ Cible declaree confirmee : ${decrireCibleSurement(cible)}`);
   } catch (err: any) {
     console.error(`  ✗ ${err.message}`);
     process.exit(1);
