@@ -83,6 +83,8 @@ export default defineConfig({
       "src/lib/url-base.test.ts",
       // Verification TLS : racine Supabase epinglee, verification active (18/10/2026).
       "../../lib/db/src/ssl-supabase.test.ts",
+      // Taille du pool face au plafond du pooler Supabase (18/10/2026).
+      "../../lib/db/src/pool-taille.test.ts",
       "src/services/cancel-at-period-end-db.test.ts",
       "src/services/publishable-key-mode.test.ts",
       "src/services/canonical-subscription-db.test.ts",

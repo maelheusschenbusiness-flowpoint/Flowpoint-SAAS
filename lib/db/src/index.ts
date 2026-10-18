@@ -12,13 +12,43 @@ import {
 // verification reste ACTIVE, la racine est ajoutee au magasin, pas substituee.
 const sslPostgres = optionsSslPostgres();
 
+/**
+ * Taille du pool — DEFAUT MESURE LE 18/10/2026.
+ *
+ * Le pool etait a `max: 20`. Le pooler Supabase en mode session limite a 15
+ * clients, et le deploiement du commit 311c545f a echoue dessus :
+ *
+ *   code: "XX000"
+ *   message: "(EMAXCONNSESSION) max clients reached in session mode
+ *             - max clients are limited to pool_size: 15"
+ *   Fatal startup error — process will exit
+ *
+ * Pendant un deploiement sans coupure, deux instances coexistent : a 20
+ * chacune, le plafond est franchi et le demarrage echoue. Ce n'est pas une
+ * malchance, c'est arithmetique.
+ *
+ * 6 par instance laisse 12 pour deux instances, et 3 de marge pour `migrate`,
+ * les taches planifiees ou une connexion manuelle. Le trafic reel le permet
+ * tres largement : 118 589 requetes sur 30 jours, soit 0,046 requete par
+ * seconde en moyenne.
+ *
+ * `PG_POOL_MAX` permet de suivre un pooler reconfigure sans toucher au code.
+ */
+const TAILLE_POOL = (() => {
+  const brut = Number.parseInt(process.env["PG_POOL_MAX"] ?? "", 10);
+  return Number.isFinite(brut) && brut >= 1 ? brut : 6;
+})();
+
 export const pool = new Pool({
   connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
   ...(sslPostgres === undefined ? {} : { ssl: sslPostgres }),
-  max: 20,
+  max: TAILLE_POOL,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
+
+/** Expose la valeur retenue, pour les tests de non-regression. */
+export const TAILLE_POOL_RETENUE = TAILLE_POOL;
 
 // Guard against unhandled 'error' events on idle pool clients.
 // When a connection is dropped by the server (ECONNABORTED, ECONNRESET, etc.)
