@@ -7,6 +7,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { enregistrerEtape } from "../services/funnel-events.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
@@ -1434,6 +1435,15 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     case "checkout.session.completed": {
       const meta = (obj["metadata"] as Record<string,string>) ?? {};
 
+      // Mesure du tunnel. Cle = identifiant de session Stripe, donc un rejeu
+      // du meme evenement n'ajoute pas de ligne.
+      void enregistrerEtape({
+        etape: "checkout_completed",
+        orgId,
+        plan: typeof meta["plan"] === "string" ? meta["plan"] : null,
+        cleIdempotence: typeof obj["id"] === "string" ? `checkout_completed:${String(obj["id"])}` : null,
+      });
+
       // ── One-time AI credit pack purchase ──────────────────────────────────
       // Matches sessions from /billing/checkout-ai-credits (type=ai_credits) AND
       // from /public/checkout-session for ai_credits_only checkout type.
@@ -1947,6 +1957,23 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
     case "customer.subscription.created":
     case "customer.subscription.updated": {
+      // Mesure du tunnel : l'essai s'ouvre, ou l'abonnement devient payant.
+      // Cle = abonnement + statut, donc une repetition du meme statut ne
+      // compte qu'une fois, mais un passage essai -> actif est bien enregistre.
+      {
+        const _statut = typeof obj["status"] === "string" ? String(obj["status"]) : "";
+        const _sub    = typeof obj["id"]     === "string" ? String(obj["id"])     : "";
+        const _etape  = _statut === "trialing" ? "trial_activated"
+                      : _statut === "active"   ? "subscription_activated"
+                      : null;
+        if (_etape) {
+          void enregistrerEtape({
+            etape: _etape,
+            orgId,
+            cleIdempotence: _sub ? `${_etape}:${_sub}` : null,
+          });
+        }
+      }
       const newPlan = parsePlanFromSubscription(obj);
       const status = String(obj["status"] || "active");
 

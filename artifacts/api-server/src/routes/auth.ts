@@ -8,6 +8,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { enregistrerEtape } from "../services/funnel-events.js";
 import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
@@ -707,11 +708,23 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       const { loadOrgSettings: _checkAccount } = await import("../services/org-settings.js");
       const _existingAccount = await _checkAccount(email).catch(() => undefined);
       if (_existingAccount === null) {
-        logger.warn({ email }, "[Auth] login-request: no account found — rejected");
-        res.status(404).json({
-          error: "Aucun compte trouvé pour cette adresse email. Créez votre compte sur /signin.html.",
-          redirectTo: "/signin.html",
-        });
+        // ENUMERATION DE COMPTES — corrigee le 18/10/2026.
+        //
+        // Cette branche repondait 404 avec « Aucun compte trouve pour cette
+        // adresse email ». Mesure faite en production pendant l'audit : un
+        // appel avec une adresse inventee le confirmait immediatement. On
+        // pouvait donc tester une liste d'adresses et savoir lesquelles sont
+        // clientes de FlowPoint.
+        //
+        // La reponse est desormais IDENTIQUE a celle d'un envoi reussi : meme
+        // code, meme forme. Aucun courriel n'est envoye, et le client affiche
+        // « Lien envoye » comme pour un compte existant — le parcours de
+        // connexion est donc inchange du point de vue du code appelant.
+        //
+        // La limite de debit reste en place (`authRateLimit`), donc cette
+        // uniformite n'ouvre aucune porte au balayage.
+        logger.warn({ email }, "[Auth] login-request: aucun compte — reponse uniforme, aucun envoi");
+        res.json({ ok: true, message: "Si un compte existe pour cette adresse, un lien de connexion vient d'etre envoye." });
         return;
       }
       if (_existingAccount && _existingAccount.subscriptionStatus === "pending_billing") {
@@ -1311,6 +1324,15 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   }
 
   logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] Pre-registration stored — awaiting plan + payment");
+  // Mesure du tunnel : le formulaire a ete envoye ET accepte. C'est la
+  // premiere etape que le serveur puisse constater — `signup_started` ne peut
+  // venir que du navigateur. Aucune donnee personnelle n'est transmise.
+  void enregistrerEtape({
+    etape: "signup_form_completed",
+    visiteurId: typeof req.body?.visiteurId === "string" ? req.body.visiteurId : null,
+    cleIdempotence: `signup_form_completed:${preToken}`,
+  });
+
   res.json({ ok: true, preRegisterToken: preToken });
 });
 

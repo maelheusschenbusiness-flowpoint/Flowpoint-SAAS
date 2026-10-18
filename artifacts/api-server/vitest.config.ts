@@ -67,6 +67,11 @@ export default defineConfig({
       "src/services/ordre-durcissement-rls.test.ts",
       // ALTER sur une table que rien ne cree — defaut mesure le 18/10/2026.
       "src/services/alter-sans-create.test.ts",
+      // Mesure du tunnel commercial (18/10/2026).
+      "src/services/funnel-events-db.test.ts",
+      "src/routes/funnel-endpoint-db.test.ts",
+      // Enumeration de comptes sur login-request (18/10/2026).
+      "src/routes/login-request-enumeration.test.ts",
       "src/services/schema-reconcile-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
