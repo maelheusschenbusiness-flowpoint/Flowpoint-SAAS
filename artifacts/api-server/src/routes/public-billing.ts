@@ -20,6 +20,7 @@ import {
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 const router = Router();
 
 /**
@@ -3034,10 +3035,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _resendKeyChk = process.env["RESEND_API_KEY"];
           if (_resendKeyChk) {
             try {
-              const _supResp = await fetch(
+              const _supResp = await fetchBorne(
                 `https://api.resend.com/suppressions/${encodeURIComponent(_fcAEmail)}`,
                 { headers: { Authorization: `Bearer ${_resendKeyChk}` } }
-              );
+              , DELAIS.courriel);
               if (_supResp.ok) {
                 const _supData = await _supResp.json() as { email?: string; origin?: string };
                 if (_supData?.email) {

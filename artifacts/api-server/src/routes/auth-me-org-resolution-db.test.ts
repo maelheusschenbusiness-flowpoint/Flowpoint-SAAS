@@ -20,6 +20,14 @@
 
 import { vi, describe, it, expect, beforeAll, afterAll } from "vitest";
 
+// Ce fichier monte `authRouter` seul et INJECTE le contexte de session : il ne
+// sollicite pas l'authentification, comme le dit l'en-tete. `GET /auth/me`
+// porte pourtant `requireAuth` par route. Ce test s'appuyait donc, sans le
+// dire, sur l'ancien contournement de developpement — celui qui s'activait par
+// la seule absence d'`API_SECRET_KEY`. Ce contournement demande maintenant une
+// intention declaree : on la declare ici, explicitement.
+vi.hoisted(() => { process.env["ALLOW_UNAUTHENTICATED_DEV"] = "true"; });
+
 vi.mock("@workspace/db", async (importOriginal) => {
   return importOriginal<typeof import("@workspace/db")>();
 });

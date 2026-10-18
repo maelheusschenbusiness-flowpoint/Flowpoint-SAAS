@@ -75,7 +75,10 @@ export async function resolveSellerIdFromToken(token: string): Promise<string | 
     );
     return r.rows[0]?.seller_id ?? null;
   } catch (err) {
-    logger.warn({ err, token }, "[SellerAttrib] resolveSellerIdFromToken DB error (non-fatal)");
+    // Le jeton de `pending_signups` autorise une inscription : il ne doit pas
+    // entrer dans un journal, meme en cas d'erreur. Sa longueur suffit a
+    // distinguer « jeton absent » de « jeton present mais lecture en echec ».
+    logger.warn({ err, tokenLen: token.length }, "[SellerAttrib] resolveSellerIdFromToken DB error (non-fatal)");
     return null;
   }
 }
