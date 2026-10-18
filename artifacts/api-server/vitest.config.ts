@@ -72,6 +72,8 @@ export default defineConfig({
       "src/routes/funnel-endpoint-db.test.ts",
       // Enumeration de comptes sur login-request (18/10/2026).
       "src/routes/login-request-enumeration.test.ts",
+      // Mesure du tunnel posee sur la page d'inscription (18/10/2026).
+      "src/tests/signin-mesure-tunnel.test.ts",
       "src/services/schema-reconcile-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",

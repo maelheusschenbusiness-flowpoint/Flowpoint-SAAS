@@ -679,6 +679,54 @@
     document.getElementById('plan-screen').style.display   = 'block';
   }
 
+  /* ── Mesure du tunnel — ajoutee le 18/10/2026 ───────────────────────────
+     Cette page EST la premiere etape mesurable cote prospect : `/` et
+     `/index.html` y redirigent, et c'est ici que le formulaire vit.
+
+     Aucune donnee personnelle ne part : un identifiant aleatoire conserve
+     dans le navigateur, et la provenance (parametre d'URL ou domaine
+     referent). Pas d'adresse, pas de nom, pas d'email.
+
+     Rien ici ne peut bloquer l'inscription : tout est en try/catch et la
+     requete n'est jamais attendue. ──────────────────────────────────────── */
+  function fpVid() {
+    try {
+      var v = localStorage.getItem('fp_vid');
+      if (!v) {
+        v = (window.crypto && window.crypto.randomUUID)
+              ? window.crypto.randomUUID()
+              : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+        localStorage.setItem('fp_vid', v);
+      }
+      return v;
+    } catch (e) { return ''; }      // navigation privee : on mesure sans identifiant
+  }
+
+  function fpSource() {
+    try {
+      var q = new URLSearchParams(window.location.search);
+      var s = q.get('utm_source') || q.get('fp_src') || q.get('fp_ref') || '';
+      if (s) return s.slice(0, 60);
+      if (document.referrer) return new URL(document.referrer).hostname.slice(0, 60);
+      return 'direct';
+    } catch (e) { return ''; }
+  }
+
+  function fpEtape(etape) {
+    try {
+      var vid = fpVid();
+      if (!vid) return;
+      fetch('/api/public/funnel-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({ etape: etape, visiteurId: vid, source: fpSource() })
+      }).catch(function () {});       // une mesure ratee ne doit jamais se voir
+    } catch (e) { /* ignore */ }
+  }
+
+  fpEtape('signup_started');
+
   /* ── Step 1: form submit → POST /auth/pre-register ── */
   var signupBtn = document.getElementById('signup-btn');
   var signupMsg = document.getElementById('signup-msg');
@@ -723,7 +771,12 @@
         address: address, city: city, postalCode: postalCode,
         phone: phone || undefined, vat: vat || undefined,
         seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})(),
-        fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})() })
+        fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})(),
+        // Mesure du tunnel : relie `signup_form_completed` au meme visiteur que
+        // `signup_started`. Sans ce lien, les deux etapes ne se joignent pas et
+        // le taux d'abandon du formulaire reste incalculable. Champ purement
+        // additionnel — aucun champ du formulaire n'est modifie.
+        visiteurId: fpVid() })
     })
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {
