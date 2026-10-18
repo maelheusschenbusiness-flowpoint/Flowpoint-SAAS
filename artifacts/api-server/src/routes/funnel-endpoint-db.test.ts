@@ -20,11 +20,12 @@ vi.mock("../lib/logger.js", () => ({
 }));
 
 import express from "express";
+import cookieParser from "cookie-parser";
 import request from "supertest";
 import { pool } from "@workspace/db";
 import { randomUUID } from "node:crypto";
 
-const VISITEUR = `test-${randomUUID()}`;
+const VISITEUR = `fp-test-${randomUUID().replaceAll("-", "")}`;
 let app: express.Express;
 let dbOk = false;
 
@@ -32,18 +33,18 @@ beforeAll(async () => {
   try { await pool.query("SELECT 1"); dbOk = true; } catch { dbOk = false; }
   const { default: routeur } = await import("./public-billing.js");
   app = express();
-  app.use(express.json());
+  app.use(express.json(), cookieParser());
   app.use("/api", routeur);
 });
 
 beforeEach(async () => {
   if (!dbOk) return;
-  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'test-%'`).catch(() => undefined);
+  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'fp-test-%'`).catch(() => undefined);
 });
 
 afterAll(async () => {
   if (!dbOk) return;
-  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'test-%'`).catch(() => undefined);
+  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'fp-test-%'`).catch(() => undefined);
 });
 
 async function compter(visiteur: string): Promise<number> {
@@ -56,10 +57,19 @@ describe("POST /api/public/funnel-event", () => {
   it("accepte une etape navigateur et ne renvoie aucune information", async (ctx) => {
     if (!dbOk) return ctx.skip();
     const r = await request(app).post("/api/public/funnel-event")
+      .set("Cookie", "fp_analytics_consent=accepted")
       .send({ etape: "landing_vue", visiteurId: VISITEUR, source: "smartlead" });
     expect(r.status).toBe(204);
     expect(r.text).toBe("");          // rien ne fuit, pas meme un compteur
     expect(await compter(VISITEUR)).toBe(1);
+  });
+
+  it("n'enregistre aucun visiteur sans consentement accepté", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const r = await request(app).post("/api/public/funnel-event")
+      .send({ etape: "landing_vue", visiteurId: VISITEUR, source: "smartlead" });
+    expect(r.status).toBe(204);
+    expect(await compter(VISITEUR)).toBe(0);
   });
 
   it("UNE ETAPE QUI ENGAGE DE L'ARGENT EST REFUSEE depuis le navigateur", async (ctx) => {
@@ -89,6 +99,7 @@ describe("POST /api/public/funnel-event", () => {
     if (!dbOk) return ctx.skip();
     for (let i = 0; i < 4; i++) {
       await request(app).post("/api/public/funnel-event")
+        .set("Cookie", "fp_analytics_consent=accepted")
         .send({ etape: "tarifs_vus", visiteurId: VISITEUR });
     }
     expect(await compter(VISITEUR)).toBe(1);   // idempotence par visiteur/etape/jour

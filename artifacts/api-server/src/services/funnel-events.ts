@@ -58,6 +58,53 @@ export const ETAPES_PUBLIQUES = new Set<string>([
   "landing_vue", "tarifs_vus", "cta_clique", "signup_started",
 ]);
 
+const VISITEUR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
+const SOURCES_AUTORISEES = new Set(["smartlead", "google", "direct", "social", "other_campaign"]);
+
+export interface AttributionFunnel {
+  visiteurId: string;
+  source: string | null;
+}
+
+/** Aucun identifiant analytique n'est accepte sans le consentement explicite. */
+export function normaliserAttributionFunnel(
+  consentement: unknown,
+  visiteurId: unknown,
+  source: unknown,
+): AttributionFunnel | null {
+  if (consentement !== "accepted" || typeof visiteurId !== "string" || !VISITEUR_ID_RE.test(visiteurId)) {
+    return null;
+  }
+  return {
+    visiteurId,
+    source: typeof source === "string" && SOURCES_AUTORISEES.has(source) ? source : null,
+  };
+}
+
+/** Champs de suivi seulement; ils n'interviennent pas dans la facturation Stripe. */
+export function metadataAttributionFunnel(
+  consentement: unknown,
+  visiteurId: unknown,
+  source: unknown,
+): Record<string, string> {
+  const attribution = normaliserAttributionFunnel(consentement, visiteurId, source);
+  if (!attribution) return {};
+  return {
+    fp_analytics_consent: "accepted",
+    fp_visitor_id: attribution.visiteurId,
+    ...(attribution.source ? { fp_source: attribution.source } : {}),
+  };
+}
+
+/** Recupere uniquement l'attribution qui a ete autorisee au debut du parcours. */
+export function lireAttributionFunnel(metadata: Record<string, unknown>): AttributionFunnel | null {
+  return normaliserAttributionFunnel(
+    metadata["fp_analytics_consent"],
+    metadata["fp_visitor_id"],
+    metadata["fp_source"],
+  );
+}
+
 let tablePrete = false;
 
 async function assurerTable(): Promise<void> {

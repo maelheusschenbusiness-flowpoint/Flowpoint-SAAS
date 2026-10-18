@@ -8,7 +8,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { enregistrerEtape } from "../services/funnel-events.js";
+import { enregistrerEtape, normaliserAttributionFunnel } from "../services/funnel-events.js";
 import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
@@ -1327,11 +1327,19 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // Mesure du tunnel : le formulaire a ete envoye ET accepte. C'est la
   // premiere etape que le serveur puisse constater — `signup_started` ne peut
   // venir que du navigateur. Aucune donnee personnelle n'est transmise.
-  void enregistrerEtape({
-    etape: "signup_form_completed",
-    visiteurId: typeof req.body?.visiteurId === "string" ? req.body.visiteurId : null,
-    cleIdempotence: `signup_form_completed:${preToken}`,
-  });
+  const funnelAttribution = normaliserAttributionFunnel(
+    (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
+    req.body?.visiteurId,
+    req.body?.source,
+  );
+  if (funnelAttribution) {
+    void enregistrerEtape({
+      etape: "signup_form_completed",
+      visiteurId: funnelAttribution.visiteurId,
+      source: funnelAttribution.source,
+      cleIdempotence: `signup_form_completed:${preToken}`,
+    });
+  }
 
   res.json({ ok: true, preRegisterToken: preToken });
 });
