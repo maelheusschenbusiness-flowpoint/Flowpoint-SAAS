@@ -577,7 +577,9 @@ export function computeQtyAddonExtras(addons: Record<string, boolean | number>):
  *
  * Standard plan: white-label is included (unlocked for Standard and above).
  * Pro plan: white-label is a listed feature; customDomain is NOT (ultra only).
- * Ultra plan: adds customDomain + retention365d + advanced AI add-ons.
+ * Ultra includes all six Pro add-ons plus four Ultra-only additions:
+ * customDomain, behavioralAI, aiForecasting, and retention365d.
+ * keywordDomination remains purchasable on Pro/Ultra but is not bundled.
  */
 export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
   standard: new Set<string>(["whiteLabel"]),
@@ -594,18 +596,18 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
   ]),
   ultra: new Set<string>([
     "whiteLabel",
-    "customDomain",
     "advancedWebhooks",
+    "retention90d",
     "advancedSeoLab",
     // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
     "backlinkIntelligence",
+    "enterprisePermissions",
+    "customDomain",
     // behavioralAI: BETA + included in Ultra → shows as "🧪 Beta — Inclus dans votre plan"
     "behavioralAI",
     // aiForecasting: BETA + included in Ultra → same "🧪 Beta — Inclus" rendering
     "aiForecasting",
-    "enterprisePermissions",
     "retention365d",
-    "keywordDomination",
   ]),
 };
 
