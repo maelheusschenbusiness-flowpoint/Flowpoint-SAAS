@@ -1048,7 +1048,21 @@ export async function awaitPendingSignupActivation(
 
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripeKey = getStripeKey();
-  const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+  // MESURE DU 18/10/2026. Cette ligne exigeait STRIPE_WEBHOOK_SECRET (ou sa
+  // variante _RENDER) pour entrer dans la branche verifiee, et ne consultait
+  // STRIPE_TEST_WEBHOOK_SECRET qu'A L'INTERIEUR de cette branche, en repli.
+  // Un environnement de test configure avec le seul secret de test — ce que
+  // decrit render.yaml pour `flowpoint-test` — tombait donc dans la branche NON
+  // SIGNEE, et chaque evenement etait refuse en 503 : aucun abonnement ne
+  // s'activait, alors que la variable posee par l'operateur etait simplement
+  // ignoree. Le refus etait sur, mais muet sur sa cause.
+  // Les deux secrets sont desormais des candidats de meme rang, essayes dans
+  // l'ordre. Le comportement est inchange quand le secret principal est pose.
+  const secretsCandidats = [
+    process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"],
+    process.env["STRIPE_TEST_WEBHOOK_SECRET"],
+  ].filter((v): v is string => typeof v === "string" && v.length > 0);
+  const webhookSecret = secretsCandidats[0];
 
   let event: { type: string; data: { object: Record<string, unknown> } };
 
@@ -1062,9 +1076,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     // is configured, try the isolated test endpoint secret.  The secret's presence
     // is the safety gate — it is a whsec_ issued by Stripe test mode and can only
     // validate test-mode events.  getStripeKey() ensures sk_test_ is the active key.
-    const testWebhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
+    const testWebhookSecret = secretsCandidats[1];
     try {
-      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret) as unknown as typeof event;
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret!) as unknown as typeof event;
     } catch (liveErr) {
       if (testWebhookSecret) {
         try {

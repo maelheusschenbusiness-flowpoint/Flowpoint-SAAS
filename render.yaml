@@ -75,7 +75,7 @@ services:
     # pas ete verifie, cette commande bloquerait TOUS les deploiements, y
     # compris un correctif urgent.
     # NE DECOMMENTER QU'APRES avoir execute migrate.mjs avec succes sur une
-    # COPIE RESTAUREE de cette base (runbook, phases 1 et 2).
+    # COPIE RESTAUREE de cette base (docs/runbook-migration-v1.md, phases 1 et 2).
     # preDeployCommand: cd artifacts/api-server && pnpm run migrate
 
     envVars:
@@ -141,6 +141,10 @@ services:
         value: "true"
       - key: STRIPE_TEST_KEY
         sync: false
+      # Depuis le 18/10/2026 ce secret suffit a lui seul : le routeur de webhook
+      # traite les deux secrets comme des candidats de meme rang. Auparavant la
+      # branche verifiee exigeait STRIPE_WEBHOOK_SECRET, et un environnement
+      # configure comme ci-dessous refusait tout evenement en 503.
       - key: STRIPE_TEST_WEBHOOK_SECRET
         sync: false
       - key: STRIPE_TEST_PUBLISHABLE_KEY
