@@ -69614,6 +69614,7 @@ window.FP_REVENUE_LEAK_API = {
         conversionFails:data.conversionFailures || [],
         isEmpty:        data.noData        ?? (!(data.opportunities && data.opportunities.length)),
         emptyReason:    data.error         || null,
+        error:          data.error         || null,
       };
     } catch(e) { console.warn('[FP_REVENUE_LEAK_API] load error:', e); }
   },

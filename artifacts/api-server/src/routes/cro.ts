@@ -68,6 +68,7 @@ router.get("/cro", async (req: Request, res: Response) => {
         id: `${item.page}:${item.eventType}:${index}`,
         page: item.page, type: item.eventType, title: item.recommendation,
         description: `${item.observedEvents} événements observés sur ${item.affectedSessions} sessions au cours des 30 derniers jours.`,
+        observedEvents: item.observedEvents, affectedSessions: item.affectedSessions,
         source: item.source, frequency: item.observedEvents,
         confidence: item.confidence, status: "pending",
       })),
