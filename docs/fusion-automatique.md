@@ -60,20 +60,43 @@ fonctionnalité. Il n'abaisse aucune exigence, et GitHub continue d'imposer la
 CI et la revue. Tant qu'il est inactif, le workflow échoue proprement en le
 disant, et rien d'autre ne change.
 
-## Ce qui reste manuel, et l'arbitrage si l'on veut aller plus loin
+## L'approbation obligatoire a été retirée — décision du 18/10/2026
 
-Il reste une approbation par PR. Pour la supprimer, il faudrait abaisser
-`required_approving_review_count` à `0` sur `Protect Test-Replit` — c'est-à-dire
-**retirer la revue obligatoire**. Conséquence : n'importe quel commit poussé
-sur une branche puis ouvert en PR atteindrait `Test-Replit` sans qu'aucun œil
-humain ne l'ait vu, la CI seule faisant barrage. Et `Test-Replit` est la source
-des promotions vers la production.
+Sur autorisation explicite, et **sur `Test-Replit` uniquement** :
 
-Cette modification touche une protection. Elle n'est pas appliquée, et ne le
-sera pas sans autorisation explicite.
+| Changement | Avant | Après |
+|---|---|---|
+| `Protect Test-Replit` → `required_approving_review_count` | `1` | **`0`** |
+| Réglage de dépôt `allow_auto_merge` | `false` | **`true`** |
 
-Un intermédiaire existe : approuver automatiquement une classe **étroite et
-vérifiable** de PR — par exemple celles ne touchant que `docs/**` ou que des
-fichiers `*.test.ts`, et provenant du dépôt lui-même. Cela reste une revue de
-nom seulement, mais sur un périmètre où la CI est réellement le juge. À
-décider, pas à supposer.
+Un diff avant/après des deux rulesets a été produit : c'est le **seul** champ
+modifié, et `Protect Flowpoint` est strictement inchangée.
+
+### Ce qui garde encore la branche
+
+Retirer la revue ne laisse pas la porte ouverte. Restent en vigueur :
+
+- le contrôle obligatoire **`Types, build, tests`**, en mode strict (la branche
+  doit être à jour) — c'est désormais le seul juge du contenu ;
+- `require_extra_approval_for_unattributed_changes` : une PR dont les commits
+  ne sont pas rattachés à un compte GitHub exige **toujours** une approbation.
+  C'est précisément le cas où un œil humain a le plus de valeur, et il a été
+  conservé à dessein ;
+- `deletion` et `non_fast_forward` : la branche ne peut être ni supprimée ni
+  réécrite ;
+- **aucun acteur de contournement** sur `Test-Replit` ;
+- la garde anti-fork du workflow : ce dépôt est public, et une PR venant d'un
+  fork n'est jamais fusionnée automatiquement.
+
+### Ce que cela change dans le risque, dit franchement
+
+La CI est maintenant le dernier rempart avant `Test-Replit`, qui alimente la
+production par promotions sélectives. Deux conséquences à garder en tête :
+
+1. **Un trou dans la CI devient un trou dans la branche.** Un défaut qu'aucun
+   test ne couvre passera sans que personne ne le voie. C'est l'argument pour
+   continuer à écrire un test par défaut constaté, plutôt qu'après coup.
+2. **La promotion vers `Flowpoint` reste le vrai point de contrôle.** Elle
+   exige toujours une approbation, et `Protect Flowpoint` n'a pas été touchée.
+   C'est là que la relecture humaine se concentre désormais.
+
