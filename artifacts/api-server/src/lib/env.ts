@@ -3,7 +3,22 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().default(8080),
-  DATABASE_URL: z.string().url("DATABASE_URL must be a valid PostgreSQL connection string"),
+  // MESURE DU 18/10/2026. En repointant l'environnement de test vers sa propre
+  // base, ce controle a refuse la chaine avec « must be a valid PostgreSQL
+  // connection string » — sans dire pourquoi. La cause etait un mot de passe
+  // contenant un caractere reserve non encode : Supabase en genere avec `#`,
+  // `@`, `/`, `?`, `+` ou `=`, et un seul d'entre eux suffit.
+  //
+  // Le controle reste `.url()`, volontairement : il est PLUS strict que
+  // `new URL()`, qui accepte un gabarit `[YOUR-PASSWORD]` non remplace et
+  // meme des espaces. Seul le message change, et il ne contient jamais la
+  // valeur refusee.
+  DATABASE_URL: z.string().url(
+    "DATABASE_URL n'est pas une URL de connexion valide. Cause la plus frequente : " +
+    "le mot de passe contient un caractere reserve (#, @, /, ?, +, =, espace) qui " +
+    "doit etre encode en pourcentage — # devient %23, @ devient %40. Verifiez " +
+    "aussi qu'aucun gabarit du type [YOUR-PASSWORD] ne subsiste."
+  ),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   STRIPE_SECRET_KEY: z.string().startsWith("sk_").optional(),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
