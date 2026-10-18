@@ -286,6 +286,10 @@ export function createIpRateLimit(
  */
 export const publicCheckoutRateLimit = createIpRateLimit("public_checkout", 20, 60_000);
 
+// Telemetrie du tunnel : volume plus eleve qu'un checkout (une page vue, un
+// clic), mais borne pour qu'un appelant ne puisse pas gonfler la table.
+export const funnelEventRateLimit = createIpRateLimit("funnel_event", 60, 60_000);
+
 /**
  * Strict per-IP rate limiter for auth endpoints (login, register).
  * 10 attempts per 15 minutes per IP — prevents brute-force and credential stuffing.

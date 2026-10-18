@@ -34,7 +34,7 @@ describe("pending signup can be resumed instead of bouncing", () => {
 describe("public checkout is limited per prospect, not globally", () => {
   it("no longer keys the public limiter on an org bucket", () => {
     expect(billingSrc).not.toMatch(/createRateLimit\("reportsPerHour"\)/);
-    expect(billingSrc).toMatch(/import \{ publicCheckoutRateLimit \}/);
+    expect(billingSrc).toMatch(/import \{[^}]*\bpublicCheckoutRateLimit\b[^}]*\}/);
   });
 });
 

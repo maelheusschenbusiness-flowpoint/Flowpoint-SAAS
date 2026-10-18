@@ -56,6 +56,10 @@ vi.mock("../middlewares/rateLimiter.js", () => ({
   createRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   // public-billing now imports a per-IP limiter instead of an org-keyed one.
   publicCheckoutRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
+  // Ajoute le 18/10/2026 : public-billing importe desormais aussi ce limiteur,
+  // pour la telemetrie du tunnel. Ce mock enumere ses exports, il faut donc
+  // l'y declarer sinon le module ne se charge plus.
+  funnelEventRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const PENDING: Record<string, { email: string; stripe_customer_id: string | null }> = {};

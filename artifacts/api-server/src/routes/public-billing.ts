@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { subPeriodEnd } from "./billing.js";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
+import { enregistrerEtape, ETAPES_PUBLIQUES } from "../services/funnel-events.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
-import { publicCheckoutRateLimit } from "../middlewares/rateLimiter.js";
+import { publicCheckoutRateLimit, funnelEventRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
@@ -603,6 +604,45 @@ function buildLineItems(
   return { subscriptionItems, oneTimeItems, checkoutType };
 }
 
+/**
+ * POST /api/public/funnel-event — telemetrie des etapes vues par le navigateur.
+ *
+ * Le site vitrine `flowpoint.pro` n'est PAS dans ce depot (verifie : aucune de
+ * ses pages n'y figure, il est servi depuis Google Cloud). Il lui faut donc un
+ * point d'entree, et CORS l'autorise deja.
+ *
+ * Seules les etapes navigateur sont acceptees — `ETAPES_PUBLIQUES`. Un
+ * appelant ne peut donc pas declarer un `subscription_activated`, qui ne peut
+ * venir que d'un webhook Stripe.
+ *
+ * Aucune donnee personnelle n'est acceptee ni stockee : un identifiant de
+ * visiteur anonyme, une source, et c'est tout.
+ */
+router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, res: Response) => {
+  const etape = typeof req.body?.etape === "string" ? req.body.etape.trim() : "";
+  if (!ETAPES_PUBLIQUES.has(etape)) {
+    res.status(400).json({ ok: false, error: "Etape inconnue ou non declarable depuis le navigateur." });
+    return;
+  }
+  const visiteurId = typeof req.body?.visiteurId === "string" ? req.body.visiteurId.trim() : "";
+  if (!visiteurId) {
+    res.status(400).json({ ok: false, error: "visiteurId requis." });
+    return;
+  }
+  // Idempotence par visiteur, etape et JOUR : un rechargement de page ne cree
+  // pas de doublon, mais un retour le lendemain reste compte.
+  const jour = new Date().toISOString().slice(0, 10);
+  await enregistrerEtape({
+    etape,
+    visiteurId,
+    source: typeof req.body?.source === "string" ? req.body.source : null,
+    plan:   typeof req.body?.plan   === "string" ? req.body.plan   : null,
+    cleIdempotence: `${etape}:${visiteurId}:${jour}`,
+  });
+  // 204 : rien a renvoyer, et surtout aucune information sur ce qui existe deja.
+  res.status(204).end();
+});
+
 router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Request, res: Response) => {
   // Validate types before any business logic — prevents .toLowerCase() crashes on null/array/number
   const plan = parsePlanOrEmptyPub(req.body?.plan, res);
@@ -1040,6 +1080,16 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       if (embedded) {
         res.json({ clientSecret: session.client_secret, publishableKey, quote, sessionId: session.id });
       } else {
+    // Mesure du tunnel : une session Checkout a reellement ete creee chez
+    // Stripe. Cle d'idempotence = identifiant de session, donc un rejeu
+    // n'ajoute pas de ligne.
+    void enregistrerEtape({
+      etape: "checkout_started",
+      visiteurId: typeof req.body?.visiteurId === "string" ? req.body.visiteurId : null,
+      plan,
+      cleIdempotence: session.id ? `checkout_started:${session.id}` : null,
+    });
+
         res.json({ url: session.url, quote, sessionId: session.id });
       }
     }
