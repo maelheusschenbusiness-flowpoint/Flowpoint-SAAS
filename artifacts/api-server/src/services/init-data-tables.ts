@@ -3059,6 +3059,48 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_updated   INTEGER NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS records_failed    INTEGER NOT NULL DEFAULT 0`);
     await run(client, `ALTER TABLE crm_sync_logs ADD COLUMN IF NOT EXISTS duration_ms       INTEGER`);
+    // ── keyword_clusters / keyword_opportunities ──────────────────────────────
+    //
+    // DEFAUT MESURE LE 18/10/2026 sur la base de test construite depuis zero.
+    // Les ALTER qui suivent supposaient ces deux tables existantes. Or elles
+    // n'etaient creees QUE dans `migrations/005_missing_tables.sql`, et les
+    // fichiers `migrations/*.sql` ne sont executes par rien : ni par le
+    // demarrage, ni par `migrate.mjs` (qui ne les mentionne que dans un
+    // commentaire). Sur une base qui n'herite pas du schema historique, les
+    // tables n'existaient donc jamais.
+    //
+    // Consequence reelle, pas theorique : les journaux Render affichaient
+    // « relation "keyword_opportunities" does not exist » a chaque ALTER, et
+    // `routes/keywords.ts` fait `SELECT * FROM keyword_opportunities` puis une
+    // jointure sur `keyword_clusters` sans aucune garde — ces points d'entree
+    // echouaient donc en 500.
+    //
+    // Definitions reprises a l'identique de 005_missing_tables.sql, pour que la
+    // base construite ici soit celle que le reste du code attend. Les ALTER
+    // ci-dessous ajoutent ensuite les colonnes des versions ulterieures.
+    await run(client, `CREATE TABLE IF NOT EXISTS keyword_clusters (
+      id          TEXT        PRIMARY KEY,
+      org_id      TEXT        NOT NULL DEFAULT 'default',
+      name        TEXT        NOT NULL,
+      description TEXT,
+      intent      TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await run(client, `CREATE TABLE IF NOT EXISTS keyword_opportunities (
+      id                TEXT        PRIMARY KEY,
+      org_id            TEXT        NOT NULL DEFAULT 'default',
+      type              TEXT                 DEFAULT 'ranking_gap',
+      keyword           TEXT,
+      title             TEXT,
+      description       TEXT,
+      opportunity_score INTEGER              DEFAULT 0,
+      search_volume     INTEGER              DEFAULT 0,
+      difficulty        INTEGER              DEFAULT 0,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await run(client, `CREATE INDEX IF NOT EXISTS keyword_clusters_org_idx      ON keyword_clusters(org_id)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS keyword_opportunities_org_idx ON keyword_opportunities(org_id)`);
+
     // keyword_clusters: columns required by AI clustering persistence (keyword-engine.generateClusters)
     await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS keywords       JSONB`);
     await run(client, `ALTER TABLE keyword_clusters ADD COLUMN IF NOT EXISTS keyword_count  INTEGER DEFAULT 0`);

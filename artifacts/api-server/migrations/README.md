@@ -7,11 +7,48 @@ ordre d'exécution, vérifications avant/après, et règles de sécurité.
 
 ## Principe général
 
-Les migrations sont **découplées du déploiement applicatif** :
+> **Corrigé le 18/10/2026 — ce qui suit était faux et a induit en erreur.**
+>
+> Le texte affirmait que « le serveur API ne touche jamais à la structure de la
+> base ». C'est démenti par la mesure : en repointant l'environnement de test
+> vers une base vide, le simple démarrage a créé **106 tables** et **426
+> policies**, via `initDataTables`, `initRlsSetup`, `runRlsMigrationIfNeeded`,
+> `initPhase1Users` et `reconcileSchema`. Le serveur construit le schéma à
+> chaque démarrage.
+>
+> Deuxième point à corriger : **les fichiers `migrations/*.sql` de ce
+> répertoire ne sont exécutés par rien.** Ni par le démarrage, ni par
+> `pnpm migrate` — `src/migrate.ts` ne les mentionne que dans un commentaire.
+> Le schéma réel vient des services TypeScript `init-*`. Ces fichiers sont une
+> trace historique, utile comme référence de définition, pas comme source
+> d'exécution.
+>
+> Conséquence concrète, mesurée : `keyword_clusters` et `keyword_opportunities`
+> n'étaient définies que dans `005_missing_tables.sql`. Sur une base neuve
+> elles n'existaient donc jamais, et `routes/keywords.ts` échouait en 500.
+> Elles sont désormais créées dans `init-data-tables.ts`, et un test interdit
+> qu'un `ALTER TABLE` non gardé porte sur une table que le démarrage ne sait
+> pas créer.
 
-- Le serveur API (`pnpm start`) ne touche jamais à la structure de la base.
-- Seul le runner de migration (`pnpm migrate`) applique des changements DDL.
-- Cette séparation évite toute modification accidentelle lors d'un redémarrage ou rollback.
+### Le Pre-Deploy `pnpm run migrate` est-il nécessaire ?
+
+**Non, et l'activer n'apporterait rien.** Déterminé le 18/10/2026 :
+
+- la porte `[schema-gate]` signale que `migrate.mjs` n'a jamais tourné sur la
+  base de test — c'est exact, mais elle ajoute dans la ligne suivante :
+  « isolation : toute table portant org_id a RLS active et une policy sur
+  org_id ». L'avertissement porte sur la **provenance** du schéma, pas sur son
+  état, qui est valide ;
+- `/api/healthz/ready` répond **200** avec zéro lacune d'isolation ;
+- et surtout `migrate.mjs` n'exécute pas les `migrations/*.sql` : il n'aurait
+  donc **pas** créé les tables manquantes. Le croire serait l'erreur que ce
+  document encourageait.
+
+Ce que le Pre-Deploy apporterait réellement : une **porte** qui refuse le
+déploiement si le schéma est invalide. C'est une protection, pas un
+constructeur de schéma — et sur une base dont l'état n'a pas été vérifié, elle
+bloquerait tous les déploiements, correctif urgent compris. Voir
+`docs/runbook-migration-v1.md`.
 
 ---
 
