@@ -52,6 +52,8 @@ export default defineConfig({
       "src/services/checkout-post-tokens-rls-db.test.ts",
       "src/services/identity-schema-gate-db.test.ts",
       "src/services/readiness-db.test.ts",
+      "src/services/readiness-timeout.test.ts",
+      "src/lib/with-timeout.test.ts",
       "src/services/quarantine-table-rls-db.test.ts",
       "src/services/schema-gate-status-db.test.ts",
       "src/services/rls-guc-alignment-db.test.ts",
