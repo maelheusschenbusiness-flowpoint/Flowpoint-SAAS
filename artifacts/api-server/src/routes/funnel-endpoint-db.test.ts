@@ -24,7 +24,7 @@ import request from "supertest";
 import { pool } from "@workspace/db";
 import { randomUUID } from "node:crypto";
 
-const VISITEUR = `test-${randomUUID()}`;
+const VISITEUR = `fp-test-${randomUUID().replaceAll("-", "")}`;
 let app: express.Express;
 let dbOk = false;
 
