@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { getRevenueLeakData, detectRevenueLeaks } from "../services/revenue-leak-service.js";
 import { requireAddon } from "../middlewares/planGate.js";
+import { deriveConversionObservations } from "../services/conversion-observations.js";
 
 const router = Router();
 
@@ -13,6 +13,34 @@ const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 // Gate scoped to /revenue-leak/* only — path-less router.use() would intercept every route
 // mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
 router.use("/revenue-leak", requireAddon("revenueLeak", "Revenue Leak AI"));
+
+async function loadRevenueOpportunities(req: Request, siteUrl?: string) {
+  const orgId = (req as OrgReq).orgId ?? "default";
+  const params: unknown[] = [orgId];
+  let siteClause = "";
+  if (siteUrl) {
+    params.push(siteUrl);
+    siteClause = " AND site_url = $2";
+  }
+  const { rows } = await db(req)(
+    `SELECT page, session_id AS "sessionId", event_type AS "eventType",
+            scroll_depth AS "scrollDepth"
+       FROM behavior_events
+      WHERE org_id = $1${siteClause}
+        AND created_at >= now() - interval '30 days'
+      ORDER BY created_at DESC
+      LIMIT 20000`,
+    params,
+  );
+  return deriveConversionObservations(rows).map((observation) => ({
+    ...observation,
+    kind: "conversion_opportunity",
+    financialClassification: "unmeasured",
+    observedRevenueLoss: null,
+    estimatedRevenueLoss: null,
+    note: "Événements observés; aucune donnée de revenu reliée à ces événements.",
+  }));
+}
 
 async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
   const orgId = req.orgId ?? "default";
@@ -35,15 +63,20 @@ async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response):
 router.get("/revenue-leak", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
-    const orgId = (req as OrgReq).orgId ?? "default";
     if (siteUrl) {
       const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
       if (!owned) return;
     }
-    const data = await getRevenueLeakData(orgId, siteUrl);
-    res.json(data);
+    const opportunities = await loadRevenueOpportunities(req, siteUrl);
+    res.json({
+      ok: true, source: "behavior_events", windowDays: 30, opportunities,
+      observations: opportunities.map(({ page, eventType, observedEvents, affectedSessions, confidence }) =>
+        ({ page, eventType, observedEvents, affectedSessions, confidence })),
+      financial: { status: "unavailable", observedLoss: null, estimatedLoss: null, currency: null },
+      noData: opportunities.length === 0,
+    });
   } catch {
-    res.json({ leaks: [], totalLost: 0, currency: "EUR", detectedAt: null });
+    res.status(503).json({ error: "Les événements comportementaux sont temporairement indisponibles.", opportunities: [], noData: true });
   }
 });
 
@@ -54,9 +87,12 @@ router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
   const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
   if (!owned) return;
   try {
-    await detectRevenueLeaks(orgId, siteUrl);
-    const data = await getRevenueLeakData(orgId, siteUrl);
-    res.json({ ok: true, ...data });
+    const opportunities = await loadRevenueOpportunities(req, siteUrl);
+    res.json({
+      ok: true, source: "behavior_events", windowDays: 30, opportunities,
+      financial: { status: "unavailable", observedLoss: null, estimatedLoss: null, currency: null },
+      noData: opportunities.length === 0,
+    });
   } catch {
     res.status(500).json({ error: "Failed to detect revenue leaks" });
   }
@@ -66,10 +102,11 @@ router.patch("/revenue-leak/:id/resolve", async (req: Request, res: Response) =>
   const { id } = req.params;
   const orgId = (req as OrgReq).orgId ?? "default";
   try {
-    await db(req)(
-      `UPDATE revenue_leaks SET status='resolved', resolved_at=now() WHERE id=$1 AND org_id=$2`,
+    const result = await db(req)(
+      `UPDATE revenue_leaks SET status='resolved', resolved_at=now() WHERE id=$1 AND org_id=$2 RETURNING id`,
       [id, orgId]
     );
+    if (!result.rows.length) { res.status(404).json({ error: "Opportunity not found" }); return; }
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to resolve leak" });

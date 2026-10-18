@@ -20,6 +20,8 @@ export default defineConfig({
       "src/tests/ai-lab-conversion-handlers.test.ts",
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
+      // CRO observed-event recommendations and real A/B sample statistics.
+      "src/services/conversion-observations.test.ts",
       // Conversion A — funnel fixes
       "src/routes/seo-quota-gate.test.ts",
       "src/services/dataforseo-quota-db.test.ts",

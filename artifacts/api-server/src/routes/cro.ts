@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
-import { getCROData, generateCRORecommendations, upsertCROScore } from "../services/cro-service.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { logger } from "../lib/logger.js";
+import { deriveConversionObservations } from "../services/conversion-observations.js";
 
 const router = Router();
 
@@ -15,6 +15,27 @@ const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 // Gate scoped to /cro/* only — path-less router.use() would intercept every route
 // mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
 router.use("/cro", requireAddon("aiCro", "AI CRO Strategist"));
+
+async function loadObservedInsights(req: Request, siteUrl?: string) {
+  const orgId = (req as OrgReq).orgId ?? "default";
+  const params: unknown[] = [orgId];
+  let siteClause = "";
+  if (siteUrl) {
+    params.push(siteUrl);
+    siteClause = " AND site_url = $2";
+  }
+  const { rows } = await db(req)(
+    `SELECT page, session_id AS "sessionId", event_type AS "eventType",
+            scroll_depth AS "scrollDepth"
+       FROM behavior_events
+      WHERE org_id = $1${siteClause}
+        AND created_at >= now() - interval '30 days'
+      ORDER BY created_at DESC
+      LIMIT 20000`,
+    params,
+  );
+  return deriveConversionObservations(rows);
+}
 
 async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
   const orgId = req.orgId ?? "default";
@@ -37,27 +58,26 @@ async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response):
 router.get("/cro", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
-    const orgId = (req as OrgReq).orgId ?? "default";
     if (siteUrl) {
       const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
       if (!owned) return;
     }
-    const data = await getCROData(orgId, siteUrl);
-    const recs = data.recommendations;
-    const latestScore = data.scores.length > 0
-      ? Math.round(data.scores.reduce((s, r) => s + Number((r as Record<string, unknown>).score ?? 0), 0) / data.scores.length)
-      : null;
-    const derivedScore = recs.length > 0
-      ? Math.max(20, Math.min(95,
-          100
-          - recs.filter(r => r.priority === "high").length * 12
-          - recs.filter(r => r.priority === "medium").length * 5
-        ))
-      : null;
-    const score = latestScore ?? derivedScore;
-    res.json({ ...data, score, heatmapData: null, funnelData: [], abTests: [] });
-  } catch {
-    res.json({ score: null, recommendations: [], heatmapData: null, funnelData: [], abTests: [] });
+    const observations = await loadObservedInsights(req, siteUrl);
+    res.json({
+      ok: true, source: "behavior_events", windowDays: 30, observations,
+      recommendations: observations.map((item, index) => ({
+        id: `${item.page}:${item.eventType}:${index}`,
+        page: item.page, type: item.eventType, title: item.recommendation,
+        description: `${item.observedEvents} événements observés sur ${item.affectedSessions} sessions au cours des 30 derniers jours.`,
+        observedEvents: item.observedEvents, affectedSessions: item.affectedSessions,
+        source: item.source, frequency: item.observedEvents,
+        confidence: item.confidence, status: "pending",
+      })),
+      experiments: [], score: null, noData: observations.length === 0,
+    });
+  } catch (err) {
+    logger.error({ err }, "[CRO] observed-event analysis failed");
+    res.status(503).json({ error: "Les événements comportementaux sont temporairement indisponibles.", observations: [], noData: true });
   }
 });
 
@@ -68,16 +88,11 @@ router.post("/cro/generate", canWrite, async (req: Request, res: Response) => {
   const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
   if (!owned) return;
   try {
-    await generateCRORecommendations(orgId, siteUrl);
-  } catch {
-    // generateCRORecommendations has its own error handling; ignore re-throw
-  }
-  try {
-    const data = await getCROData(orgId, siteUrl);
-    res.json({ ok: true, ...data });
+    const observations = await loadObservedInsights(req, siteUrl);
+    res.json({ ok: true, source: "behavior_events", windowDays: 30, observations });
   } catch (err) {
-    logger.warn({ err, siteUrl }, "[CRO] getCROData failed, returning empty response");
-    res.json({ ok: true, recommendations: [], scores: [], experiments: [], summary: { totalRecs: 0, highPriority: 0, estimatedUpliftTotal: 0, implementedCount: 0 } });
+    logger.warn({ err, siteUrl, orgId }, "[CRO] observed-event analysis failed");
+    res.status(503).json({ error: "Impossible d'analyser les événements collectés.", observations: [] });
   }
 });
 
@@ -96,7 +111,5 @@ router.patch("/cro/recommendations/:id", canWrite, async (req: Request, res: Res
     res.status(500).json({ error: "Failed to update recommendation" });
   }
 });
-
-void upsertCROScore;
 
 export default router;

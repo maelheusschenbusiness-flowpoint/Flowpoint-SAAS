@@ -225,6 +225,8 @@ describe("canonical add-on availability", () => {
   it("reports product lifecycle independently of entitlement", () => {
     expect(getAddonAvailability("globalMonitoring")).toBe("coming_soon");
     expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
+    expect(getAddonAvailability("abTestingAI")).toBe("coming_soon");
+    expect(COMING_SOON_ADDONS.has("abTestingAI")).toBe(true);
     expect(getAddonAvailability("marketIntelligence")).toBe("beta");
     expect(getAddonAvailability("monitorsPack10")).toBe("available");
   });
