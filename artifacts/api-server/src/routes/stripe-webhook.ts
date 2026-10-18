@@ -14,6 +14,7 @@ import { loadOrgSettings } from "../services/org-settings.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { emitConversionEvent, type ConversionStage } from "../lib/conversion-events.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
+import { enregistrerEtape, lireAttributionFunnel } from "../services/funnel-events.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -1277,6 +1278,20 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
     case "checkout.session.completed": {
       const meta = (obj["metadata"] as Record<string,string>) ?? {};
+      const attribution = lireAttributionFunnel(meta);
+      const completedAndPaid =
+        (String(obj["status"] ?? "") === "complete" || String(obj["status"] ?? "") === "") &&
+        ["paid", "no_payment_required"].includes(String(obj["payment_status"] ?? ""));
+      if (attribution && completedAndPaid) {
+        void enregistrerEtape({
+          etape: "checkout_completed",
+          visiteurId: attribution.visiteurId,
+          source: attribution.source,
+          plan: meta["selected_plan"] || meta["plan"] || null,
+          orgId: orgId ?? null,
+          cleIdempotence: `checkout_completed:${String(obj["id"] ?? "")}`,
+        });
+      }
 
       // ── One-time AI credit pack purchase ──────────────────────────────────
       // Matches sessions from /billing/checkout-ai-credits (type=ai_credits) AND
@@ -1584,6 +1599,17 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     case "payment_intent.succeeded":
     case "setup_intent.succeeded": {
       const piMeta = (obj["metadata"] as Record<string, string>) ?? {};
+      const intentAttribution = lireAttributionFunnel(piMeta);
+      if (intentAttribution && event.type === "payment_intent.succeeded") {
+        void enregistrerEtape({
+          etape: "checkout_completed",
+          visiteurId: intentAttribution.visiteurId,
+          source: intentAttribution.source,
+          plan: piMeta["plan"] ?? piMeta["selected_plan"] ?? null,
+          orgId: orgId ?? piMeta["orgId"] ?? null,
+          cleIdempotence: `checkout_completed:${String(obj["id"] ?? "")}`,
+        });
+      }
 
       // ── In-app AI credit pack purchase (PaymentElement modal, no redirect) ──
       if (piMeta["type"] === "ai_credits") {
@@ -1793,6 +1819,46 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     case "customer.subscription.updated": {
       const newPlan = parsePlanFromSubscription(obj);
       const status = String(obj["status"] || "active");
+      const subscriptionMeta = (obj["metadata"] as Record<string, string>) ?? {};
+      const subscriptionAttribution = lireAttributionFunnel(subscriptionMeta);
+      if (subscriptionAttribution && orgId) {
+        const previousStatus = (
+          event as unknown as {
+            data?: { previous_attributes?: Record<string, unknown> };
+          }
+        ).data?.previous_attributes?.["status"];
+        if (
+          status === "active" &&
+          previousStatus === "trialing"
+        ) {
+          void enregistrerEtape({
+            etape: "trial_expired",
+            visiteurId: subscriptionAttribution.visiteurId,
+            source: subscriptionAttribution.source,
+            plan: newPlan,
+            orgId,
+            cleIdempotence: `trial_expired:${String(obj["id"] ?? "")}`,
+          });
+        }
+        const step =
+          status === "trialing" && event.type === "customer.subscription.created"
+            ? "trial_activated"
+            : status === "active" &&
+                (event.type === "customer.subscription.created" ||
+                  (typeof previousStatus === "string" && previousStatus !== "active"))
+              ? "subscription_activated"
+              : null;
+        if (step) {
+          void enregistrerEtape({
+            etape: step,
+            visiteurId: subscriptionAttribution.visiteurId,
+            source: subscriptionAttribution.source,
+            plan: newPlan,
+            orgId,
+            cleIdempotence: `${step}:${String(obj["id"] ?? "")}`,
+          });
+        }
+      }
 
       if (!orgId) {
         logger.error({ type: event.type, status, plan: newPlan }, "[Webhook] subscription event: orgId unresolved — state NOT persisted");
@@ -1978,6 +2044,20 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     }
 
     case "customer.subscription.deleted": {
+      const deletedMeta = (obj["metadata"] as Record<string, string>) ?? {};
+      const deletedAttribution = lireAttributionFunnel(deletedMeta);
+      const trialEnd = Number(obj["trial_end"] ?? 0);
+      const eventCreated = Number((event as unknown as { created?: number }).created ?? 0);
+      if (deletedAttribution && trialEnd > 0 && eventCreated >= trialEnd) {
+        void enregistrerEtape({
+          etape: "trial_expired",
+          visiteurId: deletedAttribution.visiteurId,
+          source: deletedAttribution.source,
+          plan: parsePlanFromSubscription(obj),
+          orgId: orgId ?? null,
+          cleIdempotence: `trial_expired:${String(obj["id"] ?? "")}`,
+        });
+      }
       if (!orgId) {
         logger.error("[Webhook] customer.subscription.deleted: orgId unresolved — plan NOT reset");
         break;

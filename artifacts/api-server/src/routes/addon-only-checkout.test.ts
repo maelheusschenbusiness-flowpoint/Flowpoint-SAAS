@@ -55,6 +55,7 @@ vi.mock("../services/ensure-stripe-customer.js", () => ({
 // Rate limiter → pass-through (its plan lookup would hit the DB).
 vi.mock("../middlewares/rateLimiter.js", () => ({
   createRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  createIpRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   // public-billing now imports a per-IP limiter instead of an org-keyed one.
   publicCheckoutRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));

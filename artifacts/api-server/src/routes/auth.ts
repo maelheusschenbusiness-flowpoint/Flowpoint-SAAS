@@ -18,6 +18,7 @@ import { loadOrgSettings } from "../services/org-settings.js";
 import { getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
+import { enregistrerEtape, normaliserAttributionFunnel } from "../services/funnel-events.js";
 
 const router = Router();
 
@@ -1288,6 +1289,19 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   }
 
   logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] Pre-registration stored — awaiting plan + payment");
+  const funnelAttribution = normaliserAttributionFunnel(
+    req.cookies?.["fp_analytics_consent"],
+    req.body?.visiteurId,
+    req.body?.source,
+  );
+  if (funnelAttribution) {
+    void enregistrerEtape({
+      etape: "signup_form_completed",
+      visiteurId: funnelAttribution.visiteurId,
+      source: funnelAttribution.source,
+      cleIdempotence: `signup_form_completed:${preToken}`,
+    });
+  }
   res.json({ ok: true, preRegisterToken: preToken });
 });
 

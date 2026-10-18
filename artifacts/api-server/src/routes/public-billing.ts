@@ -4,13 +4,53 @@ import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { publicCheckoutRateLimit } from "../middlewares/rateLimiter.js";
+import { createIpRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import {
+  ETAPES_PUBLIQUES,
+  enregistrerEtape,
+  lireAttributionFunnel,
+  metadataAttributionFunnel,
+  normaliserAttributionFunnel,
+} from "../services/funnel-events.js";
 
 const router = Router();
+const publicFunnelEventRateLimit = createIpRateLimit("public_funnel_event", 60, 60_000);
+
+router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Request, res: Response) => {
+  const etape = typeof req.body?.etape === "string" ? req.body.etape.trim() : "";
+  if (!ETAPES_PUBLIQUES.has(etape)) {
+    res.status(400).json({ ok: false, error: "Unknown or server-only funnel event." });
+    return;
+  }
+  const visiteurId = typeof req.body?.visiteurId === "string" ? req.body.visiteurId.trim() : "";
+  if (!visiteurId) {
+    res.status(400).json({ ok: false, error: "visiteurId is required." });
+    return;
+  }
+  const attribution = normaliserAttributionFunnel(
+    req.cookies?.["fp_analytics_consent"],
+    visiteurId,
+    req.body?.source,
+  );
+  if (!attribution) {
+    res.status(204).end();
+    return;
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  await enregistrerEtape({
+    etape,
+    visiteurId: attribution.visiteurId,
+    source: attribution.source,
+    plan: typeof req.body?.plan === "string" ? req.body.plan : null,
+    cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
+  });
+  res.status(204).end();
+});
 
 /**
  * Stripe idempotency key for one checkout attempt.
@@ -859,6 +899,11 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       // New signup fields — enable webhook + checkout-complete to create the account
       ...(signupOrgId       ? { orgId: signupOrgId }                     : {}),
       ...(preRegisterToken  ? { pre_register_token: preRegisterToken }    : {}),
+      ...metadataAttributionFunnel(
+        req.cookies?.["fp_analytics_consent"],
+        req.body?.visiteurId,
+        req.body?.source,
+      ),
     };
 
     // Seller attribution (beta): read seller_id from pending_signup — never from frontend.
@@ -910,6 +955,17 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
     function respond(session: { id: string; url: string | null; client_secret: string | null }) {
       logger.info({ checkoutType, sessionId: session.id, embedded }, "[PublicBilling] Session created");
+      const attribution = lireAttributionFunnel(metadata);
+      if (attribution) {
+        void enregistrerEtape({
+          etape: "checkout_started",
+          visiteurId: attribution.visiteurId,
+          source: attribution.source,
+          plan: metadata["selected_plan"],
+          orgId: signupOrgId ?? authOrgId,
+          cleIdempotence: `checkout_started:${session.id}`,
+        });
+      }
       if (embedded) {
         res.json({ clientSecret: session.client_secret, publishableKey, quote, sessionId: session.id });
       } else {
@@ -1173,6 +1229,11 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     ...(_piReqOrgId       ? { orgId: _piReqOrgId, org_id: _piReqOrgId } : {}),
     ...(!_piReqOrgId && piOrgId ? { orgId: piOrgId, org_id: piOrgId } : {}),
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
+    ...metadataAttributionFunnel(
+      req.cookies?.["fp_analytics_consent"],
+      req.body?.visiteurId,
+      req.body?.source,
+    ),
   };
 
   // Seller attribution (beta): read seller_id from pending_signup — additive metadata only.
@@ -1460,6 +1521,17 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: immediateAmountCents,
         }),
       });
+      const attribution = lireAttributionFunnel(metadata);
+      if (attribution) {
+        void enregistrerEtape({
+          etape: "checkout_started",
+          visiteurId: attribution.visiteurId,
+          source: attribution.source,
+          plan: planKey,
+          orgId: _piReqOrgId ?? piOrgId,
+          cleIdempotence: `checkout_started:${pi.id}`,
+        });
+      }
       logger.info({ plan: planKey, addonCount: quote.lines.filter(l => l.kind === "addon").length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
       res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents, defaultValues: _piDefaultValues, quote, paymentIntentId: pi.id });
       return;
@@ -1484,6 +1556,17 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: 0,
         }),
       });
+      const attribution = lireAttributionFunnel(metadata);
+      if (attribution) {
+        void enregistrerEtape({
+          etape: "checkout_started",
+          visiteurId: attribution.visiteurId,
+          source: attribution.source,
+          plan: planKey,
+          orgId: _piReqOrgId ?? piOrgId,
+          cleIdempotence: `checkout_started:${si.id}`,
+        });
+      }
       logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
       res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues, quote, setupIntentId: si.id });
       return;
@@ -2381,6 +2464,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             flowpoint_cart: "true",
             org_id:         _authenticatedOrgId,
             orgId:          _authenticatedOrgId,
+            ...metadataAttributionFunnel(
+              intentMeta["fp_analytics_consent"],
+              intentMeta["fp_visitor_id"],
+              intentMeta["fp_source"],
+            ),
             ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
             ...(preRegisterToken || intentMeta["pre_register_token"]
               ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
@@ -2388,6 +2476,18 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           },
         });
       }
+    }
+
+    const finalizedAttribution = lireAttributionFunnel(intentMeta);
+    if (finalizedAttribution) {
+      void enregistrerEtape({
+        etape: "checkout_completed",
+        visiteurId: finalizedAttribution.visiteurId,
+        source: finalizedAttribution.source,
+        plan: planKey,
+        orgId: _authenticatedOrgId,
+        cleIdempotence: `checkout_completed:${intentId}`,
+      });
     }
 
     /* ── 3b. Add-on subscription — independent of trial ──────────────────

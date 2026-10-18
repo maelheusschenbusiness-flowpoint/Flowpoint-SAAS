@@ -17,6 +17,7 @@
  *   1 — fatal error (DB unreachable, unrecoverable DDL failure, etc.)
  */
 
+import { readFile } from "node:fs/promises";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initRlsSetup }          from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
@@ -42,7 +43,7 @@ async function migrate() {
   console.log("=".repeat(60));
 
   // ── 1. Verify connectivity ──────────────────────────────────────────────────
-  section("[1/8] Database connectivity");
+  section("[1/11] Database connectivity");
   try {
     const res = await pool.query<{ version: string }>("SELECT version()");
     console.log(`  ✓ Connected — ${res.rows[0]?.version?.split(" ").slice(0, 2).join(" ")}`);
@@ -52,7 +53,7 @@ async function migrate() {
   }
 
   // ── 2. app_user role + grants ───────────────────────────────────────────────
-  section("[2/8] app_user role (init-rls-setup)");
+  section("[2/11] app_user role (init-rls-setup)");
   try {
     await initRlsSetup();
     console.log("  ✓ Done");
@@ -62,7 +63,7 @@ async function migrate() {
   }
 
   // ── 3. Probe SET ROLE ───────────────────────────────────────────────────────
-  section("[3/8] app_user role probe");
+  section("[3/11] app_user role probe");
   try {
     await probeAppUserRole();
     console.log("  ✓ Done");
@@ -72,7 +73,7 @@ async function migrate() {
   }
 
   // ── 4. RLS tenant-isolation policies ───────────────────────────────────────
-  section("[4/8] RLS migration (tenant-isolation policies)");
+  section("[4/11] RLS migration (tenant-isolation policies)");
   try {
     await runRlsMigrationIfNeeded();
     console.log("  ✓ Done");
@@ -82,28 +83,42 @@ async function migrate() {
   }
 
   // ── 5–7. Domain tables ──────────────────────────────────────────────────────
-  section("[5/8] init-missions");
+  section("[5/11] init-missions");
   try { await initMissionsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[6/8] init-automation");
+  section("[6/11] init-automation");
   try { await initAutomationTables(); console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[7/8] init-monitors");
+  section("[7/11] init-monitors");
   try { await initMonitorsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
   // ── 8. Core + AI tables ─────────────────────────────────────────────────────
-  section("[8/8] init-data-tables + AI migration");
+  section("[8/11] Core data tables");
   try { await initDataTables();  console.log("  ✓ init-data-tables done"); }
   catch (err: any) { console.error(`  ✗ initDataTables: ${err.message}`); process.exit(1); }
 
+  section("[9/11] Funnel events");
+  try {
+    const sql = await readFile(
+      new URL("../migrations/019_funnel_events.sql", import.meta.url),
+      "utf8",
+    );
+    await pool.query(sql);
+    console.log("  ✓ funnel_events migration applied");
+  } catch (err: any) {
+    console.error(`  ✗ funnel_events migration failed: ${err.message}`);
+    process.exit(1);
+  }
+
+  section("[10/11] AI migration");
   try { await initAiMigration(); console.log("  ✓ init-ai-migration done"); }
   catch (err: any) { console.error(`  ✗ initAiMigration: ${err.message}`); process.exit(1); }
 
   // ── 9. Canonical global system seed catalog ─────────────────────────────────
-  section("[9/9] Canonical global system seeds");
+  section("[11/11] Canonical global system seeds");
   try {
     const seeded = await runCanonicalSystemSeeds();
     console.log(`  ✓ org_settings default: ${seeded.orgSettings}`);
