@@ -28,6 +28,7 @@ import { initPhase1Users } from "./services/init-phase1-users.js";
 import { stampSchemaGate } from "./services/schema-gate-status.js";
 import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
 import { reconcileSchema, reconcileDefaults } from "./services/init-schema-reconcile.js";
+import { verifierCibleBase } from "./services/garde-cible-base.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -44,6 +45,17 @@ async function migrate() {
   console.log(`  DATABASE_URL host : ${process.env["DATABASE_URL"]?.replace(/\/\/[^@]+@/, "//***@") ?? "(not set)"}`);
   console.log(`  Timestamp         : ${new Date().toISOString()}`);
   console.log("=".repeat(60));
+
+  // ── 0. La base visee est-elle bien celle declaree ? ────────────────────────
+  // Une migration est l'ecriture la moins reversible du systeme. Elle refuse
+  // de s'executer sur une base que l'appelant n'a pas declaree.
+  try {
+    const { verifiee, cible } = verifierCibleBase();
+    if (verifiee && cible) console.log(`  ✓ Cible declaree confirmee : ${cible.hote}/${cible.base}`);
+  } catch (err: any) {
+    console.error(`  ✗ ${err.message}`);
+    process.exit(1);
+  }
 
   // ── 1. Verify connectivity ──────────────────────────────────────────────────
   section("[1/14] Database connectivity");

@@ -55,10 +55,15 @@ export default defineConfig({
       "src/services/quarantine-table-rls-db.test.ts",
       "src/services/schema-gate-status-db.test.ts",
       "src/services/rls-guc-alignment-db.test.ts",
+      // Tables pre-compte : RLS forcee sans policy, et pourquoi rien ne casse (18/10/2026).
+      "src/services/tables-pre-compte-rls-db.test.ts",
+      // Garde de cible : un service ne modifie que la base qu'il declare (18/10/2026).
+      "src/services/garde-cible-base.test.ts",
       "src/services/schema-reconcile-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
       "src/lib/plan-price-mode.test.ts",
+      "src/lib/plans-prix-test-manquants.test.ts",
       "src/services/cancel-at-period-end-db.test.ts",
       "src/services/publishable-key-mode.test.ts",
       "src/services/canonical-subscription-db.test.ts",
