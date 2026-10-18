@@ -350,10 +350,10 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 29, oneTime: false, quantity: false },
   reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 19, oneTime: false, quantity: false },
   localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 24, oneTime: false, quantity: false },
-  aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO et A/B tests IA", priceEur: 34, oneTime: false, quantity: false },
+  aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO fondées sur les événements observés", priceEur: 34, oneTime: false, quantity: false },
   behavioralAI:         { name: "Behavioral AI",            category: "Conversion",   description: "Analyse comportementale et insights IA", priceEur: 44, oneTime: false, quantity: false },
-  revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Détection des pertes de revenus", priceEur: 29, oneTime: false, quantity: false },
-  abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Expérimentation A/B assistée par IA", priceEur: 24, oneTime: false, quantity: false },
+  revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Opportunités de conversion observées; pertes financières uniquement si mesurées", priceEur: 29, oneTime: false, quantity: false },
+  abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Variantes servies et résultats statistiques fondés sur des expositions réelles", priceEur: 24, oneTime: false, quantity: false },
   whiteLabel:           { name: "White-Label Exports",      category: "Reporting",    description: "Exports PDF à votre marque", priceEur: 17, oneTime: false, quantity: false },
   agencyPacks:          { name: "Agency Reporting Packs",   category: "Reporting",    description: "Templates de rapports multi-clients", priceEur: 49, oneTime: false, quantity: false },
   aiExecutiveReport:    { name: "AI Executive Reporting",   category: "Reporting",    description: "Résumés exécutifs IA", priceEur: 24, oneTime: false, quantity: false },
@@ -415,7 +415,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "globalMonitoring",
   // aiContentStrategist: SEO Content Decay Radar route exists for test/simulation,
   // but the add-on remains unavailable for purchase until validated.
-  // abTestingAI: no routes exist.
+  // abTestingAI stays non-purchasable until the experiment delivery and
+  // commercial model have been validated.
   // backlinkIntelligence: moved to BETA_ADDONS — route /seo/backlinks exists with
   // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
   // health fallback). Included in Pro & Ultra plans.
