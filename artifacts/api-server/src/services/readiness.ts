@@ -93,11 +93,12 @@ export function resetReadinessState(): void {
 /** Un `SELECT 1` qui ne peut pas pendre : la sonde doit repondre, toujours. */
 export async function probeDatabase(db: Queryable, timeoutMs = DB_PROBE_TIMEOUT_MS): Promise<DbProbe> {
   const start = Date.now();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       db.query("SELECT 1"),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`timeout apres ${timeoutMs}ms`)), timeoutMs)
+        (timeout = setTimeout(() => reject(new Error(`timeout apres ${timeoutMs}ms`)), timeoutMs))
       ),
     ]);
     return { ok: true, latencyMs: Date.now() - start, detail: "SELECT 1" };
@@ -107,6 +108,8 @@ export async function probeDatabase(db: Queryable, timeoutMs = DB_PROBE_TIMEOUT_
     const code = (err as { code?: string } | null)?.code;
     const detail = code ? `echec (${code})` : (err as Error)?.message?.slice(0, 60) ?? "echec";
     return { ok: false, latencyMs: Date.now() - start, detail };
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 

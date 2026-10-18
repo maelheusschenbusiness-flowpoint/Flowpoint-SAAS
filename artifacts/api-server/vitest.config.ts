@@ -52,6 +52,7 @@ export default defineConfig({
       "src/services/checkout-post-tokens-rls-db.test.ts",
       "src/services/identity-schema-gate-db.test.ts",
       "src/services/readiness-db.test.ts",
+      "src/services/readiness-timeout.test.ts",
       "src/services/quarantine-table-rls-db.test.ts",
       "src/services/schema-gate-status-db.test.ts",
       "src/services/rls-guc-alignment-db.test.ts",
@@ -63,8 +64,6 @@ export default defineConfig({
       "src/services/fuite-journal-cible.test.ts",
       // Ordre du durcissement RLS au demarrage, mesure sur base neuve (18/10/2026).
       "src/services/ordre-durcissement-rls.test.ts",
-      // ALTER sur une table que rien ne cree — defaut mesure le 18/10/2026.
-      "src/services/alter-sans-create.test.ts",
       "src/services/schema-reconcile-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
