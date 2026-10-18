@@ -401,7 +401,10 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
     const e = err as Error & { code?: string; constraint?: string; detail?: string };
     logger.error({
       requestId: (req.headers["x-request-id"] as string) || "?",
-      body: req.body,
+      // Le corps complet partait dans le journal : un titre ou une description
+      // de mission porte des donnees client sans interet pour le diagnostic.
+      // Les CLES suffisent a comprendre la forme de la requete fautive.
+      bodyKeys: Object.keys((req.body ?? {}) as Record<string, unknown>),
       orgId: (req as OrgReq).orgId,
       errName: e?.name,
       errMsg: e?.message,
