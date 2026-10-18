@@ -7,6 +7,7 @@
  * Quota system: tracks daily requests per org in dataforseo_quota table.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
@@ -54,9 +55,13 @@ export async function dfsRequest<T>(path: string, body: unknown, orgId = "defaul
     signal:  AbortSignal.timeout(25_000),
   });
   if (!res.ok) {
+    // Appel refuse par le fournisseur : rien n'est facture, donc rien ne doit
+    // etre consomme. On ne compte pas cet appel (voir `suivreAppelsPayants`).
     const text = await res.text().catch(() => "");
     throw new Error(`DataForSEO ${res.status} — ${path}: ${text.slice(0, 200)}`);
   }
+  const suivi = _appelsPayants.getStore();
+  if (suivi) suivi.reussis += 1;
   // The DFS API wraps results in {tasks:[...]}.
   // Callers type T as the tasks array (Array<{result?:...}>), so we extract .tasks here.
   const json = await res.json() as { tasks?: T };
@@ -78,28 +83,130 @@ function _quotaResetAt(): string {
   return d.toISOString();
 }
 
-/** Async DB upsert — fire-and-forget from sync callers */
-async function _persistQuota(orgId: string, today: string, used: number): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query(
-      `INSERT INTO dataforseo_quota (org_id, date, requests_used, created_at)
-       VALUES ($1,$2,$3,NOW())
-       ON CONFLICT (org_id, date)
-       DO UPDATE SET requests_used = GREATEST(dataforseo_quota.requests_used, $3)`,
-      [orgId, today, used]
-    );
-  } catch { /* non-fatal */ } finally { client.release(); }
+/**
+ * Suivi des appels payants reellement effectues pendant une requete HTTP.
+ *
+ * Le quota est reserve AVANT le traitement (sinon il ne protegerait rien), mais
+ * deux situations mesurees le 17/10/2026 consommaient du quota sans qu'aucun
+ * appel payant n'ait lieu :
+ *
+ *   - organisation SANS identifiants DataForSEO : `withQuota` reservait une
+ *     unite, puis chaque fonction du service sortait sur
+ *     `isDataForSEOConfigured() === false` et renvoyait un tableau vide. Le
+ *     client payait son quota pour une reponse vide.
+ *   - ERREUR DU FOURNISSEUR (401, 429, 500, delai depasse) : `dfsRequest` leve,
+ *     les fonctions attrapent et renvoient vide. L'unite restait consommee
+ *     alors que DataForSEO ne facture pas un appel en echec.
+ *
+ * `dfsRequest` incremente donc un compteur de contexte apres une reponse 2xx
+ * seulement, et l'appelant rembourse quand ce compteur est reste a zero.
+ */
+const _appelsPayants = new AsyncLocalStorage<{ reussis: number }>();
+
+export async function suivreAppelsPayants<T>(fn: () => Promise<T>): Promise<{ resultat: T; appelsReussis: number }> {
+  const contexte = { reussis: 0 };
+  const resultat = await _appelsPayants.run(contexte, fn);
+  return { resultat, appelsReussis: contexte.reussis };
 }
 
-export async function checkAndIncrementQuota(orgId = "default", planOrUnits?: string | number, units = 1): Promise<boolean> {
+/** Rend des unites reservees mais non consommees. Ne descend jamais sous zero. */
+export async function rembourserQuota(orgId = "default", units = 1): Promise<void> {
+  if (units <= 0) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const key = _quotaKey(orgId);
+  try {
+    const client = await pool.connect();
+    try {
+      const r = await client.query<{ requests_used: number }>(
+        `UPDATE dataforseo_quota
+            SET requests_used = GREATEST(0, requests_used - $3)
+          WHERE org_id = $1 AND date = $2
+          RETURNING requests_used`,
+        [orgId, today, units]
+      );
+      const restant = r.rows[0]?.requests_used;
+      if (restant !== undefined) _quotaMemory.set(key, Number(restant));
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    // Un remboursement perdu surconsomme le quota du client : c'est genant,
+    // jamais dangereux. On le journalise sans faire echouer la requete.
+    logger.warn({ err, orgId }, "[DataForSEO] remboursement de quota non persiste");
+  }
+}
+
+/** Verdict d'une tentative de consommation de quota. */
+export type VerdictQuota =
+  | { autorise: true; utilise: number; limite: number }
+  | { autorise: false; motif: "plafond"; utilise: number; limite: number }
+  | { autorise: false; motif: "indisponible" };
+
+/**
+ * Consomme du quota et dit si l'appel payant est autorise.
+ *
+ * Le compteur vivait uniquement en memoire de processus. Deux consequences
+ * mesurees le 17/10/2026 :
+ *
+ *   - un REDEMARRAGE remettait le plafond a zero. `_quotaMemory` est vide au
+ *     demarrage et cette fonction ne lisait jamais la base : apres chaque
+ *     deploiement Render, les 1000 requetes payantes quotidiennes repartaient
+ *     de zero, en silence.
+ *   - avec PLUSIEURS INSTANCES, chacune comptait pour elle : le plafond reel
+ *     aurait valu N fois le plafond annonce. Le service tourne aujourd'hui en
+ *     une seule instance, mais le compteur ne devait pas dependre de cela.
+ *
+ * L'increment se fait donc EN BASE, en une seule instruction : PostgreSQL
+ * serialise les ecritures concurrentes sur la meme ligne, et la valeur
+ * retournee est le compte reel, partage et durable. La memoire ne sert plus
+ * que de cache de lecture.
+ *
+ * POLITIQUE FAIL-CLOSED (decision du 17/10/2026) : si PostgreSQL est
+ * injoignable, le quota ne peut pas etre verifie, donc aucun appel payant
+ * n'est autorise. Le repli en memoire a ete retire : il laissait passer des
+ * appels factures sur un compteur reparti de zero a chaque redemarrage, ce qui
+ * est exactement le trou que ce plafond doit fermer. Rien n'est consomme dans
+ * ce cas — l'appelant doit repondre 503, pas 429.
+ */
+export async function verifierEtConsommerQuota(
+  orgId = "default", planOrUnits?: string | number, units = 1
+): Promise<VerdictQuota> {
   // Callers pass either (orgId, plan, units) or the shorthand (orgId, units).
   const effectiveUnits = typeof planOrUnits === "number" ? planOrUnits : units;
+  const today = new Date().toISOString().slice(0, 10);
   const key = _quotaKey(orgId);
-  const current = (_quotaMemory.get(key) ?? 0) + effectiveUnits;
-  _quotaMemory.set(key, current);
-  _persistQuota(orgId, new Date().toISOString().slice(0, 10), current).catch(() => {});
-  return current <= MAX_DAILY_REQUESTS;
+
+  try {
+    const client = await pool.connect();
+    try {
+      const r = await client.query<{ requests_used: number }>(
+        `INSERT INTO dataforseo_quota (org_id, date, requests_used, created_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (org_id, date)
+         DO UPDATE SET requests_used = dataforseo_quota.requests_used + EXCLUDED.requests_used
+         RETURNING requests_used`,
+        [orgId, today, effectiveUnits]
+      );
+      const used = Number(r.rows[0]?.requests_used ?? effectiveUnits);
+      _quotaMemory.set(key, used);
+      if (used <= MAX_DAILY_REQUESTS) return { autorise: true, utilise: used, limite: MAX_DAILY_REQUESTS };
+      return { autorise: false, motif: "plafond", utilise: used, limite: MAX_DAILY_REQUESTS };
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.warn({ err, orgId }, "[DataForSEO] quota non verifiable — appel payant refuse");
+    return { autorise: false, motif: "indisponible" };
+  }
+}
+
+/**
+ * Forme booleenne historique. Conservee pour les appelants qui ne distinguent
+ * pas les deux refus ; preferer `verifierEtConsommerQuota` pour pouvoir
+ * repondre 503 plutot que 429 quand la verification est impossible.
+ */
+export async function checkAndIncrementQuota(orgId = "default", planOrUnits?: string | number, units = 1): Promise<boolean> {
+  return (await verifierEtConsommerQuota(orgId, planOrUnits, units)).autorise;
 }
 
 export function getQuotaUsage(
@@ -126,26 +233,31 @@ export async function getQuotaUsageFromDB(
   const key   = `${orgId}:${today}`;
   // Only hit the DB when the in-memory cache is cold (missing key = fresh process/restart).
   if (!_quotaMemory.has(key)) {
-    const client = await pool.connect();
+    // `pool.connect()` etait HORS du try : une base injoignable faisait remonter
+    // l'erreur et /api/seo/status — un endpoint gratuit — repondait 500. Les
+    // chemins qui ne declenchent aucun appel payant doivent rester accessibles.
     try {
-      // Rankings use reserveRankingSearch → local_seo_ranking_history (not dataforseo_quota).
-      // General DFS API calls use checkAndIncrementQuota → dataforseo_quota.
-      // Both are daily per-org counters; take the maximum so neither is hidden.
-      const [qr, rh] = await Promise.all([
-        client.query<{ n: string }>(
-          `SELECT COALESCE(requests_used, 0) AS n FROM dataforseo_quota WHERE org_id=$1 AND date=$2::date`,
-          [orgId, today]
-        ),
-        client.query<{ n: string }>(
-          `SELECT COUNT(*)::int AS n FROM local_seo_ranking_history WHERE org_id=$1 AND searched_at::date=$2::date`,
-          [orgId, today]
-        ),
-      ]);
-      const quotaUsed = Number(qr.rows[0]?.n ?? 0);
-      const rankUsed  = Number(rh.rows[0]?.n ?? 0);
-      // Rankings dominate the quota UI — use the higher of the two sources.
-      _quotaMemory.set(key, Math.max(quotaUsed, rankUsed));
-    } catch { /* non-fatal — fall through with 0 */ } finally { client.release(); }
+      const client = await pool.connect();
+      try {
+        // Rankings use reserveRankingSearch → local_seo_ranking_history (not dataforseo_quota).
+        // General DFS API calls use checkAndIncrementQuota → dataforseo_quota.
+        // Both are daily per-org counters; take the maximum so neither is hidden.
+        const [qr, rh] = await Promise.all([
+          client.query<{ n: string }>(
+            `SELECT COALESCE(requests_used, 0) AS n FROM dataforseo_quota WHERE org_id=$1 AND date=$2::date`,
+            [orgId, today]
+          ),
+          client.query<{ n: string }>(
+            `SELECT COUNT(*)::int AS n FROM local_seo_ranking_history WHERE org_id=$1 AND searched_at::date=$2::date`,
+            [orgId, today]
+          ),
+        ]);
+        const quotaUsed = Number(qr.rows[0]?.n ?? 0);
+        const rankUsed  = Number(rh.rows[0]?.n ?? 0);
+        // Rankings dominate the quota UI — use the higher of the two sources.
+        _quotaMemory.set(key, Math.max(quotaUsed, rankUsed));
+      } finally { client.release(); }
+    } catch { /* non-fatal — fall through with 0 */ }
   }
   return {
     used:    _quotaMemory.get(key) ?? 0,

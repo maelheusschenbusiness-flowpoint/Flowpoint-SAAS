@@ -21,7 +21,18 @@ export default defineConfig({
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
+      "src/routes/seo-quota-gate.test.ts",
+      "src/services/dataforseo-quota-db.test.ts",
+      // Politique fail-closed des appels payants DataForSEO (17/10/2026).
+      "src/routes/seo-quota-failclosed.test.ts",
+      "src/services/dataforseo-quota-failclosed-db.test.ts",
+      "src/services/betterstack-tenancy-db.test.ts",
+      // Gardes de creation, migration autonome, non-regression du natif.
+      "src/services/betterstack-creation-guards-db.test.ts",
+      "src/lib/logger-redaction.test.ts",
       "src/lib/carry-params.test.ts",
+      // Resilience des APIs externes : toute sortie reseau est bornee (17/10/2026).
+      "src/lib/fetch-borne.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
       "src/lib/startup-retry.test.ts",
@@ -58,6 +69,8 @@ export default defineConfig({
       "src/services/ai-usage-idempotency-db.test.ts",
       "src/services/ai-usage-failclosed.test.ts",
       "src/middlewares/requirePaidAccess-db.test.ts",
+      // Le contournement d'authentification de developpement exige une intention (17/10/2026).
+      "src/middlewares/requireAuth-dev-bypass.test.ts",
       "src/routes/auth-me-org-resolution-db.test.ts",
       "src/routes/ai-classifier.test.ts",
       "src/routes/ai-chat-failclosed.test.ts",
@@ -87,6 +100,12 @@ export default defineConfig({
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
       "src/routes/stripe-webhook-ordering-db.test.ts",
+      // La signature du webhook de facturation est la seule protection de cet
+      // endpoint : un tiers non authentifie peut y faire accorder un abonnement.
+      "src/routes/stripe-webhook-signature.test.ts",
+      // Le mode sans signature ne doit pouvoir atteindre la production par
+      // aucune voie : affectation, paquet construit, configuration, ordre des gardes.
+      "src/routes/stripe-webhook-unsigned-containment.test.ts",
       "src/services/google-oauth-scopes.test.ts",
       "src/services/monitor-addon-quota.test.ts",
       "src/routes/addon-activate-quantity.test.ts",

@@ -40,6 +40,7 @@
 
 import { logger } from "../lib/logger.js";
 
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 // ── Ownership column vocabulary ─────────────────────────────────────────────
 /** Columns that scope a row to an organization. */
 const ORG_COLUMNS = ["org_id", "organization_id"] as const;
@@ -434,21 +435,21 @@ async function cleanupStorage(orgId: string, userIds: string[]): Promise<Deletio
 
   for (const prefix of prefixes) {
     try {
-      const listRes = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
+      const listRes = await fetchBorne(`${url}/storage/v1/object/list/${bucket}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ prefix, limit: 1000 }),
-      });
+      }, DELAIS.stockage);
       if (!listRes.ok) continue;
       const objects = (await listRes.json()) as Array<{ name: string }>;
       if (!Array.isArray(objects) || objects.length === 0) continue;
 
       const paths = objects.map((o) => `${prefix}/${o.name}`);
-      const delRes = await fetch(`${url}/storage/v1/object/${bucket}`, {
+      const delRes = await fetchBorne(`${url}/storage/v1/object/${bucket}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ prefixes: paths }),
-      });
+      }, DELAIS.stockage);
       if (delRes.ok) deleted += paths.length;
     } catch (err) {
       logger.warn({ err, prefix, orgId }, "[AccountDeletion] Storage cleanup failed for prefix");

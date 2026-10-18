@@ -3,7 +3,9 @@ import { canWrite } from "../middlewares/requireRole.js";
 import { pool } from "@workspace/db";
 import {
   isDataForSEOConfigured,
-  checkAndIncrementQuota,
+  verifierEtConsommerQuota,
+  rembourserQuota,
+  suivreAppelsPayants,
   getQuotaUsage,
   getQuotaUsageFromDB,
   getKeywordSuggestions,
@@ -117,22 +119,50 @@ async function releaseRankingSearch(orgId: string, id: string): Promise<void> {
 
 // ── Helper — quota check middleware factory ───────────────────────────────────
 
+/**
+ * Reserve une unite de quota DataForSEO avant de laisser passer la requete.
+ *
+ * Trois reponses possibles :
+ *   - 429 : le plafond du jour est atteint pour cette organisation.
+ *   - 503 : PostgreSQL est injoignable, donc le quota n'est pas verifiable.
+ *           Politique fail-closed : aucun appel payant n'est autorise, et le
+ *           corps ne dit rien de l'etat interne de l'infrastructure.
+ *   - le traitement normal.
+ *
+ * Si le traitement n'a declenche AUCUN appel payant abouti — organisation sans
+ * identifiants DataForSEO, ou erreur du fournisseur — l'unite reservee est
+ * rendue : DataForSEO ne facture pas ces appels, le client ne doit pas les payer
+ * sur son quota.
+ */
 function withQuota(handler: (req: import("express").Request, res: import("express").Response) => Promise<void>) {
   return async (req: import("express").Request, res: import("express").Response): Promise<void> => {
     const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
     const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
 
-    if (!checkAndIncrementQuota(orgId, plan)) {
-      const { used, limit } = getQuotaUsage(orgId, plan);
+    // `checkAndIncrementQuota` est async : sans `await`, l'expression testee
+    // etait une Promise, toujours vraie, donc `!promise` toujours faux. La
+    // branche 429 ne se declenchait JAMAIS, et le plafond de 1000 requetes
+    // DataForSEO par jour et par organisation n'etait applique sur aucun des
+    // onze endpoints enveloppes par withQuota.
+    const verdict = await verifierEtConsommerQuota(orgId, plan);
+    if (!verdict.autorise) {
+      if (verdict.motif === "indisponible") {
+        res.status(503).json({
+          error: "Vérification du quota indisponible. Réessayez dans un instant.",
+          code: "QUOTA_CHECK_UNAVAILABLE",
+        });
+        return;
+      }
       res.status(429).json({
         error: "Quota API DataForSEO dépassé pour aujourd'hui",
-        used, limit, plan,
+        used: verdict.utilise, limit: verdict.limite, plan,
         upgradeUrl: "/billing",
       });
       return;
     }
 
-    await handler(req, res);
+    const { appelsReussis } = await suivreAppelsPayants(async () => { await handler(req, res); });
+    if (appelsReussis === 0) await rembourserQuota(orgId, 1);
   };
 }
 
@@ -356,9 +386,14 @@ router.get("/local-seo/citations", async (req, res) => {
   const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
     if (domain && await isDataForSEOConfigured(orgId)) {
-      const allowed = await checkAndIncrementQuota(orgId, "citations", 1).catch(() => false);
-      if (allowed) {
-        const bl = await getBacklinks(domain, orgId);
+      // Quota non verifiable : on ne tente aucun appel payant et on sert le
+      // repli gratuit plus bas plutot que de refuser la page.
+      const verdict = await verifierEtConsommerQuota(orgId, "citations", 1).catch(
+        () => ({ autorise: false as const, motif: "indisponible" as const }),
+      );
+      if (verdict.autorise) {
+        const { resultat: bl, appelsReussis } = await suivreAppelsPayants(() => getBacklinks(domain, orgId));
+        if (appelsReussis === 0) await rembourserQuota(orgId, 1);
         res.json({
           domain,
           totalCitations: bl?.total ?? 0,

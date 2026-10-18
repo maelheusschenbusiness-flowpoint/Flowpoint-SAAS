@@ -6,6 +6,7 @@ import { canWrite } from "../middlewares/requireRole.js";
 import { requireQuota } from "../middlewares/planGate.js";
 import { fetchCompetitorDomainMetrics } from "../services/dataforseo-service.js";
 import { randomUUID } from "node:crypto";
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 import {
   runFullCompetitorAnalysis,
   getCompetitorAnalysis,
@@ -98,7 +99,7 @@ router.get("/competitors/suggestions", async (req, res) => {
     // Geocode from address if lat/lng not stored
     if ((lat == null || lng == null) && locationAddress) {
       const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(locationAddress)}&key=${apiKey}`;
-      const geoData = await fetch(geoUrl).then(r => r.json()) as Record<string, unknown>;
+      const geoData = await fetchBorne(geoUrl, {}, DELAIS.cartographie).then(r => r.json()) as Record<string, unknown>;
       const results = (geoData["results"] as unknown[]) ?? [];
       if (results.length > 0) {
         const loc = ((results[0] as Record<string, unknown>)["geometry"] as Record<string, unknown>)?.["location"] as Record<string, number> | undefined;
@@ -125,7 +126,7 @@ router.get("/competitors/suggestions", async (req, res) => {
     // 3. Nearby Places search
     const searchKeyword = orgKeywords[0] ?? "business";
     const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=3000&keyword=${encodeURIComponent(searchKeyword)}&key=${apiKey}`;
-    const nearbyData = await fetch(nearbyUrl).then(r => r.json()) as Record<string, unknown>;
+    const nearbyData = await fetchBorne(nearbyUrl, {}, DELAIS.cartographie).then(r => r.json()) as Record<string, unknown>;
     const places = (nearbyData["results"] as Record<string, unknown>[]) ?? [];
 
     // 4. Score and shape

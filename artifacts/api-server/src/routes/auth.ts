@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 import { randomBytes, randomUUID, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
 
 /** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
@@ -2019,17 +2020,17 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const clientSecret = process.env["GOOGLE_CLIENT_SECRET"] || "";
     const redirectUri = process.env["GOOGLE_AUTH_REDIRECT_URI"] || `${publicUrl}/api/auth/google/callback`;
 
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    const tokenRes = await fetchBorne("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }),
-    });
+    }, DELAIS.identite);
     const tokens = await tokenRes.json() as { access_token?: string; id_token?: string; error?: string };
     if (!tokens.access_token) throw new Error("No access token: " + (tokens.error || "unknown"));
 
-    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    const userRes = await fetchBorne("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { "Authorization": `Bearer ${tokens.access_token}` },
-    });
+    }, DELAIS.identite);
     // Google userinfo v3 fields available with scopes: openid email profile
     // Docs: https://developers.google.com/identity/openid-connect/openid-connect#obtaininguserprofileinformation
     const user = await userRes.json() as {
@@ -2272,17 +2273,17 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
   }
 
   try {
-    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+    const tokenRes = await fetchBorne("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { "Accept": "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: process.env["GITHUB_CLIENT_ID"], client_secret: process.env["GITHUB_CLIENT_SECRET"], code }),
-    });
+    }, DELAIS.identite);
     const tokens = await tokenRes.json() as { access_token?: string; error?: string };
     if (!tokens.access_token) throw new Error("No token: " + (tokens.error || "unknown"));
 
-    const userRes = await fetch("https://api.github.com/user", {
+    const userRes = await fetchBorne("https://api.github.com/user", {
       headers: { "Authorization": `Bearer ${tokens.access_token}`, "Accept": "application/vnd.github+json" },
-    });
+    }, DELAIS.identite);
     const user = await userRes.json() as { login?: string; name?: string; email?: string };
 
     const resolvedEmail = user.email ?? user.login ?? "";
@@ -2597,7 +2598,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
           const headerObj  = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { kid?: string };
           const payloadObj = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
           // Fetch Apple's public JWKS
-          const jwksRes = await fetch("https://appleid.apple.com/auth/keys");
+          const jwksRes = await fetchBorne("https://appleid.apple.com/auth/keys", {}, DELAIS.identite);
           if (jwksRes.ok) {
             const jwks = await jwksRes.json() as { keys: Array<JsonWebKey & { kid?: string }> };
             const jwk  = jwks.keys.find((k) => k.kid === headerObj.kid);
@@ -2629,7 +2630,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
       }
 
       const clientSecret = buildAppleClientSecret(clientId, teamId, keyId, rawPem);
-      const tokenRes     = await fetch("https://appleid.apple.com/auth/token", {
+      const tokenRes     = await fetchBorne("https://appleid.apple.com/auth/token", {
         method:  "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body:    new URLSearchParams({
@@ -2639,7 +2640,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
           grant_type:    "authorization_code",
           redirect_uri:  redirectUri,
         }),
-      });
+      }, DELAIS.identite);
       const tokens = await tokenRes.json() as { id_token?: string; error?: string; error_description?: string };
       if (!tokenRes.ok || !tokens.id_token) {
         throw new Error(`Apple token exchange failed: ${tokens.error ?? "no id_token"} — ${tokens.error_description ?? ""}`);

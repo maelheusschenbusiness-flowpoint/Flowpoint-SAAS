@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import crypto from "crypto";
 import { logger } from "../lib/logger.js";
 import { requireOrgId } from "../lib/require-org-id.js";
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 import {
   isGitHubConfigured, getGitHubAuthUrl, exchangeCodeForToken, getGitHubUser,
   getUserRepos, getRepoCommits, getRepoDeployments, getRepoReleases,
@@ -206,9 +207,9 @@ router.get("/github/issues/:owner/:repo", async (req: Request, res: Response) =>
   if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
 
   try {
-    const issues = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=30&labels=bug,security`, {
+    const issues = await fetchBorne(`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=30&labels=bug,security`, {
       headers: { "Authorization": `Bearer ${conn.accessToken}`, "Accept": "application/vnd.github+json" },
-    }).then(r => r.json()) as Array<{ id: number; title: string; state: string; labels: Array<{ name: string; color: string }>; created_at: string; html_url: string }>;
+    }, DELAIS.identite).then(r => r.json()) as Array<{ id: number; title: string; state: string; labels: Array<{ name: string; color: string }>; created_at: string; html_url: string }>;
 
     res.json({
       total: Array.isArray(issues) ? issues.length : 0,
