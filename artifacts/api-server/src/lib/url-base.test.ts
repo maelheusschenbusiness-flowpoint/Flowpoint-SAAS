@@ -129,6 +129,7 @@ describe("le resultat reste compatible avec la garde de cible", () => {
     expect(lireCible(url)).toEqual({
       hote: "aws-0-eu-central-1.pooler.supabase.com",
       base: "postgres",
+      utilisateur: "postgres.rrjllaiodpvtsphrtdqd",
     });
   });
 });

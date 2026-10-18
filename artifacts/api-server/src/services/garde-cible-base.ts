@@ -28,6 +28,8 @@
 export interface CibleBase {
   hote: string;
   base: string;
+  /** Avec le pooler Supavisor, c'est l'utilisateur qui designe le PROJET. */
+  utilisateur: string;
 }
 
 /**
@@ -82,8 +84,9 @@ export function lireCible(databaseUrl: string | undefined): CibleBase | null {
     const u = new URL(databaseUrl);
     const hote = u.hostname.toLowerCase();
     const base = decodeURIComponent(u.pathname.replace(/^\//, ""));
+    const utilisateur = decodeURIComponent(u.username);
     if (!hote || !base) return null;
-    return { hote, base };
+    return { hote, base, utilisateur };
   } catch {
     return null;
   }
@@ -93,7 +96,10 @@ export function lireCible(databaseUrl: string | undefined): CibleBase | null {
  * Une declaration acceptable s'ecrit `hote` ou `hote/base`. Plusieurs valeurs
  * peuvent etre separees par des virgules — utile pendant une bascule d'hote.
  */
-function analyserDeclaration(declaration: string): CibleBase[] {
+/** Une declaration ne porte pas d'utilisateur : c'est `hote` ou `hote/base`. */
+interface Declaration { hote: string; base: string }
+
+function analyserDeclaration(declaration: string): Declaration[] {
   return declaration
     .split(",")
     .map((morceau) => morceau.trim().toLowerCase())
@@ -137,6 +143,23 @@ export function verifierCibleBase(env: NodeJS.ProcessEnv = process.env): { verif
   const conforme = attendues.some(
     (a) => a.hote === reelle.hote && (a.base === "" || a.base === reelle.base.toLowerCase())
   );
+
+  // L'hote du pooler Supavisor est REGIONAL : deux projets de la meme region
+  // le partagent, et c'est l'UTILISATEUR (`postgres.<ref>`) qui designe le
+  // projet. Comparer l'hote seul donnerait donc une assurance illusoire.
+  // `DB_UTILISATEUR_ATTENDU` ferme cet ecart. Il n'est jamais journalise.
+  const utilisateurAttendu = env["DB_UTILISATEUR_ATTENDU"];
+  if (utilisateurAttendu && utilisateurAttendu.trim().length > 0) {
+    if (reelle.utilisateur !== utilisateurAttendu.trim()) {
+      throw new CibleBaseRefusee(
+        "L'utilisateur de connexion ne correspond pas a celui declare par ce " +
+        "service (DB_UTILISATEUR_ATTENDU). Avec le pooler Supabase, c'est " +
+        "l'utilisateur qui designe le projet : un hote identique ne prouve donc " +
+        "rien. Demarrage refuse. Ni la valeur attendue ni la valeur atteinte ne " +
+        "sont reproduites ici."
+      );
+    }
+  }
 
   if (!conforme) {
     // Le message nomme l'hote attendu et l'hote atteint. Ce ne sont pas des

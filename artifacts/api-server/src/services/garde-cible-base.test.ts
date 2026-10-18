@@ -10,7 +10,7 @@
  * de test. La garde refuse ce demarrage.
  */
 import { describe, it, expect } from "vitest";
-import { verifierCibleBase, lireCible, CibleBaseRefusee } from "./garde-cible-base.js";
+import { verifierCibleBase, lireCible, decrireCibleSurement, CibleBaseRefusee } from "./garde-cible-base.js";
 
 const URL_TEST = "postgresql://utilisateur:motdepasse@db.base-de-test.example.com:5432/postgres";
 const URL_PROD = "postgresql://utilisateur:motdepasse@db.base-de-production.example.com:5432/postgres";
@@ -20,13 +20,25 @@ function env(valeurs: Record<string, string | undefined>): NodeJS.ProcessEnv {
   return valeurs as NodeJS.ProcessEnv;
 }
 
-describe("lireCible n'extrait que l'hote et la base", () => {
-  it("rend l'hote et le nom de base, jamais les identifiants", () => {
+describe("lireCible : ce qui sort, et ce qui ne sort jamais", () => {
+  it("rend hote, base et utilisateur — mais JAMAIS le mot de passe", () => {
     const c = lireCible(URL_PROD);
-    expect(c).toEqual({ hote: "db.base-de-production.example.com", base: "postgres" });
-    // La preuve que rien d'autre ne ressort :
-    expect(JSON.stringify(c)).not.toContain("motdepasse");
-    expect(JSON.stringify(c)).not.toContain("utilisateur");
+    expect(c).toEqual({
+      hote: "db.base-de-production.example.com",
+      base: "postgres",
+      utilisateur: "utilisateur",
+    });
+    // L'utilisateur est rendu a dessein : avec le pooler Supavisor, c'est lui
+    // qui designe le projet, donc la garde doit pouvoir le comparer. Le mot de
+    // passe, lui, ne doit apparaitre sous aucune forme.
+    expect(JSON.stringify(c), "le mot de passe est ressorti").not.toContain("motdepasse");
+  });
+
+  it("l'utilisateur n'est jamais journalise", () => {
+    // decrireCibleSurement est le seul chemin autorise vers un journal.
+    expect(decrireCibleSurement(lireCible(URL_PROD)))
+      .toBe("db.base-de-production.example.com/postgres");
+    expect(decrireCibleSurement(lireCible(URL_PROD))).not.toContain("utilisateur");
   });
 
   it("rend null sur une URL absente ou illisible", () => {
@@ -34,6 +46,55 @@ describe("lireCible n'extrait que l'hote et la base", () => {
     expect(lireCible("")).toBeNull();
     expect(lireCible("pas-une-url")).toBeNull();
     expect(lireCible("postgresql://hote-sans-base")).toBeNull();
+  });
+});
+
+describe("LE PIEGE DU POOLER — un hote identique ne prouve rien", () => {
+  // L'hote Supavisor est REGIONAL : deux projets de la meme region le
+  // partagent, et c'est l'utilisateur qui designe le projet. Sans cette
+  // verification, la garde donnerait une assurance illusoire.
+  const URL_POOLER_TEST = "postgresql://postgres.projet_de_test:mdp@aws-1-eu-central-1.pooler.supabase.com:5432/postgres";
+  const URL_POOLER_PROD = "postgresql://postgres.projet_de_prod:mdp@aws-1-eu-central-1.pooler.supabase.com:5432/postgres";
+
+  it("meme hote, meme base, AUTRE projet : refus", () => {
+    expect(() => verifierCibleBase(env({
+      DB_HOTE_ATTENDU: "aws-1-eu-central-1.pooler.supabase.com/postgres",
+      DB_UTILISATEUR_ATTENDU: "postgres.projet_de_test",
+      DATABASE_URL: URL_POOLER_PROD,
+    }))).toThrow(CibleBaseRefusee);
+  });
+
+  it("le bon projet passe", () => {
+    expect(verifierCibleBase(env({
+      DB_HOTE_ATTENDU: "aws-1-eu-central-1.pooler.supabase.com/postgres",
+      DB_UTILISATEUR_ATTENDU: "postgres.projet_de_test",
+      DATABASE_URL: URL_POOLER_TEST,
+    })).verifiee).toBe(true);
+  });
+
+  it("sans DB_UTILISATEUR_ATTENDU, l'hote seul laisse passer les deux — c'est le piege", () => {
+    for (const url of [URL_POOLER_TEST, URL_POOLER_PROD]) {
+      expect(verifierCibleBase(env({
+        DB_HOTE_ATTENDU: "aws-1-eu-central-1.pooler.supabase.com/postgres",
+        DATABASE_URL: url,
+      })).verifiee, "l'hote seul devrait accepter les deux projets").toBe(true);
+    }
+  });
+
+  it("le message de refus ne reproduit ni l'utilisateur attendu ni l'atteint", () => {
+    try {
+      verifierCibleBase(env({
+        DB_HOTE_ATTENDU: "aws-1-eu-central-1.pooler.supabase.com",
+        DB_UTILISATEUR_ATTENDU: "postgres.projet_de_test",
+        DATABASE_URL: URL_POOLER_PROD,
+      }));
+      throw new Error("la garde n'a pas refuse");
+    } catch (err) {
+      const m = (err as Error).message;
+      expect(m).not.toContain("projet_de_prod");
+      expect(m).not.toContain("projet_de_test");
+      expect(m).toContain("DB_UTILISATEUR_ATTENDU");
+    }
   });
 });
 

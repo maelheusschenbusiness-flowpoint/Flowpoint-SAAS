@@ -389,9 +389,11 @@ async function main() {
     // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
     logger.info("[startup] Core tables absent — running full init sequence");
 
+    // `initRlsSetup` reste ici : il cree le role app_user, lui accorde les
+    // droits et pose les DEFAULT PRIVILEGES, qui couvriront les tables creees
+    // ensuite. C'est le durcissement RLS lui-meme qui doit attendre.
     await runCriticalStartupStep("init-rls-setup", initRlsSetup);
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
-    await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
     // init-data-tables MUST run first: creates organizations, org_settings
     // and all core tables that init-missions/automation/monitors depend on.
     await runCriticalStartupStep("init-data-tables", initDataTables);
@@ -411,6 +413,23 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
       });
+
+    // ── Durcissement RLS : EN DERNIER, et c'est tout l'objet du correctif ──
+    //
+    // DEFAUT MESURE LE 18/10/2026, en construisant la base de test depuis zero.
+    // Cette etape passait AVANT `init-data-tables`, `init-missions`,
+    // `init-automation`, `init-monitors` et `init-agent-tables`. Sur une base
+    // neuve ces tables n'existent pas encore : elles n'obtenaient donc ni RLS
+    // ni policy, et `runRlsMigrationIfNeeded` posait ensuite sa sentinelle.
+    //
+    // Mesure sur la base de test apres ce demarrage : 105 tables, dont 97 a
+    // `org_id`, et 36 d'entre elles SANS RLS — precisement les tables
+    // missions, monitors, automation, team et audits. `/api/healthz/ready`
+    // repondait 503 avec ces 36 tables en `isolationGaps`, et il avait raison.
+    //
+    // Le defaut ne se voyait pas en production : son schema est anterieur et a
+    // ete durci par `migrate`, qui applique les etapes dans le bon ordre.
+    await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
   }
 
   // ── Optional: Resend email config check (non-blocking, log only) ─────────────
