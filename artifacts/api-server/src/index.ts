@@ -414,23 +414,34 @@ async function main() {
         logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
       });
 
-    // ── Durcissement RLS : EN DERNIER, et c'est tout l'objet du correctif ──
-    //
-    // DEFAUT MESURE LE 18/10/2026, en construisant la base de test depuis zero.
-    // Cette etape passait AVANT `init-data-tables`, `init-missions`,
-    // `init-automation`, `init-monitors` et `init-agent-tables`. Sur une base
-    // neuve ces tables n'existent pas encore : elles n'obtenaient donc ni RLS
-    // ni policy, et `runRlsMigrationIfNeeded` posait ensuite sa sentinelle.
-    //
-    // Mesure sur la base de test apres ce demarrage : 105 tables, dont 97 a
-    // `org_id`, et 36 d'entre elles SANS RLS — precisement les tables
-    // missions, monitors, automation, team et audits. `/api/healthz/ready`
-    // repondait 503 avec ces 36 tables en `isolationGaps`, et il avait raison.
-    //
-    // Le defaut ne se voyait pas en production : son schema est anterieur et a
-    // ete durci par `migrate`, qui applique les etapes dans le bon ordre.
-    await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
   }
+
+  // ── Durcissement RLS : EN DERNIER, ET POUR LES DEUX CHEMINS ───────────────
+  //
+  // DEFAUT MESURE LE 18/10/2026, en construisant la base de test depuis zero,
+  // puis en deux temps.
+  //
+  // D'abord : dans le chemin complet, cette etape passait AVANT
+  // `init-data-tables`, `init-missions`, `init-automation`, `init-monitors` et
+  // `init-agent-tables`. Sur une base neuve ces tables n'existent pas encore :
+  // elles n'obtenaient ni RLS ni policy, et la sentinelle de la migration
+  // etait posee ensuite comme si tout etait en ordre. Mesure : 106 tables,
+  // 97 a `org_id`, 36 d'entre elles SANS RLS — les tables missions, monitors,
+  // automation, team et audits. `/api/healthz/ready` repondait 503 en les
+  // listant, et il avait raison.
+  //
+  // Ensuite, et c'est ce qui rendait la premiere correction inoperante : des
+  // que `audits` existe, le demarrage prend le chemin RAPIDE, qui ne contenait
+  // AUCUNE etape de durcissement. Corriger l'ordre du chemin complet ne
+  // suffisait donc pas — il ne sera plus jamais rejoue sur cette base, et les
+  // 36 tables seraient restees sans RLS indefiniment. C'est aussi pourquoi la
+  // production, qui prend toujours le chemin rapide, ne s'est jamais reparee
+  // d'elle-meme.
+  //
+  // L'etape est donc hors du `if/else` : elle clot les deux chemins. Elle est
+  // idempotente et gardee par une sentinelle — sur une base deja saine, c'est
+  // un no-op de quelques millisecondes.
+  await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
 
   // ── Optional: Resend email config check (non-blocking, log only) ─────────────
   (async () => {

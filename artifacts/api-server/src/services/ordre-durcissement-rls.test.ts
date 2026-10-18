@@ -96,6 +96,28 @@ describe("le durcissement RLS passe apres la creation des tables", () => {
     expect(setup, "init-rls-setup doit preceder la creation des tables").toBeLessThan(donnees);
   });
 
+  it("LE DURCISSEMENT COURT POUR LES DEUX CHEMINS, pas seulement le complet", () => {
+    // DEFAUT MESURE LE 18/10/2026, apres une premiere correction incomplete.
+    // Des que `audits` existe, le demarrage prend le chemin RAPIDE, qui ne
+    // contenait AUCUNE etape de durcissement. Corriger l'ordre du chemin
+    // complet ne suffisait donc pas : il ne sera plus jamais rejoue sur une
+    // base deja initialisee, et les 36 tables seraient restees sans RLS.
+    //
+    // L'indentation le prouve : au niveau de la fonction (deux espaces),
+    // l'appel est hors du `if/else` ; a quatre espaces, il est dans une
+    // branche et ne couvre qu'un seul chemin.
+    const lignes = source().split("\n");
+    const appels = lignes.filter((l) => l.includes('runCriticalStartupStep("rls-migration"'));
+    expect(appels.length, "un seul appel attendu").toBe(1);
+    const indentation = appels[0]!.match(/^ */)![0].length;
+    expect(
+      indentation,
+      "l'appel au durcissement RLS est imbrique dans une branche : il ne " +
+      "couvrirait qu'un seul chemin d'initialisation, et une base deja " +
+      "initialisee ne serait jamais reparee."
+    ).toBe(2);
+  });
+
   it("le durcissement est la DERNIERE etape de schema du chemin complet", () => {
     const src = source();
     const rls = positionEtape(src, "rls-migration");
