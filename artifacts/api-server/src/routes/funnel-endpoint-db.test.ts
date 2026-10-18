@@ -20,6 +20,7 @@ vi.mock("../lib/logger.js", () => ({
 }));
 
 import express from "express";
+import cookieParser from "cookie-parser";
 import request from "supertest";
 import { pool } from "@workspace/db";
 import { randomUUID } from "node:crypto";
@@ -32,18 +33,18 @@ beforeAll(async () => {
   try { await pool.query("SELECT 1"); dbOk = true; } catch { dbOk = false; }
   const { default: routeur } = await import("./public-billing.js");
   app = express();
-  app.use(express.json());
+  app.use(express.json(), cookieParser());
   app.use("/api", routeur);
 });
 
 beforeEach(async () => {
   if (!dbOk) return;
-  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'test-%'`).catch(() => undefined);
+  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'fp-test-%'`).catch(() => undefined);
 });
 
 afterAll(async () => {
   if (!dbOk) return;
-  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'test-%'`).catch(() => undefined);
+  await pool.query(`DELETE FROM funnel_events WHERE visiteur_id LIKE 'fp-test-%'`).catch(() => undefined);
 });
 
 async function compter(visiteur: string): Promise<number> {
