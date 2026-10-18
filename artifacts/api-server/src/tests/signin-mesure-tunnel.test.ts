@@ -185,6 +185,17 @@ describe("la mesure est posee et exploitable", () => {
     expect(bloc.match(/stripe\.paymentIntents\.create/g)).toHaveLength(1);
   });
 
+  it("checkout_started est aussi ajouté après le SetupIntent de l'essai, avec consentement et idempotence", () => {
+    const creation = PAYMENT_INTENT_ROUTE.indexOf("const si = await stripe.setupIntents.create");
+    const emission = PAYMENT_INTENT_ROUTE.indexOf('etape: "checkout_started"', creation);
+    expect(creation).toBeGreaterThan(-1);
+    expect(emission).toBeGreaterThan(creation);
+    const bloc = PAYMENT_INTENT_ROUTE.slice(creation, PAYMENT_INTENT_ROUTE.indexOf("logger.info({ plan: planKey, hasCustomer", creation));
+    expect(bloc).toContain("cleIdempotence: `checkout_started:${si.id}`");
+    expect(bloc).toContain("const _setupFunnelAttribution = lireAttributionFunnel(metadata)");
+    expect(bloc).toContain("if (_setupFunnelAttribution)");
+  });
+
   it("checkout_completed suit les intents réels et garde le visiteur jusqu'aux abonnements", () => {
     const webhook = readFileSync(join(process.cwd(), "src/routes/stripe-webhook.ts"), "utf8");
     const sessionCase = webhook.indexOf('case "checkout.session.completed"');
