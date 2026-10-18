@@ -141,6 +141,10 @@ services:
         value: "true"
       - key: STRIPE_TEST_KEY
         sync: false
+      # Depuis le 18/10/2026 ce secret suffit a lui seul : le routeur de webhook
+      # traite les deux secrets comme des candidats de meme rang. Auparavant la
+      # branche verifiee exigeait STRIPE_WEBHOOK_SECRET, et un environnement
+      # configure comme ci-dessous refusait tout evenement en 503.
       - key: STRIPE_TEST_WEBHOOK_SECRET
         sync: false
       - key: STRIPE_TEST_PUBLISHABLE_KEY
