@@ -32,6 +32,8 @@ feature code is included.
 | GHSA-cc9r-2j5m-2m83 (CVE-2026-92597) | `nodemailer` 9.0.3 | Same SMTP fallback; RFC 5322 comment recipient parsing | Direct update to 9.1.1 | Fixed; compatible 9.x update |
 | GHSA-v53p-9fqp-m79j (CVE-2026-100700) | `nodemailer` 9.0.3 | Same SMTP fallback; address parser backtracking | Fixed only in 10.0.6 | Open; major upgrade deferred |
 | GHSA-wmmp-3585-3rmp (CVE-2026-92598) | `nodemailer` 9.0.3 | Same SMTP fallback; IDN normalization discrepancy | Direct update to 9.1.1 | Fixed; compatible 9.x update |
+| GHSA-g57g-f23g-4646 (CVE-2026-100699; found on rescan) | `nodemailer` 9.1.1 | Same SMTP fallback; quoted local-part/comment parsing | Fixed only in 10.0.9 | Open; newly surfaced after the compatible update; major upgrade deferred |
+| GHSA-prgh-xp8r-p3m5 (CVE-2026-90776; found on rescan) | `nodemailer` 9.1.1 | Address parser complexity; advisory describes inbound `mailparser` path, which this app does not import | Fixed only in 10.0.5 | Open; not reachable through this app's outbound-only mailer path; major upgrade deferred |
 | GHSA-jqcg-44mw-7w3h (CVE-2026-90711) | `proxy-addr` 2.0.7 | Express runtime request-IP resolution | Override to 2.0.8 | Fixed. The advisory's vulnerable IPv4-mapped IPv6 CIDR form is not configured; app uses one trusted proxy hop. Separately, raw leftmost `X-Forwarded-For` reads were spoofable and are now replaced by Express `req.ip`. |
 | GHSA-68fv-2mgg-jv7q (CVE-2026-93749) | `source-map-js` 1.2.1 | PostCSS → Vite → Vitest; dev/test only, no production runtime import | Override to 1.2.2 | Fixed; compatible patch update |
 | GHSA-hp3w-g68c-fv3c (CVE-2026-97058) | `sprintf-js` 1.0.3 | Mammoth → argparse → sprintf-js; app uses Mammoth's library API, not its CLI/argument parser | Scanner reports no fixed version; no safe package update identified | Open but not reachable through the application's Mammoth API path; re-evaluate when upstream publishes a compatible fix |
@@ -54,8 +56,12 @@ forwarded header alongside a different proxy-resolved `req.ip`.
   `proxy-addr` 2.0.8, `brace-expansion` 1.1.21 and 2.1.7, `compression` 1.8.2,
   `esbuild` 0.28.1, `fast-copy` 4.1.0, `nodemailer` 9.1.1, `source-map-js`
   1.2.2, and Vitest/`@vitest/mocker` 4.1.12.
-- Remaining dependency alerts: three Nodemailer findings requiring 10.x,
-  `uuid` requiring 11.x, and `sprintf-js` with no scanner-provided fix.
+- Rescan result: **7 alerts remain** (3 high, 4 moderate): five Nodemailer
+  findings, `uuid`, and `sprintf-js`. Two additional Nodemailer advisories
+  appeared on 9.1.1 during the rescan; they were not in the initial 22.
+- Of the initial 22, 17 were cleared by compatible updates. The rescan's two
+  new Nodemailer advisories bring the current total to 7; no major upgrade was
+  forced.
 - TypeScript check, server build, proxy/rate-limit, auth-enumeration, and
   OAuth-scope tests pass (13 targeted tests).
 - Replit SAST reported two GitHub redirect flows and one MD5 use outside the
