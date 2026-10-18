@@ -178,9 +178,10 @@ describe("la mesure est posee et exploitable", () => {
     expect(creation).toBeGreaterThan(-1);
     expect(emission).toBeGreaterThan(creation);
     const bloc = PAYMENT_INTENT_ROUTE.slice(creation, PAYMENT_INTENT_ROUTE.indexOf("if (hasPlan) {", creation));
-    expect(bloc).toContain('cookies?.["fp_analytics_consent"] === "accepted"');
+    expect(bloc).toContain("...metadataAttributionFunnel(");
     expect(bloc).toContain("cleIdempotence: `checkout_started:${pi.id}`");
-    expect(bloc).toContain("if (_funnelCookieConsent && _funnelVisitorId)");
+    expect(bloc).toContain("const _funnelAttribution = lireAttributionFunnel(metadata)");
+    expect(bloc).toContain("if (_funnelAttribution)");
     expect(bloc.match(/stripe\.paymentIntents\.create/g)).toHaveLength(1);
   });
 
