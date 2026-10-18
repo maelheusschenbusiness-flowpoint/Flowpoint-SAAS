@@ -88,13 +88,15 @@ export function construireDepuisVariablesPg(env: NodeJS.ProcessEnv = process.env
   const hote = env["PGHOST"]!;
   const port = env["PGPORT"] && env["PGPORT"].length > 0 ? env["PGPORT"] : "5432";
   const base = env["PGDATABASE"]!;
-  // Supabase exige TLS. `require` est donc le defaut, et non `disable`.
-  const ssl  = env["PGSSLMODE"] && env["PGSSLMODE"].length > 0 ? env["PGSSLMODE"] : "require";
 
   const utilisateur = encodeURIComponent(env["PGUSER"]!);
   const motDePasse  = encodeURIComponent(env["PGPASSWORD"]!);
 
-  return `postgresql://${utilisateur}:${motDePasse}@${hote}:${port}/${encodeURIComponent(base)}?sslmode=${encodeURIComponent(ssl)}`;
+  // Pas de `sslmode` dans l'URL, volontairement. Le mode TLS est decide au
+  // niveau du pool, par `optionsSslPostgres()`, qui fournit la racine Supabase
+  // absente du magasin public. Deux sources de verite pour le meme reglage
+  // produiraient un comportement ambigu selon la version de pg.
+  return `postgresql://${utilisateur}:${motDePasse}@${hote}:${port}/${encodeURIComponent(base)}`;
 }
 
 /**
