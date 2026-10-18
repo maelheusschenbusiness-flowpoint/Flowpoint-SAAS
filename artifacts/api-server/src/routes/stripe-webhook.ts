@@ -1087,13 +1087,34 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       res.status(503).json({ error: "Webhook verification unavailable" });
       return;
     }
+    // TRAITEMENT SANS SIGNATURE, SUR DEMANDE EXPLICITE SEULEMENT.
+    //
+    // Mesure du 18/10/2026 : il suffisait que `STRIPE_SECRET_KEY` ou
+    // `STRIPE_WEBHOOK_SECRET` soit absente, et que NODE_ENV ne vaille pas
+    // exactement "production", pour que cet endpoint traite n'importe quel
+    // evenement SANS verifier sa signature. Un `invoice.paid` forge activait
+    // alors un abonnement payant, gratuitement.
+    //
+    // Les deux instances deployees refusent bien — verifie : une signature
+    // invalide recoit 400 sur les deux. Ce n'etait donc pas une faille en
+    // production. Mais l'ouverture dependait de l'ABSENCE d'une variable,
+    // c'est-a-dire d'un oubli, et le webhook de facturation est l'endroit ou
+    // un oubli coute le plus cher.
+    if (process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"] !== "true") {
+      logger.error(
+        "[Webhook] Identifiants Stripe absents — evenement REFUSE. " +
+        "Posez ALLOW_UNSIGNED_STRIPE_WEBHOOKS=true pour accepter des evenements non signes en developpement."
+      );
+      res.status(503).json({ error: "Webhook verification unavailable" });
+      return;
+    }
     const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
     try {
       event = rawBody ? JSON.parse(rawBody.toString("utf-8")) : req.body;
     } catch {
       event = req.body as typeof event;
     }
-    logger.warn("[Webhook] Dev mode: processing without signature verification");
+    logger.warn("[Webhook] ALLOW_UNSIGNED_STRIPE_WEBHOOKS=true — signature NON verifiee.");
   }
 
   logger.info({ type: event.type }, "[Webhook] Received Stripe event");
