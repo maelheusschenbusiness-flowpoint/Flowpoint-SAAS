@@ -65,6 +65,7 @@ export default defineConfig({
       "src/lib/plan-price-mode.test.ts",
       "src/lib/plans-prix-test-manquants.test.ts",
       "src/lib/env-database-url.test.ts",
+      "src/lib/url-base.test.ts",
       "src/services/cancel-at-period-end-db.test.ts",
       "src/services/publishable-key-mode.test.ts",
       "src/services/canonical-subscription-db.test.ts",

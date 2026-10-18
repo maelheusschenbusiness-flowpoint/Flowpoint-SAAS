@@ -17,6 +17,9 @@
  *   1 — fatal error (DB unreachable, unrecoverable DDL failure, etc.)
  */
 
+// EN PREMIER, avant @workspace/db qui construit son pool des son evaluation :
+// pose DATABASE_URL depuis les variables separees si besoin.
+import "./lib/url-base.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initRlsSetup }          from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
