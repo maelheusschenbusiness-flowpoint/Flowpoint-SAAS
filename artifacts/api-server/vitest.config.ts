@@ -21,6 +21,7 @@ export default defineConfig({
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
+      "src/lib/logger-redaction.test.ts",
       "src/lib/carry-params.test.ts",
       // Resilience des APIs externes : toute sortie reseau est bornee (17/10/2026).
       "src/lib/fetch-borne.test.ts",
@@ -91,6 +92,12 @@ export default defineConfig({
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
       "src/routes/stripe-webhook-ordering-db.test.ts",
+      // La signature du webhook de facturation est la seule protection de cet
+      // endpoint : un tiers non authentifie peut y faire accorder un abonnement.
+      "src/routes/stripe-webhook-signature.test.ts",
+      // Le mode sans signature ne doit pouvoir atteindre la production par
+      // aucune voie : affectation, paquet construit, configuration, ordre des gardes.
+      "src/routes/stripe-webhook-unsigned-containment.test.ts",
       "src/services/google-oauth-scopes.test.ts",
       "src/services/monitor-addon-quota.test.ts",
       "src/routes/addon-activate-quantity.test.ts",
