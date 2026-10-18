@@ -9,7 +9,7 @@
  * Uses mock pool queries to avoid live DB.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { PLAN_INCLUDED_ADDONS, BETA_ADDONS, COMING_SOON_ADDONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, BETA_ADDONS, COMING_SOON_ADDONS } from "../lib/plans.js";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ function makeRes() {
 // ── Unit tests for PLAN_INCLUDED_ADDONS correctness ───────────────────────────
 
 describe("PLAN_INCLUDED_ADDONS", () => {
-  it("plans are cumulative except Ultra upgrades retention90d to retention365d", () => {
+  it("Ultra includes every Pro add-on plus its four Ultra-only additions", () => {
     const standard = PLAN_INCLUDED_ADDONS["standard"] ?? new Set();
     const pro      = PLAN_INCLUDED_ADDONS["pro"] ?? new Set();
     const ultra    = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
@@ -40,11 +40,21 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     }
     // everything in pro must be in ultra
     for (const key of pro) {
-      if (key === "retention90d") continue;
       expect(ultra.has(key)).toBe(true);
     }
-    expect(ultra.has("retention90d")).toBe(false);
+    expect(pro.has("retention90d")).toBe(true);
+    expect(ultra.has("retention90d")).toBe(true);
     expect(ultra.has("retention365d")).toBe(true);
+    expect(PLAN_ALLOWED_ADDONS["ultra"]?.has("keywordDomination")).toBe(true);
+    expect(PLAN_ALLOWED_ADDONS["pro"]?.has("keywordDomination")).toBe(true);
+    expect(pro.size).toBe(6);
+    expect(ultra.size).toBe(10);
+    expect([...ultra].filter(key => !pro.has(key)).sort()).toEqual([
+      "aiForecasting",
+      "behavioralAI",
+      "customDomain",
+      "retention365d",
+    ]);
   });
 
   it("Ultra has exactly 10 included add-ons", () => {
@@ -76,9 +86,9 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(pro.has("advancedSeoLab")).toBe(true);
   });
 
-  it("Ultra includes keywordDomination AND behavioralAI (beta + included)", () => {
+  it("Ultra includes the four selected bonuses; keywordDomination stays purchasable separately", () => {
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
-    expect(ultra.has("keywordDomination")).toBe(true);
+    expect(ultra.has("keywordDomination")).toBe(false);
     // behavioralAI is BETA + included in Ultra: renders as "🧪 Beta — Inclus dans votre plan"
     // Beta ∩ Included is valid — beta describes maturity, included describes commercial mode.
     expect(ultra.has("behavioralAI")).toBe(true);

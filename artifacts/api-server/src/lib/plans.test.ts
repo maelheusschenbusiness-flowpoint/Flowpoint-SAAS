@@ -5,7 +5,7 @@
  *   1. Every key in any plan's included set must have a Stripe price ID.
  *   2. Every key in any plan's included set must be defined in ADDON_DEFINITIONS.
  *   3. One-time credit packs must never appear in any included set.
- *   4. Ultra carries Pro inclusions except retention90d, which is upgraded to retention365d.
+ *   4. Ultra carries all six Pro inclusions plus four Ultra-only additions.
  *   5. Pro's included set is a superset of Standard's.
  *   6. FEATURE_FLAGS must grant Pro/Ultra subscribers their bundled add-on features.
  *   7. Addon-to-feature-flag alignment for the whiteLabel→whiteLabel mapping.
@@ -22,11 +22,48 @@ import {
   COMING_SOON_ADDONS,
   getAddonAvailability,
   getAddonStatus,
+  ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
 
 const ONE_TIME_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+
+describe("V1 add-on catalogue contract", () => {
+  it("keeps the existing 40 product slots and all six protected keys", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(40);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
+      expect.arrayContaining([
+        "monitorsPack10",
+        "monitorsPack50",
+        "whiteLabel",
+        "retention90d",
+        "retention365d",
+        "extraSeats",
+      ]),
+    );
+  });
+
+  it("preserves protected add-on prices, pack sizes, and recurring behavior", () => {
+    expect(CANONICAL_ADDON_DEFINITIONS.monitorsPack10).toMatchObject({
+      priceEur: 9,
+      quantity: true,
+      oneTime: false,
+    });
+    expect(CANONICAL_ADDON_DEFINITIONS.monitorsPack50).toMatchObject({
+      priceEur: 19,
+      quantity: true,
+      oneTime: false,
+    });
+    expect(CANONICAL_ADDON_DEFINITIONS.whiteLabel.priceEur).toBe(17);
+    expect(CANONICAL_ADDON_DEFINITIONS.retention90d.priceEur).toBe(9);
+    expect(CANONICAL_ADDON_DEFINITIONS.retention365d.priceEur).toBe(19);
+    expect(CANONICAL_ADDON_DEFINITIONS.extraSeats).toMatchObject({
+      quantity: true,
+      oneTime: false,
+    });
+  });
+});
 
 // Collect every addon key that appears in any plan's included set.
 const allIncludedKeys = new Set<string>();
@@ -59,17 +96,24 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(found, `One-time packs must not be in PLAN_INCLUDED_ADDONS: ${found.join(", ")}`).toHaveLength(0);
   });
 
-  it("ultra carries Pro inclusions but upgrades retention90d to retention365d", () => {
+  it("Ultra includes all six Pro add-ons and exactly four additional add-ons", () => {
     const ultraSet = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set<string>();
     const proSet   = PLAN_INCLUDED_ADDONS["pro"]   ?? new Set<string>();
     const missing: string[] = [];
     for (const key of proSet) {
-      if (key === "retention90d") continue;
       if (!ultraSet.has(key)) missing.push(key);
     }
     expect(missing, `Pro add-ons not present in Ultra: ${missing.join(", ")}`).toHaveLength(0);
-    expect(ultraSet.has("retention90d")).toBe(false);
+    expect(ultraSet.has("retention90d")).toBe(true);
     expect(ultraSet.has("retention365d")).toBe(true);
+    expect(proSet.size).toBe(6);
+    expect(ultraSet.size).toBe(10);
+    expect([...ultraSet].filter(key => !proSet.has(key)).sort()).toEqual([
+      "aiForecasting",
+      "behavioralAI",
+      "customDomain",
+      "retention365d",
+    ]);
   });
 
   it("pro's included set is a superset of standard's (cumulative model)", () => {
@@ -161,7 +205,10 @@ describe("addons entitlement merge logic", () => {
     expect(liveAddons["whiteLabel"]).toBe(true);
     expect(liveAddons["customDomain"]).toBe(true);
     expect(liveAddons["retention365d"]).toBe(true);
-    expect(liveAddons["keywordDomination"]).toBe(true);
+    expect(liveAddons["retention90d"]).toBe(true);
+    expect(liveAddons["behavioralAI"]).toBe(true);
+    expect(liveAddons["aiForecasting"]).toBe(true);
+    expect(liveAddons["keywordDomination"]).toBeUndefined();
   });
 });
 

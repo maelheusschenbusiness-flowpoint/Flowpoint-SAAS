@@ -85,24 +85,24 @@ describe("provisionPlanAddons — Ultra plan", () => {
     expect(activatedKeys).toContain("retention365d");
   });
 
-  it("provisions keywordDomination, behavioralAI, aiForecasting for Ultra", async () => {
+  it("provisions the Ultra-only feature additions", async () => {
     await provisionPlanAddons("ultra", "org-ultra", activatorStub);
-    expect(activatedKeys).toContain("keywordDomination");
     // behavioralAI and aiForecasting are BETA + included in Ultra:
     // they are provisioned automatically on plan activation (no purchase needed).
     expect(activatedKeys).toContain("behavioralAI");
     expect(activatedKeys).toContain("aiForecasting");
+    expect(activatedKeys).not.toContain("keywordDomination");
   });
 
-  it("provisions Pro inclusions while upgrading retention90d to retention365d", async () => {
+  it("provisions every Pro inclusion plus the four selected Ultra-only additions", async () => {
     await provisionPlanAddons("ultra", "org-ultra", activatorStub);
     const proKeys = Array.from(PLAN_INCLUDED_ADDONS["pro"] ?? []);
     for (const key of proKeys) {
-      if (key === "retention90d") continue;
       expect(activatedKeys, `Expected Pro key '${key}' in Ultra activation`).toContain(key);
     }
-    expect(activatedKeys).not.toContain("retention90d");
+    expect(activatedKeys).toContain("retention90d");
     expect(activatedKeys).toContain("retention365d");
+    expect(activatedKeys).not.toContain("keywordDomination");
   });
 });
 

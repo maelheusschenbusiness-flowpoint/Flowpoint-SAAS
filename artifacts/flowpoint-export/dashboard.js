@@ -10265,8 +10265,6 @@ function renderBilling() {
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
       if (a.includedFrom === 'standard') return true;
-      // retention90d is superseded by retention365d on Ultra — hide it to avoid confusion
-      if (a.key === 'retention90d' && planLevel >= 2) return false;
       if (a.includedFrom === 'pro'   && planLevel >= 1) return true;
       if (a.includedFrom === 'ultra' && planLevel >= 2) return true;
       return false;

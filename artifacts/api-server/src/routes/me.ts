@@ -259,14 +259,6 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         role:                   req.orgContext?.role ?? "member",
         org_name:               (dbData?.orgName ?? "").slice(0, 30),
       }, "[P0-ISOLATION][ME]");
-      // ── P1 RETENTION90D SUPPRESSION — fix Ultra double-count ─────────────────
-      // On Ultra, retention90d is superseded by retention365d.  If both are active
-      // (legacy Pro provisioning survived upgrade), remove retention90d from the
-      // merged addons so /api/me does not report 11 active addons for an Ultra org.
-      if (plan === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
-        delete _mergedAddons["retention90d"];
-        logger.info({ orgId, plan }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
-      }
       res.json({
         orgId:               orgId,
         firstName,
