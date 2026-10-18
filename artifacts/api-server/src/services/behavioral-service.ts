@@ -13,7 +13,7 @@ export async function trackBehaviorEvent(event: {
   orgId: string;
   siteUrl: string;
   page: string;
-  eventType: "scroll" | "click" | "rage_click" | "dead_click" | "exit" | "form_abandon" | "hover" | "copy";
+  eventType: "scroll" | "scroll_depth" | "click" | "rage_click" | "dead_click" | "exit" | "form_abandon" | "form_submit" | "session_end" | "tracker_ready" | "experiment_exposure" | "experiment_conversion" | "hover" | "copy";
   element?: string;
   xPos?: number;
   yPos?: number;

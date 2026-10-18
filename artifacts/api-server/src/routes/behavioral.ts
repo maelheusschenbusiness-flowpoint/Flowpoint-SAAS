@@ -4,8 +4,8 @@ import { randomBytes } from "crypto";
 import {
   trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights,
 } from "../services/behavioral-service.js";
-import { db, behaviorSiteTokensTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, behaviorSiteTokensTable, behaviorEventsTable, croExperimentsTable } from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
 import { requireAddon } from "../middlewares/planGate.js";
 import { behavioralRateLimit } from "../middlewares/rateLimiter.js";
 
@@ -167,11 +167,87 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
   if (!nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
     res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
   }
+  if (eventType === "experiment_exposure" || eventType === "experiment_conversion") {
+    const meta = metadata && typeof metadata === "object" ? metadata as Record<string, unknown> : {};
+    const experimentId = String(meta["experimentId"] ?? "");
+    const variant = String(meta["variant"] ?? "");
+    if (!experimentId || !["A", "B"].includes(variant)) {
+      res.status(400).json({ error: "Valid experimentId and variant are required." }); return;
+    }
+    const [experiment] = await db.select({
+      id: croExperimentsTable.id, page: croExperimentsTable.page,
+      status: croExperimentsTable.status, variantA: croExperimentsTable.variantA,
+      variantB: croExperimentsTable.variantB,
+    }).from(croExperimentsTable).where(and(
+      eq(croExperimentsTable.id, experimentId),
+      eq(croExperimentsTable.orgId, eventOrgId),
+      eq(croExperimentsTable.siteUrl, siteUrl),
+    )).limit(1);
+    if (!experiment || experiment.status !== "running" || experiment.page !== page) {
+      res.status(404).json({ error: "Active experiment not found for this page." }); return;
+    }
+    const [arm] = await db.select({ id: behaviorEventsTable.id }).from(behaviorEventsTable).where(and(
+      eq(behaviorEventsTable.orgId, eventOrgId),
+      eq(behaviorEventsTable.sessionId, sessionId),
+      eq(behaviorEventsTable.siteUrl, siteUrl),
+      eq(behaviorEventsTable.eventType, "experiment_exposure"),
+      sql`${behaviorEventsTable.metadata}->>'experimentId' = ${experimentId}`,
+      sql`${behaviorEventsTable.metadata}->>'variant' = ${variant}`,
+    )).limit(1);
+    if (eventType === "experiment_conversion" && !arm) {
+      res.status(409).json({ error: "Conversion cannot be counted before a recorded exposure." }); return;
+    }
+    if (eventType === "experiment_exposure" && arm) {
+      res.status(200).json({ ok: true, duplicate: true }); return;
+    }
+  }
   try {
     await trackBehaviorEvent({ sessionId, orgId: eventOrgId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
     res.status(201).json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to track event" });
+  }
+});
+
+// Public assignment endpoint: the installed, signed site snippet requests a
+// deterministic per-session variant. Only active, org-owned experiments serve.
+publicBehavioralRouter.post("/behavioral/experiments/assign", behavioralRateLimit("event"), async (req: Request, res: Response) => {
+  const { sessionId, siteUrl, page, sessionToken, ts, nonce } = req.body ?? {};
+  if (!sessionId || !siteUrl || !page || !sessionToken) {
+    res.status(400).json({ error: "sessionId, siteUrl, page and sessionToken required" }); return;
+  }
+  if (!browserAttestationPasses(req, siteUrl)) {
+    res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
+  }
+  const origin = req.headers["origin"] as string;
+  const entry = _sessionTokens.get(sessionToken);
+  if (!entry || entry.exp < Date.now() || entry.siteUrl !== siteUrl || entry.allowedOrigin !== origin) {
+    res.status(403).json({ error: "Invalid or expired session token" }); return;
+  }
+  const tsNum = Number(ts);
+  if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS ||
+      !nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
+    res.status(403).json({ error: "Invalid timestamp or replayed nonce" }); return;
+  }
+  try {
+    const experiments = await db.select({
+      id: croExperimentsTable.id, page: croExperimentsTable.page,
+      variantA: croExperimentsTable.variantA, variantB: croExperimentsTable.variantB,
+    }).from(croExperimentsTable).where(and(
+      eq(croExperimentsTable.orgId, entry.orgId),
+      eq(croExperimentsTable.siteUrl, siteUrl),
+      eq(croExperimentsTable.page, page),
+      eq(croExperimentsTable.status, "running"),
+    )).limit(10);
+    const assigned = experiments.map(experiment => {
+      const digest = createHash("sha256").update(`${experiment.id}:${sessionId}`).digest()[0] ?? 0;
+      const variant = digest % 2 === 0 ? "A" : "B";
+      const config = variant === "A" ? experiment.variantA : experiment.variantB;
+      return { experimentId: experiment.id, variant, config };
+    });
+    res.json({ experiments: assigned });
+  } catch {
+    res.status(503).json({ error: "Experiment assignment unavailable" });
   }
 });
 
@@ -291,23 +367,55 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
     fetch(u+'/behavioral/session',{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true}).catch(function(){});
   }
   _fpSession();
+  _fpSend('tracker_ready',{metadata:{version:2}});
   _fpSend('page_view',{metadata:{referrer:document.referrer,title:document.title}});
+  async function _fpAssignExperiments(){
+    try{
+      if(!_fpToken||Date.now()>=_fpTokenExp)await _fpGetToken();
+      if(!_fpToken)return;
+      var ts=Date.now(),nonce=Math.random().toString(36).slice(2,10);
+      var r=await fetch(u+'/behavioral/experiments/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:_fpSid,siteUrl:s,page:location.pathname,sessionToken:_fpToken,ts:ts,nonce:nonce})});
+      if(!r.ok)return;
+      var data=await r.json();
+      (data.experiments||[]).forEach(function(ex){
+        var cfg=ex.config||{},target;
+        try{target=d.querySelector(cfg.selector)}catch(_){return}
+        if(!target||typeof cfg.text!=='string')return;
+        target.textContent=cfg.text;
+        _fpSend('experiment_exposure',{metadata:{experimentId:ex.experimentId,variant:ex.variant}});
+        var goals;
+        try{goals=d.querySelectorAll(cfg.goalSelector)}catch(_){goals=[]}
+        goals.forEach(function(goal){goal.addEventListener('click',function(){
+          _fpSend('experiment_conversion',{metadata:{experimentId:ex.experimentId,variant:ex.variant}});
+        },{once:true})});
+      });
+    }catch(e){}
+  }
+  if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',_fpAssignExperiments,{once:true});else _fpAssignExperiments();
   d.addEventListener('click',function(e){
     var now=Date.now();var el=e.target&&(e.target.id||e.target.className||e.target.tagName)||'';
     var key=Math.round(e.clientX/20)+'_'+Math.round(e.clientY/20);
     if(!_fpRageMap[key])_fpRageMap[key]=0;_fpRageMap[key]++;
     if(now-_fpRageTs<500&&_fpRageMap[key]>=3){_fpSend('rage_click',{xPos:e.clientX,yPos:e.clientY,element:el});_fpRageMap[key]=0;}
     _fpRageTs=now;
+    var node=e.target&&e.target.closest?e.target.closest('a,button,input,select,textarea,[role="button"]'):null;
+    try{if(!node&&e.target&&getComputedStyle(e.target).cursor==='pointer')_fpSend('dead_click',{xPos:e.clientX,yPos:e.clientY,element:el})}catch(_){}
     _fpSend('click',{xPos:e.clientX,yPos:e.clientY,element:el});
   });
   var _fpScroll=0;d.addEventListener('scroll',function(){
     var pct=Math.round((w.scrollY/(d.body.scrollHeight-w.innerHeight||1))*100);
     if(pct>_fpScroll+20){_fpScroll=pct;_fpSend('scroll_depth',{scrollDepth:pct});}
   });
+  var _fpForms=[];
   d.querySelectorAll('form').forEach(function(f){
-    f.addEventListener('submit',function(){_fpSend('form_submit',{element:f.id||f.className||'form'});});
+    var touched=false,submitted=false;
+    f.addEventListener('input',function(){touched=true},{passive:true});
+    f.addEventListener('submit',function(){submitted=true;_fpSend('form_submit',{element:f.id||f.className||'form'});});
+    _fpForms.push(function(){if(touched&&!submitted)_fpSend('form_abandon',{element:f.id||f.className||'form'})});
   });
   w.addEventListener('beforeunload',function(){
+    _fpForms.forEach(function(report){report()});
+    _fpSend('exit',{timeOnPage:Math.round((Date.now()-_fpStart)/1000)});
     _fpSend('session_end',{timeOnPage:Math.round((Date.now()-_fpStart)/1000)});
   });
 })(window,document,'${siteUrl}','${apiBase}','${plainToken}');

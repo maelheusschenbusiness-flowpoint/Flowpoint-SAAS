@@ -1795,6 +1795,50 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
+    // ── cro_experiments — create + self-heal schema before tenant policy ──────
+    // The Drizzle model and RLS migration refer to this table, but neither creates it.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS cro_experiments (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        site_url TEXT NOT NULL,
+        page TEXT NOT NULL,
+        name TEXT NOT NULL,
+        hypothesis TEXT,
+        variant_a JSONB DEFAULT '{}',
+        variant_b JSONB DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'draft',
+        winner TEXT,
+        conversion_a REAL,
+        conversion_b REAL,
+        confidence REAL,
+        started_at TIMESTAMPTZ,
+        ended_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run(client, `
+      ALTER TABLE cro_experiments
+        ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default',
+        ADD COLUMN IF NOT EXISTS site_url TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS page TEXT NOT NULL DEFAULT '/',
+        ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS hypothesis TEXT,
+        ADD COLUMN IF NOT EXISTS variant_a JSONB DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS variant_b JSONB DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft',
+        ADD COLUMN IF NOT EXISTS winner TEXT,
+        ADD COLUMN IF NOT EXISTS conversion_a REAL,
+        ADD COLUMN IF NOT EXISTS conversion_b REAL,
+        ADD COLUMN IF NOT EXISTS confidence REAL,
+        ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS cro_experiments_org_id_idx ON cro_experiments(org_id)`);
+    await run(client, `ALTER TABLE cro_experiments ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE cro_experiments FORCE ROW LEVEL SECURITY`);
+
     // ── cro_scores / cro_experiments — add org_id ─────────────────────────────
     await run(client, `
       DO $$ BEGIN

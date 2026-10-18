@@ -56439,73 +56439,50 @@ function renderConversion() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'revenue-leak') {
     const _rlData = window.FP_DATA && window.FP_DATA.revenueLeak;
-    const _rlRaw = _rlData && _rlData.leaks && _rlData.leaks.length ? _rlData.leaks : null;
-    const leaks = _rlRaw ? _rlRaw.map(l => ({
-      page: l.title || l.page || 'Page',
-      issue: l.description || '',
-      loss: Math.round(l.estimatedMonthlyLoss || 0) + '€/mois',
-      score: Math.min(100, l.impactScore || 50),
-      type: l.leakType || 'friction',
-      urg: (l.impactScore || 0) >= 85 ? 'critical' : (l.impactScore || 0) >= 65 ? 'high' : 'medium',
+    const leaks = (_rlData?.opportunities || []).map(l => ({
+      page: l.page || 'Page',
+      issue: `${l.recommendation || ''} ${l.observedEvents || 0} événements sur ${l.affectedSessions || 0} sessions.`,
+      events: Number(l.observedEvents || 0),
+      sessions: Number(l.affectedSessions || 0),
+      confidence: l.confidence || 'low',
       id: l.id,
-    })) : [
-    ];
-    const trustIssues = STATE.behavioral?.trustIssues || (PREVIEW_MODE ? [
-      { issue: "Pas de badge certifié visible",     fix: "Ajouter logo RGE / assurance", effort: "30 min" },
-      { issue: "Aucune mention légale en footer",   fix: "Ajouter mentions légales",    effort: "15 min" },
-      { issue: "Pas de politique de confidentialité",fix: "Ajouter RGPD notice",        effort: "45 min" },
-      { issue: "Photos équipe absentes",            fix: "Section équipe avec photos",  effort: "2h"     },
-    ] : []);
-    const totalLoss = leaks.reduce((s, l) => s + (parseInt(String(l.loss || '0')) || 0), 0);
+    }));
+    const trustIssues = [];
     const _rlIsEmpty = !leaks.length;
-    const _rlEmptyReason = (_rlData && _rlData.emptyReason) || "Aucune fuite de revenus détectée pour le moment — connectez GA4, PageSpeed et Behavioral Analytics pour activer la détection automatique.";
+    const _rlEmptyReason = (_rlData && _rlData.error) || "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.";
     return `
       ${_rlIsEmpty
         ? `<div style="padding:32px 24px;text-align:center;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
             <div style="font-size:36px;margin-bottom:12px">💸</div>
-            <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune fuite de revenus détectée</div>
+            <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune opportunité observée</div>
             <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyReason)}</div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
             </div>
            </div>`
-        : `${aiBlock("Perte de revenus estimée : <strong>" + totalLoss.toLocaleString(getLocale()) + "€/mois</strong> basée sur " + leaks.length + " signal(s) réel(s) détecté(s) (PageSpeed, uptime, trafic organique, comportemental).",
-            ["Créer le plan de correction", "Prioriser les actions", "Rapport de pertes"])}
-
-          <div class="fp-stat-row fp-mb-20">
-            ${statCard("Perte estimée totale", totalLoss.toLocaleString(getLocale()) + "€/mois", "signaux réels uniquement", "down")}
-            ${statCard("Fuites critiques", String(leaks.filter(l => l.urg === "critical").length), "à corriger en urgence", "down")}
-            ${statCard("Quick wins", String(leaks.filter(l => l.urg !== "critical").length), "correctifs < 1h", "up")}
-            ${statCard("Récupération potentielle", "+" + Math.round(totalLoss * 0.65).toLocaleString(getLocale()) + "€/mois", "estimation à 65%", "up")}
-          </div>`
+        : `<div class="fp-card fp-mb-20"><strong>${leaks.length} opportunités observées</strong><div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.</div></div>`
       }
 
       <!-- REVENUE LEAK LIST -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("alert-triangle").replace('stroke="currentColor"', 'stroke="#ef4444"')}
-          Fuites de conversion détectées — Impact financier
+          Opportunités de conversion — observations comportementales
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${leaks.length === 0
-            ? `<div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune fuite détectée — les données apparaîtront ici dès que GA4, PageSpeed ou Behavioral Analytics auront des signaux.</div>`
+            ? `<div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:13px">${escHtml(_rlEmptyReason)}</div>`
             : leaks.map((l, i) => {
-            const sc = l.urg === "critical" ? "#ef4444" : l.urg === "high" ? "#f59e0b" : "#2563EB";
+            const sc = "#f59e0b";
             return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border-left:3px solid ${sc};background:${sc}08">
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${sc}20;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:${sc}">${i + 1}</div>
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(l.page)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.issue)}</div>
-                <div style="margin-top:6px">
-                  <div class="fp-progress-track" style="height:4px;max-width:200px">
-                    <div class="fp-progress-fill" style="width:${l.score}%;background:${sc}"></div>
-                  </div>
-                  <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">Score conversion : ${l.score}/100</div>
-                </div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${l.events} événements · ${l.sessions} sessions · confiance ${escHtml(l.confidence)} · source behavior_events</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:15px;font-weight:800;color:${sc}">-${escHtml(l.loss)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text-muted)">Revenu non mesuré</div>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||'Corriger point de friction conversion','Conversion','high')">Corriger</button>
               </div>
             </div>`;
@@ -56558,27 +56535,17 @@ function renderConversion() {
     const _priEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
     const _priWeek  = { high: 'Semaine 1', medium: 'Semaine 2', low: 'Semaine 3' };
     const roadmap = (_croRecs && _croRecs.length) ? _croRecs.slice(0, 6).map(function(r) {
-      return { week: _priWeek[r.priority] || 'Semaine 2', action: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.1) * 100) + '%', done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡' };
-    }) : [
-      { week: "Semaine 1", action: "Simplifier le formulaire (3 champs max)", impact: "+18%", done: false, priority: "🔴" },
-      { week: "Semaine 1", action: "Ajouter CTA urgence above the fold",      impact: "+34%", done: false, priority: "🔴" },
-      { week: "Semaine 2", action: "Afficher avis Google sur la page",         impact: "+15%", done: false, priority: "🟡" },
-      { week: "Semaine 2", action: "Optimiser vitesse mobile (< 2.5s)",        impact: "+22%", done: false, priority: "🟡" },
-      { week: "Semaine 3", action: "Lancer A/B test CTA bouton principal",     impact: "+34%", done: false, priority: "🟢" },
-      { week: "Semaine 4", action: "Installer chat live ou bot qualification",  impact: "+28%", done: false, priority: "🟢" },
-    ];
+      return { week: r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer', action: r.title || r.recommendation, impact: `${r.frequency || r.observedEvents || 0} événements · ${r.affectedSessions || 0} sessions`, done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
+    }) : [];
     const experiments = (STATE.cro?.experiments?.length > 0
-      ? STATE.cro.experiments.slice(0, 3).map(ex => ({
-          name: ex.name || ex.page || 'Test A/B',
-          hypo: ex.hypothesis || 'Améliorer le taux de conversion',
-          est:  ex.confidence != null ? '+' + Math.round(ex.confidence) + '%' : 'En cours',
-          dur:  ex.started_at ? 'En cours' : '—',
+      ? STATE.cro.experiments.slice(0, 6).map(ex => ({
+          id: ex.id, name: ex.name || ex.page, hypo: ex.hypothesis || '',
+          status: ex.status || 'draft', page: ex.page || '',
+          a: ex.measurements?.A || { exposures: 0, conversions: 0 },
+          b: ex.measurements?.B || { exposures: 0, conversions: 0 },
+          result: ex.result || { status: 'insufficient_data' },
         }))
-      : PREVIEW_MODE ? [
-          { name: "CTA couleur rouge vs bleu",        hypo: "Rouge augmente urgence et clics",       est: "+12-28%", dur: "2 sem" },
-          { name: "Formulaire 3 vs 8 champs",          hypo: "Friction réduite = conversion doublée", est: "+40-60%", dur: "3 sem" },
-          { name: "Hero avec vidéo vs image statique", hypo: "Vidéo capte mieux sur mobile",          est: "+15-22%", dur: "2 sem" },
-        ] : []);
+      : []);
     const badges = [
       { name: "Premier audit",         done: true,  icon: "🎯" },
       { name: "Funnel analysé",         done: true,  icon: "🔍" },
@@ -56587,32 +56554,18 @@ function renderConversion() {
       { name: "Score UX > 80",          done: false, icon: "🎨" },
       { name: "Zéro fuite détectée",    done: false, icon: "🛡" },
     ];
-    const forecast = [
-      { month: "Actuel", rate: 0.23, clients: 28 },
-      { month: "M+1",    rate: 0.29, clients: 36 },
-      { month: "M+2",    rate: 0.35, clients: 43 },
-      { month: "M+3",    rate: 0.41, clients: 51 },
-      { month: "M+4",    rate: 0.48, clients: 59 },
-      { month: "M+5",    rate: 0.55, clients: 68 },
-    ].filter(() => PREVIEW_MODE);
+    const forecast = [];
     return `
-      ${isUltra
-        ? aiBlock(STATE.overview?.conversionRate
-            ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Activez le plan CRO IA complet pour obtenir des recommandations personnalisées et des prévisions de gain basées sur vos données réelles."
-            : "Connectez vos analytics pour activer le plan CRO IA complet : recommandations prioritaires, prévisions de gain et plan d'optimisation sur-mesure.",
-            ["Lancer le plan CRO", "Créer toutes les missions", "Rapport stratégique"])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
-            <div style="font-size:24px">🤖</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de bataille CRO personnalisés, forecasting, expériences intelligentes et recommandations stratégiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
-          </div>`
-      }
+      ${aiBlock((_croRecs || []).length
+        ? "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée."
+        : "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.",
+        ["Examiner les observations", "Créer une mission", "Revoir les données"])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard("Taux actuel", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "Secteur : 0.18%" : "Connectez analytics", "neutral")}
-        ${statCard("Taux cible M+3", displayStat(STATE.overview?.conversionRateTarget != null ? (STATE.overview.conversionRateTarget*100).toFixed(2)+'%' : null, null), PREVIEW_MODE ? "Objectif à définir" : "Connectez analytics", "neutral")}
-        ${statCard("Gain clients estimé", displayStat(null, "+23/mois"), PREVIEW_MODE ? "en 3 mois avec plan" : "Connectez analytics", "neutral")}
-        ${statCard("ROI estimé plan CRO", displayStat(null, "+2 300€/mois"), PREVIEW_MODE ? "à 100€ client moyen" : "Connectez analytics", "neutral")}
+        ${statCard("Signaux observés", String(_croRecs?.length || 0), "30 derniers jours", "neutral")}
+        ${statCard("Sessions affectées", String((_croRecs || []).reduce((n, r) => n + Number(r.affectedSessions || 0), 0)), "sessions distinctes par signal", "neutral")}
+        ${statCard("Confiance élevée", String((_croRecs || []).filter(r => r.confidence === 'high').length), "au moins 30 sessions", "neutral")}
+        ${statCard("Gain financier", "Non mesuré", "aucune conversion/revenu attribué", "neutral")}
       </div>
 
       <!-- ROADMAP -->
@@ -56630,7 +56583,8 @@ function renderConversion() {
                 <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.action)}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:800;color:#22c55e">${escHtml(r.impact)}</div>
+                <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${escHtml(r.impact)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">Source : ${escHtml(r.source)} · confiance ${escHtml(r.confidence)}</div>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ('Optimiser la conversion','Conversion','medium')">Mission</button>
               </div>
             </div>
@@ -56641,20 +56595,18 @@ function renderConversion() {
       <!-- EXPERIMENTS + FORECAST -->
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🧪 Expériences intelligentes</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="fp-card-title">🧪 Expériences A/B</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.create()">Créer une expérience</button></div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${experiments.length === 0
-              ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint)"><div style="font-size:24px;margin-bottom:8px">🧪</div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">Aucun test A/B en cours</div><div style="font-size:11px;margin-top:4px">Connectez vos données CRO pour démarrer une expérience.</div></div>`
+              ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint)"><div style="font-size:24px;margin-bottom:8px">🧪</div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">Aucune expérience</div><div style="font-size:11px;margin-top:4px">Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.</div></div>`
               : experiments.map(ex => `
               <div style="padding:12px 14px;border-radius:10px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.2)">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ex.name)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">"${escHtml(ex.hypo)}"</div>
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <div>
-                    <span style="font-size:11px;font-weight:700;color:#22c55e">${escHtml(ex.est)}</span>
-                    <span style="font-size:10px;color:var(--fp-text-faint)"> · Durée : ${escHtml(ex.dur)}</span>
-                  </div>
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('ux-lab')">Configurer →</button>
+                <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(ex.hypo)} · ${escHtml(ex.page)}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">A : ${ex.a.exposures} expositions / ${ex.a.conversions} conversions · B : ${ex.b.exposures} / ${ex.b.conversions}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+                  <span style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${ex.result.status === 'significant' ? `Résultat significatif · p=${Number(ex.result.pValue).toFixed(3)} · gagnant ${escHtml(ex.result.winner)}` : ex.result.status === 'inconclusive' ? `Non concluant · p=${Number(ex.result.pValue).toFixed(3)}` : 'Données insuffisantes — 30 expositions/variante requises'} · ${escHtml(ex.status)}</span>
+                  ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">Démarrer</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">Arrêter</button>` : ''}
                 </div>
               </div>
             `).join("")}
@@ -56692,8 +56644,7 @@ function renderConversion() {
             </div>
           </div>` : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:20px;margin-bottom:8px">📊</div>
-            <div>Connectez vos analytics pour voir les prévisions de conversion personnalisées</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
+            <div>Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.</div>
           </div>`}
         </div>
       </div>
@@ -69559,6 +69510,11 @@ window.FP_CRO_API = {
         experiments:     data.experiments     || [],
         avgCroScore:     data.avgCroScore     || null,
       };
+      if (window.FP_AB_TEST_API) {
+        const ab = await window.FP_AB_TEST_API.load(siteUrl);
+        window.FP_DATA.cro.experiments = ab || [];
+      }
+      if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
     } catch(e) { console.warn('[FP_CRO_API] load error:', e); }
   },
 
@@ -69569,9 +69525,10 @@ window.FP_CRO_API = {
       const r = await apiFetch('/api/cro/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.cro = { recommendations: r.recommendations || [], scores: r.scores || [], experiments: r.experiments || [] };
+        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [] };
+        if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
-        showToast('success', `${(r.recommendations||[]).length} recommandations CRO générées`);
+        showToast('success', `${(r.observations||[]).length} observations CRO analysées`);
       } else showToast('error', r?.error || 'Erreur');
     } catch(e) { showToast('error', String(e)); }
   },
@@ -69587,6 +69544,57 @@ window.FP_CRO_API = {
   },
 };
 
+window.FP_AB_TEST_API = {
+  async load(siteUrl) {
+    const url = siteUrl ? `/api/ab-testing/experiments?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/ab-testing/experiments';
+    try {
+      const data = await apiFetch(url);
+      return data.experiments || [];
+    } catch (e) {
+      console.warn('[FP_AB_TEST_API] load error:', e);
+      return [];
+    }
+  },
+  async create() {
+    const siteUrl = window.FP_DATA?.activeSite;
+    if (!siteUrl) { showToast('error', 'Sélectionnez un site avec le snippet comportemental installé.'); return; }
+    const page = prompt('Chemin de page à tester (ex. /tarifs):', location.pathname);
+    if (!page) return;
+    const name = prompt('Nom de l’expérience:');
+    if (!name) return;
+    const selector = prompt('Sélecteur CSS de l’élément à modifier (ex. #cta-principal):');
+    const goalSelector = prompt('Sélecteur CSS de conversion (ex. form#contact button[type=submit]):');
+    const hypothesis = prompt('Hypothèse (optionnel):', '');
+    const variantAText = prompt('Texte témoin affiché avant toute modification du site:');
+    const variantBText = prompt('Texte de la variante:');
+    if (!selector || !goalSelector || !variantAText || !variantBText) return;
+    try {
+      await apiFetch('/api/ab-testing/experiments', { method: 'POST', body: JSON.stringify({ siteUrl, page, name, selector, goalSelector, hypothesis, variantAText, variantBText }) });
+      showToast('success', 'Brouillon créé. Réinstallez le nouveau snippet, puis démarrez le test.');
+      await this.refresh(siteUrl);
+    } catch (e) { showToast('error', String(e)); }
+  },
+  async start(id) {
+    try {
+      await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}/start`, { method: 'POST', body: '{}' });
+      showToast('success', 'Expérience démarrée : les variantes seront servies par le snippet.');
+      await this.refresh(window.FP_DATA?.activeSite);
+    } catch (e) { showToast('error', String(e)); }
+  },
+  async stop(id) {
+    try {
+      await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}/stop`, { method: 'POST', body: '{}' });
+      showToast('success', 'Expérience arrêtée.');
+      await this.refresh(window.FP_DATA?.activeSite);
+    } catch (e) { showToast('error', String(e)); }
+  },
+  async refresh(siteUrl) {
+    if (window.FP_DATA?.cro) window.FP_DATA.cro.experiments = await this.load(siteUrl);
+    if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA?.cro || STATE.cro;
+    render();
+  },
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP REVENUE LEAK API — Real Revenue Leak Detector client
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -69599,12 +69607,13 @@ window.FP_REVENUE_LEAK_API = {
       if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.revenueLeak = {
-        leaks:          data.leaks         || [],
+        leaks:          data.opportunities || [],
+        opportunities:  data.opportunities || [],
         summary:        data.summary       || null,
         trafficLosses:  data.trafficLosses || data.failures || [],
         conversionFails:data.conversionFailures || [],
-        isEmpty:        data.isEmpty       ?? (!(data.leaks && data.leaks.length)),
-        emptyReason:    data.emptyReason   || null,
+        isEmpty:        data.noData        ?? (!(data.opportunities && data.opportunities.length)),
+        emptyReason:    data.error         || null,
       };
     } catch(e) { console.warn('[FP_REVENUE_LEAK_API] load error:', e); }
   },
@@ -69616,9 +69625,9 @@ window.FP_REVENUE_LEAK_API = {
       const r = await apiFetch('/api/revenue-leak/detect', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.revenueLeak = { leaks: r.leaks || [], summary: r.summary || null, trafficLosses: r.trafficLosses || [] };
+        window.FP_DATA.revenueLeak = { leaks: r.opportunities || [], opportunities: r.opportunities || [], error: r.error || null };
         render();
-        showToast('success', `${(r.leaks||[]).length} fuites de conversion détectées`);
+        showToast('success', `${(r.opportunities||[]).length} opportunités observées`);
       } else showToast('error', r?.error || 'Erreur');
     } catch(e) { showToast('error', String(e)); }
   },
