@@ -1695,6 +1695,18 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: 0,
         }),
       });
+      const _setupFunnelAttribution = lireAttributionFunnel(metadata);
+      if (_setupFunnelAttribution) {
+        // L'essai a 0€ collecte quand meme la carte : le checkout commence
+        // apres la creation effective du SetupIntent, sans declencher de paiement.
+        void enregistrerEtape({
+          etape: "checkout_started",
+          visiteurId: _setupFunnelAttribution.visiteurId,
+          source: _setupFunnelAttribution.source,
+          plan: planKey,
+          cleIdempotence: `checkout_started:${si.id}`,
+        });
+      }
       logger.info({ plan: planKey, hasCustomer: !!preRegCustomerId }, "[PublicBilling] SetupIntent created");
       res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0, defaultValues: _piDefaultValues, quote, setupIntentId: si.id });
       return;
