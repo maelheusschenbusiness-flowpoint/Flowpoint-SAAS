@@ -8484,36 +8484,20 @@ function renderReports() {
   // SUB: CONVERSION & REVENUE REPORTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'conversion') {
-    const funnelSteps = STATE.overview?.funnel || (PREVIEW_MODE ? [
-      { stage: 'Visiteurs',        n: 12640, pct: 100, drop: null },
-      { stage: 'Engages',          n: 7820,  pct: 61.9, drop: 38.1 },
-      { stage: 'Page service',     n: 3240,  pct: 25.6, drop: 58.6 },
-      { stage: 'Contact initie',   n: 892,   pct: 7.1,  drop: 72.5 },
-      { stage: 'Conversion',       n: 134,   pct: 1.1,  drop: 85.0 },
-    ] : []);
-    const ctaData = STATE.behavioral?.ctas || (PREVIEW_MODE ? [
-      { cta: 'Demander un devis',    ctr: 2.8, mob: 0.9, pos: 'Hero',    impact: 'Critique' },
-      { cta: 'Appeler maintenant',   ctr: 4.1, mob: 6.2, pos: 'Header', impact: 'Positif'  },
-      { cta: 'Voir nos services',    ctr: 8.4, mob: 6.1, pos: 'Milieu', impact: 'Bon'      },
-      { cta: 'Prendre RDV',          ctr: 1.2, mob: 0.4, pos: 'Pied',   impact: 'Faible'   },
-    ] : []);
-    const leaks = STATE.overview?.leaks || (PREVIEW_MODE ? [
-      { desc: 'Formulaire mobile trop long', impact: 2840, urgent: true  },
-      { desc: 'Page Tarifs sans CTA visible',impact: 1260, urgent: true  },
-      { desc: 'Vitesse page Contact 58/100', impact: 620,  urgent: false },
-      { desc: 'Absence de chat live',        impact: 380,  urgent: false },
-    ] : []);
+    const funnelSteps = STATE.overview?.funnel || [];
+    const ctaData = STATE.behavioral?.ctas || [];
+    const leaks = STATE.overview?.leaks || [];
     return `
-      ${aiBlock(PREVIEW_MODE
-        ? "Taux de conversion global : <strong>1.06%</strong> — potentiel estimé à 2.8% avec le plan CRO complet. <strong>Perte mensuelle</strong> de revenue identifiée. Priorité #1 : corriger le formulaire mobile."
-        : "Connectez votre analytics (GA4, Matomo) pour obtenir votre rapport de conversion personnalisé.",
+      ${aiBlock(funnelSteps.length || ctaData.length || leaks.length
+        ? "Rapport fondé sur les données de conversion observées. Aucune perte financière n'est estimée sans revenus attribués aux événements."
+        : "Connectez votre analytics et le suivi comportemental pour obtenir un rapport fondé sur des observations réelles. Les pertes financières resteront non mesurées sans revenus attribués.",
         ['Rapport CRO complet', 'Plan conversion mobile', 'Générer rapport client'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Taux de conversion', displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, '1.06%'), PREVIEW_MODE ? '+0.12% vs M-1' : 'Connectez analytics', 'neutral')}
-        ${statCard('Clients convertis', displayStat(STATE.overview?.clientsPerMonth, '134'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
-        ${statCard('Revenue capturé', displayStat(STATE.overview?.revenue ? STATE.overview.revenue.toLocaleString(getLocale()) + '€' : null, '3 220€'), PREVIEW_MODE ? 'estimé ce mois' : 'Connectez analytics', 'neutral')}
-        ${statCard('Revenue perdu', displayStat(null, '-3 800€'), PREVIEW_MODE ? '4 fuites détectées' : 'Connectez analytics', PREVIEW_MODE ? 'down' : 'neutral')}
+        ${statCard('Taux de conversion observé', STATE.overview?.conversionRate != null ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : '—', STATE.overview?.conversionRate != null ? 'Données connectées' : 'Connectez analytics', 'neutral')}
+        ${statCard('Clients convertis observés', STATE.overview?.clientsPerMonth != null ? String(STATE.overview.clientsPerMonth) : '—', STATE.overview?.clientsPerMonth != null ? 'Données connectées' : 'Connectez analytics', 'neutral')}
+        ${statCard('Revenu observé', STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + '€' : 'Non mesuré', STATE.overview?.revenue != null ? 'Données connectées' : 'Aucun revenu relié', 'neutral')}
+        ${statCard('Perte financière attribuée', 'Non mesurée', 'Aucun revenu attribué aux événements', 'neutral')}
       </div>
 
       <!-- FUNNEL -->
@@ -8568,8 +8552,7 @@ function renderReports() {
             <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="flex:1;font-size:11px;color:var(--fp-text-muted)">${escHtml(l.desc)}</div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:13px;font-weight:800;color:#ef4444">-${l.impact.toLocaleString(getLocale())}€</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">/mois</div>
+                <div style="font-size:11px;color:var(--fp-text-faint)">Revenu non mesuré</div>
               </div>
               ${badge(l.urgent ? 'Urgent' : 'Moyen', l.urgent ? '#ef4444' : '#f59e0b')}
             </div>
@@ -55991,43 +55974,22 @@ function renderConversion() {
 
   // ── Shared data ────────────────────────────────────────────
   const _ga4Funnel = STATE.ga4?.funnelSteps || STATE.analytics?.funnelSteps || null;
-  const funnelSteps = _ga4Funnel || (PREVIEW_MODE ? [
-    { label: 'Impressions Google', val: '12 400', abs: 12400, pct: 100,  drop: null,  color: '#2563EB' },
-    { label: 'Clics vers le site', val: '1 488',  abs: 1488,  pct: 12.0, drop: 88.0,  color: '#3b82f6' },
-    { label: 'Pages vues',          val: '892',    abs: 892,   pct: 7.2,  drop: 40.1,  color: '#8b5cf6' },
-    { label: 'Contacts initiés',    val: '134',    abs: 134,   pct: 1.1,  drop: 85.0,  color: '#f59e0b' },
-    { label: 'Clients convertis',   val: '28',     abs: 28,    pct: 0.23, drop: 79.1,  color: '#22c55e' },
-  ] : null);
+  const funnelSteps = _ga4Funnel || null;
 
   const _croScRaw = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.scores && window.FP_DATA.cro.scores[0];
   const _mkHCol = function(v) { return v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444'; };
   const _convPlaceholder = null; // pre-declare
   const healthScores = _croScRaw ? [
-    { label: 'Santé conv.',     val: Math.min(99, _croScRaw.overallScore  || 68), color: _mkHCol(_croScRaw.overallScore  || 68), icon: '📊' },
-    { label: 'Trust Score',     val: Math.min(99, _croScRaw.copyScore     || 52), color: _mkHCol(_croScRaw.copyScore     || 52), icon: '🛡' },
-    { label: 'Score UX',        val: Math.min(99, _croScRaw.frictionScore || 62), color: _mkHCol(_croScRaw.frictionScore || 62), icon: '🎨' },
-    { label: 'Conv. Mobile',    val: Math.min(99, _croScRaw.mobileScore   || 44), color: _mkHCol(_croScRaw.mobileScore   || 44), icon: '📱' },
-    { label: 'Efficacité CTA',  val: Math.min(99, _croScRaw.ctaScore      || 58), color: _mkHCol(_croScRaw.ctaScore      || 58), icon: '🎯' },
-    { label: 'Stabilité Funnel',val: Math.min(99, _croScRaw.formScore     || 71), color: _mkHCol(_croScRaw.formScore     || 71), icon: '🔄' },
-    { label: 'Optimis. Rev.',   val: Math.min(99, Math.round((_croScRaw.overallScore || 67) * 0.72)), color: _mkHCol(Math.round((_croScRaw.overallScore || 67) * 0.72)), icon: '💰' },
-    { label: 'Fidélisation',    val: Math.min(99, _croScRaw.retentionScore || 63), color: _mkHCol(_croScRaw.retentionScore || 63), icon: '🔁' },
-  ] : (() => {
-    const _aA = (STATE.audits||[]).length ? Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length) : 65;
-    const _sA = (STATE.audits||[]).filter(a=>a.speed!=null).length ? Math.round((STATE.audits||[]).filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/(STATE.audits||[]).filter(a=>a.speed!=null).length) : 60;
-    const _uP = (STATE.monitors||[]).length ? Math.round((STATE.monitors||[]).filter(m=>m.status==='up').length/(STATE.monitors||[]).length*100) : 90;
-    const _cl = v => _mkHCol(v);
-    const _b  = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    return [
-      { label:'Santé conv.',      val:_b(_aA-8,  20,99), icon:'📊' },
-      { label:'Trust Score',      val:_b(_aA-18, 20,99), icon:'🛡'  },
-      { label:'Score UX',         val:_b(_sA-5,  20,99), icon:'🎨'  },
-      { label:'Conv. Mobile',     val:_b(_sA-16, 20,99), icon:'📱'  },
-      { label:'Efficacité CTA',   val:_b(_aA-12, 20,99), icon:'🎯'  },
-      { label:'Stabilité Funnel', val:_b(_uP-10, 20,99), icon:'🔄'  },
-      { label:'Optimis. Rev.',    val:_b(Math.round(_aA*0.72),20,99),icon:'💰'},
-      { label:'Fidélisation',     val:_b(_aA-6,  20,99), icon:'🔁'  },
-    ].map(h => ({ ...h, color: _cl(h.val) }));
-  })();
+    { label: 'Santé conv.', val: _croScRaw.overallScore, icon: '📊' },
+    { label: 'Trust Score', val: _croScRaw.copyScore, icon: '🛡' },
+    { label: 'Score UX', val: _croScRaw.frictionScore, icon: '🎨' },
+    { label: 'Conv. Mobile', val: _croScRaw.mobileScore, icon: '📱' },
+    { label: 'Efficacité CTA', val: _croScRaw.ctaScore, icon: '🎯' },
+    { label: 'Stabilité Funnel', val: _croScRaw.formScore, icon: '🔄' },
+    { label: 'Fidélisation', val: _croScRaw.retentionScore, icon: '🔁' },
+  ].filter(h => typeof h.val === 'number' && Number.isFinite(h.val))
+    .map(h => ({ ...h, val: Math.min(99, Math.max(0, Math.round(h.val))), color: _mkHCol(h.val) }))
+    : [];
 
   const circ46 = 2 * Math.PI * 46;
 
@@ -56088,7 +56050,7 @@ function renderConversion() {
             ${svgIcon("filter").replace('stroke="currentColor"', 'stroke="#2563EB"')}
             Entonnoir de conversion · 30 derniers jours
           </div>
-          <span style="font-size:11px;color:var(--fp-text-faint)">12 400 impressions initiales</span>
+          <span style="font-size:11px;color:var(--fp-text-faint)">${funnelSteps.length ? Number(funnelSteps[0].n ?? funnelSteps[0].abs ?? 0).toLocaleString(getLocale()) + ' entrées observées' : 'Aucune donnée observée'}</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${funnelSteps && funnelSteps.length > 0 ? funnelSteps.map((s, idx) => `
@@ -56447,7 +56409,6 @@ function renderConversion() {
       confidence: l.confidence || 'low',
       id: l.id,
     }));
-    const trustIssues = [];
     const _rlIsEmpty = !leaks.length;
     const _rlEmptyReason = (_rlData && _rlData.error) || "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.";
     return `
@@ -56490,40 +56451,6 @@ function renderConversion() {
         </div>
       </div>
 
-      <!-- TRUST ISSUES + PRIORITY MATRIX -->
-      <div class="fp-grid-2 fp-mb-20">
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🛡 Problèmes de confiance détectés</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${trustIssues.map(t => `
-              <div style="padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15)">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:3px">⚠ ${escHtml(t.issue)}</div>
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <div style="font-size:11px;color:#22c55e">→ ${escHtml(t.fix)}</div>
-                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(t.effort)}</span>
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        </div>
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:10px">⚡ Matrice impact / effort</div>
-          <div style="position:relative;width:100%;height:200px;background:var(--fp-inner-card);border-radius:10px;border:1px solid var(--fp-border)">
-            <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--fp-text-faint)">IMPACT ÉLEVÉ</div>
-            <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--fp-text-faint)">IMPACT FAIBLE</div>
-            <div style="position:absolute;top:50%;left:8px;transform:translateY(-50%);font-size:9px;color:var(--fp-text-faint)">EFFORT FAIBLE</div>
-            <div style="position:absolute;top:50%;right:8px;transform:translateY(-50%);font-size:9px;color:var(--fp-text-faint)">EFFORT ÉLEVÉ</div>
-            <div style="position:absolute;top:50%;left:0;right:0;height:1px;background:var(--fp-track)"></div>
-            <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--fp-track)"></div>
-            <!-- Items plotted -->
-            <div style="position:absolute;top:10%;left:8%;font-size:9px;padding:4px 7px;background:#22c55e20;border:1px solid #22c55e40;border-radius:5px;color:#22c55e">Preuves sociales</div>
-            <div style="position:absolute;top:32%;left:32%;font-size:9px;padding:4px 7px;background:#22c55e20;border:1px solid #22c55e40;border-radius:5px;color:#22c55e">CTA tarifs</div>
-            <div style="position:absolute;top:18%;right:18%;font-size:9px;padding:4px 7px;background:#f59e0b20;border:1px solid #f59e0b40;border-radius:5px;color:#f59e0b">Formulaire</div>
-            <div style="position:absolute;bottom:25%;right:25%;font-size:9px;padding:4px 7px;background:#ef444420;border:1px solid #ef444440;border-radius:5px;color:#ef4444">Chat live</div>
-            <div style="position:absolute;bottom:30%;left:20%;font-size:9px;padding:4px 7px;background:#2563EB20;border:1px solid #2563EB40;border-radius:5px;color:#2563EB">Vitesse mobile</div>
-          </div>
-        </div>
-      </div>
     `;
   }
 
@@ -56533,7 +56460,6 @@ function renderConversion() {
   if (sub === 'cro') {
     const _croRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
     const _priEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
-    const _priWeek  = { high: 'Semaine 1', medium: 'Semaine 2', low: 'Semaine 3' };
     const roadmap = (_croRecs && _croRecs.length) ? _croRecs.slice(0, 6).map(function(r) {
       return { week: r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer', action: r.title || r.recommendation, impact: `${r.frequency || r.observedEvents || 0} événements · ${r.affectedSessions || 0} sessions`, done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
     }) : [];
@@ -56546,14 +56472,6 @@ function renderConversion() {
           result: ex.result || { status: 'insufficient_data' },
         }))
       : []);
-    const badges = [
-      { name: "Premier audit",         done: true,  icon: "🎯" },
-      { name: "Funnel analysé",         done: true,  icon: "🔍" },
-      { name: "Premier test A/B lancé", done: false, icon: "🧪" },
-      { name: "Taux > 0.3%",            done: false, icon: "📈" },
-      { name: "Score UX > 80",          done: false, icon: "🎨" },
-      { name: "Zéro fuite détectée",    done: false, icon: "🛡" },
-    ];
     const forecast = [];
     return `
       ${aiBlock((_croRecs || []).length
@@ -56572,7 +56490,7 @@ function renderConversion() {
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("map").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-          Plan d\'optimisation CRO — 4 semaines
+          Signaux comportementaux et actions CRO
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${roadmap.map((r, i) => `
@@ -56639,7 +56557,7 @@ function renderConversion() {
                 <strong style="color:#f59e0b">Risque</strong> — Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)
               </div>
               <div style="padding:8px 10px;background:rgba(139,92,246,0.05);border-radius:8px;border-left:3px solid #8b5cf6;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#8b5cf6">Impact revenus</strong> — 0.55% en M+5 = +40 clients vs actuel · +12 000€/mois estimés
+                <strong style="color:#8b5cf6">Impact revenus</strong> — Non mesuré; aucun revenu n’est attribué aux événements observés
               </div>
             </div>
           </div>` : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">
@@ -56649,19 +56567,6 @@ function renderConversion() {
         </div>
       </div>
 
-      <!-- GAMIFICATION BADGES -->
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🏆 CRO Milestones</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
-          ${badges.map(b => `
-            <div style="padding:14px;border-radius:12px;text-align:center;border:1px solid ${b.done ? "rgba(34,197,94,0.3)" : "var(--fp-border)"};background:${b.done ? "rgba(34,197,94,0.06)" : "rgba(255,255,255,0.02)"}">
-              <div style="font-size:28px;margin-bottom:6px;opacity:${b.done ? 1 : 0.3}">${b.icon}</div>
-              <div style="font-size:11px;font-weight:600;color:${b.done ? "var(--fp-text)" : "var(--fp-text-faint)"}">${escHtml(b.name)}</div>
-              <div style="margin-top:6px">${badge(b.done ? "Débloqué" : "Verrouillé", b.done ? "#22c55e" : "#64748b")}</div>
-            </div>
-          `).join("")}
-        </div>
-      </div>
     `;
   }
 
@@ -56669,24 +56574,16 @@ function renderConversion() {
   // DEFAULT (null) — Conversion Command Center
   // ══════════════════════════════════════════════════════════
   const _rlSum = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.summary;
-  const leakTotal = _rlSum ? (_rlSum.totalMonthlyLoss || null) : null;
+  const leakTotal = _rlSum && typeof _rlSum.totalMonthlyLoss === "number" && Number.isFinite(_rlSum.totalMonthlyLoss)
+    ? _rlSum.totalMonthlyLoss : null;
   const _behConv = window.FP_DATA && window.FP_DATA.behavioral && window.FP_DATA.behavioral.sessionStats;
   const sessions = _behConv ? [
     { label: "Engagement moyen",       val: (_behConv.avgEngagement || null) !== null ? _behConv.avgEngagement + '%' : '—', delta: "score session",  bad: (_behConv.avgEngagement || 100) < 60  },
     { label: "Rage clicks détectés",   val: _behConv.rageClicks !== undefined ? String(_behConv.rageClicks) : '—',           delta: "ce mois",         bad: (_behConv.rageClicks || 0) > 20     },
     { label: "Sessions enregistrées",  val: _behConv.total ? _behConv.total.toLocaleString(getLocale()) : '—',                   delta: "total",           bad: false                               },
     { label: "Taux de rebond",          val: _behConv.bounceRate !== undefined ? _behConv.bounceRate + '%' : '—',            delta: "des sessions",    bad: (_behConv.bounceRate || 0) > 50     },
-  ] : PREVIEW_MODE ? [
-    { label: "Taux de scroll > 50%",   val: "48%",  delta: "-12%", bad: true  },
-    { label: "Rage clicks détectés",   val: "78",   delta: "ce mois", bad: true  },
-    { label: "Dead clicks",             val: "47",   delta: "en baisse", bad: false },
-    { label: "Sessions avec abandon",   val: "67%",  delta: "formulaire", bad: true  },
   ] : [];
-  const mobIssues = PREVIEW_MODE ? [
-    { issue: "CTA non visible sans scroll",     impact: "+34% conv. potentiel" },
-    { issue: "Formulaire non adapté tactile",   impact: "85% abandon sur mobile" },
-    { issue: "Vitesse 3.2s (seuil : 2.5s)",     impact: "-22% ranking mobile" },
-  ] : [];
+  const mobIssues = [];
 
   return `
     <div class="fp-section-header">
@@ -56705,13 +56602,9 @@ function renderConversion() {
     <!-- AI INTELLIGENCE -->
     ${isUltra
       ? aiBlock(
-          PREVIEW_MODE
-            ? (STATE.overview?.conversionRate
-            ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Activez les optimisations CRO prioritaires pour améliorer votre taux. Connectez vos sources comportementales pour des recommandations ciblées."
-            : "Connectez vos analytics pour activer l'analyse CRO IA : fuites de conversion, recommandations prioritaires et prévisions de gain personnalisées.")
-            : (STATE.overview?.conversionRate
-                ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Connectez vos sources comportementales pour activer les recommandations CRO personnalisées et les prévisions de gain."
-                : "Connectez vos analytics pour activer l'analyse CRO IA : fuites de conversion, recommandations prioritaires et prévisions de gain personnalisées."),
+          STATE.overview?.conversionRate != null
+            ? "Taux de conversion observé : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Les recommandations reposent sur les événements comportementaux collectés; aucun gain financier n'est prédit sans revenus attribués."
+            : "Connectez vos sources comportementales pour obtenir des observations CRO. Aucun gain financier ne sera affiché sans revenus réellement attribués.",
           ["Plan CRO complet", "Corriger les fuites", "Tester les CTAs"])
       : `<div style="background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.06));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🤖</div>
@@ -56722,10 +56615,10 @@ function renderConversion() {
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard("Taux de conversion", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "+0.04% vs M-1" : "Connectez analytics", "neutral", PREVIEW_MODE ? "Secteur : 0.18%" : "")}
-      ${statCard("Clients/mois", displayStat(STATE.overview?.clientsPerMonth, "28"), PREVIEW_MODE ? "+4 vs M-1" : "Connectez analytics", "neutral")}
-      ${statCard("Revenu estimé", displayStat(STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "3 220€/mois" : null), STATE.overview?.revenue != null ? "+400€ vs M-1" : PREVIEW_MODE ? "estimé ce mois" : "Connectez analytics", STATE.overview?.revenue != null ? "up" : "neutral")}
-      ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
+      ${statCard("Taux de conversion observé", STATE.overview?.conversionRate != null ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : "—", STATE.overview?.conversionRate != null ? "Données connectées" : "Connectez analytics", "neutral")}
+      ${statCard("Clients/mois observés", STATE.overview?.clientsPerMonth != null ? String(STATE.overview.clientsPerMonth) : "—", STATE.overview?.clientsPerMonth != null ? "Données connectées" : "Connectez analytics", "neutral")}
+      ${statCard("Revenu observé", STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + "€/mois" : "Non mesuré", STATE.overview?.revenue != null ? "Données connectées" : "Aucun revenu relié", "neutral")}
+      ${statCard("Perte financière attribuée", leakTotal !== null ? leakTotal.toLocaleString(getLocale()) + "€/mois" : "Non mesurée", leakTotal !== null ? "Revenu relié aux événements" : "Aucun revenu attribué", "neutral")}
     </div>
 
     ${aiBlock(
@@ -56733,10 +56626,10 @@ function renderConversion() {
         const _cr = _ga4Funnel && _ga4Funnel.length >= 2
           ? (_ga4Funnel[_ga4Funnel.length-1].abs / Math.max(_ga4Funnel[0].abs, 1) * 100).toFixed(2)
           : null;
-        const _hs = healthScores.reduce((s,h)=>s+h.val,0)/Math.max(healthScores.length,1);
-        const _avgHs = Math.round(_hs);
-        if (_cr) return `Score santé conversion : <strong>${_avgHs}/100</strong>. Taux de conversion global : <strong>${_cr}%</strong>. ${_avgHs < 50 ? 'Performance critique — optimisez en priorité les scores UX et mobile.' : _avgHs < 70 ? 'Marge d\'amélioration identifiée — consultez la heatmap et le revenue leak.' : 'Bonne santé de conversion — affinez les micro-optimisations.'}`;
-        return `Score santé conversion estimé : <strong>${_avgHs}/100</strong>. ${_avgHs < 50 ? 'Points de friction détectés.' : 'Performance correcte.'} Connectez GA4 ou Behavioral analytics pour affiner l\'analyse.`;
+        const _avgHs = healthScores.length ? Math.round(healthScores.reduce((s,h)=>s+h.val,0)/healthScores.length) : null;
+        if (_cr) return `Taux de conversion observé : <strong>${_cr}%</strong>. ${_avgHs != null ? `Score de santé observé : ${_avgHs}/100.` : 'Aucun score CRO mesuré.'} Aucun gain financier n'est estimé sans revenus attribués.`;
+        if (_avgHs != null) return `Score de santé observé : <strong>${_avgHs}/100</strong>. Connectez vos événements de conversion pour compléter l'analyse.`;
+        return "Aucune mesure de conversion disponible. Connectez GA4 et le suivi comportemental; aucun résultat financier n'est extrapolé.";
       })(),
       ['Voir la heatmap', 'Analyser le funnel', 'Revenue Leak →']
     )}
@@ -56746,9 +56639,9 @@ function renderConversion() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div class="fp-card-title" style="margin-bottom:0">
           ${svgIcon("activity").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-          Système de santé conversion — 7 indicateurs
+          Scores de conversion observés — ${healthScores.length} indicateur(s)
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Score moyen :<strong style="color:#f59e0b">57/100</strong></span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">Moyenne :<strong style="color:#f59e0b">${healthScores.length ? Math.round(healthScores.reduce((sum,h)=>sum+h.val,0)/healthScores.length) + '/100' : 'Non mesurée'}</strong></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${healthScores.map(h => {
@@ -56766,13 +56659,13 @@ function renderConversion() {
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${h.icon} ${escHtml(h.label)}</div>
             <div style="margin-top:6px">${badge(h.val >= 70 ? "Bon" : h.val >= 50 ? "Moyen" : "Critique", h.color)}</div>
           </div>`;
-        }).join("")}
+        }).join("") || `<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--fp-text-faint);font-size:12px">Aucun score observé disponible.</div>`}
       </div>
     </div>
 
     ${!_ga4Connected() && !PREVIEW_MODE ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(100,116,139,0.07);border:1px dashed rgba(100,116,139,0.3);border-radius:10px;margin-bottom:14px">
       <span style="font-size:14px">🧪</span>
-      <div style="font-size:11px;color:var(--fp-text-muted)"><strong style="color:var(--fp-text)">Données illustratives</strong> — Connectez Google Analytics 4 pour voir vos vraies données de conversion</div>
+      <div style="font-size:11px;color:var(--fp-text-muted)"><strong style="color:var(--fp-text)">Aucune donnée de conversion observée</strong> — Connectez Google Analytics 4 ou le suivi comportemental</div>
       <button class="fp-btn fp-btn-sm" style="margin-left:auto;flex-shrink:0;font-size:11px" onclick="navigate('analytics')">Connecter GA4 →</button>
     </div>` : ''}
 
@@ -56889,8 +56782,8 @@ function renderConversion() {
           return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
         })()}
         <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center">
-          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString(getLocale()) + '€/mois' : PREVIEW_MODE ? '-5 070€/mois' : '—'}</div>
-          <div style="font-size:10px;color:var(--fp-text-faint)">Perte totale estimée à corriger</div>
+          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString(getLocale()) + '€/mois' : 'Non mesurée'}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint)">Aucun revenu attribué aux événements observés</div>
         </div>
       </div>
     </div>
@@ -57303,37 +57196,22 @@ function renderAlertsCenter() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'conversion') {
     const _croAlertsRaw = window.FP_DATA?.cro?.alerts || null;
-    const convAlerts = _croAlertsRaw ? _croAlertsRaw.map(a=>({ sev:a.severity||a.sev||'warning', icon:a.icon||'⚠️', title:a.title||a.label||'Alerte conversion', desc:a.description||a.desc||'', impact:a.impact||'—', action:a.action||'Analyser' }))
-      : (PREVIEW_MODE ? [
-          { sev:'critical', icon:'📉', title:"Conversion weekend à 0%",         desc:"Samedi 3 et dimanche 4 mai — 0 client sur 1200 sessions. Formulaire contact probable hors service sur mobile iOS.",  impact:"-800€ estimé",  action:"Vérifier formulaire" },
-          { sev:'critical', icon:'📱', title:"Taux conversion mobile 0.12%",     desc:"58% du trafic — converti 14× moins que le desktop. Page Tarifs : 61% d\'abandons avec seulement 39% de scroll.",     impact:"-2 840€/mois",  action:"Plan UX mobile"      },
-          { sev:'warning',  icon:'🎯', title:"CTA Hero — CTR chute à 2.8%",      desc:"Le CTA principal Devis a perdu 1.4 points vs M-1. Visibilité réduite sur mobile (bouton trop bas dans la page).",   impact:"-480€/mois",    action:"Optimiser le CTA"   },
-          { sev:'warning',  icon:'😤', title:"Rage clicks x47 sur formulaire",   desc:"47 rage clicks détectés sur le champ email du formulaire principal — probable bug de validation ou UX confuse.",       impact:"UX dégradée",   action:"Corriger formulaire" },
-          { sev:'info',     icon:'✅', title:"CTA Appeler +4.1% — en hausse",    desc:"Le bouton Appeler maintenant performe mieux que prévu sur mobile. CTR mobile 6.2% vs 4.1% desktop.",                  impact:"Positif",       action:"Amplifier"          },
-        ] : []);
+    const convAlerts = (_croAlertsRaw || []).map(a=>({ sev:a.severity||a.sev||'warning', icon:a.icon||'⚠️', title:a.title||a.label||'Alerte conversion', desc:a.description||a.desc||'', impact:'Revenu non mesuré', action:a.action||'Analyser' }));
     const _frictionsRaw = window.FP_DATA?.cro?.frictionPages || null;
-    const frictions = _frictionsRaw
-      ? _frictionsRaw.map(p=>({ page:p.url||p.page||p.name||'Page', score:p.score||p.convScore||0, issues:p.issues||0, sev:p.severity||((p.score||0)<40?'critical':(p.score||0)<60?'high':'ok'), color:(p.score||0)<40?'#ef4444':(p.score||0)<60?'#f59e0b':'#22c55e' }))
-      : (PREVIEW_MODE ? [
-          { page: "Formulaire contact",  score: 28, issues: 3, sev: 'critical', color: '#ef4444' },
-          { page: "Page Tarifs",         score: 44, issues: 2, sev: 'high',     color: '#f59e0b' },
-          { page: "Page Services",       score: 62, issues: 1, sev: 'medium',   color: '#f59e0b' },
-          { page: "Accueil mobile",      score: 51, issues: 2, sev: 'high',     color: '#f59e0b' },
-          { page: "Blog",                score: 84, issues: 0, sev: 'ok',       color: '#22c55e' },
-        ] : []);
+    const frictions = (_frictionsRaw || []).map(p=>({ page:p.url||p.page||p.name||'Page', score:p.score||p.convScore||0, issues:p.issues||0, sev:p.severity||((p.score||0)<40?'critical':(p.score||0)<60?'high':'ok'), color:(p.score||0)<40?'#ef4444':(p.score||0)<60?'#f59e0b':'#22c55e' }));
+    const _avgFriction = frictions.length ? Math.round(frictions.reduce((sum,p)=>sum+p.score,0)/frictions.length) : null;
+    const _rageClicks = window.FP_DATA?.behavioral?.sessionStats?.rageClicks ?? window.FP_DATA?.behavioral?.rageClicks ?? null;
     return `
-      ${aiBlock(PREVIEW_MODE
-          ? "2 alertes critiques conversion actives. <strong>Perte estimée : -3 640€/mois</strong>. Priorité #1 : formulaire mobile cassé (weekend 0%). Priorité #2 : UX mobile Tarifs — 61% d\'abandons avec seulement 39% de scroll."
-          : (convAlerts.length > 0
-              ? convAlerts.length + ' alerte(s) conversion actives. ' + convAlerts.filter(a=>a.sev==='critical').length + ' critiques. Connectez vos outils analytics et heatmaps pour des recommandations précises.'
-              : 'Aucune alerte conversion détectée. Connectez vos outils analytics pour une surveillance continue.'),
+      ${aiBlock(convAlerts.length > 0
+              ? convAlerts.length + ' alerte(s) basées sur des données observées. Les pertes financières ne sont pas mesurées sans revenus attribués.'
+              : 'Aucune alerte conversion observée. Connectez le suivi comportemental pour commencer la collecte.',
         ['Plan CRO mobile', 'Corriger le formulaire', 'Rapport conversion'])}
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Alertes conversion', String(convAlerts.length), 'dont '+convAlerts.filter(a=>a.sev==='critical').length+' critiques', convAlerts.length>0?'down':'neutral')}
-        ${statCard('Perte estimée', displayStat(null, PREVIEW_MODE?'-3 640€':null), PREVIEW_MODE ? 'ce mois — récupérable' : 'Connectez analytics', 'neutral')}
-        ${statCard('Score UX moyen', displayStat(null, PREVIEW_MODE?'54/100':null), PREVIEW_MODE ? 'Page critique : 28/100' : 'Connectez heatmaps', 'neutral')}
-        ${statCard('Rage clicks', displayStat(null, PREVIEW_MODE?'47×':null), PREVIEW_MODE ? 'formulaire principal' : 'Connectez heatmaps', 'neutral')}
+        ${statCard('Perte financière attribuée', 'Non mesurée', 'Aucun revenu relié aux événements', 'neutral')}
+        ${statCard('Score UX moyen', _avgFriction != null ? _avgFriction + '/100' : 'Non mesuré', frictions.length ? 'Pages observées' : 'Aucune friction mesurée', 'neutral')}
+        ${statCard('Rage clicks observés', _rageClicks != null ? String(_rageClicks) : 'Non mesurés', _rageClicks != null ? 'Données comportementales' : 'Aucune donnée disponible', 'neutral')}
       </div>
 
       <!-- CONVERSION ALERTS -->
