@@ -29,7 +29,7 @@
     "helmet": "^8.2.0",
     "mammoth": "^1.12.0",
     "node-cron": "^4.2.1",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "^10.1.7",
     "openai": "^6.35.0",
     "papaparse": "^5.5.4",
     "pdf-parse": "^1.1.1",

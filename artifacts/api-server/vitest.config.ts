@@ -12,6 +12,8 @@ export default defineConfig({
   test: {
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
+      "src/services/mailer-nodemailer10.test.ts",
+      "src/services/nodemailer10-transport.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
