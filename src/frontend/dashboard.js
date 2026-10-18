@@ -10187,7 +10187,7 @@ function renderBilling() {
       { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:!!(me.addons?.advancedSeoLab), tag:'Pro inclus',      roi:'+40% couverture sémantique',    desc:'Lab SEO IA complet : analyse sémantique, gap analysis, et topical authority.', features:['Analyse sémantique IA par page','Gap analysis vs top 10 SERP','Score topical authority automatique','Suggestions de silos thématiques','Rapport couverture sémantique mensuel'] },
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'10× volume keywords trackés', desc:'Trackez 10 000+ mots-clés. IA de clustering, SERP features, et cannibalization.', features:['10 000 mots-clés trackés (vs 500 standard)','Clustering sémantique automatique','Détection cannibalisation IA','SERP Features tracker (PAA, featured snippets)','Alertes volatilité algo Google'] },
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
-      { key:'aiContentStrategist', cat:'SEO',        name:'AI Content Strategist', icon:'✍️', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'IA',              roi:'+65% efficacité contenu',    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'] },
+      { key:'aiContentStrategist', cat:'SEO',        name:'SEO Content Decay Radar', icon:'📉', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'GSC',             roi:'Récupération de trafic',    desc:'Repère les baisses de clics, de positions et les CTR faibles par rapport aux pages GSC comparables.', features:['Comparaison de deux périodes de 28 jours','Détection des pertes de clics et de positions','Détection des CTR faibles par position moyenne','Priorisation selon l’impact mesuré','Aucune génération IA ni appel externe'] },
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'10 fiches GBP optimisées',    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'+42% engagement GBP',    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
@@ -61352,6 +61352,45 @@ function renderGrowthKeywords() {
 
   const activeTab = (window._kwTab || 'rankings');
 
+  window._fpLoadContentDecay = async function() {
+    const target = document.getElementById('fp-content-decay-results');
+    if (!target) return;
+    target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">Analyse des données Google Search Console…</div>';
+    try {
+      const result = await apiFetch('/api/keywords/content-decay?simulateAddon=1');
+      const items = Array.isArray(result?.opportunities) ? result.opportunities : [];
+      const ctrItems = Array.isArray(result?.ctrOpportunities) ? result.ctrOpportunities : [];
+      if (!items.length && !ctrItems.length) {
+        target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">Aucune baisse significative détectée sur les pages analysées. Une synchronisation GSC récente est nécessaire pour comparer les deux périodes de 28 jours.</div>';
+        return;
+      }
+      const decayHtml = items.length ? `<div style="font-weight:700;font-size:12px;margin-bottom:8px">Pages en recul</div><div style="display:grid;gap:10px;margin-bottom:16px">${items.map(item => `
+        <div style="padding:12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
+          <a href="${escHtml(item.page)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:var(--fp-accent);font-size:12px;overflow-wrap:anywhere">${escHtml(item.page)}</a>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:11px;color:var(--fp-text-muted)">
+            <span>${Number(item.lostClicks) > 0 ? `−${Number(item.lostClicks)} clics` : 'Positions en baisse'}</span>
+            <span>Position : ${Number(item.previous?.position).toFixed(1)} → ${Number(item.current?.position).toFixed(1)}</span>
+            <span>Impressions : ${Number(item.previous?.impressions).toLocaleString(getLocale())} → ${Number(item.current?.impressions).toLocaleString(getLocale())}</span>
+          </div>
+          <div style="font-size:11px;color:var(--fp-text)">${escHtml(item.recommendedAction || '')}</div>
+        </div>`).join('')}</div>` : '';
+      const ctrHtml = ctrItems.length ? `<div style="font-weight:700;font-size:12px;margin:8px 0">Pages à faible CTR</div><div style="display:grid;gap:10px">${ctrItems.map(item => `
+        <div style="padding:12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
+          <a href="${escHtml(item.page)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:var(--fp-accent);font-size:12px;overflow-wrap:anywhere">${escHtml(item.page)}</a>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:11px;color:var(--fp-text-muted)">
+            <span>CTR : ${(Number(item.ctr) * 100).toFixed(2)} %</span>
+            <span>Médiane des pages comparables : ${(Number(item.comparisonCtr) * 100).toFixed(2)} %</span>
+            <span>Position moyenne : ${Number(item.position).toFixed(1)}</span>
+            <span>${Number(item.impressions).toLocaleString(getLocale())} impressions</span>
+          </div>
+          <div style="font-size:11px;color:var(--fp-text)">${escHtml(item.recommendedAction || '')}</div>
+        </div>`).join('')}</div>` : '';
+      target.innerHTML = decayHtml + ctrHtml;
+    } catch (err) {
+      target.innerHTML = `<div style="padding:16px;color:var(--fp-warning)">${escHtml(err?.message || 'Données Search Console indisponibles ou accès à cette fonction non activé.')}</div>`;
+    }
+  };
+
   function renderTab(tab) {
     if (tab === 'rankings') {
       if (!kws.length) return `
@@ -61603,6 +61642,17 @@ function renderGrowthKeywords() {
     </div>
 
     ${renderTab(activeTab)}
+
+    <div class="fp-card fp-mt-16" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--fp-text)">SEO Content Decay Radar</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">Pages qui perdent des clics ou des positions, et pages à CTR faible parmi des positions comparables — données GSC réelles.</div>
+        </div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpLoadContentDecay()">Analyser les pages</button>
+      </div>
+      <div id="fp-content-decay-results" style="margin-top:12px"></div>
+    </div>
 
     <div id="fp-kw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center">
       <div class="fp-card" style="width:440px;max-width:92vw;padding:24px;background:var(--fp-surface, var(--fp-bg, #1a1d27));border:1px solid var(--fp-border);box-shadow:0 24px 64px rgba(0,0,0,0.7);border-radius:16px;position:relative;z-index:10000">

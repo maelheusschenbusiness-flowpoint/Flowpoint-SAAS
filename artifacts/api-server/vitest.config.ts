@@ -37,6 +37,7 @@ export default defineConfig({
       "src/tests/conversion-a-funnel-guards.test.ts",
       "src/lib/startup-retry.test.ts",
       "src/startup-bootstrap.test.ts",
+      "src/services/content-decay.test.ts",
       "src/tests/pdf_white_label.test.ts",
       "src/tests/rbac-policy-v1.test.ts",
       "src/tests/onboarding-six-steps.test.ts",

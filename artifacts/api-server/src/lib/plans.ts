@@ -345,7 +345,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   advancedSeoLab:       { name: "Advanced SEO Lab",         category: "SEO",          description: "Audit SEO avancé et recommandations IA", priceEur: 29, oneTime: false, quantity: false },
   keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
-  aiContentStrategist:  { name: "AI Content Strategist",    category: "SEO",          description: "Stratégie de contenu assistée par IA", priceEur: 34, oneTime: false, quantity: false },
+  aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
   gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
   aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 29, oneTime: false, quantity: false },
   reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 19, oneTime: false, quantity: false },
@@ -413,7 +413,9 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "slaMonitoring",
   // globalMonitoring: no routes exist.
   "globalMonitoring",
-  // aiContentStrategist / abTestingAI: no routes exist.
+  // aiContentStrategist: SEO Content Decay Radar route exists for test/simulation,
+  // but the add-on remains unavailable for purchase until validated.
+  // abTestingAI: no routes exist.
   // backlinkIntelligence: moved to BETA_ADDONS — route /seo/backlinks exists with
   // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
   // health fallback). Included in Pro & Ultra plans.
