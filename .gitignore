@@ -38,3 +38,10 @@ context_dump*.txt
 .env
 .env.*
 !.env.example
+
+# Tests E2E : etat de session et resultats, jamais versionnes
+e2e/.session.json
+e2e/.compte.json
+e2e/resultats.json
+test-results/
+playwright-report/
