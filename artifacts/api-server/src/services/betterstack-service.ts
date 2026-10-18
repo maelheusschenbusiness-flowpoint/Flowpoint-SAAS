@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 const BS_BASE = "https://uptime.betterstack.com/api/v2";
 const TOKEN = process.env.BETTERSTACK_API_TOKEN;
 
@@ -24,14 +25,14 @@ async function bsRequest<T>(
   if (!TOKEN) throw new Error("BETTERSTACK_API_TOKEN not configured");
 
   const url = `${BS_BASE}${path}`;
-  const res = await fetch(url, {
+  const res = await fetchBorne(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${TOKEN}`,
       "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
     },
-  });
+  }, DELAIS.supervision);
 
   // Rate limit — wait and retry
   if (res.status === 429 && attempt <= 3) {
