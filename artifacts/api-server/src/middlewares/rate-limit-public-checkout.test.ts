@@ -58,8 +58,8 @@ describe("public checkout rate limit — one prospect cannot lock out another", 
     }
   });
 
-  it("keys on the proxy header, then req.ip, and never throws without either", () => {
-    expect(clientIp({ headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } } as unknown as Request)).toBe("9.9.9.9");
+  it("uses Express's trusted proxy resolution and ignores caller-supplied forwarded values", () => {
+    expect(clientIp({ headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" }, ip: "8.8.8.8" } as unknown as Request)).toBe("8.8.8.8");
     expect(clientIp({ headers: {}, ip: "8.8.8.8" } as unknown as Request)).toBe("8.8.8.8");
     expect(clientIp({ headers: {} } as unknown as Request)).toBe("unknown");
   });

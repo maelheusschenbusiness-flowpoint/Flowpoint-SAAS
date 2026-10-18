@@ -670,7 +670,7 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
   if (!requireAdminKey(req, res)) return;
 
   // ── 1. Rate limit (5 / hour / IP) ────────────────────────────────────────
-  const callerIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+  const callerIp = req.ip
     ?? req.socket?.remoteAddress
     ?? "unknown";
   const rl = checkQaRateLimit(callerIp);
@@ -1505,10 +1505,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
   }
 
   // Mandatory structured audit log — every call, including dry-runs.
-  const callerIp =
-    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
-    req.socket.remoteAddress ||
-    "unknown";
+  const callerIp = req.ip || req.socket.remoteAddress || "unknown";
   const callId = `purge_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   console.warn(JSON.stringify({
     event: "ADMIN_PURGE_CALLED",
