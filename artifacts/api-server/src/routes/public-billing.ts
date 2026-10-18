@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { subPeriodEnd } from "./billing.js";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { enregistrerEtape, ETAPES_PUBLIQUES } from "../services/funnel-events.js";
+import {
+  enregistrerEtape, ETAPES_PUBLIQUES, lireAttributionFunnel, metadataAttributionFunnel,
+  normaliserAttributionFunnel,
+} from "../services/funnel-events.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { publicCheckoutRateLimit, funnelEventRateLimit } from "../middlewares/rateLimiter.js";
@@ -629,13 +632,22 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
     res.status(400).json({ ok: false, error: "visiteurId requis." });
     return;
   }
+  const attribution = normaliserAttributionFunnel(
+    (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
+    visiteurId,
+    req.body?.source,
+  );
+  if (!attribution) {
+    res.status(204).end();
+    return;
+  }
   // Idempotence par visiteur, etape et JOUR : un rechargement de page ne cree
   // pas de doublon, mais un retour le lendemain reste compte.
   const jour = new Date().toISOString().slice(0, 10);
   await enregistrerEtape({
     etape,
-    visiteurId,
-    source: typeof req.body?.source === "string" ? req.body.source : null,
+    visiteurId: attribution.visiteurId,
+    source: attribution.source,
     plan:   typeof req.body?.plan   === "string" ? req.body.plan   : null,
     cleIdempotence: `${etape}:${visiteurId}:${jour}`,
   });
@@ -1026,6 +1038,11 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       // New signup fields — enable webhook + checkout-complete to create the account
       ...(signupOrgId       ? { orgId: signupOrgId }                     : {}),
       ...(preRegisterToken  ? { pre_register_token: preRegisterToken }    : {}),
+      ...metadataAttributionFunnel(
+        (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
+        req.body?.visiteurId,
+        req.body?.source,
+      ),
     };
 
     // Seller attribution (beta): read seller_id from pending_signup — never from frontend.
@@ -1077,19 +1094,19 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
     function respond(session: { id: string; url: string | null; client_secret: string | null }) {
       logger.info({ checkoutType, sessionId: session.id, embedded }, "[PublicBilling] Session created");
+      const attribution = lireAttributionFunnel(metadata);
+      if (attribution) {
+        void enregistrerEtape({
+          etape: "checkout_started",
+          visiteurId: attribution.visiteurId,
+          source: attribution.source,
+          plan,
+          cleIdempotence: session.id ? `checkout_started:${session.id}` : null,
+        });
+      }
       if (embedded) {
         res.json({ clientSecret: session.client_secret, publishableKey, quote, sessionId: session.id });
       } else {
-    // Mesure du tunnel : une session Checkout a reellement ete creee chez
-    // Stripe. Cle d'idempotence = identifiant de session, donc un rejeu
-    // n'ajoute pas de ligne.
-    void enregistrerEtape({
-      etape: "checkout_started",
-      visiteurId: typeof req.body?.visiteurId === "string" ? req.body.visiteurId : null,
-      plan,
-      cleIdempotence: session.id ? `checkout_started:${session.id}` : null,
-    });
-
         res.json({ url: session.url, quote, sessionId: session.id });
       }
     }
@@ -1350,6 +1367,11 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     ...(_piReqOrgId       ? { orgId: _piReqOrgId, org_id: _piReqOrgId } : {}),
     ...(!_piReqOrgId && piOrgId ? { orgId: piOrgId, org_id: piOrgId } : {}),
     ...(trialDaysRemaining ? { trial_days_remaining:  String(trialDaysRemaining)  } : {}),
+    ...metadataAttributionFunnel(
+      (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
+      req.body?.visiteurId,
+      req.body?.source,
+    ),
   };
 
   // Seller attribution (beta): read seller_id from pending_signup — additive metadata only.
@@ -1637,24 +1659,14 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: immediateAmountCents,
         }),
       });
-      const _funnelCookieConsent =
-        (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"] === "accepted";
-      const _funnelVisitorId = typeof req.body?.visiteurId === "string" &&
-        (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.body.visiteurId) ||
-         /^fp-[a-z0-9]+-[a-z0-9]+$/i.test(req.body.visiteurId))
-          ? req.body.visiteurId
-          : null;
-      const _funnelSource = ["smartlead", "google", "direct", "social", "other_campaign"]
-        .includes(req.body?.source)
-          ? req.body.source
-          : null;
-      if (_funnelCookieConsent && _funnelVisitorId) {
+      const _funnelAttribution = lireAttributionFunnel(metadata);
+      if (_funnelAttribution) {
         // Mesure uniquement apres la creation reussie du PaymentIntent existant.
         // La cle derivee du PI rend les rejeux du meme resultat idempotents.
         void enregistrerEtape({
           etape: "checkout_started",
-          visiteurId: _funnelVisitorId,
-          source: _funnelSource,
+          visiteurId: _funnelAttribution.visiteurId,
+          source: _funnelAttribution.source,
           plan: planKey,
           cleIdempotence: `checkout_started:${pi.id}`,
         });
@@ -2612,6 +2624,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               ...(preRegisterToken || intentMeta["pre_register_token"]
                 ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
                 : {}),
+              ...metadataAttributionFunnel(
+                intentMeta["fp_analytics_consent"],
+                intentMeta["fp_visitor_id"],
+                intentMeta["fp_source"],
+              ),
             },
           },
         });
