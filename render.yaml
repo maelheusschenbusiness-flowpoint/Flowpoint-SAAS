@@ -75,7 +75,7 @@ services:
     # pas ete verifie, cette commande bloquerait TOUS les deploiements, y
     # compris un correctif urgent.
     # NE DECOMMENTER QU'APRES avoir execute migrate.mjs avec succes sur une
-    # COPIE RESTAUREE de cette base (runbook, phases 1 et 2).
+    # COPIE RESTAUREE de cette base (docs/runbook-migration-v1.md, phases 1 et 2).
     # preDeployCommand: cd artifacts/api-server && pnpm run migrate
 
     envVars:

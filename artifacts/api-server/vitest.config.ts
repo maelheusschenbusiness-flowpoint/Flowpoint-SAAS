@@ -103,6 +103,8 @@ export default defineConfig({
       // La signature du webhook de facturation est la seule protection de cet
       // endpoint : un tiers non authentifie peut y faire accorder un abonnement.
       "src/routes/stripe-webhook-signature.test.ts",
+      // Cycle de vie de l'abonnement, par webhooks signes localement (18/10/2026).
+      "src/routes/stripe-subscription-lifecycle-db.test.ts",
       // Le mode sans signature ne doit pouvoir atteindre la production par
       // aucune voie : affectation, paquet construit, configuration, ordre des gardes.
       "src/routes/stripe-webhook-unsigned-containment.test.ts",

@@ -144,7 +144,7 @@ trancher séparément : **les rapports mensuels de monitoring ne tournent pas.**
 1. Fusionner #150 (observabilité de la porte) — rend l'état du schéma lisible
    dans les journaux de production, sans rien bloquer.
 2. Vérifier une sauvegarde restaurable, puis exécuter `migrate.mjs` sur la copie
-   restaurée (runbook, phases 1 et 2). **Bloquant.**
+   restaurée (`docs/runbook-migration-v1.md`, phases 1 et 2). **Bloquant.**
 3. Fusionner #151, déployer sur `flowpoint-test`, pointer sa sonde sur
    `/api/healthz/ready`, provoquer une indisponibilité PostgreSQL et **mesurer**
    la réaction de Render.
