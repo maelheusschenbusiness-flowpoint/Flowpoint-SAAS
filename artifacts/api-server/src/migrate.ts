@@ -82,23 +82,23 @@ async function migrate() {
     process.exit(1);
   }
 
-  // ── 5–7. Domain tables ──────────────────────────────────────────────────────
-  section("[5/11] init-missions");
+  // ── 5. Core tables must exist before domain-table backfills ─────────────────
+  section("[5/11] Core data tables");
+  try { await initDataTables();  console.log("  ✓ init-data-tables done"); }
+  catch (err: any) { console.error(`  ✗ initDataTables: ${err.message}`); process.exit(1); }
+
+  // ── 6–8. Domain tables ──────────────────────────────────────────────────────
+  section("[6/11] init-missions");
   try { await initMissionsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[6/11] init-automation");
+  section("[7/11] init-automation");
   try { await initAutomationTables(); console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
 
-  section("[7/11] init-monitors");
+  section("[8/11] init-monitors");
   try { await initMonitorsTables();  console.log("  ✓ Done"); }
   catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
-
-  // ── 8. Core + AI tables ─────────────────────────────────────────────────────
-  section("[8/11] Core data tables");
-  try { await initDataTables();  console.log("  ✓ init-data-tables done"); }
-  catch (err: any) { console.error(`  ✗ initDataTables: ${err.message}`); process.exit(1); }
 
   section("[9/11] Funnel events");
   try {
