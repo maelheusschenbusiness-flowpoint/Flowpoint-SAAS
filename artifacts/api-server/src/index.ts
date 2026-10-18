@@ -2,7 +2,7 @@ import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { getStripeKey } from "./services/stripe-factory.js";
 import { plansRepliantSurPrixLive } from "./lib/plans.js";
-import { verifierCibleBase, lireCible } from "./services/garde-cible-base.js";
+import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -76,15 +76,15 @@ async function main() {
     try {
       const { verifiee, cible } = verifierCibleBase();
       if (verifiee && cible) {
-        logger.info(`[Base] cible declaree confirmee : ${cible.hote}/${cible.base}`);
+        logger.info(`[Base] cible declaree confirmee : ${decrireCibleSurement(cible)}`);
       } else {
         // Garde non armee. On journalise la destination REELLE — hote et nom de
         // base seulement, jamais l'utilisateur ni le mot de passe — pour que
         // l'exploitant puisse lire la valeur a declarer et armer la garde.
-        const reelle = lireCible(process.env["DATABASE_URL"]);
         logger.warn(
           `[Base] DB_HOTE_ATTENDU non posee — ce service modifie le schema au demarrage ` +
-          `sans verifier sa cible. Destination actuelle : ${reelle ? `${reelle.hote}/${reelle.base}` : "illisible"}. ` +
+          `sans verifier sa cible. Destination actuelle : ` +
+          `${decrireCibleSurement(lireCible(process.env["DATABASE_URL"]))}. ` +
           `Posez DB_HOTE_ATTENDU a cette valeur pour armer la garde.`
         );
       }

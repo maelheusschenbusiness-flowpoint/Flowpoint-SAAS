@@ -59,6 +59,8 @@ export default defineConfig({
       "src/services/tables-pre-compte-rls-db.test.ts",
       // Garde de cible : un service ne modifie que la base qu'il declare (18/10/2026).
       "src/services/garde-cible-base.test.ts",
+      // Fuite reelle d'un identifiant dans le journal de la garde (18/10/2026).
+      "src/services/fuite-journal-cible.test.ts",
       "src/services/schema-reconcile-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",

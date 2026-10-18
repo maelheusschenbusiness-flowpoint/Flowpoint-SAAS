@@ -30,6 +30,41 @@ export interface CibleBase {
   base: string;
 }
 
+/**
+ * Ce qui peut etre journalise sans risque : un nom d'hote ou une adresse.
+ * Lettres, chiffres, points, tirets, deux-points (IPv6) et crochets. Rien
+ * d'autre — en particulier ni `@`, ni `/`, ni `:` suivi d'autre chose qu'un
+ * port, c'est-a-dire aucune des formes que prend un identifiant.
+ */
+const MOTIF_HOTE = /^[A-Za-z0-9._\-\[\]:]+$/;
+
+/** Idem pour un nom de base : pas de separateur, donc pas d'identifiant. */
+const MOTIF_BASE = /^[A-Za-z0-9._\-]+$/;
+
+/**
+ * Rend une description de la cible SURE A JOURNALISER.
+ *
+ * DEFAUT MESURE LE 18/10/2026, et c'est le motif de cette fonction. Le journal
+ * de demarrage imprimait `hote/base` tel quel. Un `PGHOST` contenant par
+ * erreur une chaine de connexion complete a produit une URL dont le CHEMIN
+ * portait l'identifiant — et le mot de passe PostgreSQL s'est retrouve en
+ * clair dans les journaux Render.
+ *
+ * Desormais, toute valeur qui ne ressemble pas strictement a un hote et a un
+ * nom de base est remplacee par une mention. Un journal ne doit pas pouvoir
+ * divulguer un secret, quelle que soit l'entree.
+ */
+export function decrireCibleSurement(cible: CibleBase | null): string {
+  if (!cible) return "(illisible)";
+  const hoteSur = MOTIF_HOTE.test(cible.hote);
+  const baseSure = MOTIF_BASE.test(cible.base);
+  if (!hoteSur || !baseSure) {
+    return "(valeur non journalisable — PGHOST ou PGDATABASE contient des separateurs, " +
+           "verifiez qu'il ne s'agit pas d'une chaine de connexion complete)";
+  }
+  return `${cible.hote}/${cible.base}`;
+}
+
 export class CibleBaseRefusee extends Error {
   constructor(message: string) {
     super(message);
