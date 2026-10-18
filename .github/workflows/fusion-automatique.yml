@@ -1,0 +1,90 @@
+# Fusion automatique des PR vers Test-Replit, SANS contourner quoi que ce soit.
+#
+# Ce workflow n'approuve rien et ne fusionne rien lui-meme. Il demande a GitHub
+# d'activer sa propre fusion automatique sur la PR. GitHub fusionne ensuite de
+# lui-meme, et seulement lorsque TOUTES les conditions du ruleset
+# « Protect Test-Replit » sont reunies :
+#
+#   - le controle obligatoire « Types, build, tests » est vert ;
+#   - la revue obligatoire est obtenue, par quelqu'un d'autre que l'auteur ;
+#   - la branche est a jour (strict_required_status_checks_policy).
+#
+# Autrement dit : c'est GitHub qui garde la porte, exactement comme avant. On
+# supprime l'attente et le clic de fusion, pas la verification. Si une seule
+# condition manque, la PR reste ouverte indefiniment.
+#
+# CE QU'IL NE FAIT PAS, deliberement :
+#   - il ne touche jamais a `Flowpoint` : le declencheur est restreint a
+#     `Test-Replit`, et une garde explicite le revverifie ;
+#   - il n'approuve aucune PR. Une approbation automatique serait une
+#     auto-approbation deguisee : l'auteur declencherait sa propre validation,
+#     et la revue n'aurait plus d'independance que le nom ;
+#   - il ne s'active jamais pour une PR venant d'un fork. Ce depot est PUBLIC :
+#     sans cette garde, un contributeur exterieur pourrait faire fusionner son
+#     code automatiquement.
+#
+# PREREQUIS : le reglage « Allow auto-merge » doit etre actif sur le depot.
+# Tant qu'il ne l'est pas, ce workflow echoue proprement en le disant, et rien
+# d'autre ne change.
+
+name: Fusion automatique (Test-Replit)
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+    branches: [Test-Replit]
+
+# Aucun code de la PR n'est lu ni execute ici : ce workflow ne fait qu'un appel
+# a l'API GitHub. C'est ce qui rend `pull_request_target` sans danger dans ce
+# cas precis — il n'y a pas de checkout.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: fusion-auto-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  activer:
+    name: Activer la fusion automatique
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verifier que la cible est bien Test-Replit
+        env:
+          CIBLE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          if [ "$CIBLE" != "Test-Replit" ]; then
+            echo "::error::Cible inattendue ($CIBLE). Ce workflow ne s'applique qu'a Test-Replit."
+            exit 1
+          fi
+          echo "Cible confirmee : $CIBLE"
+
+      - name: Refuser les PR venant d'un fork
+        env:
+          DEPOT_SOURCE: ${{ github.event.pull_request.head.repo.full_name }}
+          DEPOT: ${{ github.repository }}
+        run: |
+          if [ "$DEPOT_SOURCE" != "$DEPOT" ]; then
+            echo "::notice::PR issue d'un fork ($DEPOT_SOURCE) — fusion automatique NON activee."
+            echo "Ce depot est public : une PR exterieure doit etre traitee a la main."
+            exit 1
+          fi
+          echo "PR interne au depot."
+
+      - name: Demander a GitHub d'activer sa fusion automatique
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # --auto delegue a GitHub : il fusionnera quand, et seulement quand,
+          # les conditions du ruleset seront satisfaites.
+          if gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --merge; then
+            echo "::notice::Fusion automatique activee sur la PR #$PR."
+            echo "GitHub fusionnera des que la CI sera verte ET la revue obtenue."
+          else
+            echo "::error::Activation refusee. Cause la plus probable : le reglage"
+            echo "« Allow auto-merge » n'est pas actif sur le depot (Settings → General)."
+            echo "Aucune protection n'a ete contournee et rien n'a ete fusionne."
+            exit 1
+          fi
