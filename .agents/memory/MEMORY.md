@@ -150,3 +150,5 @@
 - [Stripe key-mode in-flight isolation](stripe-key-mode-inflight.md) — ensureStripeCustomer's org-only in-flight lock must always receive the mode-aware key around login→checkout sequences.
 - [GitHub PR approval requirement](github-pr-approval.md) — FlowPoint merges require an approving review from a reviewer with write access; self-approval cannot satisfy the rule.
 - [Seller checkout identity](seller-checkout-identity.md) — valid signup tokens outrank stale sessions; invalid tokens fall back, and UUID sessions never activate pending signups.
+- [Add-on V1 test-only boundary](addon-v1-testing-boundary.md) — keep add-on refactor work on Test-Replit; never touch Flowpoint production, production PostgreSQL, or Stripe live without explicit approval.
+- [GSC page opportunity analysis](gsc-page-opportunity-analysis.md) — page-level GSC tables support decay detection, but separate query/page tables cannot prove keyword cannibalization.

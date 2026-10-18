@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { db, trackedKeywordsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -11,8 +11,17 @@ import {
 import { logger } from "../lib/logger.js";
 import { withCache } from "../middlewares/cacheControl.js";
 import { canWrite } from "../middlewares/requireRole.js";
+import { requireAddon } from "../middlewares/planGate.js";
+import { canSimulateContentDecayAddon, findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
 
 const router = Router();
+const contentDecayGate: RequestHandler = (req, res, next) => {
+  if (canSimulateContentDecayAddon(process.env["NODE_ENV"], process.env["STRIPE_TEST_MODE"], req.query["simulateAddon"])) {
+    next();
+    return;
+  }
+  requireAddon("aiContentStrategist", "SEO Content Decay Radar")(req, res, next);
+};
 
 type OrgReq = import("express").Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
 
@@ -22,6 +31,40 @@ function getOrg(req: import("express").Request): string {
 function getPlan(req: import("express").Request): string {
   return ((req as unknown as { me?: { plan?: string } }).me?.plan) ?? "Pro";
 }
+
+// GET /api/keywords/content-decay — real GSC page data, no AI or external API call.
+router.get("/keywords/content-decay", contentDecayGate, async (req, res) => {
+  const orgId = getOrg(req);
+  if (orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  try {
+    const now = new Date();
+    const start = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const result = await (req as OrgReq).orgDb(
+      `SELECT page, date, clicks, impressions, position
+         FROM gsc_page_data
+        WHERE org_id = $1 AND date >= $2 AND date < $3
+        ORDER BY page, date
+        LIMIT 50000`,
+      [orgId, start, now.toISOString().slice(0, 10)],
+    );
+    res.json({
+      ok: true,
+      source: "google_search_console",
+      comparison: { currentDays: 28, previousDays: 28 },
+      simulationAccess: canSimulateContentDecayAddon(
+        process.env["NODE_ENV"], process.env["STRIPE_TEST_MODE"], req.query["simulateAddon"],
+      ),
+      opportunities: findContentDecayOpportunities(result.rows, now.getTime()),
+      ctrOpportunities: findLowCtrOpportunities(result.rows, now.getTime()),
+    });
+  } catch (err) {
+    logger.error({ err, orgId }, "[keywords] content decay query failed");
+    res.status(503).json({ error: "Search Console data is temporarily unavailable." });
+  }
+});
 
 const SEED: Array<typeof trackedKeywordsTable.$inferInsert> = [
   { id:"kw1", orgId:"default", keyword:"agence seo paris",                currentPosition:3,  prevPosition:5,  searchVolume:1900, difficulty:62, tag:"Local",       intent:"commercial" },
