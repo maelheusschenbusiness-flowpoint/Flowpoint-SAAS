@@ -17,6 +17,13 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Ce fichier exerce la LOGIQUE METIER du webhook : il invoque le gestionnaire
+// directement, sans identifiants Stripe et sans signature. Il s'appuyait donc,
+// sans le dire, sur le traitement sans verification — celui qui s'activait par
+// la seule absence de `STRIPE_WEBHOOK_SECRET`. Ce traitement demande maintenant
+// une intention declaree : on la declare ici, explicitement.
+vi.hoisted(() => { process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"] = "true"; });
+
 const EMAIL    = "new.signup@example.com";
 const ORG_UUID = "b89babd6-a867-496a-b45c-420841f95e09";
 const CUS      = "cus_TESTRACE";

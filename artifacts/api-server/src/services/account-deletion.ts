@@ -40,6 +40,7 @@
 
 import { logger } from "../lib/logger.js";
 
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 // ── Ownership column vocabulary ─────────────────────────────────────────────
 /** Columns that scope a row to an organization. */
 const ORG_COLUMNS = ["org_id", "organization_id"] as const;
@@ -86,6 +87,63 @@ const TERMINAL_TABLES = new Set([
   "organization_members",
   "users",
 ]);
+
+/**
+ * Tables a PRESERVER quand on purge les donnees produit en gardant le compte
+ * (`DELETE /api/settings/data`). Tout le reste part.
+ *
+ * La liste est volontairement courte et nommee : ce sont l'identite, le droit
+ * d'acces et la facturation. Les oublier serait pire qu'un orphelin — le
+ * client perdrait son plan ou son acces.
+ */
+export const TABLES_COMPTE_A_PRESERVER = new Set<string>([
+  // Identite et appartenance
+  "organizations", "organization_members", "users", "user_sessions",
+  // Reglages et image de marque de l'organisation
+  "org_settings", "org_secrets", "org_auth_config", "sso_providers",
+  // Droits
+  "roles", "org_member_permissions",
+  // Facturation : plan, options, historique comptable
+  "subscriptions", "org_addons", "billing_events",
+  "ai_credit_purchases", "checkout_post_tokens",
+  // Infrastructure
+  "schema_migrations", "canonical_seeds",
+]);
+
+/**
+ * Tables portant une colonne de rattachement a une organisation, DECOUVERTES
+ * a l'execution.
+ *
+ * Mesure du 17/10/2026 : le schema compte 113 tables portant `org_id`, et
+ * trois chemins de suppression portaient une liste ECRITE A LA MAIN —
+ * `POST /admin/purge-all-clients` en oubliait 23, `DELETE /api/settings/data`
+ * 76, et `POST /admin/delete-qa-org` 100. Une liste litterale se perime a la
+ * table suivante ; c'est la cause structurelle des lignes orphelines
+ * mesurees en production.
+ *
+ * `exclure` permet d'ecarter explicitement ce qu'un chemin doit conserver.
+ */
+export async function decouvrirTablesOrganisation(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
+  options: { exclure?: ReadonlySet<string> } = {},
+): Promise<Array<{ table: string; colonne: string }>> {
+  const res = await client.query(
+    `SELECT c.table_name, MIN(c.column_name) AS column_name
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'public'
+        AND t.table_type   = 'BASE TABLE'
+        AND c.column_name  = ANY($1)
+      GROUP BY c.table_name
+      ORDER BY c.table_name`,
+    [[...ORG_COLUMNS]],
+  );
+  const exclure = options.exclure ?? NEVER_DELETE;
+  return (res.rows as Array<{ table_name: string; column_name: string }>)
+    .filter((r) => !exclure.has(r.table_name))
+    .map((r) => ({ table: r.table_name, colonne: r.column_name }));
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -377,21 +435,21 @@ async function cleanupStorage(orgId: string, userIds: string[]): Promise<Deletio
 
   for (const prefix of prefixes) {
     try {
-      const listRes = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
+      const listRes = await fetchBorne(`${url}/storage/v1/object/list/${bucket}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ prefix, limit: 1000 }),
-      });
+      }, DELAIS.stockage);
       if (!listRes.ok) continue;
       const objects = (await listRes.json()) as Array<{ name: string }>;
       if (!Array.isArray(objects) || objects.length === 0) continue;
 
       const paths = objects.map((o) => `${prefix}/${o.name}`);
-      const delRes = await fetch(`${url}/storage/v1/object/${bucket}`, {
+      const delRes = await fetchBorne(`${url}/storage/v1/object/${bucket}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ prefixes: paths }),
-      });
+      }, DELAIS.stockage);
       if (delRes.ok) deleted += paths.length;
     } catch (err) {
       logger.warn({ err, prefix, orgId }, "[AccountDeletion] Storage cleanup failed for prefix");
@@ -741,23 +799,37 @@ export async function deleteAccount(target: DeletionTarget): Promise<DeletionRep
     // so they are absent from fullyDeleted and not caught above.
     // Delete them explicitly so re-registration with the same email works.
     if (email) {
+      // IMPORTANT : exclure les utilisateurs PRESERVES.
+      //
+      // `users.status` vaut 'pending' PAR DEFAUT dans ce schema. Sans cette
+      // exclusion, ce nettoyage effacait tout utilisateur portant cet e-mail
+      // et encore 'pending' — y compris celui que la resolution venait tout
+      // juste de preserver parce qu'il appartient a une AUTRE organisation.
+      //
+      // Mesure du 17/10/2026, revalidation a deux organisations : l'issue
+      // etait l'une ou l'autre, les deux fausses. Soit l'utilisateur
+      // multi-organisations etait efface et perdait l'acces a son autre
+      // organisation ; soit une cle etrangere vers `users` faisait echouer la
+      // transaction entiere, et la suppression ne supprimait RIEN en silence.
+      const _puPreserves = preservedMultiOrg.length > 0 ? preservedMultiOrg : [""];
+      const _puPredicat = `lower(email)=lower($1) AND status='pending' AND id::text <> ALL($2::text[])`;
       const _puBefore = await client.query(
-        `SELECT COUNT(*)::int AS n FROM users WHERE lower(email)=lower($1) AND status='pending'`,
-        [email],
+        `SELECT COUNT(*)::int AS n FROM users WHERE ${_puPredicat}`,
+        [email, _puPreserves],
       );
       const _puCount = (_puBefore.rows[0] as { n: number }).n;
       if (_puCount > 0) {
         const _puDel = (await client.query(
-          `DELETE FROM users WHERE lower(email)=lower($1) AND status='pending'`,
-          [email],
+          `DELETE FROM users WHERE ${_puPredicat}`,
+          [email, _puPreserves],
         )) as unknown as { rowCount: number };
         const _puAfter = await client.query(
-          `SELECT COUNT(*)::int AS n FROM users WHERE lower(email)=lower($1) AND status='pending'`,
-          [email],
+          `SELECT COUNT(*)::int AS n FROM users WHERE ${_puPredicat}`,
+          [email, _puPreserves],
         );
         tableRecords.push({
           table: "users",
-          predicate: "lower(email)=lower($1) AND status='pending'",
+          predicate: _puPredicat,
           rowsBefore: _puCount,
           rowsDeleted: _puDel.rowCount ?? 0,
           rowsAfter: (_puAfter.rows[0] as { n: number }).n,

@@ -6,7 +6,7 @@ import {
   getMapsDashboard, generateAiLocalRecommendations,
 } from "../services/local-maps-service.js";
 import { pool } from "@workspace/db";
-import { isDataForSEOConfigured, checkAndIncrementQuota, getGoogleMapsResults } from "../services/dataforseo-service.js";
+import { isDataForSEOConfigured, verifierEtConsommerQuota, rembourserQuota, suivreAppelsPayants, getGoogleMapsResults } from "../services/dataforseo-service.js";
 import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
@@ -83,13 +83,22 @@ router.post("/local-maps/competitors/discover", canWrite, async (req, res) => {
   if (!await isDataForSEOConfigured(orgId)) {
     res.json({ ok: false, configured: false, competitors: [], message: "DataForSEO n’est pas configuré pour cette organisation." }); return;
   }
-  if (!await checkAndIncrementQuota(orgId, 1)) {
+  // Fail-closed : quota non verifiable => aucun appel payant, 503 explicite.
+  const verdict = await verifierEtConsommerQuota(orgId, 1);
+  if (!verdict.autorise) {
+    if (verdict.motif === "indisponible") {
+      res.status(503).json({ error: "Vérification du quota indisponible. Réessayez dans un instant.", code: "QUOTA_CHECK_UNAVAILABLE" }); return;
+    }
     res.status(429).json({ error: "Le quota DataForSEO du jour est atteint.", code: "DATAFORSEO_QUOTA_EXCEEDED" }); return;
   }
   try {
     const normalizedKeyword = keyword.trim();
     const normalizedLocation = location.trim();
-    const lookup = await getGoogleMapsResults(normalizedKeyword, normalizedLocation, orgId);
+    // Un echec du fournisseur n'est pas facture : l'unite reservee est rendue.
+    const { resultat: lookup, appelsReussis } = await suivreAppelsPayants(
+      () => getGoogleMapsResults(normalizedKeyword, normalizedLocation, orgId),
+    );
+    if (appelsReussis === 0) await rembourserQuota(orgId, 1);
     if (lookup.error) {
       res.status(502).json({ ok: false, configured: true, competitors: [], error: "La recherche locale est indisponible. Réessayez dans un instant." });
       return;
