@@ -7,7 +7,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { enregistrerEtape } from "../services/funnel-events.js";
+import { enregistrerEtape, lireAttributionFunnel } from "../services/funnel-events.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
@@ -1437,12 +1437,18 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       // Mesure du tunnel. Cle = identifiant de session Stripe, donc un rejeu
       // du meme evenement n'ajoute pas de ligne.
-      void enregistrerEtape({
-        etape: "checkout_completed",
-        orgId,
-        plan: typeof meta["plan"] === "string" ? meta["plan"] : null,
-        cleIdempotence: typeof obj["id"] === "string" ? `checkout_completed:${String(obj["id"])}` : null,
-      });
+      const sessionPaid = obj["payment_status"] === "paid" || obj["payment_status"] === "no_payment_required";
+      const sessionAttribution = lireAttributionFunnel(meta);
+      if (sessionPaid && sessionAttribution) {
+        void enregistrerEtape({
+          etape: "checkout_completed",
+          visiteurId: sessionAttribution.visiteurId,
+          source: sessionAttribution.source,
+          orgId,
+          plan: typeof meta["plan"] === "string" ? meta["plan"] : null,
+          cleIdempotence: typeof obj["id"] === "string" ? `checkout_completed:${String(obj["id"])}` : null,
+        });
+      }
 
       // ── One-time AI credit pack purchase ──────────────────────────────────
       // Matches sessions from /billing/checkout-ai-credits (type=ai_credits) AND
@@ -1750,6 +1756,18 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     case "payment_intent.succeeded":
     case "setup_intent.succeeded": {
       const piMeta = (obj["metadata"] as Record<string, string>) ?? {};
+      const funnelAttribution = lireAttributionFunnel(piMeta);
+      const intentId = typeof obj["id"] === "string" ? String(obj["id"]) : "";
+      if (funnelAttribution && intentId) {
+        void enregistrerEtape({
+          etape: "checkout_completed",
+          visiteurId: funnelAttribution.visiteurId,
+          source: funnelAttribution.source,
+          orgId,
+          plan: typeof piMeta["plan"] === "string" ? piMeta["plan"] : null,
+          cleIdempotence: `checkout_completed:${intentId}`,
+        });
+      }
 
       // ── In-app AI credit pack purchase (PaymentElement modal, no redirect) ──
       if (piMeta["type"] === "ai_credits") {
@@ -1963,12 +1981,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       {
         const _statut = typeof obj["status"] === "string" ? String(obj["status"]) : "";
         const _sub    = typeof obj["id"]     === "string" ? String(obj["id"])     : "";
+        const _meta = (obj["metadata"] as Record<string, unknown>) ?? {};
+        const _attribution = lireAttributionFunnel(_meta);
         const _etape  = _statut === "trialing" ? "trial_activated"
                       : _statut === "active"   ? "subscription_activated"
                       : null;
         if (_etape) {
           void enregistrerEtape({
             etape: _etape,
+            visiteurId: _attribution?.visiteurId ?? null,
+            source: _attribution?.source ?? null,
             orgId,
             cleIdempotence: _sub ? `${_etape}:${_sub}` : null,
           });

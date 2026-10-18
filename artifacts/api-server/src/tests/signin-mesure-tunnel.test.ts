@@ -20,6 +20,11 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Script } from "node:vm";
+import {
+  lireAttributionFunnel,
+  metadataAttributionFunnel,
+  normaliserAttributionFunnel,
+} from "../services/funnel-events.js";
 
 const PAGE = readFileSync(join(process.cwd(), "../flowpoint-export/signin.html"), "utf8");
 const CHECKOUT_PAGE = readFileSync(join(process.cwd(), "../flowpoint-export/checkout-payment.html"), "utf8");
@@ -173,22 +178,34 @@ describe("la mesure est posee et exploitable", () => {
     expect(creation).toBeGreaterThan(-1);
     expect(emission).toBeGreaterThan(creation);
     const bloc = PAYMENT_INTENT_ROUTE.slice(creation, PAYMENT_INTENT_ROUTE.indexOf("if (hasPlan) {", creation));
-    expect(bloc).toContain('cookies?.["fp_analytics_consent"] === "accepted"');
+    expect(PAYMENT_INTENT_ROUTE).toContain("...metadataAttributionFunnel(");
     expect(bloc).toContain("cleIdempotence: `checkout_started:${pi.id}`");
-    expect(bloc).toContain("if (_funnelCookieConsent && _funnelVisitorId)");
+    expect(bloc).toContain("const _funnelAttribution = lireAttributionFunnel(metadata)");
+    expect(bloc).toContain("if (_funnelAttribution)");
     expect(bloc.match(/stripe\.paymentIntents\.create/g)).toHaveLength(1);
   });
 
-  it("checkout_completed reste lié à Checkout Session, tandis que trial_activated vient des webhooks d'abonnement", () => {
+  it("checkout_completed suit les intents réels et garde le visiteur jusqu'aux abonnements", () => {
     const webhook = readFileSync(join(process.cwd(), "src/routes/stripe-webhook.ts"), "utf8");
     const sessionCase = webhook.indexOf('case "checkout.session.completed"');
     const checkoutCompleted = webhook.indexOf('etape: "checkout_completed"', sessionCase);
+    const intentCase = webhook.indexOf('case "payment_intent.succeeded":');
+    const intentCompleted = webhook.indexOf('etape: "checkout_completed"', intentCase);
     const subscriptionCase = webhook.indexOf('case "customer.subscription.created":');
     const trialActivated = webhook.indexOf('"trial_activated"', subscriptionCase);
     expect(sessionCase).toBeGreaterThan(-1);
     expect(checkoutCompleted).toBeGreaterThan(sessionCase);
+    expect(intentCase).toBeGreaterThan(-1);
+    expect(intentCompleted).toBeGreaterThan(intentCase);
+    expect(webhook).toContain('case "setup_intent.succeeded":');
+    expect(webhook).toContain("lireAttributionFunnel(piMeta)");
     expect(subscriptionCase).toBeGreaterThan(-1);
     expect(trialActivated).toBeGreaterThan(subscriptionCase);
+    expect(webhook).toContain("visiteurId: _attribution?.visiteurId ?? null");
+
+    const billing = readFileSync(join(process.cwd(), "src/routes/public-billing.ts"), "utf8");
+    expect(billing).toContain("metadataAttributionFunnel(");
+    expect(billing).toContain('intentMeta["fp_visitor_id"]');
   });
 });
 
@@ -237,5 +254,27 @@ describe("LE FORMULAIRE N'A PAS ETE MODIFIE", () => {
   it("la carte bancaire reste exigee : le parcours passe toujours par Checkout", () => {
     expect(PAGE).toContain("/api/auth/pre-register");
     expect(PAGE, "un chemin d'essai sans Checkout est apparu").not.toContain("skip_checkout");
+  });
+});
+
+describe("attribution commerciale respecte le consentement", () => {
+  const visiteur = "123e4567-e89b-42d3-a456-426614174000";
+
+  it("ne conserve aucune attribution sans consentement accepté", () => {
+    expect(normaliserAttributionFunnel("refused", visiteur, "google")).toBeNull();
+    expect(metadataAttributionFunnel("unknown", visiteur, "google")).toEqual({});
+  });
+
+  it("valide le visiteur et normalise la source autorisée", () => {
+    expect(normaliserAttributionFunnel("accepted", visiteur, "google")).toEqual({ visiteurId: visiteur, source: "google" });
+    expect(normaliserAttributionFunnel("accepted", "not-an-id", "google")).toBeNull();
+    expect(normaliserAttributionFunnel("accepted", visiteur, "email@example.com")).toEqual({ visiteurId: visiteur, source: null });
+  });
+
+  it("propage seulement l'attribution consentie", () => {
+    const metadata = metadataAttributionFunnel("accepted", visiteur, "smartlead");
+    expect(metadata).toEqual({ fp_analytics_consent: "accepted", fp_visitor_id: visiteur, fp_source: "smartlead" });
+    expect(lireAttributionFunnel(metadata)).toEqual({ visiteurId: visiteur, source: "smartlead" });
+    expect(lireAttributionFunnel({ fp_visitor_id: visiteur, fp_source: "google" })).toBeNull();
   });
 });
