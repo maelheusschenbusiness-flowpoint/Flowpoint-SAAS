@@ -1,0 +1,153 @@
+# Verification automatique des PR vers Test-Replit et Flowpoint.
+#
+# Le depot n'avait AUCUNE verification automatique : ni workflow, ni execution
+# d'Actions. Les PR affichaient « aucun controle declare », et le seul signal
+# etait celui qu'un humain produisait sur sa machine.
+#
+# Ce workflow fait exactement ce que ferait quelqu'un de consciencieux, et le
+# fait a chaque fois :
+#   1. installe les dependances comme Render les installe (pnpm 10) ;
+#   2. construit le schema PostgreSQL avec la migration DU DEPOT, sur une base
+#      isolee et jetable — pas une base partagee ;
+#   3. verifie les types, puis construit la version de production ;
+#   4. execute la suite complete, sans parallelisme de fichiers ;
+#   5. refuse tout test ignore qui ne figure pas sur une liste blanche versionnee.
+#
+# Ce workflow ne deploie rien et ne touche a aucune base distante.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [Test-Replit, Flowpoint]
+  push:
+    branches: [Test-Replit, Flowpoint]
+  workflow_dispatch:
+
+# Une PR mise a jour annule la verification precedente : c'est le dernier
+# commit qui compte.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verification:
+    name: Types, build, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        # Production tourne sur PostgreSQL 17 (Supabase 17.6).
+        image: postgres:17
+        env:
+          POSTGRES_USER: flowpoint_ci
+          POSTGRES_PASSWORD: flowpoint_ci
+          POSTGRES_DB: flowpoint_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U flowpoint_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Base ISOLEE, creee pour cette execution et detruite avec le runner.
+      DATABASE_URL: postgresql://flowpoint_ci:flowpoint_ci@127.0.0.1:5432/flowpoint_ci
+      NODE_ENV: test
+      # Valeurs de TEST, generees ici. Aucun secret du depot n'est utilise :
+      # la verification ne doit pas dependre d'un acces a un service tiers.
+      JWT_SECRET: ci-jwt-secret-pour-verification-automatique-32c
+      SESSION_SECRET: ci-session-secret-pour-verification-automatique
+      ADMIN_KEY: ci-admin-key-pour-verification-automatique-32car
+      STRIPE_TEST_MODE: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Installer les dependances
+        run: pnpm install --frozen-lockfile
+
+      - name: Preparer la base isolee
+        # Les roles Supabase n'existent pas sur un PostgreSQL nu, et les
+        # policies d'isolation les nomment. Sans eux, la migration poserait
+        # 469 policies qui echoueraient toutes — et l'audit d'isolation
+        # declarerait a tort le schema inutilisable.
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE r text;
+          BEGIN
+            FOR r IN SELECT unnest(ARRAY['app_user','anon','authenticated','service_role','authenticator','supabase_admin']) LOOP
+              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+                EXECUTE format('CREATE ROLE %I NOLOGIN', r);
+              END IF;
+            END LOOP;
+          END $$;
+          SQL
+
+      - name: Appliquer la migration du depot
+        # C'est la migration DU DEPOT qui construit le schema : la CI verifie
+        # donc aussi qu'elle installe une base valide depuis zero.
+        working-directory: artifacts/api-server
+        run: pnpm run migrate
+
+      - name: Ouvrir les droits aux roles applicatifs
+        # Apres la migration : les tables existent, les roles peuvent recevoir
+        # leurs privileges. Sans cela, chaque requete repond « permission denied ».
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE r text;
+          BEGIN
+            FOR r IN SELECT unnest(ARRAY['app_user','anon','authenticated','service_role']) LOOP
+              EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', r);
+              EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA public TO %I', r);
+              EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO %I', r);
+            END LOOP;
+          END $$;
+          SQL
+
+      - name: Verification des types
+        working-directory: artifacts/api-server
+        run: pnpm run typecheck
+
+      - name: Build de production
+        # Exactement la commande de Render.
+        working-directory: artifacts/api-server
+        run: pnpm run build
+
+      - name: Tests unitaires, d'integration et PostgreSQL
+        working-directory: artifacts/api-server
+        # Le non-parallelisme des fichiers est pose dans vitest.config.ts, pour
+        # que les executions locales soient deterministes elles aussi. Il est
+        # repete ici pour que la CI ne depende pas d'une configuration qu'on
+        # pourrait relacher sans y penser.
+        run: pnpm exec vitest run --no-file-parallelism --reporter=dot --reporter=json --outputFile=resultats-ci.json --testTimeout=60000
+
+      - name: Aucun test ignore involontairement
+        working-directory: artifacts/api-server
+        if: always()
+        run: node ../../scripts/verifier-tests-ignores.mjs resultats-ci.json
+
+      - name: Conserver le rapport en cas d'echec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultats-ci
+          path: artifacts/api-server/resultats-ci.json
+          retention-days: 7
