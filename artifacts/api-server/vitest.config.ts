@@ -61,6 +61,8 @@ export default defineConfig({
       "src/services/garde-cible-base.test.ts",
       // Fuite reelle d'un identifiant dans le journal de la garde (18/10/2026).
       "src/services/fuite-journal-cible.test.ts",
+      // Ordre du durcissement RLS au demarrage, mesure sur base neuve (18/10/2026).
+      "src/services/ordre-durcissement-rls.test.ts",
       "src/services/schema-reconcile-db.test.ts",
       "src/services/pg-init-contract-db.test.ts",
       "src/services/org-settings-canonical-key-db.test.ts",
