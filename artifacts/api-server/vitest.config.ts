@@ -13,6 +13,7 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/services/mailer-nodemailer10.test.ts",
+      "src/services/agency-reporting-packs.test.ts",
       "src/services/nodemailer10-transport.test.ts",
       "src/services/review-intelligence-themes.test.ts",
       "src/services/local-maps-summary.test.ts",

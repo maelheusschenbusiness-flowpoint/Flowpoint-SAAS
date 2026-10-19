@@ -8001,6 +8001,29 @@ function setupEditCalEventPanel(ev) {
 }
 
 /* ── REPORTS ── */
+window.FP_AGENCY_PACKS_API = {
+  async load() {
+    const target = document.getElementById("fp-agency-packs-result"); if (!target) return;
+    target.textContent = "Chargement des packs…";
+    try {
+      const response = await apiFetch("/api/reports/agency-packs"); const packs = Array.isArray(response?.packs) ? response.packs : []; target.replaceChildren();
+      if (!packs.length) { target.textContent = "Aucun pack disponible."; return; }
+      for (const pack of packs) {
+        const row = document.createElement("div"); row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)";
+        const label = document.createElement("span"); label.textContent = pack.name + " — " + pack.description;
+        const button = document.createElement("button"); button.className = "fp-btn fp-btn-primary fp-btn-sm"; button.textContent = "Créer le rapport";
+        button.addEventListener("click", async () => { button.disabled = true; try { const created = await apiFetch("/api/reports", { method: "POST", body: JSON.stringify({ name: pack.name, templateKey: pack.templateKey, format: "PDF" }) }); if (!created || created.ok === false || created.error) throw new Error(created?.error || "Création impossible."); const refreshed = await apiFetch("/api/reports"); STATE.reports = Array.isArray(refreshed?.reports) ? refreshed.reports : STATE.reports; showToast("success", "Rapport créé."); render(STATE.currentSection); } catch (error) { showToast("error", String(error?.message || error)); button.disabled = false; } });
+        row.append(label, button); target.appendChild(row);
+      }
+    } catch (error) { target.textContent = "Impossible de charger les packs."; }
+  }
+};
+
+function renderAgencyPacksPanel() {
+  if (!STATE.me?.addons?.agencyPacks) return "";
+  return '<section class="fp-card" style="margin-top:18px"><div class="fp-card-header"><div><h2>Agency Reporting Packs</h2><p class="fp-text-muted">Modèles réutilisables pour les rapports clients</p></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AGENCY_PACKS_API.load()">Charger les packs</button></div><div id="fp-agency-packs-result" class="fp-text-muted">Aucun pack chargé.</div></section>';
+}
+
 function renderReports() {
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
@@ -16102,7 +16125,7 @@ function _doRender() {
     case 'missions':       html = renderMissions(); break;
     case 'audits':         html = renderAudits(); break;
     case 'monitors':       html = renderMonitors(); break;
-    case 'reports':        html = renderReports(); break;
+    case 'reports':        html = renderReports() + renderAgencyPacksPanel(); break;
     case 'local-seo':      html = renderLocalSEO(); break;
     case 'team':           html = renderTeam(); break;
     case 'billing':        html = renderBilling(); break;

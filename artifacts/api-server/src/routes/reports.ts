@@ -4,6 +4,8 @@ import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
+import { requireAddon } from "../middlewares/planGate.js";
+import { AGENCY_REPORT_PACKS } from "../services/agency-reporting-packs.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -16,6 +18,10 @@ const REPORT_TEMPLATES = {
   local:      { label: "Local SEO" },
   ai:         { label: "Rapport IA Lab" },
 } as const;
+
+router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), (_req, res) => {
+  res.json({ packs: AGENCY_REPORT_PACKS });
+});
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
