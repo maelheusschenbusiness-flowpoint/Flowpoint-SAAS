@@ -369,7 +369,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   crmIntegration:       { name: "Intégration CRM",           category: "API",          description: "Synchronisation CRM", priceEur: 29, oneTime: false, quantity: false },
   customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Domaine personnalisé pour le portail", priceEur: 9, oneTime: false, quantity: false },
   ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "SSO SAML et OIDC", priceEur: 49, oneTime: false, quantity: false },
-  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Onboarding guidé fondé sur les données réelles du workspace", priceEur: 19, oneTime: false, quantity: false },
+  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Roadmap et missions IA personnalisées à partir du profil renseigné", priceEur: 19, oneTime: false, quantity: false },
   prioritySupport:      { name: "Support Prioritaire",       category: "Support",      description: "Canal prioritaire", priceEur: 29, oneTime: false, quantity: false },
   auditsPack200:        { name: "Pack audits +200",          category: "SEO",          description: "+200 audits mensuels", priceEur: 12, oneTime: false, quantity: true },
   auditsPack1000:       { name: "Pack audits +1 000",        category: "SEO",          description: "+1 000 audits mensuels", priceEur: 39, oneTime: false, quantity: true },
