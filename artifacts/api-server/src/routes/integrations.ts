@@ -9,6 +9,7 @@ import {
 } from "../services/integrations-service.js";
 import { logger } from "../lib/logger.js";
 import { pool } from "@workspace/db";
+import { validatePublicHttpsWebhook } from "../services/webhook-url-safety.js";
 
 const router = Router();
 
@@ -131,9 +132,11 @@ router.get("/integrations/zapier", async (req, res) => {
 router.post("/integrations/zapier/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), async (req, res) => {
   const { webhookUrl, events = [], name = "Zapier Integration" } = req.body as { webhookUrl?: string; events?: string[]; name?: string };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
+  const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
+  if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
     const intg = await createIntegration(org(req), plan(req), {
-      name, type: "outgoing", platform: "zapier", endpointUrl: webhookUrl, events,
+      name, type: "outgoing", platform: "zapier", endpointUrl: safeTarget.url, events,
       metadata: { platform: "zapier", connected_at: new Date().toISOString() },
     });
     res.status(201).json({ ok: true, integration: intg });
@@ -160,9 +163,11 @@ router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zap
     webhookUrl?: string; events?: string[]; name?: string; scenarioName?: string;
   };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
+  const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
+  if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
     const intg = await createIntegration(org(req), plan(req), {
-      name, type: "outgoing", platform: "make", endpointUrl: webhookUrl, events,
+      name, type: "outgoing", platform: "make", endpointUrl: safeTarget.url, events,
       metadata: { platform: "make", scenario_name: scenarioName, connected_at: new Date().toISOString() },
     });
     res.status(201).json({ ok: true, integration: intg });
@@ -180,9 +185,15 @@ router.post("/integrations/connections", async (req, res) => {
     retryEnabled?: boolean; maxRetries?: number;
   };
   if (!name || !platform) { res.status(400).json({ error: "name et platform requis" }); return; }
+  let resolvedEndpoint = endpointUrl;
+  if (["zapier", "make"].includes(String(platform).toLowerCase())) {
+    const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+    if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
+    resolvedEndpoint = safeTarget.url;
+  }
   try {
     const intg = await createIntegration(org(req), plan(req), {
-      name, type: "outgoing", platform, endpointUrl, events, headers, retryEnabled, maxRetries,
+      name, type: "outgoing", platform, endpointUrl: resolvedEndpoint, events, headers, retryEnabled, maxRetries,
     });
     res.status(201).json({ ok: true, integration: intg });
   } catch (err) {
@@ -199,10 +210,23 @@ router.patch("/integrations/connections/:id", async (req, res) => {
   };
   const updates: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
+  let resolvedEndpoint = endpointUrl;
+  if (endpointUrl !== undefined) {
+    const existing = await db(req)(
+      `SELECT platform FROM automation_integrations WHERE id=$1 AND org_id=$2`,
+      [req.params.id, org(req)]
+    );
+    if (!existing.rows.length) { res.status(404).json({ error: "not found" }); return; }
+    if (["zapier", "make"].includes(String(existing.rows[0]?.platform ?? "").toLowerCase())) {
+      const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+      if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
+      resolvedEndpoint = safeTarget.url;
+    }
+  }
   if (active !== undefined) { params.push(active);                    updates.push(`active=$${params.length}`); }
   if (name)        { params.push(name);                    updates.push(`name=$${params.length}`); }
   if (events)      { params.push(JSON.stringify(events));  updates.push(`events=$${params.length}`); }
-  if (endpointUrl) { params.push(endpointUrl);             updates.push(`endpoint_url=$${params.length}`); }
+  if (resolvedEndpoint) { params.push(resolvedEndpoint);    updates.push(`endpoint_url=$${params.length}`); }
   if (headers)     { params.push(JSON.stringify(headers)); updates.push(`headers=$${params.length}`); }
   params.push(req.params.id, org(req));
   try {

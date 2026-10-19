@@ -14,6 +14,8 @@ export default defineConfig({
     include: [
       "src/services/mailer-nodemailer10.test.ts",
       "src/services/nodemailer10-transport.test.ts",
+      "src/services/webhook-url-safety.test.ts",
+      "src/services/executive-report-facts.test.ts",
       "src/services/review-intelligence-themes.test.ts",
       "src/services/local-maps-summary.test.ts",
       "src/services/gbp-posting-publish.test.ts",

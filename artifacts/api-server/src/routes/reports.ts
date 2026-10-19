@@ -5,6 +5,13 @@ import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { logger } from "../lib/logger.js";
+import { requireAddon } from "../middlewares/planGate.js";
+import { pool } from "@workspace/db";
+import { aiChat } from "../services/ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
+import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { buildExecutiveReportFacts } from "../services/executive-report-facts.js";
 
 const router = Router();
 
@@ -16,6 +23,16 @@ const REPORT_TEMPLATES = {
   local:      { label: "Local SEO" },
   ai:         { label: "Rapport IA Lab" },
 } as const;
+
+router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), (_req, res) => {
+  res.json({
+    packs: [
+      { id: "executive-monthly", name: "Executive mensuel", templateKey: "executive", description: "Synthèse exécutive mensuelle." },
+      { id: "seo-growth", name: "SEO & croissance", templateKey: "seo", description: "Suivi des performances SEO." },
+      { id: "local-presence", name: "Présence locale", templateKey: "local", description: "Rapport de visibilité locale." },
+    ],
+  });
+});
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
@@ -53,6 +70,91 @@ router.get("/reports", async (req, res) => {
     res.json(r.rows);
   } catch {
     res.json([]);
+  }
+});
+
+router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireAddon("aiExecutiveReport", "AI Executive Reporting"), async (req, res) => {
+  const orgId = org(req);
+  const userId = String((req as any).orgContext?.userId ?? (req as any).orgContext?.email ?? "anonymous");
+  const requestId = `exec_${randomBytes(12).toString("hex")}`;
+  try {
+    const reportQuota = await (await import("../services/billing-service.js")).checkQuota("reports", orgId);
+    if (!reportQuota.allowed) {
+      res.status(402).json({ error: "Limite de rapports atteinte", code: "QUOTA_EXCEEDED", used: reportQuota.used, limit: reportQuota.limit });
+      return;
+    }
+    const aiQuota = await checkAIQuota({ feature: "strategist", orgId });
+    if (!aiQuota.allowed) {
+      const prefs = await loadOrgAIPrefs(orgId);
+      res.status(402).json(buildQuotaGuidance(aiQuota, prefs));
+      return;
+    }
+    const [audits, monitors, priorReports] = await Promise.all([
+      db(req)(`SELECT url, score, status, created_at FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 8`, [orgId]),
+      db(req)(`SELECT name, url, status, uptime, response_time FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 12`, [orgId]),
+      db(req)(`SELECT name, template_key, date FROM reports WHERE org_id=$1 ORDER BY date DESC LIMIT 5`, [orgId]),
+    ]);
+    const facts = buildExecutiveReportFacts(audits.rows, monitors.rows);
+    if (!facts.measured.auditsIncluded && !facts.measured.monitorsIncluded && !priorReports.rows.length) {
+      res.status(422).json({ error: "Ajoutez des audits ou des monitors mesurés avant de générer une synthèse.", code: "NO_REAL_DATA" });
+      return;
+    }
+
+    const prefs = await loadOrgAIPrefs(orgId);
+    const aiCfg = resolveAIModel(prefs, "strategist");
+    const prompt = `Rédige une synthèse exécutive concise à partir exclusivement de ces données JSON. Les rapports antérieurs sont des références, pas des mesures. N'invente aucune donnée ni évolution; évite tout chiffre dans le texte narratif. Si les données sont insuffisantes, dis-le. Retourne uniquement le JSON {"headline":string,"summary":string,"priorities":string[]} avec au plus 3 priorités.\n\nDonnées mesurées: ${JSON.stringify(facts)}\nRapports antérieurs: ${JSON.stringify(priorReports.rows)}`;
+    const startedAt = Date.now();
+    const generated = await aiChat({
+      provider: aiCfg.provider, model: aiCfg.model,
+      systemPrompt: "Tu synthétises des faits pour des décideurs. N'ajoute aucune mesure, cause ou résultat absent des données. Réponds uniquement en JSON valide.",
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: Math.min(aiCfg.maxTokens, 900), json: true,
+    });
+    recordCompletedUsageDeferred({
+      feature: "strategist", orgId, userId, model: aiCfg.model as AIModel, provider: aiCfg.provider,
+      tokensIn: generated.usage?.promptTokens ?? 0, tokensOut: generated.usage?.completionTokens ?? 0,
+      latencyMs: Date.now() - startedAt, success: true, requestId,
+    });
+    let summary: { headline?: string; summary?: string; priorities?: unknown[] };
+    try { summary = JSON.parse(generated.text || "{}"); }
+    catch { throw new Error("AI_EXECUTIVE_INVALID_JSON"); }
+    if (typeof summary.headline !== "string" || typeof summary.summary !== "string" ||
+        !Array.isArray(summary.priorities) || !summary.priorities.every(item => typeof item === "string")) {
+      throw new Error("AI_EXECUTIVE_INVALID_SHAPE");
+    }
+    const reportId = `r_${randomBytes(12).toString("hex")}`;
+    const reportName = `Synthèse exécutive IA — ${new Date().toLocaleDateString("fr-BE")}`;
+    const note = `${summary.headline.trim()}\n\n${summary.summary.trim()}\n\nPriorités:\n${summary.priorities.slice(0, 3).map(item => `• ${String(item).trim()}`).join("\n")}\n\nMesures vérifiées:\n${JSON.stringify(facts.measured)}`.slice(0, 2000);
+    const client = await pool.connect();
+    let txActive = false;
+    try {
+      await client.query("BEGIN");
+      txActive = true;
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId}:reports`]);
+      const freshQuota = await (await import("../services/billing-service.js")).checkQuota("reports", orgId);
+      if (!freshQuota.allowed) {
+        await client.query("ROLLBACK"); txActive = false;
+        res.status(402).json({ error: "Limite de rapports atteinte", code: "QUOTA_EXCEEDED", used: freshQuota.used, limit: freshQuota.limit });
+        return;
+      }
+      await client.query(
+        `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+         VALUES ($1,$2,$3,'PDF','executive',$4,0,false,'',false,true,$5,'','',$6)`,
+        [reportId, orgId, reportName, new Date().toISOString(),
+          JSON.stringify([{ title: summary.headline.trim().slice(0, 200), date: new Date().toISOString(), notes: note }]),
+          (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
+      );
+      await client.query("COMMIT"); txActive = false;
+    } catch (err) {
+      if (txActive) await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally { client.release(); }
+    store.logActivity({ type: "report", label: `Synthèse exécutive générée : ${reportName}`, targetId: reportId, targetType: "report", orgId, userId }).catch(() => {});
+    import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "report_created")).catch(() => {});
+    res.status(201).json({ ok: true, reportId, name: reportName, templateKey: "executive", summary, measured: facts.measured });
+  } catch (err) {
+    logger.error({ err, orgId, requestId }, "[reports] AI executive summary failed");
+    res.status(502).json({ error: "La synthèse exécutive n’a pas pu être générée à partir des données actuelles.", code: "AI_EXECUTIVE_FAILED" });
   }
 });
 

@@ -1,6 +1,7 @@
 import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import crypto from "crypto";
+import { validatePublicHttpsWebhook } from "./webhook-url-safety.js";
 
 export const SUPPORTED_EVENTS = [
   "audit.completed", "audit.failed", "monitor.down", "monitor.up",
@@ -168,6 +169,10 @@ async function _deliverWebhook(
   if (!endpointUrl) return { ok: false, error: "URL de destination absente" };
 
   const platform = (intg["platform"] as string | undefined) || "custom";
+  if (["zapier", "make"].includes(platform.toLowerCase())) {
+    const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+    if (!safeTarget.ok) return { ok: false, error: safeTarget.error };
+  }
   const secretKey = intg["secret_key"] as string | undefined;
   const timeoutMs = Number(intg["timeout_ms"] ?? 10000);
 
@@ -194,6 +199,7 @@ async function _deliverWebhook(
     headers,
     body,
     signal: AbortSignal.timeout(timeoutMs),
+    redirect: "error",
   });
 
   logger.info({ platform, event, status: response.status, url: endpointUrl }, "[integrations] webhook delivered");
@@ -303,6 +309,10 @@ export async function testIntegration(
       if (!endpointUrl) throw new Error("No endpoint URL configured");
 
       const platform = (intg["platform"] as string | undefined) || "custom";
+      if (["zapier", "make"].includes(platform.toLowerCase())) {
+        const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+        if (!safeTarget.ok) throw new Error(safeTarget.error);
+      }
       const body = buildPlatformPayload(platform, "test.ping", {
         message: "FlowPoint webhook test — connexion réussie !",
         integration: intg["name"],
@@ -326,6 +336,7 @@ export async function testIntegration(
         headers,
         body,
         signal: AbortSignal.timeout(10000),
+        redirect: "error",
       });
       ok = response.ok;
       httpStatus = response.status;
