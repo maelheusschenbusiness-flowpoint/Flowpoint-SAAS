@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveCompetitorMovements, deriveMarketTrends } from "./market-intel-service.js";
+import { deriveCompetitorMovements, deriveMarketOpportunities, deriveMarketTrends } from "./market-intel-service.js";
 
 describe("market intelligence uses measured observations only", () => {
   it("derives GSC trend rows and leaves growth unknown without a comparison period", () => {
@@ -18,6 +18,23 @@ describe("market intelligence uses measured observations only", () => {
       trend_direction: "up",
     });
     expect(result[1]).toMatchObject({ keyword: "new query", growth_rate: null, trend_direction: "stable" });
+  });
+
+  it("turns only rising query-level clicks into market opportunities, not page-level CTR decay", () => {
+    const trends = deriveMarketTrends([
+      { keyword: "growing query", recent_clicks: 30, previous_clicks: 20, recent_impressions: 500 },
+      { keyword: "declining query", recent_clicks: 10, previous_clicks: 20, recent_impressions: 500 },
+      { keyword: "too little data", recent_clicks: 30, previous_clicks: 20, recent_impressions: 30 },
+    ]);
+    const opportunities = deriveMarketOpportunities(trends);
+
+    expect(opportunities).toHaveLength(1);
+    expect(opportunities[0]).toMatchObject({
+      type: "rising_query",
+      title: "Requête en hausse : growing query",
+      timeframe: "28 jours comparés",
+    });
+    expect(opportunities[0].description).toContain("30 clics contre 20");
   });
 
   it("detects gains/losses only from two distinct observed ranking snapshots", () => {

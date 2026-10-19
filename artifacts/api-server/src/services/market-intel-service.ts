@@ -9,8 +9,8 @@ export interface MarketDashboard {
   stats: { avgOpportunityScore: number; emergingTrends: number };
 }
 
-interface MarketTrend { id: string; keyword: string; category: string; search_volume: number; growth_rate: number | null; trend_direction: "up" | "down" | "stable"; opportunity_score: number; geo: string; }
-interface MarketOpportunity { id: string; type: string; title: string; description: string; score: number; estimated_impact: string; }
+interface MarketTrend { id: string; keyword: string; category: string; search_volume: number; growth_rate: number | null; trend_direction: "up" | "down" | "stable"; opportunity_score: number; geo: string; recent_clicks: number; previous_clicks: number; }
+interface MarketOpportunity { id: string; type: string; title: string; description: string; score: number; estimated_impact: string; timeframe: string; }
 interface IndustrySignal { id: string; type: string; title: string; description: string; severity: string; }
 interface CompetitorMovement { id: string; competitor: string; type: string; description: string; detected_at: string; }
 
@@ -42,8 +42,25 @@ export function deriveMarketTrends(rows: readonly GscTrendInput[]): MarketTrend[
       trend_direction: trendDirection,
       opportunity_score: opportunityScore,
       geo: "—",
+      recent_clicks: recent,
+      previous_clicks: previous,
     }];
   }).sort((a, b) => b.opportunity_score - a.opportunity_score).slice(0, 20);
+}
+
+export function deriveMarketOpportunities(trends: readonly MarketTrend[]): MarketOpportunity[] {
+  return trends
+    .filter((trend) => trend.growth_rate !== null && trend.growth_rate > 0 && trend.search_volume >= 100)
+    .map((trend) => ({
+      id: `rising-query:${trend.id}`,
+      type: "rising_query",
+      title: `Requête en hausse : ${trend.keyword}`,
+      description: `${trend.recent_clicks} clics contre ${trend.previous_clicks} sur les deux périodes de 28 jours (+${trend.growth_rate} %). ${trend.search_volume} impressions récentes.`,
+      score: trend.opportunity_score,
+      estimated_impact: "À mesurer",
+      timeframe: "28 jours comparés",
+    }))
+    .slice(0, 15);
 }
 
 type CompetitorSnapshot = {
@@ -87,7 +104,7 @@ export function deriveCompetitorMovements(rows: readonly CompetitorSnapshot[]): 
 export async function getMarketDashboard(orgId: string): Promise<MarketDashboard> {
   const client = await pool.connect();
   try {
-    const [trendRows, opportunityRows, signals, rankingRows] = await Promise.all([
+    const [trendRows, signals, rankingRows] = await Promise.all([
       client.query<GscTrendInput>(
         `SELECT keyword,
                 SUM(clicks) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28)::int AS recent_clicks,
@@ -99,17 +116,6 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
           GROUP BY keyword
          HAVING SUM(impressions) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28) > 0
           ORDER BY recent_impressions DESC LIMIT 100`,
-        [orgId]
-      ),
-      client.query(
-        `SELECT page, SUM(clicks)::int AS clicks, SUM(impressions)::int AS impressions,
-                ROUND(100.0 * SUM(clicks) / NULLIF(SUM(impressions), 0), 2) AS ctr
-           FROM gsc_page_data
-          WHERE org_id=$1 AND NULLIF(date, '')::date >= CURRENT_DATE - 28
-          GROUP BY page
-         HAVING SUM(impressions) >= 100
-            AND SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) < 0.02
-          ORDER BY SUM(impressions) DESC LIMIT 15`,
         [orgId]
       ),
       client.query(`SELECT * FROM industry_signals WHERE org_id=$1 AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY created_at DESC LIMIT 10`, [orgId]),
@@ -128,18 +134,7 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
       ),
     ]);
     const trends = deriveMarketTrends(trendRows.rows);
-    const opportunities: MarketOpportunity[] = opportunityRows.rows.map((row) => {
-      const impressions = Number(row.impressions) || 0;
-      const ctr = Number(row.ctr) || 0;
-      return {
-        id: `gsc-page:${String(row.page)}`,
-        type: "low_ctr",
-        title: `CTR à améliorer : ${String(row.page)}`,
-        description: `${impressions} impressions et ${Number(row.clicks) || 0} clics sur 28 jours (CTR observé : ${ctr} %).`,
-        score: Math.max(0, Math.min(100, Math.round(Math.log10(impressions + 1) * 20))),
-        estimated_impact: "À mesurer",
-      };
-    });
+    const opportunities = deriveMarketOpportunities(trends);
     const competitorMovements = deriveCompetitorMovements(rankingRows.rows);
     const avgOpportunityScore = trends.length > 0
       ? Math.round(trends.reduce((sum, trend) => sum + trend.opportunity_score, 0) / trends.length)
