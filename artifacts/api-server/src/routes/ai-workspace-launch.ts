@@ -6,6 +6,7 @@ import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ const DEFAULT_MISSIONS = [
   { title: "Mettre en place le tracking analytics", category: "analytics", priority: 12, impact: "Données fiables", effort: "1h" },
 ];
 
-router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
+router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
   try {
     const {
       siteUrl,
@@ -72,9 +73,9 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
     const client = await pool.connect();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    let roadmap = DEFAULT_ROADMAP;
-    let missionTemplates = DEFAULT_MISSIONS;
-    let strategy = `Stratégie IA personnalisée pour ${businessName ?? "votre business"} (${niche ?? "secteur"}, ${location ?? "France"}).`;
+    let roadmap: Array<{ priority: number; label: string; impact: string; tag: string }> = [];
+    let missionTemplates: Array<{ title: string; category: string; priority: number; impact: string; effort: string }> = [];
+    let strategy = "";
     let aiGenerationSucceeded = false;
     let actualProvider: string = "openai";
     let actualModel: string = "workspace_launch";
@@ -161,11 +162,17 @@ RÈGLES IMPORTANTES :
 
       logger.info({ orgId, provider: aiCfg.provider, model: aiCfg.model, businessName }, "[AWL] AI generation succeeded");
     } catch (aiErr) {
-      logger.warn({ aiErr, businessName }, "[AWL] AI generation failed — using default templates (not silent)");
-      strategy = `Stratégie par défaut pour ${businessName ?? "votre business"} — connectez OpenAI/Anthropic/Gemini pour une stratégie personnalisée.`;
+      logger.warn({ aiErr, businessName }, "[AWL] AI generation failed; refusing to persist generic fallback data");
+    }
+
+    if (!aiGenerationSucceeded || roadmap.length === 0 || missionTemplates.length === 0 || !strategy.trim()) {
+      client.release();
+      res.status(502).json({ ok: false, code: "AI_GENERATION_FAILED", error: "Aucune stratégie personnalisée n'a été générée; aucune donnée de démonstration n'a été enregistrée." });
+      return;
     }
 
     try {
+      await client.query("BEGIN");
       await client.query(
         `INSERT INTO onboarding_sessions (id, org_id, user_id, status, site_url, business_name, niche, location, started_at, completed_at, metadata)
          VALUES ($1,$2,$3,'completed',$4,$5,$6,$7,$8,$9,$10)
@@ -230,6 +237,32 @@ RÈGLES IMPORTANTES :
           [`asl_${Date.now()}_${l.step}`, orgId, sessionId, l.step, l.message]
         );
       }
+
+      // Turn the generated ideas into actionable, tenant-scoped missions.
+      const actionableMissionIds: string[] = [];
+      for (const m of missionTemplates) {
+        const missionId = `aiw_${requestId}_${m.priority}`;
+        const priorityRank = Number(m.priority) || 50;
+        const priority = priorityRank <= 2 ? "high" : priorityRank <= 5 ? "medium" : "low";
+        await client.query(
+          `INSERT INTO missions (id, org_id, title, description, category, type, priority, priority_score, status, impact, effort, source_type, source_data, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,'action',$6,$7,'todo',$8,$9,'ai_workspace_launch',$10::jsonb,NOW(),NOW())
+           ON CONFLICT (id) DO NOTHING`,
+          [missionId, orgId, m.title, strategy, m.category, priority, Math.max(0, 100 - priorityRank * 5), m.impact, m.effort, JSON.stringify({ profileId, sessionId, generatedBy: "AI Workspace Launch" })]
+        );
+        actionableMissionIds.push(missionId);
+      }
+      const verifiedMissions = await client.query(
+        `SELECT id FROM missions WHERE org_id = $1 AND id = ANY($2::text[])`,
+        [orgId, actionableMissionIds]
+      );
+      if (verifiedMissions.rows.length !== actionableMissionIds.length) {
+        throw new Error(`Workspace mission verification failed: expected ${actionableMissionIds.length}, got ${verifiedMissions.rows.length}`);
+      }
+      await client.query("COMMIT");
+    } catch (persistErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw persistErr;
     } finally {
       client.release();
     }
@@ -250,12 +283,13 @@ RÈGLES IMPORTANTES :
       sessionId,
       profileId,
       missionsGenerated: missionTemplates.length,
+      missionsVerified: missionTemplates.length,
       roadmapSteps: roadmap.length,
-      alertsConfigured: 8,
-      dashboardsCreated: 4,
-      reportsScheduled: 3,
+      alertsConfigured: 0,
+      dashboardsCreated: 0,
+      reportsScheduled: 0,
       aiGenerated: aiGenerationSucceeded,
-      message: `Workspace IA "${businessName ?? "FlowPoint"}" configuré avec succès${aiGenerationSucceeded ? " — stratégie personnalisée générée" : ""}`,
+      message: `Plan de lancement personnalisé généré et missions enregistrées pour ${businessName ?? "votre workspace"}.`,
       _ai: aiGenerationSucceeded ? { provider: actualProvider, model: actualModel } : null,
     });
   } catch (err) {
@@ -264,7 +298,7 @@ RÈGLES IMPORTANTES :
   }
 });
 
-router.get("/ai-workspace-launch/:sessionId", async (req: Request, res: Response) => {
+router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const orgId = req.orgId;
 

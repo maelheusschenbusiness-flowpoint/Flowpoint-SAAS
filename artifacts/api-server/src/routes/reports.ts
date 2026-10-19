@@ -5,6 +5,7 @@ import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { logger } from "../lib/logger.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -16,6 +17,68 @@ const REPORT_TEMPLATES = {
   local:      { label: "Local SEO" },
   ai:         { label: "Rapport IA Lab" },
 } as const;
+
+router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), (_req, res) => {
+  res.json({
+    packs: [
+      { id: "executive-monthly", name: "Executive mensuel", templateKey: "executive", description: "Synthèse exécutive mensuelle." },
+      { id: "seo-growth", name: "SEO & croissance", templateKey: "seo", description: "Suivi des performances SEO." },
+      { id: "local-presence", name: "Présence locale", templateKey: "local", description: "Rapport de visibilité locale." },
+    ],
+  });
+});
+
+// Build one client-ready bundle atomically from three specialized report types.
+router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agency Reporting Packs"), reportRateLimit, canWrite, async (req: Request, res: Response) => {
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim().slice(0, 160) : "";
+  if (clientName.length < 2) { res.status(400).json({ error: "clientName required" }); return; }
+  const { auditId, dateStart, dateEnd } = req.body as { auditId?: string; dateStart?: string; dateEnd?: string };
+  const templates = [
+    { key: "executive", label: "Executive mensuel" },
+    { key: "seo", label: "SEO & croissance" },
+    { key: "local", label: "Présence locale" },
+  ];
+  const orgId = org(req);
+  const { pool: reportPool } = await import("@workspace/db");
+  const client = await reportPool.connect();
+  let txActive = false;
+  try {
+    await client.query("BEGIN");
+    txActive = true;
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [orgId + ":reports"]);
+    const { checkQuota } = await import("../services/billing-service.js");
+    const quota = await checkQuota("reports", orgId);
+    if (!quota.allowed || Number(quota.limit) - Number(quota.used) < templates.length) {
+      await client.query("ROLLBACK");
+      txActive = false;
+      res.status(402).json({ error: "Le pack complet nécessite trois rapports disponibles.", code: "QUOTA_EXCEEDED", resource: "reports", used: quota.used, limit: quota.limit, required: templates.length });
+      return;
+    }
+    const ids: string[] = [];
+    for (const template of templates) {
+      const id = "r_" + randomBytes(12).toString("hex");
+      await client.query(
+        "INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by) VALUES ($1,$2,$3,'PDF',$4,$5,0,false,$6,false,true,'[]',$7,$8,$9)",
+        [id, orgId, clientName + " — " + template.label, template.key, new Date().toISOString(), typeof auditId === "string" ? auditId.slice(0, 200) : "", typeof dateStart === "string" ? dateStart.slice(0, 40) : "", typeof dateEnd === "string" ? dateEnd.slice(0, 40) : "", (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
+      );
+      ids.push(id);
+    }
+    const verified = await client.query("SELECT id, name, template_key FROM reports WHERE org_id=$1 AND id=ANY($2::text[])", [orgId, ids]);
+    if (verified.rows.length !== templates.length) throw new Error("Agency pack verification failed: expected 3 reports, found " + verified.rows.length);
+    await client.query("COMMIT");
+    txActive = false;
+    for (let i = 0; i < ids.length; i++) import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "report_created")).catch(() => {});
+    store.logActivity({ type: "report", label: "Pack agence créé pour " + clientName + " (3 rapports)", targetId: ids[0], targetType: "report", metadata: { pack: "agency_bundle", reportIds: ids, clientName }, orgId, userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
+    res.status(201).json({ clientName, expected: templates.length, verifiedCount: verified.rows.length, reports: verified.rows });
+  } catch (err) {
+    if (txActive) await client.query("ROLLBACK").catch(() => {});
+    logger.error({ err, orgId }, "[reports] agency pack generation failed");
+    res.status(500).json({ error: "Impossible de générer le pack agence complet." });
+  } finally {
+    client.release();
+  }
+});
+
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
