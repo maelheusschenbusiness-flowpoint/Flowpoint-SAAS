@@ -257,11 +257,11 @@ RÈGLES IMPORTANTES :
       profileId,
       missionsGenerated: missionTemplates.length,
       roadmapSteps: roadmap.length,
-      alertsConfigured: 8,
-      dashboardsCreated: 4,
-      reportsScheduled: 3,
+      alertsConfigured: 0,
+      dashboardsCreated: 0,
+      reportsScheduled: 0,
       aiGenerated: aiGenerationSucceeded,
-      message: `Workspace IA "${businessName ?? "FlowPoint"}" configuré avec succès${aiGenerationSucceeded ? " — stratégie personnalisée générée" : ""}`,
+      message: `Plan de lancement personnalisé généré et missions enregistrées pour ${businessName ?? "votre workspace"}.`,
       _ai: aiGenerationSucceeded ? { provider: actualProvider, model: actualModel } : null,
     });
   } catch (err) {
