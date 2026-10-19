@@ -1,5 +1,5 @@
 import { db, pool, automationWorkflowsTable, workflowRunsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { analyzePSI } from "./pagespeed-service.js";
@@ -30,28 +30,57 @@ export async function ensureDefaultWorkflows(orgId = "default"): Promise<void> {
   }
 }
 
-export async function executeWorkflow(workflowId: string, orgId?: string): Promise<{ success: boolean; runId: string; error?: string }> {
-  const runId = `wr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  try {
-    const [wf] = await db.select().from(automationWorkflowsTable).where(eq(automationWorkflowsTable.id, workflowId)).limit(1);
-    if (!wf || !wf.enabled) return { success: false, runId };
-    // Defence in depth: if the caller supplies an org, the workflow must belong to it
-    if (orgId && wf.orgId !== orgId) return { success: false, runId };
+export type WorkflowExecutionOptions = { runId?: string; preInserted?: boolean; scheduled?: boolean };
 
-    await db.insert(workflowRunsTable).values({
-      id: runId,
-      workflowId,
-      orgId: wf.orgId ?? orgId ?? "default",
-      status: "running",
-    });
+export async function executeWorkflow(
+  workflowId: string,
+  orgId?: string,
+  options: WorkflowExecutionOptions = {},
+): Promise<{ success: boolean; runId: string; error?: string }> {
+  const runId = options.runId ?? `wr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    const workflowScope = orgId
+      ? and(eq(automationWorkflowsTable.id, workflowId), eq(automationWorkflowsTable.orgId, orgId))
+      : eq(automationWorkflowsTable.id, workflowId);
+    const [wf] = await db.select().from(automationWorkflowsTable).where(workflowScope).limit(1);
+    if (!wf || !wf.enabled || (orgId && wf.orgId !== orgId) || (options.scheduled && wf.triggerType !== "schedule")) {
+      if (options.preInserted && orgId) {
+        await pool.query(
+          `UPDATE workflow_runs SET status='skipped', ended_at=NOW(), error='Workflow disabled or no longer scheduled'
+            WHERE id=$1 AND workflow_id=$2 AND org_id=$3 AND status='running'`,
+          [runId, workflowId, orgId],
+        );
+      }
+      return { success: false, runId, error: "Workflow disabled or no longer scheduled" };
+    }
+    // Defence in depth: if the caller supplies an org, the workflow must belong to it
+    let prior: { rows: Array<{ steps_completed: number; steps_failed: number; error: string | null }> } = {
+      rows: [{ steps_completed: 0, steps_failed: 0, error: null }],
+    };
+    if (options.preInserted) {
+      prior = await pool.query<{ steps_completed: number; steps_failed: number; error: string | null }>(
+        `SELECT steps_completed, steps_failed, error FROM workflow_runs
+          WHERE id=$1 AND workflow_id=$2 AND org_id=$3 AND status='running'`,
+        [runId, workflowId, orgId ?? ""],
+      );
+      if (!prior.rows[0]) return { success: false, runId, error: "Scheduled run claim was lost" };
+    } else {
+      await db.insert(workflowRunsTable).values({
+        id: runId,
+        workflowId,
+        orgId: wf.orgId ?? orgId ?? "default",
+        status: "running",
+      });
+    }
 
     const start = Date.now();
-    let stepsCompleted = 0;
     const actions = (wf.actions as Array<{ type: string; params?: Record<string, unknown> }>) ?? [];
-
-    let stepsFailed = 0;
-    const actionErrors: string[] = [];
-    for (const action of actions) {
+    let stepsCompleted = Number(prior.rows[0]?.steps_completed ?? 0);
+    let stepsFailed = Number(prior.rows[0]?.steps_failed ?? 0);
+    const actionErrors: string[] = prior.rows[0]?.error ? [String(prior.rows[0].error)] : [];
+    const nextAction = Math.min(actions.length, stepsCompleted + stepsFailed);
+    for (let actionIndex = nextAction; actionIndex < actions.length; actionIndex++) {
+      const action = actions[actionIndex];
       try {
         await executeAction(action.type, action.params ?? {}, wf.orgId);
         stepsCompleted++;
@@ -61,6 +90,12 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
         actionErrors.push(`${action?.type ?? "action"}: ${msg}`);
         logger.warn({ err: actionErr, workflowId, actionType: action?.type }, "[Automation] Action failed — continuing with next action");
       }
+      await pool.query(
+        `UPDATE workflow_runs
+            SET steps_completed=$1, steps_failed=$2, error=$3
+          WHERE id=$4 AND workflow_id=$5 AND org_id=$6 AND status='running'`,
+        [stepsCompleted, stepsFailed, actionErrors.length ? actionErrors.join(" | ").slice(0, 2000) : null, runId, workflowId, wf.orgId ?? orgId ?? "default"],
+      );
     }
 
     // Failure semantics: a run with any failed action is NOT a success.
@@ -74,12 +109,12 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
     const client = await (await import("@workspace/db")).pool.connect();
     try {
       await client.query(
-        `UPDATE workflow_runs SET status = $1, ended_at = NOW(), duration_ms = $2, steps_completed = $3, steps_failed = $4, error = $5 WHERE id = $6`,
-        [runStatus, durationMs, stepsCompleted, stepsFailed, runError, runId]
+        `UPDATE workflow_runs SET status = $1, ended_at = NOW(), duration_ms = $2, steps_completed = $3, steps_failed = $4, error = $5 WHERE id = $6 AND workflow_id=$7 AND org_id=$8`,
+        [runStatus, durationMs, stepsCompleted, stepsFailed, runError, runId, workflowId, wf.orgId ?? orgId ?? "default"]
       );
       await client.query(
-        `UPDATE automation_workflows SET runs_count = runs_count + 1, last_run_at = NOW() WHERE id = $1`,
-        [workflowId]
+        `UPDATE automation_workflows SET runs_count = runs_count + 1, last_run_at = NOW() WHERE id = $1 AND org_id=$2`,
+        [workflowId, wf.orgId ?? orgId ?? "default"]
       );
     } finally {
       client.release();
@@ -111,8 +146,8 @@ export async function executeWorkflow(workflowId: string, orgId?: string): Promi
     const client = await (await import("@workspace/db")).pool.connect();
     try {
       await client.query(
-        `UPDATE workflow_runs SET status = 'failed', ended_at = NOW(), error = $1 WHERE id = $2`,
-        [String(err), runId]
+        `UPDATE workflow_runs SET status = 'failed', ended_at = NOW(), error = $1 WHERE id = $2 AND workflow_id=$3 AND org_id=$4`,
+        [String(err), runId, workflowId, orgId ?? "default"]
       );
     } finally {
       client.release();
