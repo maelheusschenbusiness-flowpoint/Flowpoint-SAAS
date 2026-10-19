@@ -1,0 +1,46 @@
+type AuditRow = { url?: unknown; score?: unknown; status?: unknown; created_at?: unknown };
+type MonitorRow = { url?: unknown; name?: unknown; status?: unknown; uptime?: unknown; response_time?: unknown };
+
+function domainOf(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try { return new URL(value).hostname.toLowerCase(); } catch { return null; }
+}
+
+export function buildExecutiveReportFacts(audits: AuditRow[], monitors: MonitorRow[]) {
+  const validAudits = audits.slice(0, 8).flatMap(row => {
+    const score = Number(row.score);
+    if (!Number.isFinite(score) || score < 0 || score > 100) return [];
+    return [{
+      domain: domainOf(row.url),
+      score: Math.round(score),
+      status: typeof row.status === "string" ? row.status : null,
+      date: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ""),
+    }];
+  });
+  const validMonitors = monitors.slice(0, 12).map(row => {
+    const uptime = Number(row.uptime);
+    const responseTime = Number(row.response_time);
+    return {
+      name: typeof row.name === "string" ? row.name.slice(0, 100) : null,
+      domain: domainOf(row.url),
+      status: typeof row.status === "string" ? row.status : null,
+      uptime: Number.isFinite(uptime) && uptime >= 0 && uptime <= 100 ? Math.round(uptime * 100) / 100 : null,
+      responseTimeMs: Number.isFinite(responseTime) && responseTime >= 0 ? Math.round(responseTime) : null,
+    };
+  });
+  const scores = validAudits.map(row => row.score);
+  const uptime = validMonitors.map(row => row.uptime).filter((value): value is number => value !== null);
+  return {
+    audits: validAudits,
+    monitors: validMonitors,
+    measured: {
+      auditsIncluded: validAudits.length,
+      latestAuditScore: scores[0] ?? null,
+      previousAuditScore: scores[1] ?? null,
+      scoreChange: scores.length > 1 ? scores[0]! - scores[1]! : null,
+      monitorsIncluded: validMonitors.length,
+      monitorsDown: validMonitors.filter(row => row.status?.toLowerCase() === "down").length,
+      averageUptime: uptime.length ? Math.round(uptime.reduce((a, b) => a + b, 0) / uptime.length * 100) / 100 : null,
+    },
+  };
+}

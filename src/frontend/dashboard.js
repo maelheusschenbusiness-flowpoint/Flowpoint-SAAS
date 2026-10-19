@@ -8104,7 +8104,41 @@ function renderReports() {
       { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
     ] : []);
     const _execAvg = _execCurAvg;
+    const _hasAiExecutive = !!(STATE.me && STATE.me.addons && STATE.me.addons.aiExecutiveReport);
+    window.FP_EXECUTIVE_REPORT_API = window.FP_EXECUTIVE_REPORT_API || {
+      generating: false,
+      async generate() {
+        if (this.generating) return;
+        this.generating = true;
+        const button = document.getElementById('fp-ai-exec-generate');
+        if (button) button.disabled = true;
+        showToast('info', fpT('Génération de la synthèse exécutive…'));
+        try {
+          const result = await apiFetch('/api/reports/ai-executive-summary', { method: 'POST', body: JSON.stringify({}) });
+          if (!result || result.ok === false) throw new Error(result?.error || fpT('La synthèse n’a pas pu être générée.'));
+          showToast('success', fpT('Synthèse créée dans vos rapports.'));
+          const reports = await apiFetch('/api/reports').catch(() => null);
+          if (Array.isArray(reports)) STATE.reports = reports;
+          render(STATE.currentSection);
+        } catch (error) {
+          showToast('error', error instanceof Error ? error.message : fpT('La synthèse n’a pas pu être générée.'));
+        } finally {
+          this.generating = false;
+          const currentButton = document.getElementById('fp-ai-exec-generate');
+          if (currentButton) currentButton.disabled = false;
+        }
+      },
+    };
     return `
+      <div class="fp-card fp-mb-16" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('Synthèse exécutive IA')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${fpT('Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.')}</div>
+        </div>
+        ${_hasAiExecutive
+          ? `<button id="fp-ai-exec-generate" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_EXECUTIVE_REPORT_API.generate()">${fpT('Générer la synthèse')}</button>`
+          : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled title="${fpT('Add-on non disponible à l’achat')}">${fpT('Bientôt disponible')}</button>`}
+      </div>
       ${isPro
         ? aiBlock(_execAvg !== null
             ? fpT("Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.", { score: _execAvg })

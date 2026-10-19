@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import crypto from "crypto";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
@@ -9,6 +9,8 @@ import {
 } from "../services/integrations-service.js";
 import { logger } from "../lib/logger.js";
 import { pool } from "@workspace/db";
+import { validatePublicHttpsWebhook } from "../services/webhook-url-safety.js";
+import { presentIntegration } from "../services/integration-response.js";
 
 const router = Router();
 
@@ -19,6 +21,23 @@ type OrgReq = Request & {
 const org  = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const plan = (req: Request): string => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+const requireZapierAddonForNewConnection: RequestHandler = (req, res, next) => {
+  if (!["zapier", "make"].includes(String(req.body?.platform ?? "").toLowerCase())) return next();
+  return requireAddon("zapierIntegration", "Zapier/Make Integration")(req, res, next);
+};
+const requireZapierAddonForExistingConnection: RequestHandler = async (req, res, next) => {
+  try {
+    const existing = await db(req)(
+      `SELECT platform FROM automation_integrations WHERE id=$1 AND org_id=$2`,
+      [req.params.id, org(req)]
+    );
+    if (!existing.rows.length) { res.status(404).json({ error: "not found" }); return; }
+    if (["zapier", "make"].includes(String(existing.rows[0]?.platform ?? "").toLowerCase())) {
+      return requireAddon("zapierIntegration", "Zapier/Make Integration")(req, res, next);
+    }
+    next();
+  } catch { res.status(500).json({ error: "Connection lookup failed" }); }
+};
 
 // ── GET /api/integrations ──────────────────────────────────────────────────────
 router.get("/integrations", async (req, res) => {
@@ -30,7 +49,7 @@ router.get("/integrations", async (req, res) => {
     if (active !== undefined) { params.push(active === "true"); query += ` AND active=$${params.length}`; }
     query += ` ORDER BY created_at DESC`;
     const r = await db(req)(query, params);
-    res.json({ integrations: r.rows, count: r.rows.length });
+    res.json({ integrations: r.rows.map(row => presentIntegration(row)), count: r.rows.length });
   } catch {
     res.json({ integrations: [], count: 0 });
   }
@@ -123,7 +142,7 @@ router.get("/integrations/zapier", async (req, res) => {
       );
       stats = sr.rows[0] as typeof stats ?? stats;
     }
-    res.json({ integrations: r.rows, stats, zapierAppUrl: "https://zapier.com/apps/flowpoint", webhookUrl: `/api/integrations/webhook/incoming` });
+    res.json({ integrations: r.rows.map(row => presentIntegration(row)), stats, zapierAppUrl: "https://zapier.com/apps/flowpoint", webhookUrl: `/api/integrations/webhook/incoming` });
   } catch (err) { logger.error({ err }, "[integrations/zapier] failed"); res.json({ integrations: [], stats: { runs: 0, success: 0 } }); }
 });
 
@@ -131,12 +150,14 @@ router.get("/integrations/zapier", async (req, res) => {
 router.post("/integrations/zapier/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), async (req, res) => {
   const { webhookUrl, events = [], name = "Zapier Integration" } = req.body as { webhookUrl?: string; events?: string[]; name?: string };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
+  const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
+  if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
     const intg = await createIntegration(org(req), plan(req), {
-      name, type: "outgoing", platform: "zapier", endpointUrl: webhookUrl, events,
+      name, type: "outgoing", platform: "zapier", endpointUrl: safeTarget.url, events,
       metadata: { platform: "zapier", connected_at: new Date().toISOString() },
     });
-    res.status(201).json({ ok: true, integration: intg });
+    res.status(201).json({ ok: true, integration: presentIntegration(intg, true) });
   } catch (err) {
     const msg = safeErrMsg(err);
     res.status(msg.includes("Limite") ? 429 : 500).json({ error: msg });
@@ -150,7 +171,7 @@ router.get("/integrations/make", async (req, res) => {
       `SELECT * FROM automation_integrations WHERE org_id=$1 AND platform='make' ORDER BY created_at DESC`,
       [org(req)]
     );
-    res.json({ integrations: r.rows, makeAppUrl: "https://www.make.com/en/integrations/flowpoint", webhookUrl: `/api/integrations/webhook/incoming` });
+    res.json({ integrations: r.rows.map(row => presentIntegration(row)), makeAppUrl: "https://www.make.com/en/integrations/flowpoint", webhookUrl: `/api/integrations/webhook/incoming` });
   } catch { res.json({ integrations: [] }); }
 });
 
@@ -160,12 +181,14 @@ router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zap
     webhookUrl?: string; events?: string[]; name?: string; scenarioName?: string;
   };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
+  const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
+  if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
     const intg = await createIntegration(org(req), plan(req), {
-      name, type: "outgoing", platform: "make", endpointUrl: webhookUrl, events,
+      name, type: "outgoing", platform: "make", endpointUrl: safeTarget.url, events,
       metadata: { platform: "make", scenario_name: scenarioName, connected_at: new Date().toISOString() },
     });
-    res.status(201).json({ ok: true, integration: intg });
+    res.status(201).json({ ok: true, integration: presentIntegration(intg, true) });
   } catch (err) {
     const msg = safeErrMsg(err);
     res.status(msg.includes("Limite") ? 429 : 500).json({ error: msg });
@@ -173,18 +196,24 @@ router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zap
 });
 
 // ── POST /api/integrations/connections ─────────────────────────────────────────
-router.post("/integrations/connections", async (req, res) => {
+router.post("/integrations/connections", requireZapierAddonForNewConnection, async (req, res) => {
   const { name, platform, endpointUrl, events = [], headers = {}, retryEnabled = true, maxRetries = 3 } = req.body as {
     name?: string; platform?: string; endpointUrl?: string;
     events?: string[]; headers?: Record<string, string>;
     retryEnabled?: boolean; maxRetries?: number;
   };
-  if (!name || !platform) { res.status(400).json({ error: "name et platform requis" }); return; }
+  if (!name || !platform || !endpointUrl) { res.status(400).json({ error: "name, platform et endpointUrl requis" }); return; }
+  let resolvedEndpoint = endpointUrl;
+  if (endpointUrl) {
+    const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+    if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
+    resolvedEndpoint = safeTarget.url;
+  }
   try {
     const intg = await createIntegration(org(req), plan(req), {
-      name, type: "outgoing", platform, endpointUrl, events, headers, retryEnabled, maxRetries,
+      name, type: "outgoing", platform, endpointUrl: resolvedEndpoint, events, headers, retryEnabled, maxRetries,
     });
-    res.status(201).json({ ok: true, integration: intg });
+    res.status(201).json({ ok: true, integration: presentIntegration(intg, true) });
   } catch (err) {
     const msg = safeErrMsg(err);
     res.status(msg.includes("Limite") ? 429 : 500).json({ error: msg });
@@ -192,17 +221,28 @@ router.post("/integrations/connections", async (req, res) => {
 });
 
 // ── PATCH /api/integrations/connections/:id ────────────────────────────────────
-router.patch("/integrations/connections/:id", async (req, res) => {
+router.patch("/integrations/connections/:id", requireZapierAddonForExistingConnection, async (req, res) => {
   const { active, name, events, endpointUrl, headers } = req.body as {
     active?: boolean; name?: string; events?: string[];
     endpointUrl?: string; headers?: Record<string, string>;
   };
   const updates: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
+  let resolvedEndpoint = endpointUrl;
+  if (endpointUrl !== undefined) {
+    const existing = await db(req)(
+      `SELECT platform FROM automation_integrations WHERE id=$1 AND org_id=$2`,
+      [req.params.id, org(req)]
+    );
+    if (!existing.rows.length) { res.status(404).json({ error: "not found" }); return; }
+    const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+    if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
+    resolvedEndpoint = safeTarget.url;
+  }
   if (active !== undefined) { params.push(active);                    updates.push(`active=$${params.length}`); }
   if (name)        { params.push(name);                    updates.push(`name=$${params.length}`); }
   if (events)      { params.push(JSON.stringify(events));  updates.push(`events=$${params.length}`); }
-  if (endpointUrl) { params.push(endpointUrl);             updates.push(`endpoint_url=$${params.length}`); }
+  if (resolvedEndpoint) { params.push(resolvedEndpoint);    updates.push(`endpoint_url=$${params.length}`); }
   if (headers)     { params.push(JSON.stringify(headers)); updates.push(`headers=$${params.length}`); }
   params.push(req.params.id, org(req));
   try {
@@ -211,7 +251,7 @@ router.patch("/integrations/connections/:id", async (req, res) => {
       params
     );
     if (!r.rows.length) { res.status(404).json({ error: "not found" }); return; }
-    res.json(r.rows[0]);
+    res.json(presentIntegration(r.rows[0]));
   } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
@@ -227,9 +267,9 @@ router.delete("/integrations/connections/:id", async (req, res) => {
 });
 
 // ── POST /api/integrations/connections/:id/test ────────────────────────────────
-router.post("/integrations/connections/:id/test", async (req, res) => {
+router.post("/integrations/connections/:id/test", requireZapierAddonForExistingConnection, async (req, res) => {
   try {
-    const result = await testIntegration(req.params.id, org(req));
+    const result = await testIntegration(req.params.id as string, org(req));
     res.json(result);
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -289,20 +329,12 @@ router.post("/integrations/webhooks", requireAddon("advancedWebhooks", "Advanced
 router.post("/integrations/webhooks/test", requireAddon("advancedWebhooks", "Advanced Webhooks"), async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
-  // SSRF guard: https only, no private/link-local/loopback
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { res.status(400).json({ error: "URL invalide" }); return; }
-  if (parsed.protocol !== "https:") { res.status(400).json({ error: "HTTPS uniquement" }); return; }
-  const hostname = parsed.hostname.toLowerCase();
-  const blocked = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]"];
-  if (blocked.includes(hostname)) { res.status(400).json({ error: "Adresse interdite" }); return; }
-  if (hostname.endsWith(".local") || hostname.endsWith(".internal") || /^10\./.test(hostname) || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) {
-    res.status(400).json({ error: "Adresse privée interdite" }); return;
-  }
+  const safeTarget = await validatePublicHttpsWebhook(url);
+  if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
     const ac = new AbortController();
     const to = setTimeout(() => ac.abort(), 8_000);
-    const r = await fetch(url, {
+    const r = await fetch(safeTarget.url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": "FlowPoint-Webhook-Test/1.0" },
       body: JSON.stringify({ event: "ping", ts: Date.now(), source: "flowpoint-test" }),
@@ -310,9 +342,9 @@ router.post("/integrations/webhooks/test", requireAddon("advancedWebhooks", "Adv
       redirect: "error",
     });
     clearTimeout(to);
-    res.json({ ok: r.ok, url, statusCode: r.status, durationMs: 0, note: r.ok ? "Ping OK" : "Endpoint a renvoyé une erreur" });
+    res.json({ ok: r.ok, statusCode: r.status, durationMs: 0, note: r.ok ? "Ping OK" : "Endpoint a renvoyé une erreur" });
   } catch (err) {
-    res.json({ ok: false, url, error: safeErrMsg(err), note: "Test indisponible — enregistrez le webhook" });
+    res.json({ ok: false, error: safeErrMsg(err), note: "Test indisponible — enregistrez le webhook" });
   }
 });
 
