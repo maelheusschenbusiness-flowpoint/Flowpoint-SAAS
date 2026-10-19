@@ -69320,7 +69320,10 @@ window.FP_V1_ADDON_PANELS = {
       target.appendChild(heading);
       for (const region of summary.regions) {
         const row = document.createElement('p');
-        row.textContent = `${region.region}: ${region.monitorCount} monitor(s) — ${region.monitors.map(m => `${m.monitorName} (${m.status})`).join(', ')}`;
+        const health = region.health || {};
+        const alerts = (health.down || 0) + (health.degraded || 0);
+        const statusText = alerts > 0 ? alerts + ' monitors en alerte' : (health.unknown || 0) > 0 ? health.unknown + ' états inconnus' : 'aucun monitor en alerte';
+        row.textContent = region.region + ': ' + region.monitorCount + ' monitor(s) — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ');
         target.appendChild(row);
       }
       const note = document.createElement('small');
@@ -69337,6 +69340,28 @@ window.FP_V1_ADDON_PANELS = {
     try {
       const result = await apiFetch('/api/reports/agency-packs');
       target.replaceChildren();
+      const bundleControls = document.createElement('div');
+      bundleControls.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px';
+      const clientInput = document.createElement('input');
+      clientInput.type = 'text'; clientInput.maxLength = 160;
+      clientInput.placeholder = 'Nom du client pour le pack complet';
+      clientInput.setAttribute('aria-label', 'Nom du client');
+      const bundleButton = document.createElement('button');
+      bundleButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
+      bundleButton.textContent = 'Créer le pack complet (3 rapports)';
+      bundleButton.addEventListener('click', async () => {
+        const clientName = clientInput.value.trim();
+        if (clientName.length < 2) { showToast('error', 'Saisissez le nom du client'); return; }
+        bundleButton.disabled = true;
+        try {
+          const bundle = await apiFetch('/api/reports/agency-packs/generate', { method: 'POST', body: JSON.stringify({ clientName }) });
+          if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
+          showToast('success', 'Pack créé : 3 rapports vérifiés pour ' + clientName);
+          render();
+        } catch { showToast('error', 'Le pack complet n’a pas pu être créé'); bundleButton.disabled = false; }
+      });
+      bundleControls.append(clientInput, bundleButton);
+      target.appendChild(bundleControls);
       for (const pack of (result?.packs || [])) {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)';
