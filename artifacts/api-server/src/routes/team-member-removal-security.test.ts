@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type NextFunction, type Request, type Response } from "express";
 import request from "supertest";
 
@@ -13,6 +13,7 @@ const INVITATION_LEGACY_USER_ID = MEMBER_EMAIL;
 const OWNER_EMAIL = "owner@example.test";
 const OWNER_UUID = "22222222-2222-4222-8222-222222222222";
 const OWNER_LEGACY_MEMBER_ID = "member-owner-legacy";
+const ORIGINAL_API_SECRET_KEY = process.env["API_SECRET_KEY"];
 
 type Session = { userId: string; orgId: string; email: string; role: string; userUuid?: string };
 const sessions = new Map<string, Session>();
@@ -134,6 +135,9 @@ function protectedApp() {
 
 describe("DELETE /team/:id — member access revocation", () => {
   beforeEach(() => {
+    // requireAuth must reject a token removed from the session store. Without
+    // the service secret, development/test mode intentionally fails open.
+    process.env["API_SECRET_KEY"] = "member-removal-test-secret";
     sessions.clear();
     canonicalMemberships.clear();
     teamMemberStatus.clear();
@@ -142,6 +146,11 @@ describe("DELETE /team/:id — member access revocation", () => {
     teamMemberStatus.set(key(ORG_A, MEMBER_EMAIL), "active");
     sessions.set("org-a-token", { userId: ORG_A, orgId: ORG_A, email: MEMBER_EMAIL, role: "member", userUuid: MEMBER_UUID });
     sessions.set("org-b-token", { userId: ORG_B, orgId: ORG_B, email: MEMBER_EMAIL, role: "member", userUuid: MEMBER_UUID });
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_API_SECRET_KEY === undefined) delete process.env["API_SECRET_KEY"];
+    else process.env["API_SECRET_KEY"] = ORIGINAL_API_SECRET_KEY;
   });
 
   it("revokes the removed member's existing org-A token while preserving their org-B token", async () => {
