@@ -228,9 +228,9 @@ export const webhookRateLimit = createRateLimit('webhooksPerMinute');
 /** The caller's address, as the proxy reports it. One place, so every per-IP
  *  bucket keys on exactly the same string. */
 export function clientIp(req: Request): string {
-  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-    ?? req.ip
-    ?? "unknown";
+  // Express resolves this through the configured trust-proxy policy. Never
+  // take the leftmost X-Forwarded-For value directly: clients can supply it.
+  return req.ip ?? "unknown";
 }
 
 /**
@@ -371,10 +371,7 @@ export function behavioralRateLimit(
     // For the token exchange endpoint also enforce a per-IP limit to deter
     // token harvesting from a single source.
     if (endpoint === "token") {
-      const ip =
-        (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
-        req.ip ??
-        "unknown";
+      const ip = clientIp(req);
       const ipKey = `behavioral:ip:token:${ip}`;
       const { allowed: ipOk, resetInMs: ipReset } = checkRate(
         ipKey,

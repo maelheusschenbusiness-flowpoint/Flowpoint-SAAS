@@ -446,7 +446,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       email,
       role:      inv.role,
       userUuid:  acceptedUserUuid,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 
@@ -1319,7 +1319,7 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
       email:     callerEmail,
       role,
       userUuid:  canonicalUserId,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 

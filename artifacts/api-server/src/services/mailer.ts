@@ -49,7 +49,7 @@ const APP_LINKS = {
 
 // ── SMTP transport (nodemailer) — used when RESEND_API_KEY is absent ──────────
 
-function getSmtpTransport(): nodemailer.Transporter | null {
+function getSmtpTransport(): ReturnType<typeof nodemailer.createTransport> | null {
   const host = process.env["SMTP_HOST"];
   const pass = process.env["SMTP_PASS"];
   if (!host || !pass) return null;

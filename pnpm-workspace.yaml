@@ -2,5 +2,9 @@ packages:
   - "artifacts/*"
   - "lib/*"
 overrides:
-  brace-expansion@<2.0.0: 1.1.18
-  brace-expansion@>=2.0.0 <3.0.0: 2.1.4
+  brace-expansion@<2.0.0: 1.1.21
+  brace-expansion@>=2.0.0 <3.0.0: 2.1.7
+  proxy-addr: 2.0.8
+  source-map-js: 1.2.2
+  fast-copy: 4.1.0
+  esbuild: 0.28.1
