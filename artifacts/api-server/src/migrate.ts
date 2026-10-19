@@ -117,8 +117,41 @@ async function migrate() {
   try { await initAiMigration(); console.log("  ✓ init-ai-migration done"); }
   catch (err: any) { console.error(`  ✗ initAiMigration: ${err.message}`); process.exit(1); }
 
-  // ── 9. Canonical global system seed catalog ─────────────────────────────────
-  section("[11/11] Canonical global system seeds");
+  // ── 11. Missing-tables migration (includes the canonical connectors schema) ─
+  section("[11/12] Missing-tables migration");
+  try {
+    const connectorState = await pool.query<{
+      table_exists: boolean;
+      has_provider: boolean;
+    }>(`
+      SELECT
+        to_regclass('public.connectors') IS NOT NULL AS table_exists,
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'connectors'
+            AND column_name = 'provider'
+        ) AS has_provider
+    `);
+    const { table_exists, has_provider } = connectorState.rows[0]!;
+    if (table_exists && !has_provider) {
+      throw new Error(
+        "connectors exists with a legacy schema; refusing migration 005 because it would drop that table",
+      );
+    }
+    const sql = await readFile(
+      new URL("../migrations/005_missing_tables.sql", import.meta.url),
+      "utf8",
+    );
+    await pool.query(sql);
+    console.log("  ✓ migration 005 applied");
+  } catch (err: any) {
+    console.error(`  ✗ missing-tables migration failed: ${err.message}`);
+    process.exit(1);
+  }
+
+  // ── 12. Canonical global system seed catalog ─────────────────────────────────
+  section("[12/12] Canonical global system seeds");
   try {
     const seeded = await runCanonicalSystemSeeds();
     console.log(`  ✓ org_settings default: ${seeded.orgSettings}`);
