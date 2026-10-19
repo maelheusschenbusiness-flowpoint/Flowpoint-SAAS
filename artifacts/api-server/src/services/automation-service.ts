@@ -5,6 +5,7 @@ import { store } from "./store.js";
 import { analyzePSI } from "./pagespeed-service.js";
 import { aiChat } from "./ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
+import { checkAIQuota, recordCompletedUsage, type AIModel } from "./ai-engine.js";
 
 const SEED_WORKFLOWS = [
   { id: "wf_1", name: "Rapport client hebdo",       icon: "📊", description: "Génère et envoie un résumé client chaque semaine",         triggerType: "schedule", triggerConfig: { cron: "0 9 * * 1" },           actions: [{ type: "generate_report", params: { format: "pdf" } }, { type: "send_email", params: { template: "client_weekly" } }],            enabled: true, runsCount: 0, category: "Rapports" },
@@ -31,6 +32,35 @@ export async function ensureDefaultWorkflows(orgId = "default"): Promise<void> {
 }
 
 export type WorkflowExecutionOptions = { runId?: string; preInserted?: boolean; scheduled?: boolean };
+
+async function runWorkflowAI(
+  feature: "strategist" | "report_gen" | "market_intel",
+  orgId: string,
+  requestId: string,
+  options: Parameters<typeof aiChat>[0],
+): Promise<void> {
+  if (!orgId || orgId === "default") throw new Error("AI workflow requires a canonical organization");
+  const alreadyRecorded = await pool.query(
+    `SELECT 1 FROM ai_usage_logs WHERE org_id=$1::uuid AND idempotency_key=$2 LIMIT 1`,
+    [orgId, requestId],
+  );
+  if (alreadyRecorded.rowCount) return;
+  const quota = await checkAIQuota({ feature, orgId });
+  if (!quota.allowed) throw new Error(`AI quota exhausted for workflow feature ${feature}`);
+  const result = await aiChat(options);
+  await recordCompletedUsage({
+    feature,
+    orgId,
+    userId: "system",
+    model: result._ai.model as AIModel,
+    provider: result._ai.provider,
+    tokensIn: result.usage.promptTokens,
+    tokensOut: result.usage.completionTokens,
+    latencyMs: result.latencyMs,
+    success: true,
+    requestId,
+  });
+}
 
 export async function executeWorkflow(
   workflowId: string,
@@ -82,7 +112,7 @@ export async function executeWorkflow(
     for (let actionIndex = nextAction; actionIndex < actions.length; actionIndex++) {
       const action = actions[actionIndex];
       try {
-        await executeAction(action.type, action.params ?? {}, wf.orgId);
+        await executeAction(action.type, action.params ?? {}, wf.orgId, `workflow:${runId}:${actionIndex}`);
         stepsCompleted++;
       } catch (actionErr) {
         stepsFailed++;
@@ -156,7 +186,7 @@ export async function executeWorkflow(
   }
 }
 
-async function executeAction(type: string, params: Record<string, unknown>, orgId?: string): Promise<void> {
+async function executeAction(type: string, params: Record<string, unknown>, orgId: string | undefined, requestId: string): Promise<void> {
   logger.debug({ type, params }, "[Automation] Executing action");
 
   // Lazy resolver — fetches org-scoped recipient from DB, never reads store.me singleton
@@ -254,7 +284,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         const _autoUserEn = `Audit ${auditData.url} — SEO score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.`;
         const _autoUser = _autoLang === "en" ? _autoUserEn : _autoLang === "de" ? `Audit ${auditData.url} — SEO-Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} Issues.` : _autoLang === "es" ? `Auditoría ${auditData.url} — Puntuación SEO ${auditData.score}/100, Rendimiento ${auditData.speed}/100, ${auditData.issues} problemas.` : _autoUserFr;
         logger.info({ userLanguage: _autoLang, aiPromptLanguage: _autoLang, recommendationLanguage: _autoLang }, "[Automation/generate_recommendations] language chain");
-        await aiChat({
+        await runWorkflowAI("strategist", o, requestId, {
           provider: aiCfg.provider, model: aiCfg.model,
           systemPrompt: _autoSystem,
           messages: [{ role: "user", content: _autoUser }],
@@ -281,7 +311,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         const prefs = await loadOrgAIPrefs(o);
         const aiCfg = resolveAIModel(prefs, "executive_report");
         const prompt = `Rapport SEO pour ${auditData.url} — Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues. Résume en 3 paragraphes avec actions prioritaires.`;
-        await aiChat({
+        await runWorkflowAI("report_gen", o, requestId, {
           provider: aiCfg.provider, model: aiCfg.model,
           systemPrompt: "Tu es un consultant SEO senior. Génère un rapport exécutif concis en français.",
           messages: [{ role: "user", content: prompt }],
@@ -317,7 +347,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         const prefs = await loadOrgAIPrefs(o);
         const aiCfg = resolveAIModel(prefs, "market_intel");
         const prompt = `Analyse concurrentielle pour ${auditData.url} (score ${auditData.score}/100). Identifiez 3 gaps concurrentiels probables et 3 opportunités de différenciation.`;
-        await aiChat({
+        await runWorkflowAI("market_intel", o, requestId, {
           provider: aiCfg.provider, model: aiCfg.model,
           systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables basés sur les données fournies.",
           messages: [{ role: "user", content: prompt }],
