@@ -150,8 +150,18 @@ async function migrate() {
     process.exit(1);
   }
 
-  // ── 12. Canonical global system seed catalog ─────────────────────────────────
-  section("[12/12] Canonical global system seeds");
+  // Tables created by migration 005 must exist before the RLS pass can see them.
+  section("[12/13] RLS policies for initialized tables");
+  try {
+    await runRlsMigrationIfNeeded();
+    console.log("  ✓ RLS checked after table creation");
+  } catch (err: any) {
+    console.error(`  ✗ post-initialization RLS migration failed: ${err.message}`);
+    process.exit(1);
+  }
+
+  // ── 13. Canonical global system seed catalog ─────────────────────────────────
+  section("[13/13] Canonical global system seeds");
   try {
     const seeded = await runCanonicalSystemSeeds();
     console.log(`  ✓ org_settings default: ${seeded.orgSettings}`);
