@@ -172,6 +172,7 @@ RÈGLES IMPORTANTES :
     }
 
     try {
+      await client.query("BEGIN");
       await client.query(
         `INSERT INTO onboarding_sessions (id, org_id, user_id, status, site_url, business_name, niche, location, started_at, completed_at, metadata)
          VALUES ($1,$2,$3,'completed',$4,$5,$6,$7,$8,$9,$10)
@@ -236,6 +237,32 @@ RÈGLES IMPORTANTES :
           [`asl_${Date.now()}_${l.step}`, orgId, sessionId, l.step, l.message]
         );
       }
+
+      // Turn the generated ideas into actionable, tenant-scoped missions.
+      const actionableMissionIds: string[] = [];
+      for (const m of missionTemplates) {
+        const missionId = `aiw_${requestId}_${m.priority}`;
+        const priorityRank = Number(m.priority) || 50;
+        const priority = priorityRank <= 2 ? "high" : priorityRank <= 5 ? "medium" : "low";
+        await client.query(
+          `INSERT INTO missions (id, org_id, title, description, category, type, priority, priority_score, status, impact, effort, source_type, source_data, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,'action',$6,$7,'todo',$8,$9,'ai_workspace_launch',$10::jsonb,NOW(),NOW())
+           ON CONFLICT (id) DO NOTHING`,
+          [missionId, orgId, m.title, strategy, m.category, priority, Math.max(0, 100 - priorityRank * 5), m.impact, m.effort, JSON.stringify({ profileId, sessionId, generatedBy: "AI Workspace Launch" })]
+        );
+        actionableMissionIds.push(missionId);
+      }
+      const verifiedMissions = await client.query(
+        `SELECT id FROM missions WHERE org_id = $1 AND id = ANY($2::text[])`,
+        [orgId, actionableMissionIds]
+      );
+      if (verifiedMissions.rows.length !== actionableMissionIds.length) {
+        throw new Error(`Workspace mission verification failed: expected ${actionableMissionIds.length}, got ${verifiedMissions.rows.length}`);
+      }
+      await client.query("COMMIT");
+    } catch (persistErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw persistErr;
     } finally {
       client.release();
     }
@@ -256,6 +283,7 @@ RÈGLES IMPORTANTES :
       sessionId,
       profileId,
       missionsGenerated: missionTemplates.length,
+      missionsVerified: missionTemplates.length,
       roadmapSteps: roadmap.length,
       alertsConfigured: 0,
       dashboardsCreated: 0,
