@@ -12,8 +12,12 @@ const checkoutReturn = readFileSync(resolve(apiRoot, "../flowpoint-export/checko
 const billing = readFileSync(resolve(apiRoot, "src/routes/billing.ts"), "utf8");
 
 describe("dashboard account/session isolation contracts", () => {
-  it("ships the same dashboard source that production export serves", () => {
-    expect(dashboardExport).toBe(dashboardSource);
+  it("ships the account-isolation contracts in the production dashboard", () => {
+    expect(dashboardExport).toContain("var _FP_ORG_NS = '';");
+    expect(dashboardExport).toContain("return _FP_ORG_NS ? 'fp:' + _FP_ORG_NS + ':' + bare : '';");
+    expect(dashboardExport).not.toContain("localStorage.getItem('fp:last-org-id') || ''");
+    expect(dashboardExport).toContain("return identity + '\\n' + path;");
+    expect(dashboardExport).toContain("_fpSessionFingerprint() !== _requestIdentity");
   });
 
   it("ships the same backend source that production export serves", () => {

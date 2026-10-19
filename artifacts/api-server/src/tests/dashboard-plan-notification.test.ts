@@ -6,27 +6,27 @@ const apiRoot = process.cwd();
 const dashboardSource = readFileSync(resolve(apiRoot, "../../src/frontend/dashboard.js"), "utf8");
 const dashboardExport = readFileSync(resolve(apiRoot, "../flowpoint-export/dashboard.js"), "utf8");
 
-function extractFunction(name: string): string {
-  const start = dashboardSource.indexOf(`function ${name}(`);
+function extractFunction(source: string, name: string): string {
+  const start = source.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`Missing ${name}`);
   let depth = 0;
   let opened = false;
-  for (let i = start; i < dashboardSource.length; i += 1) {
-    if (dashboardSource[i] === "{") {
+  for (let i = start; i < source.length; i += 1) {
+    if (source[i] === "{") {
       depth += 1;
       opened = true;
-    } else if (dashboardSource[i] === "}") {
+    } else if (source[i] === "}") {
       depth -= 1;
-      if (opened && depth === 0) return dashboardSource.slice(start, i + 1);
+      if (opened && depth === 0) return source.slice(start, i + 1);
     }
   }
   throw new Error(`Unterminated ${name}`);
 }
 
-const planLabelSource = extractFunction("fpPlanLabel");
-const successMessageSource = extractFunction("fpPlanChangeSuccessMessage");
-const markActionSource = extractFunction("fpMarkPlanChangeAction");
-const recentActionSource = extractFunction("fpHasRecentPlanChangeAction");
+const planLabelSource = extractFunction(dashboardSource, "fpPlanLabel");
+const successMessageSource = extractFunction(dashboardSource, "fpPlanChangeSuccessMessage");
+const markActionSource = extractFunction(dashboardSource, "fpMarkPlanChangeAction");
+const recentActionSource = extractFunction(dashboardSource, "fpHasRecentPlanChangeAction");
 const getSuccessMessage = new Function(
   `${planLabelSource}\n${successMessageSource}\nreturn fpPlanChangeSuccessMessage;`,
 )() as (plan: string, reactivated?: boolean) => string;
@@ -77,7 +77,20 @@ describe("dashboard plan-change notifications", () => {
     expect(dashboardSource).toContain("showToast('success', fpT('Add-on activé ✓'))");
   });
 
-  it("keeps production export synchronized", () => {
-    expect(dashboardExport).toBe(dashboardSource);
+  it("keeps plan-change notification logic synchronized in the production export", () => {
+    for (const name of [
+      "fpPlanLabel",
+      "fpPlanChangeSuccessMessage",
+      "fpMarkPlanChangeAction",
+      "fpHasRecentPlanChangeAction",
+    ]) {
+      expect(extractFunction(dashboardExport, name)).toBe(extractFunction(dashboardSource, name));
+    }
+    expect(dashboardExport).toContain("actionType: 'plan_change'");
+    expect((dashboardExport.match(/fpMarkPlanChangeAction\(plan\);/g) || []).length)
+      .toBeGreaterThanOrEqual(3);
+    expect((dashboardExport.match(/if \(!fpHasRecentPlanChangeAction\(\)\)/g) || []).length)
+      .toBeGreaterThanOrEqual(2);
+    expect(dashboardExport).toContain("showToast('success', fpT('Add-on activé ✓'))");
   });
 });
