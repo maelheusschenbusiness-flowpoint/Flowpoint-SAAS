@@ -66,7 +66,7 @@ async function hasWorkflowEntitlement(orgId: string): Promise<boolean> {
   return row.addon_active === true || !!PLAN_INCLUDED_ADDONS[row.plan ?? ""]?.has("aiWorkflows");
 }
 
-async function claimRun(
+export async function claimScheduledWorkflowRun(
   workflowId: string,
   orgId: string,
   runId: string,
@@ -106,7 +106,7 @@ export async function runScheduledWorkflow(
   const runId = scheduledWorkflowRunId(orgId, workflowId, slot);
   try {
     if (!(await hasWorkflowEntitlement(orgId))) return "ineligible";
-    if (!(await claimRun(workflowId, orgId, runId, slot))) return "duplicate";
+    if (!(await claimScheduledWorkflowRun(workflowId, orgId, runId, slot))) return "duplicate";
     // Keep the existing lease fresh during long-running actions. If this process
     // dies, the lease expires and another instance can reclaim the same run.
     const heartbeat = setInterval(() => {

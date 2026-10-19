@@ -244,6 +244,7 @@ export default defineConfig({
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
       "src/services/workflow-schedule-cron.test.ts",
+      "src/services/workflow-schedule-cron-db.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.
