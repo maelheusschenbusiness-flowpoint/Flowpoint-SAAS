@@ -67,14 +67,16 @@ router.post("/gbp-posts", async (req, res) => {
     ctaType?: string; ctaUrl?: string; mediaUrls?: string[]; scheduledAt?: string;
     seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
   };
-  // locationId is optional for drafts — use 'default' as fallback so brouillon saves always work
-  const effectiveLocationId = locationId || 'default';
   if (!content) { res.status(400).json({ error: "content requis" }); return; }
+  if (content.length > 1500) { res.status(400).json({ error: "content trop long (1500 caractères maximum)" }); return; }
+  if (scheduledAt && (!locationId || !Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) {
+    res.status(400).json({ error: "Un établissement connecté et une date future valide sont requis pour planifier." }); return;
+  }
   try {
     type PostType = import("../services/gbp-posting-service.js").PostType;
     type CtaType  = import("../services/gbp-posting-service.js").CtaType;
     const post = await createPost(org(req), {
-      locationId: effectiveLocationId, locationName, postType: postType as PostType, title, content,
+      locationId, locationName, postType: postType as PostType, title, content,
       ctaType: ctaType as CtaType, ctaUrl, mediaUrls, scheduledAt,
       seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
     });

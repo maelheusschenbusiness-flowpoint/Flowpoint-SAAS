@@ -6,7 +6,7 @@ import {
   enregistrerEtape, ETAPES_PUBLIQUES, lireAttributionFunnel, metadataAttributionFunnel,
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { publicCheckoutRateLimit, funnelEventRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
@@ -461,6 +461,10 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
   for (const [key, val] of Object.entries(obj)) {
     if (!KNOWN_ADDON_KEYS_PUB.has(key)) {
       res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      return null;
+    }
+    if (VALIDATION_REQUIRED_ADDONS.has(key) && (val === true || (typeof val === "number" && val > 0))) {
+      res.status(503).json({ error: "Cet add-on attend encore une validation avant sa mise en vente.", code: "ADDON_VALIDATION_REQUIRED", addonKey: key });
       return null;
     }
     if (typeof val === "boolean") {

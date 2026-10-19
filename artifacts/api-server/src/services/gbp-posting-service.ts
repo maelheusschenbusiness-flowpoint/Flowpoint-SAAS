@@ -1,4 +1,6 @@
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+import { publishGBPPost } from "./google-service.js";
 
 export type PostType = "standard" | "event" | "offer" | "product";
 export type CtaType = "CALL" | "LEARN_MORE" | "ORDER" | "BOOK" | "SIGN_UP" | "GET_OFFER" | "NONE";
@@ -19,7 +21,7 @@ export interface GBPPost {
   event_end: string | null;
   offer_code: string | null;
   offer_terms: string | null;
-  status: "draft" | "scheduled" | "published" | "failed";
+  status: "draft" | "scheduled" | "publishing" | "published" | "failed";
   scheduled_at: string | null;
   published_at: string | null;
   google_post_id: string | null;
@@ -119,22 +121,63 @@ export async function generateAiPost(orgId: string, data?: { locationId?: string
   return { type: postType, content: parsed.content, callToAction: parsed.callToAction || ctaByType[postType] || "En savoir plus" };
 }
 
-export async function publishPost(_orgId: string, postId: string): Promise<{ ok: boolean; publishedAt: string }> {
-  const client = await pool.connect();
+export async function publishPost(orgId: string, postId: string): Promise<{ ok: boolean; publishedAt: string; googlePostId?: string }> {
+  const claimed = await pool.query(
+    `UPDATE gbp_posts
+        SET status='publishing', updated_at=NOW()
+      WHERE id=$1 AND org_id=$2 AND status IN ('draft','scheduled','failed')
+      RETURNING *`,
+    [postId, orgId],
+  );
+  const post = claimed.rows[0] as GBPPost | undefined;
+  if (!post) throw new Error("GBP_POST_NOT_FOUND_OR_ALREADY_PUBLISHED");
   try {
-    const now = new Date().toISOString();
-    await client.query(
-      `UPDATE gbp_posts SET status='published', published_at=$1 WHERE id=$2`,
-      [now, postId]
+    if (!post.location_id) throw new Error("GBP_LOCATION_REQUIRED");
+    const location = await pool.query(
+      `SELECT raw_data->>'name' AS resource_name
+         FROM google_locations
+        WHERE org_id=$1 AND (id=$2 OR raw_data->>'name'=$2)
+        LIMIT 1`,
+      [orgId, post.location_id],
     );
-    return { ok: true, publishedAt: now };
-  } finally { client.release(); }
+    const resourceName = String(location.rows[0]?.resource_name ?? "");
+    const resourceParts = resourceName.split("/");
+    if (resourceParts.length !== 4 || resourceParts[0] !== "accounts" || !resourceParts[1] || resourceParts[2] !== "locations" || !resourceParts[3]) {
+      throw new Error("GBP_LOCATION_NOT_VERIFIED_FOR_ORG");
+    }
+    if (String(post.post_type).toLowerCase() !== "standard") {
+      throw new Error("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
+    }
+    const callToAction = post.cta_type && post.cta_url
+      ? { actionType: post.cta_type, url: post.cta_url }
+      : undefined;
+    const result = await publishGBPPost(orgId, resourceName, {
+      summary: post.content,
+      ...(callToAction ? { callToAction } : {}),
+    });
+    if (!result.ok) throw new Error(result.error || "GBP_PUBLISH_FAILED");
+    const publishedAt = new Date().toISOString();
+    await pool.query(
+      `UPDATE gbp_posts
+          SET status='published', published_at=$1, google_post_id=$2, updated_at=NOW()
+        WHERE id=$3 AND org_id=$4 AND status='publishing'`,
+      [publishedAt, result.postName ?? null, postId, orgId],
+    );
+    return { ok: true, publishedAt, ...(result.postName ? { googlePostId: result.postName } : {}) };
+  } catch (error) {
+    await pool.query(
+      `UPDATE gbp_posts SET status='failed', updated_at=NOW()
+        WHERE id=$1 AND org_id=$2 AND status='publishing'`,
+      [postId, orgId],
+    ).catch(() => {});
+    throw error;
+  }
 }
 
-export async function deletePost(_orgId: string, postId: string): Promise<void> {
+export async function deletePost(orgId: string, postId: string): Promise<void> {
   const client = await pool.connect();
   try {
-    await client.query(`DELETE FROM gbp_posts WHERE id=$1`, [postId]);
+    await client.query(`DELETE FROM gbp_posts WHERE id=$1 AND org_id=$2`, [postId, orgId]);
   } finally { client.release(); }
 }
 
@@ -147,4 +190,37 @@ export async function getScheduledPosts(orgId: string): Promise<GBPPost[]> {
     );
     return res.rows;
   } catch { return []; } finally { client.release(); }
+}
+
+/** Publish due scheduled posts through the already-authorized GBP token. */
+export async function publishDueScheduledPosts(): Promise<{ attempted: number; published: number }> {
+  const due = await pool.query(
+    `SELECT id, org_id FROM gbp_posts
+      WHERE status='scheduled' AND scheduled_at <= NOW()
+      ORDER BY scheduled_at ASC LIMIT 20`,
+  );
+  let published = 0;
+  for (const row of due.rows as Array<{ id: string; org_id: string }>) {
+    try {
+      await publishPost(row.org_id, row.id);
+      published++;
+    } catch {
+      logger.warn({ orgId: row.org_id, postId: row.id }, "[gbp-posting] scheduled publish failed");
+    }
+  }
+  return { attempted: due.rows.length, published };
+}
+
+export function startGBPPostScheduler(): void {
+  let active = false;
+  const tick = async () => {
+    if (active) return;
+    active = true;
+    try { await publishDueScheduledPosts(); }
+    catch (error) { logger.warn({ error }, "[gbp-posting] scheduled poll failed"); }
+    finally { active = false; }
+  };
+  const timer = setInterval(() => { void tick(); }, 60_000);
+  timer.unref?.();
+  void tick();
 }

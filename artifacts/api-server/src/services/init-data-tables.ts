@@ -2715,7 +2715,7 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gbp_profiles_org_idx ON gbp_profiles(org_id)`);
       await applyTenantRls("gbp_profiles");
 
-      // ── gbp_posts — gbp-posting-service.ts UPDATE sets published_at ──────────
+      // ── gbp_posts — GBP post drafts, scheduling, and provider receipt ─────────
       await run(client, `
         CREATE TABLE IF NOT EXISTS gbp_posts (
           id             TEXT        PRIMARY KEY,
@@ -2735,6 +2735,7 @@ export async function initDataTables(): Promise<void> {
           status         TEXT        NOT NULL DEFAULT 'draft',
           scheduled_at   TIMESTAMPTZ,
           published_at   TIMESTAMPTZ,
+          google_post_id TEXT,
           seo_keywords   JSONB       NOT NULL DEFAULT '[]',
           ai_generated   BOOLEAN     NOT NULL DEFAULT false,
           views          INTEGER     NOT NULL DEFAULT 0,
@@ -3289,6 +3290,7 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE gsc_sites ADD COLUMN IF NOT EXISTS permission_level TEXT`);
     // gbp_posts: published_at
     await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`);
+    await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS google_post_id TEXT`);
     // local_heatmaps: full new column set
     await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS location_id TEXT`);
     await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS name        TEXT`);
