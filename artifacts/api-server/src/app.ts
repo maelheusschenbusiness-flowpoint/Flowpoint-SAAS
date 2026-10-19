@@ -172,7 +172,25 @@ app.use(orgContext);
 app.use(dbContext);
 
 // ── 8. Rate limiting + API-level security headers ────────────────────────────
-app.use("/api", globalRateLimit);
+// Les deux chemins de webhook Stripe sont exemptes du compteur global, et eux
+// seuls. `globalRateLimit` ne laisse passer sans compter que les GET
+// authentifies ; une livraison Stripe est un POST sans contexte d'organisation,
+// donc elle tombe dans le seau `global:default`, partage avec TOUT le trafic
+// anonyme de /api (page publique, tentatives de connexion, robots). Une rafale
+// d'evenements — Stripe en envoie plusieurs par changement d'abonnement, et un
+// renouvellement mensuel les groupe — pouvait donc recevoir un 429, que Stripe
+// compte comme un echec de livraison. L'objectif est zero echec de livraison :
+// la signature `stripe-signature` est le garde de ces deux routes, elle est
+// verifiee avant toute requete en base, et un corps non signe repart en 400
+// sans ecriture. Aucune autre route ne change de regime.
+const STRIPE_WEBHOOK_PATHS = new Set(["/webhooks/stripe", "/billing/webhook"]);
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "POST" && STRIPE_WEBHOOK_PATHS.has(req.path)) {
+    next();
+    return;
+  }
+  globalRateLimit(req, res, next);
+});
 // X-Frame-Options on API JSON responses (not on dashboard HTML — must be embeddable)
 app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Frame-Options", "DENY");

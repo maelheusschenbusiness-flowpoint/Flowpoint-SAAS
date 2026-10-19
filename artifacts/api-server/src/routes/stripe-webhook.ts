@@ -934,7 +934,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripeKey = getStripeKey();
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
-  let event: { type: string; data: { object: Record<string, unknown> } };
+  let event: { type: string; data: { object: Record<string, unknown> }; livemode?: boolean };
+  // Quel secret a valide la signature. Sert au controle de coherence
+  // d'environnement plus bas, pas a la verification elle-meme.
+  let verifiedWith: "live" | "test" | "unverified" = "unverified";
 
   if (stripeKey && webhookSecret) {
     const { default: Stripe } = await import("stripe");
@@ -949,10 +952,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     const testWebhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
     try {
       event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret) as unknown as typeof event;
+      verifiedWith = "live";
     } catch (liveErr) {
       if (testWebhookSecret) {
         try {
           event = stripe.webhooks.constructEvent(rawBody, sig, testWebhookSecret) as unknown as typeof event;
+          verifiedWith = "test";
           logger.info("[Webhook] Verified with Stripe test webhook secret (isolated env)");
         } catch {
           logger.error({ err: liveErr }, "[Webhook] Signature verification failed (live + test secrets both rejected)");
@@ -978,6 +983,44 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       event = req.body as typeof event;
     }
     logger.warn("[Webhook] Dev mode: processing without signature verification");
+  }
+
+  // ── Coherence d'environnement : un evenement de test ne touche pas des
+  // donnees de production ───────────────────────────────────────────────────
+  //
+  // La signature prouve que Stripe a emis l'evenement. Elle ne dit pas DANS
+  // QUEL MODE. Deux cas ou les deux se separent, et le second s'est deja
+  // produit : un `STRIPE_TEST_WEBHOOK_SECRET` laisse dans l'environnement de
+  // production apres une certification — la memoire du depot le signale
+  // explicitement comme a retirer — accepte alors un evenement signe par le
+  // point de terminaison de test, et le traite contre la base LIVE. Un
+  // abonnement cree en mode test pouvait ainsi reduire ou annuler un plan reel.
+  //
+  // Deux regles, toutes deux sans effet sur une configuration correcte :
+  //   1. Un evenement valide par le secret de TEST doit porter livemode=false.
+  //   2. Quand la cle Stripe active est une cle live (`sk_live_`), donc quand
+  //      les donnees derriere sont celles des clients, un evenement
+  //      livemode=false est refuse, quel que soit le secret qui l'a valide.
+  //
+  // Le refus est un 400 : l'evenement est irrecevable sur cet environnement, et
+  // un reessai de Stripe ne le rendra pas recevable. Aucune ecriture n'a eu
+  // lieu — le controle precede la resolution de l'organisation, la reclamation
+  // d'idempotence et toute mutation. `livemode` absent (mode developpement sans
+  // verification) ne declenche rien.
+  const eventLivemode = event.livemode;
+  if (typeof eventLivemode === "boolean") {
+    const liveKeyActive = stripeKey.startsWith("sk_live_");
+    const mismatch =
+      (verifiedWith === "test" && eventLivemode) ||
+      (liveKeyActive && !eventLivemode);
+    if (mismatch) {
+      logger.error(
+        { type: event.type, livemode: eventLivemode, verifiedWith, liveKeyActive },
+        "[Webhook] Cross-environment event refused — no DB writes performed",
+      );
+      res.status(400).json({ received: false, error: "Event environment does not match this deployment" });
+      return;
+    }
   }
 
   logger.info({ type: event.type }, "[Webhook] Received Stripe event");
@@ -2164,6 +2207,28 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
             const { pool: _commPool } = await import("@workspace/db");
 
+            // `organizations.id` est de type UUID. Un identifiant encore sous sa
+            // forme de pre-inscription (courriel) ne peut donc correspondre a
+            // aucune ligne : la requete ci-dessous ne renvoie pas zero ligne,
+            // elle leve 22P02 / string_to_uuid, et cette exception remonte
+            // jusqu'au `catch` du gestionnaire, qui repond 500. Stripe reessaie,
+            // la cause ne bouge pas, et l'echec se repete a chaque livraison.
+            //
+            // Constate en production sur le service de test Render le
+            // 2026-10-15, toutes les heures : `invoice.payment_succeeded` pour
+            // l'organisation de certification `cert-...@flowpoint.test`, qui n'a
+            // jamais eu de ligne `organizations`. L'etat d'abonnement etait
+            // pourtant deja persiste juste avant — seule l'attribution vendeur
+            // faisait echouer la livraison entiere.
+            //
+            // Rien de commercial ne change : sans ligne `organizations`, il n'y
+            // a pas de `seller_id`, donc aucune commission a enregistrer. Ce
+            // qui change, c'est qu'on le constate au lieu de le faire lever.
+            if (!UUID_RE_WH.test(String(orgId))) {
+              logger.info({ type: event.type, shape: String(orgId).includes("@") ? "email" : "non-uuid" },
+                "[Webhook/seller] Non-canonical orgId — no organizations row, seller ledger skipped");
+            } else {
+
             // Load seller_id from organizations
             const _orgSellerR = await _commPool.query<{ seller_id: string | null; owner_email: string; plan: string }>(
               `SELECT seller_id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
@@ -2230,6 +2295,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             logger.info({ orgId, sellerId: _sellerUUID, amountCents: _invAmountPaid, commissionInserted: _commissionInserted },
               "[Webhook/seller] Payment revenue recorded; acquisition commission is first-payment only");
             }
+            }            // fin de la garde d'identifiant canonique
             }
         }
       }
