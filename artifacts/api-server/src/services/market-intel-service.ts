@@ -1,71 +1,159 @@
 import { pool } from "@workspace/db";
-import { logger } from "../lib/logger.js";
 
 export interface MarketDashboard {
   trends: MarketTrend[];
   opportunities: MarketOpportunity[];
   signals: IndustrySignal[];
-  competitorMovements: CompetitorMovement[];
+  competitor_movements: CompetitorMovement[];
   summary: { score: number; trendingUp: number; opportunities: number; threats: number };
+  stats: { avgOpportunityScore: number; emergingTrends: number };
 }
 
-interface MarketTrend { id: string; keyword: string; category: string; volume: number; growth: number; opportunityScore: number; }
-interface MarketOpportunity { id: string; type: string; title: string; description: string; score: number; estimatedImpact: string; }
+interface MarketTrend { id: string; keyword: string; category: string; search_volume: number; growth_rate: number | null; trend_direction: "up" | "down" | "stable"; opportunity_score: number; geo: string; }
+interface MarketOpportunity { id: string; type: string; title: string; description: string; score: number; estimated_impact: string; }
 interface IndustrySignal { id: string; type: string; title: string; description: string; severity: string; }
-interface CompetitorMovement { id: string; competitor: string; type: string; description: string; detectedAt: string; }
+interface CompetitorMovement { id: string; competitor: string; type: string; description: string; detected_at: string; }
 
-const TREND_SEEDS = [
-  { keyword: "SEO local IA", category: "AI & SEO", volume: 8400, growth: 124, opportunityScore: 94 },
-  { keyword: "Google SGE impact", category: "SERP", volume: 12200, growth: 89, opportunityScore: 88 },
-  { keyword: "Core Web Vitals 2025", category: "Performance", volume: 5600, growth: 67, opportunityScore: 82 },
-  { keyword: "Zero-click search", category: "SERP", volume: 3800, growth: 45, opportunityScore: 75 },
-  { keyword: "AI Overview référencement", category: "AI & SEO", volume: 2900, growth: 156, opportunityScore: 91 },
-];
+type GscTrendInput = {
+  keyword: string;
+  recent_clicks: number | string | null;
+  previous_clicks: number | string | null;
+  recent_impressions: number | string | null;
+};
 
-const OPP_SEEDS: Array<{ type: string; title: string; description: string; score: number; estimatedImpact: string }> = [];
+export function deriveMarketTrends(rows: readonly GscTrendInput[]): MarketTrend[] {
+  return rows.flatMap((row) => {
+    const keyword = String(row.keyword ?? "").trim();
+    const recent = Number(row.recent_clicks) || 0;
+    const previous = Number(row.previous_clicks) || 0;
+    const impressions = Number(row.recent_impressions) || 0;
+    if (!keyword || impressions <= 0) return [];
+    const growth = previous > 0 ? Math.round(((recent - previous) / previous) * 100) : null;
+    const opportunityScore = Math.max(0, Math.min(100, Math.round(
+      Math.log10(impressions + 1) * 12 + Math.max(0, growth ?? 0) * 0.15
+    )));
+    const trendDirection: MarketTrend["trend_direction"] = growth === null ? "stable" : growth > 0 ? "up" : growth < 0 ? "down" : "stable";
+    return [{
+      id: `gsc:${keyword.toLowerCase()}`,
+      keyword,
+      category: "Google Search Console",
+      search_volume: impressions,
+      growth_rate: growth,
+      trend_direction: trendDirection,
+      opportunity_score: opportunityScore,
+      geo: "—",
+    }];
+  }).sort((a, b) => b.opportunity_score - a.opportunity_score).slice(0, 20);
+}
 
-export async function seedMarketData(orgId: string): Promise<void> {
-  const client = await pool.connect();
-  try {
-    const ex = await client.query(`SELECT COUNT(*) as c FROM market_trends WHERE org_id=$1`, [orgId]);
-    if (Number(ex.rows[0]?.c ?? 0) > 0) return;
-    for (const t of TREND_SEEDS) {
-      await client.query(
-        `INSERT INTO market_trends (id, org_id, keyword, category, volume, growth, opportunity_score, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT DO NOTHING`,
-        [`mt_${orgId}_${t.keyword.replace(/\s/g,"_")}`, orgId, t.keyword, t.category, t.volume, t.growth, t.opportunityScore]
-      );
-    }
-    for (const o of OPP_SEEDS) {
-      await client.query(
-        `INSERT INTO market_opportunities (id, org_id, type, title, description, score, estimated_impact, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT DO NOTHING`,
-        [`mo_${orgId}_${o.type}_${Date.now()}`, orgId, o.type, o.title, o.description, o.score, o.estimatedImpact]
-      );
-    }
-  } catch (err) {
-    logger.debug({ err }, "[market-intel] seedMarketData failed (non-fatal)");
-  } finally { client.release(); }
+type CompetitorSnapshot = {
+  competitor_domain: string;
+  keyword: string | null;
+  position: number | string;
+  checked_at: string | Date;
+};
+
+export function deriveCompetitorMovements(rows: readonly CompetitorSnapshot[]): CompetitorMovement[] {
+  const grouped = new Map<string, CompetitorSnapshot[]>();
+  for (const row of rows) {
+    const competitor = String(row.competitor_domain ?? "").trim().toLowerCase();
+    const keyword = String(row.keyword ?? "").trim();
+    const position = Number(row.position);
+    if (!competitor || !keyword || !Number.isFinite(position) || position <= 0) continue;
+    const key = `${competitor}\u0000${keyword.toLowerCase()}`;
+    const group = grouped.get(key) ?? [];
+    group.push(row);
+    grouped.set(key, group);
+  }
+  const movements: CompetitorMovement[] = [];
+  for (const [key, snapshots] of grouped) {
+    const ordered = snapshots.sort((a, b) => new Date(b.checked_at).getTime() - new Date(a.checked_at).getTime());
+    if (ordered.length < 2) continue;
+    const current = Number(ordered[0].position);
+    const previous = Number(ordered[1].position);
+    if (current === previous) continue;
+    const [competitor, keyword] = key.split("\u0000");
+    movements.push({
+      id: `rank:${competitor}:${keyword}:${new Date(ordered[0].checked_at).toISOString()}`,
+      competitor,
+      type: current < previous ? "ranking_gain" : "ranking_loss",
+      description: `${keyword} : position ${previous} → ${current} (observations enregistrées)`,
+      detected_at: new Date(ordered[0].checked_at).toISOString(),
+    });
+  }
+  return movements.sort((a, b) => b.detected_at.localeCompare(a.detected_at)).slice(0, 20);
 }
 
 export async function getMarketDashboard(orgId: string): Promise<MarketDashboard> {
   const client = await pool.connect();
   try {
-    const [trends, opps, signals, movements] = await Promise.all([
-      client.query(`SELECT * FROM market_trends WHERE org_id=$1 ORDER BY opportunity_score DESC LIMIT 20`, [orgId]),
-      client.query(`SELECT * FROM market_opportunities WHERE org_id=$1 ORDER BY score DESC LIMIT 15`, [orgId]),
+    const [trendRows, opportunityRows, signals, rankingRows] = await Promise.all([
+      client.query<GscTrendInput>(
+        `SELECT keyword,
+                SUM(clicks) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_clicks,
+                SUM(clicks) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '56 days'
+                                    AND date < CURRENT_DATE - INTERVAL '28 days')::int AS previous_clicks,
+                SUM(impressions) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_impressions
+           FROM gsc_keyword_data
+          WHERE org_id=$1 AND date >= CURRENT_DATE - INTERVAL '56 days'
+          GROUP BY keyword
+         HAVING SUM(impressions) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '28 days') > 0
+          ORDER BY recent_impressions DESC LIMIT 100`,
+        [orgId]
+      ),
+      client.query(
+        `SELECT page, SUM(clicks)::int AS clicks, SUM(impressions)::int AS impressions,
+                ROUND(100.0 * SUM(clicks) / NULLIF(SUM(impressions), 0), 2) AS ctr
+           FROM gsc_page_data
+          WHERE org_id=$1 AND date >= CURRENT_DATE - INTERVAL '28 days'
+          GROUP BY page
+         HAVING SUM(impressions) >= 100
+            AND SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) < 0.02
+          ORDER BY SUM(impressions) DESC LIMIT 15`,
+        [orgId]
+      ),
       client.query(`SELECT * FROM industry_signals WHERE org_id=$1 AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY created_at DESC LIMIT 10`, [orgId]),
-      client.query(`SELECT * FROM competitor_movements WHERE org_id=$1 ORDER BY detected_at DESC LIMIT 10`, [orgId]),
+      client.query<CompetitorSnapshot>(
+        `WITH recent AS (
+           SELECT competitor_domain, keyword, position, checked_at,
+                  ROW_NUMBER() OVER (PARTITION BY competitor_domain, keyword ORDER BY checked_at DESC, id DESC) AS rn
+             FROM competitor_rankings
+            WHERE org_id=$1 AND checked_at >= NOW() - INTERVAL '90 days'
+              AND keyword IS NOT NULL AND position IS NOT NULL
+         )
+         SELECT competitor_domain, keyword, position, checked_at
+           FROM recent WHERE rn <= 2
+          ORDER BY checked_at DESC LIMIT 2000`,
+        [orgId]
+      ),
     ]);
+    const trends = deriveMarketTrends(trendRows.rows);
+    const opportunities: MarketOpportunity[] = opportunityRows.rows.map((row) => {
+      const impressions = Number(row.impressions) || 0;
+      const ctr = Number(row.ctr) || 0;
+      return {
+        id: `gsc-page:${String(row.page)}`,
+        type: "low_ctr",
+        title: `CTR à améliorer : ${String(row.page)}`,
+        description: `${impressions} impressions et ${Number(row.clicks) || 0} clics sur 28 jours (CTR observé : ${ctr} %).`,
+        score: Math.max(0, Math.min(100, Math.round(Math.log10(impressions + 1) * 20))),
+        estimated_impact: "À mesurer",
+      };
+    });
+    const competitorMovements = deriveCompetitorMovements(rankingRows.rows);
+    const avgOpportunityScore = trends.length > 0
+      ? Math.round(trends.reduce((sum, trend) => sum + trend.opportunity_score, 0) / trends.length)
+      : 0;
+    const emergingTrends = trends.filter((trend) => trend.growth_rate !== null && trend.growth_rate > 0).length;
     return {
-      trends: trends.rows, opportunities: opps.rows, signals: signals.rows,
-      competitorMovements: movements.rows,
+      trends, opportunities, signals: signals.rows, competitor_movements: competitorMovements,
       summary: {
-        score: trends.rows.length > 0 ? Math.round(trends.rows.reduce((s: number, t: Record<string,unknown>) => s + Number(t["opportunity_score"] ?? 0), 0) / trends.rows.length) : 0,
-        trendingUp: trends.rows.filter((t: Record<string, unknown>) => Number(t["growth"]) > 50).length,
-        opportunities: opps.rows.length,
-        threats: movements.rows.filter((m: Record<string, unknown>) => m["type"] === "ranking_gain").length,
+        score: avgOpportunityScore,
+        trendingUp: emergingTrends,
+        opportunities: opportunities.length,
+        threats: competitorMovements.filter((movement) => movement.type === "ranking_gain").length,
       },
+      stats: { avgOpportunityScore, emergingTrends },
     };
   } finally { client.release(); }
 }
@@ -86,4 +174,30 @@ export async function generateMarketReport(orgId: string): Promise<Record<string
   return { id, ...dashboard };
 }
 
-export async function detectCompetitorMovements(_orgId: string, _domain?: string): Promise<void> {}
+export async function detectCompetitorMovements(orgId: string, domain?: string): Promise<CompetitorMovement[]> {
+  const client = await pool.connect();
+  try {
+    const values: unknown[] = [orgId];
+    let filter = "";
+    if (domain) {
+      values.push(domain.trim().toLowerCase());
+      filter = " AND LOWER(competitor_domain)=$2";
+    }
+    const result = await client.query<CompetitorSnapshot>(
+      `WITH recent AS (
+         SELECT competitor_domain, keyword, position, checked_at,
+                ROW_NUMBER() OVER (PARTITION BY competitor_domain, keyword ORDER BY checked_at DESC, id DESC) AS rn
+           FROM competitor_rankings
+          WHERE org_id=$1${filter} AND checked_at >= NOW() - INTERVAL '90 days'
+            AND keyword IS NOT NULL AND position IS NOT NULL
+       )
+       SELECT competitor_domain, keyword, position, checked_at
+         FROM recent WHERE rn <= 2
+        ORDER BY checked_at DESC LIMIT 2000`,
+      values,
+    );
+    return deriveCompetitorMovements(result.rows);
+  } finally {
+    client.release();
+  }
+}
