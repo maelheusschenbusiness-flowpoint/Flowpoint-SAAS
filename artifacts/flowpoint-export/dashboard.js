@@ -70002,9 +70002,10 @@ window.FP_GBP_POSTS_API = {
   async load() {
     try {
       const data = await apiFetch('/api/gbp-posts').catch(()=>null);
-      if (!data) return;
+      if (!data) return null;
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.gbpPosts = { ...data, loadedAt: Date.now() };
+      return data;
     } catch(e) { console.warn('[FP_GBP_POSTS_API]', e); }
   },
   async createPost(data) {

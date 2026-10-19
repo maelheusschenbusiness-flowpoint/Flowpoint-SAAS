@@ -6,12 +6,5 @@ overrides:
   brace-expansion@>=2.0.0 <3.0.0: 2.1.7
   proxy-addr: 2.0.8
   source-map-js: 1.2.2
-  # ExcelJS still requests uuid 8; 11 is the patched CommonJS-compatible line.
-  exceljs>uuid: ^11.1.1
-  # Mammoth's legacy CLI parser pulls in unpatched sprintf-js.
-  # argparse 2 retains the legacy CLI aliases and has no runtime dependencies.
-  mammoth>argparse: 2.0.1
-  # Keep the patched pino-pretty transitive copy within its compatible range.
-  fast-copy@>=4.0.0 <4.1.0: ^4.2.0
   fast-copy: 4.1.0
-  esbuild: 0.28.2
+  esbuild: 0.28.1

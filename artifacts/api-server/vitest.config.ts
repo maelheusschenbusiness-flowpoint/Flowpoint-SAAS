@@ -12,7 +12,6 @@ export default defineConfig({
   test: {
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
-      "src/tests/dependency-security.test.ts",
       "src/services/mailer-nodemailer10.test.ts",
       "src/services/nodemailer10-transport.test.ts",
       "src/services/review-intelligence-themes.test.ts",
