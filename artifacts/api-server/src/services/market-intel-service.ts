@@ -90,14 +90,14 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
     const [trendRows, opportunityRows, signals, rankingRows] = await Promise.all([
       client.query<GscTrendInput>(
         `SELECT keyword,
-                SUM(clicks) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_clicks,
-                SUM(clicks) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '56 days'
-                                    AND date < CURRENT_DATE - INTERVAL '28 days')::int AS previous_clicks,
-                SUM(impressions) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_impressions
+                SUM(clicks) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28)::int AS recent_clicks,
+                SUM(clicks) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 56
+                                    AND NULLIF(date, '')::date < CURRENT_DATE - 28)::int AS previous_clicks,
+                SUM(impressions) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28)::int AS recent_impressions
            FROM gsc_keyword_data
-          WHERE org_id=$1 AND date >= CURRENT_DATE - INTERVAL '56 days'
+          WHERE org_id=$1 AND NULLIF(date, '')::date >= CURRENT_DATE - 56
           GROUP BY keyword
-         HAVING SUM(impressions) FILTER (WHERE date >= CURRENT_DATE - INTERVAL '28 days') > 0
+         HAVING SUM(impressions) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28) > 0
           ORDER BY recent_impressions DESC LIMIT 100`,
         [orgId]
       ),
@@ -105,7 +105,7 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
         `SELECT page, SUM(clicks)::int AS clicks, SUM(impressions)::int AS impressions,
                 ROUND(100.0 * SUM(clicks) / NULLIF(SUM(impressions), 0), 2) AS ctr
            FROM gsc_page_data
-          WHERE org_id=$1 AND date >= CURRENT_DATE - INTERVAL '28 days'
+          WHERE org_id=$1 AND NULLIF(date, '')::date >= CURRENT_DATE - 28
           GROUP BY page
          HAVING SUM(impressions) >= 100
             AND SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) < 0.02
