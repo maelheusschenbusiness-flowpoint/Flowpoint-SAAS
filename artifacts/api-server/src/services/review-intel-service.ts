@@ -16,6 +16,8 @@ export interface ReputationDashboard {
   sentimentScore: number;
   reviews: ReviewItem[];
   trends: Array<{ month: string; rating: number; count: number }>;
+  themes: Array<{ theme: string; count: number; negativeCount: number }>;
+  priorities: Array<{ theme: string; negativeReviews: number; action: string }>;
   insights: string[];
   recommendations: string[];
 }
@@ -24,6 +26,39 @@ export interface ReviewItem {
   id: string; author: string; rating: number; text: string;
   sentiment: string; platform: string; replied: boolean;
   date: string; aiSuggestedReply?: string;
+}
+
+/** Rule-based themes use stored reviews only; this analysis never calls an AI provider. */
+export function summarizeReviewThemes(reviews: ReviewItem[]) {
+  const categories = [
+    { theme: "Service client", words: ["service", "accueil", "personnel", "équipe", "staff"], action: "Standardiser les bonnes pratiques d’accueil et de suivi." },
+    { theme: "Délais", words: ["attente", "retard", "délai", "lent", "rapidité"], action: "Réduire les délais signalés et prévenir les clients en cas d’attente." },
+    { theme: "Communication", words: ["communication", "réponse", "contact", "information"], action: "Clarifier les délais de réponse et le suivi après la prestation." },
+    { theme: "Qualité", words: ["qualité", "résultat", "défaut", "problème", "erreur"], action: "Examiner les avis concernés et corriger le problème récurrent." },
+    { theme: "Prix", words: ["prix", "cher", "tarif", "coût", "facture"], action: "Rendre les tarifs et le détail des prestations plus transparents." },
+    { theme: "Ponctualité", words: ["ponctuel", "horaire", "retard"], action: "Confirmer les horaires et prévenir rapidement en cas de retard." },
+    { theme: "Propreté", words: ["propreté", "propre", "sale", "nettoyage"], action: "Contrôler la propreté après chaque intervention." },
+  ];
+  return categories.map(({ theme, words, action }) => {
+    const matches = reviews.filter(review => {
+      const tokens = String(review.text ?? "")
+        .toLocaleLowerCase("fr")
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean);
+      return words.some(word => {
+        const token = word.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("fr");
+        return tokens.some(candidate => candidate === token || (token.length >= 6 && candidate.startsWith(token)));
+      });
+    });
+    return {
+      theme,
+      count: matches.length,
+      negativeCount: matches.filter(review => review.rating <= 2 || review.sentiment === "negative").length,
+      action,
+    };
+  }).filter(theme => theme.count > 0);
 }
 
 const SAMPLE_REVIEWS: ReviewItem[] = [
@@ -78,6 +113,12 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
     const replied = reviews.filter(r => r.replied).length;
     const positiveCount = reviews.filter(r => r.sentiment === "positive").length;
     const trends = await generateTrendsFromDB(orgId, client);
+    const themes = summarizeReviewThemes(reviews);
+    const priorities = themes
+      .filter(theme => theme.negativeCount > 0)
+      .sort((a, b) => b.negativeCount - a.negativeCount || b.count - a.count)
+      .slice(0, 3)
+      .map(({ theme, negativeCount, action }) => ({ theme, negativeReviews: negativeCount, action }));
 
     const insights: string[] = count > 0
       ? [
@@ -99,6 +140,8 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
       sentimentScore: count > 0 ? Math.round((positiveCount / count) * 100) : 0,
       reviews: reviews.slice(0, 20),
       trends,
+      themes,
+      priorities,
       insights,
       recommendations,
     };

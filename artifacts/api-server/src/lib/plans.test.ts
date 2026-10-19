@@ -20,6 +20,7 @@ import {
   ADDON_PRICE_IDS,
   BETA_ADDONS,
   COMING_SOON_ADDONS,
+  VALIDATION_REQUIRED_ADDONS,
   getAddonAvailability,
   getAddonStatus,
   ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
@@ -62,6 +63,18 @@ describe("V1 add-on catalogue contract", () => {
       quantity: true,
       oneTime: false,
     });
+  });
+
+  it("keeps the three Local SEO offers priced but unavailable for purchase before approval", () => {
+    const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps"];
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(40);
+    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15]);
+    for (const key of keys) {
+      expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
+      expect(getAddonAvailability(key)).toBe("coming_soon");
+      expect(getAddonStatus(key)).toBe("coming_soon");
+      expect(getAddonStatus(key, { included: true })).toBe("included");
+    }
   });
 });
 

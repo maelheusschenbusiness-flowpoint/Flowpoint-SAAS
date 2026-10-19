@@ -14,11 +14,102 @@ export interface BusinessPoint {
   longitude: number | null;
 }
 
+export interface LocalCompetitorSummary {
+  resultCount: number;
+  uniqueCompetitors: number;
+  searchContexts: number;
+  top3Results: number;
+  averageRating: number | null;
+  averageReviews: number | null;
+  bestCompetitorName: string | null;
+  bestCompetitorRank: number | null;
+}
+
+const EMPTY_COMPETITOR_SUMMARY: LocalCompetitorSummary = {
+  resultCount: 0,
+  uniqueCompetitors: 0,
+  searchContexts: 0,
+  top3Results: 0,
+  averageRating: null,
+  averageReviews: null,
+  bestCompetitorName: null,
+  bestCompetitorRank: null,
+};
+
+export function summarizeLocalMaps(
+  heatmaps: Heatmap[],
+  competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
+) {
+  const completedScans = heatmaps.filter(h => h.status === "completed").length;
+  return {
+    summary: {
+      totalHeatmaps: heatmaps.length,
+      completedScans,
+      avgRank: null,
+      top3GridPoints: null,
+      coverageScore: null,
+      competitorsAnalyzed: competitors.resultCount,
+      uniqueCompetitors: competitors.uniqueCompetitors,
+      searchContexts: competitors.searchContexts,
+      top3CompetitorResults: competitors.top3Results,
+      averageCompetitorRating: competitors.averageRating,
+      averageCompetitorReviews: competitors.averageReviews,
+      bestCompetitorName: competitors.bestCompetitorName,
+      bestCompetitorRank: competitors.bestCompetitorRank,
+      localVisibilityScore: null,
+    },
+    insights: [
+      heatmaps.length
+        ? `${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). Les positions et la couverture de votre établissement ne sont pas mesurées dans les données disponibles.`
+        : "Aucune carte de suivi locale n’est enregistrée.",
+      ...(competitors.resultCount
+        ? [`${competitors.uniqueCompetitors} établissement(s) concurrent(s) distinct(s) relevé(s) sur ${competitors.searchContexts} recherche(s), avec ${competitors.top3Results} résultat(s) dans le top 3${competitors.averageRating == null ? "" : ` et une note moyenne de ${competitors.averageRating}/5`}${competitors.averageReviews == null ? "" : ` (${competitors.averageReviews} avis par établissement en moyenne)`}.`]
+        : []),
+    ],
+  };
+}
+
+export function buildLocalMapsRecommendations(
+  heatmaps: Heatmap[],
+  competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
+) {
+  const items: Array<{ title: string; description: string; impact: string; effort: string; priority: string }> = [];
+  if (!heatmaps.length) {
+    items.push({
+      title: "Configurer une carte de suivi",
+      description: "Enregistrez un mot-clé et une zone pour organiser le suivi. Cette configuration ne constitue pas une mesure de classement.",
+      impact: "À mesurer", effort: "À estimer", priority: "medium",
+    });
+  } else {
+    const pending = heatmaps.filter(map => map.status !== "completed").length;
+    if (pending) items.push({
+      title: "Vérifier les cartes en attente",
+      description: `${pending} carte(s) n’ont pas de statut d’analyse terminé. Aucun classement ne peut être déduit de ces enregistrements.`,
+      impact: "Non mesuré", effort: "À estimer", priority: "medium",
+    });
+  }
+  if (competitors.resultCount) {
+    items.push({
+      title: "Comparer les concurrents les mieux classés",
+      description: `${competitors.uniqueCompetitors} établissement(s) distinct(s) sur ${competitors.searchContexts} recherche(s). ${competitors.top3Results} résultat(s) sont dans le top 3${competitors.bestCompetitorName && competitors.bestCompetitorRank != null ? `; meilleur rang observé : ${competitors.bestCompetitorName} (#${competitors.bestCompetitorRank})` : ""}.`,
+      impact: "À mesurer", effort: "À estimer", priority: "low",
+    });
+  } else if (heatmaps.length) {
+    items.push({
+      title: "Aucun résultat concurrent enregistré",
+      description: "Aucun résultat concurrent n’est enregistré. Lancez une découverte locale pour comparer les établissements collectés ; aucun classement de votre établissement n’est déduit de ces données.",
+      impact: "Non mesuré", effort: "À estimer", priority: "low",
+    });
+  }
+  return items;
+}
+
 export interface MapsDashboard {
   heatmaps: Heatmap[];
   businessPoint: BusinessPoint | null;
   summary: {
     totalHeatmaps: number;
+    completedScans: number;
     avgRank: number | null;
     top3GridPoints: number | null;
     coverageScore: number | null;
@@ -26,7 +117,7 @@ export interface MapsDashboard {
     localVisibilityScore: number | null;
   };
   insights: string[];
-  recommendations: Array<{ title: string; description: string; impact: string; effort: string }>;
+  recommendations: Array<{ title: string; description: string; impact: string; effort: string; priority?: string }>;
 }
 
 // ── Server-side geocoding (Google, with explicit Nominatim opt-in fallback) ───
@@ -141,33 +232,54 @@ async function getBusinessPoint(orgId: string): Promise<BusinessPoint | null> {
 }
 
 export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
-  const [heatmaps, businessPoint] = await Promise.all([
+  const [heatmaps, businessPoint, competitors] = await Promise.all([
     getHeatmaps(orgId),
     getBusinessPoint(orgId),
+    getCompetitorSummary(orgId),
   ]);
 
-  type HeatmapExt = Heatmap & { dominance_score?: unknown };
-  const dominanceScores = heatmaps.map(h => Number((h as HeatmapExt).dominance_score ?? 0)).filter(n => n > 0);
-  const avgRank = dominanceScores.length > 0
-    ? Math.round((dominanceScores.reduce((s, n) => s + n, 0) / dominanceScores.length) * 10) / 10
-    : null;
-  const coverageScore = heatmaps.length > 0
-    ? Math.min(100, Math.round((heatmaps.filter(h => Number((h as HeatmapExt).dominance_score ?? 0) >= 50).length / heatmaps.length) * 100))
-    : null;
+  const measured = summarizeLocalMaps(heatmaps, competitors);
 
   return {
     heatmaps,
     businessPoint,
-    summary: {
-      totalHeatmaps: heatmaps.length,
-      avgRank,
-      top3GridPoints: null,
-      coverageScore,
-      competitorsAnalyzed: null,
-      localVisibilityScore: null,
-    },
-    insights: [],
-    recommendations: [],
+    summary: measured.summary,
+    insights: measured.insights,
+    recommendations: buildLocalMapsRecommendations(heatmaps, competitors),
+  };
+}
+
+async function getCompetitorSummary(orgId: string): Promise<LocalCompetitorSummary> {
+  const result = await pool.query(
+    `SELECT
+       COUNT(*)::int AS result_count,
+       COUNT(DISTINCT place_id)::int AS unique_competitors,
+       COUNT(DISTINCT (keyword, location))::int AS search_contexts,
+       COUNT(*) FILTER (WHERE rank BETWEEN 1 AND 3)::int AS top3_results,
+       ROUND(AVG(rating)::numeric, 1)::float8 AS average_rating,
+       ROUND(AVG(review_count)::numeric, 0)::int AS average_reviews,
+       (SELECT name FROM competitor_map_results
+        WHERE org_id=$1
+        ORDER BY rank ASC NULLS LAST, review_count DESC, fetched_at DESC
+        LIMIT 1) AS best_competitor_name,
+       (SELECT rank FROM competitor_map_results
+        WHERE org_id=$1
+        ORDER BY rank ASC NULLS LAST, review_count DESC, fetched_at DESC
+        LIMIT 1) AS best_competitor_rank
+     FROM competitor_map_results
+     WHERE org_id=$1`,
+    [orgId],
+  );
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  return {
+    resultCount: Number(row?.["result_count"] ?? 0),
+    uniqueCompetitors: Number(row?.["unique_competitors"] ?? 0),
+    searchContexts: Number(row?.["search_contexts"] ?? 0),
+    top3Results: Number(row?.["top3_results"] ?? 0),
+    averageRating: row?.["average_rating"] == null ? null : Number(row["average_rating"]),
+    averageReviews: row?.["average_reviews"] == null ? null : Number(row["average_reviews"]),
+    bestCompetitorName: row?.["best_competitor_name"] == null ? null : String(row["best_competitor_name"]),
+    bestCompetitorRank: row?.["best_competitor_rank"] == null ? null : Number(row["best_competitor_rank"]),
   };
 }
 
@@ -209,10 +321,10 @@ export async function createHeatmap(orgId: string, data: {
   } finally { client.release(); }
 }
 
-export async function generateAiLocalRecommendations(_orgId: string): Promise<Array<{ title: string; description: string; priority: string }>> {
-  return [
-    { title: "Créer des citations locales", description: "Inscrivez votre entreprise sur les 10 annuaires locaux les plus importants de votre secteur.", priority: "high" },
-    { title: "Optimiser les photos Google Business", description: "Les fiches avec 10+ photos reçoivent 35% plus de clics. Ajoutez des photos récentes de qualité.", priority: "high" },
-    { title: "Répondre aux questions publiques", description: "Répondre aux questions Q&A sur votre fiche GBP améliore la confiance et le référencement local.", priority: "medium" },
-  ];
+export async function generateAiLocalRecommendations(orgId: string): Promise<Array<{ title: string; description: string; impact: string; effort: string; priority: string }>> {
+  const [heatmaps, competitors] = await Promise.all([
+    getHeatmaps(orgId),
+    getCompetitorSummary(orgId),
+  ]);
+  return buildLocalMapsRecommendations(heatmaps, competitors);
 }

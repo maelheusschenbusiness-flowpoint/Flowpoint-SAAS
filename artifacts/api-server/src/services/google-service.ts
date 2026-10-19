@@ -319,7 +319,7 @@ export async function publishGBPPost(
   orgId: string,
   locationName: string,
   post: { summary: string; callToAction?: { actionType: string; url: string } }
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; postName?: string }> {
   try {
     const token = await getValidToken(orgId);
     const res = await fetch(
@@ -332,7 +332,8 @@ export async function publishGBPPost(
       }
     );
     if (!res.ok) return { ok: false, error: `GBP API ${res.status}` };
-    return { ok: true };
+    const body = await res.json() as { name?: string };
+    return { ok: true, postName: body.name };
   } catch (e: any) {
     return { ok: false, error: e.message };
   }
@@ -390,7 +391,11 @@ export async function syncAll(orgId: string): Promise<{ accounts: number; locati
         totalLocations += locs.length;
 
         for (const loc of locs.slice(0, 10)) {
-          const locName = (loc as Record<string, string>)["name"] ?? "";
+          const rawLocationName = (loc as Record<string, string>)["name"] ?? "";
+          const locName = rawLocationName.startsWith("accounts/")
+            ? rawLocationName
+            : `accounts/${accId}/${rawLocationName.startsWith("locations/") ? rawLocationName : `locations/${rawLocationName}`}`;
+          const storedLocation = { ...(loc as Record<string, unknown>), name: locName };
           const reviews = await getLocationReviews(orgId, locName);
           totalReviews += reviews.length;
 
@@ -399,7 +404,7 @@ export async function syncAll(orgId: string): Promise<{ accounts: number; locati
             `INSERT INTO google_locations (id, org_id, name, raw_data, last_sync_at)
              VALUES ($1,$2,$3,$4,NOW())
              ON CONFLICT (id) DO UPDATE SET raw_data=$4, last_sync_at=NOW()`,
-            [`${orgId}_${locName}`, orgId, (loc as Record<string, string>)["title"] ?? locName, JSON.stringify(loc)]
+            [`${orgId}_${locName}`, orgId, (loc as Record<string, string>)["title"] ?? locName, JSON.stringify(storedLocation)]
           ).catch(() => {});
 
           // Upsert reviews

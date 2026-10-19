@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -64,11 +64,11 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // ── Coming-soon gate ───────────────────────────────────────────────────────
   // Add-ons in COMING_SOON_ADDONS are visible on the pricing/UI as roadmap items
   // but are NOT yet available for purchase.  Block activation at every layer.
-  if (COMING_SOON_ADDONS.has(key)) {
+  if (COMING_SOON_ADDONS.has(key) || VALIDATION_REQUIRED_ADDONS.has(key)) {
     logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — add-on not yet available (COMING_SOON)");
     res.status(503).json({
       error: "Cet add-on n'est pas encore disponible. Il sera lancé prochainement.",
-      code: "ADDON_COMING_SOON",
+      code: VALIDATION_REQUIRED_ADDONS.has(key) ? "ADDON_VALIDATION_REQUIRED" : "ADDON_COMING_SOON",
       addonKey: key,
     }); return;
   }
