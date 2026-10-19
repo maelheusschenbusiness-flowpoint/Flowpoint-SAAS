@@ -6,6 +6,7 @@ import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ const DEFAULT_MISSIONS = [
   { title: "Mettre en place le tracking analytics", category: "analytics", priority: 12, impact: "Données fiables", effort: "1h" },
 ];
 
-router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
+router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
   try {
     const {
       siteUrl,
@@ -72,9 +73,9 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
     const client = await pool.connect();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    let roadmap = DEFAULT_ROADMAP;
-    let missionTemplates = DEFAULT_MISSIONS;
-    let strategy = `Stratégie IA personnalisée pour ${businessName ?? "votre business"} (${niche ?? "secteur"}, ${location ?? "France"}).`;
+    let roadmap: Array<{ priority: number; label: string; impact: string; tag: string }> = [];
+    let missionTemplates: Array<{ title: string; category: string; priority: number; impact: string; effort: string }> = [];
+    let strategy = "";
     let aiGenerationSucceeded = false;
     let actualProvider: string = "openai";
     let actualModel: string = "workspace_launch";
@@ -161,8 +162,13 @@ RÈGLES IMPORTANTES :
 
       logger.info({ orgId, provider: aiCfg.provider, model: aiCfg.model, businessName }, "[AWL] AI generation succeeded");
     } catch (aiErr) {
-      logger.warn({ aiErr, businessName }, "[AWL] AI generation failed — using default templates (not silent)");
-      strategy = `Stratégie par défaut pour ${businessName ?? "votre business"} — connectez OpenAI/Anthropic/Gemini pour une stratégie personnalisée.`;
+      logger.warn({ aiErr, businessName }, "[AWL] AI generation failed; refusing to persist generic fallback data");
+    }
+
+    if (!aiGenerationSucceeded || roadmap.length === 0 || missionTemplates.length === 0 || !strategy.trim()) {
+      client.release();
+      res.status(502).json({ ok: false, code: "AI_GENERATION_FAILED", error: "Aucune stratégie personnalisée n'a été générée; aucune donnée de démonstration n'a été enregistrée." });
+      return;
     }
 
     try {
@@ -264,7 +270,7 @@ RÈGLES IMPORTANTES :
   }
 });
 
-router.get("/ai-workspace-launch/:sessionId", async (req: Request, res: Response) => {
+router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const orgId = req.orgId;
 

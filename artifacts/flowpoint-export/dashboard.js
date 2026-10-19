@@ -16079,8 +16079,8 @@ function _doRender() {
     case 'overview':       html = renderOverview(); break;
     case 'missions':       html = renderMissions(); break;
     case 'audits':         html = renderAudits(); break;
-    case 'monitors':       html = renderMonitors(); break;
-    case 'reports':        html = renderReports(); break;
+    case 'monitors':       html = renderMonitors() + renderGlobalMonitoringPanel(); break;
+    case 'reports':        html = renderReports() + renderAgencyPacksPanel(); break;
     case 'local-seo':      html = renderLocalSEO(); break;
     case 'team':           html = renderTeam(); break;
     case 'billing':        html = renderBilling(); break;
@@ -69208,6 +69208,9 @@ window.FP_BETTERSTACK_API = {
   async loadMonitors() {
     try { const r = await apiFetch('/api/betterstack/monitors').catch(() => null); return r?.data || []; } catch(e) { return []; }
   },
+  async loadGlobalOverview() {
+    return apiFetch('/api/betterstack/global-overview');
+  },
   async loadIncidents(params) {
     try {
       const q = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -69255,6 +69258,86 @@ window.FP_BETTERSTACK_API = {
   },
   async getResponseTimes(bsId, period = '24h') {
     try { return await apiFetch(`/api/betterstack/monitors/${bsId}/response-times?period=${period}`).catch(() => null); } catch(e) { return null; }
+  },
+};
+
+function renderGlobalMonitoringPanel() {
+  if (!STATE.me?.addons?.globalMonitoring) return '';
+  return `<section class="fp-card" style="margin-top:18px">
+    <div class="fp-card-header"><div><h2>Global Monitoring</h2><p class="fp-text-muted">Régions de contrôle configurées dans Better Stack</p></div>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadGlobal()">Actualiser</button>
+    </div>
+    <div id="fp-global-monitoring-result" class="fp-text-muted">Chargez les régions configurées pour ce workspace.</div>
+  </section>`;
+}
+
+function renderAgencyPacksPanel() {
+  if (!STATE.me?.addons?.agencyPacks) return '';
+  return `<section class="fp-card" style="margin-top:18px">
+    <div class="fp-card-header"><div><h2>Agency Reporting Packs</h2><p class="fp-text-muted">Modèles réutilisables pour les rapports clients</p></div>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()">Charger les packs</button>
+    </div>
+    <div id="fp-agency-packs-result" class="fp-text-muted">Aucun pack chargé.</div>
+  </section>`;
+}
+
+window.FP_V1_ADDON_PANELS = {
+  async loadGlobal() {
+    const target = document.getElementById('fp-global-monitoring-result');
+    if (!target) return;
+    target.textContent = 'Chargement…';
+    try {
+      const summary = await window.FP_BETTERSTACK_API.loadGlobalOverview();
+      target.replaceChildren();
+      if (!summary?.regions?.length) {
+        target.textContent = 'Aucune région de contrôle configurée dans Better Stack.';
+        return;
+      }
+      const heading = document.createElement('p');
+      heading.textContent = `${summary.configuredRegionCount} régions · ${summary.configuredMonitorCount} monitors`;
+      target.appendChild(heading);
+      for (const region of summary.regions) {
+        const row = document.createElement('p');
+        row.textContent = `${region.region}: ${region.monitorCount} monitor(s) — ${region.monitors.map(m => `${m.monitorName} (${m.status})`).join(', ')}`;
+        target.appendChild(row);
+      }
+      const note = document.createElement('small');
+      note.textContent = summary.note || '';
+      target.appendChild(note);
+    } catch {
+      target.textContent = 'Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.';
+    }
+  },
+  async loadAgencyPacks() {
+    const target = document.getElementById('fp-agency-packs-result');
+    if (!target) return;
+    target.textContent = 'Chargement…';
+    try {
+      const result = await apiFetch('/api/reports/agency-packs');
+      target.replaceChildren();
+      for (const pack of (result?.packs || [])) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)';
+        const label = document.createElement('span');
+        label.textContent = `${pack.name} — ${pack.description}`;
+        const button = document.createElement('button');
+        button.className = 'fp-btn fp-btn-primary fp-btn-sm';
+        button.textContent = 'Créer le rapport';
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify({ name: pack.name, templateKey: pack.templateKey, format: 'PDF' }) });
+            showToast('success', 'Rapport créé');
+            render();
+          } catch { showToast('error', 'Impossible de créer le rapport'); button.disabled = false; }
+        });
+        row.append(label, button);
+        target.appendChild(row);
+      }
+      if (!result?.packs?.length) target.textContent = 'Aucun pack disponible.';
+    } catch {
+      target.textContent = 'Impossible de charger les packs. Vérifiez l’accès à l’add-on.';
+    }
   },
 };
 

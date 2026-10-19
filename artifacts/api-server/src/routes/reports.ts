@@ -5,6 +5,7 @@ import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { logger } from "../lib/logger.js";
+import { requireAddon } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -16,6 +17,16 @@ const REPORT_TEMPLATES = {
   local:      { label: "Local SEO" },
   ai:         { label: "Rapport IA Lab" },
 } as const;
+
+router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), (_req, res) => {
+  res.json({
+    packs: [
+      { id: "executive-monthly", name: "Executive mensuel", templateKey: "executive", description: "Synthèse exécutive mensuelle." },
+      { id: "seo-growth", name: "SEO & croissance", templateKey: "seo", description: "Suivi des performances SEO." },
+      { id: "local-presence", name: "Présence locale", templateKey: "local", description: "Rapport de visibilité locale." },
+    ],
+  });
+});
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
