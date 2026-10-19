@@ -14,7 +14,32 @@ export interface BusinessPoint {
   longitude: number | null;
 }
 
-export function summarizeLocalMaps(heatmaps: Heatmap[], competitorsAnalyzed: number) {
+export interface LocalCompetitorSummary {
+  resultCount: number;
+  uniqueCompetitors: number;
+  searchContexts: number;
+  top3Results: number;
+  averageRating: number | null;
+  averageReviews: number | null;
+  bestCompetitorName: string | null;
+  bestCompetitorRank: number | null;
+}
+
+const EMPTY_COMPETITOR_SUMMARY: LocalCompetitorSummary = {
+  resultCount: 0,
+  uniqueCompetitors: 0,
+  searchContexts: 0,
+  top3Results: 0,
+  averageRating: null,
+  averageReviews: null,
+  bestCompetitorName: null,
+  bestCompetitorRank: null,
+};
+
+export function summarizeLocalMaps(
+  heatmaps: Heatmap[],
+  competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
+) {
   const completedScans = heatmaps.filter(h => h.status === "completed").length;
   return {
     summary: {
@@ -23,16 +48,31 @@ export function summarizeLocalMaps(heatmaps: Heatmap[], competitorsAnalyzed: num
       avgRank: null,
       top3GridPoints: null,
       coverageScore: null,
-      competitorsAnalyzed,
+      competitorsAnalyzed: competitors.resultCount,
+      uniqueCompetitors: competitors.uniqueCompetitors,
+      searchContexts: competitors.searchContexts,
+      top3CompetitorResults: competitors.top3Results,
+      averageCompetitorRating: competitors.averageRating,
+      averageCompetitorReviews: competitors.averageReviews,
+      bestCompetitorName: competitors.bestCompetitorName,
+      bestCompetitorRank: competitors.bestCompetitorRank,
       localVisibilityScore: null,
     },
-    insights: heatmaps.length
-      ? [`${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). Les positions et la couverture ne sont pas mesurées dans les données disponibles.`]
-      : ["Aucune carte de suivi locale n’est enregistrée."],
+    insights: [
+      heatmaps.length
+        ? `${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). Les positions et la couverture de votre établissement ne sont pas mesurées dans les données disponibles.`
+        : "Aucune carte de suivi locale n’est enregistrée.",
+      ...(competitors.resultCount
+        ? [`${competitors.uniqueCompetitors} établissement(s) concurrent(s) distinct(s) relevé(s) sur ${competitors.searchContexts} recherche(s), avec ${competitors.top3Results} résultat(s) dans le top 3${competitors.averageRating == null ? "" : ` et une note moyenne de ${competitors.averageRating}/5`}${competitors.averageReviews == null ? "" : ` (${competitors.averageReviews} avis par établissement en moyenne)`}.`]
+        : []),
+    ],
   };
 }
 
-export function buildLocalMapsRecommendations(heatmaps: Heatmap[], competitorsAnalyzed: number) {
+export function buildLocalMapsRecommendations(
+  heatmaps: Heatmap[],
+  competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
+) {
   const items: Array<{ title: string; description: string; impact: string; effort: string; priority: string }> = [];
   if (!heatmaps.length) {
     items.push({
@@ -48,16 +88,16 @@ export function buildLocalMapsRecommendations(heatmaps: Heatmap[], competitorsAn
       impact: "Non mesuré", effort: "À estimer", priority: "medium",
     });
   }
-  if (competitorsAnalyzed) {
+  if (competitors.resultCount) {
     items.push({
-      title: "Examiner les concurrents déjà enregistrés",
-      description: `${competitorsAnalyzed} résultat(s) concurrent(s) sont disponibles en base. Comparez leurs informations sans lancer de nouvelle collecte.`,
+      title: "Comparer les concurrents les mieux classés",
+      description: `${competitors.uniqueCompetitors} établissement(s) distinct(s) sur ${competitors.searchContexts} recherche(s). ${competitors.top3Results} résultat(s) sont dans le top 3${competitors.bestCompetitorName && competitors.bestCompetitorRank != null ? `; meilleur rang observé : ${competitors.bestCompetitorName} (#${competitors.bestCompetitorRank})` : ""}.`,
       impact: "À mesurer", effort: "À estimer", priority: "low",
     });
   } else if (heatmaps.length) {
     items.push({
-      title: "Données concurrentes absentes",
-      description: "Aucun résultat concurrent n’est enregistré. Les comparaisons locales restent indisponibles sans collecte supplémentaire.",
+      title: "Aucun résultat concurrent enregistré",
+      description: "Aucun résultat concurrent n’est enregistré. Lancez une découverte locale pour comparer les établissements collectés ; aucun classement de votre établissement n’est déduit de ces données.",
       impact: "Non mesuré", effort: "À estimer", priority: "low",
     });
   }
@@ -192,23 +232,54 @@ async function getBusinessPoint(orgId: string): Promise<BusinessPoint | null> {
 }
 
 export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
-  const [heatmaps, businessPoint] = await Promise.all([
+  const [heatmaps, businessPoint, competitors] = await Promise.all([
     getHeatmaps(orgId),
     getBusinessPoint(orgId),
+    getCompetitorSummary(orgId),
   ]);
 
-  const competitorResult = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM competitor_map_results WHERE org_id=$1`,
-    [orgId],
-  ).catch(() => ({ rows: [{ total: 0 }] }));
-  const measured = summarizeLocalMaps(heatmaps, Number(competitorResult.rows[0]?.total ?? 0));
+  const measured = summarizeLocalMaps(heatmaps, competitors);
 
   return {
     heatmaps,
     businessPoint,
     summary: measured.summary,
     insights: measured.insights,
-    recommendations: buildLocalMapsRecommendations(heatmaps, Number(competitorResult.rows[0]?.total ?? 0)),
+    recommendations: buildLocalMapsRecommendations(heatmaps, competitors),
+  };
+}
+
+async function getCompetitorSummary(orgId: string): Promise<LocalCompetitorSummary> {
+  const result = await pool.query(
+    `SELECT
+       COUNT(*)::int AS result_count,
+       COUNT(DISTINCT place_id)::int AS unique_competitors,
+       COUNT(DISTINCT (keyword, location))::int AS search_contexts,
+       COUNT(*) FILTER (WHERE rank BETWEEN 1 AND 3)::int AS top3_results,
+       ROUND(AVG(rating)::numeric, 1)::float8 AS average_rating,
+       ROUND(AVG(review_count)::numeric, 0)::int AS average_reviews,
+       (SELECT name FROM competitor_map_results
+        WHERE org_id=$1
+        ORDER BY rank ASC NULLS LAST, review_count DESC, fetched_at DESC
+        LIMIT 1) AS best_competitor_name,
+       (SELECT rank FROM competitor_map_results
+        WHERE org_id=$1
+        ORDER BY rank ASC NULLS LAST, review_count DESC, fetched_at DESC
+        LIMIT 1) AS best_competitor_rank
+     FROM competitor_map_results
+     WHERE org_id=$1`,
+    [orgId],
+  );
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  return {
+    resultCount: Number(row?.["result_count"] ?? 0),
+    uniqueCompetitors: Number(row?.["unique_competitors"] ?? 0),
+    searchContexts: Number(row?.["search_contexts"] ?? 0),
+    top3Results: Number(row?.["top3_results"] ?? 0),
+    averageRating: row?.["average_rating"] == null ? null : Number(row["average_rating"]),
+    averageReviews: row?.["average_reviews"] == null ? null : Number(row["average_reviews"]),
+    bestCompetitorName: row?.["best_competitor_name"] == null ? null : String(row["best_competitor_name"]),
+    bestCompetitorRank: row?.["best_competitor_rank"] == null ? null : Number(row["best_competitor_rank"]),
   };
 }
 
@@ -251,10 +322,9 @@ export async function createHeatmap(orgId: string, data: {
 }
 
 export async function generateAiLocalRecommendations(orgId: string): Promise<Array<{ title: string; description: string; impact: string; effort: string; priority: string }>> {
-  const heatmaps = await getHeatmaps(orgId);
-  const result = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM competitor_map_results WHERE org_id=$1`,
-    [orgId],
-  ).catch(() => ({ rows: [{ total: 0 }] }));
-  return buildLocalMapsRecommendations(heatmaps, Number(result.rows[0]?.total ?? 0));
+  const [heatmaps, competitors] = await Promise.all([
+    getHeatmaps(orgId),
+    getCompetitorSummary(orgId),
+  ]);
+  return buildLocalMapsRecommendations(heatmaps, competitors);
 }

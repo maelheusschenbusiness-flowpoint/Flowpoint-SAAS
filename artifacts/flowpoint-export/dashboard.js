@@ -70944,7 +70944,7 @@ function renderLocalDominationMaps() {
   const mapsData = window.FP_DATA?.localMaps || {};
   const heatmaps = mapsData.heatmaps || [];
   const opportunities = mapsData.opportunities || [];
-  const stats = mapsData.stats || {};
+  const stats = mapsData.summary || {};
   const activeTab = window._mapsTab || 'grid';
 
   // Build geo coverage table (replaces imprecise grid)
@@ -71062,18 +71062,18 @@ function renderLocalDominationMaps() {
     </div>
 
     ${aiBlock(
-      heatmaps.length > 0
-        ? `Score de domination moyen : <strong>${stats.avgDominanceScore || 0}%</strong> sur ${heatmaps.length} heatmap${heatmaps.length > 1 ? 's' : ''}. ${opportunities.length} opportunité${opportunities.length > 1 ? 's' : ''} géographique${opportunities.length > 1 ? 's' : ''} identifiée${opportunities.length > 1 ? 's' : ''}. Recommandation : cibler les zones rouge en priorité.`
-        : 'Créez votre première heatmap de domination locale pour visualiser vos positions géographiques en temps réel.',
-      ['Analyser zones faibles', 'Détecter opportunités locales', 'Comparer concurrents']
+      Array.isArray(mapsData.insights) && mapsData.insights.length
+        ? mapsData.insights.map(escHtml).join(' ')
+        : 'Aucune mesure locale enregistrée pour le moment. Les scores de visibilité apparaîtront lorsque des données de classement réelles seront disponibles.',
+      ['Consulter les mesures enregistrées', 'Découvrir des concurrents']
     )}
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Heatmaps actives', String(heatmaps.length), 'grilles géographiques', 'up')}
-      ${statCard('Score domination moy.', (stats.avgDominanceScore || 0) + '%', 'cellules top 3', stats.avgDominanceScore >= 40 ? 'up' : 'down')}
-      ${statCard('Concurrents mappés', String(stats.totalCompetitors || 0), `dont ${stats.localPackCount || 0} en local pack`, 'neutral')}
-      ${statCard('Opportunités geo', String(stats.totalOpportunities || 0), 'zones à fort potentiel', 'up')}
+      ${statCard('Cartes configurées', String(stats.totalHeatmaps ?? heatmaps.length), 'suivis créés', 'neutral')}
+      ${statCard('Analyses terminées', String(stats.completedScans || 0), 'statut enregistré', 'neutral')}
+      ${statCard('Concurrents observés', String(stats.uniqueCompetitors || 0), 'établissements distincts', 'neutral')}
+      ${statCard('Résultats concurrents top 3', String(stats.top3CompetitorResults || 0), 'dans les recherches enregistrées', 'neutral')}
     </div>
 
     <!-- TABS -->
