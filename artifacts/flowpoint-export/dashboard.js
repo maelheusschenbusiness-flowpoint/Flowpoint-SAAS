@@ -6788,6 +6788,11 @@ function renderAudits() {
   `;
 }
 
+function renderGlobalMonitoringPanel() {
+  if (!STATE.me?.addons?.globalMonitoring) return '';
+  return '<section class="fp-card" style="margin-top:18px"><div class="fp-card-header"><div><h2>Global Monitoring</h2><p class="fp-text-muted">Régions configurées dans Better Stack</p></div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GLOBAL_MONITORING_API.load()">Actualiser</button></div><div id="fp-global-monitoring-result" class="fp-text-muted">Chargez les régions de contrôle configurées.</div></section>';
+}
+
 /* ── MONITORS ── */
 function renderMonitors() {
   if (STATE.loading) {
@@ -16101,7 +16106,7 @@ function _doRender() {
     case 'overview':       html = renderOverview(); break;
     case 'missions':       html = renderMissions(); break;
     case 'audits':         html = renderAudits(); break;
-    case 'monitors':       html = renderMonitors(); break;
+    case 'monitors':       html = renderMonitors() + renderGlobalMonitoringPanel(); break;
     case 'reports':        html = renderReports(); break;
     case 'local-seo':      html = renderLocalSEO(); break;
     case 'team':           html = renderTeam(); break;
@@ -69230,6 +69235,7 @@ window.FP_BETTERSTACK_API = {
   async loadMonitors() {
     try { const r = await apiFetch('/api/betterstack/monitors').catch(() => null); return r?.data || []; } catch(e) { return []; }
   },
+  async loadGlobalOverview() { return apiFetch('/api/betterstack/global-overview'); },
   async loadIncidents(params) {
     try {
       const q = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -69998,6 +70004,20 @@ window.FP_REVIEW_INTEL_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP GBP POSTS API
 // ═══════════════════════════════════════════════════════════════════════════════
+window.FP_GLOBAL_MONITORING_API = {
+  async load() {
+    const target = document.getElementById("fp-global-monitoring-result"); if (!target) return;
+    target.textContent = "Chargement…";
+    try {
+      const summary = await window.FP_BETTERSTACK_API.loadGlobalOverview(); target.replaceChildren();
+      if (!summary?.regions?.length) { target.textContent = "Aucune région configurée dans Better Stack."; return; }
+      const heading = document.createElement("p"); heading.textContent = summary.configuredRegionCount + " régions · " + summary.configuredMonitorCount + " monitors"; target.appendChild(heading);
+      for (const region of summary.regions) { const row = document.createElement("p"); row.textContent = region.region + ": " + region.monitorCount + " monitor(s) — " + region.monitors.map(m => m.monitorName + " (" + m.status + ")").join(", "); target.appendChild(row); }
+      const note = document.createElement("small"); note.textContent = summary.note || ""; target.appendChild(note);
+    } catch { target.textContent = "Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on."; }
+  }
+};
+
 window.FP_GBP_POSTS_API = {
   async load() {
     try {

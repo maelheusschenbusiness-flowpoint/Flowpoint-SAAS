@@ -10,8 +10,10 @@ import {
 } from "../services/betterstack-service.js";
 import { logger } from "../lib/logger.js";
 import { canAdmin, canWrite } from "../middlewares/requireRole.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import { pool } from "@workspace/db";
 import { registreAppartenancePresent } from "../services/init-bs-ownership.js";
+import { summarizeGlobalMonitoring } from "../services/global-monitoring.js";
 
 /*
  * GARDES DE ROLE — mesure du 17/10/2026.
@@ -78,6 +80,18 @@ router.get("/betterstack/monitors", async (req, res) => {
     // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
       // croire a une panne alors que l'acces est simplement refuse.
       res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
+  }
+});
+
+router.get("/betterstack/global-overview", requireAddon("globalMonitoring", "Global Monitoring"), async (req, res) => {
+  if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
+  try {
+    const orgId = (req as unknown as { orgId?: string }).orgId ?? "default";
+    const monitors = await listMonitors(orgId);
+    res.json(summarizeGlobalMonitoring(monitors));
+  } catch (err) {
+    logger.error({ err }, "[BS] global monitoring overview error");
+    res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
 });
 
