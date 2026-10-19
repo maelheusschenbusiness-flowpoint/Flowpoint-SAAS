@@ -46,8 +46,8 @@ describe("global monitoring regional coverage summary", () => {
     expect(summary.configuredRegionCount).toBe(2);
     expect(summary.configuredMonitorCount).toBe(2);
     expect(summary.regions).toEqual([
-      { region: "eu", monitorCount: 2, monitors: expect.any(Array) },
-      { region: "us", monitorCount: 1, monitors: expect.any(Array) },
+      { region: "eu", monitorCount: 2, health: { operational: 1, degraded: 0, down: 1, paused: 0, unknown: 0 }, monitors: expect.any(Array) },
+      { region: "us", monitorCount: 1, health: { operational: 1, degraded: 0, down: 0, paused: 0, unknown: 0 }, monitors: expect.any(Array) },
     ]);
     expect(summary.regions[0].monitors[1].status).toBe("down");
     expect(summary.regions[0].monitors[1].uptimePercentage).toBeNull();
