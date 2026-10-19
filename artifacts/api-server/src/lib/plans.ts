@@ -347,9 +347,9 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
   aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
   gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
-  aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 29, oneTime: false, quantity: false },
-  reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 19, oneTime: false, quantity: false },
-  localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 24, oneTime: false, quantity: false },
+  aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 12, oneTime: false, quantity: false },
+  reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 9, oneTime: false, quantity: false },
+  localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 15, oneTime: false, quantity: false },
   aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO fondées sur les événements observés", priceEur: 34, oneTime: false, quantity: false },
   behavioralAI:         { name: "Behavioral AI",            category: "Conversion",   description: "Analyse comportementale et insights IA", priceEur: 44, oneTime: false, quantity: false },
   revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Opportunités de conversion observées; pertes financières uniquement si mesurées", priceEur: 29, oneTime: false, quantity: false },
@@ -447,6 +447,13 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "customDomain",
 ]);
 
+/** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
+export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
+  "aiGbpPosting",
+  "reviewIntelligence",
+  "localDominationMaps",
+]);
+
 /**
  * Audit fonctionnel (2026-08-24) — critère BETA :
  * "route réelle, activable, mais partielle ou dépendante d'une intégration externe."
@@ -505,6 +512,7 @@ export function getAddonAvailability(addonKey: string): AddonAvailability {
   // COMING_SOON is authoritative even if a key is accidentally classified
   // elsewhere while catalogue metadata is being updated.
   if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (VALIDATION_REQUIRED_ADDONS.has(addonKey)) return "coming_soon";
   if (BETA_ADDONS.has(addonKey)) return "beta";
   return "available";
 }
@@ -519,6 +527,11 @@ export function getAddonStatus(
   options: { included?: boolean; active?: boolean | number } = {},
 ): AddonStatus {
   const availability = getAddonAvailability(addonKey);
+  if (VALIDATION_REQUIRED_ADDONS.has(addonKey)) {
+    if (options.included) return "included";
+    if (options.active === true || (typeof options.active === "number" && options.active > 0)) return "active";
+    return "coming_soon";
+  }
   if (availability === "coming_soon") return "coming_soon";
   if (options.included) return "included";
   if (options.active === true || (typeof options.active === "number" && options.active > 0)) return "active";

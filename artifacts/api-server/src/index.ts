@@ -18,6 +18,7 @@ import { initPhase1Users } from "./services/init-phase1-users.js";
 import { reportSchemaGateStatus } from "./services/schema-gate-status.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
+import { startGBPPostScheduler } from "./services/gbp-posting-service.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
 import { fetchBorne, DELAIS } from "./lib/fetch-borne.js";
@@ -488,6 +489,8 @@ async function main() {
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
+    // Do not publish real GBP content from development/test servers.
+    if (env.NODE_ENV === "production") startGBPPostScheduler();
 
     // Durable recovery of AI usage writes that failed after provider consumption
     // (idempotent replays — survives restarts, unlike in-process timers).

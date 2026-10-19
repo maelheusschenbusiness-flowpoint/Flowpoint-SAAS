@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getPlanPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
@@ -116,6 +116,10 @@ function parseAddons(raw: unknown, res: Response): AddonsMap | null {
   for (const [key, val] of Object.entries(obj)) {
     if (!KNOWN_ADDON_KEYS.has(key)) {
       res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      return null;
+    }
+    if (VALIDATION_REQUIRED_ADDONS.has(key) && (val === true || (typeof val === "number" && val > 0))) {
+      res.status(503).json({ error: "Cet add-on attend encore une validation avant sa mise en vente.", code: "ADDON_VALIDATION_REQUIRED", addonKey: key });
       return null;
     }
     if (typeof val === "boolean") { result[key] = val; continue; }

@@ -14,11 +14,62 @@ export interface BusinessPoint {
   longitude: number | null;
 }
 
+export function summarizeLocalMaps(heatmaps: Heatmap[], competitorsAnalyzed: number) {
+  const completedScans = heatmaps.filter(h => h.status === "completed").length;
+  return {
+    summary: {
+      totalHeatmaps: heatmaps.length,
+      completedScans,
+      avgRank: null,
+      top3GridPoints: null,
+      coverageScore: null,
+      competitorsAnalyzed,
+      localVisibilityScore: null,
+    },
+    insights: heatmaps.length
+      ? [`${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). Les positions et la couverture ne sont pas mesurées dans les données disponibles.`]
+      : ["Aucune carte de suivi locale n’est enregistrée."],
+  };
+}
+
+export function buildLocalMapsRecommendations(heatmaps: Heatmap[], competitorsAnalyzed: number) {
+  const items: Array<{ title: string; description: string; impact: string; effort: string; priority: string }> = [];
+  if (!heatmaps.length) {
+    items.push({
+      title: "Configurer une carte de suivi",
+      description: "Enregistrez un mot-clé et une zone pour organiser le suivi. Cette configuration ne constitue pas une mesure de classement.",
+      impact: "À mesurer", effort: "À estimer", priority: "medium",
+    });
+  } else {
+    const pending = heatmaps.filter(map => map.status !== "completed").length;
+    if (pending) items.push({
+      title: "Vérifier les cartes en attente",
+      description: `${pending} carte(s) n’ont pas de statut d’analyse terminé. Aucun classement ne peut être déduit de ces enregistrements.`,
+      impact: "Non mesuré", effort: "À estimer", priority: "medium",
+    });
+  }
+  if (competitorsAnalyzed) {
+    items.push({
+      title: "Examiner les concurrents déjà enregistrés",
+      description: `${competitorsAnalyzed} résultat(s) concurrent(s) sont disponibles en base. Comparez leurs informations sans lancer de nouvelle collecte.`,
+      impact: "À mesurer", effort: "À estimer", priority: "low",
+    });
+  } else if (heatmaps.length) {
+    items.push({
+      title: "Données concurrentes absentes",
+      description: "Aucun résultat concurrent n’est enregistré. Les comparaisons locales restent indisponibles sans collecte supplémentaire.",
+      impact: "Non mesuré", effort: "À estimer", priority: "low",
+    });
+  }
+  return items;
+}
+
 export interface MapsDashboard {
   heatmaps: Heatmap[];
   businessPoint: BusinessPoint | null;
   summary: {
     totalHeatmaps: number;
+    completedScans: number;
     avgRank: number | null;
     top3GridPoints: number | null;
     coverageScore: number | null;
@@ -26,7 +77,7 @@ export interface MapsDashboard {
     localVisibilityScore: number | null;
   };
   insights: string[];
-  recommendations: Array<{ title: string; description: string; impact: string; effort: string }>;
+  recommendations: Array<{ title: string; description: string; impact: string; effort: string; priority?: string }>;
 }
 
 // ── Server-side geocoding (Google, with explicit Nominatim opt-in fallback) ───
@@ -146,28 +197,18 @@ export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
     getBusinessPoint(orgId),
   ]);
 
-  type HeatmapExt = Heatmap & { dominance_score?: unknown };
-  const dominanceScores = heatmaps.map(h => Number((h as HeatmapExt).dominance_score ?? 0)).filter(n => n > 0);
-  const avgRank = dominanceScores.length > 0
-    ? Math.round((dominanceScores.reduce((s, n) => s + n, 0) / dominanceScores.length) * 10) / 10
-    : null;
-  const coverageScore = heatmaps.length > 0
-    ? Math.min(100, Math.round((heatmaps.filter(h => Number((h as HeatmapExt).dominance_score ?? 0) >= 50).length / heatmaps.length) * 100))
-    : null;
+  const competitorResult = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM competitor_map_results WHERE org_id=$1`,
+    [orgId],
+  ).catch(() => ({ rows: [{ total: 0 }] }));
+  const measured = summarizeLocalMaps(heatmaps, Number(competitorResult.rows[0]?.total ?? 0));
 
   return {
     heatmaps,
     businessPoint,
-    summary: {
-      totalHeatmaps: heatmaps.length,
-      avgRank,
-      top3GridPoints: null,
-      coverageScore,
-      competitorsAnalyzed: null,
-      localVisibilityScore: null,
-    },
-    insights: [],
-    recommendations: [],
+    summary: measured.summary,
+    insights: measured.insights,
+    recommendations: buildLocalMapsRecommendations(heatmaps, Number(competitorResult.rows[0]?.total ?? 0)),
   };
 }
 
@@ -209,10 +250,11 @@ export async function createHeatmap(orgId: string, data: {
   } finally { client.release(); }
 }
 
-export async function generateAiLocalRecommendations(_orgId: string): Promise<Array<{ title: string; description: string; priority: string }>> {
-  return [
-    { title: "Créer des citations locales", description: "Inscrivez votre entreprise sur les 10 annuaires locaux les plus importants de votre secteur.", priority: "high" },
-    { title: "Optimiser les photos Google Business", description: "Les fiches avec 10+ photos reçoivent 35% plus de clics. Ajoutez des photos récentes de qualité.", priority: "high" },
-    { title: "Répondre aux questions publiques", description: "Répondre aux questions Q&A sur votre fiche GBP améliore la confiance et le référencement local.", priority: "medium" },
-  ];
+export async function generateAiLocalRecommendations(orgId: string): Promise<Array<{ title: string; description: string; impact: string; effort: string; priority: string }>> {
+  const heatmaps = await getHeatmaps(orgId);
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM competitor_map_results WHERE org_id=$1`,
+    [orgId],
+  ).catch(() => ({ rows: [{ total: 0 }] }));
+  return buildLocalMapsRecommendations(heatmaps, Number(result.rows[0]?.total ?? 0));
 }

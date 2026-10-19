@@ -8899,17 +8899,35 @@ function renderLocalSEO() {
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 3, statH: 80, cards: 0 });
   }
+  if (!window.FP_DATA?.localMaps && window.FP_LOCAL_MAPS_API && !window._fpLocalMapsLoading && !window._fpLocalMapsLoaded) {
+    window._fpLocalMapsLoading = true;
+    window.FP_LOCAL_MAPS_API.load().then(() => {
+      window._fpLocalMapsLoading = false;
+      window._fpLocalMapsLoaded = true;
+      if (STATE.currentSection === 'local-seo') render();
+    }).catch(() => { window._fpLocalMapsLoading = false; window._fpLocalMapsLoaded = true; });
+  }
+  if (window.FP_GBP_API && !window._fpGbpPageLoaded && !window._fpGbpPageLoading) {
+    window._fpGbpPageLoading = true;
+    window.FP_GBP_API.load().finally(() => {
+      window._fpGbpPageLoading = false;
+      window._fpGbpPageLoaded = true;
+      if (STATE.currentSection === 'local-seo') render();
+    });
+  }
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
   const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const _lseo = STATE.localSeo || {};
-  const domScore = _lseo.domScore ?? (PREVIEW_MODE ? 72 : null);
+  const mapsSummary = window.FP_DATA?.localMaps?.summary || {};
+  const mapsDataAvailable = !!window.FP_DATA?.localMaps;
+  const domScore = PREVIEW_MODE ? 72 : null;
   const circ = 2 * Math.PI * 52;
-  const dominatedZones = _lseo.dominatedZones ?? (PREVIEW_MODE ? 4 : null);
-  const totalZones = _lseo.totalZones ?? (PREVIEW_MODE ? 8 : null);
-  const oppCount = _lseo.oppCount ?? (PREVIEW_MODE ? 12 : null);
+  const trackedMaps = mapsDataAvailable ? Number(mapsSummary.totalHeatmaps || 0) : null;
+  const completedScans = mapsDataAvailable ? Number(mapsSummary.completedScans || 0) : null;
+  const competitorsStored = mapsDataAvailable ? Number(mapsSummary.competitorsAnalyzed || 0) : null;
 
   const _orgCity = STATE.me&&STATE.me.location&&STATE.me.location.city ? STATE.me.location.city : null;
   const _lseoPreviewCities = [
@@ -8926,22 +8944,21 @@ function renderLocalSEO() {
     { name: 'Nice',           pos: 8,  delta: -1, mobile: 10, desktop: 8,  cov: 38 },
     { name: 'Strasbourg',     pos: 12, delta:  0, mobile: 15, desktop: 12, cov: 18 },
   ];
-  const cities = (_lseo.cities && _lseo.cities.length > 0) ? _lseo.cities : (PREVIEW_MODE ? _lseoPreviewCities : []);
+  const cities = PREVIEW_MODE ? _lseoPreviewCities : [];
 
   const milestones = [
     { icon: '🏆', label: 'Domination locale', desc: '70%+ de couverture', done: domScore != null && domScore >= 70 },
-    { icon: '⭐', label: 'GBP Elite',          desc: '4.5+ avec 50 avis',  done: (STATE.localSeo?.avgRating||0) >= 4.5 && (STATE.localSeo?.reviewCount||0) >= 50 },
-    { icon: '🗺️', label: 'Expansion Pro',      desc: '5+ zones actives',  done: (STATE.localSeo?.totalZones||0) >= 5 },
+    { icon: '⭐', label: 'GBP Elite',          desc: '4.5+ avec 50 avis',  done: (STATE.gbp?.avgRating||0) >= 4.5 && (STATE.gbp?.reviewsCount||0) >= 50 },
+    { icon: '🗺️', label: 'Expansion Pro',      desc: '5+ cartes suivies', done: trackedMaps >= 5 },
     { icon: '🤖', label: 'IA Stratège',         desc: 'Ultra requis',      done: false, locked: !isUltra },
   ];
 
-  const _forecastsRaw = (_lseo.forecasts && _lseo.forecasts.length > 0) ? _lseo.forecasts : null;
-  const forecasts = _forecastsRaw || (PREVIEW_MODE ? [
+  const forecasts = PREVIEW_MODE ? [
     { month: 'Juin',   val: 1420, prev: 1180 },
     { month: 'Juil.',  val: 1680, prev: 1420 },
     { month: 'Août',   val: 1540, prev: 1680 },
     { month: 'Sept.',  val: 1910, prev: 1540 },
-  ] : []);
+  ] : [];
   const maxForecast = forecasts.length > 0 ? Math.max(...forecasts.map(f => f.val)) : 1;
 
   const missingPages = PREVIEW_MODE ? [
@@ -8956,7 +8973,7 @@ function renderLocalSEO() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Domination Locale
         </h1>
-        <div class="fp-section-sub">${fpT('Plateforme de visibilité locale — Intelligence géographique en temps réel')}</div>
+        <div class="fp-section-sub">${fpT('Données GBP et résultats locaux enregistrés — sans estimation de classement')}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Rapport local', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
@@ -8979,11 +8996,15 @@ function renderLocalSEO() {
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Score domination', displayStat(domScore!=null?domScore+'/100':null,'72/100'), PREVIEW_MODE?'+5 pts ce mois':domScore!=null?'+5 pts ce mois':'Analysé automatiquement', domScore!=null?'up':'neutral')}
-      ${statCard('Zones dominées', displayStat(dominatedZones!=null?dominatedZones+'/'+(totalZones||8):null,'4/8'), PREVIEW_MODE?'à 70%+ couverture':dominatedZones!=null?'à 70%+ couverture':'Configurez vos zones', 'neutral')}
-      ${statCard('Opportunités détectées', displayStat(oppCount!=null?String(oppCount):null,'12'), PREVIEW_MODE?'non exploitées':oppCount!=null?'non exploitées':'Activez Local Pack', oppCount!=null?'down':'neutral')}
-      ${statCard('Menaces actives', String(STATE.competitors && STATE.competitors.length > 0 ? STATE.competitors.length : PREVIEW_MODE ? 3 : 0), STATE.competitors && STATE.competitors.length > 0 ? 'concurrents configurés' : PREVIEW_MODE ? 'concurrents en hausse' : 'Aucun concurrent', STATE.competitors && STATE.competitors.length > 0 ? 'down' : 'neutral')}
+      ${statCard('Cartes suivies', displayStat(PREVIEW_MODE ? '8' : trackedMaps == null ? null : String(trackedMaps)), PREVIEW_MODE ? 'données de démonstration' : mapsDataAvailable ? `${completedScans} analyse(s) terminée(s)` : 'Données indisponibles', 'neutral')}
+      ${statCard('Classements locaux', '—', 'Aucune grille de positions vérifiée', 'neutral')}
+      ${statCard('Couverture géographique', '—', 'Aucune mesure réelle disponible', 'neutral')}
+      ${statCard('Concurrents enregistrés', displayStat(PREVIEW_MODE ? '3' : competitorsStored == null ? null : String(competitorsStored)), PREVIEW_MODE ? 'données de démonstration' : 'résultats déjà stockés', 'neutral')}
     </div>
+
+    ${window._fpRenderReviewThemesPanel ? window._fpRenderReviewThemesPanel() : ''}
+    ${window._fpRenderGBPPostsPanel ? window._fpRenderGBPPostsPanel() : ''}
+    ${window._fpRenderLocalMapsStoredPanel ? window._fpRenderLocalMapsStoredPanel() : ''}
 
     <!-- DATAFORSEO LIVE INTELLIGENCE PANEL — bientôt disponible -->
     <div class="fp-card fp-mb-20" style="padding:0;overflow:hidden;border:1px solid rgba(100,116,139,0.25);position:relative;opacity:0.55;pointer-events:none;user-select:none">
@@ -9133,18 +9154,19 @@ function renderLocalSEO() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border)">
         <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
           ${svgIcon('map').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="16"').replace('height="14"','height="16"')}
-          <span class="fp-card-title" style="margin-bottom:0">${fpT('Carte de présence locale — Google Maps Live')}</span>
+          <span class="fp-card-title" style="margin-bottom:0">${fpT('Carte de présence locale')}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0">
           <div style="display:flex;align-items:center;gap:5px">
-            <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
-            <span style="font-size:10px;color:#22c55e;font-weight:600">En direct</span>
+            <div style="width:6px;height:6px;border-radius:50%;background:${PREVIEW_MODE ? '#22c55e' : '#94a3b8'}"></div>
+            <span style="font-size:10px;color:${PREVIEW_MODE ? '#22c55e' : '#94a3b8'};font-weight:600">${PREVIEW_MODE ? 'Démonstration' : 'Aucune grille mesurée'}</span>
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">${fpT('Voir zones →')}</button>
         </div>
       </div>
       <div id="fp-gmap" style="width:100%;height:680px;background:linear-gradient(135deg,var(--fp-bg-page, #050810),var(--fp-bg-card, #0a1628));position:relative;overflow:hidden">
-        <svg width="100%" height="100%" viewBox="0 0 800 680" style="position:absolute;inset:0">
+        ${PREVIEW_MODE ? '' : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune carte de positions réelles n’est disponible. Les résultats géographiques ne seront affichés qu’après l’enregistrement de mesures vérifiées.</div>`}
+        <svg width="100%" height="100%" viewBox="0 0 800 680" style="position:absolute;inset:0;display:${PREVIEW_MODE ? 'block' : 'none'}">
           <defs>
             <pattern id="mgrid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.8"/></pattern>
             <radialGradient id="mz1" cx="50%" cy="50%"><stop offset="0%" stop-color="#2563EB" stop-opacity="0.5"/><stop offset="80%" stop-color="#2563EB" stop-opacity="0.05"/><stop offset="100%" stop-color="#2563EB" stop-opacity="0"/></radialGradient>
@@ -70682,6 +70704,156 @@ window._fpSubmitAddClient = async function() {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+window._fpRenderReviewThemesPanel = function() {
+  const data = window.FP_DATA?.reviewIntelligence || window.FP_DATA?.reviewIntel;
+  const themes = Array.isArray(data?.themes) ? data.themes : [];
+  const priorities = Array.isArray(data?.priorities) ? data.priorities : [];
+  return `<section class="fp-card fp-mb-20" aria-labelledby="fp-review-themes-title">
+    <div class="fp-card-title" id="fp-review-themes-title">Review Intelligence — thèmes des avis</div>
+    ${themes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+      ${themes.map(item => `<div style="padding:12px;border:1px solid var(--fp-border);border-radius:9px;background:var(--fp-inner-card)">
+        <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(item.theme)}</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:5px">${Number(item.count)||0} avis · ${Number(item.negativeCount)||0} à surveiller</div>
+      </div>`).join('')}
+    </div>` : `<div style="font-size:12px;color:var(--fp-text-muted)">${data ? 'Aucun thème récurrent détecté dans les avis enregistrés.' : 'L’analyse des avis n’est pas disponible pour cette organisation.'}</div>`}
+    ${priorities.length ? `<div style="margin-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:7px">Priorités basées sur les avis négatifs</div>
+      ${priorities.map(item => `<div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--fp-border);font-size:11px">
+        <strong style="min-width:95px;color:var(--fp-text)">${escHtml(item.theme)}</strong>
+        <span style="color:var(--fp-text-muted)">${Number(item.negativeReviews)||0} avis — ${escHtml(item.action)}</span>
+      </div>`).join('')}
+    </div>` : ''}
+  </section>`;
+};
+
+window._fpRenderGBPPostsPanel = function() {
+  const data = window.FP_DATA?.gbpPosts;
+  if (!data && !window._fpGbpPostsLoading && !window._fpGbpPostsLoaded && window.FP_GBP_POSTS_API) {
+    window._fpGbpPostsLoading = true;
+    window.FP_GBP_POSTS_API.load().finally(() => {
+      window._fpGbpPostsLoading = false;
+      window._fpGbpPostsLoaded = true;
+      if (STATE.currentSection === 'local-seo') render();
+    });
+  }
+  const posts = Array.isArray(data?.posts) ? data.posts : [];
+  return `<section class="fp-card fp-mb-20" aria-labelledby="fp-gbp-posts-title">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="fp-card-title" id="fp-gbp-posts-title" style="margin:0">Posts Google Business Profile</div>
+      <div style="display:flex;gap:8px">
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpReloadGBPPosts()">Actualiser</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenGBPPostComposer()">Créer un post</button>
+      </div>
+    </div>
+    ${!data ? `<div style="font-size:12px;color:var(--fp-text-muted)">${window._fpGbpPostsLoaded ? 'Posts indisponibles pour ce compte ou cette offre.' : 'Chargement des posts…'}</div>` :
+      posts.length ? `<div style="display:flex;flex-direction:column;gap:8px">${posts.slice(0,6).map(post => `
+        <article style="padding:11px 12px;border:1px solid var(--fp-border);border-radius:9px;display:flex;gap:10px;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
+            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString())}` : ''}</div>
+          </div>
+          ${['draft','scheduled','failed'].includes(post.status) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpDeleteGBPPost(this.dataset.postId)" aria-label="Supprimer ce post">Supprimer</button>
+        </article>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted)">Aucun post enregistré. Créez un brouillon, planifiez-le ou publiez-le sur un établissement connecté.</div>`}
+  </section>`;
+};
+
+window._fpRenderLocalMapsStoredPanel = function() {
+  const data = window.FP_DATA?.localMaps;
+  const competitors = Array.isArray(data?.competitors) ? data.competitors : [];
+  const heatmaps = Array.isArray(data?.heatmaps) ? data.heatmaps : [];
+  return `<section class="fp-card fp-mb-20" aria-labelledby="fp-local-maps-stored-title">
+    <div class="fp-card-title" id="fp-local-maps-stored-title">Résultats Google Maps déjà enregistrés</div>
+    <div style="font-size:11px;color:var(--fp-text-muted);margin:-6px 0 12px">Cette vue réutilise les résultats en base et ne lance aucune nouvelle recherche payante.</div>
+    ${competitors.length ? `<div style="overflow-x:auto"><table class="fp-data-table">
+      <thead><tr><th>Établissement</th><th>Adresse</th><th>Note</th><th>Avis</th><th>Rang enregistré</th><th>Collecté</th></tr></thead>
+      <tbody>${competitors.slice(0,20).map(row => `<tr>
+        <td>${escHtml(row.name || '—')}</td><td>${escHtml(row.address || '—')}</td>
+        <td>${row.rating != null ? `${escHtml(String(row.rating))}★` : '—'}</td>
+        <td>${row.review_count != null ? escHtml(String(row.review_count)) : '—'}</td>
+        <td>${row.rank != null ? `#${escHtml(String(row.rank))}` : '—'}</td>
+        <td>${row.fetched_at ? escHtml(new Date(row.fetched_at).toLocaleDateString()) : '—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : heatmaps.length ? `<div style="display:flex;flex-direction:column;gap:7px">${heatmaps.slice(0,10).map(map => `
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--fp-border);font-size:11px">
+        <span>${escHtml(map.name || map.keyword || 'Carte sans nom')} · ${escHtml(map.keyword || '—')}</span>
+        <span style="color:var(--fp-text-muted)">${escHtml(map.status || 'en attente')}</span>
+      </div>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted)">Aucun résultat ni carte de suivi enregistré pour le moment.</div>`}
+  </section>`;
+};
+
+window._fpReloadGBPPosts = async function() {
+  window._fpGbpPostsLoaded = false;
+  await window.FP_GBP_POSTS_API?.load();
+  window._fpGbpPostsLoaded = true;
+  render();
+};
+
+window._fpOpenGBPPostComposer = function() {
+  const locations = Array.isArray(STATE.gbp?.locations) ? STATE.gbp.locations : [];
+  const options = locations.map(loc => {
+    let raw = loc.raw_data || {};
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (_) { raw = {}; } }
+    const value = raw.name || loc.resourceName || loc.location_id || loc.id || '';
+    const name = loc.name || raw.title || value;
+    return value ? `<option value="${escHtml(value)}" data-location-name="${escHtml(name)}">${escHtml(name)}</option>` : '';
+  }).join('');
+  openFloatPanel('Créer un post GBP', `<div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+    <label style="font-size:11px;color:var(--fp-text-muted)">Établissement Google<select id="fp-gbp-location" class="fp-input" style="margin-top:5px">${options}</select></label>
+    ${locations.length ? '' : `<div style="font-size:11px;color:var(--fp-warning)">Connectez et synchronisez Google Business Profile avant de créer un post.</div>`}
+    <label style="font-size:11px;color:var(--fp-text-muted)">Contenu<textarea id="fp-gbp-content" class="fp-input" rows="5" maxlength="1500" placeholder="Rédigez votre actualité…"></textarea></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Date de planification (facultatif)<input id="fp-gbp-schedule" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpGenerateGBPPost()">Générer avec l’IA</button>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpSaveGBPPost()">Enregistrer</button>
+    </div>
+  </div>`);
+};
+
+window._fpGenerateGBPPost = async function() {
+  const locationId = document.getElementById('fp-gbp-location')?.value;
+  if (!locationId) { showToast('error', 'Sélectionnez un établissement Google connecté.'); return; }
+  try {
+    const result = await window.FP_GBP_POSTS_API.generateAI({ locationId, objective: 'actualité locale', tone: 'professional' });
+    const content = result?.content || result?.post?.content || result?.generated?.content || '';
+    if (!content) throw new Error(result?.error || 'Aucun contenu généré.');
+    const textarea = document.getElementById('fp-gbp-content');
+    if (textarea) textarea.value = content;
+  } catch (error) { showToast('error', String(error?.message || error)); }
+};
+
+window._fpSaveGBPPost = async function() {
+  const location = document.getElementById('fp-gbp-location');
+  const content = document.getElementById('fp-gbp-content')?.value?.trim();
+  const scheduledValue = document.getElementById('fp-gbp-schedule')?.value;
+  if (!location?.value || !content) { showToast('error', 'Choisissez un établissement et ajoutez le contenu du post.'); return; }
+  try {
+    const scheduledAt = scheduledValue ? new Date(scheduledValue).toISOString() : undefined;
+    const result = await window.FP_GBP_POSTS_API.createPost({ locationId: location.value, locationName: location.selectedOptions?.[0]?.dataset.locationName, content, scheduledAt });
+    if (result?.ok === false || result?.error) throw new Error(result.error || 'Impossible d’enregistrer le post.');
+    closeFloatPanel();
+    await window._fpReloadGBPPosts();
+    showToast('success', scheduledAt ? 'Post planifié.' : 'Brouillon enregistré.');
+  } catch (error) { showToast('error', String(error?.message || error)); }
+};
+
+window._fpPublishGBPPost = async function(postId) {
+  try {
+    const result = await window.FP_GBP_POSTS_API.publish(postId);
+    if (result?.ok === false || result?.error) throw new Error(result.error || 'La publication a échoué.');
+    await window._fpReloadGBPPosts();
+    showToast('success', 'Publication Google terminée.');
+  } catch (error) { showToast('error', String(error?.message || error)); }
+};
+
+window._fpDeleteGBPPost = async function(postId) {
+  try {
+    const result = await window.FP_GBP_POSTS_API.delete(postId);
+    if (result?.ok === false || result?.error) throw new Error(result.error || 'Impossible de supprimer le post.');
+    await window._fpReloadGBPPosts();
+  } catch (error) { showToast('error', String(error?.message || error)); }
+};
+
 // FP LOCAL MAPS API
 // ═══════════════════════════════════════════════════════════════════════════════
 window.FP_LOCAL_MAPS_API = {
