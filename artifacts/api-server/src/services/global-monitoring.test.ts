@@ -51,6 +51,7 @@ describe("global monitoring regional coverage summary", () => {
     ]);
     expect(summary.regions[0].monitors[1].status).toBe("down");
     expect(summary.regions[0].monitors[1].uptimePercentage).toBeNull();
+    expect(summary.regions[0].health).toEqual({ operational: 1, degraded: 0, down: 1, paused: 0, unknown: 0 });
     expect(summary.note).toContain("not independent per-region measurements");
   });
 

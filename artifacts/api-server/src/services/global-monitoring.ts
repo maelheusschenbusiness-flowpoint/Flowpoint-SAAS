@@ -43,11 +43,18 @@ export function summarizeGlobalMonitoring(monitors: BSMonitor[]) {
     configuredMonitorCount: new Set(entries.map(entry => entry.monitorId)).size,
     regions: [...byRegion.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([region, monitorsInRegion]) => ({
-        region,
-        monitorCount: monitorsInRegion.length,
-        monitors: monitorsInRegion,
-      })),
+            .map(([region, monitorsInRegion]) => {
+        const health = monitorsInRegion.reduce((counts, monitor) => {
+          const status = monitor.status.toLowerCase();
+          if (["up", "operational", "healthy"].includes(status)) counts.operational++;
+          else if (["degraded", "degraded_performance"].includes(status)) counts.degraded++;
+          else if (["down", "error"].includes(status)) counts.down++;
+          else if (status === "paused") counts.paused++;
+          else counts.unknown++;
+          return counts;
+        }, { operational: 0, degraded: 0, down: 0, paused: 0, unknown: 0 });
+        return { region, monitorCount: monitorsInRegion.length, health, monitors: monitorsInRegion };
+      }),
     note: "Health and uptime are monitor-level aggregates from Better Stack, not independent per-region measurements.",
   };
 }
