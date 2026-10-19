@@ -8136,7 +8136,7 @@ function renderReports() {
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${fpT('Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.')}</div>
         </div>
         ${_hasAiExecutive
-          ? `<button id="fp-ai-exec-generate" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_EXECUTIVE_REPORT_API.generate()">${fpT('Générer la synthèse')}</button>``
+          ? `<button id="fp-ai-exec-generate" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_EXECUTIVE_REPORT_API.generate()">${fpT('Générer la synthèse')}</button>`
           : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled title="${fpT('Add-on non disponible à l’achat')}">${fpT('Bientôt disponible')}</button>`}
       </div>
       ${isPro
