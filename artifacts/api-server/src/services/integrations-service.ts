@@ -169,10 +169,8 @@ async function _deliverWebhook(
   if (!endpointUrl) return { ok: false, error: "URL de destination absente" };
 
   const platform = (intg["platform"] as string | undefined) || "custom";
-  if (["zapier", "make"].includes(platform.toLowerCase())) {
-    const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
-    if (!safeTarget.ok) return { ok: false, error: safeTarget.error };
-  }
+  const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+  if (!safeTarget.ok) return { ok: false, error: safeTarget.error };
   const secretKey = intg["secret_key"] as string | undefined;
   const timeoutMs = Number(intg["timeout_ms"] ?? 10000);
 
@@ -202,7 +200,7 @@ async function _deliverWebhook(
     redirect: "error",
   });
 
-  logger.info({ platform, event, status: response.status, url: endpointUrl }, "[integrations] webhook delivered");
+  logger.info({ platform, event, status: response.status }, "[integrations] webhook delivered");
   return { ok: response.ok, statusCode: response.status, error: response.ok ? undefined : `HTTP ${response.status}` };
 }
 
@@ -309,10 +307,8 @@ export async function testIntegration(
       if (!endpointUrl) throw new Error("No endpoint URL configured");
 
       const platform = (intg["platform"] as string | undefined) || "custom";
-      if (["zapier", "make"].includes(platform.toLowerCase())) {
-        const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
-        if (!safeTarget.ok) throw new Error(safeTarget.error);
-      }
+      const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+      if (!safeTarget.ok) throw new Error(safeTarget.error);
       const body = buildPlatformPayload(platform, "test.ping", {
         message: "FlowPoint webhook test — connexion réussie !",
         integration: intg["name"],
@@ -331,7 +327,7 @@ export async function testIntegration(
           .digest("hex")}`;
       }
 
-      const response = await fetch(endpointUrl, {
+      const response = await fetch(safeTarget.url, {
         method: "POST",
         headers,
         body,
