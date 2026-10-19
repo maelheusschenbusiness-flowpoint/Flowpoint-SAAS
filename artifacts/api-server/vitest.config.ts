@@ -22,6 +22,7 @@ export default defineConfig({
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes
       "src/lib/carry-params.test.ts",
+      "src/services/funnel-events.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
       "src/lib/startup-retry.test.ts",
@@ -149,6 +150,9 @@ export default defineConfig({
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
+      // Livraison Stripe : signature reelle, cinq familles d'evenements, rejeu,
+      // separation live/test et exemption des webhooks du compteur global
+      "src/tests/stripe-webhook-delivery.test.ts",
     ],
     environment: "node",
     globals:     false,

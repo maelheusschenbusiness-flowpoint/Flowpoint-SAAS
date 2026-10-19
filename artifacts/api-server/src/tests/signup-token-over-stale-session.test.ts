@@ -53,6 +53,7 @@ vi.mock("../services/seller-attribution.js", () => ({
   validateSellerCode: vi.fn(async () => null),
 }));
 vi.mock("../middlewares/rateLimiter.js", () => ({
+  createIpRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   createRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   // public-billing now imports a per-IP limiter instead of an org-keyed one.
   publicCheckoutRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
