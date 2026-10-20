@@ -50,8 +50,13 @@ describe("market intelligence uses measured observations only", () => {
 
     expect(result).toHaveLength(2);
     expect(result).toEqual(expect.arrayContaining([
-      expect.objectContaining({ competitor: "example.com", type: "ranking_gain" }),
-      expect.objectContaining({ competitor: "other.example", type: "ranking_loss" }),
+      expect.objectContaining({
+        competitor: "example.com", type: "ranking_gain",
+        previous_position: 8, current_position: 3,
+        previous_observed_at: "2026-10-12T12:00:00.000Z",
+        detected_at: "2026-10-19T12:00:00.000Z",
+      }),
+      expect.objectContaining({ competitor: "other.example", type: "ranking_loss", previous_position: 4, current_position: 7 }),
     ]));
   });
 });
