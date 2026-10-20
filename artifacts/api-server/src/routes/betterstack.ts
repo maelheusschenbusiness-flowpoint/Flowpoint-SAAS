@@ -181,11 +181,11 @@ router.post("/betterstack/monitors/:id/resume", canAdmin, async (req, res) => {
   }
 });
 
-router.get("/betterstack/monitors/:id/sla", async (req, res) => {
+router.get("/betterstack/monitors/:id/sla", requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
     const { from, to } = req.query as { from?: string; to?: string };
-    const data = await getMonitorSLA(req.params.id, (req as unknown as { orgId?: string }).orgId ?? "default", from, to);
+    const data = await getMonitorSLA(String(req.params.id), (req as unknown as { orgId?: string }).orgId ?? "default", from, to);
     res.json(data);
   } catch (err) {
     // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
