@@ -10,6 +10,8 @@
 import { pool } from "@workspace/db";
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
 import { logger } from "../lib/logger.js";
+import { getOrgAddons } from "./addons-service.js";
+import { selectGbpLocations } from "./gbp-location-quota.js";
 
 const GOOGLE_AUTH_BASE  = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token";
@@ -380,59 +382,60 @@ export async function syncAll(orgId: string): Promise<{ accounts: number; locati
     const accounts = await getAccounts(orgId);
     if (!accounts.length) return { accounts: 0, locations: 0, reviews: 0 };
 
-    let totalLocations = 0;
+    const accountBatches: Array<{ accountId: string; locations: Array<Record<string, unknown>> }> = [];
+    for (const acc of accounts.slice(0, 3)) {
+      const accountId = (acc as Record<string, string>)["name"]?.split("/")[1] ?? "";
+      if (!accountId) continue;
+      const locations = await getLocations(orgId, accountId) as Array<Record<string, unknown>>;
+      accountBatches.push({ accountId, locations });
+    }
+    const orgAddons = await getOrgAddons(orgId);
+    const selectedLocations = selectGbpLocations(accountBatches, orgAddons);
     let totalReviews   = 0;
     const client = await pool.connect();
     try {
-      for (const acc of accounts.slice(0, 3)) {
-        const accId = (acc as Record<string, string>)["name"]?.split("/")[1] ?? "";
-        if (!accId) continue;
-        const locs = await getLocations(orgId, accId);
-        totalLocations += locs.length;
+      for (const { accountId, location: loc } of selectedLocations) {
+        const rawLocationName = String(loc["name"] ?? "");
+        const locName = rawLocationName.startsWith("accounts/")
+          ? rawLocationName
+          : `accounts/${accountId}/${rawLocationName.startsWith("locations/") ? rawLocationName : `locations/${rawLocationName}`}`;
+        const storedLocation = { ...loc, name: locName };
+        const reviews = await getLocationReviews(orgId, locName);
+        totalReviews += reviews.length;
 
-        for (const loc of locs.slice(0, 10)) {
-          const rawLocationName = (loc as Record<string, string>)["name"] ?? "";
-          const locName = rawLocationName.startsWith("accounts/")
-            ? rawLocationName
-            : `accounts/${accId}/${rawLocationName.startsWith("locations/") ? rawLocationName : `locations/${rawLocationName}`}`;
-          const storedLocation = { ...(loc as Record<string, unknown>), name: locName };
-          const reviews = await getLocationReviews(orgId, locName);
-          totalReviews += reviews.length;
+        // Upsert location into google_locations
+        await client.query(
+          `INSERT INTO google_locations (id, org_id, name, raw_data, last_sync_at)
+           VALUES ($1,$2,$3,$4,NOW())
+           ON CONFLICT (id) DO UPDATE SET raw_data=$4, last_sync_at=NOW()`,
+          [`${orgId}_${locName}`, orgId, String(loc["title"] ?? locName), JSON.stringify(storedLocation)]
+        ).catch(() => {});
 
-          // Upsert location into google_locations
+        // Upsert reviews
+        for (const rev of (reviews as Array<Record<string, unknown>>).slice(0, 20)) {
           await client.query(
-            `INSERT INTO google_locations (id, org_id, name, raw_data, last_sync_at)
-             VALUES ($1,$2,$3,$4,NOW())
-             ON CONFLICT (id) DO UPDATE SET raw_data=$4, last_sync_at=NOW()`,
-            [`${orgId}_${locName}`, orgId, (loc as Record<string, string>)["title"] ?? locName, JSON.stringify(storedLocation)]
+            `INSERT INTO google_reviews
+               (id, org_id, location_id, review_id, reviewer_name, rating, comment, create_time)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+             ON CONFLICT (review_id, org_id) DO UPDATE SET rating=$6, comment=$7`,
+            [
+              `${orgId}_${rev["reviewId"]}`,
+              orgId,
+              locName,
+              rev["reviewId"] ?? "",
+              (rev["reviewer"] as Record<string, string>)?.["displayName"] ?? "",
+              parseInt(String((rev["starRating"] ?? "ZERO")).replace(/\D+/, "")) || 0,
+              (rev["comment"] as string) ?? "",
+              rev["createTime"] ?? new Date().toISOString(),
+            ]
           ).catch(() => {});
-
-          // Upsert reviews
-          for (const rev of (reviews as Array<Record<string, unknown>>).slice(0, 20)) {
-            await client.query(
-              `INSERT INTO google_reviews
-                 (id, org_id, location_id, review_id, reviewer_name, rating, comment, create_time)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-               ON CONFLICT (review_id, org_id) DO UPDATE SET rating=$6, comment=$7`,
-              [
-                `${orgId}_${rev["reviewId"]}`,
-                orgId,
-                locName,
-                rev["reviewId"] ?? "",
-                (rev["reviewer"] as Record<string, string>)?.["displayName"] ?? "",
-                parseInt(String((rev["starRating"] ?? "ZERO")).replace(/\D+/, "")) || 0,
-                (rev["comment"] as string) ?? "",
-                rev["createTime"] ?? new Date().toISOString(),
-              ]
-            ).catch(() => {});
-          }
         }
       }
     } finally {
       client.release();
     }
 
-    return { accounts: accounts.length, locations: totalLocations, reviews: totalReviews };
+    return { accounts: accounts.length, locations: selectedLocations.length, reviews: totalReviews };
   } catch (e) {
     logger.warn({ e, orgId }, "[google] syncAll failed");
     return { accounts: 0, locations: 0, reviews: 0 };

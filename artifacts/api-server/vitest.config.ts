@@ -30,6 +30,7 @@ export default defineConfig({
       "src/services/review-intel-reply.test.ts",
       "src/services/local-maps-summary.test.ts",
       "src/services/gbp-posting-publish.test.ts",
+      "src/services/gbp-location-quota.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
