@@ -19,6 +19,8 @@ export default defineConfig({
       "src/services/forecasting-service.test.ts",
       "src/services/market-intel-service.test.ts",
       "src/services/market-intel-persistence-db.test.ts",
+      "src/services/enterprise-permission-engine.test.ts",
+      "src/routes/permissions-entitlement.test.ts",
       "src/services/backlink-intel.test.ts",
       "src/routes/sla-addon-gate.test.ts",
       "src/services/mailer-nodemailer10.test.ts",
