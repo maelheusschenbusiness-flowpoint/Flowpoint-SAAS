@@ -61309,6 +61309,39 @@ function renderGrowthKeywords() {
   window._fpLoadContentDecay = async function() {
     const target = document.getElementById('fp-content-decay-results');
     if (!target) return;
+    if (target.dataset.aiStrategyBound !== '1') {
+      target.dataset.aiStrategyBound = '1';
+      target.addEventListener('click', async event => {
+        const button = event.target?.closest?.('[data-ai-content-strategy]');
+        if (!button || !target.contains(button)) return;
+        const page = button.dataset.aiContentStrategyPage || '';
+        const resultNode = button.parentElement?.querySelector('[data-ai-content-strategy-result]');
+        button.disabled = true;
+        button.textContent = 'Génération IA…';
+        try {
+          const response = await apiFetch('/api/keywords/content-decay/strategy?simulateAddon=1', {
+            method: 'POST',
+            body: JSON.stringify({ page }),
+          });
+          const strategy = response?.strategy;
+          if (!strategy || !Array.isArray(strategy.actions)) throw new Error('Réponse IA invalide.');
+          if (resultNode) {
+            resultNode.innerHTML = `<div style="margin-top:10px;padding:10px;border-left:2px solid var(--fp-accent);background:var(--fp-card)">
+              <div style="font-weight:700;margin-bottom:6px">${escHtml(strategy.summary)}</div>
+              <ol style="margin:0;padding-left:20px">${strategy.actions.map(action => `<li style="margin:6px 0">
+                <strong>${escHtml(action.title)}</strong> — ${escHtml(action.reason)}
+                <div style="color:var(--fp-text-muted)">À vérifier : ${escHtml(action.validation)}</div>
+              </li>`).join('')}</ol>
+            </div>`;
+          }
+          button.textContent = 'Recommandations générées';
+        } catch (err) {
+          button.disabled = false;
+          button.textContent = 'Générer les recommandations IA';
+          if (resultNode) resultNode.textContent = err?.message || 'La recommandation IA est indisponible. Réessayez.';
+        }
+      });
+    }
     target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">Analyse des données Google Search Console…</div>';
     try {
       const result = await apiFetch('/api/keywords/content-decay?simulateAddon=1');
@@ -61327,6 +61360,7 @@ function renderGrowthKeywords() {
             <span>Impressions : ${Number(item.previous?.impressions).toLocaleString(getLocale())} → ${Number(item.current?.impressions).toLocaleString(getLocale())}</span>
           </div>
           <div style="font-size:11px;color:var(--fp-text)">${escHtml(item.recommendedAction || '')}</div>
+          <div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" data-ai-content-strategy data-ai-content-strategy-page="${escHtml(item.page)}">Générer les recommandations IA</button><div data-ai-content-strategy-result></div></div>
         </div>`).join('')}</div>` : '';
       const ctrHtml = ctrItems.length ? `<div style="font-weight:700;font-size:12px;margin:8px 0">Pages à faible CTR</div><div style="display:grid;gap:10px">${ctrItems.map(item => `
         <div style="padding:12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">

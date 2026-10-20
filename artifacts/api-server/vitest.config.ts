@@ -14,6 +14,7 @@ export default defineConfig({
     include: [
       "src/services/keyword-domination.test.ts",
       "src/services/global-monitoring.test.ts",
+      "src/services/content-decay-strategy.test.ts",
       "src/services/workspace-launch-output.test.ts",
       "src/services/forecasting-service.test.ts",
       "src/services/market-intel-service.test.ts",
