@@ -71640,6 +71640,8 @@ function renderLocalSEOReviews() {
             const _rId = 'fp-rv-' + _ri;
             // HTML-escape r.id for use in data-attributes; the browser unescapes it into dataset.
             const _safeApiId = escHtml(String(r.id || ''));
+             const _replyDraft = r.ai_reply || window._fpReviewReplyDrafts?.[String(r.id || '')] || '';
+             const _reviewText = String(r.review_text || r.text || r.comment || '');
             return `
             <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="(function(el){el.classList.toggle('fp-rv-expanded');el.querySelector('.fp-rv-body').style.display=el.classList.contains('fp-rv-expanded')?'block':'none';})(document.getElementById('${_rId}'))">
               <div style="display:flex;align-items:flex-start;gap:10px">
@@ -71651,19 +71653,19 @@ function renderLocalSEOReviews() {
                     <span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${r.sentiment === 'positive' ? 'rgba(34,197,94,0.15)' : r.sentiment === 'negative' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)'};color:${sentimentColor(r.sentiment)}">${r.sentiment || '—'}</span>
                     <span style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">▾</span>
                   </div>
-                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml((r.review_text || '').slice(0, 120))}${(r.review_text || '').length > 120 ? '…' : ''}</div>
+                   <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(_reviewText.slice(0, 120))}${_reviewText.length > 120 ? '…' : ''}</div>
                 </div>
               </div>
               <div class="fp-rv-body" style="display:none;margin-top:10px">
-                ${(r.review_text || '') ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(r.review_text || '')}</div>` : ''}
-                ${r.ai_reply ? `
+                ${_reviewText ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(_reviewText)}</div>` : ''}
+                ${_replyDraft ? `
                   <div style="padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
-                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA GÉNÉRÉE</div>
-                    <div class="fp-rv-ai-text" style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(r.ai_reply || '')}</div>
+                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 BROUILLON IA — À RELIRE AVANT PUBLICATION</div>
+                    <div class="fp-rv-ai-text" style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(_replyDraft)}</div>
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-id="${_rId}" style="margin-top:6px;font-size:9px" onclick="event.stopPropagation();(function(btn){var el=document.getElementById(btn.dataset.rvId);var txt=el&&el.querySelector('.fp-rv-ai-text');if(txt&&navigator.clipboard)navigator.clipboard.writeText(txt.textContent||'').then(()=>showToast('success',fpT('Réponse copiée')));})(this)">📋 Copier la réponse</button>
                   </div>
                 ` : isPro ? `
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-api-id="${_safeApiId}" style="font-size:10px" onclick="event.stopPropagation();(function(btn){var id=btn.dataset.rvApiId;showToast('info',fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional','fr').then(function(){showToast('success',fpT('Réponse générée !'));window.FP_REVIEW_INTEL_API.load();render(STATE.currentSection);});})(this)">🤖 Générer réponse IA</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-api-id="${_safeApiId}" style="font-size:10px" onclick="event.stopPropagation();(function(btn){var id=btn.dataset.rvApiId;btn.disabled=true;showToast('info',fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional','fr').then(function(result){if(!result||result.ok!==true||!result.reply)throw new Error('REPLY_GENERATION_FAILED');window._fpReviewReplyDrafts=window._fpReviewReplyDrafts||{};window._fpReviewReplyDrafts[id]=result.reply;showToast('success',fpT('Réponse générée !'));render(STATE.currentSection);}).catch(function(){showToast('error',fpT('Impossible de générer la réponse. Réessayez.'));btn.disabled=false;});})(this)">🤖 Générer un brouillon IA</button>
                 ` : `<div style="font-size:10px;color:var(--fp-text-faint)">Réponses IA — Pro requis</div>`}
               </div>
             </div>`;
