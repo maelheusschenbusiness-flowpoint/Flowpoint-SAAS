@@ -693,6 +693,8 @@ export async function getGoogleMapsResultsAtCoordinate(
   if (!await isDataForSEOConfigured(orgId)) return { results: [], error: "not_configured" };
   try {
     type DFSResult = Array<{
+      status_code?: number;
+      status_message?: string;
       result?: Array<{
         items?: Array<{
           type: string;
@@ -708,7 +710,18 @@ export async function getGoogleMapsResultsAtCoordinate(
       language_code: "fr",
       depth: 20,
     }], orgId);
-    const allItems = data[0]?.result?.[0]?.items ?? [];
+    const task = data[0];
+    if (!task || task.status_code !== 20000) {
+      logger.warn({
+        statusCode: task?.status_code ?? null,
+        statusMessage: task?.status_message ?? null,
+        keyword,
+        latitude,
+        longitude,
+      }, "[dfs] coordinate maps task failed");
+      return { results: [], error: "provider_error" };
+    }
+    const allItems = task.result?.[0]?.items ?? [];
     return {
       results: allItems
         .filter(item => item.type === "maps_search" || item.type === "local_pack")
