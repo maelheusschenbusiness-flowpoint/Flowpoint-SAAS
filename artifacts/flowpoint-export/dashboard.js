@@ -55285,124 +55285,26 @@ function renderCompetitor() {
   // SUB: BACKLINKS — Intelligence Backlinks
   // ══════════════════════════════════════════════════════════
   if (sub === 'backlinks') {
-    const _blReal = STATE.backlinks;
-    const _blAvailable = _blReal && _blReal.available !== false;
+    const _blReal = STATE.backlinks && typeof STATE.backlinks === 'object' ? STATE.backlinks : null;
+    const _blAvailable = _blReal?.available === true;
     const _blPlanRequired = !!(_blReal && _blReal.planRequired);
-    const blData = [
-      {
-        name: 'Vous',
-        auth:   _blAvailable ? _blReal.domainRating   : (PREVIEW_MODE ? 38  : null),
-        bl:     _blAvailable ? _blReal.totalBacklinks  : (PREVIEW_MODE ? 127 : null),
-        rd:     _blAvailable ? _blReal.totalDomains    : (PREVIEW_MODE ? 48  : null),
-        gained: _blAvailable ? _blReal.newBacklinks    : (PREVIEW_MODE ? 12  : null),
-        lost:   _blAvailable && _blReal.lostBacklinks != null ? -_blReal.lostBacklinks : (PREVIEW_MODE ? -2 : null),
-        trend: 'up',
-      },
-      ...(comps.length > 0
-        ? comps.slice(0,3).map((c) => ({name:c.name,auth:c.auth||null,bl:null,rd:null,gained:null,lost:null,trend:'up'}))
-        : PREVIEW_MODE ? [
-            { name: 'Concurrent A', auth: 52, bl: 210, rd: 81, gained: 28, lost: -3, trend: 'up' },
-            { name: 'Concurrent B', auth: 35, bl: 89,  rd: 34, gained: 4,  lost: -8, trend: 'down' },
-            { name: 'Concurrent C', auth: 41, bl: 140, rd: 55, gained: 9,  lost: -1, trend: 'up' },
-          ] : []
-      ),
-    ];
-    const linkOpps = PREVIEW_MODE ? [
-      { site: 'pagesjaunes.fr',         da: 72, type: 'Annuaire', effort: '10 min', gained: false },
-      { site: 'mairie-paris.fr',         da: 88, type: 'Local public', effort: '1h', gained: false },
-      { site: 'chambre-commerce-idf.fr', da: 61, type: 'Pro',   effort: '30 min', gained: false },
-      { site: 'yelp.fr',                 da: 68, type: 'Avis',   effort: '15 min', gained: true  },
-    ] : [];
+    const _blValue = (key) => _blAvailable && Number.isFinite(Number(_blReal[key]))
+      ? Number(_blReal[key]).toLocaleString(getLocale())
+      : '—';
+    const _blDomain = _blReal?.domain ? String(_blReal.domain) : '';
     return `
       ${_blPlanRequired ? `<div style="padding:14px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔒</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Données de liens non disponibles</div><div style="font-size:12px;color:var(--fp-text-muted)">Les données de backlinks ne sont pas accessibles avec la configuration actuelle.</div></div></div>` : ''}
-      ${aiBlock((blData.length > 1 ? "L'autorité de <strong>" + escHtml(blData[1].name) + "</strong> croît via des domaines locaux à fort DA." : "Analysez les backlinks de vos concurrents pour identifier des opportunités.") + (PREVIEW_MODE ? " Vous avez <strong>4 opportunités faciles de backlinks</strong> non exploitées (+14 DA potentiel). 2 backlinks perdus ce mois à récupérer en priorité." : (_blAvailable ? " Les données de backlinks sont disponibles." : " Les données de backlinks ne sont pas encore disponibles.")),
-        ['Voir les opportunités', 'Rapport backlinks', 'Alertes nouveaux liens'])}
-
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Vos backlinks',     displayStat(_blReal?.totalBacklinks,  '127'), PREVIEW_MODE ? '+12 ce mois'   : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'up' : 'neutral')}
-        ${statCard('Domaines référents',displayStat(_blReal?.totalDomains,    '48'),  PREVIEW_MODE ? 'vs 81 leader'  : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'up' : 'neutral')}
-        ${statCard('Backlinks perdus',  displayStat(_blReal?.lostBacklinks,   '2'),   PREVIEW_MODE ? 'ce mois'       : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'down' : 'neutral')}
-        ${statCard('Opportunités liens', linkOpps.filter(l => !l.gained).length, 'à exploiter', 'up')}
+        ${statCard('Backlinks', _blValue('backlinks'), _blAvailable ? 'mesurés par DataForSEO' : 'Données fournisseur indisponibles', _blAvailable ? 'up' : 'neutral')}
+        ${statCard('Domaines référents', _blValue('referring_domains'), _blAvailable ? 'mesurés par DataForSEO' : 'Données fournisseur indisponibles', _blAvailable ? 'up' : 'neutral')}
+        ${statCard('Liens dofollow', _blValue('dofollow'), _blAvailable ? 'mesurés par DataForSEO' : 'Données fournisseur indisponibles', _blAvailable ? 'up' : 'neutral')}
+        ${statCard('Domain Rank', _blValue('domain_rank'), _blAvailable ? 'indicateur fournisseur' : 'Données fournisseur indisponibles', _blAvailable ? 'neutral' : 'neutral')}
       </div>
-
-      <!-- AUTHORITY + BL COMPARISON -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">
-          ${svgIcon('link').replace('stroke="currentColor"','stroke="#06b6d4"')}
-          Comparaison backlinks & autorité
-        </div>
-        <div style="overflow-x:auto">
-          <table class="fp-data-table">
-            <thead><tr><th>Site</th><th style="text-align:center">Autorité (DA)</th><th style="text-align:center">Backlinks</th><th style="text-align:center">Domaines réf.</th><th style="text-align:center">Gagnés/mois</th><th style="text-align:center">Perdus/mois</th><th style="text-align:center">Tendance</th></tr></thead>
-            <tbody>
-              ${blData.map((b, idx) => {
-                const isYou = idx === 0;
-                const authColor = b.auth != null ? (b.auth>=50?'#22c55e':b.auth>=35?'#f59e0b':'#ef4444') : 'var(--fp-text-muted)';
-                return `<tr style="${isYou?'background:rgba(37,99,235,0.06);':''}">
-                  <td><strong style="${isYou?'color:var(--fp-accent)':''}">${isYou?'🎯 ':''}${escHtml(b.name)}</strong></td>
-                  <td style="text-align:center;font-weight:700;color:${authColor}">${b.auth != null ? b.auth : '—'}</td>
-                  <td style="text-align:center">${b.bl != null ? b.bl : '—'}</td>
-                  <td style="text-align:center">${b.rd != null ? b.rd : '—'}</td>
-                  <td style="text-align:center;${b.gained!=null?'color:#22c55e;font-weight:600':''}">${b.gained != null ? '+' + b.gained : '—'}</td>
-                  <td style="text-align:center;${b.lost!=null?'color:#ef4444;font-weight:600':''}">${b.lost != null ? b.lost : '—'}</td>
-                  <td style="text-align:center">${badge(b.trend==='up'?'↑ Croissance':'↓ Perte', b.trend==='up'?'#22c55e':'#ef4444')}</td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- LINK OPPORTUNITIES + VELOCITY -->
-      <div class="fp-grid-2 fp-mb-20">
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🔗 Opportunités de liens détectées</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${linkOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Données de classement indisponibles Advanced pour détecter des opportunités de liens</div>` : ''}${linkOpps.map(l => `
-              <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:${l.gained?'rgba(34,197,94,0.05)':'rgba(37,99,235,0.05)'};border:1px solid ${l.gained?'rgba(34,197,94,0.15)':'rgba(37,99,235,0.15)'}">
-                <div style="flex:1">
-                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(l.site)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${l.type} · DA ${l.da} · ${l.effort}</div>
-                </div>
-                ${l.gained
-                  ? `<span style="font-size:11px;color:#22c55e;font-weight:600">✓ Obtenu</span>`
-                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Obtenir un backlink','SEO Backlinks','medium')">Obtenir</button>`
-                }
-              </div>
-            `).join('')}
-          </div>
-        </div>
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📈 Vélocité d\'acquisition (mois récents)</div>
-          ${PREVIEW_MODE
-            ? `<div style="display:flex;gap:6px;align-items:flex-end;height:100px;padding-bottom:4px;margin-bottom:10px">
-            ${[{m:'Jan',v:3},{m:'Fév',v:5},{m:'Mar',v:4},{m:'Avr',v:8},{m:'Mai',v:12}].map(m=>`
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div style="font-size:10px;font-weight:700;color:#2563EB">${m.v}</div>
-                <div style="width:100%;max-width:40px;height:${Math.round(m.v/12*80)}px;background:linear-gradient(180deg,rgba(37,99,235,0.5),rgba(37,99,235,0.1));border-radius:4px 4px 0 0;border-top:2px solid #2563EB"></div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">${m.m}</div>
-              </div>
-            `).join('')}
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div style="padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;font-size:12px;color:var(--fp-accent)">
-              📈 Croissance +62% ce mois — meilleur mois depuis 6 mois
-            </div>
-            <div style="padding:8px 10px;background:rgba(34,197,94,0.05);border-radius:8px;border-left:3px solid #22c55e;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#22c55e">Tendance positive</strong> — Le rythme d'acquisition a doublé en 2 mois. À ce rythme, +18 domaines référents supplémentaires attendus en juin.
-            </div>
-            <div style="padding:8px 10px;background:rgba(245,158,11,0.05);border-radius:8px;border-left:3px solid #f59e0b;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#f59e0b">Opportunité</strong> — 3 domaines autorité (DA&gt;60) récemment identifiés dans votre niche. Contacter avant vos concurrents.
-            </div>
-            <div style="padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;border-left:3px solid #2563EB;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#2563EB">Objectif M+3</strong> — Maintenir &gt;10 liens/mois pour atteindre 80 domaines référents actifs (+63% vs aujourd'hui).
-            </div>
-          </div>`
-            : `<div style="padding:16px;text-align:center;color:var(--fp-text-muted);font-size:12px">
-              Données de vélocité backlinks disponibles avec les données de liens.
-            </div>`
-          }
-        </div>
+        <div class="fp-card-title" style="margin-bottom:10px">${svgIcon('link').replace('stroke="currentColor"','stroke="#06b6d4"')} Profil de liens réel</div>
+        ${_blAvailable
+          ? `<p style="font-size:12px;color:var(--fp-text-muted);margin:0">Données DataForSEO${_blDomain ? ` pour <strong>${escHtml(_blDomain)}</strong>` : ''}. Le résumé actuel fournit les volumes de backlinks, domaines référents, liens dofollow et Domain Rank.</p>`
+          : `<p style="font-size:12px;color:var(--fp-text-muted);margin:0">Aucune donnée de backlinks n’est disponible. Vérifiez la connexion DataForSEO et le domaine du site, puis rechargez cette page.</p>`}
       </div>
     `;
   }
@@ -55435,8 +55337,8 @@ function renderCompetitor() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Zones où vous gagnez', localComp.filter(z => z.comp1!=null && z.yours <= z.comp1).length + '/' + localComp.length, 'vs meilleur concurrent', 'up')}
-        ${statCard('Note GBP moy.', displayStat(null, '4.4★'), PREVIEW_MODE ? 'vs 4.6 concurrents' : 'Connectez GBP', 'neutral')}
-        ${statCard('Avis total', displayStat(null, '47'), PREVIEW_MODE ? 'vs 116 moy. concurrents' : 'Connectez GBP', 'neutral')}
+        ${statCard('Note GBP moy.', displayStat(STATE.localSeo?.avgRating, '—'), STATE.localSeo?.avgRating != null ? 'données de votre fiche GBP' : 'Connectez GBP', 'neutral')}
+        ${statCard('Avis total', displayStat(STATE.localSeo?.reviewCount, '—'), STATE.localSeo?.reviewCount != null ? 'données de votre fiche GBP' : 'Connectez GBP', 'neutral')}
         ${statCard('Avantage zones', localComp.filter(z => z.comp1!=null && z.yours < z.comp1).length, 'territoires dominés', 'up')}
       </div>
 
