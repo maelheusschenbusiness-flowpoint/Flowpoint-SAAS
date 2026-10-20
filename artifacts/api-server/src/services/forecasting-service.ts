@@ -1,10 +1,12 @@
 import { pool } from "@workspace/db";
+import { getGA4ForecastHistory } from "./ga4-service.js";
 
 export interface ForecastData {
   siteUrl: string;
   forecasts: ForecastPoint[];
   available: boolean;
-  source: "gsc" | "stored" | "none";
+  ga4Available: boolean;
+  source: "gsc" | "gsc+ga4" | "stored" | "none";
   reason?: string;
   summary: {
     expectedTrafficIn30d: number;
@@ -26,10 +28,30 @@ export interface ForecastPoint {
   scenario: "pessimistic" | "realistic" | "optimistic";
 }
 
+export function projectGA4DailyMetric(
+  values: number[],
+  day: number,
+  multiplier: number,
+  precision = 0,
+): number {
+  if (values.length < 14) return 0;
+  const recent = values.slice(-14);
+  const previous = values.slice(-28, -14);
+  const average = (series: number[]) => series.length ? series.reduce((sum, value) => sum + value, 0) / series.length : 0;
+  const baseline = average(recent);
+  const previousAverage = average(previous);
+  const trend = previous.length
+    ? Math.max(-0.05, Math.min(0.05, (baseline - previousAverage) / Math.max(previousAverage, 1) / 14))
+    : 0;
+  const scale = 10 ** precision;
+  return Math.max(0, Math.round(baseline * Math.pow(1 + trend, day) * multiplier * scale) / scale);
+}
+
 const EMPTY_FORECAST: ForecastData = {
   siteUrl: "",
   forecasts: [],
   available: false,
+  ga4Available: false,
   source: "none",
   reason: "Données historiques insuffisantes pour générer une prévision.",
   summary: {
@@ -59,7 +81,7 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
     try {
       const res = await client.query(
         `SELECT * FROM seo_forecasts
-         WHERE org_id=$1 AND site_url=$2 AND source='gsc'
+         WHERE org_id=$1 AND site_url=$2 AND source IN ('gsc','gsc+ga4')
          ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
         [orgId, url]
       );
@@ -83,6 +105,7 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
           siteUrl: url,
           forecasts,
           available: realistic.length > 0,
+          ga4Available: res.rows.some((r: Record<string, unknown>) => r["source"] === "gsc+ga4"),
           source: "stored",
           summary: {
             expectedTrafficIn30d:     realTraffic30,
@@ -133,6 +156,10 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
       return { ...EMPTY_FORECAST, siteUrl, generatedAt: new Date().toISOString(),
         reason: "Au moins 14 jours de données Google Search Console sont nécessaires." };
     }
+    const ga4History = await getGA4ForecastHistory(orgId, "35daysAgo", "yesterday").catch(() => null);
+    const measuredGa4 = ga4History && ga4History.length >= 14 ? ga4History : null;
+    const ga4Conversions = measuredGa4?.map(row => row.conversions) ?? [];
+    const ga4Revenue = measuredGa4?.map(row => row.revenue) ?? [];
     const clicks = history.rows.map(r => Number(r.clicks) || 0);
     const recent = clicks.slice(-14);
     const previous = clicks.slice(-28, -14);
@@ -148,20 +175,31 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
       for (const scenario of Object.keys(multipliers) as ForecastPoint["scenario"][]) {
         const traffic = Math.max(0, Math.round(baseline * Math.pow(1 + dailyTrend, day) * multipliers[scenario]));
         forecasts.push({ date: date.toISOString().slice(0, 10), predictedTraffic: traffic,
-          predictedConversions: 0, predictedRevenue: 0, confidence, scenario });
+          predictedConversions: projectGA4DailyMetric(ga4Conversions, day, multipliers[scenario]),
+          predictedRevenue: projectGA4DailyMetric(ga4Revenue, day, multipliers[scenario], 2),
+          confidence, scenario });
       }
     }
     for (const f of forecasts) {
       await client.query(
         `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
-           VALUES ($1,$2,$3,$4,$5,0,0,$6,$7,'gsc',NOW())
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
          ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
-           predicted_traffic=$5, predicted_conversions=0, predicted_revenue=0, confidence=$6, source='gsc', generated_at=NOW()`,
+           predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, source=$10, generated_at=NOW()`,
         [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-          orgId, siteUrl, f.date, f.predictedTraffic, f.confidence, f.scenario]
+          orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue,
+          f.confidence, f.scenario, measuredGa4 ? "gsc+ga4" : "gsc"]
       );
     }
     const data = await getForecastData({ orgId, siteUrl });
-    return { ...data, available: true, source: "gsc", reason: "Trafic projeté à partir des clics Google Search Console. Conversion et revenu nécessitent GA4." };
+    return {
+      ...data,
+      available: true,
+      ga4Available: !!measuredGa4,
+      source: measuredGa4 ? "gsc+ga4" : "gsc",
+      reason: measuredGa4
+        ? "Trafic projeté à partir de GSC; conversions et revenus projetés à partir de GA4 sur les 14 derniers jours mesurés."
+        : "Trafic projeté à partir de GSC. Au moins 14 jours de données GA4 sont nécessaires pour projeter conversions et revenus.",
+    };
   } finally { client.release(); }
 }
