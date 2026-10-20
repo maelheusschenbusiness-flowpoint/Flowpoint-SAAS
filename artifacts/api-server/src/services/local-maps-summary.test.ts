@@ -37,6 +37,23 @@ describe("Local Domination Maps summary", () => {
     expect(result.insights).toEqual(["Aucune carte de suivi locale n’est enregistrée."]);
   });
 
+  it("reports actual measured points and never uses absolute SERP positions as local ranks", () => {
+    const result = summarizeLocalMaps([{
+      ...heatmap("measured", "completed"),
+      cells_data: [
+        { row: 0, column: 0, latitude: 50, longitude: 4, status: "measured", rank: 4 },
+        { row: 0, column: 1, latitude: 50, longitude: 4.1, status: "measured", rank: null },
+        { row: 0, column: 2, latitude: 50, longitude: 4.2, status: "error", rank: null },
+      ],
+    }]);
+    expect(result.summary).toMatchObject({
+      avgRank: 4, top3GridPoints: 0, coverageScore: 67, localVisibilityScore: 0,
+    });
+    expect(result.insights[0]).toContain("2/3 point(s) mesuré(s)");
+    expect(result.insights[0]).toContain("1 point(s) sans établissement correspondant");
+    expect(result.insights[0]).toContain("rang moyen observé #4");
+  });
+
   it("keeps recommendations tied to stored rows and avoids estimated rank gains", () => {
     const recommendations = buildLocalMapsRecommendations([heatmap("a", "pending")]);
     expect(recommendations).toHaveLength(2);

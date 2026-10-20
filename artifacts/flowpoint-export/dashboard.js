@@ -49017,6 +49017,7 @@ async function init() {
   // Heatmap submit — extracted from innerHTML <script> (scripts in innerHTML do NOT execute)
   window._submitCreateHeatmap = async function() {
     const name = document.getElementById('hm-name')?.value.trim() || '';
+    const businessName = document.getElementById('hm-business')?.value.trim() || '';
     const keyword = document.getElementById('hm-keyword')?.value.trim() || '';
     const _latRaw = document.getElementById('hm-lat')?.value.trim();
     const _lngRaw = document.getElementById('hm-lng')?.value.trim();
@@ -49025,15 +49026,15 @@ async function init() {
     const lng = _lngRaw ? parseFloat(_lngRaw) : (STATE.me?.location?.longitude != null ? parseFloat(String(STATE.me.location.longitude)) : 2.3522);
     const radius = parseFloat(document.getElementById('hm-radius')?.value || '5');
     const grid = parseInt(document.getElementById('hm-grid')?.value || '7', 10);
-    if (!name || !keyword) { showToast('error', fpT('Nom et mot-clé requis')); return; }
+    if (!name || !businessName || !keyword) { showToast('error', fpT('Nom, établissement et mot-clé requis')); return; }
     if (isNaN(lat) || isNaN(lng)) { showToast('error', fpT('Coordonnées géographiques invalides')); return; }
     showToast('info', fpT('Génération de la heatmap en cours…'));
     const modal = document.getElementById('fp-heatmap-modal');
     if (modal) modal.style.display = 'none';
     try {
-      const r = await window.FP_LOCAL_MAPS_API.createHeatmap({ name, keyword, centerLat: lat, centerLng: lng, radiusKm: radius, gridSize: grid });
+      const r = await window.FP_LOCAL_MAPS_API.createHeatmap({ name, businessName, keyword, centerLat: lat, centerLng: lng, radiusKm: radius, gridSize: grid });
       if (r?.ok) {
-        showToast('success', fpT('Heatmap générée !'));
+        showToast('info', fpT('Analyse locale lancée. Les résultats apparaîtront après les mesures.'));
         await window.FP_LOCAL_MAPS_API.load();
         window._mapsTab = 'grid';
         render(STATE.currentSection);
@@ -71159,6 +71160,9 @@ window.FP_LOCAL_MAPS_API = {
   async createHeatmap(data) {
     return await apiFetch('/api/local-maps/heatmaps', { method: 'POST', body: JSON.stringify(data) });
   },
+  async scanHeatmap(id) {
+    return await apiFetch(`/api/local-maps/heatmaps/${encodeURIComponent(id)}/scan`, { method: 'POST', body: JSON.stringify({}) });
+  },
   async deleteHeatmap(id) {
     return await apiFetch(`/api/local-maps/heatmaps/${id}`, { method: 'DELETE' });
   },
@@ -71240,14 +71244,13 @@ function renderLocalDominationMaps() {
     let cells;
     try { cells = typeof heatmap.cells_data === 'string' ? JSON.parse(heatmap.cells_data) : heatmap.cells_data; }
     catch { return ''; }
-    const zoneLabels = ['Centre','Nord','Nord-Est','Est','Sud-Est','Sud','Sud-Ouest','Ouest','Nord-Ouest','Centre-Nord','Centre-Est','Centre-Sud','Centre-Ouest','Périphérie N','Périphérie E','Périphérie S','Périphérie O','Zone élargie A','Zone élargie B','Zone élargie C','Zone élargie D','Zone élargie E','Zone élargie F','Zone élargie G','Zone élargie H','Banlieue N','Banlieue NE','Banlieue E','Banlieue SE','Banlieue S','Banlieue SO','Banlieue O','Banlieue NO','Commune A','Commune B','Commune C','Commune D','Commune E','Commune F','Commune G','Commune H','Commune I','Commune J','Commune K','Commune L','Commune M','Commune N','Commune O','Commune P'];
-    const rankColor = r => r <= 3 ? '#22c55e' : r <= 10 ? '#f59e0b' : r <= 20 ? '#f97316' : '#ef4444';
-    const rankLabel = r => r > 20 ? '20+' : `#${r}`;
-    const rankStatus = r => r <= 3 ? 'Top 3' : r <= 10 ? 'Top 10' : r <= 20 ? 'Top 20' : 'Hors top';
-    const sorted = [...cells].sort((a,b) => a.rank - b.rank);
-    const top3 = cells.filter(c=>c.rank<=3).length;
-    const top10 = cells.filter(c=>c.rank<=10).length;
-    const out = cells.filter(c=>c.rank>20).length;
+    const rankColor = r => r == null ? '#94a3b8' : r <= 3 ? '#22c55e' : r <= 10 ? '#f59e0b' : r <= 20 ? '#f97316' : '#ef4444';
+    const rankLabel = r => r == null ? '>20' : `#${r}`;
+    const rankStatus = r => r == null ? 'Absent du top 20' : r <= 3 ? 'Top 3' : r <= 10 ? 'Top 10' : r <= 20 ? 'Top 20' : 'Hors top';
+    const sorted = [...cells].sort((a,b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
+    const top3 = cells.filter(c=>c.rank!=null && c.rank<=3).length;
+    const top10 = cells.filter(c=>c.rank!=null && c.rank<=10).length;
+    const out = cells.filter(c=>c.rank==null).length;
     return `
       <div class="fp-grid-4cols" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${[
@@ -71274,15 +71277,15 @@ function renderLocalDominationMaps() {
           </tr></thead>
           <tbody>
             ${sorted.slice(0,15).map((c,i)=>{
-              const col = rankColor(c.rank);
+              const col = c.status === 'error' ? '#64748b' : rankColor(c.rank);
               const chg = c.rankChange;
               const chgColor = chg > 0 ? '#22c55e' : chg < 0 ? '#ef4444' : '#94a3b8';
               return `<tr style="border-bottom:1px solid var(--fp-border)">
-                <td style="padding:7px 10px;font-weight:600;color:var(--fp-text);white-space:nowrap">${zoneLabels[i]||('Zone '+(i+1))}</td>
+                <td style="padding:7px 10px;font-weight:600;color:var(--fp-text);white-space:nowrap">Point ${Number(c.row)+1} · ${Number(c.column)+1}</td>
                 <td style="padding:7px 10px;text-align:center;font-weight:900;font-size:14px;color:${col};font-family:var(--fp-font-head)">${rankLabel(c.rank)}</td>
-                <td style="padding:7px 10px;text-align:center;font-weight:700;color:${chgColor}">${chg > 0 ? '↑ +' + chg : chg < 0 ? '↓ ' + chg : '→ —'}</td>
-                <td style="padding:7px 10px;text-align:center"><span style="background:${col}18;color:${col};font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap">${rankStatus(c.rank)}</span></td>
-                <td style="padding:7px 10px;text-align:center">${c.rank > 10 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info', fpT('Optimisation en cours…'))">Optimiser</button>` : '<span style="font-size:11px;color:#22c55e">✓ OK</span>'}</td>
+                <td style="padding:7px 10px;text-align:center;font-weight:700;color:${chgColor}">—</td>
+                <td style="padding:7px 10px;text-align:center"><span style="background:${col}18;color:${col};font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap">${c.status === 'error' ? 'Mesure indisponible' : rankStatus(c.rank)}</span></td>
+                <td style="padding:7px 10px;text-align:center">${c.rank != null && c.rank > 10 ? '<span style="font-size:11px;color:var(--fp-text-faint)">À améliorer</span>' : c.rank != null ? '<span style="font-size:11px;color:#22c55e">✓ OK</span>' : '—'}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -71396,7 +71399,7 @@ function renderLocalDominationMaps() {
             </div>
             <div style="display:flex;align-items:center;gap:10px">
               <div style="text-align:right">
-                <div style="font-size:22px;font-weight:900;color:${activeHeatmap?.dominance_score >= 40 ? '#22c55e' : '#f59e0b'};line-height:1">${activeHeatmap?.dominance_score || 0}%</div>
+                <div style="font-size:22px;font-weight:900;color:${activeHeatmap?.dominance_score >= 40 ? '#22c55e' : '#f59e0b'};line-height:1">${activeHeatmap?.dominance_score == null ? '—' : `${activeHeatmap.dominance_score}%`}</div>
                 <div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em">domination</div>
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
@@ -71405,6 +71408,15 @@ function renderLocalDominationMaps() {
               </button>
             </div>
           </div>
+
+          ${['pending','running','partial','failed'].includes(activeHeatmap?.status) ? `
+            <div style="padding:10px 12px;margin:10px 0;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
+              ${activeHeatmap?.status === 'running' || activeHeatmap?.status === 'pending'
+                ? 'Mesures DataForSEO en cours. Actualisez cette page pour voir leur état.'
+                : escHtml(activeHeatmap?.scan_error || (activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
+              ${activeHeatmap?.status === 'failed' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">Relancer la mesure</button>` : ''}
+            </div>
+          ` : ''}
 
           <!-- Grid centered -->
           <div style="padding:16px 0 8px;border-top:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:16px">
@@ -71418,9 +71430,9 @@ function renderLocalDominationMaps() {
             try { cells = typeof activeHeatmap.cells_data === 'string' ? JSON.parse(activeHeatmap.cells_data) : activeHeatmap.cells_data; }
             catch { return ''; }
             const total = cells.length;
-            const top3  = cells.filter(c => c.rank <= 3).length;
-            const top10 = cells.filter(c => c.rank <= 10).length;
-            const out   = cells.filter(c => c.rank > 20).length;
+            const top3  = cells.filter(c => c.rank != null && c.rank <= 3).length;
+            const top10 = cells.filter(c => c.rank != null && c.rank <= 10).length;
+            const out   = cells.filter(c => c.rank == null && c.status === 'measured').length;
             const stats = [
               { label:'Top 3',      count:top3,  color:'#22c55e', pct:total ? Math.round(top3/total*100)  : 0 },
               { label:'Top 10',     count:top10, color:'#f59e0b', pct:total ? Math.round(top10/total*100) : 0 },
@@ -71524,6 +71536,7 @@ function renderLocalDominationMaps() {
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">🗺 Nouvelle heatmap de domination</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="hm-name" class="fp-input" placeholder="Nom (ex: Paris Centre — Plomberie)"/>
+          <input id="hm-business" class="fp-input" placeholder="Nom exact de l’établissement" value="${escHtml(_gName)}"/>
           <input id="hm-keyword" class="fp-input" placeholder="Mot-clé cible (ex: plombier urgence)"/>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <input id="hm-lat" class="fp-input" placeholder="Latitude (ex: 48.8566)" value="${STATE.me?.location?.latitude != null ? Number(STATE.me.location.latitude).toFixed(4) : ''}"/>
@@ -71543,7 +71556,7 @@ function renderLocalDominationMaps() {
             </select>
           </div>
           <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-            ℹ️ La heatmap sera générée pour chaque point de la grille autour de votre emplacement configuré.
+            ℹ️ Une requête DataForSEO est utilisée par point : 25, 49 ou 81 selon la grille. Le quota quotidien s’applique. Les positions absentes du top 20 restent indiquées comme non trouvées.
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
