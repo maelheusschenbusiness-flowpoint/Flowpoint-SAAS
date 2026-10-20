@@ -10,6 +10,7 @@ const jobs: Map<string, CronJob> = new Map([
   ["monitor-health", { name: "monitor-health", interval: "5min", lastRun: null, status: "idle", runCount: 0 }],
   ["dataforseo-sync", { name: "dataforseo-sync", interval: "1h", lastRun: null, status: "idle", runCount: 0 }],
   ["audit-scheduler", { name: "audit-scheduler", interval: "1h", lastRun: null, status: "idle", runCount: 0 }],
+  ["workflow-scheduler", { name: "workflow-scheduler", interval: "1min", lastRun: null, status: "idle", runCount: 0 }],
   ["mission-engine", { name: "mission-engine", interval: "6h", lastRun: null, status: "idle", runCount: 0 }],
   ["forecast-refresh", { name: "forecast-refresh", interval: "24h", lastRun: null, status: "idle", runCount: 0 }],
 ]);
