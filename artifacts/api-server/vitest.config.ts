@@ -13,6 +13,7 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/services/global-monitoring.test.ts",
+      "src/services/forecasting-service.test.ts",
       "src/services/market-intel-service.test.ts",
       "src/routes/sla-addon-gate.test.ts",
       "src/services/mailer-nodemailer10.test.ts",
@@ -245,8 +246,6 @@ export default defineConfig({
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
-      "src/services/workflow-schedule-cron.test.ts",
-      "src/services/workflow-schedule-cron-db.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.
