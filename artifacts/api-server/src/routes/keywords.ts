@@ -13,6 +13,11 @@ import { withCache } from "../middlewares/cacheControl.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { canSimulateContentDecayAddon, findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
+import { aiChat } from "../services/ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
+import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { parseContentDecayStrategy } from "../services/content-decay-strategy.js";
 
 const router = Router();
 const contentDecayGate: RequestHandler = (req, res, next) => {
@@ -63,6 +68,80 @@ router.get("/keywords/content-decay", contentDecayGate, async (req, res) => {
   } catch (err) {
     logger.error({ err, orgId }, "[keywords] content decay query failed");
     res.status(503).json({ error: "Search Console data is temporarily unavailable." });
+  }
+});
+
+router.post("/keywords/content-decay/strategy", contentDecayGate, canWrite, async (req, res) => {
+  const orgId = getOrg(req);
+  const page = typeof req.body?.page === "string" ? req.body.page.trim() : "";
+  if (orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  if (!page || page.length > 2048) {
+    res.status(400).json({ error: "A valid page URL is required." });
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const start = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const result = await (req as OrgReq).orgDb(
+      `SELECT page, date, clicks, impressions, position
+         FROM gsc_page_data
+        WHERE org_id = $1 AND page = $2 AND date >= $3 AND date < $4
+        ORDER BY date
+        LIMIT 500`,
+      [orgId, page, start, today],
+    );
+    const opportunity = findContentDecayOpportunities(result.rows, now.getTime())
+      .find(item => item.page === page);
+    if (!opportunity) {
+      res.status(404).json({ error: "Aucune baisse mesurable n'a été trouvée pour cette page." });
+      return;
+    }
+
+    const quota = await checkAIQuota({ feature: "strategist", orgId });
+    if (!quota.allowed) {
+      res.status(402).json(buildQuotaGuidance(quota, await loadOrgAIPrefs(orgId)));
+      return;
+    }
+    const prefs = await loadOrgAIPrefs(orgId);
+    const model = resolveAIModel(prefs, "strategist");
+    const startedAt = Date.now();
+    const generated = await aiChat({
+      provider: model.provider,
+      model: model.model,
+      systemPrompt: "Tu es un consultant SEO. Utilise uniquement les métriques fournies; ne prétends pas avoir consulté le contenu de la page. Retourne uniquement un JSON valide.",
+      messages: [{
+        role: "user",
+        content: `Propose 3 actions prioritaires pour cette page à partir de ses données Google Search Console. Présente les recommandations comme des hypothèses à valider, sans garantir de résultats.\\n${JSON.stringify(opportunity)}\\nFormat: {"summary":"...","actions":[{"title":"...","reason":"...","validation":"..."}]}`,
+      }],
+      maxTokens: model.maxTokens,
+      json: true,
+    });
+    const strategy = parseContentDecayStrategy(generated.text ?? "");
+    if (!strategy) {
+      res.status(502).json({ error: "La recommandation IA reçue était incomplète. Réessayez." });
+      return;
+    }
+    recordCompletedUsageDeferred({
+      feature: "strategist",
+      orgId,
+      userId: req.userId ?? "unknown",
+      model: model.model as AIModel,
+      provider: model.provider,
+      tokensIn: generated.usage?.promptTokens ?? 0,
+      tokensOut: generated.usage?.completionTokens ?? 0,
+      latencyMs: Date.now() - startedAt,
+      success: true,
+      requestId: `content_decay_${Date.now()}`,
+    });
+    res.json({ ok: true, source: "google_search_console", page, strategy });
+  } catch (err) {
+    logger.error({ err, orgId, page }, "[keywords] content decay strategy failed");
+    res.status(503).json({ error: "Impossible de générer une recommandation à partir des données Search Console." });
   }
 });
 
