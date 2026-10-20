@@ -1,0 +1,28 @@
+modules = ["nodejs-20"]
+run = "node api.cjs"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[env]
+PORT = "5000"
+
+[workflows]
+
+[[workflows.workflow]]
+name = "Run"
+mode = "sequential"
+author = 53517031
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+[deployment]
+build = ["sh", "-c", "npm run build"]
+run = ["sh", "-c", "NODE_ENV=production node dist/index.cjs"]
+deploymentTarget = "cloudrun"
+
+[[deployment.ports]]
+localPort = 5000
+externalPort = 80

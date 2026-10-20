@@ -1,0 +1,33 @@
+# Flowpoint
+
+> Flowpoint est une plateforme SaaS de marketing local qui aide les entreprises françaises à améliorer leur visibilité en ligne et à attirer plus de clients grâce à l'optimisation SEO locale.
+
+## Pages principales
+
+- [Accueil](https://flowpoint.pro/): Présentation de la plateforme et capture de leads
+- [Fonctionnalités](https://flowpoint.pro/fonctionnalites): Toutes les fonctionnalités de la plateforme
+- [Tarifs](https://flowpoint.pro/tarifs): Plans et grille tarifaire
+- [Avantages](https://flowpoint.pro/avantages): Pourquoi choisir Flowpoint
+- [À propos](https://flowpoint.pro/a-propos): L'équipe et la mission de Flowpoint
+- [Contact](https://flowpoint.pro/contact): Formulaire de contact et coordonnées
+- [Mises à jour](https://flowpoint.pro/mises-a-jour): Nouveautés et évolutions du produit
+- [Carrières](https://flowpoint.pro/carrieres): Offres d'emploi
+
+## Produits SEO
+
+- [Audit SEO](https://flowpoint.pro/seo-audit): Analyse technique et éditoriale d'un site pour identifier les opportunités d'optimisation SEO
+- [SEO local](https://flowpoint.pro/local-seo): Outils pour améliorer la visibilité locale et le positionnement dans les recherches géolocalisées
+- [Surveillance de site](https://flowpoint.pro/website-monitoring): Suivi continu de la disponibilité, des performances et des problèmes techniques d'un site
+- [Rapports SEO](https://flowpoint.pro/seo-reporting): Création de rapports SEO clairs pour suivre les performances et les progrès
+- [Analyse concurrentielle](https://flowpoint.pro/competitor-analysis): Comparaison des performances SEO et des stratégies des concurrents
+- [Ressources](https://flowpoint.pro/ressources): Guides et contenus pratiques pour développer sa visibilité en ligne
+
+## Informations légales
+
+- [Mentions légales](https://flowpoint.pro/mentions-legales)
+- [Informations légales](https://flowpoint.pro/informations-legales)
+
+## Contact
+
+- Email: support@flowpoint.pro
+- Application: https://app.flowpoint.pro/login.html

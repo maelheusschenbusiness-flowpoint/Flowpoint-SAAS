@@ -1,0 +1,281 @@
+import { Router, type Request, type Response } from "express";
+import crypto from "crypto";
+import { logger } from "../lib/logger.js";
+import { requireOrgId } from "../lib/require-org-id.js";
+import {
+  isGitHubConfigured, getGitHubAuthUrl, exchangeCodeForToken, getGitHubUser,
+  getUserRepos, getRepoCommits, getRepoDeployments, getRepoReleases,
+  getRepoBranches, getRepoContributors, getWorkflowRuns,
+  analyzeRepo, getAnalysis, saveConnection, getConnection, disconnectGitHub,
+} from "../services/github-service.js";
+
+const router = Router();
+
+// GET /github/status — connection status
+router.get("/github/status", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const conn = await getConnection(orgId).catch(() => null);
+  res.json({
+    connected: !!conn,
+    configured: isGitHubConfigured(),
+    login: conn?.login || null,
+    name: conn?.name || null,
+    connectedAt: conn?.connectedAt || null,
+  });
+});
+
+// GET /github/auth — initiate OAuth
+router.get("/github/auth", (req: Request, res: Response) => {
+  if (!isGitHubConfigured()) {
+    res.status(503).json({ ok: false, error: "GitHub OAuth not configured. Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET." });
+    return;
+  }
+  const state = crypto.randomBytes(16).toString("hex");
+  const url = getGitHubAuthUrl(state);
+  res.json({ ok: true, url, state });
+});
+
+// GET /github/callback — OAuth callback (browser redirect from GitHub, user already authenticated via cookie)
+router.get("/github/callback", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  const { code, error: oauthError } = req.query as { code?: string; error?: string };
+  const publicUrl = process.env["PUBLIC_URL"] || "";
+
+  if (oauthError) {
+    res.redirect(`${publicUrl}/dashboard.html#integrations?github_error=${encodeURIComponent(oauthError)}`);
+    return;
+  }
+  if (!code) {
+    res.status(400).json({ ok: false, error: "Missing OAuth code" });
+    return;
+  }
+
+  try {
+    // exchangeCodeForToken returns the raw access token string (not an object)
+    const accessToken = await exchangeCodeForToken(code);
+    if (!accessToken) throw new Error("No access token received");
+
+    const user = await getGitHubUser(accessToken);
+    // Pass a typed object to saveConnection — fixes prior positional-arg mismatch
+    // that caused login/avatarUrl/accessToken to be stored as NULL.
+    await saveConnection(orgId, {
+      githubUserId: user.id,
+      login:        user.login,
+      name:         user.name,
+      email:        user.email,
+      avatarUrl:    user.avatarUrl,
+      accessToken,
+    });
+
+    logger.info({ login: user.login, orgId }, "[GitHub] OAuth connection saved successfully");
+    res.redirect(`${publicUrl}/dashboard.html#integrations?github_connected=1&login=${encodeURIComponent(user.login)}`);
+  } catch (err) {
+    logger.error({ err }, "[GitHub] OAuth callback failed");
+    res.redirect(`${publicUrl}/dashboard.html#integrations?github_error=oauth_failed`);
+  }
+});
+
+// GET /github/repos — list repos
+router.get("/github/repos", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected. Call /api/github/auth first." }); return; }
+
+  try {
+    const repos = await getUserRepos(conn.accessToken);
+    res.json({ repos: repos.slice(0, 50) });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Failed to fetch repos");
+    res.status(500).json({ error: "Failed to fetch repositories" });
+  }
+});
+
+// GET /github/commits/:owner/:repo — commit analytics
+router.get("/github/commits/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  const days = Number(req.query["days"] || 30);
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
+
+  try {
+    const commits = await getRepoCommits(conn.accessToken, owner, repo, days);
+
+    const byDay = new Map<string, number>();
+    const byAuthor = new Map<string, number>();
+    commits.forEach(c => {
+      const commit = c as Record<string, unknown>;
+      const commitData = commit["commit"] as Record<string, unknown> | undefined;
+      const author = commitData?.["author"] as Record<string, unknown> | undefined;
+      const day = ((author?.["date"] as string) || "").slice(0, 10);
+      if (day) byDay.set(day, (byDay.get(day) || 0) + 1);
+      const authorName = (author?.["name"] as string) || "Unknown";
+      byAuthor.set(authorName, (byAuthor.get(authorName) || 0) + 1);
+    });
+
+    res.json({
+      total: commits.length,
+      days,
+      byDay: Object.fromEntries(byDay),
+      byAuthor: Array.from(byAuthor.entries()).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+      recent: commits.slice(0, 20).map(c => {
+        const commit = c as Record<string, unknown>;
+        const commitData = commit["commit"] as Record<string, unknown>;
+        const author = commitData["author"] as Record<string, unknown>;
+        return {
+          sha: (commit["sha"] as string).slice(0, 7),
+          message: (commitData["message"] as string).split("\n")[0].slice(0, 100),
+          author: author["name"] as string,
+          date: author["date"] as string,
+          url: `https://github.com/${owner}/${repo}/commit/${commit["sha"]}`,
+        };
+      }),
+    });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Failed to fetch commits");
+    res.status(500).json({ error: "Failed to fetch commits" });
+  }
+});
+
+// GET /github/deployments/:owner/:repo — deployment monitoring
+router.get("/github/deployments/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
+
+  try {
+    const [deployments, releases, runs] = await Promise.all([
+      getRepoDeployments(conn.accessToken, owner, repo).catch(() => []),
+      getRepoReleases(conn.accessToken, owner, repo).catch(() => []),
+      getWorkflowRuns(conn.accessToken, owner, repo).catch(() => []),
+    ]);
+
+    res.json({
+      deployments: deployments.slice(0, 20),
+      releases: releases.slice(0, 10),
+      workflowRuns: runs.slice(0, 15),
+    });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Failed to fetch deployments");
+    res.status(500).json({ error: "Failed to fetch deployments" });
+  }
+});
+
+// POST /github/analysis/:owner/:repo — trigger full analysis
+router.post("/github/analysis/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
+
+  try {
+    logger.info({ owner, repo }, "[GitHub] Starting repo analysis");
+    const analysis = await analyzeRepo(conn.accessToken, owner, repo);
+    res.json({ ok: true, analysis });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Repo analysis failed");
+    res.status(500).json({ error: "Repo analysis failed" });
+  }
+});
+
+// GET /github/analysis/:owner/:repo — get cached analysis
+router.get("/github/analysis/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  // getAnalysis(orgId, repoFullName) — repoFullName is "owner/repo"
+  const analysis = await getAnalysis(orgId, `${owner}/${repo}`).catch(() => null);
+  if (!analysis) { res.status(404).json({ error: "No analysis found. POST to /api/github/analysis/:owner/:repo to run one." }); return; }
+  res.json({ analysis });
+});
+
+// GET /github/issues/:owner/:repo — issues and security alerts
+router.get("/github/issues/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
+
+  try {
+    const issues = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=30&labels=bug,security`, {
+      headers: { "Authorization": `Bearer ${conn.accessToken}`, "Accept": "application/vnd.github+json" },
+    }).then(r => r.json()) as Array<{ id: number; title: string; state: string; labels: Array<{ name: string; color: string }>; created_at: string; html_url: string }>;
+
+    res.json({
+      total: Array.isArray(issues) ? issues.length : 0,
+      issues: Array.isArray(issues) ? issues.slice(0, 30).map(i => ({
+        id: i.id,
+        title: i.title,
+        labels: i.labels.map(l => l.name),
+        createdAt: i.created_at,
+        url: i.html_url,
+      })) : [],
+    });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Failed to fetch issues");
+    res.status(500).json({ error: "Failed to fetch issues" });
+  }
+});
+
+// GET /github/health/:owner/:repo — health score
+router.get("/github/health/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  // getAnalysis(orgId, repoFullName) — pass org-scoped cache key
+  const cached = await getAnalysis(orgId, `${owner}/${repo}`).catch(() => null);
+
+  if (cached) {
+    res.json({ health: cached.health, fromCache: true, analyzedAt: cached.analyzedAt });
+    return;
+  }
+
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected. No cached analysis available." }); return; }
+
+  try {
+    const analysis = await analyzeRepo(conn.accessToken, owner, repo);
+    res.json({ health: analysis.health, fromCache: false, analyzedAt: analysis.analyzedAt });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Failed to compute health");
+    res.status(500).json({ error: "Failed to compute repository health" });
+  }
+});
+
+// GET /github/contributors/:owner/:repo — contributors
+router.get("/github/contributors/:owner/:repo", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { owner, repo } = req.params as { owner: string; repo: string };
+  const conn = await getConnection(orgId).catch(() => null);
+  if (!conn) { res.status(403).json({ error: "GitHub not connected" }); return; }
+
+  try {
+    const contributors = await getRepoContributors(conn.accessToken, owner, repo);
+    const branches = await getRepoBranches(conn.accessToken, owner, repo).catch(() => []);
+    res.json({ contributors: contributors.slice(0, 30), branches: branches.slice(0, 30) });
+  } catch (err) {
+    logger.error({ err }, "[GitHub] Failed to fetch contributors");
+    res.status(500).json({ error: "Failed to fetch contributors" });
+  }
+});
+
+// POST /github/disconnect — disconnect GitHub
+router.post("/github/disconnect", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  await disconnectGitHub(orgId).catch(() => {});
+  logger.info({ orgId }, "[GitHub] Disconnected");
+  res.json({ ok: true });
+});
+
+export default router;

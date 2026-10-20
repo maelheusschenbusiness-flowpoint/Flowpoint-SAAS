@@ -1,0 +1,17 @@
+{
+  "name": "flowpoint-saas",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm --filter @workspace/api-server run dev"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "playwright": "^1.61.1",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@replit/connectors-sdk": "^0.4.1"
+  }
+}

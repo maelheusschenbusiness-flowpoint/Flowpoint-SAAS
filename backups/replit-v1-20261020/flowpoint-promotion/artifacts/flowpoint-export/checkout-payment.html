@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <title>Paiement — FlowPoint</title>
+  <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b1120;
+      --bg2:       #111827;
+      --surface:   #1e293b;
+      --border:    #2d3f55;
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#3b82f6;
+      --text:      #f1f5f9;
+      --text-soft: #94a3b8;
+      --text-muted:#64748b;
+      --green:     #34d399;
+      --green-bg:  rgba(52,211,153,0.08);
+      --green-brd: rgba(52,211,153,0.2);
+      --radius:    16px;
+      --shadow:    0 8px 40px rgba(0,0,0,.5);
+    }
+    html[data-theme="light"] {
+      --bg:        #f8faff;
+      --bg2:       #ffffff;
+      --surface:   #f1f5f9;
+      --border:    rgba(0,0,0,.09);
+      --text:      #0f172a;
+      --text-soft: #475569;
+      --text-muted:#94a3b8;
+      --shadow:    0 4px 24px rgba(0,0,0,.1);
+    }
+    html[data-theme="dark"] .fp-card { background: rgba(8,14,30,0.94); border-color: rgba(255,255,255,0.07); }
+
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px; line-height: 1.5;
+    }
+    body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 32px 16px 64px; }
+
+    /* ── Logo ── */
+    .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 28px; }
+    .fp-logo-name { font-size: 20px; font-weight: 800; letter-spacing: -.4px; color: var(--text); }
+    .fp-logo-name span { color: var(--blue-light); }
+
+    /* ── Steps ── */
+    .fp-steps { display: flex; align-items: center; gap: 0; margin-bottom: 28px; font-size: 12px; font-weight: 600; }
+    .fp-step { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+    .fp-step.active { color: var(--blue-light); }
+    .fp-step.done { color: var(--green); }
+    .fp-step-num { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .fp-step.done .fp-step-num { background: var(--green-bg); border-color: var(--green-brd); }
+    .fp-step.active .fp-step-num { background: rgba(37,99,235,0.12); border-color: rgba(37,99,235,0.4); }
+    .fp-step-sep { width: 28px; height: 1.5px; background: var(--border); margin: 0 8px; flex-shrink: 0; }
+
+    /* ── Wrap ── */
+    .fp-wrap { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Cards ── */
+    .fp-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      padding: 22px 24px;
+    }
+    .fp-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: 14px; }
+
+    /* ── Summary rows ── */
+    .fp-sum-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 7px 0; }
+    .fp-sum-row + .fp-sum-row { border-top: 1px solid rgba(255,255,255,0.05); }
+    html[data-theme="light"] .fp-sum-row + .fp-sum-row { border-top-color: rgba(0,0,0,0.05); }
+    .fp-sum-label { font-size: 13.5px; color: var(--text-soft); flex: 1; min-width: 0; }
+    .fp-sum-badge { display: inline-block; font-size: 9.5px; font-weight: 700; border-radius: 20px; padding: 1.5px 6px; vertical-align: middle; white-space: nowrap; margin-left: 6px; }
+    .fp-badge-trial { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-brd); }
+    .fp-badge-now   { background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); }
+    .fp-badge-incl  { background: rgba(100,116,139,0.1); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.2); }
+    .fp-sum-amount  { font-size: 13.5px; font-weight: 600; color: var(--text); white-space: nowrap; text-align: right; }
+    .fp-sum-amount.muted { color: var(--text-muted); font-weight: 400; }
+
+    /* ── Totals ── */
+    .fp-divider { height: 1px; background: var(--border); margin: 10px 0; }
+    .fp-total-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
+    .fp-total-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+    .fp-total-val { font-size: 20px; font-weight: 800; color: var(--blue-light); }
+    .fp-total-val.after { font-size: 15px; color: var(--green); }
+    .fp-total-unit { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 1px; }
+
+    /* ── Stripe elements ── */
+    #fp-payment-element { margin-bottom: 18px; }
+
+    /* ── Alert ── */
+    .fp-alert { display: none; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+    .fp-alert.show { display: block; }
+    .fp-alert-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
+    html[data-theme="light"] .fp-alert-error { color: #dc2626; }
+
+    /* ── Buttons ── */
+    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 15px 20px; border: none; border-radius: 11px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s; text-decoration: none; }
+    .fp-btn-primary { background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); color: #fff; box-shadow: 0 4px 16px rgba(37,99,235,.3); margin-bottom: 10px; }
+    .fp-btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%); }
+    .fp-btn-primary:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+    .fp-btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-size: 13px; font-weight: 500; padding: 11px; }
+    .fp-btn-ghost:hover { border-color: var(--blue); color: var(--blue-light); }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .7s linear infinite; flex-shrink: 0; }
+
+    /* ── Loading state ── */
+    .fp-loading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 48px 0; text-align: center; }
+    .fp-loading-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--blue-light); animation: spin .7s linear infinite; }
+    .fp-loading p { font-size: 14px; color: var(--text-muted); }
+
+    /* ── Security + trial notes ── */
+    .fp-secure-note { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
+    .fp-trial-note { text-align: center; font-size: 12.5px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-brd); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+
+<!-- Logo -->
+<a href="/checkout.html" class="fp-logo">
+  <img src="/assets/flowpoint-logo.svg" width="34" height="34" alt="FlowPoint" aria-hidden="true" style="display:block">
+  <span class="fp-logo-name">Flow<span>Point</span></span>
+</a>
+
+<!-- Steps -->
+<div class="fp-steps">
+  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Tarifs</span></div>
+  <div class="fp-step-sep"></div>
+  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Récapitulatif</span></div>
+  <div class="fp-step-sep"></div>
+  <div class="fp-step active"><div class="fp-step-num">3</div><span>Paiement</span></div>
+</div>
+
+<!-- Wrap -->
+<div class="fp-wrap">
+
+  <!-- Order Summary -->
+  <div class="fp-card" id="fp-summary-card">
+    <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Chargement…</p></div>
+  </div>
+
+  <!-- Payment + Address -->
+  <div class="fp-card" id="fp-payment-card">
+
+    <!-- Payment Element -->
+    <div class="fp-card-title">Informations de paiement</div>
+    <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
+    <div class="fp-alert fp-alert-error" id="fp-alert"></div>
+    <div id="fp-payment-element" role="group" aria-label="Informations de paiement"></div>
+
+    <span id="fp-pay-desc" hidden>Confirme et finalise votre abonnement FlowPoint. Paiement sécurisé par Stripe.</span>
+    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirmer et payer" aria-describedby="fp-pay-desc">
+      <span id="fp-btn-text">Chargement…</span>
+      <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
+    </button>
+    <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Récapitulatif</a>
+    <p class="fp-secure-note">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Paiement sécurisé · TLS · vos données ne transitent pas par nos serveurs
+    </p>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ──────────────────────────────────────────────────────────────────────
+     SOURCE UNIQUE DES PRIX : le devis serveur.
+     Cette page ne contient aucun catalogue, aucun prix et aucune matrice
+     d'inclusion. Le panier ne transporte qu'une SÉLECTION (plan + add-ons) ;
+     tous les montants affichés proviennent de `quote`, qui est exactement
+     l'objet ayant servi à créer l'intent Stripe.
+     ────────────────────────────────────────────────────────────────────── */
+
+  /* ── Panier : sélection uniquement ── */
+  var cart = null;
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch (e) {}
+  if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
+    window.location.href = '/checkout.html';
+    return;
+  }
+  var plan   = cart.plan || '';
+  var addons = cart.addons || {};
+
+  /* ── État ── */
+  var quote         = null;   /* devis serveur — seule source de montants */
+  var stripe, elements;
+  var _paymentReady = false;
+  var _payBtnLabel  = 'Confirmer →';
+  var _mode         = 'setup';
+  function authHeaders() {
+    try {
+      var token = sessionStorage.getItem('fp_session_token') || '';
+      return token ? { 'Authorization': 'Bearer ' + token } : {};
+    } catch (e) { return {}; }
+  }
+  function preRegisterToken() {
+    try {
+      var token = sessionStorage.getItem('fp_pre_reg_token') || '';
+      if (token) return token;
+      var stored = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+      return stored && stored.token && stored.exp > Date.now() ? stored.token : '';
+    } catch (e) { return ''; }
+  }
+  function rememberCheckoutIntent() {
+    try {
+      localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+        cart: cart,
+        sellerRef: localStorage.getItem('fp_seller_ref') || '',
+        next: '/checkout-payment.html',
+        exp: Date.now() + 1800000
+      }));
+      sessionStorage.setItem('fp_next', '/checkout-payment.html');
+    } catch (e) {}
+  }
+  async function requireAuthenticatedCheckout() {
+    // A signup token from this browser (seller link / signup) is the identity for
+    // this checkout, even if an older FlowPoint session is still open here. It is
+    // kept, never dropped because /api/me answers: the server checks it (unexpired,
+    // unconsumed) and only falls back to the session when it is not valid.
+    if (preRegisterToken()) return true;
+    var resp = null;
+    try {
+      resp = await fetch('/api/me', {
+        credentials: 'include',
+        headers: Object.assign({ 'Cache-Control': 'no-cache' }, authHeaders())
+      });
+    } catch (e) {}
+    if (resp && resp.ok) return true;
+    rememberCheckoutIntent();
+    window.location.replace('/signin.html?next=' + encodeURIComponent('/checkout.html'));
+    return false;
+  }
+
+  /* ── Helpers ── */
+  function eur(minor) {
+    var v = (Number(minor) || 0) / 100;
+    return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€';
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function showAlert(msg) {
+    var el = document.getElementById('fp-alert');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+  function hideAlert() { document.getElementById('fp-alert').classList.remove('show'); }
+  function setLoading(on, label) {
+    var btn  = document.getElementById('fp-pay-btn');
+    var txt  = document.getElementById('fp-btn-text');
+    var spin = document.getElementById('fp-spinner');
+    btn.disabled = on;
+    spin.style.display = on ? 'inline-block' : 'none';
+    if (label) txt.textContent = label;
+  }
+  function _tryEnablePayBtn() {
+    if (_paymentReady) {
+      document.getElementById('fp-btn-text').textContent = _payBtnLabel;
+      document.getElementById('fp-pay-btn').disabled = false;
+    }
+  }
+
+  /* ── Récapitulatif rendu exclusivement depuis le devis serveur ── */
+  function renderSummaryLoading() {
+    document.getElementById('fp-summary-card').innerHTML =
+      '<div class="fp-card-title">Récapitulatif</div>' +
+      '<div class="fp-sum-row"><span class="fp-sum-label muted">Calcul du montant…</span></div>';
+  }
+
+  function renderSummary(q) {
+    var html = '<div class="fp-card-title">Récapitulatif</div>';
+
+    (q.lines || []).forEach(function (line) {
+      var label = escHtml(line.name) + (line.quantity > 1 ? ' ×' + line.quantity : '');
+      var badge, amount;
+
+      if (line.includedInPlan) {
+        badge  = '<span class="fp-sum-badge fp-badge-incl">Inclus</span>';
+        amount = '<span class="fp-sum-amount muted">0€</span>';
+      } else if (line.kind === 'plan') {
+        badge = q.trialEligible && q.trialDays > 0
+          ? '<span class="fp-sum-badge fp-badge-trial">' + q.trialDays + 'j offerts</span>'
+          : '';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/mois</span>';
+      } else if (line.interval === 'one_time') {
+        badge  = '<span class="fp-sum-badge fp-badge-now">Maintenant</span>';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '</span>';
+      } else {
+        badge = line.billedToday
+          ? '<span class="fp-sum-badge fp-badge-now">Maintenant · mensuel</span>'
+          : '<span class="fp-sum-badge fp-badge-trial">Après essai · mensuel</span>';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/mois</span>';
+      }
+
+      html += '<div class="fp-sum-row"><span class="fp-sum-label">' + label + badge + '</span>' + amount + '</div>';
+    });
+
+    html += '<div class="fp-divider"></div>';
+    html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span>' +
+            '<span class="fp-total-val">' + eur(q.amountDueTodayMinor) + '</span></div>';
+
+    if (q.plan && q.recurringAmountMinor > 0) {
+      html += '<div class="fp-total-row"><span class="fp-total-lbl">' +
+              (q.trialEligible && q.trialDays > 0 ? 'Mensuel après essai' : 'Mensuel') +
+              '</span><span class="fp-total-val after">' + eur(q.recurringAmountMinor) +
+              '<span class="fp-total-unit">/mois</span></span></div>';
+    }
+
+    document.getElementById('fp-summary-card').innerHTML = html;
+  }
+
+  function renderTrialNote(q) {
+    if (!q.plan || !q.trialEligible || !q.trialDays) return;
+    var noteEl = document.getElementById('fp-trial-note');
+    if (!noteEl) return;
+    var daysLabel = q.trialDays === 1 ? '1\u00a0jour' : q.trialDays + '\u00a0jours';
+    noteEl.textContent = q.amountDueTodayMinor === 0
+      ? 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.'
+      : 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
+    noteEl.style.display = 'block';
+  }
+
+  /* ── Init Stripe : un seul appel renvoie l'intent ET le devis ── */
+  async function initStripe() {
+    renderSummaryLoading();
+
+    var preRegToken = '';
+    try { preRegToken = sessionStorage.getItem('fp_pre_reg_token') || ''; } catch (e) {}
+    // Fallback: localStorage (written by signin.html with 2h TTL) survives tab closure
+    if (!preRegToken) {
+      try {
+        var _stored = JSON.parse(localStorage.getItem('fp_pre_reg_token') || 'null');
+        if (_stored && _stored.token && typeof _stored.exp === 'number' && _stored.exp > Date.now()) {
+          preRegToken = _stored.token;
+        }
+      } catch(e) {}
+    }
+
+    /* La durée d'essai n'est PAS envoyée : le serveur seul en décide. */
+    var resp = await fetch('/api/public/payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plan:             plan,
+        addons:           addons,
+        preRegisterToken: preRegToken,
+        billingAddress:   null,
+      })
+    });
+
+    var data;
+    try { data = await resp.json(); } catch (e) {
+      showAlert('Erreur réseau (' + resp.status + '). Vérifiez votre connexion et réessayez.');
+      return;
+    }
+    if (!resp.ok) {
+      showAlert(data.error || 'Erreur ' + resp.status + ' lors de la création du paiement.');
+      return;
+    }
+    if (!data.quote) {
+      showAlert('Devis serveur indisponible. Revenez au récapitulatif et réessayez.');
+      return;
+    }
+    if (!data.clientSecret) {
+      showAlert('Réponse serveur invalide. Revenez au récapitulatif et réessayez.');
+      return;
+    }
+    if (!data.publishableKey) {
+      showAlert('Configuration Stripe manquante. Contactez le support.');
+      return;
+    }
+
+    /* Le devis rendu est celui qui a produit l'intent : affichage == débit. */
+    quote = data.quote;
+    renderSummary(quote);
+    renderTrialNote(quote);
+
+    _mode = data.mode || 'setup';
+    _payBtnLabel = _mode === 'payment'
+      ? 'Payer ' + eur(quote.totalMinor) + ' →'
+      : 'Démarrer l\'essai gratuit →';
+
+    if (typeof Stripe === 'undefined') {
+      showAlert('Stripe.js n\'a pas pu se charger. Désactivez votre bloqueur de publicités et réessayez.');
+      return;
+    }
+
+    try { stripe = Stripe(data.publishableKey); }
+    catch (e) {
+      showAlert('[S1] Clé Stripe invalide : ' + (e.message || e));
+      return;
+    }
+
+    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    var appearance = {
+      theme: isDark ? 'night' : 'stripe',
+      variables: {
+        colorPrimary:       '#2563eb',
+        colorBackground:    isDark ? '#111827' : '#ffffff',
+        colorText:          isDark ? '#f1f5f9' : '#0f172a',
+        colorTextSecondary: isDark ? '#94a3b8' : '#475569',
+        colorDanger:        '#f87171',
+        borderRadius:       '10px',
+        fontFamily:         '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        fontSizeBase:       '14px',
+      },
+      rules: {
+        '.Input': { border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.15)', padding: '12px 14px' },
+        '.Input:focus': { border: '1px solid #2563eb', boxShadow: '0 0 0 3px rgba(37,99,235,0.15)' },
+        '.Label': { marginBottom: '6px', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' },
+      }
+    };
+
+    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance }); }
+    catch (e) {
+      showAlert('[S2] stripe.elements() : ' + (e.message || e));
+      return;
+    }
+
+    /* Payment Element — carte + SEPA uniquement (allow_redirects:'never').
+       Pré-remplissage nom + email depuis pending_signups via data.defaultValues. */
+    var _peDefaultValues = {};
+    if (data.defaultValues) {
+      var _dv = data.defaultValues;
+      var _bd = {};
+      if (_dv.name)  _bd.name  = _dv.name;
+      if (_dv.email) _bd.email = _dv.email;
+      if (Object.keys(_bd).length) _peDefaultValues = { billingDetails: _bd };
+    }
+    var paymentElement;
+    try {
+      paymentElement = elements.create('payment', {
+        layout: { type: 'tabs', defaultCollapsed: false },
+        wallets: { googlePay: 'never', applePay: 'never' },
+        defaultValues: Object.keys(_peDefaultValues).length ? _peDefaultValues : undefined,
+      });
+      paymentElement.mount('#fp-payment-element');
+    } catch (e) {
+      showAlert('[S3] Payment Element : ' + (e.message || e));
+      return;
+    }
+
+    paymentElement.on('ready', function () {
+      _paymentReady = true;
+      _tryEnablePayBtn();
+    });
+    paymentElement.on('loaderror', function (e) {
+      console.error('[FlowPoint Payment] PaymentElement loaderror', e);
+      showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
+    });
+
+    /* Filet de sécurité : activer le bouton après 8s même si 'ready' ne part pas */
+    setTimeout(function () {
+      _paymentReady = true;
+      _tryEnablePayBtn();
+    }, 8000);
+
+    document.getElementById('fp-pay-btn').setAttribute('data-mode', _mode);
+  }
+
+  requireAuthenticatedCheckout().then(function (allowed) {
+    if (!allowed) return;
+    return initStripe().catch(function (err) {
+      console.error('[FlowPoint Payment] initStripe error', err);
+      var msg = (err && (err.message || err.toString())) || 'erreur inconnue';
+      showAlert('Erreur de chargement : ' + msg + '. Revenez au récapitulatif et réessayez.');
+    });
+  });
+
+  /* ── Soumission ── */
+  document.getElementById('fp-pay-btn').addEventListener('click', async function () {
+    if (this.disabled) return;
+    hideAlert();
+    setLoading(true, 'Vérification en cours…');
+
+    var mode      = this.getAttribute('data-mode') || 'payment';
+    var returnUrl = window.location.origin + '/checkout-return.html';
+
+    try {
+      var result;
+      if (mode === 'payment') {
+        result = await stripe.confirmPayment({
+          elements: elements,
+          confirmParams: { return_url: returnUrl },
+        });
+      } else {
+        result = await stripe.confirmSetup({
+          elements: elements,
+          confirmParams: { return_url: returnUrl },
+        });
+      }
+      if (result.error) {
+        var msg = result.error.message || 'Le paiement a échoué. Vérifiez vos informations.';
+        showAlert(msg);
+        setLoading(false, mode === 'payment'
+          ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
+          : 'Démarrer l\'essai gratuit →');
+        return;
+      }
+
+      /*
+       * Stripe does not redirect for every successful card confirmation.
+       * In particular, confirmSetup() resolves with a succeeded SetupIntent
+       * when no 3DS/authentication step is needed. Continue the same return
+       * flow explicitly so the account is finalized instead of leaving the
+       * user on a disabled-looking payment page.
+       */
+      var confirmedIntent = mode === 'payment' ? result.paymentIntent : result.setupIntent;
+      if (confirmedIntent && confirmedIntent.id) {
+        var returnParams = new URLSearchParams();
+        returnParams.set(mode === 'payment' ? 'payment_intent' : 'setup_intent', confirmedIntent.id);
+        returnParams.set('redirect_status', confirmedIntent.status || 'succeeded');
+        window.location.href = returnUrl + '?' + returnParams.toString();
+        return;
+      }
+
+      showAlert('La confirmation Stripe est incomplète. Réessayez ou contactez le support.');
+      setLoading(false, mode === 'payment'
+        ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
+        : 'Démarrer l\'essai gratuit →');
+    } catch (err) {
+      console.error('[FlowPoint Payment]', err);
+      showAlert('Une erreur est survenue. Réessayez ou contactez le support.');
+      setLoading(false);
+    }
+  });
+
+})();
+</script>
+<script src="/funnel-tracking.js" defer></script>
+</body>
+</html>

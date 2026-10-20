@@ -1,0 +1,230 @@
+import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+
+export async function initMonitorsTables(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // ── 1. monitors ───────────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monitors (
+        id              TEXT PRIMARY KEY,
+        org_id          TEXT NOT NULL DEFAULT 'default',
+        name            TEXT NOT NULL,
+        url             TEXT NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'up',
+        uptime          REAL NOT NULL DEFAULT 100,
+        latency         INTEGER,
+        last_check      TEXT,
+        alert_email     TEXT NOT NULL DEFAULT '',
+        alert_phone     TEXT NOT NULL DEFAULT '',
+        is_critical     BOOLEAN NOT NULL DEFAULT false,
+        frequency       TEXT NOT NULL DEFAULT '5min',
+        last_alert_sent BIGINT,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Each column separately — one failure won't abort the rest
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS org_id          TEXT NOT NULL DEFAULT 'default';`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS alert_phone     TEXT NOT NULL DEFAULT '';`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS is_critical     BOOLEAN NOT NULL DEFAULT false;`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS frequency       TEXT NOT NULL DEFAULT '5min';`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_alert_sent BIGINT;`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMP NOT NULL DEFAULT NOW();`);
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS created_at      TIMESTAMP NOT NULL DEFAULT NOW();`);
+    // BUG-W2-MON-001: pause/resume support — enabled=false skips cron checks
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS enabled         BOOLEAN NOT NULL DEFAULT TRUE;`);
+    // BUG-W2-MON-002: latency=0 on a never-checked monitor is ambiguous.
+    // Allow NULL to mean "no measurement yet"; 0 = genuine 0ms measurement.
+    await client.query(`ALTER TABLE monitors ALTER COLUMN latency DROP NOT NULL;`);
+    await client.query(`ALTER TABLE monitors ALTER COLUMN latency DROP DEFAULT;`);
+    // Also drop NOT NULL on last_check — a newly created monitor has never been checked.
+    await client.query(`ALTER TABLE monitors ALTER COLUMN last_check DROP NOT NULL;`);
+    // Backfill: monitors that have never run a check had latency=0 set at creation time.
+    // Convert those 0s to NULL so the UI can display "—" instead of "0 ms".
+    await client.query(`UPDATE monitors SET latency = NULL WHERE last_check IS NULL AND latency = 0;`);
+    // uptime NULL = no checks yet (unmeasured); 100 is fabricated for new monitors.
+    // Drop NOT NULL so newly created monitors start with NULL uptime until first check.
+    await client.query(`ALTER TABLE monitors ALTER COLUMN uptime DROP NOT NULL;`);
+    await client.query(`ALTER TABLE monitors ALTER COLUMN uptime DROP DEFAULT;`);
+    // Backfill: monitors with last_check IS NULL have never been checked — set uptime=NULL.
+    await client.query(`UPDATE monitors SET uptime = NULL WHERE last_check IS NULL AND uptime = 100;`);
+
+    // ── 2. monitor_checks ─────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monitor_checks (
+        id          TEXT PRIMARY KEY,
+        monitor_id  TEXT NOT NULL DEFAULT '',
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        checked_at  BIGINT NOT NULL DEFAULT 0,
+        ok          BOOLEAN NOT NULL DEFAULT true,
+        latency     INTEGER DEFAULT 0,
+        status_code INTEGER,
+        error       TEXT
+      );
+    `);
+
+    // Guarantee every column exists on pre-existing tables
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS monitor_id  TEXT NOT NULL DEFAULT '';`);
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS org_id      TEXT NOT NULL DEFAULT 'default';`);
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS checked_at  BIGINT NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS ok          BOOLEAN NOT NULL DEFAULT true;`);
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS latency     INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS status_code INTEGER;`);
+    await client.query(`ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS error       TEXT;`);
+
+    // Migrate camelCase → snake_case (older deployments may have used camelCase)
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='monitorid')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='monitor_id')
+        THEN
+          ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS monitor_id TEXT NOT NULL DEFAULT '';
+          UPDATE monitor_checks SET monitor_id = "monitorId";
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='checkedat')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='checked_at')
+        THEN
+          ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS checked_at BIGINT NOT NULL DEFAULT 0;
+          UPDATE monitor_checks SET checked_at = "checkedAt";
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='createdat')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='created_at')
+        THEN
+          ALTER TABLE monitor_checks ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+          UPDATE monitor_checks SET created_at = "createdAt";
+        END IF;
+      END $$;
+    `);
+
+    // ── 3. monitor_incidents ──────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monitor_incidents (
+        id          TEXT PRIMARY KEY,
+        monitor_id  TEXT NOT NULL DEFAULT '',
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        started_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+        resolved_at TIMESTAMP,
+        duration_s  INTEGER,
+        error       TEXT
+      );
+    `);
+
+    // Production schema drift fix: monitor_incidents.org_id was somehow created
+    // as a UUID column with an FK to organizations(id), while every other
+    // tenant table (monitors, monitor_checks, etc.) uses TEXT org ids like
+    // "default". Inserting a text org id into a UUID column throws 22P02
+    // ("invalid input syntax for type uuid"), which aborts the enclosing
+    // Postgres transaction — and since COMMIT on an aborted transaction is
+    // silently converted to ROLLBACK (no JS exception thrown), the entire
+    // check-result write (including monitor_checks insert + monitors update
+    // that already succeeded earlier in the same transaction) was being
+    // silently discarded. Force org_id back to TEXT and drop the stray FK.
+    await client.query(`
+      DO $$
+      DECLARE
+        col_type text;
+      BEGIN
+        SELECT data_type INTO col_type
+        FROM information_schema.columns
+        WHERE table_name = 'monitor_incidents' AND column_name = 'org_id';
+
+        IF col_type = 'uuid' THEN
+          -- Drop any FK constraint referencing organizations before retyping.
+          EXECUTE COALESCE((
+            SELECT string_agg(format('ALTER TABLE monitor_incidents DROP CONSTRAINT %I', tc.constraint_name), '; ')
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'monitor_incidents'
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.column_name = 'org_id'
+          ), 'SELECT 1');
+
+          ALTER TABLE monitor_incidents ALTER COLUMN org_id DROP DEFAULT;
+          ALTER TABLE monitor_incidents ALTER COLUMN org_id TYPE TEXT USING org_id::text;
+          ALTER TABLE monitor_incidents ALTER COLUMN org_id SET DEFAULT 'default';
+        END IF;
+      END $$;
+    `);
+
+    await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS monitor_id  TEXT NOT NULL DEFAULT '';`);
+    await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS org_id      TEXT NOT NULL DEFAULT 'default';`);
+    await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS started_at  TIMESTAMP NOT NULL DEFAULT NOW();`);
+    await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS duration_s  INTEGER;`);
+    await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS error       TEXT;`);
+
+    // Migrate camelCase → snake_case for monitor_incidents
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='monitorid')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='monitor_id')
+        THEN
+          ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS monitor_id TEXT NOT NULL DEFAULT '';
+          UPDATE monitor_incidents SET monitor_id = "monitorId";
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='startedat')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='started_at')
+        THEN
+          ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS started_at TIMESTAMP NOT NULL DEFAULT NOW();
+          UPDATE monitor_incidents SET started_at = "startedAt";
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='createdat')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='created_at')
+        THEN
+          ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+          UPDATE monitor_incidents SET created_at = "createdAt";
+        END IF;
+      END $$;
+    `);
+
+    // ── 4. Indexes — only after all columns are guaranteed to exist ────────────
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitors' AND column_name='org_id') THEN
+          CREATE INDEX IF NOT EXISTS monitors_org_id_idx ON monitors(org_id);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='monitor_id') THEN
+          CREATE INDEX IF NOT EXISTS monitor_checks_monitor_id_idx ON monitor_checks(monitor_id);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='org_id') THEN
+          CREATE INDEX IF NOT EXISTS monitor_checks_org_id_idx ON monitor_checks(org_id);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_checks' AND column_name='checked_at') THEN
+          CREATE INDEX IF NOT EXISTS monitor_checks_checked_at_idx ON monitor_checks(checked_at);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='monitor_id') THEN
+          CREATE INDEX IF NOT EXISTS monitor_incidents_monitor_id_idx ON monitor_incidents(monitor_id);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='org_id') THEN
+          CREATE INDEX IF NOT EXISTS monitor_incidents_org_id_idx ON monitor_incidents(org_id);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monitor_incidents' AND column_name='started_at') THEN
+          CREATE INDEX IF NOT EXISTS monitor_incidents_started_at_idx ON monitor_incidents(started_at);
+        END IF;
+      END $$;
+    `);
+
+    logger.info("[init-monitors] monitors, monitor_checks, monitor_incidents tables ready");
+  } catch (err) {
+    logger.error({ err }, "[init-monitors] Table creation failed");
+    throw err;
+  } finally {
+    client.release();
+  }
+}

@@ -1,0 +1,109 @@
+modules = ["nodejs-20", "python-3.11", "postgresql-16"]
+run = "node api.cjs"
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5050
+externalPort = 5173
+
+[[ports]]
+localPort = 5051
+externalPort = 6000
+
+[[ports]]
+localPort = 5052
+externalPort = 6800
+
+[[ports]]
+localPort = 5100
+externalPort = 3000
+
+[[ports]]
+localPort = 5101
+externalPort = 3003
+
+[[ports]]
+localPort = 5102
+externalPort = 4200
+
+[[ports]]
+localPort = 5103
+externalPort = 8000
+
+[[ports]]
+localPort = 5999
+externalPort = 3002
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[env]
+PORT = "5000"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Run"
+mode = "sequential"
+author = 53517031
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Backend"
+
+[[workflows.workflow]]
+name = "API Backend"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node api.cjs"
+waitForPort = 3001
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[deployment]
+build = ["sh", "-c", "npm run build"]
+run = ["sh", "-c", "node dist/index.cjs"]
+deploymentTarget = "cloudrun"
+
+[[deployment.ports]]
+localPort = 5000
+externalPort = 80
+
+[userenv]
+
+[userenv.production]
+NODE_ENV = "production"
+
+[nix]
+channel = "stable-25_05"
+
+[agent]
+integrations = ["resend:1.0.0"]
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-47f2184f-3518-41d9-a0e2-1ec70be0c5f9"

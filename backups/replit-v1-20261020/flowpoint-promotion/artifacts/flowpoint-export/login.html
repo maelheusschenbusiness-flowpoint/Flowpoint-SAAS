@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';})();</script>
+  <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta id="fp-meta-tc" name="theme-color" content="#050810">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Connexion — FlowPoint</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b1120;
+      --bg2:       #111827;
+      --surface:   #1e293b;
+      --border:    #2d3f55;
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#3b82f6;
+      --text:      #f1f5f9;
+      --text-soft: #94a3b8;
+      --text-muted:#64748b;
+      --input-bg:  #162032;
+      --radius:    14px;
+      --shadow:    0 8px 40px rgba(0,0,0,.5);
+    }
+
+    html[data-theme="light"] {
+      --bg:        #f8fafc;
+      --bg2:       #ffffff;
+      --surface:   #f1f5f9;
+      --border:    rgba(0,0,0,.1);
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#2563eb;
+      --text:      #0f172a;
+      --text-soft: #475569;
+      --text-muted:#94a3b8;
+      --input-bg:  #f8fafc;
+      --shadow:    0 4px 24px rgba(0,0,0,.1);
+    }
+    html[data-theme="light"] .fp-alert-success { background: rgba(34,197,94,.08);  border-color: rgba(34,197,94,.25);  color: #16a34a; }
+    html[data-theme="light"] .fp-alert-error   { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: #dc2626; }
+    html[data-theme="light"] .fp-btn-oauth:hover { background: #e8f0fe; border-color: #93c5fd; }
+    html[data-theme="light"] .fp-spinner { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
+
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px; line-height: 1.5;
+    }
+    /* Auth-boot guard: body stays invisible until session check resolves. */
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; visibility: hidden; }
+
+    .fp-login-wrap { width: 100%; max-width: 480px; }
+
+    .fp-logo {
+      display: flex; align-items: center; gap: 11px;
+      justify-content: center; margin-bottom: 32px; text-decoration: none;
+    }
+    .fp-logo-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+    .fp-logo-name span { color: var(--blue-light); }
+
+    .fp-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px 32px 32px;
+    }
+
+    h1 { font-size: 21px; font-weight: 700; margin-bottom: 6px; text-align: center; color: var(--text); }
+    .fp-subtitle { font-size: 14px; color: var(--text-soft); text-align: center; margin-bottom: 28px; }
+
+    .fp-form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-soft); }
+    input[type="email"] {
+      width: 100%; padding: 11px 14px; font-size: 14px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--input-bg); color: var(--text);
+      outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="email"]:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
+    input[type="email"]::placeholder { color: var(--text-muted); }
+
+    .fp-btn {
+      width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
+      border: none; border-radius: 8px; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+    }
+    .fp-btn:active { transform: scale(0.98); }
+    .fp-btn + .fp-btn { margin-top: 10px; }
+
+    .fp-btn-primary { background: var(--blue); color: #fff; }
+    .fp-btn-primary:hover { background: var(--blue-h); }
+    .fp-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .fp-btn-oauth { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .fp-btn-oauth:hover { background: #253550; border-color: #3b5178; }
+
+
+    .fp-oauth-icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+    .fp-divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 22px 0; color: var(--text-muted); font-size: 12px;
+    }
+    .fp-divider::before, .fp-divider::after { content:''; flex:1; height: 1px; background: var(--border); }
+
+    .fp-alert {
+      display: none; padding: 12px 14px; border-radius: 8px;
+      font-size: 13px; margin-bottom: 16px; line-height: 1.55;
+    }
+    .fp-alert-success { background: rgba(34,197,94,.1); border: 1px solid rgba(34,197,94,.3); color: #86efac; }
+    .fp-alert-error   { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #fca5a5; }
+
+    .fp-footer {
+      margin-top: 20px; text-align: center; font-size: 12px; color: var(--text-muted); line-height: 1.6;
+    }
+    .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+    .fp-footer a:hover { color: var(--text); }
+
+    .fp-create-link {
+      display: block; text-align: center; margin-top: 16px;
+      font-size: 13.5px; color: var(--text-muted);
+    }
+    .fp-create-link a {
+      color: var(--blue-light); font-weight: 600; text-decoration: none;
+    }
+    .fp-create-link a:hover { text-decoration: underline; }
+
+    .fp-spinner {
+      display: inline-block; width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fp-hidden { display: none !important; }
+
+    @media (max-width: 400px) {
+      body { padding: 12px 8px; align-items: flex-start; padding-top: 24px; }
+      .fp-card { padding: 24px 18px 22px; border-radius: 12px; }
+      h1 { font-size: 18px; }
+      .fp-subtitle { font-size: 13px; margin-bottom: 20px; }
+      .fp-logo { margin-bottom: 20px; }
+      .fp-btn { padding: 11px; font-size: 13px; }
+      input[type="email"] { padding: 10px 12px; font-size: 14px; }
+    }
+  </style>
+  <script>
+    /* ── Auth-boot guard ────────────────────────────────────────────────────────
+       SECURITY RULES (all must hold simultaneously):
+       1. A redirect to dashboard ONLY happens when the backend explicitly confirms
+          a live session via /api/auth/session-restore — never from a client-side
+          token alone.
+       2. The body is hidden ONLY when there is a sessionStorage token to validate
+          (or during BFCache restore where a session might still be live).
+          When no credential is present we show the form immediately, avoiding an
+          unnecessary hidden state for unauthenticated visitors.
+       3. Any 401 response immediately purges the stale sessionStorage token.
+       4. Network errors are fail-open: show the form so the user can sign in.    */
+
+    // ── Cookie-presence sentinel ──────────────────────────────────────────────
+    // We cannot read the HttpOnly fp_token cookie from JS. Use a lightweight
+    // session-restore call to discover whether the cookie is still alive. We only
+    // skip the call entirely when:
+    //   a) sessionStorage holds no token (set by this tab's previous auth), AND
+    //   b) we have no indication from localStorage that a session was ever started
+    //      in this browser (fp_had_session flag written at login time).
+    // This keeps the fast path: truly anonymous visitors see the form immediately
+    // without any background request. Users with an active session (from a live
+    // or recent tab) are still correctly redirected.
+
+    function _loginCheckSession(source) {
+      var _st = null;
+      try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
+
+      // ── RULE (same as signin.html fix): only redirect when an active per-tab
+      // sessionStorage token exists. fp_had_session (localStorage) alone, a valid
+      // cookie alone, or a BFCache restore without a token are all INSUFFICIENT
+      // to trigger a redirect. The user explicitly navigating to /login.html must
+      // see the form regardless of any prior session state.
+      if (!_st) {
+        try {
+          console.log('[LOGIN AUTH TRACE]', {
+            source: source, credential: 'none',
+            decision: 'STAY_LOGIN', reason: 'no_sessionStorage_token',
+            timestamp: new Date().toISOString(),
+          });
+        } catch(_) {}
+        document.body.style.visibility = 'visible';
+        return;
+      }
+
+      // sessionStorage token present → validate with backend before deciding.
+      document.body.style.visibility = 'hidden';
+      var _traceTs = new Date().toISOString();
+      fetch('/api/auth/session-restore', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _st },
+      })
+        .then(function(r) {
+          var httpStatus = r.status;
+          if (r.ok) return r.json().catch(function() { return null; }).then(function(d) { return { data: d, httpStatus: httpStatus }; });
+          return r.json().catch(function() { return null; }).then(function() { return { data: null, httpStatus: httpStatus }; });
+        })
+        .then(function(res) {
+          var httpStatus = res.httpStatus;
+          var data = res.data;
+          var hasToken = !!(data && data.token);
+          var decision = hasToken ? 'REDIRECT_DASHBOARD' : 'STAY_LOGIN';
+          try {
+            console.log('[LOGIN AUTH TRACE]', {
+              source: source,
+              credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              httpStatus: httpStatus,
+              decision: decision,
+              reason: hasToken ? 'backend_confirmed_valid' : 'backend_rejected',
+              referrer: document.referrer || '(direct)',
+              timestamp: _traceTs,
+            });
+          } catch(_) {}
+          if (hasToken) {
+            try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
+            try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
+            window.location.replace('/dashboard.html');
+          } else {
+            // Session-restore failed → purge stale auth so next visit shows form directly.
+            try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
+            try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
+            try { localStorage.removeItem('fp_had_session'); } catch(_) {}
+            document.body.style.visibility = 'visible';
+          }
+        })
+        .catch(function(err) {
+          try {
+            console.log('[LOGIN AUTH TRACE]', {
+              source: source, credential: 'sessionStorage_bearer',
+              endpoint: '/api/auth/session-restore',
+              decision: 'STAY_LOGIN', reason: 'network_error',
+              error: String(err), timestamp: _traceTs,
+            });
+          } catch(_) {}
+          // Network error → fail-open: show the login form.
+          document.body.style.visibility = 'visible';
+        });
+    }
+
+    window.addEventListener('DOMContentLoaded', function() { _loginCheckSession('DOMContentLoaded'); });
+
+    // ── BFCache protection (Safari / all browsers) ────────────────────────────
+    // When Safari restores from BFCache, sessionStorage survives — so if there is
+    // a token we revalidate it. If not, the early-exit above shows the form.
+    window.addEventListener('pageshow', function(evt) {
+      if (!evt.persisted) return;
+      _loginCheckSession('pageshow-BFCache');
+    });
+  </script>
+</head>
+<body>
+
+  <div class="fp-login-wrap">
+
+    <a class="fp-logo" href="https://flowpoint.pro/" rel="noopener noreferrer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="38" height="38">
+        <defs>
+          <linearGradient id="fp-login-g" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#2563EB"/>
+            <stop offset="100%" stop-color="#4F46E5"/>
+          </linearGradient>
+        </defs>
+        <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-login-g)"/>
+        <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </g>
+      </svg>
+      <span class="fp-logo-name">Flow<span>Point</span></span>
+    </a>
+
+    <div class="fp-card">
+      <h1>Bienvenue</h1>
+      <p class="fp-subtitle">Connectez-vous à votre espace FlowPoint</p>
+
+      <div class="fp-alert fp-alert-success" id="fp-success"></div>
+      <div class="fp-alert fp-alert-error"   id="fp-error"></div>
+
+      <form id="fp-login-form">
+        <div class="fp-form-group">
+          <label for="fp-email">Adresse e-mail</label>
+          <input type="email" id="fp-email" name="email"
+                 placeholder="vous@exemple.com"
+                 required autocomplete="email" autofocus/>
+        </div>
+        <button type="submit" class="fp-btn fp-btn-primary" id="fp-submit-btn">
+          Recevoir le lien de connexion
+        </button>
+      </form>
+
+      <div class="fp-divider" id="fp-oauth-divider">ou</div>
+
+      <div id="fp-oauth-btns">
+        <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-google-btn" data-loginurl="/api/auth/google/login">
+          <svg class="fp-oauth-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Continuer avec Google
+        </button>
+
+      </div>
+
+    </div>
+
+    <p class="fp-create-link">
+      Pas encore de compte ? <a href="/">Créer mon compte →</a>
+    </p>
+    <p class="fp-create-link" style="margin-top:6px;">
+      <a href="/pricing.html" style="color:var(--blue-light);font-weight:600;font-size:12px;">Voir les plans et tarifs</a>
+    </p>
+
+    <div class="fp-footer">
+      En vous connectant, vous acceptez nos
+      <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Conditions d'utilisation</a>
+      et notre <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Politique de confidentialité</a>.
+    </div>
+
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var form      = document.getElementById('fp-login-form');
+    var emailIn   = document.getElementById('fp-email');
+    var submitBtn = document.getElementById('fp-submit-btn');
+    var successEl = document.getElementById('fp-success');
+    var errorEl   = document.getElementById('fp-error');
+    var oauthDiv  = document.getElementById('fp-oauth-divider');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+      successEl.style.display = 'none';
+    }
+    function showSuccess(msg) {
+      successEl.innerHTML = msg;
+      successEl.style.display = 'block';
+      errorEl.style.display = 'none';
+    }
+    function clearAlerts() {
+      errorEl.style.display = 'none';
+      successEl.style.display = 'none';
+    }
+    function setLoading(on) {
+      submitBtn.disabled = on;
+      submitBtn.innerHTML = on
+        ? '<span class="fp-spinner"></span>Envoi\u2026'
+        : 'Recevoir le lien de connexion';
+    }
+
+    /* ── Preserve ?next= across magic-link flow ── */
+    (function () {
+      try {
+        var nx = new URLSearchParams(window.location.search).get('next');
+        if (nx && nx.startsWith('/')) sessionStorage.setItem('fp_next', nx);
+      } catch(e) {}
+    })();
+
+    /* ── Show ?error= from OAuth callback ── */
+    (function () {
+      var p = new URLSearchParams(window.location.search);
+      var e = p.get('error');
+      if (!e) return;
+      var msgs = {
+        google_auth_failed   : '\u00C9chec de la connexion Google. R\u00E9essayez.',
+        missing_code         : 'Connexion annul\u00E9e.',
+        access_denied        : 'Acc\u00E8s refus\u00E9.',
+        github_auth_failed   : '\u00C9chec de la connexion GitHub. R\u00E9essayez.',
+      };
+      showError(msgs[e] || 'Erreur\u00a0: ' + e.replace(/_/g, ' ') + '.');
+      history.replaceState({}, '', '/login.html');
+    })();
+
+    /* ── Magic link form ── */
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      clearAlerts();
+      var email = emailIn.value.trim();
+      if (!email) { showError('Veuillez saisir votre adresse e-mail.'); return; }
+
+      setLoading(true);
+      fetch('/api/auth/login-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: email })
+      })
+      .then(function (res) {
+        return res.json().then(function (d) { return { ok: res.ok, status: res.status, data: d }; });
+      })
+      .then(function (r) {
+        setLoading(false);
+        if (r.ok) {
+          form.style.display = 'none';
+          var _safeEmail = email.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + _safeEmail + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
+        } else if (r.status === 503) {
+          showError('Service e-mail indisponible. Connectez-vous avec Google.');
+        } else {
+          var errMsg = r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.';
+          var dest   = r.data.redirectTo || '';
+          if (dest === '/signin.html') {
+            errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
+              ' <a href="/signin.html" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Cr\u00E9er mon compte</a>';
+            errorEl.style.display = 'block';
+          } else if (dest) {
+            errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
+              ' <a href="' + dest.replace(/"/g,'') + '" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Continuer</a>';
+            errorEl.style.display = 'block';
+          } else {
+            showError(errMsg);
+          }
+        }
+      })
+      .catch(function () {
+        setLoading(false);
+        showError('Impossible de contacter le serveur. V\u00E9rifiez votre connexion.');
+      });
+    });
+
+    /* ── OAuth click handler ── */
+    document.getElementById('fp-oauth-btns').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-loginurl]');
+      if (!btn) return;
+      var url = btn.getAttribute('data-loginurl');
+      if (url) { window.location.href = url; }
+    });
+
+    /* ── Load providers — show configured OAuth buttons ── */
+    fetch('/api/auth/providers', { credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var hasOAuth = false;
+        ['google'].forEach(function (id) {
+          var p = (data.providers || []).find(function (x) { return x.id === id; });
+          var btn = document.getElementById('fp-' + id + '-btn');
+          if (p && p.configured) {
+            if (btn) { btn.classList.remove('fp-hidden'); hasOAuth = true; }
+          }
+        });
+        if (!hasOAuth) oauthDiv.style.display = 'none';
+      })
+      .catch(function () { oauthDiv.style.display = 'none'; });
+
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+*   [33mf9adacd[m[33m ([m[1;32mreplit-agent[m[33m)[m Update billing and organization data handling across the application
+[31m|[m[32m\[m  
+[31m|[m * [33m3aea911[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mTest-Replit[m[33m, [m[1;31morigin/Test-Replit[m[33m)[m Update billing and organization data handling across the application
+* [32m|[m [33mdaff596[m Improve user login and account activation process
+[33m|[m[32m\[m[32m|[m 
+[33m|[m * [33m98d9974[m Improve user login and account activation process
+* [34m|[m [33m6699b9f[m Update authentication flow and user data structure
+[35m|[m[34m\[m[34m|[m 
+[35m|[m * [33m42b9635[m Update authentication flow and user data structure
+* [36m|[m [33md022342[m Add rate limiting and confirmation email for account deletion
+[1;31m|[m[36m\[m[36m|[m 
+[1;31m|[m * [33m8a5c11b[m Add rate limiting and confirmation email for account deletion
+* [1;32m|[m [33m6a5355e[m Improve account management and subscription status display
+[1;33m|[m[1;32m\[m[1;32m|[m 
+[1;33m|[m * [33m7c41e58[m[33m ([m[1;31msaas/Test-Replit[m[33m)[m Improve account management and subscription status display
+* [1;34m|[m [33mc39882a[m Add account deletion with Stripe cancellation and new payment pages
+[1;35m|[m[1;34m\[m[1;34m|[m 
+[1;35m|[m * [33m26a5257[m Add account deletion with Stripe cancellation and new payment pages
+* [1;36m|[m [33md8f7dd0[m Add full persistence for VAT numbers in organization settings
+[31m|[m[1;36m\[m[1;36m|[m 
+[31m|[m * [33mf970edf[m Add full persistence for VAT numbers in organization settings
+* [32m|[m [33m8aa8170[m Improve login security by returning a 503 error when the database is unavailable
+[33m|[m[32m\[m[32m|[m 
+[33m|[m * [33me6f1eb3[m Improve login security by returning a 503 error when the database is unavailable
+* [34m|[m [33md582a7f[m Align included add-ons across all plans and user interfaces
+[35m|[m[34m\[m[34m|[m 
+[35m|[m * [33md2c7a01[m Align included add-ons across all plans and user interfaces
+* [36m|[m [33ma11ce7c[m Add security checks to prevent unauthorized access and duplicate accounts
+[1;31m|[m[36m\[m[36m|[m 
+[1;31m|[m * [33m4898781[m Add security checks to prevent unauthorized access and duplicate accounts
+* [1;32m|[m [33m83705f9[m Improve pricing page functionality and user experience
+[1;33m|[m[1;32m\[m[1;32m|[m 
+[1;33m|[m * [33m88157ac[m Improve pricing page functionality and user experience
+* [1;34m|[m [33mafa0637[m Update billing and checkout to include more features in plans
+[1;35m|[m[1;34m\[m[1;34m|[m 
+[1;35m|[m * [33mf5ee104[m Update billing and checkout to include more features in plans
+* [1;36m|[m [33mf7bc367[m Update checkout process to handle mixed subscription and one-time purchases
+[31m|[m[1;36m\[m[1;36m|[m 
+[31m|[m * [33m9e1162b[m Update checkout process to handle mixed subscription and one-time purchases
+* [32m|[m [33m5c26117[m Fix issues with AI credit packs and subscription downgrades
+[33m|[m[32m\[m[32m|[m 
+[33m|[m * [33m2dcffca[m Fix issues with AI credit packs and subscription downgrades
+* [34m|[m [33m68e3f54[m Improve billing input validation and idempotency for Stripe subscriptions
+[35m|[m[34m\[m[34m|[m 
+[35m|[m * [33m24925ef[m Improve billing input validation and idempotency for Stripe subscriptions

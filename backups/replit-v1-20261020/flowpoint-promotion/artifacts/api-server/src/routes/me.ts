@@ -1,0 +1,1030 @@
+import { Router, type Request, type Response } from "express";
+import { randomBytes } from "crypto";
+import { requireOrgId } from "../lib/require-org-id.js";
+import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
+
+import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
+import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
+import { loadOrgData }                         from "../services/org-data.js";
+import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
+import { logger } from "../lib/logger.js";
+import {
+  loadMeEntitlement,
+  BillingDataUnavailableError,
+  BILLING_DATA_UNAVAILABLE_CODE,
+} from "./me-entitlement.js";
+import { isUUIDFormat } from "../lib/validate-org-id.js";
+import {
+  computeUserStreak,
+  getActivityTimezone,
+  recordActivityDay,
+} from "../services/activity-streak.js";
+
+const router = Router();
+
+/**
+ * Validate and sanitize an IANA timezone string.
+ * Maps common French UI labels to their IANA equivalents (e.g. "Bruxelles" → "Europe/Brussels").
+ * Falls back to "Europe/Brussels" for completely unrecognised values rather than
+ * storing an invalid string that would cause PostgreSQL AT TIME ZONE errors (22023).
+ */
+function sanitizeTimezone(raw: string): string {
+  // Common UI-label → IANA mappings (French labels, city-only labels, etc.)
+  const LABEL_MAP: Record<string, string> = {
+    "Bruxelles":      "Europe/Brussels",
+    "bruxelles":      "Europe/Brussels",
+    "Paris":          "Europe/Paris",
+    "paris":          "Europe/Paris",
+    "Amsterdam":      "Europe/Amsterdam",
+    "amsterdam":      "Europe/Amsterdam",
+    "Berlin":         "Europe/Berlin",
+    "berlin":         "Europe/Berlin",
+    "London":         "Europe/London",
+    "london":         "Europe/London",
+    "Madrid":         "Europe/Madrid",
+    "madrid":         "Europe/Madrid",
+    "Rome":           "Europe/Rome",
+    "rome":           "Europe/Rome",
+    "Zurich":         "Europe/Zurich",
+    "zurich":         "Europe/Zurich",
+    "Lisbon":         "Europe/Lisbon",
+    "lisbon":         "Europe/Lisbon",
+    "Varsovie":       "Europe/Warsaw",
+    "varsovie":       "Europe/Warsaw",
+    "New York":       "America/New_York",
+    "new york":       "America/New_York",
+    "Los Angeles":    "America/Los_Angeles",
+    "los angeles":    "America/Los_Angeles",
+    "Chicago":        "America/Chicago",
+    "chicago":        "America/Chicago",
+    "Toronto":        "America/Toronto",
+    "toronto":        "America/Toronto",
+    "Tokyo":          "Asia/Tokyo",
+    "tokyo":          "Asia/Tokyo",
+    "Dubai":          "Asia/Dubai",
+    "dubai":          "Asia/Dubai",
+    "Singapour":      "Asia/Singapore",
+    "singapour":      "Asia/Singapore",
+    "Sydney":         "Australia/Sydney",
+    "sydney":         "Australia/Sydney",
+  };
+
+  const mapped = LABEL_MAP[raw] ?? raw;
+
+  // Validate as a proper IANA timezone — Intl.DateTimeFormat throws on invalid zones
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: mapped });
+    return mapped;
+  } catch {
+    logger.warn({ raw, mapped }, "[sanitizeTimezone] Invalid IANA timezone — falling back to Europe/Brussels");
+    return "Europe/Brussels";
+  }
+}
+
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// Helper: normalize plan to Title Case
+function normPlan(p: string | null | undefined): string {
+  if (!p) return "Standard";
+  return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+}
+
+// ── GET /api/me ───────────────────────────────────────────────────────────────
+router.get("/me", async (req: Request, res: Response): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store, no-cache");
+
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  // Record today's activity for streak reliability — every dashboard load counts,
+  // regardless of whether /api/me/streak or /api/me/prefs is reached later.
+  recordActivityDay(
+    orgDb(req),
+    orgId,
+    req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined,
+  ).catch(() => {});
+
+  // Canonical timezone + language from user_prefs.settings (written by PATCH /api/me/settings).
+  // Queried unconditionally so they appear even when org_settings row is missing
+  // (new-auth orgs only have an organizations row, not org_settings).
+  let settingsTimezone: string | null = null;
+  let settingsLanguage: string | null = null;
+  try {
+    const pRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const prefs = pRow.rows[0]?.settings as Record<string, unknown> | null;
+    if (prefs) {
+      if (typeof prefs.timezone === "string" && prefs.timezone) {
+        settingsTimezone = prefs.timezone;
+      }
+      if (typeof prefs.language === "string" && prefs.language) {
+        settingsLanguage = prefs.language;
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  try {
+    // Jalon 4: parallel fetch — billing from organizations (source of truth) + profile from org_settings.
+    // FAIL-CLOSED: loadMeEntitlement distinguishes "row genuinely absent" (null) from
+    // "store threw" (BillingDataUnavailableError). A transient DB failure must NEVER be
+    // downgraded to a fabricated Standard/unknown entitlement — it becomes a retryable 503.
+    // org_addons is loaded fail-closed too, so quantity-addon limits are never undercounted.
+    const { billingData, dbData, addonRows: _entitlementAddonRows } = await loadMeEntitlement(orgId, {
+      loadOrgData,
+      loadOrgSettings,
+      loadAddons: async (id) => {
+        // org_addons.org_id is UUID-typed in production.
+        // A legacy (email-shaped) orgId would throw "invalid input syntax for type uuid"
+        // and pollute Supabase logs.  Skip the query when id is not a valid UUID;
+        // the caller falls back to plan-included addons only.
+        if (!isUUIDFormat(id)) {
+          return [];
+        }
+        const r = await orgDb(req)(
+          `SELECT addon_key, active, quantity FROM org_addons WHERE org_id=$1`,
+          [id],
+        );
+        return r.rows;
+      },
+    });
+
+    if (billingData ?? dbData) {
+      // Billing fields: prefer organizations (billingData) → org_settings fallback (dbData)
+      const rawPlan             = billingData?.plan ?? dbData?.plan ?? "standard";
+      const plan                = rawPlan.toLowerCase();
+      // Mutable copy — org_addons qty grants are applied below after _addonsRows is read
+      const limits: Record<string, number> = { ...(PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"]) };
+      const rawSubStatus        = billingData?.subscriptionStatus ?? dbData?.subscriptionStatus ?? null;
+      const rawStripeSubId      = billingData?.stripeSubscriptionId ?? dbData?.stripeSubscriptionId ?? null;
+      const rawStripeCustomerId = billingData?.stripeCustomerId     ?? dbData?.stripeCustomerId     ?? null;
+      const rawTrialEndsAt      = billingData?.trialEndsAt          ?? dbData?.trialEndsAt          ?? null;
+      const rawTrialConsumedAt  = billingData?.trialConsumedAt      ?? dbData?.trialConsumedAt      ?? null;
+
+      // Profile fields: org_settings (dbData) is the source for these; billingData firstName/orgName as fallback
+      const firstName = dbData?.firstName || billingData?.firstName ||
+        (req.orgContext?.email?.split("@")[0] ?? "User");
+
+      const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+      // Allow regenerated key stored in user_prefs.settings to override the deterministic hash
+      const prefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+      const _storedPubKey = (prefsRow.rows[0] as Record<string,unknown>)?.settings as Record<string,unknown> | null;
+      const _publicApiKey = (typeof _storedPubKey?.publicApiKey === "string" && _storedPubKey.publicApiKey)
+        ? _storedPubKey.publicApiKey
+        : `fp_pub_${_pkHash}`;
+
+      // Normalise subscription status — include trialConsumedAt for pending_billing detection
+      const _normStatusBase = normalizeSubscriptionStatus({
+        rawStatus:            rawSubStatus,
+        stripeSubscriptionId: rawStripeSubId,
+        stripeCustomerId:     rawStripeCustomerId,
+        trialEndsAt:          rawTrialEndsAt,
+        trialConsumedAt:      rawTrialConsumedAt,
+      });
+
+      // Internal QA bypass — mirrors billing-context.ts guard exactly.
+      // Double-locked: orgId must match the fixed QA UUID AND is_internal_qa=true.
+      // Prevents any other org from ever receiving 'trialing' via this path.
+      const _QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+      const _isQaOrg = orgId === _QA_ORG_UUID && billingData?.isInternalQa === true;
+      const normStatus = _isQaOrg ? "trialing" as const : _normStatusBase;
+
+      // Read addons from org_addons table (single source of truth — Correction 8).
+      // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
+      // org_addons load failure into a 503 rather than a suppressed empty array —
+      // otherwise quantity-addon limits below would be silently undercounted.
+      const _addonsRows = { rows: _entitlementAddonRows };
+      const _mergedAddons: Record<string, boolean | number> = {};
+      for (const row of _addonsRows.rows) {
+        const key = String(row["addon_key"]);
+        if (!row["active"]) continue;
+        // Qty addons (extraSeats, monitorsPack10, etc.) → store pack count as number
+        const qtyGrant = QTY_ADDON_GRANTS[key as keyof typeof QTY_ADDON_GRANTS];
+        if (qtyGrant) {
+          const packs = Number(row["quantity"] ?? 1);
+          _mergedAddons[key] = packs;
+          // Expand the mutable limits object with this pack's grant
+          limits[qtyGrant.resource] = (limits[qtyGrant.resource] ?? 0) + packs * qtyGrant.perPack;
+        } else {
+          _mergedAddons[key] = true;
+        }
+      }
+      // Merge plan-included addons (whiteLabel for Standard, etc.) — PLAN_INCLUDED_ADDONS is the source of truth
+      for (const addonKey of PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()) {
+        if (!_mergedAddons[addonKey]) _mergedAddons[addonKey] = true;
+      }
+      // Merge org_settings.addons as legacy supplemental (org_addons takes precedence)
+      const legacyAddons = dbData?.addons ?? billingData?.addons;
+      if (legacyAddons && typeof legacyAddons === "object") {
+        for (const [key, val] of Object.entries(legacyAddons)) {
+          if (!(key in _mergedAddons)) _mergedAddons[key] = val as boolean | number;
+        }
+      }
+      // QA org: never show "start trial" CTA — it's an internal account, not a real signup.
+      const _canStartTrial = !_isQaOrg && !rawTrialConsumedAt && !rawStripeSubId;
+
+      // ── P0 ISOLATION LOGGING — temporary, identifies cross-user leaks ──────────
+      // Logs every /api/me response with full identity context so USER A / USER B
+      // test scenarios can trace exactly which session/user/plan is being served.
+      // Remove once ACTUAL_ROOT_CAUSE is confirmed from browser tests.
+      const _sessionBearer = String((req as Request & { headers: Record<string, unknown> }).headers["authorization"] ?? "").slice(7, 23) || "cookie-auth";
+      logger.info({
+        // ─ Identity
+        session_id:             _sessionBearer,
+        user_id:                req.orgContext?.userId ?? null,
+        user_uuid:              req.orgContext?.userUuid ?? null,
+        email:                  req.orgContext?.email ?? null,
+        org_id:                 orgId,
+        // ─ Stripe
+        stripe_customer_id:     rawStripeCustomerId ? rawStripeCustomerId.slice(-8) : null,
+        stripe_subscription_id: rawStripeSubId      ? rawStripeSubId.slice(-8)      : null,
+        // ─ Plan resolution chain
+        plan_from_db:           (billingData?.plan ?? dbData?.plan ?? "MISSING").toLowerCase(),
+        plan_source:            billingData?.plan ? "organizations" : dbData?.plan ? "org_settings" : "NONE",
+        plan_final:             normPlan(rawPlan),
+        // ─ Addons & quotas
+        addon_source:           "org_addons+plan_included",
+        addon_count:            Object.keys(_mergedAddons).length,
+        retention90d_active:    !!_mergedAddons["retention90d"],
+        retention365d_active:   !!_mergedAddons["retention365d"],
+        // ─ Subscription
+        sub_status:             normStatus,
+        role:                   req.orgContext?.role ?? "member",
+        org_name:               (dbData?.orgName ?? "").slice(0, 30),
+      }, "[P0-ISOLATION][ME]");
+      // ── P1 RETENTION90D SUPPRESSION — fix Ultra double-count ─────────────────
+      // On Ultra, retention90d is superseded by retention365d.  If both are active
+      // (legacy Pro provisioning survived upgrade), remove retention90d from the
+      // merged addons so /api/me does not report 11 active addons for an Ultra org.
+      if (plan === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
+        delete _mergedAddons["retention90d"];
+        logger.info({ orgId, plan }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
+      }
+      res.json({
+        orgId:               orgId,
+        firstName,
+        lastName:            dbData?.lastName ?? "",
+        email:               req.orgContext?.email ?? "",
+        userId:              req.orgContext?.userId ?? null,
+        userUuid:            req.orgContext?.userUuid ?? null,
+        plan:                normPlan(rawPlan),
+        role:                req.orgContext?.role ?? "member",
+        org:                 { name: billingData?.orgName ?? dbData?.orgName ?? "", website: dbData?.website ?? "" },
+        subscriptionStatus:  normStatus,
+        stripeSubscriptionId: rawStripeSubId,
+        trialEndsAt:         rawTrialEndsAt,
+        stripeCustomerId:    rawStripeCustomerId,
+        canStartTrial:       _canStartTrial,
+        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
+        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
+        onboardingCompletedAt: await (async () => {
+          try {
+            const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId]);
+            return (_obr.rows[0]?.cat as string | null) ?? null;
+          } catch { return null; }
+        })(),
+        usage:              await (async () => {
+          try {
+            const now = new Date();
+            const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+            const [auditR, monR, repR, kwR, pdfR, exportR] = await Promise.all([
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({rows:[]})),
+              // keyword tracking count — persists in DB, survives F5
+              orgDb(req)(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]).catch(() => ({rows:[]})),
+              // PDF exports — counted via usage_events (kind='pdf_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind='pdf_export' AND created_at >= $2`,
+                [orgId, monthStart],
+              ).catch(() => ({rows:[]})),
+              // Data exports — counted via usage_events (kind='export' or 'health_export'), current month only
+              orgDb(req)(
+                `SELECT COUNT(*)::int AS n FROM usage_events WHERE org_id=$1 AND kind IN ('export','health_export') AND created_at >= $2`,
+                [orgId, monthStart],
+              ).catch(() => ({rows:[]})),
+            ]);
+            const stored = (dbData?.usage ?? {}) as Record<string, unknown>;
+            return {
+              ...stored,
+              audit:    { used: (auditR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.audits },
+              monitor:  { used: (monR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.monitors },
+              reports:  { used: (repR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              exports:  { used: (exportR.rows[0] as Record<string,number>|undefined)?.n ?? 0, limit: limits.exports ?? limits.reports },
+              pdf:      { used: (pdfR.rows[0]   as Record<string,number>|undefined)?.n ?? 0, limit: limits.reports },
+              keywords: { used: (kwR.rows[0]    as Record<string,number>|undefined)?.n ?? 0, limit: limits.keywords ?? 500 },
+            };
+          } catch { return dbData?.usage ?? {}; }
+        })(),
+        addons:             _mergedAddons,
+        limits,
+        // dfsQuota: DataForSEO API quota for today — seeded here so the dashboard
+        // can show a correct X/N value immediately on F5, before /api/seo/status loads.
+        dfsQuota: await (async () => {
+          try {
+            const { isDataForSEOConfigured, getQuotaUsageFromDB } = await import("../services/dataforseo-service.js");
+            const configured = await isDataForSEOConfigured(orgId);
+            // DB-backed: reads dataforseo_quota for today, warms in-memory cache.
+            // This ensures /api/me returns the correct used count on F5/reconnect.
+            const { used, limit } = await getQuotaUsageFromDB(orgId, rawPlan);
+            return { configured, used, limit, remaining: Math.max(0, limit - used) };
+          } catch { return null; }
+        })(),
+        publicApiKey:       _publicApiKey,
+        createdAt:          dbData?.createdAt ?? new Date().toISOString(),
+        timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
+        language:  dbData?.language  ?? settingsLanguage ?? null,
+        currency:  dbData?.currency  ?? null,
+        dateFormat: dbData?.dateFormat ?? null,
+        timeFormat: dbData?.timeFormat ?? null,
+        location: {
+          address:            dbData?.address            ?? null,
+          city:               dbData?.city               ?? null,
+          postalCode:         dbData?.postalCode         ?? null,
+          country:            dbData?.country            ?? null,
+          region:             dbData?.region             ?? null,
+          phone:              dbData?.phone              ?? null,
+          latitude:           dbData?.latitude           ?? null,
+          longitude:          dbData?.longitude          ?? null,
+          serviceArea:        dbData?.serviceArea        ?? [],
+          locationConfigured: dbData?.locationConfigured ?? false,
+          locationSource:     dbData?.locationSource     ?? null,
+        },
+      });
+      return;
+    }
+  } catch (err) {
+    // Authoritative billing/entitlement data could not be loaded (transient DB
+    // failure / outage). NEVER fabricate a Standard/unknown entitlement here —
+    // return an explicit, retryable, non-cacheable 503 so the client retries
+    // instead of treating the org as having no plan.
+    if (err instanceof BillingDataUnavailableError) {
+      logger.warn({ orgId }, "[me] GET /api/me — billing/entitlement data unavailable, returning 503");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Retry-After", "5");
+      res.status(503).json({
+        error: "Billing and entitlement data is temporarily unavailable. Please retry.",
+        code:  BILLING_DATA_UNAVAILABLE_CODE,
+        retryable: true,
+      });
+      return;
+    }
+    // Unexpected non-billing error — also fail closed rather than fabricating a plan.
+    logger.error({ err, orgId }, "[me] GET /api/me — unexpected error, returning 503");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Retry-After", "5");
+    res.status(503).json({
+      error: "Unable to load account data. Please retry.",
+      code:  BILLING_DATA_UNAVAILABLE_CODE,
+      retryable: true,
+    });
+    return;
+  }
+
+  // Reached only when both authoritative sources resolved successfully but the org
+  // genuinely has no billing/settings row yet (brand-new account). This is a
+  // legitimate absence, NOT a failure — but we still must not fabricate a paid or
+  // fake entitlement. Treat it as retryable-unavailable so provisioning can catch up.
+  logger.warn({ orgId }, "[me] GET /api/me — no billing/entitlement row for org, returning 503");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Retry-After", "5");
+  res.status(503).json({
+    error: "Account entitlement is not available yet. Please retry.",
+    code:  BILLING_DATA_UNAVAILABLE_CODE,
+    retryable: true,
+  });
+});
+
+// ── PATCH /api/me ─────────────────────────────────────────────────────────────
+// Fully org-isolated: reads from DB, applies only provided fields, returns DB-confirmed data.
+// Never reads from store.me (global singleton) to prevent multi-tenant leaks.
+// ── PATCH /api/org — update organisation name / website ─────────────────────
+router.patch("/org", canAdmin, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { name, website } = req.body as { name?: string; website?: string };
+  if (!name && !website) { res.json({ ok: true }); return; }
+  try {
+    const { persistOrgData } = await import("../services/org-data.js");
+    const fields: Parameters<typeof persistOrgData>[1] = {};
+    if (name)    fields.orgName  = name.trim();
+    if (website) fields.website  = website.trim();
+    await persistOrgData(orgId, fields);
+    res.json({ ok: true, name: name?.trim(), website: website?.trim() });
+  } catch (err) {
+    logger.error({ err }, "[me] PATCH /org failed");
+    res.status(500).json({ error: "Failed to update organisation" });
+  }
+});
+
+router.patch("/me", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  const body = req.body as Record<string, unknown>;
+
+  // Localisation fields must go to PATCH /api/location — reject explicitly, never silently ignore
+  const LOC_FIELDS = [
+    "city", "country", "address", "postalCode",
+    "latitude", "longitude", "serviceArea", "location",
+    "language", "currency", "dateFormat", "timeFormat",
+    "phone", "region",
+  ] as const;
+  const rejectedLoc = LOC_FIELDS.filter(f => f in body);
+  if (rejectedLoc.length > 0) {
+    res.status(400).json({
+      error: "Use PATCH /api/location for localisation fields.",
+      code:  "LOCATION_ENDPOINT_REQUIRED",
+      fields: rejectedLoc,
+    });
+    return;
+  }
+
+  const {
+    firstName, lastName, orgName,
+    website, timezone,
+  } = body as {
+    firstName?: string; lastName?: string; orgName?: string;
+    website?: string; timezone?: string;
+  };
+
+  // Load current org data from DB (isolated per org)
+  let current = await loadOrgSettings(orgId);
+
+  // If no row yet, seed with defaults so upsert has a base
+  const toSave: Parameters<typeof upsertOrgSettings>[1] = {};
+
+  if (typeof firstName === "string" && firstName.trim()) toSave.firstName = firstName.trim();
+  if (typeof lastName  === "string")                      toSave.lastName  = lastName.trim();
+  if (typeof orgName   === "string" && orgName.trim())   toSave.orgName   = orgName.trim();
+  if (typeof website   === "string")                      toSave.website   = website.trim();
+
+  // Preserve immutable fields from DB (never overwrite plan/billing from this endpoint)
+  if (current) {
+    if (!toSave.firstName && current.firstName)  toSave.firstName = current.firstName;
+    if (!toSave.orgName   && current.orgName)    toSave.orgName   = current.orgName;
+  }
+
+  try {
+    current = await upsertOrgSettings(orgId, toSave);
+  } catch (err) {
+    logger.error({ err, orgId }, "[PATCH /api/me] upsertOrgSettings failed");
+    res.status(500).json({ error: "Failed to save profile" });
+    return;
+  }
+
+  // Mirror timezone to user_prefs.settings — single source of truth read by GET /api/me.
+  // This ensures timezone persists on hard reload regardless of which endpoint the
+  // frontend uses to write it (PATCH /api/me or PATCH /api/me/settings both write here).
+  let resolvedTimezone: string | null = current?.timezone ?? null;
+  if (typeof timezone === "string" && timezone.trim()) {
+    const tz = sanitizeTimezone(timezone.trim());
+    resolvedTimezone = tz;
+    try {
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, $2::jsonb, now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
+           updated_at = now()`,
+        [orgId, JSON.stringify({ timezone: tz })]
+      );
+    } catch (err) {
+      logger.warn({ err, orgId }, "[PATCH /api/me] Failed to mirror timezone to user_prefs.settings — non-fatal");
+    }
+  }
+
+  const plan   = current?.plan ?? "standard";
+  const limits = PLAN_LIMITS[plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+  const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+  // Resolve publicApiKey — check user_prefs for a stored custom key, fall back to deterministic hash.
+  // This mirrors the GET /api/me logic so PATCH returns a consistent, valid publicApiKey.
+  const _patchPrefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+  const _patchStoredKey = (_patchPrefsRow.rows[0] as Record<string,unknown>)?.settings as Record<string,unknown> | null;
+  const _publicApiKey = (typeof _patchStoredKey?.publicApiKey === "string" && _patchStoredKey.publicApiKey)
+    ? _patchStoredKey.publicApiKey
+    : `fp_pub_${_pkHash}`;
+
+  res.json({
+    firstName:          current?.firstName ?? "",
+    lastName:           current?.lastName  ?? "",
+    email:              req.orgContext?.email ?? "",
+    userId:             req.orgContext?.userId ?? null,
+    userUuid:           req.orgContext?.userUuid ?? null,
+    plan:               normPlan(current?.plan),
+    role:               req.orgContext?.role ?? "member",
+    org:                { name: current?.orgName ?? "", website: current?.website ?? "" },
+    subscriptionStatus: current?.subscriptionStatus,
+    trialEndsAt:        current?.trialEndsAt,
+    stripeCustomerId:   current?.stripeCustomerId,
+    usage:              current?.usage ?? {},
+    addons:             current?.addons ?? {},
+    limits,
+    publicApiKey:       _publicApiKey,
+    createdAt:          current?.createdAt ?? new Date().toISOString(),
+    timezone:           resolvedTimezone,
+    language:           current?.language  ?? (typeof _patchStoredKey?.language === "string" ? _patchStoredKey.language : null) ?? null,
+    currency:           current?.currency  ?? null,
+    dateFormat:         current?.dateFormat ?? null,
+    timeFormat:         current?.timeFormat ?? null,
+    location: {
+      address:            current?.address            ?? null,
+      city:               current?.city               ?? null,
+      postalCode:         current?.postalCode         ?? null,
+      country:            current?.country            ?? null,
+      region:             current?.region             ?? null,
+      phone:              current?.phone              ?? null,
+      latitude:           current?.latitude           ?? null,
+      longitude:          current?.longitude          ?? null,
+      serviceArea:        current?.serviceArea        ?? [],
+      locationConfigured: current?.locationConfigured ?? false,
+      locationSource:     current?.locationSource     ?? null,
+    },
+  });
+});
+
+// ── PUT /api/me/addons ────────────────────────────────────────────────────────
+router.put("/me/addons", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const body = req.body as Partial<Record<string, boolean | number>>;
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    res.status(400).json({ ok: false, error: "Invalid addons payload — expected an object" }); return;
+  }
+
+  // Load current addons from DB — never from store.me singleton
+  const orgData = await loadOrgData(orgId).catch(() => null);
+  const currentAddons: Record<string, boolean | number> = { ...(orgData?.addons ?? {}) as Record<string, boolean | number> };
+
+  // Removed from the commercial catalogue; never accept or retain this legacy
+  // compatibility value as an entitlement.
+  delete currentAddons.prioritySupport;
+  if (typeof body.whiteLabel      === "boolean") currentAddons.whiteLabel      = body.whiteLabel;
+  if (typeof body.customDomain    === "boolean") currentAddons.customDomain    = body.customDomain;
+  if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) currentAddons.extraSeats     = Math.floor(body.extraSeats);
+  if (typeof body.monitorsPack10  === "number" && body.monitorsPack10 >= 0) currentAddons.monitorsPack10 = Math.floor(body.monitorsPack10);
+  if (typeof body.monitorsPack50  === "number" && body.monitorsPack50 >= 0) currentAddons.monitorsPack50 = Math.floor(body.monitorsPack50);
+
+  try {
+    await upsertOrgSettings(orgId, { addons: currentAddons });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to persist addons — try again" }); return;
+  }
+
+  const current = await loadOrgSettings(orgId);
+  const limits = PLAN_LIMITS[(current?.plan ?? "standard").toLowerCase()] ?? PLAN_LIMITS["standard"];
+  res.json({ ok: true, addons: currentAddons, limits });
+});
+
+// ── GET /api/me/streak ─────────────────────────────────────────────────────────
+// Returns { current, best } from real user_activity_days rows.
+router.get("/me/streak", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const userId = req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined;
+    const db = orgDb(req);
+    await recordActivityDay(db, orgId, userId);
+    const timezone = await getActivityTimezone(db, orgId);
+    const streak = await computeUserStreak(db, orgId, userId, timezone);
+    res.json({ current: streak.current, best: streak.best });
+  } catch {
+    res.json({ current: 0, best: 0 });
+  }
+});
+
+// ── GET /api/me/prefs ─────────────────────────────────────────────────────────
+router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const db = orgDb(req);
+    const userId = req.orgContext?.userUuid ?? req.orgContext?.userId ?? req.userId ?? undefined;
+    await recordActivityDay(db, orgId, userId);
+
+    const r = await db(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };
+    const timezone = await getActivityTimezone(db, orgId);
+    const streak = await computeUserStreak(db, orgId, userId, timezone);
+    res.json({ ...row, streak: streak.current });
+  } catch {
+    res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
+  }
+});
+
+// ── PATCH /api/me/prefs ───────────────────────────────────────────────────────
+router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { streak, pinned, checklist, settings: rawSettings, statusPageUrl } = req.body as {
+    streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
+    statusPageUrl?: string; // convenience top-level alias — merged into settings.statusPageUrl
+  };
+  // ── statusPageUrl validation helper ──────────────────────────────────────────
+  // Returns the trimmed URL if it is a valid absolute http/https URL, "" if the
+  // intent is to clear the field, or null if the value is invalid and must be
+  // rejected.  Never allows javascript:, data:, or other schemes.
+  function validateStatusPageUrl(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (trimmed === "") return "";          // explicit clear — allowed
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") return trimmed;
+    } catch {
+      // falls through to null
+    }
+    return null;                           // invalid — must be rejected
+  }
+
+  // Strip any DataForSEO credentials from settings before storing in user_prefs.
+  // IMPORTANT: also strip statusPageUrl from rawSettings so it cannot bypass the
+  // validated top-level field.  statusPageUrl is always written through the
+  // top-level path only, which is protocol-validated before the JSONB merge.
+  let settings = rawSettings;
+  if (settings && typeof settings === "object") {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dataForSEO: _dfs, statusPageUrl: _spUrl, ...rest } = settings;
+    settings = rest;
+  }
+
+  // Convenience: top-level statusPageUrl is merged into settings so the value
+  // survives across devices (user_prefs row, not localStorage).
+  // Invalid non-empty values → 400 (no silent accept).
+  if (typeof statusPageUrl === "string") {
+    const validated = validateStatusPageUrl(statusPageUrl);
+    if (validated === null) {
+      res.status(400).json({ error: "statusPageUrl must be an absolute https:// or http:// URL or empty string" });
+      return;
+    }
+    settings = Object.assign({}, settings ?? {}, { statusPageUrl: validated });
+  }
+  try {
+    await orgDb(req)(
+      `INSERT INTO user_prefs (org_id, streak, pinned, checklist, settings, updated_at)
+       VALUES ($1, COALESCE($2,0), COALESCE($3::jsonb,'{}'), $4, $5, now())
+       ON CONFLICT (org_id) DO UPDATE SET
+         streak    = COALESCE($2, user_prefs.streak),
+         pinned    = COALESCE($3::jsonb, user_prefs.pinned),
+         checklist = COALESCE($4, user_prefs.checklist),
+         settings  = COALESCE(user_prefs.settings, '{}'::jsonb) || COALESCE($5::jsonb, '{}'::jsonb),
+         updated_at = now()`,
+      [orgId,
+       streak    ?? null,
+       pinned    ? JSON.stringify(pinned)    : null,
+       checklist ? JSON.stringify(checklist) : null,
+       settings  ? JSON.stringify(settings)  : null]
+    );
+    // Journalise la modification de paramètres dans le fil d'activité (Command Center)
+    if (settings && Object.keys(settings).length > 0) {
+      const keys = Object.keys(settings).slice(0, 5).join(", ");
+      const _settingsCtx = (req as any).orgContext || {};
+      import("../services/store.js")
+        .then(m => m.store.logActivity({ type: "settings", label: `Paramètres mis à jour : ${keys}`, orgId,
+          actionKey: "activity.settings.updated", actionParams: { keys },
+          userId: _settingsCtx.userId || _settingsCtx.email || null,
+          userName: _settingsCtx.name || _settingsCtx.email || null }))
+        .catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
+});
+
+// ── /api/me/settings — read canonical user preferences (timezone, etc.) ────────
+router.get("/me/settings", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    res.json(r.rows[0]?.settings ?? {});
+  } catch {
+    res.json({});
+  }
+});
+
+// ── PATCH /api/me/settings — write canonical user preferences (timezone, etc.) ──
+// Canonical storage for timezone. Merges into user_prefs.settings JSONB so that
+// GET /api/me/settings always returns the authoritative value.
+router.patch("/me/settings", canAdmin, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  const body = req.body as Record<string, unknown>;
+
+  // Accept only safe preference fields — never billing or auth data
+  const ALLOWED_KEYS = ["timezone", "language", "dateFormat", "timeFormat", "currency"] as const;
+  const patch: Record<string, unknown> = {};
+  for (const key of ALLOWED_KEYS) {
+    if (typeof body[key] === "string" && (body[key] as string).trim()) {
+      patch[key] = (body[key] as string).trim();
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ ok: false, error: "No valid preference fields provided" });
+    return;
+  }
+
+  try {
+    await orgDb(req)(
+      `INSERT INTO user_prefs (org_id, settings, updated_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (org_id) DO UPDATE SET
+         settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
+         updated_at = now()`,
+      [orgId, JSON.stringify(patch)]
+    );
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    res.json(r.rows[0]?.settings ?? patch);
+  } catch (err) {
+    logger.error({ err, orgId }, "[PATCH /me/settings] upsert failed");
+    res.status(500).json({ ok: false, error: "Failed to save settings" });
+  }
+});
+
+// ── DataForSEO credentials — server-only org-scoped storage ───────────────────────────────────
+
+import { pool } from "@workspace/db";
+import { isDataForSEOConfigured } from "../services/dataforseo-service.js";
+
+/** GET /api/me/dataforseo/status — return configured status (never exposes password) */
+router.get("/me/dataforseo/status", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const configured = await isDataForSEOConfigured(orgId);
+    let login = "";
+    if (configured) {
+      const r = await pool.query(
+        `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_login'`, [orgId]
+      );
+      login = r.rows[0]?.value ?? "";
+    }
+    res.json({ configured, login });
+  } catch {
+    res.json({ configured: false, login: "" });
+  }
+});
+
+/** POST /api/me/dataforseo/credentials — save org-scoped credentials */
+router.post("/me/dataforseo/credentials", canAdmin, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const { login, password } = req.body as { login?: string; password?: string };
+  if (!login || !password) {
+    res.status(400).json({ ok: false, error: "login and password required" });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO org_secrets (org_id, key, value, created_at)
+       VALUES ($1, 'dataforseo_login',    $2, NOW()),
+              ($1, 'dataforseo_password', $3, NOW())
+       ON CONFLICT (org_id, key) DO UPDATE SET value = EXCLUDED.value, created_at = NOW()`,
+      [orgId, login.trim(), password.trim()]
+    );
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to save credentials" });
+  }
+});
+
+/** DELETE /api/me/dataforseo/credentials — clear org-scoped credentials */
+router.delete("/me/dataforseo/credentials", canAdmin, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    await pool.query(
+      `DELETE FROM org_secrets WHERE org_id = $1 AND key IN ('dataforseo_login','dataforseo_password')`,
+      [orgId]
+    );
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to clear credentials" });
+  }
+});
+
+// ── GET /api/me/storage — real DB volume counts ─────────────────────────────
+router.get("/me/storage", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const client = await (await import("@workspace/db")).pool.connect();
+    try {
+      // Count rows per table + estimate total size
+      const counts = await Promise.all([
+        client.query(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM team_files WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM automation_integrations WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM automation_logs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM psi_cache WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+      ]);
+
+      const [
+        audits, reports, monitors, keywords, uploads, integrations, logs, psiCache
+      ] = counts.map(r => (r.rows[0] as { n: number }).n);
+
+      const totalItems = audits + reports + monitors + keywords + uploads + integrations + logs + psiCache;
+
+      // Estimate per-org storage from row counts (accurate enough for billing UI)
+      const estimatedBytes = totalItems * 2500; // ~2.5 KB/item rough avg per org
+      const isEstimated = true;
+
+      res.json({
+        orgId,
+        counts: { audits, reports, monitors, keywords, uploads, integrations, logs, psiCache, total: totalItems },
+        size: {
+          bytes: estimatedBytes,
+          readable: estimatedBytes > 0
+            ? estimatedBytes < 1024
+              ? `${estimatedBytes} B`
+              : estimatedBytes < 1024 * 1024
+                ? `${(estimatedBytes / 1024).toFixed(1)} KB`
+                : `${(estimatedBytes / (1024 * 1024)).toFixed(2)} MB`
+            : "0 B",
+          estimated: isEstimated,
+          note: "Estimation par org basée sur le nombre de lignes",
+        },
+      });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err }, "[me/storage] failed");
+    res.status(500).json({ error: "Impossible de lire le stockage" });
+  }
+});
+
+// ── GET /api/settings/api-keys ───────────────────────────────────────────────
+router.get("/settings/api-keys", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  // API-key principals (fp_pub_ / fp_sec_) must never see the raw secret key value.
+  // Only interactive sessions (browser login) may retrieve it.
+  const isApiKeyPrincipal = (req.orgContext?.userId ?? "").startsWith("apikey:");
+
+  try {
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+    const prefs = (r.rows[0] as Record<string, unknown>)?.settings as Record<string, string> | null;
+    const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+    const publicKey  = prefs?.publicApiKey  ?? `fp_pub_${_pkHash}`;
+    const secretKey  = prefs?.secretApiKey  ?? null;
+
+    // Auto-persist the deterministic public key if it hasn't been stored yet.
+    // This ensures it is findable by orgContext on future API requests.
+    if (!prefs?.publicApiKey) {
+      orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, jsonb_build_object('publicApiKey', $2::text), now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text),
+           updated_at = now()`,
+        [orgId, publicKey]
+      ).catch((err: unknown) => logger.warn({ err }, "[api-keys] auto-persist publicApiKey failed"));
+    }
+
+    res.json({
+      publicKey,
+      // Never expose the actual secret to API-key callers — they already have their own credential.
+      secretKey:  isApiKeyPrincipal ? null : secretKey,
+      hasSecret:  !!secretKey,
+      publicKeyCreatedAt: prefs?.publicApiKeyCreatedAt ?? null,
+      secretKeyCreatedAt: prefs?.secretApiKeyCreatedAt ?? null,
+    });
+  } catch (err) {
+    logger.error({ err }, "[api-keys/get] failed");
+    res.status(500).json({ error: "Erreur" });
+  }
+});
+
+// ── DELETE /api/settings/data ─────────────────────────────────────────────────
+// Purge all product data for this org but keep the account intact.
+router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const tables = [
+    // Core SEO & audit data
+    "audits", "audit_schedules", "reports", "report_exports",
+    // Monitoring
+    "monitors", "monitor_checks", "monitor_incidents",
+    "alert_rules", "alert_events",
+    // Keywords, calendar, team
+    "tracked_keywords", "calendar_events",
+    "team_messages", "team_files",
+    // Automations & workflows
+    "automation_integrations", "automation_workflows", "automation_runs",
+    "automation_logs", "workflow_runs", "incoming_webhooks",
+    // AI & missions
+    "missions", "mission_history", "mission_ai_logs",
+    "ai_usage_logs", "ai_monthly_usage",
+    // Analytics & SEO tools
+    "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
+    "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
+    "behavior_events", "behavior_sessions",
+    "traffic_sources", "traffic_losses",
+    "cro_scores", "cro_experiments", "revenue_leaks",
+    // Competitors & Local SEO
+    "competitors", "competitor_analysis", "competitor_map_results",
+    "gbp_profiles", "local_pack_history",
+    // Notifications, activity, misc
+    "notifications",
+    "org_checklist",
+    "overview_insights_cache", "overview_insights_rl",
+    "activity_log", "share_tokens", "growth_objectives",
+  ];
+  const { pool: pgPool } = await import("@workspace/db");
+  const client = await pgPool.connect();
+  let deleted = 0;
+  try {
+    const existCheck = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+      [tables]
+    );
+    const existing = new Set(existCheck.rows.map(r => r.tablename));
+    await client.query("BEGIN");
+    try {
+      for (const t of tables.filter(t => existing.has(t))) {
+        const r = await client.query(
+          // ai_usage_logs.org_id is UUID; explicit cast handles all column types safely
+          `DELETE FROM ${t} WHERE org_id::text = $1`,
+          [orgId]
+        );
+        deleted += r.rowCount ?? 0;
+      }
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    }
+    logger.info({ orgId, deleted }, "[settings/data] User data purged");
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    logger.error({ err }, "[settings/data] purge failed");
+    res.status(500).json({ error: "Erreur lors de la suppression" });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/settings/api-keys/regenerate ────────────────────────────────────
+router.post("/settings/api-keys/regenerate", ownerOnly, async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  // API-key principals must not be able to regenerate keys — only interactive sessions may rotate them.
+  if ((req.orgContext?.userId ?? "").startsWith("apikey:")) {
+    res.status(403).json({ error: "Forbidden: API keys cannot be rotated via an API key credential" });
+    return;
+  }
+
+  const { type } = req.body as { type?: "public" | "secret" };
+  try {
+    const suffix = randomBytes(20).toString("hex"); // 40-char hex
+    const createdAt = new Date().toISOString();
+    if (type === "secret") {
+      const secretKey = `fp_sec_${suffix}`;
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, jsonb_build_object('secretApiKey', $2::text, 'secretApiKeyCreatedAt', $3::text), now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('secretApiKey', $2::text, 'secretApiKeyCreatedAt', $3::text),
+           updated_at = now()`,
+        [orgId, secretKey, createdAt]
+      );
+      res.json({ ok: true, key: secretKey, type: "secret", createdAt });
+    } else {
+      // Public key: store custom suffix in prefs so it overrides the deterministic hash
+      const publicKey = `fp_pub_${suffix}`;
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, jsonb_build_object('publicApiKey', $2::text, 'publicApiKeyCreatedAt', $3::text), now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text, 'publicApiKeyCreatedAt', $3::text),
+           updated_at = now()`,
+        [orgId, publicKey, createdAt]
+      );
+      res.json({ ok: true, key: publicKey, type: "public", createdAt });
+    }
+    // Journalise la rotation de clé dans le fil d'activité
+    const _apiKeyCtx = (req as any).orgContext || {};
+    import("../services/store.js")
+      .then(m => m.store.logActivity({ type: "security", label: `Clé API ${type === "secret" ? "secrète" : "publique"} régénérée`, orgId,
+        actionKey: "activity.settings.apikey", actionParams: { type },
+        userId: _apiKeyCtx.userId || _apiKeyCtx.email || null,
+        userName: _apiKeyCtx.name || _apiKeyCtx.email || null }))
+      .catch(() => {});
+  } catch (err) {
+    logger.error({ err }, "[api-keys/regenerate] failed");
+    res.status(500).json({ error: "Erreur lors de la régénération" });
+  }
+});
+
+export default router;

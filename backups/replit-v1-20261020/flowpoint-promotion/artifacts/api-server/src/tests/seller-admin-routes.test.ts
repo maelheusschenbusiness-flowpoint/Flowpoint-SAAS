@@ -1,0 +1,308 @@
+/**
+ * seller-admin-routes.test.ts
+ *
+ * Pins the scoped seller-management key and the canonical seller link.
+ *
+ *  1. SELLER_ADMIN_KEY (header x-seller-admin-key) opens exactly the five seller
+ *     routes: POST/GET/DELETE /admin/sellers, PATCH /admin/sellers/:code,
+ *     GET /admin/sellers/:code/report.
+ *  2. It is refused on every other admin route — the route inventory is read from
+ *     admin.ts itself, so a route added later is covered without editing this file —
+ *     and the refusal happens before any database access.
+ *  3. ADMIN_KEY (header x-admin-key) keeps working on the four seller routes.
+ *  4. Misconfiguration fails closed: missing, short, or equal to ADMIN_KEY → 503.
+ *  5. Every seller response carries the canonical signin.html?fp_ref= link, never
+ *     the legacy pricing.html?ref= link.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import express from "express";
+import request from "supertest";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { pool } from "@workspace/db";
+import adminRouter, { SELLERS_LIST_SQL, SELLER_REPORT_ORGS_SQL, SELLER_REPORT_COMMISSIONS_SQL, SELLER_REPORT_METRICS_SQL, sellerLink, SELLER_LINK_BASE } from "../routes/admin.js";
+
+const ADMIN = "a".repeat(48);
+const SELLER = "s".repeat(48);
+const here = dirname(fileURLToPath(import.meta.url));
+const SOURCE = readFileSync(join(here, "../routes/admin.ts"), "utf8");
+
+/** Every route declared in admin.ts with the guard that opens its handler. */
+const ROUTES = [...SOURCE.matchAll(/router\.(get|post|put|patch|delete)\("([^"]+)"/g)].map((m) => {
+  const after = SOURCE.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 400);
+  // Trois gardes existent desormais : admin complet, vendeurs, et Croissance —
+  // chacun dans son propre en-tete, chacun n'ouvrant que ses routes.
+  const guard = /require(?:Seller|Growth)?AdminKey/.exec(after)?.[0] ?? null;
+  return { method: m[1] as "get" | "post" | "put" | "patch" | "delete", path: m[2], guard };
+});
+const SELLER_ROUTES = [
+  "POST /admin/sellers", "GET /admin/sellers", "PATCH /admin/sellers/:code",
+  "GET /admin/sellers/:code/report", "DELETE /admin/sellers/:code",
+];
+/** La seule route ouverte par GROWTH_ADMIN_KEY, et elle est en lecture seule. */
+const GROWTH_ROUTES = ["GET /admin/growth/daily"];
+const key = (r: { method: string; path: string }) => `${r.method.toUpperCase()} ${r.path}`;
+const concrete = (p: string) => p.replace(/:code/g, "SELLER-TEST1").replace(/:[a-zA-Z]+/g, "x1");
+
+const app = express();
+app.use(express.json());
+app.use("/api", adminRouter);
+
+const q = vi.mocked(pool.query) as unknown as ReturnType<typeof vi.fn>;
+const c = vi.mocked(pool.connect) as unknown as ReturnType<typeof vi.fn>;
+
+const SELLER_ROW = { id: "s-1", seller_code: "SELLER-TEST1", name: "Ana", email: "ana@x.co", status: "active", created_at: "2026-09-01T00:00:00Z" };
+function fakeDb() {
+  q.mockImplementation(async (sql: string, params?: unknown[]) => {
+    if (sql.startsWith("INSERT INTO sellers")) return { rows: [{ ...SELLER_ROW, seller_code: String(params?.[0]) }] };
+    if (sql === SELLERS_LIST_SQL) return { rows: [{ ...SELLER_ROW, org_count: 2, commission_count: 1, paid_cents: 0, pending_cents: 3700 }] };
+    if (sql.trim().startsWith("UPDATE sellers")) return { rows: [{ ...SELLER_ROW, status: String(params?.[3] ?? "active") }] };
+    if (sql.includes("FROM sellers WHERE seller_code")) return { rows: [SELLER_ROW] };
+    if (sql.includes("seller_financial_ledger") && !sql.trim().startsWith("SELECT 1")) return { rows: [{}] };
+    if (sql.includes("FROM organizations o WHERE o.seller_id")) return { rows: [] };
+    if (sql.includes("FROM seller_commissions sc WHERE sc.seller_id")) return { rows: [] };
+    if (sql.includes("COUNT(DISTINCT org_id)")) return { rows: [{}] };
+    if (sql.includes("FROM pending_signups WHERE seller_id")
+      || sql.includes("FROM organizations WHERE seller_id")
+      || sql.includes("FROM seller_commissions WHERE seller_id")) return { rows: [] };
+    if (sql.trim().startsWith("SELECT 1 FROM seller_financial_ledger")) return { rows: [] };
+    if (sql.includes("FROM seller_financial_ledger WHERE seller_id")) return { rows: [{}] };
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+    if (sql.startsWith("DELETE FROM sellers")) return { rows: [] };
+    throw new Error(`unexpected query in seller test: ${sql.slice(0, 60)}`);
+  });
+}
+
+beforeEach(() => {
+  process.env["ADMIN_KEY"] = ADMIN;
+  process.env["SELLER_ADMIN_KEY"] = SELLER;
+  q.mockReset(); c.mockReset();
+  c.mockImplementation(async () => ({ query: q, release: vi.fn() }) as any);
+  fakeDb();
+});
+afterEach(() => {
+  delete process.env["ADMIN_KEY"];
+  delete process.env["SELLER_ADMIN_KEY"];
+});
+
+const call = (method: string, path: string) => (request(app) as any)[method](`/api${path}`);
+const sellerBody = (m: string) => (m === "post" ? { name: "Ana", email: "ana@x.co" } : m === "patch" ? { status: "inactive" } : undefined);
+
+describe("route inventory", () => {
+  it("every admin route opens with an admin guard", () => {
+    expect(ROUTES.length).toBeGreaterThan(40);
+    expect(ROUTES.filter((r) => r.guard === null).map(key)).toEqual([]);
+  });
+  it("the scoped guard is used by exactly the four seller routes", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireSellerAdminKey").map(key).sort()).toEqual([...SELLER_ROUTES].sort());
+     expect((SOURCE.match(/requireSellerAdminKey\(req, res\)/g) ?? []).length).toBe(5);
+  });
+  it("the growth guard is used by exactly the one growth route", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireGrowthAdminKey").map(key).sort()).toEqual([...GROWTH_ROUTES].sort());
+    expect((SOURCE.match(/requireGrowthAdminKey\(req, res\)/g) ?? []).length).toBe(1);
+  });
+  it("the growth route is read-only: no write verb carries the growth guard", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireGrowthAdminKey" && r.method !== "get")).toEqual([]);
+  });
+});
+
+describe("SELLER_ADMIN_KEY opens the four seller routes", () => {
+  for (const route of SELLER_ROUTES) {
+    it(`${route} → 2xx with x-seller-admin-key`, async () => {
+      const [m, p] = route.split(" ");
+      const r = await call(m.toLowerCase(), concrete(p)).set("x-seller-admin-key", SELLER).send(sellerBody(m.toLowerCase()));
+      expect(r.status).toBeGreaterThanOrEqual(200);
+      expect(r.status).toBeLessThan(300);
+    });
+  }
+});
+
+describe("ADMIN_KEY keeps working on the four seller routes", () => {
+  for (const route of SELLER_ROUTES) {
+    it(`${route} → 2xx with x-admin-key`, async () => {
+      const [m, p] = route.split(" ");
+      const r = await call(m.toLowerCase(), concrete(p)).set("x-admin-key", ADMIN).send(sellerBody(m.toLowerCase()));
+      expect(r.status).toBeGreaterThanOrEqual(200);
+      expect(r.status).toBeLessThan(300);
+    });
+  }
+});
+
+describe("SELLER_ADMIN_KEY is refused everywhere else, before any database access", () => {
+  const others = ROUTES.filter((r) => !SELLER_ROUTES.includes(key(r)));
+  it("covers every non-seller route", () => { expect(others.length).toBe(ROUTES.length - 5); });
+  for (const r of others) {
+    it(`${key(r)} → 403 with x-seller-admin-key`, async () => {
+      const res = await call(r.method, concrete(r.path)).set("x-seller-admin-key", SELLER).send({});
+      expect(res.status).toBe(403);
+      expect(q).not.toHaveBeenCalled();
+      expect(c).not.toHaveBeenCalled();
+    });
+    it(`${key(r)} → 403 with the seller key sent as x-admin-key`, async () => {
+      const res = await call(r.method, concrete(r.path)).set("x-admin-key", SELLER).send({});
+      expect(res.status).toBe(403);
+      expect(q).not.toHaveBeenCalled();
+    });
+  }
+});
+
+describe("GROWTH_ADMIN_KEY est refusee partout ailleurs", () => {
+  const GROWTH = "g".repeat(48);
+  const others = ROUTES.filter((r) => !GROWTH_ROUTES.includes(key(r)));
+  it("couvre toutes les autres routes", () => { expect(others.length).toBe(ROUTES.length - 1); });
+  for (const r of others) {
+    it(`${key(r)} → 403 avec x-growth-admin-key`, async () => {
+      process.env["GROWTH_ADMIN_KEY"] = GROWTH;
+      const res = await call(r.method, concrete(r.path)).set("x-growth-admin-key", GROWTH).send({});
+      expect(res.status).toBe(403);
+      expect(q).not.toHaveBeenCalled();
+      expect(c).not.toHaveBeenCalled();
+      delete process.env["GROWTH_ADMIN_KEY"];
+    });
+  }
+  it("la cle vendeurs n ouvre pas la route Croissance", async () => {
+    const res = await call("get", "/admin/growth/daily").set("x-seller-admin-key", SELLER).send({});
+    expect(res.status).toBe(403);
+    expect(q).not.toHaveBeenCalled();
+  });
+  it("une cle Croissance egale a la cle admin echoue fermee", async () => {
+    process.env["GROWTH_ADMIN_KEY"] = ADMIN;
+    const res = await call("get", "/admin/growth/daily").set("x-growth-admin-key", ADMIN).send({});
+    expect(res.status).toBe(503);
+    expect(q).not.toHaveBeenCalled();
+    delete process.env["GROWTH_ADMIN_KEY"];
+  });
+  it("GROWTH_ADMIN_KEY absente → 503, jamais 200", async () => {
+    const res = await call("get", "/admin/growth/daily").set("x-growth-admin-key", GROWTH).send({});
+    expect(res.status).toBe(503);
+    expect(q).not.toHaveBeenCalled();
+  });
+});
+
+describe("scoped key fails closed", () => {
+  it("wrong key → 403", async () => {
+    const r = await call("get", "/admin/sellers").set("x-seller-admin-key", "z".repeat(48));
+    expect(r.status).toBe(403); expect(q).not.toHaveBeenCalled();
+  });
+  it("no header at all → 403 (unchanged admin behaviour)", async () => {
+    const r = await call("get", "/admin/sellers");
+    expect(r.status).toBe(403); expect(q).not.toHaveBeenCalled();
+  });
+  it("SELLER_ADMIN_KEY unset → 503", async () => {
+    delete process.env["SELLER_ADMIN_KEY"];
+    const r = await call("get", "/admin/sellers").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(503); expect(q).not.toHaveBeenCalled();
+  });
+  it("SELLER_ADMIN_KEY shorter than 32 chars → 503", async () => {
+    process.env["SELLER_ADMIN_KEY"] = "short-key";
+    const r = await call("get", "/admin/sellers").set("x-seller-admin-key", "short-key");
+    expect(r.status).toBe(503); expect(q).not.toHaveBeenCalled();
+  });
+  it("SELLER_ADMIN_KEY equal to ADMIN_KEY → 503", async () => {
+    process.env["SELLER_ADMIN_KEY"] = ADMIN;
+    const r = await call("get", "/admin/sellers").set("x-seller-admin-key", ADMIN);
+    expect(r.status).toBe(503); expect(q).not.toHaveBeenCalled();
+  });
+  it("both headers: x-admin-key decides, a valid seller key does not rescue a wrong admin key", async () => {
+    const r = await call("get", "/admin/sellers").set("x-admin-key", "w".repeat(48)).set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(403); expect(q).not.toHaveBeenCalled();
+  });
+  it("ADMIN_KEY unset: admin route answers 503 exactly as before", async () => {
+    delete process.env["ADMIN_KEY"];
+    const r = await call("get", "/admin/stats").set("x-admin-key", ADMIN);
+    expect(r.status).toBe(503);
+  });
+});
+
+describe("canonical seller link", () => {
+  const CANON = /^https:\/\/app\.flowpoint\.pro\/signin\.html\?fp_ref=SELLER-[A-Z0-9]+$/;
+  it("helper builds signin.html?fp_ref=", () => {
+    expect(SELLER_LINK_BASE).toBe("https://app.flowpoint.pro/signin.html");
+    expect(sellerLink("SELLER-0042")).toBe("https://app.flowpoint.pro/signin.html?fp_ref=SELLER-0042");
+  });
+  it("POST /admin/sellers (generated code) returns the canonical link", async () => {
+    const r = await call("post", "/admin/sellers").set("x-seller-admin-key", SELLER).send({ name: "Ana" });
+    expect(r.status).toBe(201);
+    expect(r.body.link).toMatch(CANON);
+    expect(r.body.link).toBe(sellerLink(r.body.seller.seller_code));
+  });
+  it("POST /admin/sellers (custom code) returns the canonical link for that code", async () => {
+    const r = await call("post", "/admin/sellers").set("x-seller-admin-key", SELLER).send({ name: "Ana", code: "seller-ana01" });
+    expect(r.status).toBe(201);
+    expect(r.body.link).toBe("https://app.flowpoint.pro/signin.html?fp_ref=SELLER-ANA01");
+  });
+  it("custom code validation is unchanged", async () => {
+    const r = await call("post", "/admin/sellers").set("x-seller-admin-key", SELLER).send({ code: "ANA" });
+    expect(r.status).toBe(400); expect(q).not.toHaveBeenCalled();
+  });
+  it("GET /admin/sellers returns the canonical link and runs the fixed aggregate query", async () => {
+    const r = await call("get", "/admin/sellers").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(200);
+    expect(q).toHaveBeenCalledWith(SELLERS_LIST_SQL);
+    expect(r.body.sellers[0].link).toBe("https://app.flowpoint.pro/signin.html?fp_ref=SELLER-TEST1");
+  });
+  it("PATCH /admin/sellers/:code returns the canonical link", async () => {
+    const r = await call("patch", "/admin/sellers/SELLER-TEST1").set("x-seller-admin-key", SELLER).send({ status: "inactive" });
+    expect(r.status).toBe(200);
+    expect(r.body.link).toBe("https://app.flowpoint.pro/signin.html?fp_ref=SELLER-TEST1");
+  });
+  it("no seller endpoint builds a pricing.html?ref= link any more", () => {
+    expect(SOURCE).not.toMatch(/pricing\.html\?ref=/);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seller report: financial fields for the AI Lab finance console (read-only)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /admin/sellers/:code/report — financial fields, explicit columns, no secret", () => {
+  const cols = (sql: string) => sql.slice(sql.indexOf("SELECT") + 6, sql.indexOf("FROM")).split(",").map((c) => c.trim().replace(/^\w+\./, ""));
+
+  it("organizations: explicit column list, adds trial_ends_at only", () => {
+    expect(SELLER_REPORT_ORGS_SQL).not.toMatch(/\*/);
+    expect(cols(SELLER_REPORT_ORGS_SQL)).toEqual(["id", "owner_email", "plan", "subscription_status", "created_at", "trial_ends_at"]);
+  });
+
+  it("commissions: explicit column list, adds stripe_invoice_id, stripe_subscription_id, paid_by, notes only", () => {
+    expect(SELLER_REPORT_COMMISSIONS_SQL).not.toMatch(/\*/);
+    expect(cols(SELLER_REPORT_COMMISSIONS_SQL)).toEqual([
+      "id", "org_id", "customer_email", "plan", "eligible_amount_cents", "commission_rate_bps", "commission_amount_cents",
+      "currency", "status", "attribution_method", "attributed_at", "earned_at", "paid_at",
+      "stripe_invoice_id", "stripe_subscription_id", "paid_by", "notes",
+    ]);
+    // No payment method, card, customer or key material is ever selected.
+    expect(SELLER_REPORT_COMMISSIONS_SQL + SELLER_REPORT_ORGS_SQL).not.toMatch(/payment_method|card|secret|key|token|password|stripe_customer_id|payment_intent|checkout_session/i);
+  });
+
+  it("report returns the persisted values as-is through the scoped seller key, and never a key", async () => {
+    q.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM sellers WHERE seller_code")) return { rows: [SELLER_ROW] };
+      if (sql === SELLER_REPORT_ORGS_SQL) return { rows: [{ id: "o1", owner_email: "c@x.co", plan: "standard", subscription_status: "trialing", created_at: "2026-09-12T14:17:41Z", trial_ends_at: "2026-09-26T14:17:37Z" }] };
+      if (sql === SELLER_REPORT_COMMISSIONS_SQL) return { rows: [{ id: "k1", org_id: "o1", customer_email: "c@x.co", plan: "standard",
+        eligible_amount_cents: 2900, commission_rate_bps: 3500, commission_amount_cents: 1015, currency: "eur", status: "paid", attribution_method: "ref_link",
+        attributed_at: "2026-09-12T14:17:41Z", earned_at: "2026-09-26T15:20:00Z", paid_at: "2026-10-01T09:00:00Z",
+        stripe_invoice_id: "in_1", stripe_subscription_id: "sub_1", paid_by: "virement", notes: "octobre" }] };
+      if (sql === SELLER_REPORT_METRICS_SQL) return { rows: [{ paid_clients: 1, gross_revenue_cents: 2900, net_revenue_cents: 2900 }] };
+      if (sql.includes("FROM seller_financial_ledger")) return { rows: [] };
+      throw new Error(`unexpected query: ${sql.slice(0, 60)}`);
+    });
+    const r = await call("get", "/admin/sellers/SELLER-TEST1/report").set("x-seller-admin-key", SELLER);
+    expect(r.status).toBe(200);
+    expect(r.body.organizations[0].trial_ends_at).toBe("2026-09-26T14:17:37Z");
+    expect(r.body.commissions[0]).toMatchObject({
+      stripe_invoice_id: "in_1", stripe_subscription_id: "sub_1", paid_by: "virement", notes: "octobre",
+      eligible_amount_cents: 2900, commission_rate_bps: 3500, commission_amount_cents: 1015,
+    });
+    const text = JSON.stringify(r.body);
+    expect(text).not.toContain(SELLER);
+    expect(text).not.toContain(ADMIN);
+    expect(text).not.toMatch(/sk_(live|test)_|rk_(live|test)_|whsec_|pk_(live|test)_/);
+  });
+
+  it("the seller key still opens nothing else (mark-paid stays ADMIN_KEY-only)", async () => {
+    const r = await call("post", "/admin/seller-commissions/k1/mark-paid").set("x-seller-admin-key", SELLER).send({});
+    expect(r.status).toBe(403);
+    expect(q).not.toHaveBeenCalled();
+  });
+});

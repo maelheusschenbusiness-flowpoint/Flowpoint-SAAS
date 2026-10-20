@@ -1,0 +1,294 @@
+/**
+ * FlowPoint — Plan gate middleware factory
+ *
+ * P0-2 FIX: All plan/feature gates now load the plan from org_settings (DB)
+ * using req.orgId — never from store.me (global singleton).
+ *
+ * Fail-closed policy: if the plan cannot be resolved from DB in production,
+ * the request is denied (402 / 403). In development, fail-open is preserved.
+ */
+
+import type { Request, Response, NextFunction } from "express";
+import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+import { planAtLeast, getFeature, getQuota, normalizePlan, type PlanTier, type FeatureFlags, type CoreQuotas } from "../lib/config.js";
+import { planRequired, quotaExceeded } from "../lib/response.js";
+import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+
+const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
+
+/**
+ * Résout le plan depuis `organizations` (source de vérité, Jalon 1).
+ * Fallback sur `org_settings` si la row organizations est absente (comptes legacy).
+ * Retourne "standard" si l'org est introuvable (moindre privilège).
+ * Retourne null uniquement en cas d'erreur DB en production (appelant doit refuser).
+ */
+/**
+ * UUID v4 guard — organizations.id is a UUID column in production.
+ * An orgId that is not UUID-shaped (e.g. a legacy email-as-orgId) must never
+ * reach the `WHERE id = $1` query or PostgreSQL throws 22P02.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function resolvePlanFromDB(req: Request): Promise<string | null> {
+  const orgId = (req as { orgId?: string }).orgId;
+
+  if (!orgId || orgId === "default") return "standard";
+
+  // Guard: non-UUID orgId (legacy email-as-orgId in surviving sessions) cannot be
+  // used against organizations.id (UUID column in prod) — that produces 22P02 → 503.
+  // Route directly to org_settings to serve the request without crashing.
+  if (!UUID_RE.test(orgId)) {
+    logger.warn({ orgIdShape: orgId.includes("@") ? "email" : "non-uuid" },
+      "[PlanGate] non-UUID orgId — routing to org_settings only (legacy session)");
+    try {
+      const client = await pool.connect();
+      try {
+        const legacy = await client.query<{ plan: string }>(
+          `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          [orgId],
+        );
+        return legacy.rows.length > 0
+          ? (legacy.rows[0].plan || "standard").toLowerCase()
+          : "standard";
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.error({ err }, "[PlanGate] org_settings fallback failed for non-UUID orgId");
+      if (isProd()) return null;
+      return "standard";
+    }
+  }
+
+  try {
+    const client = await pool.connect();
+    try {
+      // Source primaire : organizations
+      const r = await client.query<{ plan: string }>(
+        `SELECT plan FROM organizations WHERE id = $1 LIMIT 1`,
+        [orgId],
+      );
+      if (r.rows.length > 0) {
+        return (r.rows[0].plan || "standard").toLowerCase();
+      }
+      // Fallback : org_settings pour les comptes legacy
+      const legacy = await client.query<{ plan: string }>(
+        `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+        [orgId],
+      );
+      if (legacy.rows.length > 0) {
+        return (legacy.rows[0].plan || "standard").toLowerCase();
+      }
+      return "standard";
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err, orgId }, "[PlanGate] Échec résolution plan depuis DB");
+    if (isProd()) return null;
+    return "standard";
+  }
+}
+
+/** Require a minimum plan tier to access an endpoint */
+export function requirePlan(minimumPlan: PlanTier): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    resolvePlanFromDB(req).then(plan => {
+      if (plan === null) {
+        // DB error in production — fail-closed
+        logger.error({ url: req.url }, "[PlanGate] Plan resolution failed — denying access");
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+      if (planAtLeast(plan, minimumPlan)) { next(); return; }
+      logger.warn({ plan, required: minimumPlan, orgId: (req as { orgId?: string }).orgId }, "[PlanGate] Plan requirement not met");
+      planRequired(res, "This feature", minimumPlan);
+    }).catch(next);
+  };
+}
+
+/** Require a specific feature flag to be enabled for current plan */
+export function requireFeature(feature: keyof FeatureFlags, featureLabel?: string): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    resolvePlanFromDB(req).then(plan => {
+      if (plan === null) {
+        logger.error({ url: req.url, feature }, "[PlanGate] Plan resolution failed — denying access");
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+      if (getFeature(plan, feature)) { next(); return; }
+      const minPlan = (["standard", "pro", "ultra", "agency"] as PlanTier[]).find(t => getFeature(t, feature)) ?? "ultra";
+      logger.warn({ plan, feature, orgId: (req as { orgId?: string }).orgId }, "[PlanGate] Feature not available on current plan");
+      planRequired(res, featureLabel ?? String(feature), minPlan);
+    }).catch(next);
+  };
+}
+
+/** Check that current plan has remaining quota for a resource */
+export function requireQuota(
+  resource: keyof CoreQuotas,
+  getCurrentUsage: (orgId: string, req: Request) => number | Promise<number>,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const orgId = (req as { orgId?: string }).orgId ?? "default";
+    const resolvedPlan = await resolvePlanFromDB(req);
+    if (resolvedPlan === null) {
+      logger.error({ resource, orgId }, "[PlanGate] quota plan resolution failed — denying request");
+      res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+      return;
+    }
+    const limit = getQuota(resolvedPlan, resource);
+    if (limit >= 9999) { next(); return; }
+    try {
+      const used = await getCurrentUsage(orgId, req);
+      if (used < limit) { next(); return; }
+      quotaExceeded(res, String(resource), limit, resolvedPlan);
+    } catch (err) {
+      logger.error({ err, resource, orgId }, "[PlanGate] quota usage resolution failed — denying request");
+      res.status(503).json({ error: "Usage status unavailable. Please try again." });
+    }
+  };
+}
+
+/** Middleware that attaches plan config to every request for downstream use */
+export function attachPlanContext(_req: Request, _res: Response, next: NextFunction): void {
+  // Plan context is loaded from DB by each gate as needed — no pre-attachment required
+  next();
+}
+
+/** Validate plan on write operations and enforce org isolation */
+export function orgIsolation(req: Request, res: Response, next: NextFunction): void {
+  const orgId = (req as { orgId?: string }).orgId;
+  if (!orgId) {
+    // In dev mode without JWT, default org is fine
+    (req as { orgId?: string }).orgId = "default";
+  }
+  next();
+}
+
+/**
+ * requireAddon — checks that the org either:
+ *   a) has the addon active in org_addons (purchased), OR
+ *   b) has it bundled in their plan via PLAN_INCLUDED_ADDONS
+ *
+ * This is the CORRECT gate for add-on features. Using requireFeature() alone
+ * blocks Standard/Pro users who legitimately purchased an add-on that is only
+ * bundled at higher plan tiers.
+ *
+ * Usage: router.use("/behavioral", requireAddon("behavioralAI", "Behavioral AI"));
+ */
+export function requireAddon(
+  addonKey: string,
+  label?: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const orgId = (req as { orgId?: string }).orgId;
+    if (!orgId || orgId === "default") {
+      // Dev mode without auth — fail-open
+      if (!isProd()) { next(); return; }
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    resolvePlanFromDB(req).then(async plan => {
+      if (plan === null) {
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+
+      // Check 1: bundled in plan
+      const planBundle = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+      if (planBundle.has(addonKey)) { next(); return; }
+
+      // Check 2: purchased in org_addons
+      try {
+        const client = await pool.connect();
+        try {
+          const r = await client.query<{ active: boolean }>(
+            `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2 LIMIT 1`,
+            [orgId, addonKey],
+          );
+          if (r.rows.length > 0 && r.rows[0].active) { next(); return; }
+        } finally {
+          client.release();
+        }
+      } catch (err) {
+        logger.error({ err, addonKey, orgId }, "[PlanGate] requireAddon DB query failed");
+        if (isProd()) {
+          res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+          return;
+        }
+        // Dev: fail-open
+        next();
+        return;
+      }
+
+      // Neither bundled nor purchased
+      logger.warn({ plan, addonKey, orgId }, "[PlanGate] Addon not active for org");
+      res.status(402).json({
+        error: `${label ?? addonKey} requires an active add-on subscription.`,
+        code: "ADDON_REQUIRED",
+        addonKey,
+        upgradeUrl: "/pricing.html",
+      });
+    }).catch(next);
+  };
+}
+
+/**
+ * requireAddonOrFeature — grants access when EITHER:
+ *   a) the plan's canonical feature flag (FEATURE_FLAGS) is enabled, OR
+ *   b) requireAddon() would allow it (bundled in PLAN_INCLUDED_ADDONS
+ *      or purchased/active in org_addons).
+ *
+ * This is the correct gate for capabilities that are part of the canonical
+ * plan entitlement (config.ts FEATURE_FLAGS) but ALSO sold as a standalone
+ * add-on to lower tiers. Example: Review Intelligence (reviewIntelAI) is a
+ * bundled entitlement for Pro/Ultra, while Standard can purchase the
+ * reviewIntelligence add-on to unlock it. Gating purely on requireAddon()
+ * wrongly forces a paying Ultra org to buy the add-on separately.
+ *
+ * Org isolation is preserved: the add-on branch still scopes org_addons by
+ * orgId; the feature branch only reads the plan resolved for this org.
+ */
+export function requireAddonOrFeature(
+  addonKey: string,
+  feature: keyof FeatureFlags,
+  label?: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  const addonGate = requireAddon(addonKey, label);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const orgId = (req as { orgId?: string }).orgId;
+    if (!orgId || orgId === "default") {
+      // Dev mode without auth — fall through to requireAddon (fail-open in dev).
+      addonGate(req, res, next);
+      return;
+    }
+
+    resolvePlanFromDB(req).then(plan => {
+      if (plan === null) {
+        res.status(503).json({ error: "Subscription status unavailable. Please try again." });
+        return;
+      }
+      // Canonical plan entitlement — grant immediately.
+      if (getFeature(plan, feature)) { next(); return; }
+      // Otherwise defer to the add-on gate (bundled or purchased).
+      addonGate(req, res, next);
+    }).catch(next);
+  };
+}
+
+// ── Pre-built plan gates for common features ──────────────────────────────────
+export const requirePro      = requirePlan("pro");
+export const requireUltra    = requirePlan("ultra");
+export const requireSSO      = requireFeature("sso", "SSO Enterprise");
+export const requireSAML     = requireFeature("saml", "SAML SSO");
+export const requireAI       = requireFeature("competitorIntelAI", "AI Intelligence");
+export const requireCRM      = requireFeature("crmIntegration", "CRM Integration");
+export const requireAdvancedReports = requireFeature("advancedReports", "Advanced Reports");
+export const requireWhiteLabel = requireFeature("whiteLabel", "White Label");
+export const requireMultiLocation = requireFeature("multiLocation", "Multi-Location");
+export const requireCustomRoles = requireFeature("rbacCustomRoles", "Custom Roles");
+
+export { planAtLeast, normalizePlan };

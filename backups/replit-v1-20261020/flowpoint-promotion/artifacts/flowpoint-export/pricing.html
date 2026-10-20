@@ -1,0 +1,2341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
+
+  <title>Tarifs FlowPoint — SEO, monitoring &amp; IA pour votre croissance</title>
+  <meta name="description" content="Plans FlowPoint : Standard 29€ (30 audits, 10 monitors), Pro 79€ (300 audits, 50 monitors), Ultra 149€ (1000 audits, 300 monitors). Essai 14 jours."/>
+  <meta property="og:title" content="Tarifs FlowPoint — SEO, monitoring &amp; IA"/>
+  <meta property="og:description" content="Plans flexibles pour indépendants, équipes et agences. 14 jours d'essai inclus."/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://app.flowpoint.pro/pricing.html"/>
+
+  <script>
+    (function(){
+      try {
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var meta = document.getElementById('fp-meta-tc');
+        if (meta) meta.content = dark ? '#0b1120' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+  <script>/* Conversion B — keep the outreach lead id (22 chars) for signin.html; first one wins */
+  (function(){try{
+    var _l=new URLSearchParams(window.location.search).get('fp_lid')||'';
+    if(/^[A-Za-z0-9_-]{22}$/.test(_l)&&!/^[A-Za-z0-9_-]{22}$/.test(sessionStorage.getItem('fp_lid')||'')){sessionStorage.setItem('fp_lid',_l);}
+  }catch(e){}})();
+  </script>
+  <script>/* Seller Attribution — legacy pricing links bridge into signup */
+  (function(){try{
+    var _u=new URLSearchParams(window.location.search);
+    var _r=_u.get('fp_ref')||_u.get('ref')||'';
+    var _valid=_r&&/^SELLER-[A-Z0-9]{1,20}$/i.test(_r);
+    if(_valid){
+      _r=_r.toUpperCase();
+      localStorage.setItem('fp_seller_ref',_r);
+      /* New visitors must authenticate before they can select a plan or pay.
+         A valid per-tab token means the existing authenticated pricing path
+         stays unchanged and cannot create a second user/org/customer. */
+      var _hasSession=false;
+      try{_hasSession=!!sessionStorage.getItem('fp_session_token');}catch(e){}
+      if(!_hasSession){
+        window.location.replace('/signin.html?fp_ref='+encodeURIComponent(_r));
+        return;
+      }
+    }
+    var _stored=localStorage.getItem('fp_seller_ref');
+    if(_stored){var _links=document.querySelectorAll('a[href*="signin.html"],a[href="/"],a[href*="signup"]');_links.forEach(function(_l){if(_l.href&&_l.href.indexOf('fp_ref')===-1){_l.href=_l.href+((_l.href.indexOf('?')>-1)?'&':'?')+'fp_ref='+encodeURIComponent(_stored);}});}
+  }catch(e){}})();
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #f8faff;
+      --bg2:          #ffffff;
+      --surface:      #ffffff;
+      --border:       rgba(0,0,0,0.08);
+      --blue:         #2563eb;
+      --blue-h:       #1d4ed8;
+      --blue-light:   #3b82f6;
+      --text:         #0f172a;
+      --text-soft:    #475569;
+      --text-muted:   #94a3b8;
+      --green:        #059669;
+      --green-bg:     rgba(16,185,129,0.1);
+      --radius:       14px;
+      --shadow:       0 2px 12px rgba(0,0,0,0.07);
+      --shadow-lg:    0 8px 40px rgba(37,99,235,0.13);
+    }
+    html[data-theme="dark"] {
+      --bg:         #0b1120;
+      --bg2:        #111827;
+      --surface:    #1e293b;
+      --border:     rgba(255,255,255,0.08);
+      --text:       #f1f5f9;
+      --text-soft:  #94a3b8;
+      --text-muted: #64748b;
+      --green:      #34d399;
+      --green-bg:   rgba(52,211,153,0.1);
+      --shadow:     0 2px 12px rgba(0,0,0,0.4);
+      --shadow-lg:  0 8px 40px rgba(37,99,235,0.2);
+    }
+
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px; line-height: 1.5;
+    }
+
+    /* ── Nav ── */
+    .fp-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; height: 60px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100; backdrop-filter: blur(8px);
+    }
+    .fp-nav-logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
+    .fp-nav-logo svg { flex-shrink: 0; }
+    .fp-nav-logo-word span { color: var(--blue); }
+    .fp-nav-links { display: flex; align-items: center; gap: 8px; }
+    .fp-nav-link { font-size: 13px; color: var(--text-soft); text-decoration: none; padding: 7px 12px; border-radius: 8px; transition: background 0.15s, color 0.15s; }
+    .fp-nav-link:hover { background: var(--border); color: var(--text); }
+    .fp-nav-signup { font-size: 13px; font-weight: 600; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; cursor: pointer; text-decoration: none; transition: all 0.15s; white-space: nowrap; }
+    .fp-nav-signup:hover { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.04); }
+    .fp-nav-cta { font-size: 13px; font-weight: 600; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; text-decoration: none; transition: background 0.15s; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .fp-nav-cta:hover { background: var(--blue-h); }
+    .fp-cart-badge { display: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; color: var(--blue); font-size: 11px; font-weight: 800; border-radius: 20px; margin-left: 8px; }
+    .fp-cart-badge.visible { display: inline-flex; }
+    .fp-card-btn-selected { background: rgba(16,185,129,0.12) !important; color: #34d399 !important; border-color: rgba(16,185,129,0.35) !important; }
+    .fp-card.cart-selected { border-color: rgba(16,185,129,0.4) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.1), var(--shadow-lg) !important; }
+
+    /* ── Hero ── */
+    .fp-hero { text-align: center; padding: 72px 24px 52px; }
+    .fp-hero-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--green-bg); color: var(--green); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 18px; border: 1px solid rgba(16,185,129,0.2); }
+    html[data-theme="dark"] .fp-hero-badge { border-color: rgba(52,211,153,0.2); }
+
+    /* ── Dark mode: cartes plan & addon assombries ── */
+    html[data-theme="dark"] .fp-card {
+      background: rgba(8, 14, 30, 0.92);
+      border-color: rgba(255,255,255,0.07);
+    }
+    html[data-theme="dark"] .fp-card.featured {
+      background: rgba(10, 18, 40, 0.95);
+      border-color: rgba(37,99,235,0.35);
+    }
+    html[data-theme="dark"] .fp-addon-card {
+      background: rgba(8, 13, 27, 0.92);
+      border-color: rgba(255,255,255,0.06);
+    }
+    html[data-theme="dark"] .fp-addon-card:hover {
+      border-color: rgba(37,99,235,0.3);
+      background: rgba(10, 16, 35, 0.97);
+    }
+
+    .fp-hero h1 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; margin-bottom: 14px; }
+    .fp-hero-accent { color: var(--blue); }
+    .fp-hero-sub { font-size: 16px; color: var(--text-soft); max-width: 540px; margin: 0 auto 28px; line-height: 1.65; }
+
+    /* ── Plans grid ── */
+    .fp-plans-section { padding: 0 24px 64px; }
+    .fp-plans-scroll-outer { max-width: 1060px; margin: 0 auto; }
+    .fp-plans-grid { display: flex; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 28px 2px 16px; scrollbar-width: none; -ms-overflow-style: none; }
+    .fp-plans-grid::-webkit-scrollbar { display: none; }
+
+    .fp-scroll-nav { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 4px; }
+    .fp-scroll-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; line-height: 1; padding: 0; flex-shrink: 0; }
+    .fp-scroll-btn:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.06); }
+    .fp-scroll-btn:disabled { opacity: .3; cursor: default; }
+
+    .fp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 28px 24px 24px; position: relative; transition: border-color 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; min-width: 290px; max-width: 370px; flex: 1 0 290px; scroll-snap-align: start; }
+    .fp-card:hover { box-shadow: var(--shadow-lg); border-color: rgba(37,99,235,0.3); }
+    .fp-card.featured { border-color: var(--blue); box-shadow: var(--shadow-lg); }
+    .fp-card-badge { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 5px 16px; border-radius: 20px; white-space: nowrap; letter-spacing: 0.3px; box-shadow: 0 2px 10px rgba(37,99,235,0.4); }
+    .fp-card-plan { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 10px; }
+    .fp-card-price { font-size: 42px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
+    .fp-card-price-unit { font-size: 16px; font-weight: 400; color: var(--text-muted); }
+    .fp-card-desc { font-size: 13px; color: var(--text-soft); margin: 14px 0 20px; line-height: 1.55; }
+    .fp-card-trial { font-size: 12px; color: var(--blue); background: rgba(37,99,235,0.07); border-radius: 8px; padding: 6px 10px; margin-bottom: 18px; display: flex; align-items: center; gap: 6px; border: 1px solid rgba(37,99,235,0.12); }
+    .fp-card-features { list-style: none; margin-bottom: 8px; flex: 1; }
+    .fp-card-features li { font-size: 13px; padding: 6px 0; display: flex; align-items: flex-start; gap: 8px; border-bottom: 1px solid var(--border); }
+    .fp-card-features li:last-child { border-bottom: none; }
+    .fp-card-features li.fp-feat-extra { display: none; }
+    .fp-card-features li.fp-feat-extra.visible { display: flex; }
+    .fp-feat-check { color: var(--blue); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .fp-feat-no    { color: var(--text-muted); flex-shrink: 0; margin-top: 1px; }
+    .fp-feat-text  { flex: 1; }
+    .fp-feat-addon-tag { font-size: 10px; font-weight: 700; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.15); border-radius: 4px; padding: 1px 5px; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.3px; vertical-align: middle; }
+    .fp-feat-incl-tag { font-size: 10px; font-weight: 700; color: var(--green); background: var(--green-bg); border: 1px solid rgba(16,185,129,0.2); border-radius: 4px; padding: 1px 5px; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.3px; vertical-align: middle; }
+
+    .fp-card-more-wrap { text-align: center; margin-bottom: 18px; }
+    .fp-card-more-btn { background: none; border: none; color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; }
+    .fp-card-more-btn:hover { background: rgba(37,99,235,0.07); }
+
+    .fp-card-btn { width: 100%; padding: 12px; font-size: 14px; font-weight: 600; border-radius: 9px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .fp-card-btn-primary { background: var(--blue); color: #fff; }
+    .fp-card-btn-primary:hover { background: var(--blue-h); }
+    .fp-card-btn-secondary { background: transparent; color: var(--text); border-color: var(--border); }
+    .fp-card-btn-secondary:hover { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.04); }
+    .fp-card-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    .fp-card-msg { font-size: 12px; text-align: center; margin-top: 8px; min-height: 18px; border-radius: 6px; padding: 4px 8px; }
+    .fp-card-msg.error { color: #dc2626; background: rgba(239,68,68,.08); }
+    .fp-card-msg.ok { color: var(--green); }
+
+    .fp-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: fp-spin 1.2s linear infinite; }
+    .fp-card-btn-secondary .fp-spinner { border-color: rgba(0,0,0,.2); border-top-color: var(--blue); }
+    @keyframes fp-spin { to { transform: rotate(360deg); } }
+
+    /* ── Add-ons ── */
+    .fp-addons-section { max-width: 1060px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-section-title { font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 8px; letter-spacing: -0.3px; }
+    .fp-section-sub { text-align: center; font-size: 14px; color: var(--text-soft); margin-bottom: 36px; }
+    .fp-addons-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+
+    .fp-addon-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.15s, box-shadow 0.15s; }
+    .fp-addon-card:hover { border-color: rgba(37,99,235,0.3); box-shadow: var(--shadow); }
+    .fp-addon-card.fp-addon-hidden { display: none; }
+    .fp-addon-card.fp-addon-hidden.visible { display: flex; }
+    .fp-addon-top { display: flex; align-items: center; gap: 10px; }
+    .fp-addon-icon { font-size: 20px; line-height: 1; flex-shrink: 0; }
+    .fp-addon-name { font-size: 13px; font-weight: 700; line-height: 1.3; }
+    .fp-addon-desc { font-size: 12px; color: var(--text-soft); line-height: 1.5; flex: 1; }
+    .fp-addon-bottom { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .fp-addon-price { font-size: 15px; font-weight: 800; color: var(--blue); white-space: nowrap; }
+    .fp-addon-price span { font-size: 11px; font-weight: 400; color: var(--text-muted); }
+    .fp-addon-price-incl { font-size: 13px; font-weight: 700; color: var(--green); white-space: nowrap; background: var(--green-bg); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px; padding: 4px 10px; }
+    .fp-addon-actions { display: flex; align-items: center; gap: 6px; width: 100%; }
+    .fp-addon-qty { display: flex; align-items: center; gap: 4px; }
+    .fp-addon-qty-btn { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; justify-content: center; transition: border-color 0.1s; }
+    .fp-addon-qty-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .fp-addon-qty-input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; font-size: 13px; background: var(--surface); color: var(--text); }
+    .fp-addon-btn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 600; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 7px; padding: 7px 10px; cursor: pointer; white-space: nowrap; text-align: center; transition: all 0.15s; }
+    .fp-addon-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .fp-addon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .fp-show-more-wrap { text-align: center; margin-top: 22px; }
+    .fp-show-more-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-size: 13px; font-weight: 500; padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+    .fp-show-more-btn:hover { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.04); }
+    .fp-show-more-icon { font-size: 16px; transition: transform 0.2s; }
+    .fp-show-more-icon.open { transform: rotate(180deg); }
+
+    /* ── AI Credits Section ── */
+    .fp-credits-section { max-width: 960px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-credits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+    .fp-credit-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 22px 20px 18px; display: flex; flex-direction: column; gap: 10px; position: relative; transition: border-color 0.15s, box-shadow 0.15s; }
+    .fp-credit-card:hover { border-color: rgba(37,99,235,0.35); box-shadow: var(--shadow); }
+    .fp-credit-card.fp-credit-featured { border-color: rgba(37,99,235,0.45); box-shadow: 0 0 0 3px rgba(37,99,235,0.07); }
+    html[data-theme="dark"] .fp-credit-card { background: rgba(8,14,30,0.85); }
+    html[data-theme="dark"] .fp-credit-card.fp-credit-featured { border-color: rgba(99,140,255,0.5); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .fp-credit-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; width: fit-content; }
+    .fp-credit-badge-pop { color: var(--blue-light); border-color: rgba(37,99,235,0.3); background: rgba(37,99,235,0.06); }
+    .fp-credit-top { display: flex; align-items: center; gap: 10px; }
+    .fp-credit-icon { font-size: 24px; }
+    .fp-credit-name { font-size: 15px; font-weight: 700; }
+    .fp-credit-desc { font-size: 12.5px; color: var(--text-soft); line-height: 1.55; flex: 1; }
+    .fp-credit-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+    .fp-credit-price { font-size: 26px; font-weight: 800; color: var(--text); }
+    .fp-credit-unit { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+    .fp-credit-note { font-size: 11px; color: var(--green); background: var(--green-bg); border-radius: 5px; padding: 3px 8px; width: fit-content; font-weight: 600; }
+    @media (max-width: 700px) { .fp-credits-grid { grid-template-columns: 1fr; } }
+
+    /* ── Comparison table ── */
+    .fp-compare-section { max-width: 1060px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-compare-wrap { overflow-x: auto; }
+    .fp-compare-table { width: 100%; border-collapse: collapse; min-width: 620px; }
+    .fp-compare-table th { text-align: center; padding: 14px 16px; font-size: 13px; font-weight: 700; background: var(--surface); border-bottom: 2px solid var(--border); }
+    .fp-compare-table th:first-child { text-align: left; width: 38%; }
+    .fp-compare-table .fp-group-row td { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); background: var(--bg); padding: 10px 16px; border-bottom: 1px solid var(--border); }
+    .fp-compare-table td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid var(--border); text-align: center; vertical-align: middle; }
+    .fp-compare-table td:first-child { text-align: left; color: var(--text-soft); }
+    .fp-compare-table tr:last-child td { border-bottom: none; }
+    .fp-compare-table .fp-ccheck { color: var(--blue); font-size: 15px; }
+    .fp-compare-table .fp-cdash  { color: var(--text-muted); }
+    .fp-compare-table .fp-caddon { font-size: 11px; font-weight: 700; color: var(--blue); background: rgba(37,99,235,0.07); border: 1px solid rgba(37,99,235,0.15); border-radius: 5px; padding: 2px 7px; }
+    .fp-compare-table tr.fp-cmp-hidden { display: none; }
+    .fp-compare-table tr.fp-cmp-hidden.visible { display: table-row; }
+    .fp-cmp-more-wrap { text-align: center; margin-top: 16px; }
+
+    /* ── FAQ ── */
+    .fp-faq-section { max-width: 720px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-faq-item { border-bottom: 1px solid var(--border); }
+    .fp-faq-q { width: 100%; text-align: left; background: none; border: none; color: var(--text); font-size: 15px; font-weight: 500; font-family: inherit; padding: 18px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .fp-faq-icon { color: var(--text-muted); font-size: 18px; flex-shrink: 0; transition: transform 0.2s; }
+    .fp-faq-icon.open { transform: rotate(45deg); }
+    .fp-faq-a { font-size: 14px; color: var(--text-soft); padding: 0 0 18px; line-height: 1.65; display: none; }
+    .fp-faq-a.open { display: block; }
+
+    /* ── Footer ── */
+    .fp-footer { background: var(--bg); border-top: 1px solid var(--border); padding: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+    .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+    .fp-footer a:hover { color: var(--text); }
+    .fp-footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
+
+    /* ── Toast ── */
+    .fp-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e293b; color: #f1f5f9; padding: 12px 20px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,.3); transition: transform 0.3s; z-index: 9999; max-width: 380px; text-align: center; }
+    .fp-toast.show { transform: translateX(-50%) translateY(0); }
+    .fp-toast.error { background: #7f1d1d; border: 1px solid #dc2626; }
+
+    @media (max-width: 600px) {
+      .fp-hero { padding: 48px 16px 32px; }
+      .fp-hero h1 { font-size: clamp(24px, 6vw, 36px); }
+      .fp-nav { padding: 0 12px; height: 52px; }
+      .fp-nav-signup { display: none; }
+      .fp-nav-link { display: none; }
+      .fp-nav-cta { font-size: 12px; padding: 6px 12px; }
+      .fp-nav-logo-word { font-size: 14px; }
+      .fp-footer { flex-direction: column; align-items: center; text-align: center; }
+      .fp-footer-links { justify-content: center; }
+      /* Back-to-dashboard bar: compact on mobile */
+      #fp-db-banner { font-size: 11px !important; padding: 6px 12px !important; flex-wrap: wrap; gap: 4px !important; }
+      #fp-db-banner a { font-size: 11px !important; }
+      #fp-db-banner span:first-of-type { display: none; }
+    }
+    @media (max-width: 400px) {
+      .fp-nav-logo svg { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="fp-nav">
+  <a href="/" class="fp-nav-logo">
+    <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="fp-pr-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+      <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-pr-g)"/>
+      <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </g>
+    </svg>
+    <span class="fp-nav-logo-word">Flow<span>Point</span></span>
+  </a>
+  <div class="fp-nav-links">
+    <a href="/login.html" class="fp-nav-link">Se connecter</a>
+    <a href="/" class="fp-nav-signup">Créer un compte</a>
+    <button class="fp-nav-cta" id="fp-cart-btn" onclick="goToCheckout()">
+      Panier <span class="fp-cart-badge" id="fp-cart-badge">0</span>
+    </button>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="fp-hero">
+  <div class="fp-hero-badge">🚀 14 jours d'essai complet inclus avec chaque plan</div>
+  <h1>Des tarifs <span class="fp-hero-accent">transparents</span>,<br>des résultats mesurables</h1>
+  <p class="fp-hero-sub">
+    Audits SEO, monitoring uptime, analytics GA4 et IA copilot — tout ce qu'il faut pour dominer les résultats de recherche et convertir votre trafic.
+    Annulation à tout moment, sans engagement.
+  </p>
+  <p style="font-size:13px;color:var(--text-muted);margin-top:4px;">Facturation mensuelle · Carte bancaire requise à l'activation · <a href="#fp-ai-credits" style="color:var(--blue);text-decoration:none" onclick="document.querySelector('.fp-credits-section')&&document.querySelector('.fp-credits-section').scrollIntoView({behavior:'smooth'});return false;">Packs de crédits IA en achat unique ⚡</a></p>
+</section>
+
+<!-- ── Plans ── -->
+<section class="fp-plans-section">
+  <div class="fp-plans-scroll-outer">
+  <div class="fp-plans-grid" id="fp-plans-grid">
+
+    <!-- Standard -->
+    <div class="fp-card" id="card-standard">
+      <div class="fp-card-plan">Standard</div>
+      <div class="fp-card-price"><span>29€</span><span class="fp-card-price-unit">/mois</span></div>
+      <div class="fp-card-desc">Pour les indépendants et PME.</div>
+      <div class="fp-card-trial">✓ 14 jours gratuits · puis 29€/mois</div>
+      <ul class="fp-card-features" id="feats-standard">
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>30 audits SEO</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>10 monitors</strong> uptime (vérif. 5 min)</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>30 rapports PDF</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1 utilisateur</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Local SEO basique</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Export CSV</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support email 48h</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rétention 30 jours</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>100 000 crédits IA</strong> / mois</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">IA Insights</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">White-label</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">API Access</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Analytics concurrents</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Multi-workspace</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">SSO SAML</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Onboarding dédié</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Facturation client</span></li>
+      </ul>
+      <div class="fp-card-more-wrap">
+        <button class="fp-card-more-btn" onclick="toggleCardFeats('standard', this)">Voir plus ▾</button>
+      </div>
+      <button class="fp-card-btn fp-card-btn-secondary" data-plan="standard" onclick="selectPlan(this)">
+        Commencer Standard
+      </button>
+      <div class="fp-card-msg" id="fp-msg-standard"></div>
+    </div>
+
+    <!-- Pro -->
+    <div class="fp-card featured" id="card-pro">
+      <div class="fp-card-badge">Recommandé</div>
+      <div class="fp-card-plan">Pro</div>
+      <div class="fp-card-price"><span>79€</span><span class="fp-card-price-unit">/mois</span></div>
+      <div class="fp-card-desc">Pour les agences et équipes growth.</div>
+      <div class="fp-card-trial">✓ 14 jours gratuits · puis 79€/mois</div>
+      <ul class="fp-card-features" id="feats-pro">
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 audits SEO</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>50 monitors</strong> uptime (vérif. 1 min)</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 rapports PDF</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>5 utilisateurs</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">IA Insights Pro</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Local SEO avancé</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">White-label rapports</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">API Access</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>500 000 crédits IA</strong> / mois</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support prioritaire 4h</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rétention 90 jours</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Analytics concurrents</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Multi-workspace</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">SSO SAML</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Onboarding dédié</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">SLA garanti 99.9%</span></li>
+      </ul>
+      <div class="fp-card-more-wrap">
+        <button class="fp-card-more-btn" onclick="toggleCardFeats('pro', this)">Voir plus ▾</button>
+      </div>
+      <button class="fp-card-btn fp-card-btn-primary" data-plan="pro" onclick="selectPlan(this)">
+        Démarrer Pro — le meilleur choix
+      </button>
+      <div class="fp-card-msg" id="fp-msg-pro"></div>
+    </div>
+
+    <!-- Ultra -->
+    <div class="fp-card" id="card-ultra">
+      <div class="fp-card-plan">Ultra</div>
+      <div class="fp-card-price"><span>149€</span><span class="fp-card-price-unit">/mois</span></div>
+      <div class="fp-card-desc">Pour les grandes agences et entreprises.</div>
+      <div class="fp-card-trial">✓ 14 jours gratuits · puis 149€/mois</div>
+      <ul class="fp-card-features" id="feats-ultra">
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1000 audits SEO</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 monitors</strong> uptime (vérif. 30 s)</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1000 rapports PDF</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>10 utilisateurs</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Multi-workspace</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">IA Stratégiste complet</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">White-label portail</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SSO SAML</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>∞ crédits IA</strong> (Inclus) / mois</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">API REST + Webhooks avancés</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Custom domain</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">SLA 99.9% garanti</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support dédié &lt; 1h</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rétention 365 jours</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Onboarding dédié</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Agency Lab complet</span></li>
+        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Facturation client</span></li>
+      </ul>
+      <div class="fp-card-more-wrap">
+        <button class="fp-card-more-btn" onclick="toggleCardFeats('ultra', this)">Voir plus ▾</button>
+      </div>
+      <button class="fp-card-btn fp-card-btn-secondary" data-plan="ultra" onclick="selectPlan(this)">
+        Démarrer Ultra
+      </button>
+      <div class="fp-card-msg" id="fp-msg-ultra"></div>
+    </div>
+
+  </div>
+  </div><!-- /.fp-plans-scroll-outer -->
+  <div class="fp-scroll-nav">
+    <button class="fp-scroll-btn" id="fp-plans-prev" onclick="scrollPlans(-1)" aria-label="Précédent" disabled>‹</button>
+    <button class="fp-scroll-btn" id="fp-plans-next" onclick="scrollPlans(1)" aria-label="Suivant">›</button>
+  </div>
+</section>
+
+<!-- ── Add-ons ── -->
+<section class="fp-addons-section">
+  <h2 class="fp-section-title">Personnalisez avec des add-ons</h2>
+  <p class="fp-section-sub">Activez uniquement ce dont vous avez besoin — facturé immédiatement par Stripe, annulable à tout moment.</p>
+
+  <div class="fp-addons-grid" id="fp-addons-grid">
+
+    <!-- ── 8 add-ons toujours visibles ── -->
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📡</span><div class="fp-addon-name">+10 Monitors</div></div>
+      <div class="fp-addon-desc">Ajoutez 10 monitors supplémentaires à votre surveillance uptime. Vérification toutes les minutes. Cumulable sans limite.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">9€<span> / pack / mois</span></div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack10',-1)">−</button>
+            <input id="qty-monitorsPack10" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack10',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'monitorsPack10',true)">Activer →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📡</span><div class="fp-addon-name">+50 Monitors</div></div>
+      <div class="fp-addon-desc">Étendez votre surveillance uptime avec 50 monitors supplémentaires. Vérification toutes les minutes. Cumulable sans limite.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / pack / mois</span></div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack50',-1)">−</button>
+            <input id="qty-monitorsPack50" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack50',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'monitorsPack50',true)">Activer →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🌍</span><div class="fp-addon-name">Global Monitoring</div></div>
+      <div class="fp-addon-desc">Surveillance uptime depuis plusieurs régions mondiales simultanément. Détectez les pannes géolocalisées avant vos utilisateurs.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">49€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📊</span><div class="fp-addon-name">SLA Monitoring Avancé</div></div>
+      <div class="fp-addon-desc">Rapports SLA automatiques, calcul de disponibilité mensuel et alertes contractuelles pour vos clients enterprise.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'slaMonitoring',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔍</span><div class="fp-addon-name">Advanced SEO Lab</div></div>
+      <div class="fp-addon-desc">Analyses SEO approfondies, audit de structure, détection d'erreurs techniques avancées et recommandations priorisées par impact.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">29€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'advancedSeoLab',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🎯</span><div class="fp-addon-name">Keyword Domination Engine</div></div>
+      <div class="fp-addon-desc">Tracking avancé de mots-clés, analyse de la SERP, opportunités de mots-clés cachées et suivi de positionnement en temps réel.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">39€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'keywordDomination',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔗</span><div class="fp-addon-name">Backlink Intelligence</div></div>
+      <div class="fp-addon-desc">Analysez votre profil de backlinks, détectez les liens toxiques, suivez les nouveaux liens et explorez les opportunités de netlinking.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">24€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'backlinkIntelligence',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card">
+      <div class="fp-addon-top"><span class="fp-addon-icon">✍️</span><div class="fp-addon-name">AI Content Strategist</div></div>
+      <div class="fp-addon-desc">L'IA génère une stratégie de contenu basée sur vos données SEO réelles : sujets prioritaires, structure d'articles, clusters thématiques.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">34€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <!-- ── Add-ons masqués par défaut ── -->
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📍</span><div class="fp-addon-name">+10 Emplacements GBP</div></div>
+      <div class="fp-addon-desc">Gérez 10 établissements Google Business Profile supplémentaires : fiches, horaires, photos et avis depuis une interface centralisée.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / pack / mois</span></div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('gbpSlots10',-1)">−</button>
+            <input id="qty-gbpSlots10" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('gbpSlots10',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'gbpSlots10',true)">Activer →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📝</span><div class="fp-addon-name">AI GBP Posting</div></div>
+      <div class="fp-addon-desc">Publication automatique de posts Google Business Profile générés par l'IA : actualités, offres, événements — programmés et optimisés.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">29€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiGbpPosting',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">⭐</span><div class="fp-addon-name">Review Intelligence</div></div>
+      <div class="fp-addon-desc">Transformez vos avis Google en levier de croissance. L'IA analyse la sémantique, identifie les thèmes récurrents et suggère des réponses prioritaires.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'reviewIntelligence',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🗺️</span><div class="fp-addon-name">Local Domination Maps</div></div>
+      <div class="fp-addon-desc">Heatmaps de visibilité locale, analyse de la présence dans le pack local Google et stratégie pour dominer les recherches "près de moi".</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">24€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'localDominationMaps',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🎯</span><div class="fp-addon-name">AI CRO Strategist</div></div>
+      <div class="fp-addon-desc">Recommandations d'optimisation de conversion priorisées par impact estimé — moins de tests hasardeux, plus de résultats concrets et mesurables.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">34€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiCro',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🧠</span><div class="fp-addon-name">Behavioral AI</div></div>
+      <div class="fp-addon-desc">Comprenez le comportement réel de vos visiteurs. Parcours, hésitations, abandons — l'IA comportementale traduit chaque signal en insight actionable.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">44€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'behavioralAI',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">💸</span><div class="fp-addon-name">Revenue Leak AI</div></div>
+      <div class="fp-addon-desc">Trouvez l'argent que vous perdez sans le savoir. L'IA identifie les pages qui freinent les conversions et chiffre l'impact financier de chaque fuite.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">29€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'revenueLeak',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔬</span><div class="fp-addon-name">AB Testing IA</div></div>
+      <div class="fp-addon-desc">Tests A/B guidés par l'IA : hypothèses automatiques, segmentation intelligente et analyse statistique des résultats sans expertise technique.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">24€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🏷️</span><div class="fp-addon-name">White-Label Exports</div></div>
+      <div class="fp-addon-desc">Rapports et exports entièrement brandés à votre image. Logo, couleurs, domaine client — vos clients voient votre agence, pas FlowPoint.</div>
+      <div class="fp-addon-bottom" id="fp-wl-bottom">
+        <div class="fp-addon-price">17€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'whiteLabel',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📦</span><div class="fp-addon-name">Agency Reporting Packs</div></div>
+      <div class="fp-addon-desc">Le bundle reporting ultime pour les agences : templates multi-clients, rapports automatisés et distribution planifiée en marque blanche.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">49€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📊</span><div class="fp-addon-name">AI Executive Reporting</div></div>
+      <div class="fp-addon-desc">Chaque semaine, l'IA génère une synthèse C-level prête à partager : performances SEO, alertes critiques, opportunités prioritaires.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">24€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">📈</span><div class="fp-addon-name">AI Forecasting Engine</div></div>
+      <div class="fp-addon-desc">Anticipez l'avenir avec des modèles prédictifs entraînés sur vos données réelles. Trafic, conversions, revenus — les 90 prochains jours projetés.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">39€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiForecasting',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🌐</span><div class="fp-addon-name">AI Market Intelligence</div></div>
+      <div class="fp-addon-desc">Surveillez votre marché en temps réel : positions concurrentes, tendances de requêtes, opportunités émergentes — soyez premier à agir.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">49€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'marketIntelligence',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">⚙️</span><div class="fp-addon-name">AI Automation Workflows</div></div>
+      <div class="fp-addon-desc">Automatisez votre veille et vos alertes sur mesure. Des workflows pilotés par l'IA déclenchent des actions automatiquement — Slack, email, tâche CRM.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">34€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">👥</span><div class="fp-addon-name">+5 Sièges</div></div>
+      <div class="fp-addon-desc">Invitez 5 collaborateurs supplémentaires avec rôles et permissions adaptés. Idéal pour les agences qui grandissent ou les équipes mixtes.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">35€<span> / pack / mois</span></div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('extraSeats',-1)">−</button>
+            <input id="qty-extraSeats" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('extraSeats',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'extraSeats',true)">Activer →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔐</span><div class="fp-addon-name">Enterprise Permissions</div></div>
+      <div class="fp-addon-desc">Permissions granulaires avancées, gestion des accès par projet, audit trail complet et politiques de sécurité pour les équipes enterprise.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'enterprisePermissions',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🗄️</span><div class="fp-addon-name">Rétention 90 jours</div></div>
+      <div class="fp-addon-desc">Comparez vos performances sur 3 mois complets. Identifiez les tendances de fond et détectez les régressions avant qu'elles coûtent cher.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">9€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'retention90d',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🏛️</span><div class="fp-addon-name">Rétention 365 jours</div></div>
+      <div class="fp-addon-desc">Un an d'historique complet. Comparez mois par mois, identifiez les saisonnalités SEO et prouvez la progression de votre stratégie.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'retention365d',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔔</span><div class="fp-addon-name">Webhooks Avancés</div></div>
+      <div class="fp-addon-desc">Recevez toutes les alertes FlowPoint dans votre infrastructure. Webhooks personnalisables avec retry automatique et historique complet.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">14€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'advancedWebhooks',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔗</span><div class="fp-addon-name">Zapier / Make</div></div>
+      <div class="fp-addon-desc">Connectez FlowPoint à 5 000+ outils. Alertes dans Slack, tâches Asana, enrichissement CRM — sans une ligne de code, en quelques minutes.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">19€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'zapierIntegration',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🏢</span><div class="fp-addon-name">CRM Intégrations</div></div>
+      <div class="fp-addon-desc">Synchronisez vos données SEO dans HubSpot, Salesforce ou Pipedrive. Enrichissez vos fiches contacts et déclenchez des actions commerciales sur signal SEO.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">29€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🌐</span><div class="fp-addon-name">Custom Domain</div></div>
+      <div class="fp-addon-desc">Hébergez votre portail FlowPoint sur votre propre domaine (analyse.votreagence.com). Renforce la crédibilité client avec une image 100% professionnelle.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">9€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'customDomain',false)">Activer →</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🔒</span><div class="fp-addon-name">SSO Enterprise</div></div>
+      <div class="fp-addon-desc">SAML 2.0 / OIDC pour toute votre organisation. Connectez FlowPoint à Okta, Azure AD ou Google Workspace et gérez les accès depuis un point central.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">49€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
+      </div>
+    </div>
+
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-top"><span class="fp-addon-icon">🚀</span><div class="fp-addon-name">AI Workspace Launch</div></div>
+      <div class="fp-addon-desc">Démarrez en 48h avec un workspace FlowPoint configuré sur mesure : données importées, dashboards créés et équipe formée par nos experts IA.</div>
+      <div class="fp-addon-bottom">
+        <div class="fp-addon-price">49€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiWorkspaceLaunch',false)">Activer →</button></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="fp-show-more-wrap">
+    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()">
+      <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
+      <span id="fp-addon-label">Voir tous les add-ons (24 de plus)</span>
+    </button>
+  </div>
+</section>
+
+<!-- ── AI Credits Section ── -->
+<section class="fp-credits-section" id="fp-ai-credits">
+  <h2 class="fp-section-title">⚡ Packs de crédits IA</h2>
+  <p class="fp-section-sub">Achat unique par carte — crédits ajoutés immédiatement à votre compte, sans abonnement ni renouvellement. Cumulables avec votre quota mensuel, utilisables sans limite de temps.</p>
+
+  <div class="fp-credits-grid">
+
+    <div class="fp-credit-card">
+      <div class="fp-credit-badge">Achat unique</div>
+      <div class="fp-credit-top">
+        <span class="fp-credit-icon">⚡</span>
+        <div class="fp-credit-name">+50 000 crédits IA</div>
+      </div>
+      <div class="fp-credit-desc">Boostez votre quota mensuel avec 50 000 crédits supplémentaires. Idéal pour les pics d'activité ponctuels ou tester l'IA de façon intensive.</div>
+      <div class="fp-credit-bottom">
+        <div class="fp-credit-price">4€<span class="fp-credit-unit"> une fois</span></div>
+        <div class="fp-credit-note">✓ Disponibles immédiatement</div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',-1)">−</button>
+            <input id="qty-aiCreditsPack50k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack50k',true)">Acheter →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-credit-card fp-credit-featured">
+      <div class="fp-credit-badge fp-credit-badge-pop">★ Le plus choisi</div>
+      <div class="fp-credit-top">
+        <span class="fp-credit-icon">🔋</span>
+        <div class="fp-credit-name">+200 000 crédits IA</div>
+      </div>
+      <div class="fp-credit-desc">Quadruplez votre capacité IA pour un mois complet. Parfait pour les campagnes de contenu, les audits massifs ou les sprints stratégiques.</div>
+      <div class="fp-credit-bottom">
+        <div class="fp-credit-price">9€<span class="fp-credit-unit"> une fois</span></div>
+        <div class="fp-credit-note">✓ Disponibles immédiatement</div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',-1)">−</button>
+            <input id="qty-aiCreditsPack200k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack200k',true)">Acheter →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-credit-card">
+      <div class="fp-credit-badge">Achat unique</div>
+      <div class="fp-credit-top">
+        <span class="fp-credit-icon">🚀</span>
+        <div class="fp-credit-name">+500 000 crédits IA</div>
+      </div>
+      <div class="fp-credit-desc">Le pack maximal pour agences et équipes intensives. Un demi-million de crédits disponibles en un seul achat, sans engagement.</div>
+      <div class="fp-credit-bottom">
+        <div class="fp-credit-price">19€<span class="fp-credit-unit"> une fois</span></div>
+        <div class="fp-credit-note">✓ Disponibles immédiatement</div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',-1)">−</button>
+            <input id="qty-aiCreditsPack500k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack500k',true)">Acheter →</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Comparison table ── -->
+<section class="fp-compare-section">
+  <h2 class="fp-section-title">Comparer toutes les fonctionnalités</h2>
+  <p class="fp-section-sub">Tout ce que chaque plan inclut, en détail.</p>
+
+  <div class="fp-scroll-nav" style="justify-content:flex-end;gap:8px;margin-bottom:10px;">
+    <button class="fp-scroll-btn" style="width:32px;height:32px;font-size:16px;" id="fp-cmp-prev" onclick="scrollCmp(-1)" aria-label="Précédent" disabled>‹</button>
+    <button class="fp-scroll-btn" style="width:32px;height:32px;font-size:16px;" id="fp-cmp-next" onclick="scrollCmp(1)" aria-label="Suivant">›</button>
+  </div>
+  <div class="fp-compare-wrap" id="fp-compare-wrap">
+    <table class="fp-compare-table" role="grid">
+      <thead>
+        <tr>
+          <th>Fonctionnalité</th>
+          <th>Standard</th>
+          <th>Pro</th>
+          <th>Ultra</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr class="fp-group-row"><td colspan="4">SEO &amp; Analyse</td></tr>
+        <tr><td>Audits SEO / mois</td><td>30</td><td class="fp-featured-col">300</td><td>1000</td></tr>
+        <tr><td>Audit technique complet</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Core Web Vitals</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Analyse de contenu</td><td>Basique</td><td class="fp-featured-col">Avancée</td><td>Complète</td></tr>
+        <tr><td>Intelligence concurrentielle</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>DataForSEO avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <tr class="fp-group-row"><td colspan="4">Local SEO</td></tr>
+        <tr><td>Google Business Profile</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Gestion avis Google</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Local SEO avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Multi-établissements</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Review Intelligence IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+
+        <tr class="fp-group-row"><td colspan="4">Monitoring</td></tr>
+        <tr><td>Monitors d'uptime</td><td>10</td><td class="fp-featured-col">50</td><td>300</td></tr>
+        <tr><td>Fréquence de vérification</td><td>5 min</td><td class="fp-featured-col">1 min</td><td>30 sec</td></tr>
+        <tr><td>Alertes temps réel</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Monitoring avancé / SLA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">IA &amp; Copilot</td></tr>
+        <tr class="fp-cmp-hidden"><td>Crédits IA / mois</td><td>100 000</td><td class="fp-featured-col">500 000</td><td>∞ (Inclus)</td></tr>
+        <tr class="fp-cmp-hidden"><td>Copilot IA</td><td>Limité</td><td class="fp-featured-col">Complet</td><td>Premium</td></tr>
+        <tr class="fp-cmp-hidden"><td>Rapport exécutif IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>AI Forecasting Engine</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>AI CRO Strategist</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Revenue Leak AI</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Behavioral AI</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>AI Market Intelligence</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>AI Automation Workflows</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+
+        <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Rapports</td></tr>
+        <tr class="fp-cmp-hidden"><td>Rapports / mois</td><td>30 PDF</td><td class="fp-featured-col">300 PDF</td><td>1000 PDF</td></tr>
+        <tr class="fp-cmp-hidden"><td>Exports PDF / CSV</td><td>30</td><td class="fp-featured-col">300</td><td>1000</td></tr>
+        <tr class="fp-cmp-hidden"><td>Partage de rapports</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>White-Label Exports</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Historique des données</td><td>30 jours</td><td class="fp-featured-col">90 jours <span style="font-size:11px;color:var(--blue)">(+ext.)</span></td><td>365 jours <span style="font-size:11px;color:var(--blue)">(+ext.)</span></td></tr>
+
+        <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Équipe &amp; Collaboration</td></tr>
+        <tr class="fp-cmp-hidden"><td>Membres d'équipe</td><td>1</td><td class="fp-featured-col">5</td><td>10</td></tr>
+        <tr class="fp-cmp-hidden"><td>Rôles &amp; permissions</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Multi-clients (agence)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Enterprise Permissions</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+
+        <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Intégrations &amp; Automatisation</td></tr>
+        <tr class="fp-cmp-hidden"><td>Intégrations natives</td><td>Basiques</td><td class="fp-featured-col">Avancées</td><td>Complètes</td></tr>
+        <tr class="fp-cmp-hidden"><td>Zapier / Make</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Webhooks avancés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>CRM (HubSpot, Salesforce…)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>API</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">API REST</td><td>API REST + Webhooks avancés</td></tr>
+
+        <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Sécurité</td></tr>
+        <tr class="fp-cmp-hidden"><td>HTTPS / TLS</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>2FA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>SSO Enterprise (SAML / OIDC)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span> Inclus</td></tr>
+        <tr class="fp-cmp-hidden"><td>Audit logs</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Domaine personnalisé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+
+        <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Support</td></tr>
+        <tr class="fp-cmp-hidden"><td>Support par email</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Support chat</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Support 24/7</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Onboarding dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Account Manager dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+      </tbody>
+    </table>
+  </div>
+  <div class="fp-cmp-more-wrap">
+    <button class="fp-show-more-btn" id="fp-cmp-toggle" onclick="toggleCmpRows()">
+      <span class="fp-show-more-icon" id="fp-cmp-icon">▾</span>
+      <span id="fp-cmp-label">Voir toutes les fonctionnalités (34 de plus)</span>
+    </button>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section class="fp-faq-section">
+  <h2 class="fp-section-title">Questions fréquentes</h2>
+
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Comment fonctionne l'essai de 14 jours ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Tous les plans incluent 14 jours d'essai avec accès complet à toutes les fonctionnalités.
+      Une carte bancaire est requise à l'inscription — elle ne sera débitée qu'à la fin de l'essai si vous décidez de continuer.
+      Vous pouvez annuler à tout moment avant la fin de l'essai sans frais.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Puis-je acheter des add-ons pendant l'essai ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Oui — les add-ons sont disponibles immédiatement, même pendant la période d'essai.
+      Chaque add-on est facturé séparément dès l'activation via Stripe, indépendamment de votre statut d'essai.
+      Ils sont sans engagement et annulables à tout moment depuis votre tableau de bord.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Puis-je changer de plan à tout moment ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Oui, vous pouvez upgrader ou downgrader à tout moment depuis votre tableau de bord.
+      Les upgrades prennent effet immédiatement au prorata, les downgrades à la fin de la période de facturation en cours.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Comment fonctionne l'annulation ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Annulation en un clic depuis votre tableau de bord, sans justification requise.
+      Votre accès reste actif jusqu'à la fin de la période de facturation. Aucun frais supplémentaire.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Quels moyens de paiement acceptez-vous ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Nous acceptons toutes les principales cartes bancaires (Visa, Mastercard, Amex) ainsi que le prélèvement SEPA pour les entreprises européennes, via Stripe.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Qu'arrive-t-il à mes données si j'annule ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Vos données sont conservées pendant 30 jours après la fin de votre abonnement pour vous laisser le temps d'exporter.
+      Passé ce délai, elles sont supprimées conformément à notre politique RGPD.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Les add-ons sont-ils engageants ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Non — les add-ons sont facturés mensuellement et peuvent être ajoutés ou supprimés à tout moment depuis votre tableau de bord, sans engagement minimum.
+      La facturation est au prorata pour le premier mois.
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="fp-footer">
+  <span>© 2026 FlowPoint — Tous droits réservés</span>
+  <div class="fp-footer-links">
+    <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Mentions légales</a>
+    <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Confidentialité</a>
+    <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">CGV</a>
+    <a href="/">Créer un compte</a>
+    <a href="/login.html">Se connecter</a>
+  </div>
+</footer>
+
+<div class="fp-toast" id="fp-toast" role="alert" aria-live="polite"></div>
+
+<script>
+/* ── Dynamic plan definitions loader ──
+   Fetches canonical data from /api/plans/definitions and overlays it onto
+   the static HTML (which remains as SEO fallback). */
+(function () {
+  'use strict';
+
+  // Canonical fallback — must stay identical to backend PLAN_DEFINITIONS
+  var FALLBACK_DEFS = {
+    standard: { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000, features:['30 audits/mois','10 monitors','30 rapports PDF/mois','30 exports/mois','1 membre d\'\u00e9quipe','100 000 crédits IA/mois','Local SEO basique','Export CSV','White-label rapports','Support email 48h'], locked:['API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'] },
+    pro:      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000, features:['300 audits/mois','50 monitors','300 rapports PDF/mois','300 exports/mois','5 membres d\'\u00e9quipe','500 000 crédits IA/mois','Local SEO avancé','White-label rapports','API Access','Analytics concurrents','Support prioritaire 4h'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'] },
+    ultra:    { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000, features:['1000 audits/mois','300 monitors','1000 rapports PDF/mois','1000 exports/mois','10 membres d\'\u00e9quipe','∞ crédits IA/mois','Multi-workspace','SSO SAML','White-label portail','Custom domain','SLA 99.9% garanti','Support dédié <1h','Onboarding dédié','Agency Lab complet','Facturation client'], locked:[] }
+  };
+
+  function _fmtNum(n) {
+    if (n >= 1000000) return (n/1000000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' M';
+    if (n >= 1000) return Math.round(n/1000).toLocaleString('fr-FR').replace(/,/g,' ')+' k';
+    return n.toLocaleString('fr-FR');
+  }
+
+  function applyDefs(defs) {
+    var ids = ['standard','pro','ultra'];
+    ids.forEach(function(id) {
+      var d = defs[id]; if (!d) return;
+
+      // ── Update card price ──
+      var card = document.getElementById('card-' + id);
+      if (card) {
+        var priceWrap = card.querySelector('.fp-card-price');
+        if (priceWrap) {
+          var priceSpan = priceWrap.querySelector('span');
+          if (priceSpan) priceSpan.textContent = d.priceEur + '€';
+        }
+        var trial = card.querySelector('.fp-card-trial');
+        if (trial) trial.textContent = '✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois';
+      }
+
+      // ── Update feature list ──
+      var featList = document.getElementById('feats-' + id);
+      if (featList && d.features && d.features.length) {
+        // Build new list HTML preserving the first N visible items, then extras
+        var visibleCount = Math.min(d.features.length, 8); // first 8 are visible
+        var html = '';
+        d.features.slice(0, visibleCount).forEach(function(f) {
+          html += '<li><span class="fp-feat-check">✓</span><span class="fp-feat-text">' + f + '</span></li>';
+        });
+        d.features.slice(visibleCount).forEach(function(f) {
+          html += '<li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">' + f + '</span></li>';
+        });
+        if (d.locked && d.locked.length) {
+          d.locked.forEach(function(l) {
+            html += '<li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">' + l + '</span></li>';
+          });
+        }
+        featList.innerHTML = html;
+      }
+    });
+
+    // ── Update comparison table ──
+    var cmpWrap = document.getElementById('fp-compare-wrap');
+    if (cmpWrap) {
+      var rows = cmpWrap.querySelectorAll('tbody tr');
+      rows.forEach(function(tr) {
+        var label = (tr.querySelector('td:first-child') || {}).textContent || '';
+        var cells = tr.querySelectorAll('td');
+        if (cells.length < 4) return;
+        if (label.indexOf('Audits SEO') !== -1) {
+          cells[1].textContent = defs.standard.limits.audits;
+          cells[2].innerHTML = '<span class="fp-featured-col">' + defs.pro.limits.audits + '</span>';
+          cells[3].textContent = defs.ultra.limits.audits;
+        } else if (label.indexOf("Monitors d'uptime") !== -1) {
+          cells[1].textContent = defs.standard.limits.monitors;
+          cells[2].innerHTML = '<span class="fp-featured-col">' + defs.pro.limits.monitors + '</span>';
+          cells[3].textContent = defs.ultra.limits.monitors;
+        } else if (label.indexOf("Membres d'équipe") !== -1) {
+          cells[1].textContent = defs.standard.limits.teamMembers;
+          cells[2].innerHTML = '<span class="fp-featured-col">' + defs.pro.limits.teamMembers + '</span>';
+          cells[3].textContent = defs.ultra.limits.teamMembers;
+        } else if (label.indexOf('Rapports / mois') !== -1) {
+          cells[1].textContent = defs.standard.limits.reports + ' PDF';
+          cells[2].innerHTML = '<span class="fp-featured-col">' + defs.pro.limits.reports + ' PDF</span>';
+          cells[3].textContent = defs.ultra.limits.reports + ' PDF';
+        } else if (label.indexOf('Exports PDF / CSV') !== -1) {
+          cells[1].textContent = defs.standard.limits.exports;
+          cells[2].innerHTML = '<span class="fp-featured-col">' + defs.pro.limits.exports + '</span>';
+          cells[3].textContent = defs.ultra.limits.exports;
+        } else if (label.indexOf('Historique des données') !== -1) {
+          cells[1].textContent = defs.standard.limits.retention + ' jours';
+          cells[2].innerHTML = '<span class="fp-featured-col">' + defs.pro.limits.retention + ' jours <span style="font-size:11px;color:var(--blue)">(+ext.)</span></span>';
+          cells[3].innerHTML = defs.ultra.limits.retention + ' jours <span style="font-size:11px;color:var(--blue)">(+ext.)</span>';
+        } else if (label.indexOf("Crédits IA") !== -1) {
+          cells[1].textContent = _fmtNum(defs.standard.aiCredits);
+          cells[2].innerHTML = '<span class="fp-featured-col">' + _fmtNum(defs.pro.aiCredits) + '</span>';
+          cells[3].textContent = _fmtNum(defs.ultra.aiCredits);
+        }
+      });
+    }
+  }
+
+  // ── Attempt fetch from backend, fallback immediately on error ──
+  var fetched = false;
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/plans/definitions', true);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4) {
+        if (xhr.status === 200) {
+          try {
+            var defs = JSON.parse(xhr.responseText);
+            if (defs && typeof defs === 'object' && defs.standard && defs.standard.limits) {
+              fetched = true;
+              applyDefs(defs);
+            }
+          } catch(e) {}
+        }
+        if (!fetched) applyDefs(FALLBACK_DEFS);
+      }
+    };
+    xhr.onerror = function() { if (!fetched) applyDefs(FALLBACK_DEFS); };
+    xhr.ontimeout = function() { if (!fetched) applyDefs(FALLBACK_DEFS); };
+    xhr.timeout = 5000;
+    xhr.send();
+  } catch(e) {
+    applyDefs(FALLBACK_DEFS);
+  }
+})();
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  var _cart = { plan: null, addons: {} };
+
+  /* ── Shared Bearer helper: per-tab session token in addition to the cookie ──
+     A user arriving from the dashboard may authenticate via the sessionStorage
+     Bearer token while the cookie is stale (per-tab session model). Every auth
+     fetch on this page must send both.
+     SECURITY: sessionStorage ONLY — never localStorage. The server prioritizes
+     Bearer over the cookie, so a stale localStorage token from a previous user
+     would override the current user's cookie identity (cross-user leakage).   */
+  window._fpPricingAuthHeaders = function () {
+    try {
+      var t = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')) || '';
+      return t ? { 'Authorization': 'Bearer ' + t } : {};
+    } catch (e) { return {}; }
+  };
+
+  /* ── Auto theme: follows OS preference ── */
+  (function(){
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function applyTheme(dark) {
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      var meta = document.getElementById('fp-meta-tc');
+      if (meta) meta.content = dark ? '#0b1120' : '#f8faff';
+    }
+    if (mq.addEventListener) mq.addEventListener('change', function(e){ applyTheme(e.matches); });
+    applyTheme(mq.matches);
+  })();
+
+  /* —— Canonical add-on inclusion (Standard=1 | Pro=6 | Ultra=10 cumulative)
+     Mirrors billing.ts, public-billing.ts, checkout.html PLAN_INCLUDED —— */
+  /* Plan inclusions are populated from /api/billing/subscription. Never add a
+     parallel static list here: the API is the sole source of truth. */
+  var PLAN_INCLUDED = { standard: [], pro: [], ultra: [] };
+
+  /* Add-on presentation lives in the markup; every price comes from
+     /api/plans/catalog. This map is rebuilt from the catalogue at load so no
+     amount can be hardcoded on this page. */
+  var ADDON_DEFAULT_BOTTOM = {};
+  var FP_CATALOG = null;
+
+  function _fpEur(minor) {
+    var v = (Number(minor) || 0) / 100;
+    return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20AC';
+  }
+
+  /* Overwrites every static SEO price with the canonical one and memorises the
+     restored markup (buttons included, so the quantity flag is preserved). */
+  function _fpBuildAddonBottoms(cat) {
+    var byKey = {};
+    cat.addons.forEach(function (a) { byKey[a.key] = a; });
+    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    Array.prototype.forEach.call(btns, function (btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
+      if (!m) return;
+      var key = m[1];
+      var def = byKey[key];
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!def || !bottom) return;
+      var priceEl = bottom.querySelector('.fp-addon-price');
+      // Keep the unit wording already in the markup ("/ pack / mois", "/ mois"…);
+      // only the amount is authoritative and comes from the catalogue.
+      var unitSpan = priceEl ? priceEl.querySelector('span') : null;
+      var unit = unitSpan ? unitSpan.outerHTML : (def.oneTime ? '' : '<span> / mois</span>');
+      if (priceEl) priceEl.innerHTML = _fpEur(def.priceMinor) + unit;
+      var actions = bottom.querySelector('.fp-addon-actions');
+      ADDON_DEFAULT_BOTTOM[key] =
+        '<div class="fp-addon-price">' + _fpEur(def.priceMinor) + unit + '</div>' +
+        '<div class="fp-addon-actions">' + (actions ? actions.innerHTML : '') + '</div>';
+    });
+  }
+
+  /* ── Apply comingSoon / beta states from the canonical catalogue ─────────────
+     Called once after catalogue fetch. Reads each button's addToCart key,
+     looks it up in the catalogue, then:
+       • comingSoon → disables button, replaces text, inserts 🚧 badge above bottom
+       • beta        → inserts 🧪 badge above bottom
+     Badges are given class names so updateIncludedAddons can clear + re-insert
+     them after toggling plan tabs.                                              */
+  function _fpApplyCatalogStates(cat) {
+    var stateMap = {};
+    cat.addons.forEach(function (a) { stateMap[a.key] = a; });
+    window._FP_ADDON_CATALOG_STATES = stateMap;
+
+    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    Array.prototype.forEach.call(btns, function (btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
+      if (!m) return;
+      var key = m[1];
+      var def = stateMap[key];
+      if (!def) return;
+      var card = btn.closest('.fp-addon-card');
+      if (!card) return;
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!bottom) return;
+
+      // Clear any previously-injected state badges for this card
+      Array.prototype.forEach.call(
+        card.querySelectorAll('.fp-cs-badge,.fp-beta-badge'),
+        function (b) { b.remove(); }
+      );
+
+      if (def.comingSoon) {
+        btn.disabled = true;
+        btn.textContent = '🚧 Bientôt disponible';
+        btn.style.cssText = 'opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)';
+        var csB = document.createElement('span');
+        csB.className = 'fp-cs-badge';
+        csB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:4px';
+        csB.textContent = '🚧 Bientôt disponible';
+        bottom.parentNode.insertBefore(csB, bottom);
+      }
+      if (def.beta) {
+        var betaB = document.createElement('span');
+        betaB.className = 'fp-beta-badge';
+        betaB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:4px';
+        betaB.textContent = '🧪 Bêta';
+        bottom.parentNode.insertBefore(betaB, bottom);
+      }
+    });
+  }
+
+  /* Helper: re-inject state badges for one key after restoring default bottom.
+     Used by updateIncludedAddons when switching from Inclus → not-included.   */
+  function _fpReapplyStateBadge(key, bottom) {
+    var def = (window._FP_ADDON_CATALOG_STATES || {})[key];
+    if (!def || !bottom) return;
+    var card = bottom.closest('.fp-addon-card');
+    if (!card) return;
+    Array.prototype.forEach.call(card.querySelectorAll('.fp-cs-badge,.fp-beta-badge'), function(b){b.remove();});
+    if (def.comingSoon) {
+      var csB = document.createElement('span'); csB.className = 'fp-cs-badge';
+      csB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:4px';
+      csB.textContent = '🚧 Bientôt disponible';
+      bottom.parentNode.insertBefore(csB, bottom);
+      var btn = bottom.querySelector('.fp-addon-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '🚧 Bientôt disponible'; btn.style.cssText = 'opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)'; }
+    }
+    if (def.beta) {
+      var betaB = document.createElement('span'); betaB.className = 'fp-beta-badge';
+      betaB.style.cssText = 'display:block;font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:4px';
+      betaB.textContent = '🧪 Bêta'; bottom.parentNode.insertBefore(betaB, bottom);
+    }
+  }
+
+  function _fpApplyCatalogInclusions(cat) {
+    Object.keys(PLAN_INCLUDED).forEach(function (planId) {
+      PLAN_INCLUDED[planId] = (cat.includedByPlan && cat.includedByPlan[planId]) || [];
+    });
+    _fpApplyCatalogStates(cat);
+  }
+
+  /* Updates ALL plan-included addon bottom sections.
+     Finds each addon button by its onclick key and replaces the fp-addon-bottom
+     with an 'Inclus [Plan]' badge (included) or restores 'Activer' (not included).
+     When a key is both included AND has comingSoon/beta, both are shown together.  */
+  function updateIncludedAddons(plan) {
+    var included = PLAN_INCLUDED[plan] || [];
+    var planLabel = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : plan === 'ultra' ? 'Ultra' : '';
+    var states = window._FP_ADDON_CATALOG_STATES || {};
+    var allKeys = Object.keys(ADDON_DEFAULT_BOTTOM);
+    allKeys.forEach(function(key) {
+      var isIncluded = included.indexOf(key) !== -1;
+      var btn = document.querySelector('button.fp-addon-btn[onclick*="\'' + key + '\'"]');
+      if (!btn) return;
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!bottom) return;
+      if (isIncluded && planLabel) {
+        // Build combined badge: Inclus Plan [· 🧪 Bêta] [· 🚧 Bientôt disponible]
+        var def = states[key] || {};
+        var parts = ['\u2713 Inclus ' + planLabel];
+        if (def.beta) parts.push('\uD83E\uDDEA B\u00eata');
+        if (def.comingSoon) parts.push('\uD83D\uDEA7 Bient\u00f4t disponible');
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' + parts.join(' \u00b7 ') + '</div>';
+      } else if (!isIncluded && bottom.querySelector('.fp-addon-price-incl')) {
+        bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
+        // Re-inject comingSoon/beta state badges that were cleared by the above reset
+        _fpReapplyStateBadge(key, bottom);
+      }
+    });
+  }
+  function setIncludedAddonsFromServer(plan, addons) {
+    if (!plan || !addons) return;
+    var keys = Array.isArray(addons)
+      ? addons
+      : Object.keys(addons).filter(function(key) {
+          var value = addons[key];
+          return value && typeof value === 'object' && value.includedInPlan === true;
+        });
+    PLAN_INCLUDED[plan.toLowerCase()] = keys;
+    updateIncludedAddons(plan.toLowerCase());
+  }
+  /* Backward-compat alias */
+  function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
+  updateIncludedAddons('');
+
+  /* Canonical catalogue — sole source of add-on prices and plan inclusions. */
+  fetch('/api/plans/catalog')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (cat) {
+      if (!cat || !Array.isArray(cat.addons)) return;
+      FP_CATALOG = cat;
+      _fpBuildAddonBottoms(cat);
+      _fpApplyCatalogInclusions(cat);
+      var sel = document.querySelector('.fp-card.selected');
+      var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
+      updateIncludedAddons(selId);
+    })
+    .catch(function () {});
+
+  /* ── Restore cart from localStorage when redirected from dashboard ──────────
+     Sets _cart data silently (plan + addons); visual state of the current plan
+     is handled by the billing-state IIFE (applyBillingState). Add-on buttons
+     are visually marked at DOMContentLoaded.                                  */
+  (function() {
+    var _p = new URLSearchParams(window.location.search);
+    if (_p.get('from') !== 'dashboard') return;
+    var _saved = null;
+    try { _saved = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+    /* Also pre-select plan from URL param (dashboard \u2192 pricing flow) */
+    var _urlPlan = _p.get('plan');
+    if (_urlPlan && !_cart.plan) _cart.plan = _urlPlan.toLowerCase();
+    if (!_saved && !_cart.plan) return;
+    /* Populate internal cart so badge and checkout work */
+    if (_saved && _saved.plan) _cart.plan = _saved.plan;
+    if (_saved && _saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
+    // Critical: carry fromDashboard into the internal _cart so addToCart() writes it back
+    // to localStorage — without this, the flag is lost on any add-on toggle.
+    if (_saved && _saved.fromDashboard) _cart.fromDashboard = true;
+    updateCartBadge();
+    /* After DOM is ready: visually mark add-on buttons and active plan.
+       Script is at end of <body> so DOMContentLoaded may already have fired —
+       use readyState to run immediately if DOM is already available.          */
+    function _fpMarkCartItems() {
+      updateCartBadge();
+      /* ── Immediately mark current plan from fp_dashboard_state (anti-flash) ──
+         Only run when the user has an active session; skip for unauthenticated
+         visitors who happen to have stale localStorage from a previous session. */
+      var _hasActiveSession = !!(
+         typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')
+      );
+      try {
+        var _ds = _hasActiveSession ? JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null') : null;
+        if (_ds && _ds.plan) {
+          var _planKey = _ds.plan.toLowerCase();
+          var _status  = (_ds.subscriptionStatus || _ds.status || '').toLowerCase();
+          var _isActive = _status === 'active' || _status === 'trialing';
+          var _planBtn = document.querySelector('.fp-card-btn[data-plan="' + _planKey + '"]');
+          if (_planBtn && _isActive) {
+            _planBtn.textContent = '✓ Votre plan actuel';
+            _planBtn.disabled = true;
+            _planBtn.style.cssText = 'background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.35);color:#34d399;cursor:default;opacity:1';
+            var _planCard = _planBtn.closest('.fp-card');
+            if (_planCard) { _planCard.style.borderColor = 'rgba(16,185,129,0.4)'; _planCard.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+          }
+        }
+      } catch(e) {}
+      /* Highlight target plan card from _cart.plan (dashboard upgrade flow) */
+      try {
+        var _ds2 = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
+        var _curPlan = _ds2 && _ds2.plan ? _ds2.plan.toLowerCase() : null;
+        if (_cart.plan && _cart.plan !== _curPlan) {
+          var _tBtn = document.querySelector('.fp-card-btn[data-plan="' + _cart.plan + '"]');
+          if (_tBtn && !_tBtn.disabled) {
+            _tBtn.textContent = '\u2192 S\u00e9lectionn\u00e9';
+            _tBtn.style.cssText = 'background:rgba(37,99,235,0.15);border-color:rgba(37,99,235,0.4);color:#3b82f6;cursor:pointer;opacity:1';
+            var _tCard = _tBtn.closest('.fp-card');
+            if (_tCard) { _tCard.style.borderColor = 'rgba(37,99,235,0.4)'; _tCard.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.08)'; }
+          }
+        }
+      } catch(e) {}
+      /* Mark add-on buttons that are in the cart */
+      var addonKeys = Object.keys(_cart.addons);
+      if (!addonKeys.length) return;
+      document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
+        var oc = btn.getAttribute('onclick') || '';
+        var m  = oc.match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+        if (!m || _cart.addons[m[1]] == null) return;
+        /* Skip if billing-state already marked it as active */
+        var bs = window._fpBillingState;
+        if (bs && bs.addons && bs.addons[m[1]]) return;
+        btn.textContent = '✓ Dans le panier';
+        btn.style.background   = 'rgba(16,185,129,0.15)';
+        btn.style.borderColor  = 'rgba(16,185,129,0.35)';
+        btn.style.color        = '#34d399';
+      });
+    }
+    /* Run immediately if DOM ready, otherwise wait */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', _fpMarkCartItems);
+    } else {
+      _fpMarkCartItems();
+    }
+  })();
+
+
+  /* ── Toast ── */
+  var toastTimer;
+  function showToast(msg, isError) {
+    var el = document.getElementById('fp-toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'fp-toast' + (isError ? ' error' : '') + ' show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 3500);
+  }
+  window.showToast = showToast;
+
+  /* ── Cart badge ──
+     Represents the TOTAL pack quantity, not just the number of distinct
+     add-on keys: a cart holding "monitorsPack10 ×3" contributes 3, so the
+     badge matches what pricing/checkout/quote actually bill. Flag add-ons
+     (stored as `true`) and any positive numeric quantity each count once per
+     pack. The plan, when selected, adds 1. */
+  function cartQuantityTotal() {
+    var total = _cart.plan ? 1 : 0;
+    var addons = _cart.addons || {};
+    Object.keys(addons).forEach(function (k) {
+      var raw = addons[k];
+      var packs = raw === true ? 1 : Math.max(0, Math.floor(Number(raw) || 0));
+      total += packs;
+    });
+    return total;
+  }
+  function updateCartBadge() {
+    var count = cartQuantityTotal();
+    var badge = document.getElementById('fp-cart-badge');
+    if (!badge) return;
+    badge.textContent = count;
+    if (count > 0) badge.classList.add('visible');
+    else badge.classList.remove('visible');
+  }
+
+  /* ── Select plan ── */
+  window.selectPlan = function (btn) {
+    var plan = btn.getAttribute('data-plan');
+    if (!plan) return;
+
+    /* Backend-authoritative guard: block if plan already active */
+    var bs = window._fpBillingState;
+    if (bs && bs.plan === plan && (bs.status === 'active' || bs.status === 'trialing')) {
+      showToast('Ce plan est déjà votre plan actuel', true);
+      return;
+    }
+
+    _cart.plan = plan;
+    /* Persist plan immediately so checkout.html always has it */
+    _cart._v = 1; _cart._updatedAt = Date.now();
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
+    var planLabels = {
+      standard: 'Commencer Standard',
+      pro:      'Démarrer Pro — le meilleur choix',
+      ultra:    'Démarrer Ultra'
+    };
+    document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function (b) {
+      b.textContent = planLabels[b.getAttribute('data-plan')] || 'Sélectionner';
+      b.classList.remove('fp-card-btn-selected');
+      var c = b.closest('.fp-card');
+      if (c) c.classList.remove('cart-selected');
+    });
+    btn.textContent = '✓ Sélectionné — Essai 14 jours';
+    btn.classList.add('fp-card-btn-selected');
+    var card = btn.closest('.fp-card');
+    if (card) card.classList.add('cart-selected');
+    updateCartBadge();
+    updateWhiteLabel(_cart.plan);
+    showToast('Plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' sélectionné — cliquez sur Panier pour continuer');
+  };
+
+  /* ── Quantity helpers ──
+     Keeps the quantity input and the cart in lock-step. The cart is updated
+     even when the key is not yet present (its value was previously ignored
+     until "Activer" was clicked), so the input, cart, badge, quote request
+     and checkout all carry the SAME numeric quantity. When the add-on is
+     already in the cart the change is persisted immediately. */
+  window.changeQty = function (addonId, delta) {
+    var input = document.getElementById('qty-' + addonId);
+    if (!input) return;
+    var min = parseInt(input.min) || 1;
+    var max = parseInt(input.max) || 99;
+    var wasPresent = _cart.addons[addonId] !== undefined;
+    var next = Math.min(max, Math.max(min, (parseInt(input.value) || min) + delta));
+    input.value = next;
+    _cart.addons[addonId] = next;
+    _cart._v = 1; _cart._updatedAt = Date.now();
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch (e) {}
+    /* Newly added via the stepper (no prior "Activer" click): reflect it on
+       the matching button so button/card state stays consistent with the
+       cart. Skip when the add-on is backend-active (button already locked). */
+    if (!wasPresent) {
+      var bs = window._fpBillingState;
+      var alreadyActive = bs && bs.addons && bs.addons[addonId];
+      if (!alreadyActive) {
+        var btn = document.querySelector('button.fp-addon-btn[onclick*="\'' + addonId + '\'"]');
+        if (btn && !btn.disabled) {
+          btn.textContent = '\u2713 Dans le panier';
+          btn.style.background = 'rgba(16,185,129,0.15)';
+          btn.style.borderColor = 'rgba(16,185,129,0.35)';
+          btn.style.color = '#34d399';
+        }
+      }
+    }
+    updateCartBadge();
+  };
+
+  /* ── Add addon to cart ── */
+  window.addToCart = function (btn, addonId, isQty) {
+    /* Backend-authoritative guard: block if add-on already active */
+    var bs = window._fpBillingState;
+    if (bs && bs.addons && bs.addons[addonId]) {
+      showToast('Cet add-on est déjà actif sur votre compte', true);
+      return;
+    }
+
+    var qty = 1;
+    if (isQty) {
+      var inp = document.getElementById('qty-' + addonId);
+      qty = inp ? (parseInt(inp.value) || 1) : 1;
+    }
+    _cart.addons[addonId] = qty;
+    /* Persist immediately so the cart survives refreshes AND so the periodic
+       billing-state refresh (applyBillingState) can see cart membership and
+       keep this button on "✓ Dans le panier" instead of resetting it. */
+    _cart._v = 1; _cart._updatedAt = Date.now();
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
+    btn.textContent = '✓ Dans le panier';
+    btn.style.background = 'rgba(16,185,129,0.15)';
+    btn.style.borderColor = 'rgba(16,185,129,0.35)';
+    btn.style.color = '#34d399';
+    updateCartBadge();
+    var _isCredits = addonId.indexOf('aiCreditsPack') === 0;
+    showToast(_isCredits ? 'Crédits IA ajoutés au panier ✓' : 'Add-on ajouté au panier ✓');
+  };
+
+  /* ── Go to checkout ── */
+  window.goToCheckout = function () {
+    var count = (_cart.plan ? 1 : 0) + Object.keys(_cart.addons).length;
+    if (count === 0) {
+      showToast('Sélectionnez d\'abord un plan, un add-on ou des crédits IA', true);
+      return;
+    }
+    _cart._v = 1; _cart._updatedAt = Date.now();
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
+    /* Auth gate — block anonymous visitors before reaching checkout */
+    var _tok = '';
+    try { _tok = sessionStorage.getItem('fp_session_token') || localStorage.getItem('fp_session_token') || ''; } catch(e) {}
+    var _dest = '/checkout.html' + (_cart.plan ? '?plan=' + encodeURIComponent(_cart.plan) : '');
+    var _savePending = function() {
+      try {
+        localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+          cart: _cart,
+          sellerRef: localStorage.getItem('fp_seller_ref') || '',
+          next: '/checkout.html',
+          exp: Date.now() + 1800000
+        }));
+        sessionStorage.setItem('fp_next', '/checkout.html');
+      } catch(e) {}
+    };
+    fetch('/api/me', {
+      credentials: 'include',
+      headers: _tok ? { 'Authorization': 'Bearer ' + _tok } : {}
+    }).then(function(r) {
+      if (r.ok) {
+        window.location.href = _dest;
+      } else {
+        _savePending();
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      }
+    }).catch(function() {
+      _savePending();
+      window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+    });
+  };
+
+  /* ── Toggle plan card extra features ── */
+  window.toggleCardFeats = function (planId, btn) {
+    var extras = document.querySelectorAll('#feats-' + planId + ' .fp-feat-extra');
+    var open = btn.getAttribute('data-open') === '1';
+    extras.forEach(function (li) {
+      if (open) li.classList.remove('visible');
+      else li.classList.add('visible');
+    });
+    btn.setAttribute('data-open', open ? '0' : '1');
+    btn.textContent = open ? 'Voir plus ▾' : 'Voir moins ▴';
+  };
+
+  /* ── Expand/collapse add-ons ── */
+  window.toggleAddons = function () {
+    var hidden   = document.querySelectorAll('.fp-addon-hidden');
+    var icon     = document.getElementById('fp-addon-icon');
+    var label    = document.getElementById('fp-addon-label');
+    var expanded = icon && icon.classList.contains('open');
+    hidden.forEach(function (el) { expanded ? el.classList.remove('visible') : el.classList.add('visible'); });
+    if (icon)  icon.classList.toggle('open', !expanded);
+    if (label) label.textContent = expanded ? 'Voir tous les add-ons (24 de plus)' : 'Voir moins';
+  };
+
+  /* ── Expand/collapse comparison table ── */
+  window.toggleCmpRows = function () {
+    var hidden   = document.querySelectorAll('.fp-compare-table .fp-cmp-hidden');
+    var icon     = document.getElementById('fp-cmp-icon');
+    var label    = document.getElementById('fp-cmp-label');
+    var expanded = icon && icon.classList.contains('open');
+    hidden.forEach(function (el) { expanded ? el.classList.remove('visible') : el.classList.add('visible'); });
+    if (icon)  icon.classList.toggle('open', !expanded);
+    if (label) label.textContent = expanded ? 'Voir toutes les fonctionnalités (34 de plus)' : 'Voir moins';
+  };
+
+  /* ── FAQ accordion ── */
+  window.toggleFaq = function (btn) {
+    var answer = btn.nextElementSibling;
+    var icon   = btn.querySelector('.fp-faq-icon');
+    var open   = answer && answer.classList.contains('open');
+    document.querySelectorAll('.fp-faq-a.open').forEach(function (a) { a.classList.remove('open'); });
+    document.querySelectorAll('.fp-faq-icon.open').forEach(function (i) { i.classList.remove('open'); });
+    if (!open && answer) { answer.classList.add('open'); if (icon) icon.classList.add('open'); }
+  };
+
+  /* ── Horizontal scroll: plans ── */
+  (function () {
+    var grid = document.getElementById('fp-plans-grid');
+    if (!grid) return;
+    function upd() {
+      var atEnd = grid.scrollLeft >= grid.scrollWidth - grid.clientWidth - 8;
+      document.getElementById('fp-plans-prev').disabled = grid.scrollLeft <= 8;
+      document.getElementById('fp-plans-next').disabled = atEnd;
+    }
+    grid.addEventListener('scroll', upd, { passive: true });
+    window.addEventListener('resize', upd);
+    upd();
+    window.scrollPlans = function (dir) {
+      grid.scrollBy({ left: dir * 320, behavior: 'smooth' });
+      setTimeout(upd, 400);
+    };
+  })();
+
+  /* ── Horizontal scroll: comparison table ── */
+  (function () {
+    var wrap = document.getElementById('fp-compare-wrap');
+    if (!wrap) return;
+    function upd() {
+      document.getElementById('fp-cmp-prev').disabled = wrap.scrollLeft <= 8;
+      document.getElementById('fp-cmp-next').disabled = wrap.scrollLeft >= wrap.scrollWidth - wrap.clientWidth - 8;
+    }
+    wrap.addEventListener('scroll', upd, { passive: true });
+    window.addEventListener('resize', upd);
+    upd();
+    window.scrollCmp = function (dir) {
+      wrap.scrollBy({ left: dir * 220, behavior: 'smooth' });
+      setTimeout(upd, 400);
+    };
+  })();
+
+})();
+
+/* ── Billing state: backend is source of truth, localStorage is visual cache ── */
+(function() {
+  'use strict';
+
+  /* Normalise a raw data object (from localStorage or API) into a canonical shape */
+  function normalise(raw) {
+    if (!raw) return null;
+    return {
+      plan:       (raw.plan || raw.current || '').toLowerCase() || null,
+      planLabel:  raw.planLabel || raw.plan || raw.current || '',
+      status:     raw.status || raw.subscriptionStatus || null,
+      addons:     raw.addons || {},
+      nextDate:   raw.nextDate || raw.currentPeriodEnd
+                    ? (raw.nextDate || new Date(raw.currentPeriodEnd).toLocaleDateString('fr-FR')) : null,
+      trialEndsAt: raw.trialEndsAt || null,
+    };
+  }
+
+  /* Render the banner, mark active plan button and active add-on buttons */
+  function applyBillingState(data) {
+    if (!data || !data.plan) return;
+
+    /* Store in global so selectPlan / addToCart can guard against re-purchase */
+    window._fpBillingState = data;
+
+    /* ── Banner ── */
+    var navEl = document.querySelector('.fp-nav');
+    var _showBanner = new URLSearchParams(window.location.search).get('from') === 'dashboard';
+    if (_showBanner && navEl && !document.getElementById('fp-db-banner')) {
+      var planName = (data.planLabel || data.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
+      var banner = document.createElement('div');
+      banner.id = 'fp-db-banner';
+      banner.style.cssText = 'background:rgba(37,99,235,0.07);border-bottom:1px solid rgba(37,99,235,0.15);padding:8px 28px;font-size:12px;color:var(--text-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      var _isFromDashboard = new URLSearchParams(window.location.search).get('from') === 'dashboard';
+      banner.innerHTML = '<span style="font-size:16px">📊</span>'
+        + '<span>Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName + '</strong>'
+        + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
+        + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '')
+        + '</span>'
+        + (_isFromDashboard ? '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>' : '');
+      navEl.insertAdjacentElement('afterend', banner);
+    } else if (navEl) {
+      /* Update existing banner content on backend refresh */
+      var existing = document.getElementById('fp-db-banner');
+      if (existing) {
+        var planName2 = (data.planLabel || data.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
+        var span = existing.querySelector('span:nth-child(2)');
+        if (span) {
+          span.innerHTML = 'Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName2 + '</strong>'
+            + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
+            + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '');
+        }
+      }
+    }
+
+    var planLabelsDefault = {
+      standard: 'Commencer Standard',
+      pro:      'D\u00e9marrer Pro \u2014 le meilleur choix',
+      ultra:    'D\u00e9marrer Ultra'
+    };
+
+    /* ── Mark current plan button; fully reset all others ── */
+    var isActiveSub = data.status === 'active' || data.status === 'trialing';
+    document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function(btn) {
+      var btnPlan = btn.getAttribute('data-plan');
+      if (btnPlan === data.plan && isActiveSub) {
+        btn.textContent = '\u2713 Votre plan actuel';
+        btn.disabled = true;
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.borderColor = 'rgba(16,185,129,0.35)';
+        btn.style.color = '#34d399';
+        btn.style.cursor = 'default';
+        btn.style.opacity = '1';
+        var card = btn.closest('.fp-card');
+        if (card) { card.style.borderColor = 'rgba(16,185,129,0.4)'; card.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+      } else {
+        /* Backend says this plan is NOT the active one — fully reset to default */
+        btn.disabled = false;
+        btn.classList.remove('fp-card-btn-selected');
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.cursor = '';
+        btn.style.opacity = '';
+        /* Restore default label only if it was set by applyBillingState, not by selectPlan() */
+        if (btn.textContent === '\u2713 Votre plan actuel') {
+          btn.textContent = planLabelsDefault[btnPlan] || 'Commencer';
+        }
+        var cardEl = btn.closest('.fp-card');
+        if (cardEl) { cardEl.style.borderColor = ''; cardEl.style.boxShadow = ''; cardEl.classList.remove('cart-selected'); }
+      }
+    });
+
+    /* ── Mark active add-ons; reset inactive ones — but the CART wins over
+       the reset. Precedence per button:
+         1. backend-active            → "✓ Actif" (disabled)
+         2. in local cart (fp_cart)   → "✓ Dans le panier" (kept selected)
+         3. neither                   → "Activer →" (default)
+       Without rule 2, every periodic billing refresh wiped the user's cart
+       selection visuals while fp_cart still held the items.               ── */
+    var active = data.addons || {};
+    var cartAddons = {};
+    try {
+      var _fc = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      if (_fc && _fc.addons) cartAddons = _fc.addons;
+    } catch(e) {}
+    /* Scan all add-on buttons in the DOM */
+    document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+      if (!m) return;
+      var key = m[1];
+      if (active[key]) {
+        btn.textContent = '\u2713 Actif';
+        btn.disabled = true;
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.borderColor = 'rgba(16,185,129,0.3)';
+        btn.style.color = '#34d399';
+        btn.style.cursor = 'default';
+      } else if (cartAddons[key]) {
+        /* In the local cart and not backend-active — keep the cart visual */
+        btn.disabled = false;
+        btn.textContent = '\u2713 Dans le panier';
+        btn.style.background = 'rgba(16,185,129,0.15)';
+        btn.style.borderColor = 'rgba(16,185,129,0.35)';
+        btn.style.color = '#34d399';
+        btn.style.cursor = '';
+      } else {
+        /* Backend says not active and not in cart — reset to default */
+        btn.disabled = false;
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.cursor = '';
+        if (btn.textContent === '\u2713 Actif' || btn.textContent === '\u2713 Dans le panier') {
+          btn.textContent = 'Activer \u2192';
+        }
+      }
+    });
+
+    /* Show 'Inclus dans [Plan]' badge for all plan-included add-ons */
+    setIncludedAddonsFromServer(data.plan || '', data.addons || {});
+  }
+
+  /* Reverse applyBillingState's DOM mutations back to the anonymous baseline.
+     Needed when a STALE client-side token allowed the cached render (Step 1)
+     but the backend then answered 401: the visitor must not keep seeing the
+     previous account's active plan/add-on markers. Cart visuals are kept
+     (same precedence rule 2 as applyBillingState).                          */
+  function resetBillingUIToAnonymous() {
+    var banner = document.getElementById('fp-db-banner');
+    if (banner) banner.remove();
+    var planLabelsDefault = {
+      standard: 'Commencer Standard',
+      pro:      'D\u00e9marrer Pro \u2014 le meilleur choix',
+      ultra:    'D\u00e9marrer Ultra'
+    };
+    document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function(btn) {
+      var btnPlan = btn.getAttribute('data-plan');
+      if (btn.textContent === '\u2713 Votre plan actuel') {
+        btn.textContent = planLabelsDefault[btnPlan] || 'Commencer';
+        var cardEl = btn.closest('.fp-card');
+        if (cardEl) { cardEl.style.borderColor = ''; cardEl.style.boxShadow = ''; }
+      }
+      btn.disabled = false;
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.cursor = '';
+      btn.style.opacity = '';
+    });
+    var cartAddons = {};
+    try {
+      var _fc = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      if (_fc && _fc.addons) cartAddons = _fc.addons;
+    } catch(e) {}
+    document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+      if (!m) return;
+      if (cartAddons[m[1]]) return; /* cart visual wins — user's own selection */
+      btn.disabled = false;
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.cursor = '';
+      if (btn.textContent === '\u2713 Actif' || btn.textContent === '\u2713 Dans le panier') {
+        btn.textContent = 'Activer \u2192';
+      }
+    });
+    /* Clear plan-inclusion badges rendered from the cached state */
+    updateIncludedAddons('');
+  }
+
+  /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ──
+     Only when a session token exists: an anonymous visitor with stale
+     localStorage from a previous session must NEVER see plans/add-ons
+     rendered as active.                                                    */
+  var _bsHasSession = false;
+  try {
+    _bsHasSession = !!(
+       typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fp_session_token')
+    );
+  } catch(e) {}
+  var cached = null;
+  try {
+    var raw = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
+    if (_bsHasSession && raw && raw.fromDashboard) cached = normalise(raw);
+  } catch(e) {}
+  if (cached) applyBillingState(cached);
+
+  /* ── Step 2: fetch from backend — backend always wins ──
+     Send the per-tab Bearer token in addition to the cookie: a user arriving
+     from the dashboard may hold a valid sessionStorage token while the cookie
+     is stale/absent (per-tab session model). Cookie-only would 401 and wrongly
+     render the anonymous UI to a logged-in subscriber.                       */
+  fetch('/api/billing/subscription', { credentials: 'include', headers: window._fpPricingAuthHeaders() })
+    .then(function(res) {
+      if (res.status === 401) {
+        /* Not logged in — pricing page is public. Drop any stale billing
+           cache so no surface (here or checkout.html) can treat this
+           visitor as subscribed, and clear the in-memory guard state. */
+        try { localStorage.removeItem('fp_dashboard_state'); } catch(e) {}
+        try { window._fpBillingState = null; } catch(e) {}
+        /* If a stale token let the cached state render (Step 1), undo it —
+           the visitor must see the anonymous baseline, not old markers.   */
+        if (cached) { try { resetBillingUIToAnonymous(); } catch(e) {} }
+        return null;
+      }
+      if (!res.ok) return null;
+      return res.json();
+    })
+    .then(function(apiData) {
+      if (!apiData) return;
+      var backend = normalise(apiData);
+      if (!backend || !backend.plan) return;
+
+      /* Detect divergence between cache and backend — backend wins silently */
+      var addonsMatch = cached && JSON.stringify(cached.addons || {}) === JSON.stringify(backend.addons || {});
+      var diverged = !cached
+        || cached.plan !== backend.plan
+        || cached.status !== backend.status
+        || !addonsMatch
+        || cached.trialEndsAt !== backend.trialEndsAt
+        || cached.nextDate !== backend.nextDate;
+
+      /* Apply authoritative backend state */
+      applyBillingState(backend);
+
+      /* Sync localStorage so next page load gets the correct cache */
+      if (diverged) {
+        try {
+          var stored = JSON.parse(localStorage.getItem('fp_dashboard_state') || '{}');
+          stored.plan   = backend.plan;
+          stored.planLabel = backend.planLabel;
+          stored.status = backend.status;
+          stored.addons = backend.addons;
+          stored.nextDate = backend.nextDate;
+          stored.trialEndsAt = backend.trialEndsAt;
+          localStorage.setItem('fp_dashboard_state', JSON.stringify(stored));
+        } catch(e) {}
+      }
+    })
+    .catch(function() { /* non-fatal: offline or API down — cached state already applied */ });
+})();
+
+/* ── From-dashboard: pre-select plan & add-ons, show back button, intercept checkout ── */
+(function() {
+  'use strict';
+
+  var params = new URLSearchParams(window.location.search);
+  /* Only trust the explicit URL parameter — never re-activate fromDashboard
+     from a stale fp_cart (user may arrive from signin.html / flowpoint.pro). */
+  var fromDashboard = params.get('from') === 'dashboard';
+  var addonParam    = params.get('addon') || '';  // add-on key passed by fpActivateAddon fallback
+
+  var cart = null;
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+
+  /* When NOT coming from the dashboard: keep a FRESH visitor cart so the
+     selection survives refreshes and navigation until checkout, but never
+     resurrect a dashboard flow (fromDashboard flag / _orgId) or a stale
+     cart (> 1h) from a previous visit.                                     */
+  if (!fromDashboard) {
+    var _keepVisitorCart = null;
+    if (cart && !cart.fromDashboard && !cart._orgId) {
+      var _vcAge = (typeof cart._updatedAt === 'number') ? (Date.now() - cart._updatedAt) : Infinity;
+      if (_vcAge >= 0 && _vcAge < 3600000) _keepVisitorCart = cart;
+    }
+    if (!_keepVisitorCart) {
+      try { localStorage.removeItem('fp_cart'); } catch(e) {}
+      return;
+    }
+    cart = _keepVisitorCart;
+    /* Restore visual selections only — no dashboard back button and no
+       goToCheckout override (visitors use the default checkout path).     */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { restoreCartSelections(); });
+    } else {
+      setTimeout(restoreCartSelections, 120);
+    }
+    return;
+  }
+
+  /* ── Addon-only mode: from dashboard with a specific add-on key ────────────
+     When the user is an active subscriber and fpActivateAddon fell back to
+     pricing.html (e.g. API unavailable), hide the plans section so they don't
+     see a confusing plan-selection UI.  The plans section reappears if the user
+     is NOT subscribed (they need to pick a plan first).                       */
+  if (addonParam) {
+    /* Optimistic hide: user comes from the dashboard (fromDashboard=true) with an addon
+       URL param → they are already subscribed. Hide plans IMMEDIATELY so there is no
+       flash of the subscription plan cards. We re-show plans ONLY if billing state
+       explicitly confirms the user is NOT subscribed. */
+    var _hideHero = function() {
+      var hero = document.querySelector('.fp-hero');
+      if (hero) {
+        var badge = hero.querySelector('.fp-hero-badge');
+        var sub   = hero.querySelector('.fp-hero-sub');
+        if (badge) badge.textContent = '➕ Ajout d\'add-on à votre abonnement';
+        if (sub)   sub.textContent   = 'Sélectionnez l\'add-on ci-dessous et cliquez sur Finaliser.';
+      }
+    };
+    var _applyAoState = function() {
+      var ps = document.querySelector('.fp-plans-section');
+      var bs = window._fpBillingState;
+      /* Billing state loaded and user is EXPLICITLY not subscribed → show plans */
+      if (bs && bs.status !== 'active' && bs.status !== 'trialing') {
+        if (ps) ps.style.display = '';
+        return;
+      }
+      /* fromDashboard + no billing state yet OR user is subscribed → hide plans */
+      if (ps) ps.style.display = 'none';
+      _hideHero();
+    };
+    /* Apply immediately on DOM ready */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { _applyAoState(); });
+    } else {
+      _applyAoState();
+    }
+    /* Re-check when billing state arrives asynchronously */
+    var _aoRetries = 0;
+    var _aoInterval = setInterval(function() {
+      _applyAoState();
+      if (++_aoRetries >= 10) clearInterval(_aoInterval);
+    }, 300);
+  }
+
+  /* ── Override goToCheckout for active/trialing subscribers ────────────────────
+     We override immediately and unconditionally when fromDashboard=true.
+     At click time we check window._fpBillingState (set by the billing-state
+     IIFE's async fetch), so timing is not an issue.                           */
+  window.goToCheckout = function() {
+    var bs = window._fpBillingState;
+    var isSubscribed = bs && (bs.status === 'active' || bs.status === 'trialing');
+
+    var currentCart;
+    try { currentCart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+    /* Defense-in-depth: re-stamp fromDashboard even if addToCart() stripped it.
+       _cart.fromDashboard is now set at load time, but this guard covers edge cases
+       (page refresh, billing-state refresh resetting _cart, etc.). */
+    if (fromDashboard) {
+      if (!currentCart) currentCart = { plan: null, addons: {} };
+      currentCart.fromDashboard = true;
+    }
+    var targetPlan = currentCart && currentCart.plan;
+
+    /* ── Already-subscribed, add-on-only cart (no plan change) ─────────────
+       User comes from the dashboard to buy an add-on. They already have a plan
+       so we must NOT ask them to select one — go straight to checkout.html.
+       If the billing-state fetch failed (bs undefined), trust the dashboard
+       origin: only subscribed users can trigger an add-on-only cart.          */
+    if ((isSubscribed || !bs) && !targetPlan) {
+      var addonCount = Object.keys((currentCart && currentCart.addons) || {}).length;
+      if (addonCount === 0) {
+        if (typeof showToast === 'function') showToast('Aucun add-on sélectionné.', true);
+        return;
+      }
+      try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+      window.location.href = '/checkout.html';
+      return;
+    }
+
+    /* ── Non-subscriber without a plan → auto-select last plan or ask ──────  */
+    if (!isSubscribed && !targetPlan) {
+      /* For canceled users coming from the dashboard (e.g. to add an add-on),
+         automatically restore their previous plan into the cart so they don't
+         hit a dead-end. They can still change the plan on the next screen.    */
+      var _prevPlan = bs && bs.plan && typeof PLAN_INFO !== 'undefined' && PLAN_INFO[bs.plan.toLowerCase()]
+        ? bs.plan.toLowerCase() : null;
+      if (_prevPlan) {
+        if (!currentCart) currentCart = { plan: null, addons: {}, _v: 1, _updatedAt: Date.now(), _orgId: _fpAuthOrgId };
+        currentCart.plan = _prevPlan;
+        currentCart._v = 1; currentCart._updatedAt = Date.now();
+        try { localStorage.setItem('fp_cart', JSON.stringify(currentCart)); } catch(e) {}
+        targetPlan = _prevPlan;
+        /* Fall through to non-subscriber-with-plan branch */
+      } else {
+        if (typeof showToast === 'function') showToast('Sélectionnez d\'abord un plan pour activer votre compte.', true);
+        return;
+      }
+    }
+
+    /* ── Non-subscriber with a plan (standard checkout) ── */
+    if (!isSubscribed) {
+      try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+      /* Check the backend, not token presence alone: cookie-only sessions are
+         valid, while a stale per-tab token must go through authentication. */
+      fetch('/api/me', {
+        credentials: 'include',
+        headers: Object.assign({ 'Cache-Control': 'no-cache' }, window._fpPricingAuthHeaders())
+      }).then(function(r) {
+        if (r.ok) {
+          window.location.href = '/checkout.html?plan=' + encodeURIComponent(targetPlan);
+          return;
+        }
+        try {
+          localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+            cart: currentCart || {},
+            sellerRef: localStorage.getItem('fp_seller_ref') || '',
+            next: '/checkout.html',
+            exp: Date.now() + 1800000
+          }));
+          sessionStorage.setItem('fp_next', '/checkout.html');
+        } catch (e) {}
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      }).catch(function() {
+        try {
+          localStorage.setItem('flowpoint_pending_checkout', JSON.stringify({
+            cart: currentCart || {},
+            sellerRef: localStorage.getItem('fp_seller_ref') || '',
+            next: '/checkout.html',
+            exp: Date.now() + 1800000
+          }));
+        } catch (e) {}
+        window.location.href = '/signin.html?next=' + encodeURIComponent('/checkout.html');
+      });
+      return;
+    }
+
+    /* ── If plan in cart is unchanged (add-on-only purchase) → skip upgrade, use checkout.html ── */
+    var _currentBillingPlan = bs && bs.plan;
+    if (isSubscribed && targetPlan && _currentBillingPlan && targetPlan.toLowerCase() === _currentBillingPlan.toLowerCase()) {
+      try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+      window.location.href = '/checkout.html';
+      return;
+    }
+
+    /* ── Active/trialing subscriber changing plan → call /api/billing/upgrade ── */
+    var cartBtn = document.getElementById('fp-cart-btn');
+    if (cartBtn) { cartBtn.disabled = true; cartBtn.textContent = 'Mise à jour…'; }
+
+    fetch('/api/billing/upgrade', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     Object.assign({ 'Content-Type': 'application/json' }, window._fpPricingAuthHeaders()),
+      body:        JSON.stringify({ plan: targetPlan }),
+    })
+    .then(function(r) {
+      return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+    })
+    .then(function(result) {
+      if (!result.ok) {
+        var errMsg = result.data.message || result.data.error || 'Erreur lors du changement de plan';
+        if (typeof showToast === 'function') showToast(errMsg, true);
+        if (cartBtn) { cartBtn.disabled = false; cartBtn.textContent = 'Finaliser'; }
+        return;
+      }
+      var d = result.data;
+
+      /* No existing subscription found server-side → use our own checkout pages */
+      if (d.url || d.noSubscription) {
+        /* Subscribed users who get noSubscription (Stripe data mismatch): show error,
+           do NOT redirect to checkout.html (would fail with "Error creating checkout session"). */
+        if (d.noSubscription && isSubscribed) {
+          if (typeof showToast === 'function') showToast('Abonnement introuvable dans Stripe. Rechargez la page ou contactez le support.', true);
+          if (cartBtn) { cartBtn.disabled = false; cartBtn.textContent = 'Finaliser'; }
+          return;
+        }
+        try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+        window.location.href = '/checkout.html' + (targetPlan ? '?plan=' + encodeURIComponent(targetPlan) : '');
+        return;
+      }
+
+      /* Plan updated server-side — clear cart, then VERIFY with the backend
+         before announcing success. The old flow showed "Plan X activé
+         immédiatement ✓" optimistically even if persistence lagged. */
+      try { localStorage.removeItem('fp_cart'); } catch(e) {}
+
+      var planLabel = targetPlan.charAt(0).toUpperCase() + targetPlan.slice(1);
+
+      function _finishUpgrade(confirmedPlan) {
+        var confirmMsg;
+        if (d.downgrade) {
+          confirmMsg = 'Plan ' + planLabel + ' actif le ' + (d.effectiveDate || 'à la prochaine échéance') + ' ✓';
+        } else if (confirmedPlan) {
+          confirmMsg = 'Plan ' + planLabel + ' activé ✓';
+          if (d.removedIncludedAddons && d.removedIncludedAddons.length > 0) {
+            confirmMsg += ' · add-ons inclus retirés de la facturation';
+          }
+        } else {
+          /* Server accepted the upgrade but confirmation fetch didn't confirm yet —
+             stay factual, the dashboard will show the authoritative state. */
+          confirmMsg = 'Changement de plan en cours — vérification dans le dashboard…';
+        }
+        if (typeof showToast === 'function') showToast(confirmMsg);
+        setTimeout(function() {
+          window.location.href = '/dashboard.html?plan_changed=1&plan=' + encodeURIComponent(targetPlan) + '#billing';
+        }, 1500);
+      }
+
+      if (d.downgrade) { _finishUpgrade(true); return; }
+      /* Confirm the new plan from the authoritative subscription endpoint */
+      fetch('/api/billing/subscription', { credentials: 'include', headers: window._fpPricingAuthHeaders() })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(sub) {
+          var confirmed = !!(sub && sub.plan && String(sub.plan).toLowerCase() === targetPlan.toLowerCase());
+          _finishUpgrade(confirmed);
+        })
+        .catch(function() { _finishUpgrade(false); });
+    })
+    .catch(function() {
+      if (typeof showToast === 'function') showToast('Erreur réseau — réessayez', true);
+      if (cartBtn) { cartBtn.disabled = false; cartBtn.textContent = 'Finaliser'; }
+    });
+  };
+
+  /* Re-click the plan/add-on buttons held in the cart so the internal _cart
+     and the visuals are rebuilt. Shared by the dashboard flow (applyCart)
+     and the anonymous visitor-cart restore above.                          */
+  function restoreCartSelections() {
+    if (!cart) return;
+
+    /* ── Pre-select plan ── */
+    var plan = cart.plan || params.get('plan');
+    if (plan) {
+      var planBtn = document.querySelector('.fp-card-btn[data-plan="' + plan.toLowerCase() + '"]');
+      if (planBtn && !planBtn.disabled) {
+        planBtn.click();
+      }
+    }
+
+    /* ── Pre-select addons ──
+       Restore the saved numeric quantity into every quantity input FIRST, so
+       when the "Activer" button is clicked addToCart() reads the restored
+       value (it reads the input, which otherwise defaults to 1). This keeps
+       pricing, cart, quote request and checkout on the SAME quantity after an
+       authenticated/dashboard return. For flag add-ons (no input) the click
+       simply re-adds the key. */
+    var addons = cart.addons || {};
+    Object.keys(addons).forEach(function(addonKey) {
+      var raw = addons[addonKey];
+      var qty = raw === true ? 1 : Math.max(1, Math.floor(Number(raw) || 1));
+      var input = document.getElementById('qty-' + addonKey);
+      if (input) {
+        var min = parseInt(input.min) || 1;
+        var max = parseInt(input.max) || 99;
+        input.value = Math.min(max, Math.max(min, qty));
+      }
+      /* Find button: onclick="addToCart(this,'addonKey'..." — the click runs
+         addToCart(), which reads the input value we just restored and writes
+         the exact numeric quantity into the canonical cart (badge + storage). */
+      var btns = document.querySelectorAll('button[onclick]');
+      for (var i = 0; i < btns.length; i++) {
+        var m = (btns[i].getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+        if (m && m[1] === addonKey && !btns[i].disabled) {
+          btns[i].click();
+          break;
+        }
+      }
+    });
+  }
+
+  /* Dashboard flow: back button + selection restore */
+  function applyCart() {
+    /* ── Back button in nav ── */
+    var navLinks = document.querySelector('.fp-nav-links');
+    if (navLinks && !document.getElementById('fp-back-btn')) {
+      var btn = document.createElement('a');
+      btn.id = 'fp-back-btn';
+      btn.href = '/dashboard.html';
+      btn.style.cssText = 'color:var(--blue,#2563eb);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;margin-right:8px;';
+      btn.innerHTML = '\u2190 Tableau de bord';
+      navLinks.insertAdjacentElement('afterbegin', btn);
+    }
+
+    restoreCartSelections();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyCart);
+  } else {
+    /* DOM already ready — defer slightly so other init scripts run first */
+    setTimeout(applyCart, 120);
+  }
+})();
+</script>
+<script src="/funnel-tracking.js" defer></script>
+</body>
+</html>

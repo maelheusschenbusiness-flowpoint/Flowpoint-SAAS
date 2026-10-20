@@ -1,0 +1,40 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives (never commit binary blobs)
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z
+*.rar
+*.gz
+
+# Replit internals
+.cache/
+.config/
+.upm/
+.local/
+.replit
+replit.nix
+.breakpoints
+
+# Exports / dumps
+exports/
+attached_assets/
+*_REPORT.md
+context_dump*.txt
+*.context.txt
+
+# Secrets
+.env
+.env.*
+!.env.example

@@ -1,0 +1,546 @@
+import { Router, Request, Response } from "express";
+import { logger } from "../lib/logger.js";
+import { pool } from "@workspace/db";
+import { store } from "../services/store.js";
+import { runMissionEngine, getMissionsStats } from "../services/mission-engine.js";
+import { canWrite } from "../middlewares/requireRole.js";
+import { consumeAICredits } from "../services/ai-engine.js";
+import { loadOrgAIPrefs } from "../services/ai-prefs.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
+
+const router = Router();
+
+type OrgReq = Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
+
+function uid(): string {
+  return `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function orgId(req: Request): string {
+  return (req as OrgReq).orgId || "default";
+}
+
+function orgDb(req: Request) {
+  return (req as OrgReq).orgDb.bind(req);
+}
+
+function rowToMission(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    type: row.type,
+    priority: row.priority,
+    priorityScore: row.priority_score,
+    status: row.status,
+    impact: row.impact,
+    effort: row.effort,
+    estimatedTrafficImpact: row.estimated_traffic_impact,
+    estimatedRevenueImpact: row.estimated_revenue_impact,
+    estimatedSeoImpact: row.estimated_seo_impact,
+    estimatedConversionImpact: row.estimated_conversion_impact,
+    difficultyScore: row.difficulty_score,
+    businessImpactScore: row.business_impact_score,
+    aiExplanation: row.ai_explanation,
+    aiActionSteps: row.ai_action_steps,
+    aiQuickWin: row.ai_quick_win,
+    aiReasoning: row.ai_reasoning,
+    aiSummary: row.ai_summary,
+    sourceType: row.source_type,
+    sourceData: row.source_data,
+    steps: row.steps || [],
+    dueDate: row.due_date,
+    date: row.due_date,
+    completedAt: row.completed_at,
+    dismissedAt: row.dismissed_at,
+    assignedTo: row.assigned_to,
+    lastRefreshedAt: row.last_refreshed_at,
+    history: row.history || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function logHistory(
+  db: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>,
+  missionId: string, org: string, action: string,
+  fromStatus: string | null, toStatus: string | null
+): Promise<void> {
+  await db(
+    `INSERT INTO mission_history (id, mission_id, org_id, action, from_status, to_status, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW())`,
+    [`mh_${Date.now()}`, missionId, org, action, fromStatus, toStatus]
+  ).catch(() => {});
+}
+
+// GET /missions
+// Uses pool.query (superuser) with explicit org_id filter — bypasses withOrgDb/RLS which
+// can silently return [] when SET LOCAL ROLE app_user fails on Supabase pooled connections.
+// Tenant isolation is enforced by the WHERE org_id = $1 clause, same pattern as list_missions AI tool.
+router.get("/missions", async (req: Request, res: Response) => {
+  const _t0 = Date.now();
+  logger.info({ org: orgId(req) }, "[MISSIONS] API start");
+  try {
+    const org = orgId(req);
+    const { status, category, priority, quick_win, limit = "100", offset = "0" } = req.query as Record<string, string>;
+
+    let query = `SELECT * FROM missions WHERE org_id = $1`;
+    const params: unknown[] = [org];
+    let p = 2;
+
+    if (status && status !== "all") { query += ` AND status = $${p++}`; params.push(status); }
+    if (category) { query += ` AND category = $${p++}`; params.push(category); }
+    if (priority) { query += ` AND priority = $${p++}`; params.push(priority); }
+    if (quick_win === "true") { query += ` AND ai_quick_win = true`; }
+
+    query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
+    params.push(parseInt(limit) || 100, parseInt(offset) || 0);
+
+    const result = await pool.query(query, params);
+    const ms = Date.now() - _t0;
+    logger.info({ org, rows: result.rows.length, ms }, "[MISSIONS] API end");
+    res.json(result.rows.map(rowToMission));
+  } catch (err) {
+    logger.error({ err, ms: Date.now() - _t0 }, "[Missions] GET /missions error");
+    res.json([]);
+  }
+});
+
+// GET /missions/stats
+router.get("/missions/stats", async (req: Request, res: Response) => {
+  try {
+    res.json(await getMissionsStats(orgId(req)));
+  } catch (err) {
+    logger.error({ err }, "[Missions] stats error");
+    res.json({ total: 0, todo: 0, inProgress: 0, done: 0, dismissed: 0 });
+  }
+});
+
+// GET /missions/quick-wins
+router.get("/missions/quick-wins", async (req: Request, res: Response) => {
+  try {
+    const result = await orgDb(req)(
+      `SELECT * FROM missions WHERE org_id = $1 AND ai_quick_win = true AND status = 'todo'
+       ORDER BY priority_score DESC LIMIT 5`,
+      [orgId(req)]
+    );
+    res.json(result.rows.map(rowToMission));
+  } catch {
+    res.json([]);
+  }
+});
+
+// GET /missions/roadmap
+router.get("/missions/roadmap", async (req: Request, res: Response) => {
+  try {
+    const result = await orgDb(req)(
+      `SELECT * FROM missions WHERE org_id = $1 AND status NOT IN ('done','dismissed','stale')
+       ORDER BY due_date ASC NULLS LAST, priority_score DESC LIMIT 50`,
+      [orgId(req)]
+    );
+    const missions = result.rows.map(rowToMission);
+    const week = new Date(Date.now() + 7 * 86400000);
+    const month = new Date(Date.now() + 30 * 86400000);
+    res.json({
+      thisWeek:  missions.filter(m => m.dueDate && new Date(m.dueDate as string) <= week),
+      thisMonth: missions.filter(m => m.dueDate && new Date(m.dueDate as string) > week && new Date(m.dueDate as string) <= month),
+      later:     missions.filter(m => !m.dueDate || new Date(m.dueDate as string) > month),
+    });
+  } catch {
+    res.json({ thisWeek: [], thisMonth: [], later: [] });
+  }
+});
+
+// GET /missions/logs
+router.get("/missions/logs", async (req: Request, res: Response) => {
+  try {
+    const result = await orgDb(req)(
+      `SELECT * FROM mission_ai_logs WHERE org_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [orgId(req)]
+    );
+    res.json(result.rows);
+  } catch {
+    res.json([]);
+  }
+});
+
+// GET /missions/templates — must be before /:id to avoid wildcard capture
+router.get("/missions/templates", (_req: Request, res: Response) => {
+  const templates = [
+    { category: "SEO Technique", title: "Corriger les redirections 301/302 cassées", impact: "Très élevé", effort: "1h", steps: ["Lister toutes les redirections avec Screaming Frog", "Identifier les chaînes de redirections (> 2 sauts)", "Mettre à jour les URLs directement dans le CMS", "Vérifier l'absence d'erreurs 404 résiduelles"] },
+    { category: "SEO Technique", title: "Implémenter le balisage Schema.org LocalBusiness", impact: "Élevé", effort: "45 min", steps: ["Générer le JSON-LD Schema.org sur schema.org/LocalBusiness", "Ajouter le nom, adresse, téléphone, horaires et coordonnées GPS", "Injecter le script dans le <head> de chaque page", "Valider avec l'outil Rich Results Test de Google"] },
+    { category: "SEO Technique", title: "Créer et soumettre un sitemap XML complet", impact: "Élevé", effort: "45 min", steps: ["Générer un sitemap XML avec toutes les URLs prioritaires", "Exclure les pages doublons", "Soumettre le sitemap dans Google Search Console", "Planifier une mise à jour automatique mensuelle"] },
+    { category: "Local SEO", title: "Optimiser la fiche Google Business Profile", impact: "Très élevé", effort: "1h", steps: ["Vérifier et compléter toutes les informations NAP", "Ajouter 10+ photos professionnelles récentes", "Rédiger une description de 750 caractères avec mots-clés", "Activer les messages et Questions/Réponses"] },
+    { category: "Local SEO", title: "Lancer une campagne de demande d'avis Google", impact: "Élevé", effort: "2h", steps: ["Créer un lien court vers la page d'avis Google", "Rédiger un SMS/email de demande d'avis (max 3 lignes)", "Sélectionner 20 clients récents satisfaits", "Envoyer et suivre les taux de conversion"] },
+    { category: "Performance", title: "Améliorer le score Core Web Vitals (LCP)", impact: "Très élevé", effort: "3h", steps: ["Analyser le LCP actuel via PageSpeed Insights", "Identifier les images non optimisées (convertir en WebP)", "Activer la compression gzip/Brotli côté serveur", "Implémenter le lazy loading sur les images hors-écran"] },
+    { category: "Monitoring", title: "Configurer des alertes de temps de réponse avancées", impact: "Élevé", effort: "30 min", steps: ["Identifier les seuils critiques pour chaque service", "Configurer des alertes palier : warn à 500ms, crit à 2s", "Tester chaque alerte avec une simulation de charge", "Documenter les procédures de réponse aux incidents"] },
+    { category: "Croissance", title: "Analyser et optimiser le tunnel de conversion", impact: "Très élevé", effort: "4h", steps: ["Installer Google Tag Manager + suivi d'objectifs Analytics", "Mapper le parcours utilisateur étape par étape", "Identifier les pages avec fort taux d'abandon", "A/B tester les 2 pages les plus critiques"] },
+  ];
+  res.json({ ok: true, templates, total: templates.length });
+});
+
+// POST /missions/from-template — must be before /:id
+router.post("/missions/from-template", canWrite, async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const { templateTitle, category, impact, effort, steps, priority = "medium" } = req.body as Record<string, unknown>;
+    if (!templateTitle) { res.status(400).json({ error: "templateTitle required" }); return; }
+
+    const existing = await db(
+      `SELECT id FROM missions WHERE org_id = $1 AND LOWER(title) = LOWER($2) AND status != 'done'`,
+      [org, templateTitle]
+    );
+    if (existing.rows[0]) {
+      res.status(409).json({ error: "Mission already exists", id: existing.rows[0].id });
+      return;
+    }
+
+    const id = uid();
+    const pScore = Number(({ critical: 90, high: 75, medium: 50, low: 25 } as Record<string, number>)[(priority as string)] ?? 50);
+    const stepsArr = Array.isArray(steps)
+      ? (steps as string[]).map((text, i) => ({ id: `s${Date.now()}${i}`, text, done: false, tag: `Étape ${i + 1}` }))
+      : [];
+
+    const tmplCreatedBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
+    await db(`
+      INSERT INTO missions (
+        id, org_id, title, category, priority, priority_score,
+        status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',$10,NOW(),NOW(),NOW())
+    `, [id, org, templateTitle, category || "SEO Technique", priority, pScore,
+        impact || "Moyen", effort || "Moyen", JSON.stringify(stepsArr), tmplCreatedBy]);
+
+    const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
+    res.json(rowToMission(row.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[Missions] from-template error");
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// POST /missions/bulk-create — must be before /:id
+router.post("/missions/bulk-create", canWrite, async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const { missions: missionList } = req.body as { missions?: Array<Record<string, unknown>> };
+    if (!Array.isArray(missionList) || missionList.length === 0) {
+      res.status(400).json({ error: "missions array required" });
+      return;
+    }
+
+    const created: object[] = [];
+    const skipped: string[] = [];
+
+    for (const m of missionList) {
+      const title = (m.title as string)?.trim();
+      if (!title) continue;
+
+      const existing = await db(
+        `SELECT id FROM missions WHERE org_id = $1 AND LOWER(title) = LOWER($2) AND status != 'done'`,
+        [org, title]
+      );
+      if (existing.rows[0]) { skipped.push(title); continue; }
+
+      const id = uid();
+      const priority = (m.priority as string) || "medium";
+      const pScore = Number(({ critical: 90, high: 75, medium: 50, low: 25 } as Record<string, number>)[priority] ?? 50);
+      const stepsRaw = m.steps as string[] | Array<{ text: string }> | undefined;
+      const stepsArr = Array.isArray(stepsRaw)
+        ? stepsRaw.map((s, i) => ({
+            id: `s${Date.now()}${i}`,
+            text: typeof s === "string" ? s : (s as { text: string }).text,
+            done: false, tag: `Étape ${i + 1}`,
+          }))
+        : [];
+
+      const bulkCreatedBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
+      await db(`
+        INSERT INTO missions (
+          id, org_id, title, category, priority, priority_score,
+          status, impact, effort, steps, source_type, created_by, created_at, updated_at, last_refreshed_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW(),NOW())
+      `, [id, org, title,
+          (m.category as string) || "SEO",
+          priority, pScore,
+          (m.status as string) || "todo",
+          (m.impact as string) || "Moyen",
+          (m.effort as string) || "Moyen",
+          JSON.stringify(stepsArr),
+          (m.source as string) || "manual",
+          bulkCreatedBy]);
+
+      const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
+      created.push(rowToMission(row.rows[0]));
+    }
+
+    res.json({ ok: true, created: created.length, skipped: skipped.length, missions: created });
+  } catch (err) {
+    logger.error({ err }, "[Missions] bulk-create error");
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// GET /missions/:id
+router.get("/missions/:id", async (req: Request, res: Response) => {
+  try {
+    const result = await orgDb(req)(
+      `SELECT m.*,
+        (SELECT json_agg(h ORDER BY h.created_at DESC) FROM mission_history h WHERE h.mission_id = m.id) as history
+       FROM missions m WHERE m.id = $1 AND m.org_id = $2`,
+      [req.params.id, orgId(req)]
+    );
+    if (!result.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
+    res.json(rowToMission(result.rows[0]));
+  } catch {
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// POST /missions/generate — trigger AI Mission Engine
+router.post("/missions/generate", canWrite, async (req: Request, res: Response) => {
+  try {
+    const oid = orgId(req);
+    const aiPrefs = await loadOrgAIPrefs(oid);
+    const creditCheck = await consumeAICredits({ feature: "mission_auto", orgId: oid });
+    if (!creditCheck.allowed) {
+      res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs));
+      return;
+    }
+    const result = await runMissionEngine(oid, "manual");
+    // Surface AI-unavailable flag so the frontend can show a specific warning
+    // instead of silently succeeding with fallback-template missions.
+    res.json({ ok: true, ...result });
+
+    // Fire-and-forget: new missions email — use org-scoped data, never store.me singleton
+    const missions = (result as Record<string, unknown>).missions as Array<{ title: string; priority: string; impact: string }> | undefined;
+    if (missions?.length) {
+      const { loadOrgData } = await import("../services/org-data.js");
+      const _orgData = await loadOrgData(oid).catch(() => null);
+      if (_orgData?.email) {
+        const { mailer } = await import("../services/mailer.js");
+        mailer.sendNewMissions({
+          to: _orgData.email,
+          name: _orgData.firstName || "Utilisateur",
+          missions,
+          siteUrl: undefined,
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "[Missions] generate error");
+    res.status(500).json({ error: "Mission engine error" });
+  }
+});
+
+// POST /missions — create manual mission
+router.post("/missions", canWrite, async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const {
+      title, description, category = "seo", type = "seo", status = "todo",
+      impact = "Moyen", effort = "Moyen", priority = "medium",
+      dueDate, steps, priorityScore, assignedTo,
+    } = req.body as Record<string, unknown>;
+
+    if (!title) { res.status(400).json({ error: "title required" }); return; }
+
+    // Keep manual creation idempotent for an active mission with the same
+    // normalized title. Existing rows are preserved; this only prevents a
+    // double-click/retry from creating another copy for the same organization.
+    const normalizedTitle = String(title).trim();
+    const existing = await db(
+      `SELECT id FROM missions
+       WHERE org_id = $1
+         AND LOWER(TRIM(title)) = LOWER(TRIM($2))
+         AND status NOT IN ('done', 'completed', 'dismissed')
+       ORDER BY created_at DESC LIMIT 1`,
+      [org, normalizedTitle],
+    );
+    if (existing.rows[0]) {
+      res.status(409).json({ error: "Mission already exists", id: existing.rows[0].id });
+      return;
+    }
+
+    const id = uid();
+    const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[(priority as string)] ?? 50);
+
+    const createdBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
+    await db(`
+      INSERT INTO missions (
+        id, org_id, title, description, category, type, priority, priority_score,
+        status, impact, effort, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',$15,NOW(),NOW(),NOW())
+    `, [id, org, normalizedTitle, description || null, category, type, priority, pScore, status, impact, effort,
+        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null, createdBy]);
+
+    const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
+    // BUG-003 guard: INSERT committed but SELECT returned no row — log full context for diagnosis
+    if (!row.rows[0]) {
+      logger.error({ id, org, title }, "[Missions] POST: row not found after INSERT – possible RLS conflict");
+      res.status(500).json({ error: "Mission créée mais introuvable (conflit RLS)" });
+      return;
+    }
+    const mission = rowToMission(row.rows[0]);
+
+    await logHistory(db, id, org, "created", null, status as string);
+    await store.logActivity({
+      type: "report", label: `Mission créée : ${title}`,
+      targetId: id, targetType: "mission",
+      metadata: { category, impact }, orgId: org,
+      actionKey: "activity.mission.created", actionParams: { title: String(title) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
+    }).catch(() => {});
+
+    res.status(201).json(mission);
+  } catch (err) {
+    const e = err as Error & { code?: string; constraint?: string; detail?: string };
+    logger.error({
+      requestId: (req.headers["x-request-id"] as string) || "?",
+      body: req.body,
+      orgId: (req as OrgReq).orgId,
+      errName: e?.name,
+      errMsg: e?.message,
+      errCode: e?.code,
+      errConstraint: e?.constraint,
+      errDetail: e?.detail,
+      stack: e?.stack,
+    }, "[Missions] POST 500 — full context");
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// PATCH /missions/:id
+router.patch("/missions/:id", canWrite, async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const id = String(req.params.id);
+
+    const existing = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
+    if (!existing.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
+    const prev = existing.rows[0];
+
+    const {
+      title, description, status, impact, effort, category, priority,
+      steps, dueDate, priorityScore, assignedTo,
+    } = req.body as Record<string, unknown>;
+
+    const newStatus = (status as string) || (prev.status as string);
+    const isNowDone      = newStatus === "done"      && prev.status !== "done";
+    const isNowDismissed = newStatus === "dismissed" && prev.status !== "dismissed";
+
+    await db(`
+      UPDATE missions SET
+        title        = COALESCE($1, title),
+        description  = COALESCE($2, description),
+        status       = $3,
+        impact       = COALESCE($4, impact),
+        effort       = COALESCE($5, effort),
+        category     = COALESCE($6, category),
+        priority     = COALESCE($7, priority),
+        steps        = COALESCE($8::jsonb, steps),
+        due_date     = COALESCE($9, due_date),
+        priority_score = COALESCE($10, priority_score),
+        assigned_to  = COALESCE($11, assigned_to),
+        completed_at = CASE WHEN $12 THEN NOW() ELSE completed_at END,
+        dismissed_at = CASE WHEN $13 THEN NOW() ELSE dismissed_at END,
+        updated_at   = NOW()
+      WHERE id = $14 AND org_id = $15
+    `, [
+      title || null, description || null, newStatus,
+      impact || null, effort || null, category || null, priority || null,
+      steps ? JSON.stringify(steps) : null,
+      (dueDate as string) || null,
+      priorityScore ? Number(priorityScore) : null,
+      (assignedTo as string) || null,
+      isNowDone, isNowDismissed,
+      id, org,
+    ]);
+
+    const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
+    const mission = rowToMission(row.rows[0]);
+
+    if (newStatus !== prev.status) {
+      await logHistory(db, id, org, "status_changed", prev.status as string, newStatus);
+      if (isNowDone) {
+        await store.logActivity({
+          type: "report", label: `Mission accomplie : ${prev.title}`,
+          targetId: id, targetType: "mission",
+          metadata: { category: prev.category, impact: prev.impact }, orgId: org,
+          actionKey: "activity.mission.done", actionParams: { title: String(prev.title) },
+          userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+          userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
+        }).catch(() => {});
+      }
+    }
+
+    res.json(mission);
+  } catch (err) {
+    logger.error({ err }, "[Missions] PATCH error");
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// DELETE /missions/:id
+router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const existing = await db(
+      `SELECT title, category FROM missions WHERE id = $1 AND org_id = $2`,
+      [req.params.id, org]
+    );
+    if (!existing.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
+
+    await db(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [req.params.id, org]);
+    await db(`DELETE FROM mission_history WHERE mission_id = $1`, [req.params.id]);
+
+    await store.logActivity({
+      type: "report", label: `Mission supprimée : ${existing.rows[0].title}`,
+      targetId: String(req.params.id), targetType: "mission",
+      metadata: { category: existing.rows[0].category }, orgId: org,
+      actionKey: "activity.mission.deleted", actionParams: { title: String(existing.rows[0].title) },
+      userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
+      userName: (req as any).orgContext?.name || (req as any).orgContext?.email,
+    }).catch(() => {});
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// PATCH /missions/:id/steps/:stepId
+router.patch("/missions/:id/steps/:stepId", canWrite, async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const row = await db(
+      `SELECT steps FROM missions WHERE id = $1 AND org_id = $2`,
+      [req.params.id, org]
+    );
+    if (!row.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
+
+    const steps = (row.rows[0].steps || []) as Array<{ id: string; title: string; done: boolean }>;
+    const step = steps.find(s => s.id === req.params.stepId);
+    if (!step) { res.status(404).json({ error: "Step not found" }); return; }
+    if (req.body.done !== undefined) step.done = Boolean(req.body.done);
+    if (req.body.title) step.title = req.body.title;
+
+    await db(
+      `UPDATE missions SET steps = $1::jsonb, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+      [JSON.stringify(steps), req.params.id, org]
+    );
+    res.json({ ok: true, steps });
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+export default router;

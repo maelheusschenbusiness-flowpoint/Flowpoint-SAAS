@@ -1,0 +1,1 @@
+export const HOME_PAGE_TITLE = "Flowpoint — SEO Local pour les entreprises";
