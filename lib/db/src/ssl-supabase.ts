@@ -31,7 +31,7 @@
  * magasin par defaut, elle ne le remplace pas : une base chez un autre
  * fournisseur continue d'etre verifiee normalement.
  */
-import { rootCertificates } from "node:tls";
+import { createSecureContext, rootCertificates, type SecureContext } from "node:tls";
 
 /** Supabase Root 2021 CA — certificat public, verifie par empreinte. */
 export const RACINE_SUPABASE_2021 = [
@@ -62,7 +62,26 @@ export const RACINE_SUPABASE_2021 = [
 
 export interface OptionsSsl {
   ca: string[];
+  secureContext: SecureContext;
   rejectUnauthorized: true;
+}
+
+/**
+ * Le magasin complet, construit UNE fois pour tout le processus.
+ *
+ * DEFAUT MESURE LE 20/10/2026 : deux arrets OOM de `flowpoint-test` (512 Mo),
+ * a 00:08 et 19:01 UTC. Sans `secureContext`, `tls.connect` reconstruit un
+ * contexte a CHAQUE connexion et y reanalyse les 146 certificats de `ca`.
+ * Le pool ferme ses clients inactifs apres 30 s, donc chaque reconnexion
+ * en paie le prix. Mesure locale (Node 24, 600 connexions, sans GC force) :
+ * 54 Mo -> 459 Mo avec un contexte par connexion, 54 Mo avec ce contexte
+ * partage. La verification est la meme : `rejectUnauthorized` et le controle
+ * du nom d'hote ne dependent pas du contexte.
+ */
+let contexteVerifie: SecureContext | undefined;
+function contexteSupabase(ca: string[]): SecureContext {
+  contexteVerifie ??= createSecureContext({ ca });
+  return contexteVerifie;
 }
 
 /**
@@ -87,9 +106,11 @@ export function optionsSslPostgres(
 
   if (!mode && !variablesSepareesCompletes) return undefined;
 
+  // La racine Supabase EN PLUS du magasin par defaut, jamais a sa place.
+  const ca = [RACINE_SUPABASE_2021, ...rootCertificates];
   return {
-    // La racine Supabase EN PLUS du magasin par defaut, jamais a sa place.
-    ca: [RACINE_SUPABASE_2021, ...rootCertificates],
+    ca,
+    secureContext: contexteSupabase(ca),
     rejectUnauthorized: true,
   };
 }

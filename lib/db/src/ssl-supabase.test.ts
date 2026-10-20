@@ -83,3 +83,15 @@ describe("les cas ou l'on n'impose rien", () => {
     expect(optionsSslPostgres(env(partiel))).toBeUndefined();
   });
 });
+
+describe("un seul contexte TLS pour tout le processus", () => {
+  // DEFAUT MESURE LE 20/10/2026 : un contexte reconstruit a chaque connexion,
+  // avec 146 certificats, a porte `flowpoint-test` jusqu'a l'arret OOM.
+  it("le contexte est fourni, et c'est le MEME a chaque appel", () => {
+    const a = optionsSslPostgres(env({ ...SEPAREES })) as { secureContext: unknown };
+    const b = optionsSslPostgres(env({ PGSSLMODE: "require" })) as { secureContext: unknown };
+    expect(a.secureContext, "sans contexte partage, tls.connect en recree un par connexion")
+      .toBeDefined();
+    expect(b.secureContext).toBe(a.secureContext);
+  });
+});
