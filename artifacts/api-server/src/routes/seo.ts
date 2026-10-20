@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { canWrite } from "../middlewares/requireRole.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import { pool } from "@workspace/db";
 import {
   isDataForSEOConfigured,
@@ -12,6 +13,8 @@ import {
   getSERP,
   getCompetitors,
   getBacklinks,
+  getBacklinkHistory,
+  getBacklinkDetails,
   getDomainMetrics,
   getKeywordDifficulty,
   getLocalPackRank,
@@ -25,6 +28,23 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
+const backlinkRequestUntil = new Map<string, number>();
+const backlinkCooldown = (kind: string) => (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => {
+  const orgId = String((req as unknown as Record<string, unknown>)["orgId"] ?? "default");
+  const now = Date.now();
+  const key = `${orgId}:${kind}`;
+  const until = backlinkRequestUntil.get(key) ?? 0;
+  if (until > now) {
+    res.setHeader("Retry-After", String(Math.ceil((until - now) / 1000)));
+    res.status(429).json({ error: "Veuillez patienter avant de relancer cet appel DataForSEO.", code: "BACKLINK_COOLDOWN" });
+    return;
+  }
+  if (backlinkRequestUntil.size > 5000) {
+    for (const [entry, expiry] of backlinkRequestUntil) if (expiry <= now) backlinkRequestUntil.delete(entry);
+  }
+  backlinkRequestUntil.set(key, now + 30_000);
+  next();
+};
 
 // ── Helper — persisted Local SEO ranking usage ───────────────────────────────
 // `used` is derived from the persisted ranking-history rows for the current day
@@ -221,24 +241,52 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 // ── GET /api/seo/backlinks ────────────────────────────────────────────────────
 // Requires backlinkIntelligence add-on (Pro/Ultra include it; Standard requires purchase).
 
-router.get("/seo/backlinks", withQuota(async (req, res) => {
+const backlinkAddonGate = requireAddon("backlinkIntelligence", "Backlink Intelligence");
+
+router.get("/seo/backlinks", backlinkAddonGate, backlinkCooldown("summary"), withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain = "exemple.fr" } = req.query as Record<string,string>;
+  const { domain } = req.query as Record<string,string>;
+  if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
+    res.status(400).json({ error: "A valid domain is required." });
+    return;
+  }
   try {
-    // Feature gate: backlinkIntelligence add-on required
-    const { loadBillingContext } = await import("../services/billing-context.js");
-    const bCtx = await loadBillingContext(orgId).catch(() => null);
-    if (!bCtx?.addons?.["backlinkIntelligence"]) {
-      res.status(403).json({
-        error: "L'add-on Backlink Intelligence est requis pour accéder à cette fonctionnalité.",
-        code: "ADDON_REQUIRED", addonKey: "backlinkIntelligence",
-      });
-      return;
-    }
     const data = await getBacklinks(domain, orgId);
     res.json({ domain, ...data });
   } catch (e) {
     res.status(500).json({ error: "Backlinks fetch failed", detail: String(e) });
+  }
+}));
+
+// Historical snapshots are fetched on demand from DataForSEO; each successful
+// request is billed by the provider and counted by withQuota per organization.
+router.get("/seo/backlinks/history", backlinkAddonGate, backlinkCooldown("history"), withQuota(async (req, res) => {
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  const { domain } = req.query as Record<string,string>;
+  const monthsRaw = Number((req.query as Record<string,string>)["months"] ?? 12);
+  const months = [6, 12, 24].includes(monthsRaw) ? monthsRaw : 12;
+  if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
+    res.status(400).json({ error: "A valid domain is required." });
+    return;
+  }
+  try {
+    res.json(await getBacklinkHistory(domain, orgId, months));
+  } catch (e) {
+    res.status(500).json({ error: "Backlink history fetch failed", detail: String(e) });
+  }
+}));
+
+router.get("/seo/backlinks/details", backlinkAddonGate, backlinkCooldown("details"), withQuota(async (req, res) => {
+  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+  const { domain } = req.query as Record<string,string>;
+  if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
+    res.status(400).json({ error: "A valid domain is required." });
+    return;
+  }
+  try {
+    res.json(await getBacklinkDetails(domain, orgId));
+  } catch (e) {
+    res.status(500).json({ error: "Backlink details fetch failed", detail: String(e) });
   }
 }));
 

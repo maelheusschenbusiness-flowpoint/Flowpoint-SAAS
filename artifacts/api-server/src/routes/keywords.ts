@@ -13,6 +13,7 @@ import { withCache } from "../middlewares/cacheControl.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { canSimulateContentDecayAddon, findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
+import { buildKeywordDominationReport } from "../services/keyword-domination.js";
 
 const router = Router();
 const contentDecayGate: RequestHandler = (req, res, next) => {
@@ -63,6 +64,28 @@ router.get("/keywords/content-decay", contentDecayGate, async (req, res) => {
   } catch (err) {
     logger.error({ err, orgId }, "[keywords] content decay query failed");
     res.status(503).json({ error: "Search Console data is temporarily unavailable." });
+  }
+});
+
+router.get("/keywords/domination", requireAddon("keywordDomination", "Keyword Domination Engine"), async (req, res) => {
+  const orgId = getOrg(req);
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  try {
+    const result = await (req as OrgReq).orgDb(
+      `SELECT keyword, current_position, prev_position, position_change, search_volume, difficulty, url, intent
+       FROM tracked_keywords
+       WHERE org_id=$1 AND active=true
+       ORDER BY search_volume DESC NULLS LAST, keyword ASC
+       LIMIT 10000`,
+      [orgId],
+    );
+    res.json(buildKeywordDominationReport(result.rows));
+  } catch (err) {
+    logger.error({ err, orgId }, "[keywords] domination report failed");
+    res.status(500).json({ error: safeErrMsg(err) });
   }
 });
 

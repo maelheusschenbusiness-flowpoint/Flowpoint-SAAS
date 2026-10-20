@@ -307,7 +307,56 @@ const STATE = {
   cmpA: null,
   cmpB: null,
   backlinks: null,
+  backlinkHistory: null,
+  backlinkDetails: null,
   llmVisibility: null,
+};
+
+window.fpLoadBacklinkHistory = async function(button) {
+  const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
+  const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
+  if (!domain) return;
+  STATE.backlinkHistory = { orgId, domain, loading: true, data: null };
+  if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
+  render();
+  try {
+    const data = await apiFetch('/api/seo/backlinks/history?domain=' + encodeURIComponent(domain) + '&months=12');
+    STATE.backlinkHistory = { orgId, domain, data };
+  } catch (error) {
+    STATE.backlinkHistory = { orgId, domain, data: null, error: error?.message || 'Échec de chargement' };
+  }
+  render();
+};
+window.fpLoadBacklinkSummary = async function(button) {
+  const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
+  const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
+  if (!domain) return;
+  STATE.backlinks = { loading: true, domain, orgId };
+  if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
+  render();
+  try {
+    STATE.backlinks = await apiFetch('/api/seo/backlinks?domain=' + encodeURIComponent(domain));
+    STATE.backlinks.domain = domain;
+    STATE.backlinks.orgId = orgId;
+  } catch (error) {
+    STATE.backlinks = { available: false, domain, orgId, error: error?.message || 'Échec de chargement' };
+  }
+  render();
+};
+window.fpLoadBacklinkDetails = async function(button) {
+  const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
+  const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
+  if (!domain) return;
+  STATE.backlinkDetails = { orgId, domain, loading: true, data: null };
+  if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
+  render();
+  try {
+    const data = await apiFetch('/api/seo/backlinks/details?domain=' + encodeURIComponent(domain));
+    STATE.backlinkDetails = { orgId, domain, data };
+  } catch (error) {
+    STATE.backlinkDetails = { orgId, domain, data: null, error: error?.message || 'Échec de chargement' };
+  }
+  render();
 };
 
 // Default checklist
@@ -2125,7 +2174,7 @@ async function loadData(options = {}) {
     apiFetch('/api/me/storage').catch(() => null),
     apiFetch('/api/overview/checklist').catch(() => null),
     apiFetch('/api/notifications'),
-    _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
+    Promise.resolve(null), // DataForSEO backlink calls are explicitly user-triggered.
     _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
     'clients' in _preloaded ? Promise.resolve(_preloaded.clients) : apiFetch('/api/reports/clients'),
     apiFetch('/api/calendar-events'),
@@ -55286,43 +55335,55 @@ function renderCompetitor() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'backlinks') {
     const _blReal = STATE.backlinks;
-    const _blAvailable = _blReal && _blReal.available !== false;
-    const _blPlanRequired = !!(_blReal && _blReal.planRequired);
+    const _blDomain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
+    const _blOrgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
+    const _blHistoryState = STATE.backlinkHistory;
+    const _blHistory = _blHistoryState?.orgId === _blOrgId && _blHistoryState?.domain === _blDomain
+      ? _blHistoryState.data : null;
+    const _blDetailState = STATE.backlinkDetails;
+    const _blDetails = _blDetailState?.orgId === _blOrgId && _blDetailState?.domain === _blDomain
+      ? _blDetailState.data : null;
+    const _blAvailable = _blReal?.available === true;
+    const _blHistoryItems = Array.isArray(_blHistory?.items) ? _blHistory.items : [];
+    const _blLatest = _blHistoryItems.length ? _blHistoryItems[_blHistoryItems.length - 1] : null;
+    const _blPrevious = _blHistoryItems.length > 1 ? _blHistoryItems[_blHistoryItems.length - 2] : null;
+    const _blTrend = _blLatest && _blPrevious && _blLatest.backlinks != null && _blPrevious.backlinks != null
+      ? (_blLatest.backlinks > _blPrevious.backlinks ? 'up' : _blLatest.backlinks < _blPrevious.backlinks ? 'down' : 'stable')
+      : 'unknown';
     const blData = [
       {
         name: 'Vous',
-        auth:   _blAvailable ? _blReal.domainRating   : (PREVIEW_MODE ? 38  : null),
-        bl:     _blAvailable ? _blReal.totalBacklinks  : (PREVIEW_MODE ? 127 : null),
-        rd:     _blAvailable ? _blReal.totalDomains    : (PREVIEW_MODE ? 48  : null),
-        gained: _blAvailable ? _blReal.newBacklinks    : (PREVIEW_MODE ? 12  : null),
-        lost:   _blAvailable && _blReal.lostBacklinks != null ? -_blReal.lostBacklinks : (PREVIEW_MODE ? -2 : null),
-        trend: 'up',
+        auth: _blAvailable ? _blReal.domain_rank : null,
+        bl: _blAvailable ? _blReal.backlinks : null,
+        rd: _blAvailable ? _blReal.referring_domains : null,
+        gained: _blLatest?.new_backlinks ?? null,
+        lost: _blLatest?.lost_backlinks != null ? -_blLatest.lost_backlinks : null,
+        trend: _blTrend,
       },
       ...(comps.length > 0
-        ? comps.slice(0,3).map((c) => ({name:c.name,auth:c.auth||null,bl:null,rd:null,gained:null,lost:null,trend:'up'}))
-        : PREVIEW_MODE ? [
-            { name: 'Concurrent A', auth: 52, bl: 210, rd: 81, gained: 28, lost: -3, trend: 'up' },
-            { name: 'Concurrent B', auth: 35, bl: 89,  rd: 34, gained: 4,  lost: -8, trend: 'down' },
-            { name: 'Concurrent C', auth: 41, bl: 140, rd: 55, gained: 9,  lost: -1, trend: 'up' },
-          ] : []
+        ? comps.slice(0,3).map((c) => ({name:c.name || c.domain,auth:c.auth ?? c.domainRating ?? null,bl:null,rd:null,gained:null,lost:null,trend:'unknown'}))
+        : []
       ),
     ];
-    const linkOpps = PREVIEW_MODE ? [
-      { site: 'pagesjaunes.fr',         da: 72, type: 'Annuaire', effort: '10 min', gained: false },
-      { site: 'mairie-paris.fr',         da: 88, type: 'Local public', effort: '1h', gained: false },
-      { site: 'chambre-commerce-idf.fr', da: 61, type: 'Pro',   effort: '30 min', gained: false },
-      { site: 'yelp.fr',                 da: 68, type: 'Avis',   effort: '15 min', gained: true  },
-    ] : [];
+    const _linkItems = Array.isArray(_blDetails?.items) ? _blDetails.items : (Array.isArray(_blReal?.items) ? _blReal.items : []);
     return `
-      ${_blPlanRequired ? `<div style="padding:14px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔒</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Données de liens non disponibles</div><div style="font-size:12px;color:var(--fp-text-muted)">Les données de backlinks ne sont pas accessibles avec la configuration actuelle.</div></div></div>` : ''}
-      ${aiBlock((blData.length > 1 ? "L'autorité de <strong>" + escHtml(blData[1].name) + "</strong> croît via des domaines locaux à fort DA." : "Analysez les backlinks de vos concurrents pour identifier des opportunités.") + (PREVIEW_MODE ? " Vous avez <strong>4 opportunités faciles de backlinks</strong> non exploitées (+14 DA potentiel). 2 backlinks perdus ce mois à récupérer en priorité." : (_blAvailable ? " Les données de backlinks sont disponibles." : " Les données de backlinks ne sont pas encore disponibles.")),
-        ['Voir les opportunités', 'Rapport backlinks', 'Alertes nouveaux liens'])}
+      <div class="fp-card fp-mb-20" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="font-size:12px;color:var(--fp-text-muted)">${_blDomain ? `Domaine analysé : <strong>${escHtml(_blDomain)}</strong>` : 'Lancez un audit de site pour sélectionner le domaine à analyser.'}
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Les appels de détails et d’historique utilisent DataForSEO et peuvent être facturés par ce fournisseur.</div>
+        </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpLoadBacklinkSummary(this)" ${!_blDomain || _blReal?.loading ? 'disabled' : ''}>
+          ${_blReal?.loading && _blReal?.domain === _blDomain ? 'Chargement…' : _blAvailable ? 'Actualiser le résumé' : 'Charger le résumé'}
+        </button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpLoadBacklinkHistory(this)" ${!_blDomain || _blHistoryState?.loading ? 'disabled' : ''}>
+          ${_blHistoryState?.loading && _blHistoryState?.domain === _blDomain ? 'Chargement…' : _blHistory ? 'Actualiser l’historique' : 'Charger l’historique (12 mois)'}
+        </button>
+      </div>
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Vos backlinks',     displayStat(_blReal?.totalBacklinks,  '127'), PREVIEW_MODE ? '+12 ce mois'   : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'up' : 'neutral')}
-        ${statCard('Domaines référents',displayStat(_blReal?.totalDomains,    '48'),  PREVIEW_MODE ? 'vs 81 leader'  : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'up' : 'neutral')}
-        ${statCard('Backlinks perdus',  displayStat(_blReal?.lostBacklinks,   '2'),   PREVIEW_MODE ? 'ce mois'       : (_blAvailable ? 'depuis les données de classement' : 'Données de classement indisponibles'), _blAvailable ? 'down' : 'neutral')}
-        ${statCard('Opportunités liens', linkOpps.filter(l => !l.gained).length, 'à exploiter', 'up')}
+        ${statCard('Vos backlinks', displayStat(_blReal?.backlinks, null), _blAvailable ? 'total DataForSEO' : _blReal?.error || 'Chargez le résumé DataForSEO', 'neutral')}
+        ${statCard('Domaines référents', displayStat(_blReal?.referring_domains, null), _blAvailable ? 'total DataForSEO' : 'Données indisponibles', 'neutral')}
+        ${statCard('Nouveaux liens', displayStat(_blLatest?.new_backlinks, null), _blLatest ? `période ${_blLatest.date}` : 'Historique non chargé', 'neutral')}
+        ${statCard('Liens perdus', displayStat(_blLatest?.lost_backlinks, null), _blLatest ? `période ${_blLatest.date}` : 'Historique non chargé', 'neutral')}
       </div>
 
       <!-- AUTHORITY + BL COMPARISON -->
@@ -55345,7 +55406,7 @@ function renderCompetitor() {
                   <td style="text-align:center">${b.rd != null ? b.rd : '—'}</td>
                   <td style="text-align:center;${b.gained!=null?'color:#22c55e;font-weight:600':''}">${b.gained != null ? '+' + b.gained : '—'}</td>
                   <td style="text-align:center;${b.lost!=null?'color:#ef4444;font-weight:600':''}">${b.lost != null ? b.lost : '—'}</td>
-                  <td style="text-align:center">${badge(b.trend==='up'?'↑ Croissance':'↓ Perte', b.trend==='up'?'#22c55e':'#ef4444')}</td>
+                  <td style="text-align:center">${b.trend === 'unknown' ? '—' : badge(b.trend==='up'?'↑ Hausse':b.trend==='down'?'↓ Baisse':'= Stable', b.trend==='up'?'#22c55e':b.trend==='down'?'#ef4444':'#94a3b8')}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -55353,55 +55414,46 @@ function renderCompetitor() {
         </div>
       </div>
 
-      <!-- LINK OPPORTUNITIES + VELOCITY -->
+      <!-- VERIFIED LINK DETAILS + HISTORY -->
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🔗 Opportunités de liens détectées</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${linkOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Données de classement indisponibles Advanced pour détecter des opportunités de liens</div>` : ''}${linkOpps.map(l => `
-              <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:${l.gained?'rgba(34,197,94,0.05)':'rgba(37,99,235,0.05)'};border:1px solid ${l.gained?'rgba(34,197,94,0.15)':'rgba(37,99,235,0.15)'}">
-                <div style="flex:1">
-                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(l.site)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${l.type} · DA ${l.da} · ${l.effort}</div>
-                </div>
-                ${l.gained
-                  ? `<span style="font-size:11px;color:#22c55e;font-weight:600">✓ Obtenu</span>`
-                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Obtenir un backlink','SEO Backlinks','medium')">Obtenir</button>`
-                }
-              </div>
-            `).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px">
+            <div class="fp-card-title">🔗 Détails de liens retournés</div>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpLoadBacklinkDetails(this)" ${!_blDomain || _blDetailState?.loading ? 'disabled' : ''}>
+              ${_blDetailState?.loading && _blDetailState?.domain === _blDomain ? 'Chargement…' : _blDetails ? 'Actualiser' : 'Charger 25 liens'}
+            </button>
           </div>
+          ${_blDetailState?.error && _blDetailState?.domain === _blDomain ? `<div style="padding:10px;color:#ef4444;font-size:12px">${escHtml(_blDetailState.error)}</div>` : ''}
+          ${_linkItems.length ? `<div style="display:flex;flex-direction:column;gap:8px">${_linkItems.slice(0,20).map(item => {
+            const from = item.url_from || item.domain_from || '';
+            const to = item.url_to || '';
+            const anchor = item.anchor || item.anchor_text || '';
+            return `<div style="padding:10px;border-radius:8px;background:var(--fp-bg-subtle);font-size:11px">
+              <div style="font-weight:600;overflow-wrap:anywhere">${escHtml(String(from || 'Source non fournie'))}</div>
+              ${to ? `<div style="color:var(--fp-text-muted);margin-top:3px">Cible : ${escHtml(String(to))}</div>` : ''}
+              ${anchor ? `<div style="color:var(--fp-text-faint);margin-top:3px">Ancre : ${escHtml(String(anchor))}</div>` : ''}
+              ${item.dofollow != null ? `<div style="color:var(--fp-text-faint);margin-top:3px">${item.dofollow ? 'Dofollow' : 'Nofollow'}${item.rank != null ? ` · rang ${item.rank}` : ''}</div>` : ''}
+              ${item.first_seen || item.last_seen ? `<div style="color:var(--fp-text-faint);margin-top:3px">Observé : ${escHtml(String(item.first_seen || '—'))} → ${escHtml(String(item.last_seen || '—'))}</div>` : ''}
+            </div>`;
+          }).join('')}</div>` : `<div style="padding:14px;color:var(--fp-text-muted);font-size:12px">
+            ${_blDetailState?.loading ? 'Chargement des détails DataForSEO…' : _blDetails?.reason === 'provider_error' ? 'DataForSEO ne répond pas. Réessayez plus tard.' : _blDetails?.reason === 'not_configured' ? 'DataForSEO n’est pas configuré pour cette organisation.' : _blDetails?.reason === 'no_details' ? 'Aucun détail de lien n’a été retourné pour ce domaine.' : _blAvailable ? 'Le résumé est disponible. Chargez les détails DataForSEO pour obtenir les URL sources.' : 'Les détails de liens apparaîtront après une réponse valide de DataForSEO.'}
+          </div>`}
         </div>
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📈 Vélocité d\'acquisition (mois récents)</div>
-          ${PREVIEW_MODE
-            ? `<div style="display:flex;gap:6px;align-items:flex-end;height:100px;padding-bottom:4px;margin-bottom:10px">
-            ${[{m:'Jan',v:3},{m:'Fév',v:5},{m:'Mar',v:4},{m:'Avr',v:8},{m:'Mai',v:12}].map(m=>`
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div style="font-size:10px;font-weight:700;color:#2563EB">${m.v}</div>
-                <div style="width:100%;max-width:40px;height:${Math.round(m.v/12*80)}px;background:linear-gradient(180deg,rgba(37,99,235,0.5),rgba(37,99,235,0.1));border-radius:4px 4px 0 0;border-top:2px solid #2563EB"></div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">${m.m}</div>
-              </div>
-            `).join('')}
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div style="padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;font-size:12px;color:var(--fp-accent)">
-              📈 Croissance +62% ce mois — meilleur mois depuis 6 mois
-            </div>
-            <div style="padding:8px 10px;background:rgba(34,197,94,0.05);border-radius:8px;border-left:3px solid #22c55e;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#22c55e">Tendance positive</strong> — Le rythme d'acquisition a doublé en 2 mois. À ce rythme, +18 domaines référents supplémentaires attendus en juin.
-            </div>
-            <div style="padding:8px 10px;background:rgba(245,158,11,0.05);border-radius:8px;border-left:3px solid #f59e0b;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#f59e0b">Opportunité</strong> — 3 domaines autorité (DA&gt;60) récemment identifiés dans votre niche. Contacter avant vos concurrents.
-            </div>
-            <div style="padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;border-left:3px solid #2563EB;font-size:11px;color:var(--fp-text-muted)">
-              <strong style="color:#2563EB">Objectif M+3</strong> — Maintenir &gt;10 liens/mois pour atteindre 80 domaines référents actifs (+63% vs aujourd'hui).
-            </div>
-          </div>`
-            : `<div style="padding:16px;text-align:center;color:var(--fp-text-muted);font-size:12px">
-              Données de vélocité backlinks disponibles avec les données de liens.
-            </div>`
-          }
+          <div class="fp-card-title" style="margin-bottom:14px">📈 Historique mensuel vérifié</div>
+          ${_blHistory?.error ? `<div style="padding:14px;color:#ef4444;font-size:12px">${escHtml(_blHistory.error)}</div>`
+            : !_blHistory ? `<div style="padding:14px;color:var(--fp-text-muted);font-size:12px">Chargez l’historique pour comparer les observations mensuelles.</div>`
+            : !_blHistory.available ? `<div style="padding:14px;color:var(--fp-text-muted);font-size:12px">${_blHistory.reason === 'provider_error' ? 'DataForSEO ne répond pas. Réessayez plus tard.' : _blHistory.reason === 'not_configured' ? 'DataForSEO n’est pas configuré pour cette organisation.' : 'Aucun historique DataForSEO disponible pour ce domaine sur la période demandée.'}</div>`
+            : `<div style="overflow-x:auto"><table class="fp-data-table"><thead><tr><th>Mois observé</th><th>Backlinks</th><th>Nouveaux</th><th>Perdus</th><th>Domaines référents</th></tr></thead><tbody>
+              ${_blHistoryItems.slice().reverse().map(point => `<tr>
+                <td>${escHtml(new Date(point.date + 'T00:00:00Z').toLocaleDateString(getLocale(), {month:'short',year:'numeric',timeZone:'UTC'}))}</td>
+                <td>${point.backlinks == null ? '—' : Number(point.backlinks).toLocaleString(getLocale())}</td>
+                <td>${point.new_backlinks == null ? '—' : '+' + Number(point.new_backlinks).toLocaleString(getLocale())}</td>
+                <td>${point.lost_backlinks == null ? '—' : Number(point.lost_backlinks).toLocaleString(getLocale())}</td>
+                <td>${point.referring_domains == null ? '—' : Number(point.referring_domains).toLocaleString(getLocale())}</td>
+              </tr>`).join('')}
+            </tbody></table></div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">Source : DataForSEO Backlinks History · ${escHtml(_blHistory.date_from || '')} — ${escHtml(_blHistory.date_to || '')}</div>`}
         </div>
       </div>
     `;
@@ -61243,6 +61295,18 @@ function renderGrowthKeywords() {
   };
 
   const activeTab = (window._kwTab || 'rankings');
+  const hasKeywordDomination = !!STATE.me?.addons?.keywordDomination;
+
+  window._fpLoadKeywordDomination = async function() {
+    try {
+      const report = await apiFetch('/api/keywords/domination');
+      STATE.keywordDominationReport = report;
+      render(STATE.currentSection);
+    } catch (err) {
+      STATE.keywordDominationError = err?.message || 'Analyse indisponible';
+      render(STATE.currentSection);
+    }
+  };
 
   window._fpLoadContentDecay = async function() {
     const target = document.getElementById('fp-content-decay-results');
@@ -61284,6 +61348,33 @@ function renderGrowthKeywords() {
   };
 
   function renderTab(tab) {
+    if (tab === 'domination') {
+      const report = STATE.keywordDominationReport;
+      if (!report && STATE.keywordDominationError) {
+        return `<div class="fp-card" role="alert" style="padding:20px;color:var(--fp-warning)">${escHtml(STATE.keywordDominationError)}</div>`;
+      }
+      if (!report) {
+        return `<div class="fp-card" style="padding:24px;text-align:center"><div style="color:var(--fp-text-muted);margin-bottom:12px">Analysez vos mots-clés suivis pour trouver les meilleures positions à conquérir.</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpLoadKeywordDomination()">Analyser mes opportunités</button></div>`;
+      }
+      const items = Array.isArray(report.opportunities) ? report.opportunities : [];
+      const atRisk = Array.isArray(report.atRisk) ? report.atRisk : [];
+      const summary = report.summary || {};
+      return `<div class="fp-stat-row fp-mb-16">
+        ${statCard('Suivis', summary.tracked || 0, 'mots-clés', 'neutral')}
+        ${statCard('Top 3', summary.top3 || 0, 'positions', 'up')}
+        ${statCard('À portée', summary.strikingDistance || 0, 'positions 4–20', 'up')}
+        ${statCard('En recul', summary.atRisk || 0, 'perte ≥ 3 positions', summary.atRisk ? 'down' : 'neutral')}
+      </div>
+      <div class="fp-card" style="padding:14px">
+        <div style="font-weight:700;color:var(--fp-text);margin-bottom:4px">Priorités de progression</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">Classement calculé uniquement à partir du volume, de la position et de la difficulté enregistrés. Ce score n’est pas une prévision de trafic.</div>
+        ${items.length ? `<div style="overflow-x:auto"><table class="fp-data-table"><thead><tr><th>Mot-clé</th><th>Position</th><th>Volume mensuel</th><th>Difficulté</th><th>Priorité</th><th>URL</th></tr></thead><tbody>${items.map(item => `<tr><td>${escHtml(item.keyword)}</td><td>${item.position ?? '—'}</td><td>${Number(item.searchVolume || 0).toLocaleString(getLocale())}</td><td>${item.difficulty ?? '—'}</td><td>${item.priorityScore}/100</td><td>${item.url ? `<a href="${escHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escHtml(item.url)}</a>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : `<div style="padding:16px;color:var(--fp-text-muted)">Aucune opportunité en positions 4 à 20 avec volume de recherche disponible.</div>`}
+      </div>
+      <div class="fp-card fp-mt-16" style="padding:14px">
+        <div style="font-weight:700;color:var(--fp-text);margin-bottom:10px">Mots-clés en recul (3 positions ou plus)</div>
+        ${atRisk.length ? atRisk.map(item => `<div style="padding:8px 0;border-top:1px solid var(--fp-border);display:flex;justify-content:space-between;gap:12px"><span>${escHtml(item.keyword)}</span><span style="color:var(--fp-danger)">−${Math.abs(item.change || 0)} · position ${item.position ?? '—'}</span></div>`).join('') : `<div style="color:var(--fp-text-muted)">Aucun recul significatif détecté dans les données enregistrées.</div>`}
+      </div>`;
+    }
     if (tab === 'rankings') {
       if (!kws.length) return `
         <div class="fp-card" style="text-align:center;padding:48px 24px">
@@ -61523,8 +61614,9 @@ function renderGrowthKeywords() {
         ['opportunities', '💡 Opportunités', opps.length],
         ['clusters', '🗂 Clusters IA', clusters.length],
         ['alerts', `🔔 Alertes${unread>0?' ('+unread+')':''}`, alerts.length],
+        ...(hasKeywordDomination ? [['domination', '🎯 Domination', STATE.keywordDominationReport?.summary?.tracked || 0]] : []),
       ].map(([id, label, cnt]) => `
-        <button onclick="window._kwTab='${id}';render(STATE.currentSection)" style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
+        <button onclick="window._kwTab='${id}';STATE.keywordDominationError=null;if('${id}'==='domination')STATE.keywordDominationReport=null;render(STATE.currentSection);if('${id}'==='domination')window._fpLoadKeywordDomination()" style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
           ${label} <span style="font-size:10px;opacity:0.7">${cnt}</span>
         </button>
       `).join('')}
@@ -70090,10 +70182,19 @@ window.FP_CRM_API = {
 window.FP_MARKET_INTEL_API = {
   async load() {
     try {
-      const data = await apiFetch('/api/market-intelligence').catch(()=>null);
+      const [dashboard, reportResponse] = await Promise.allSettled([
+        apiFetch('/api/market-intelligence'),
+        apiFetch('/api/market-intelligence/reports'),
+      ]);
+      const data = dashboard.status === 'fulfilled' ? dashboard.value : null;
       if (!data) return;
+      const reportData = reportResponse.status === 'fulfilled' ? reportResponse.value : null;
       window.FP_DATA = window.FP_DATA || {};
-      window.FP_DATA.marketIntel = { ...data, loadedAt: Date.now() };
+      window.FP_DATA.marketIntel = {
+        ...data,
+        reports: Array.isArray(reportData?.reports) ? reportData.reports : [],
+        loadedAt: Date.now(),
+      };
     } catch(e) { console.warn('[FP_MARKET_INTEL_API]', e); }
   },
   async generateReport() {
@@ -70137,7 +70238,7 @@ window.FP_REVIEW_INTEL_API = {
     } catch(e) { console.warn('[FP_REVIEW_INTEL_API]', e); }
   },
   async generateReply(reviewId, tone, language) {
-    return await apiFetch(`/api/review-intelligence/reply/${reviewId}`, { method:'POST', body: JSON.stringify({ tone, language }) });
+    return await apiFetch(`/api/review-intelligence/reply/${encodeURIComponent(reviewId)}`, { method:'POST', body: JSON.stringify({ tone, language }) });
   },
   async analyzeReview(data) {
     return await apiFetch('/api/review-intelligence/analyze', { method:'POST', body: JSON.stringify(data) });
@@ -70407,11 +70508,11 @@ function renderMarketIntelligence() {
     <div class="fp-section-header">
       <div>
         <h1>🧠 Market Intelligence</h1>
-        <div class="fp-section-sub">Tendances · Opportunités · Mouvements concurrents · Signaux marché</div>
+        <div class="fp-section-sub">Données GSC mesurées · Opportunités calculées · Mouvements issus des observations de classement</div>
       </div>
       <div class="fp-section-actions">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_MARKET_INTEL_API?.load().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info', fpT('Génération rapport IA…'));window.FP_MARKET_INTEL_API?.generateReport().then(r=>{showToast('success', fpT('Rapport généré !'));window.FP_MARKET_INTEL_API.load();render(STATE.currentSection)})">🤖 Générer rapport IA</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_MARKET_INTEL_API?.generateReport().then(r=>{if(!r?.ok)throw new Error(r?.error||'Rapport indisponible');showToast('success','Rapport de synthèse généré');window.FP_MARKET_INTEL_API.load().then(()=>render(STATE.currentSection))}).catch(e=>showToast('error',e?.message||'Échec de génération'))">Générer le rapport</button>
       </div>
     </div>
 
@@ -70427,9 +70528,9 @@ function renderMarketIntelligence() {
       ${statCard('Tendances détectées', String(trends.length), `dont ${stats.emergingTrends||0} émergentes`, 'up')}
       ${statCard('Score moy. opport.', String(stats.avgOpportunityScore||0)+'/100', 'potentiel de croissance', stats.avgOpportunityScore>70?'up':'neutral')}
       ${statCard('Opportunités', String(opportunities.length), 'à exploiter maintenant', 'up')}
-      ${statCard('Mouvements concurrents', String(movements.length), 'détectés ce mois', movements.length>0?'down':'up')}
+      ${statCard('Mouvements concurrents', String(movements.length), 'sur les observations disponibles', movements.length>0?'down':'neutral')}
       ${statCard('Signaux marché', String(signals.length), 'actifs', signals.filter(s=>s.severity==='critical').length>0?'down':'neutral')}
-      ${statCard('Rapports IA', String(reports.length), 'générés', 'up')}
+      ${statCard('Rapports de synthèse', String(reports.length), 'enregistrés', 'neutral')}
     </div>
 
     <!-- TABS -->
@@ -70540,16 +70641,17 @@ function renderMarketIntelligence() {
     ` : activeTab==='competitors' ? `
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">⚔️ Mouvements concurrents</div>
-        ${movements.length===0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">Aucun mouvement concurrent détecté. Lancez une analyse pour commencer.</div>` : movements.map((m) => `
+        ${movements.length===0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">Aucun mouvement mesuré à partir des observations de classement disponibles.</div>` : movements.map((m) => `
           <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <div style="font-size:20px">${m.impact_level==='high'?'🚨':m.impact_level==='medium'?'⚠️':'ℹ️'}</div>
+            <div style="font-size:20px">${m.type==='ranking_gain'?'📈':m.type==='ranking_loss'?'📉':'ℹ️'}</div>
             <div style="flex:1">
-              <div style="font-size:13px;font-weight:600">${escHtml(m.competitor_domain)}</div>
+              <div style="font-size:13px;font-weight:600">${escHtml(m.competitor || m.competitor_domain || 'Concurrent')}</div>
               <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.description||m.movement_type)}</div>
-              ${m.keywords_gained?.length?`<div style="font-size:10px;color:var(--fp-success);margin-top:3px">+${m.keywords_gained.length} mots-clés gagnés</div>`:''}
+              ${m.keyword ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">Requête observée : ${escHtml(m.keyword)}</div>` : ''}
+              ${m.previous_observed_at && m.detected_at ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">Comparaison : ${new Date(m.previous_observed_at).toLocaleDateString(getLocale())} → ${new Date(m.detected_at).toLocaleDateString(getLocale())}</div>` : ''}
             </div>
             <div style="text-align:right">
-              <span style="font-size:9px;padding:2px 8px;border-radius:8px;background:${m.impact_level==='high'?'rgba(239,68,68,0.15)':'rgba(245,158,11,0.1)'};color:${m.impact_level==='high'?'var(--fp-danger)':'var(--fp-warning)'}">${m.impact_level}</span>
+              <span style="font-size:9px;padding:2px 8px;border-radius:8px;background:${m.type==='ranking_gain'?'rgba(239,68,68,0.15)':'rgba(34,197,94,0.1)'};color:${m.type==='ranking_gain'?'var(--fp-danger)':'var(--fp-success)'}">${m.type==='ranking_gain'?'Concurrent en hausse':m.type==='ranking_loss'?'Concurrent en baisse':escHtml(m.type||'Mouvement')}</span>
               <div style="font-size:9px;color:var(--fp-text-faint);margin-top:3px">${m.detected_at?new Date(m.detected_at).toLocaleDateString(getLocale()):''}</div>
             </div>
           </div>
@@ -70560,8 +70662,8 @@ function renderMarketIntelligence() {
         <div class="fp-card" style="text-align:center;padding:32px">
           <div style="font-size:32px;margin-bottom:12px">🤖</div>
           <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Aucun rapport généré</div>
-          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Générez votre premier rapport IA de Market Intelligence.</div>
-          <button class="fp-btn fp-btn-primary" onclick="showToast('info', fpT('Génération…'));window.FP_MARKET_INTEL_API?.generateReport().then(r=>{showToast('success', fpT('Rapport prêt !'));window.FP_MARKET_INTEL_API.load();render(STATE.currentSection)})">🤖 Générer rapport IA</button>
+          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Générez un rapport de synthèse à partir des données marché disponibles.</div>
+          <button class="fp-btn fp-btn-primary" onclick="window.FP_MARKET_INTEL_API?.generateReport().then(r=>{if(!r?.ok)throw new Error(r?.error||'Rapport indisponible');showToast('success','Rapport de synthèse généré');window.FP_MARKET_INTEL_API.load().then(()=>render(STATE.currentSection))}).catch(e=>showToast('error',e?.message||'Échec de génération'))">Générer le rapport</button>
         </div>
       ` : reports.map((r) => `
         <div class="fp-card fp-mb-12">
@@ -70570,6 +70672,10 @@ function renderMarketIntelligence() {
             <span style="font-size:10px;color:var(--fp-text-faint)">${r.generated_at?new Date(r.generated_at).toLocaleDateString(getLocale()):''}</span>
           </div>
           ${r.summary?`<div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;white-space:pre-wrap">${escHtml(r.summary)}</div>`:''}
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;color:var(--fp-accent);font-size:11px">Consulter les données enregistrées</summary>
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:10px;color:var(--fp-text-muted);margin-top:8px">${escHtml(JSON.stringify(r.data ?? {}, null, 2))}</pre>
+          </details>
         </div>
       `).join('')}
     ` : `<div style="padding:24px;text-align:center;color:var(--fp-text-muted)">Contenu en cours de chargement…</div>`}
@@ -71647,6 +71753,8 @@ function renderLocalSEOReviews() {
             const _rId = 'fp-rv-' + _ri;
             // HTML-escape r.id for use in data-attributes; the browser unescapes it into dataset.
             const _safeApiId = escHtml(String(r.id || ''));
+             const _replyDraft = r.ai_reply || window._fpReviewReplyDrafts?.[String(r.id || '')] || '';
+             const _reviewText = String(r.review_text || r.text || r.comment || '');
             return `
             <div id="${_rId}" style="padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);cursor:pointer;transition:border-color 0.15s" onclick="(function(el){el.classList.toggle('fp-rv-expanded');el.querySelector('.fp-rv-body').style.display=el.classList.contains('fp-rv-expanded')?'block':'none';})(document.getElementById('${_rId}'))">
               <div style="display:flex;align-items:flex-start;gap:10px">
@@ -71658,19 +71766,19 @@ function renderLocalSEOReviews() {
                     <span style="font-size:9px;padding:1px 6px;border-radius:6px;background:${r.sentiment === 'positive' ? 'rgba(34,197,94,0.15)' : r.sentiment === 'negative' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)'};color:${sentimentColor(r.sentiment)}">${r.sentiment || '—'}</span>
                     <span style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">▾</span>
                   </div>
-                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml((r.review_text || '').slice(0, 120))}${(r.review_text || '').length > 120 ? '…' : ''}</div>
+                   <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(_reviewText.slice(0, 120))}${_reviewText.length > 120 ? '…' : ''}</div>
                 </div>
               </div>
               <div class="fp-rv-body" style="display:none;margin-top:10px">
-                ${(r.review_text || '') ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(r.review_text || '')}</div>` : ''}
-                ${r.ai_reply ? `
+                ${_reviewText ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(_reviewText)}</div>` : ''}
+                ${_replyDraft ? `
                   <div style="padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
-                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA GÉNÉRÉE</div>
-                    <div class="fp-rv-ai-text" style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(r.ai_reply || '')}</div>
+                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 BROUILLON IA — À RELIRE AVANT PUBLICATION</div>
+                    <div class="fp-rv-ai-text" style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(_replyDraft)}</div>
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-id="${_rId}" style="margin-top:6px;font-size:9px" onclick="event.stopPropagation();(function(btn){var el=document.getElementById(btn.dataset.rvId);var txt=el&&el.querySelector('.fp-rv-ai-text');if(txt&&navigator.clipboard)navigator.clipboard.writeText(txt.textContent||'').then(()=>showToast('success',fpT('Réponse copiée')));})(this)">📋 Copier la réponse</button>
                   </div>
                 ` : isPro ? `
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-api-id="${_safeApiId}" style="font-size:10px" onclick="event.stopPropagation();(function(btn){var id=btn.dataset.rvApiId;showToast('info',fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional','fr').then(function(){showToast('success',fpT('Réponse générée !'));window.FP_REVIEW_INTEL_API.load();render(STATE.currentSection);});})(this)">🤖 Générer réponse IA</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-api-id="${_safeApiId}" style="font-size:10px" onclick="event.stopPropagation();(function(btn){var id=btn.dataset.rvApiId;btn.disabled=true;showToast('info',fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional','fr').then(function(result){if(!result||result.ok!==true||!result.reply)throw new Error('REPLY_GENERATION_FAILED');window._fpReviewReplyDrafts=window._fpReviewReplyDrafts||{};window._fpReviewReplyDrafts[id]=result.reply;showToast('success',fpT('Réponse générée !'));render(STATE.currentSection);}).catch(function(){showToast('error',fpT('Impossible de générer la réponse. Réessayez.'));btn.disabled=false;});})(this)">🤖 Générer un brouillon IA</button>
                 ` : `<div style="font-size:10px;color:var(--fp-text-faint)">Réponses IA — Pro requis</div>`}
               </div>
             </div>`;

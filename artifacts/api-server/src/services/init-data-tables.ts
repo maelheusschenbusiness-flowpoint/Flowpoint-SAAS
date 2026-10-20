@@ -949,6 +949,37 @@ export async function initDataTables(): Promise<void> {
         created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    // Market Intelligence report snapshots. This table is deliberately
+    // separate from market_trends/opportunities: those are derived datasets,
+    // not immutable report history.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS ai_market_reports (
+        id           TEXT PRIMARY KEY,
+        org_id       TEXT NOT NULL DEFAULT 'default',
+        title        TEXT NOT NULL,
+        summary      TEXT NOT NULL DEFAULT '',
+        data         JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by   TEXT,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE ai_market_reports ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default'`);
+    await run(client, `ALTER TABLE ai_market_reports ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''`);
+    await run(client, `ALTER TABLE ai_market_reports ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT ''`);
+    await run(client, `ALTER TABLE ai_market_reports ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb`);
+    await run(client, `ALTER TABLE ai_market_reports ADD COLUMN IF NOT EXISTS created_by TEXT`);
+    await run(client, `ALTER TABLE ai_market_reports ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+    await run(client, `CREATE INDEX IF NOT EXISTS ai_market_reports_org_history_idx ON ai_market_reports (org_id, generated_at DESC, id DESC)`);
+    await run(client, `ALTER TABLE ai_market_reports ENABLE ROW LEVEL SECURITY`);
+    for (const [op, cmd] of [
+      ["select", "FOR SELECT USING (org_id = current_setting('app.current_org_id', true))"],
+      ["insert", "FOR INSERT WITH CHECK (org_id = current_setting('app.current_org_id', true))"],
+      ["update", "FOR UPDATE USING (org_id = current_setting('app.current_org_id', true))"],
+      ["delete", "FOR DELETE USING (org_id = current_setting('app.current_org_id', true))"],
+    ] as [string, string][]) {
+      await run(client, `DROP POLICY IF EXISTS "tenant_${op}" ON ai_market_reports`);
+      await run(client, `CREATE POLICY "tenant_${op}" ON ai_market_reports ${cmd}`);
+    }
     await run(client, `
       CREATE TABLE IF NOT EXISTS ai_monthly_usage (
         id             TEXT PRIMARY KEY,
@@ -2759,6 +2790,7 @@ export async function initDataTables(): Promise<void> {
         )
       `);
       await applyTenantRls("dataforseo_quota");
+      await applyTenantRls("ai_market_reports");
 
       // ── roles ───────────────────────────────────────────────────────────────
       await run(client, `

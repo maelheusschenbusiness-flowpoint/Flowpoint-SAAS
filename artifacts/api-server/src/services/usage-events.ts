@@ -61,6 +61,15 @@ export async function recordUsageEvent(orgId: string, kind: string): Promise<voi
   }
 }
 
+/** Strict counterpart for quota-bearing operations that must not succeed unmetered. */
+export async function recordUsageEventStrict(orgId: string, kind: string): Promise<void> {
+  if (!orgId || orgId === "default" || !USAGE_EVENT_KINDS.has(kind)) {
+    throw new Error("Invalid usage event identity or kind");
+  }
+  await ensureTable();
+  await pool.query(`INSERT INTO usage_events (org_id, kind) VALUES ($1, $2)`, [orgId, kind]);
+}
+
 /** Current-month counts per kind for an org. Returns {} on failure. */
 export async function getMonthlyUsageCounts(orgId: string): Promise<Record<string, number>> {
   if (!orgId) return {};
