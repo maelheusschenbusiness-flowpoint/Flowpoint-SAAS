@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
+      "src/services/keyword-domination.test.ts",
       "src/services/global-monitoring.test.ts",
       "src/services/forecasting-service.test.ts",
       "src/services/market-intel-service.test.ts",
