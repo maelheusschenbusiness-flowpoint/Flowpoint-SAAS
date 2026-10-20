@@ -55385,8 +55385,6 @@ function renderCompetitor() {
         ${statCard('Nouveaux liens', displayStat(_blLatest?.new_backlinks, null), _blLatest ? `période ${_blLatest.date}` : 'Historique non chargé', 'neutral')}
         ${statCard('Liens perdus', displayStat(_blLatest?.lost_backlinks, null), _blLatest ? `période ${_blLatest.date}` : 'Historique non chargé', 'neutral')}
       </div>
-
-      <!-- AUTHORITY + BL COMPARISON -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('link').replace('stroke="currentColor"','stroke="#06b6d4"')}
@@ -55487,8 +55485,8 @@ function renderCompetitor() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Zones où vous gagnez', localComp.filter(z => z.comp1!=null && z.yours <= z.comp1).length + '/' + localComp.length, 'vs meilleur concurrent', 'up')}
-        ${statCard('Note GBP moy.', displayStat(null, '4.4★'), PREVIEW_MODE ? 'vs 4.6 concurrents' : 'Connectez GBP', 'neutral')}
-        ${statCard('Avis total', displayStat(null, '47'), PREVIEW_MODE ? 'vs 116 moy. concurrents' : 'Connectez GBP', 'neutral')}
+        ${statCard('Note GBP moy.', displayStat(STATE.localSeo?.avgRating, '—'), STATE.localSeo?.avgRating != null ? 'données de votre fiche GBP' : 'Connectez GBP', 'neutral')}
+        ${statCard('Avis total', displayStat(STATE.localSeo?.reviewCount, '—'), STATE.localSeo?.reviewCount != null ? 'données de votre fiche GBP' : 'Connectez GBP', 'neutral')}
         ${statCard('Avantage zones', localComp.filter(z => z.comp1!=null && z.yours < z.comp1).length, 'territoires dominés', 'up')}
       </div>
 
