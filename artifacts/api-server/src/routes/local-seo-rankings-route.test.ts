@@ -242,4 +242,10 @@ describe("Local SEO ranking route — durable history and quota", () => {
     expect(res.body.history).toBeUndefined();
     expect(res.body.usage).toBeUndefined();
   });
+
+      it("requires a domain for backlink analysis instead of querying a placeholder domain", async () => {
+        const res = await request(makeApp()).get("/api/seo/backlinks");
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe("INVALID_DOMAIN");
+      });
 });
