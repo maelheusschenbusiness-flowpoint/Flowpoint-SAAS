@@ -340,8 +340,8 @@ export async function getCompetitors(
 
 export async function getBacklinks(
   domain: string, orgId = "default"
-): Promise<{ referring_domains: number; backlinks: number; domain_rank: number; total: number; dofollow: number; items: Record<string, unknown>[] }> {
-  const empty = { referring_domains: 0, backlinks: 0, domain_rank: 0, total: 0, dofollow: 0, items: [] };
+): Promise<{ available: boolean; referring_domains: number; backlinks: number; domain_rank: number; total: number; dofollow: number; items: Record<string, unknown>[] }> {
+  const empty = { available: false, referring_domains: 0, backlinks: 0, domain_rank: 0, total: 0, dofollow: 0, items: [] };
   if (!await isDataForSEOConfigured(orgId)) return empty;
   try {
     type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
@@ -350,6 +350,7 @@ export async function getBacklinks(
     const total    = Number(r["backlinks"]          ?? 0);
     const dofollow = Number(r["dofollow_links"]      ?? 0);
     return {
+      available: true,
       referring_domains: Number(r["referring_domains"] ?? 0),
       backlinks:         total,
       domain_rank:       Number(r["rank"]              ?? 0),
