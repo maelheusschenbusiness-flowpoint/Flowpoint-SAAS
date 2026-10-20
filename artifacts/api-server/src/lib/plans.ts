@@ -380,6 +380,21 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   aiCreditsPack500k:    { name: "+500 000 crédits IA",       category: "IA",           description: "Pack de crédits IA", priceEur: 19, oneTime: true, quantity: true },
 };
 
+/** Development-only catalogue labels; billing quotes continue using canonical prices. */
+export const DEVELOPMENT_ADDON_DISPLAY_PRICES: Readonly<Record<string, number>> = {
+  marketIntelligence: 12,
+  aiCro: 12,
+  revenueLeak: 12,
+  aiForecasting: 15,
+};
+
+export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NODE_ENV"]): number | undefined {
+  const canonicalPrice = ADDON_DEFINITIONS[addonKey]?.priceEur;
+  if (canonicalPrice === undefined) return undefined;
+  if (nodeEnv === "production") return canonicalPrice;
+  return DEVELOPMENT_ADDON_DISPLAY_PRICES[addonKey] ?? canonicalPrice;
+}
+
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
   "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist",
