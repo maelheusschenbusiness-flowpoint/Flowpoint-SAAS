@@ -22,6 +22,7 @@ export default defineConfig({
       "src/services/integration-response.test.ts",
       "src/services/executive-report-facts.test.ts",
       "src/services/review-intelligence-themes.test.ts",
+      "src/services/review-intel-reply.test.ts",
       "src/services/local-maps-summary.test.ts",
       "src/services/gbp-posting-publish.test.ts",
       // Conversion B — fp_lid attribution
