@@ -70242,13 +70242,19 @@ window.FP_PERMISSIONS_API = {
   async load() {
     try {
       const data = await apiFetch('/api/permissions').catch(()=>null);
-      if (!data) return;
       window.FP_DATA = window.FP_DATA || {};
+      if (!data) {
+        window.FP_DATA.permissions = { entitlementRequired: true };
+        return;
+      }
       window.FP_DATA.permissions = { ...data, loadedAt: Date.now() };
     } catch(e) { console.warn('[FP_PERMISSIONS_API]', e); }
   },
   async createRole(data) {
     return await apiFetch('/api/roles/create', { method:'POST', body: JSON.stringify(data) });
+  },
+  async updateRole(id, data) {
+    return await apiFetch(`/api/roles/update/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify(data) });
   },
   async deleteRole(id) {
     return await apiFetch(`/api/roles/delete/${id}`, { method:'DELETE' });
@@ -70256,6 +70262,30 @@ window.FP_PERMISSIONS_API = {
   async assignRole(userId, roleId) {
     return await apiFetch('/api/team/permissions', { method:'PATCH', body: JSON.stringify({ userId, roleId }) });
   },
+};
+window.fpSetRolePermission = async function(input) {
+  if (!input?.dataset) return;
+  const { roleId, resource, action } = input.dataset;
+  const data = window.FP_DATA?.permissions;
+  const role = data?.roles?.find(r => String(r.id) === String(roleId));
+  if (!role || !resource || !action) return;
+  const permissions = JSON.parse(JSON.stringify(role.permissions || {}));
+  const current = Array.isArray(permissions[resource]) ? permissions[resource] : [];
+  permissions[resource] = input.checked
+    ? [...new Set([...current, action])]
+    : current.filter(value => value !== action);
+  input.disabled = true;
+  try {
+    const result = await window.FP_PERMISSIONS_API.updateRole(roleId, { permissions });
+    if (!result?.ok) throw new Error(result?.error || fpT('Échec de mise à jour'));
+    await window.FP_PERMISSIONS_API.load();
+    render(STATE.currentSection);
+  } catch (error) {
+    input.checked = !input.checked;
+    showToast('error', String(error?.message || error));
+  } finally {
+    input.disabled = false;
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -70719,13 +70749,13 @@ function renderMarketIntelligence() {
 // RENDER: PERMISSIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderPermissions() {
-  const plan = STATE.me?.plan || 'Pro';
-  const isStd = plan === 'Standard';
-  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const permData = window.FP_DATA?.permissions || {};
+  const isUltra = permData.enterprisePermissionsActive === true;
+  const isStd = !isUltra;
   const roles = permData.roles || [];
   const stats = permData.stats || {};
   const resources = permData.resources || [];
+  const actions = permData.actions || [];
   // Permissions sub-tabs: navigateSub() sets STATE.subRoute — read that first,
   // fall back to window._permTab for backward compat with any older callers.
   const activeTab = STATE.subRoute || window._permTab || 'roles';
@@ -70741,7 +70771,7 @@ function renderPermissions() {
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">${fpT('+ Créer un rôle')}</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">" + fpT("Permissions avancées — Pro requis") + "</div><div style="font-size:12px;color:var(--fp-text-muted)">" + fpT("Rôles personnalisés, matrice de permissions et audit de sécurité.") + "</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
+      ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Add-on Enterprise Permissions requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Les rôles personnalisés et leurs permissions sont disponibles lorsque l’add-on est actif.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.location.href='pricing.html?from=dashboard'">${fpT('Voir les add-ons')}</button></div>` : ''}
 
     ${aiBlock(
       `${stats.totalRoles||0} ${fpT('rôles configurés dont')} ${stats.customRoles||0} ${fpT('personnalisés.')} ${stats.securityAlerts>0?`<strong>${stats.securityAlerts} ${fpT(stats.securityAlerts>1?'alertes sécurité':'alerte sécurité')}</strong> ${fpT('dans les 24h.')}`:' '+fpT('Aucune alerte sécurité. Accès nominal.')}`,
@@ -70751,7 +70781,7 @@ function renderPermissions() {
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
       ${statCard('Rôles total', String(stats.totalRoles||0), 'système + personnalisés', 'up')}
-      ${statCard('Rôles personnalisés', String(stats.customRoles||0), isUltra?'Ultra actif':'Ultra requis', isUltra?'up':'neutral')}
+      ${statCard('Rôles personnalisés', String(stats.customRoles||0), isUltra?'Add-on actif':'Add-on requis', isUltra?'up':'neutral')}
       ${statCard('Changements (7j)', String(stats.recentChanges||0), 'modifications de permissions', 'neutral')}
       ${statCard('Alertes sécurité', String(stats.securityAlerts||0), 'dans les 24h', stats.securityAlerts>0?'down':'up')}
     </div>
@@ -70776,6 +70806,15 @@ function renderPermissions() {
               ${!r.is_system&&isUltra?`
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._showAssignRoleModal('${escHtml(r.id)}','${escHtml(r.name)}')">Attribuer</button>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_PERMISSIONS_API?.deleteRole('${escHtml(r.id)}').then(()=>{showToast('success','Rôle supprimé');window.FP_PERMISSIONS_API.load();render(STATE.currentSection)})">✕</button>
+              `:''}
+              ${!r.is_system&&isUltra?`
+                <details style="flex-basis:100%;margin:8px 0 4px">
+                  <summary style="cursor:pointer;color:var(--fp-accent);font-size:11px">${fpT('Matrice des permissions')} · ${fpT('Configurer')}</summary>
+                  <div style="display:grid;grid-template-columns:minmax(110px,1.2fr) repeat(${actions.length},minmax(55px,1fr));gap:5px;align-items:center;margin-top:10px">
+                    <span></span>${actions.map(action=>`<span style="font-size:10px;text-align:center;color:var(--fp-text-muted)">${escHtml(action)}</span>`).join('')}
+                    ${resources.map(resource=>`<span style="font-size:10px;color:var(--fp-text-soft)">${escHtml(resource)}</span>${actions.map(action=>`<label style="text-align:center"><input type="checkbox" aria-label="${escHtml(resource)} ${escHtml(action)}" data-role-id="${escHtml(r.id)}" data-resource="${escHtml(resource)}" data-action="${escHtml(action)}" ${Array.isArray(r.permissions?.[resource])&&r.permissions[resource].includes(action)?'checked':''} onchange="window.fpSetRolePermission(this)"></label>`).join('')}`).join('')}
+                  </div>
+                </details>
               `:''}
             </div>
           `).join('')}

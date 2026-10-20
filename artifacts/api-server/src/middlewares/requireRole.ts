@@ -1,5 +1,6 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger.js";
+import { resolveEnterprisePermission, requestPermission } from "../services/enterprise-permission-engine.js";
 
 /**
  * Role hierarchy (higher = more privileged).
@@ -34,9 +35,41 @@ export function requireRole(allowedRoles: string[]): (req: Request, res: Respons
     }
     // service credential bypasses all role checks
     if (role === "service" || allowedRoles.includes(role)) {
-      next();
+      // Owner/admin boundaries remain fixed. Enterprise roles refine access
+      // only for member/viewer callers on resource routes covered by the matrix.
+      if (role === "owner" || role === "admin") { next(); return; }
+    }
+    const permission = requestPermission(req.method, req.originalUrl || req.url);
+    const identity = req.orgContext as (typeof req.orgContext & { userId?: string }) | undefined;
+    const orgId = (req as Request & { orgId?: string }).orgId;
+    const plan = (req as Request & { me?: { plan?: string } }).me?.plan;
+    if (permission && permission.action !== "view" && role === "member" && allowedRoles.includes("member")) {
+      if (!orgId || !identity?.userId) {
+        res.status(503).json({ error: "Permission identity unavailable. Please try again." });
+        return;
+      }
+      void resolveEnterprisePermission(orgId, identity.userId, plan, permission.resource, permission.action)
+        .then(decision => {
+          if (decision === true) { next(); return; }
+          if (decision === false) {
+            res.status(403).json({ error: "Forbidden: enterprise role does not allow this action", resource: permission.resource, action: permission.action });
+            return;
+          }
+          if (allowedRoles.includes(role)) { next(); return; }
+          denyRole(req, res, role, allowedRoles);
+        })
+        .catch(err => {
+          logger.error({ err, orgId, userId: identity.userId }, "[RBAC] Enterprise permission lookup failed");
+          res.status(503).json({ error: "Permission status unavailable. Please try again." });
+        });
       return;
     }
+    if (role === "service" || allowedRoles.includes(role)) { next(); return; }
+    denyRole(req, res, role, allowedRoles);
+  };
+}
+
+function denyRole(req: Request, res: Response, role: string, allowedRoles: string[]): void {
     logger.warn(
       { method: req.method, url: req.url, role, required: allowedRoles },
       "[RBAC] Access denied — insufficient role"
@@ -45,7 +78,6 @@ export function requireRole(allowedRoles: string[]): (req: Request, res: Respons
       error: `Forbidden: requires one of [${allowedRoles.join(", ")}]`,
       yourRole: role,
     });
-  };
 }
 
 // ── Convenience role guards aligned with the spec permission matrix ────────────
