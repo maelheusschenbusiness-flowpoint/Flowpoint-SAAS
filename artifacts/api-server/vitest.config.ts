@@ -31,6 +31,8 @@ export default defineConfig({
       "src/services/review-intelligence-themes.test.ts",
       "src/services/review-intel-reply.test.ts",
       "src/services/local-maps-summary.test.ts",
+      "src/services/local-heatmap-grid.test.ts",
+      "src/services/dataforseo-coordinate-fixture.test.ts",
       "src/services/gbp-posting-publish.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",

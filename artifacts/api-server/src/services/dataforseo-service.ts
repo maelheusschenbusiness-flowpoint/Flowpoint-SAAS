@@ -683,6 +683,64 @@ export async function getGoogleMapsResults(
   }
 }
 
+/** Google Maps results for one measured point in a local geo grid. */
+export async function getGoogleMapsResultsAtCoordinate(
+  keyword: string,
+  latitude: number,
+  longitude: number,
+  orgId = "default",
+): Promise<{ results: Array<{ name: string; rank: number }>; error?: string }> {
+  if (!await isDataForSEOConfigured(orgId)) return { results: [], error: "not_configured" };
+  try {
+    type DFSResult = Array<{
+      status_code?: number;
+      status_message?: string;
+      result?: Array<{
+        items?: Array<{
+          type: string;
+          title?: string;
+          rank_group?: number;
+          rank_absolute?: number;
+        }>;
+      }>;
+    }>;
+    const coordinate = `${latitude.toFixed(7)},${longitude.toFixed(7)},17z`;
+    const data = await dfsRequest<DFSResult>("/serp/google/maps/live/advanced", [{
+      keyword,
+      location_coordinate: coordinate,
+      language_code: "fr",
+      depth: 20,
+      search_places: false,
+      search_this_area: true,
+    }], orgId);
+    const task = data[0];
+    if (!task || task.status_code !== 20000) {
+      logger.warn({
+        statusCode: task?.status_code ?? null,
+        statusMessage: task?.status_message ?? null,
+        keyword,
+        latitude,
+        longitude,
+      }, "[dfs] coordinate maps task failed");
+      return { results: [], error: "provider_error" };
+    }
+    const allItems = task.result?.[0]?.items ?? [];
+    const mapItems = allItems.filter(item => item.type === "maps_search" || item.type === "local_pack");
+    if (mapItems.some(item => !Number.isInteger(item.rank_group) || item.rank_group! < 1)) {
+      logger.warn({ keyword, latitude, longitude }, "[dfs] coordinate maps response is missing a valid rank_group");
+      return { results: [], error: "invalid_provider_response" };
+    }
+    return {
+      results: mapItems
+        .map(item => ({ name: item.title ?? "", rank: item.rank_group! }))
+        .filter(item => item.name && item.rank > 0),
+    };
+  } catch (error) {
+    logger.warn({ error, keyword, latitude, longitude }, "[dfs] coordinate maps lookup failed");
+    return { results: [], error: "provider_error" };
+  }
+}
+
 // ── AI Visibility (LLM) ───────────────────────────────────────────────────────
 
 export async function getAIVisibility(
