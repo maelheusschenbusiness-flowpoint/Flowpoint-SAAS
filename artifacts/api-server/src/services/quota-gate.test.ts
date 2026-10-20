@@ -22,4 +22,9 @@ describe("resolveQuotaGate", () => {
     const check = vi.fn().mockRejectedValue(new Error("database unavailable"));
     await expect(resolveQuotaGate(check, "exports", "org-a")).resolves.toMatchObject({ status: "unavailable" });
   });
+
+  it("fails closed when quota data is marked unavailable by the billing layer", async () => {
+    const check = vi.fn().mockResolvedValue({ allowed: true, used: 0, limit: 100, available: false });
+    await expect(resolveQuotaGate(check, "exports", "org-a")).resolves.toMatchObject({ status: "unavailable" });
+  });
 });

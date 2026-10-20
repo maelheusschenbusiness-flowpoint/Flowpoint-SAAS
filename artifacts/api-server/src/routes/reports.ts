@@ -268,7 +268,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
       import("../services/billing-service.js"),
       import("../services/quota-gate.js"),
     ]);
-    const gate = await resolveQuotaGate(checkQuota, "reports", _qOrgId);
+    const gate = await resolveQuotaGate((resource, tenantId) => checkQuota(resource, tenantId, { failClosed: true }), "reports", _qOrgId);
     if (gate.status !== "allowed") {
       await _repCl.query("ROLLBACK");
       txActive = false;
