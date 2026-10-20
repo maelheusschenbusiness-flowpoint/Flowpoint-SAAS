@@ -18,6 +18,7 @@ import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { parseContentDecayStrategy } from "../services/content-decay-strategy.js";
+import { buildKeywordDominationReport } from "../services/keyword-domination.js";
 
 const router = Router();
 const contentDecayGate: RequestHandler = (req, res, next) => {
@@ -142,6 +143,28 @@ router.post("/keywords/content-decay/strategy", contentDecayGate, canWrite, asyn
   } catch (err) {
     logger.error({ err, orgId, page }, "[keywords] content decay strategy failed");
     res.status(503).json({ error: "Impossible de générer une recommandation à partir des données Search Console." });
+  }
+});
+
+router.get("/keywords/domination", requireAddon("keywordDomination", "Keyword Domination Engine"), async (req, res) => {
+  const orgId = getOrg(req);
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  try {
+    const result = await (req as OrgReq).orgDb(
+      `SELECT keyword, current_position, prev_position, position_change, search_volume, difficulty, url, intent
+       FROM tracked_keywords
+       WHERE org_id=$1 AND active=true
+       ORDER BY search_volume DESC NULLS LAST, keyword ASC
+       LIMIT 10000`,
+      [orgId],
+    );
+    res.json(buildKeywordDominationReport(result.rows));
+  } catch (err) {
+    logger.error({ err, orgId }, "[keywords] domination report failed");
+    res.status(500).json({ error: safeErrMsg(err) });
   }
 });
 

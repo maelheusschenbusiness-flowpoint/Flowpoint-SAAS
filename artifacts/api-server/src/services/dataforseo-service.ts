@@ -340,24 +340,126 @@ export async function getCompetitors(
 
 export async function getBacklinks(
   domain: string, orgId = "default"
-): Promise<{ referring_domains: number; backlinks: number; domain_rank: number; total: number; dofollow: number; items: Record<string, unknown>[] }> {
-  const empty = { referring_domains: 0, backlinks: 0, domain_rank: 0, total: 0, dofollow: 0, items: [] };
+): Promise<{ available: boolean; reason?: string; referring_domains: number | null; backlinks: number | null; domain_rank: number | null; total: number | null; dofollow: number | null; items: Record<string, unknown>[] }> {
+  const empty = { available: false, reason: "not_configured", referring_domains: null, backlinks: null, domain_rank: null, total: null, dofollow: null, items: [] as Record<string, unknown>[] };
   if (!await isDataForSEOConfigured(orgId)) return empty;
   try {
     type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
     const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }], orgId);
-    const r = data[0]?.result?.[0] ?? {};
-    const total    = Number(r["backlinks"]          ?? 0);
-    const dofollow = Number(r["dofollow_links"]      ?? 0);
+    const r = data[0]?.result?.[0];
+    if (!r) return { ...empty, reason: "no_provider_data" };
+    const totalValue = nullableMetric(r["backlinks"]);
+    const dofollowValue = nullableMetric(r["dofollow_links"]);
     return {
-      referring_domains: Number(r["referring_domains"] ?? 0),
-      backlinks:         total,
-      domain_rank:       Number(r["rank"]              ?? 0),
-      total,
-      dofollow,
+      available: true,
+      referring_domains: nullableMetric(r["referring_domains"]),
+      backlinks: totalValue,
+      domain_rank: nullableMetric(r["rank"]),
+      total: totalValue,
+      dofollow: dofollowValue,
       items:             (r["items"] as Record<string, unknown>[] | undefined) ?? [],
     };
-  } catch { return empty; }
+  } catch { return { ...empty, reason: "provider_error" }; }
+}
+
+export interface BacklinkHistoryPoint {
+  date: string;
+  rank: number | null;
+  backlinks: number | null;
+  new_backlinks: number | null;
+  lost_backlinks: number | null;
+  referring_domains: number | null;
+  new_referring_domains: number | null;
+  lost_referring_domains: number | null;
+}
+
+const nullableMetric = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+export function normalizeBacklinkDetails(items: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  return items.flatMap((item) => {
+    const urlFrom = String(item["url_from"] ?? "");
+    const domainFrom = String(item["domain_from"] ?? "");
+    if (!urlFrom && !domainFrom) return [];
+    return [{
+      url_from: urlFrom || null,
+      domain_from: domainFrom || null,
+      url_to: String(item["url_to"] ?? "") || null,
+      anchor: String(item["anchor"] ?? "") || null,
+      dofollow: typeof item["dofollow"] === "boolean" ? item["dofollow"] : null,
+      rank: nullableMetric(item["rank"]),
+      first_seen: String(item["first_seen"] ?? "") || null,
+      last_seen: String(item["last_seen"] ?? "") || null,
+      links_count: nullableMetric(item["links_count"]),
+    }];
+  });
+}
+
+export async function getBacklinkDetails(domain: string, orgId = "default"): Promise<{
+  available: boolean; reason?: string; items: Record<string, unknown>[];
+}> {
+  const empty = { available: false, reason: "not_configured", items: [] as Record<string, unknown>[] };
+  if (!await isDataForSEOConfigured(orgId)) return empty;
+  try {
+    type DFSResult = Array<{ status_code?: number; result?: Array<Record<string, unknown>> }>;
+    const data = await dfsRequest<DFSResult>("/backlinks/backlinks/live", [{
+      target: domain, limit: 25, mode: "as_is", backlinks_status_type: "live",
+      rank_scale: "one_hundred", order_by: ["rank,desc"],
+    }], orgId);
+    const task = data[0];
+    if (!task || Number(task.status_code) >= 40000) return { ...empty, reason: "provider_no_details" };
+    const items = normalizeBacklinkDetails((task.result?.[0]?.["items"] as Record<string, unknown>[] | undefined) ?? []);
+    return { available: items.length > 0, reason: items.length ? undefined : "no_details", items };
+  } catch {
+    return { ...empty, reason: "provider_error" };
+  }
+}
+
+export function normalizeBacklinkHistoryItems(items: readonly Record<string, unknown>[]): BacklinkHistoryPoint[] {
+  return items.flatMap((item) => {
+    const date = String(item["date"] ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) return [];
+    return [{
+      date,
+      rank: nullableMetric(item["rank"]),
+      backlinks: nullableMetric(item["backlinks"]),
+      new_backlinks: nullableMetric(item["new_backlinks"]),
+      lost_backlinks: nullableMetric(item["lost_backlinks"]),
+      referring_domains: nullableMetric(item["referring_domains"]),
+      new_referring_domains: nullableMetric(item["new_referring_domains"]),
+      lost_referring_domains: nullableMetric(item["lost_referring_domains"]),
+    }];
+  }).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function getBacklinkHistory(domain: string, orgId = "default", months = 12): Promise<{
+  available: boolean; reason?: string; source: "dataforseo" | "none"; domain: string;
+  date_from: string; date_to: string; items: BacklinkHistoryPoint[];
+}> {
+  const today = new Date();
+  const dateTo = today.toISOString().slice(0, 10);
+  const safeMonths = Math.max(3, Math.min(24, Math.trunc(months) || 12));
+  const from = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - safeMonths + 1, 1));
+  const dateFrom = from.toISOString().slice(0, 10);
+  const empty = { available: false, reason: "not_configured", source: "none" as const, domain, date_from: dateFrom, date_to: dateTo, items: [] as BacklinkHistoryPoint[] };
+  if (!await isDataForSEOConfigured(orgId)) return empty;
+  try {
+    type DFSResult = Array<{ status_code?: number; result?: Array<Record<string, unknown>> }>;
+    const data = await dfsRequest<DFSResult>("/backlinks/history/live", [{
+      target: domain, date_from: dateFrom, date_to: dateTo, rank_scale: "one_hundred",
+    }], orgId);
+    const task = data[0];
+    if (!task || (Number(task.status_code) >= 40000)) return { ...empty, reason: "provider_no_history" };
+    const result = task.result?.[0];
+    if (!result) return { ...empty, reason: "provider_no_history" };
+    const items = normalizeBacklinkHistoryItems((result["items"] as Record<string, unknown>[] | undefined) ?? []);
+    return { ...empty, available: items.length > 0, reason: items.length ? undefined : "no_history", source: items.length ? "dataforseo" : "none", items };
+  } catch {
+    return { ...empty, reason: "provider_error" };
+  }
 }
 
 export async function getDomainMetrics(
