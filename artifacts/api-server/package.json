@@ -10,6 +10,7 @@
     "migrate": "node ./build.mjs && node --enable-source-maps ./dist/migrate.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --reporter=verbose",
+    "gsc:daily-sync": "tsx src/scripts/gsc-daily-sync.ts",
     "test:google-oauth-scopes": "vitest run src/services/google-oauth-scopes.test.ts --reporter=verbose",
     "assert:google-oauth-scopes": "node ./scripts/assert-google-oauth-scopes.mjs"
   },
