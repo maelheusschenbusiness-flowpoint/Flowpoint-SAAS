@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("@workspace/db", async (importOriginal) =>
+  importOriginal<typeof import("@workspace/db")>()
+);
 import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 
