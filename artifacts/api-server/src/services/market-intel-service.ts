@@ -12,7 +12,17 @@ export interface MarketDashboard {
 interface MarketTrend { id: string; keyword: string; category: string; search_volume: number; growth_rate: number | null; trend_direction: "up" | "down" | "stable"; opportunity_score: number; geo: string; recent_clicks: number; previous_clicks: number; }
 interface MarketOpportunity { id: string; type: string; title: string; description: string; score: number; estimated_impact: string; timeframe: string; }
 interface IndustrySignal { id: string; type: string; title: string; description: string; severity: string; }
-interface CompetitorMovement { id: string; competitor: string; type: string; description: string; detected_at: string; }
+interface CompetitorMovement {
+  id: string;
+  competitor: string;
+  keyword: string;
+  type: string;
+  description: string;
+  previous_position: number;
+  current_position: number;
+  previous_observed_at: string;
+  detected_at: string;
+}
 
 type GscTrendInput = {
   keyword: string;
@@ -93,8 +103,12 @@ export function deriveCompetitorMovements(rows: readonly CompetitorSnapshot[]): 
     movements.push({
       id: `rank:${competitor}:${keyword}:${new Date(ordered[0].checked_at).toISOString()}`,
       competitor,
+      keyword,
       type: current < previous ? "ranking_gain" : "ranking_loss",
-      description: `${keyword} : position ${previous} → ${current} (observations enregistrées)`,
+      description: `Position ${previous} → ${current} sur « ${keyword} »`,
+      previous_position: previous,
+      current_position: current,
+      previous_observed_at: new Date(ordered[1].checked_at).toISOString(),
       detected_at: new Date(ordered[0].checked_at).toISOString(),
     });
   }

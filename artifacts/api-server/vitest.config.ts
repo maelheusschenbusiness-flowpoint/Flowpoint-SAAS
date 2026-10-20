@@ -14,6 +14,7 @@ export default defineConfig({
     include: [
       "src/services/global-monitoring.test.ts",
       "src/services/market-intel-service.test.ts",
+      "src/services/backlink-intel.test.ts",
       "src/routes/sla-addon-gate.test.ts",
       "src/services/mailer-nodemailer10.test.ts",
       "src/services/nodemailer10-transport.test.ts",

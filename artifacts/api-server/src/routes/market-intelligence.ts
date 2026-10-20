@@ -4,6 +4,7 @@ import {
   getMarketDashboard, generateMarketReport, detectCompetitorMovements,
 } from "../services/market-intel-service.js";
 import { requireAddon } from "../middlewares/planGate.js";
+import { canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -77,7 +78,7 @@ router.get("/market-intelligence/reports", async (req, res) => {
   } catch { res.json({ reports: [], count: 0 }); }
 });
 
-router.post("/market-intelligence/report/generate", async (req, res) => {
+router.post("/market-intelligence/report/generate", canWrite, async (req, res) => {
   try {
     const report = await generateMarketReport(org(req));
     res.json({ ok: true, report });
