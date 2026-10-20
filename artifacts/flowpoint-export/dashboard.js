@@ -70445,10 +70445,10 @@ function renderMarketIntelligence() {
               ${trendDir(t.trend_direction)}
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.keyword)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${t.search_volume?.toLocaleString(getLocale())||0} req/mois · ${t.geo||'France'}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${t.search_volume?.toLocaleString(getLocale())||0} impressions/28 j · ${t.geo||'—'}</div>
               </div>
               <div style="text-align:right">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-success)">+${t.growth_rate}%</div>
+                <div style="font-size:12px;font-weight:700;color:${t.growth_rate==null?'var(--fp-text-faint)':t.growth_rate<0?'var(--fp-danger)':'var(--fp-success)'}">${t.growth_rate==null?'—':`${t.growth_rate>0?'+':''}${t.growth_rate}%`}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${t.opportunity_score}/100</div>
               </div>
             </div>
@@ -70465,8 +70465,8 @@ function renderMarketIntelligence() {
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(o.description||'')}</div>
               <div style="display:flex;gap:6px;align-items:center">
-                <span style="font-size:9px;padding:2px 6px;border-radius:6px;background:${diffColor(o.difficulty)}22;color:${diffColor(o.difficulty)}">${o.difficulty}</span>
-                <span style="font-size:9px;color:var(--fp-text-faint)">${o.timeframe||''}</span>
+                ${o.difficulty?`<span style="font-size:9px;padding:2px 6px;border-radius:6px;background:${diffColor(o.difficulty)}22;color:${diffColor(o.difficulty)}">${o.difficulty}</span>`:''}
+                <span style="font-size:9px;color:var(--fp-text-faint)">${o.timeframe||'28 jours observés'}</span>
                 ${o.estimated_traffic?`<span style="font-size:9px;color:var(--fp-success)">+${o.estimated_traffic.toLocaleString(getLocale())} visites/mois</span>`:''}
               </div>
             </div>
@@ -70495,12 +70495,12 @@ function renderMarketIntelligence() {
         <div class="fp-card-title" style="margin-bottom:14px">📈 Tendances marché</div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
-            <thead><tr><th>Mot-clé</th><th style="text-align:center">Direction</th><th style="text-align:center">Croissance</th><th style="text-align:center">Volume</th><th style="text-align:center">Score</th><th style="text-align:center">Compétition</th><th>Zone</th><th style="text-align:center">Émergent</th></tr></thead>
+            <thead><tr><th>Mot-clé</th><th style="text-align:center">Direction</th><th style="text-align:center">Croissance</th><th style="text-align:center">Impressions (28 j)</th><th style="text-align:center">Score</th><th style="text-align:center">Compétition</th><th>Zone</th><th style="text-align:center">Émergent</th></tr></thead>
             <tbody>
               ${trends.map((t) => `<tr>
                 <td style="font-size:13px;font-weight:600">${escHtml(t.keyword)}</td>
                 <td style="text-align:center">${trendDir(t.trend_direction)}</td>
-                <td style="text-align:center;font-size:12px;font-weight:700;color:var(--fp-success)">+${t.growth_rate}%</td>
+                <td style="text-align:center;font-size:12px;font-weight:700;color:${t.growth_rate==null?'var(--fp-text-faint)':t.growth_rate<0?'var(--fp-danger)':'var(--fp-success)'}">${t.growth_rate==null?'—':`${t.growth_rate>0?'+':''}${t.growth_rate}%`}</td>
                 <td style="text-align:center;font-size:11px">${(t.search_volume||0).toLocaleString(getLocale())}</td>
                 <td style="text-align:center;font-size:12px;font-weight:700;color:${t.opportunity_score>=80?'var(--fp-success)':t.opportunity_score>=60?'var(--fp-warning)':'var(--fp-text-faint)'}">${t.opportunity_score}/100</td>
                 <td style="text-align:center"><span style="font-size:9px;color:${diffColor(t.competition_level)}">${t.competition_level}</span></td>

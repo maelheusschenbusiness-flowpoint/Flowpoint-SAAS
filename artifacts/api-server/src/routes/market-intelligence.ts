@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import {
-  getMarketDashboard, generateMarketReport, detectCompetitorMovements, seedMarketData,
+  getMarketDashboard, generateMarketReport, detectCompetitorMovements,
 } from "../services/market-intel-service.js";
 import { requireAddon } from "../middlewares/planGate.js";
 
@@ -21,58 +21,44 @@ const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 router.get("/market-intelligence", async (req, res) => {
   try {
     const orgId = org(req);
-    await seedMarketData(orgId);
     const data = await getMarketDashboard(orgId);
     res.json(data);
-  } catch { res.json({ trends: [], opportunities: [], competitors: [], movements: [], summary: null }); }
+  } catch { res.json({ trends: [], opportunities: [], signals: [], competitor_movements: [], summary: null, stats: { avgOpportunityScore: 0, emergingTrends: 0 }, source: "no_data" }); }
 });
 
 router.get("/market-intelligence/trends", async (req, res) => {
-  const { category, min_score, limit: lim = "20" } = req.query as Record<string, string>;
+  const { min_score, limit: lim = "20" } = req.query as Record<string, string>;
   try {
-    const orgId = org(req);
-    await seedMarketData(orgId);
-    let q = `SELECT * FROM market_trends WHERE org_id=$1`;
-    const params: unknown[] = [orgId];
-    if (category)  { params.push(category);                    q += ` AND category=$${params.length}`; }
-    if (min_score) { params.push(parseInt(min_score, 10));      q += ` AND opportunity_score>=$${params.length}`; }
-    q += ` ORDER BY opportunity_score DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(lim, 10));
-    const r = await db(req)(q, params);
-    res.json({ trends: r.rows, count: r.rows.length });
+    const minScore = Number.isFinite(Number(min_score)) ? Number(min_score) : 0;
+    const limit = Math.min(100, Math.max(1, Number.parseInt(lim, 10) || 20));
+    const trends = (await getMarketDashboard(org(req))).trends
+      .filter((trend) => trend.opportunity_score >= minScore).slice(0, limit);
+    res.json({ trends, count: trends.length, source: trends.length ? "gsc" : "no_data" });
   } catch { res.json({ trends: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/opportunities", async (req, res) => {
   const { type, limit: lim = "15" } = req.query as Record<string, string>;
   try {
-    const orgId = org(req);
-    await seedMarketData(orgId);
-    let q = `SELECT * FROM market_opportunities WHERE org_id=$1`;
-    const params: unknown[] = [orgId];
-    if (type) { params.push(type); q += ` AND type=$${params.length}`; }
-    q += ` ORDER BY score DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(lim, 10));
-    const r = await db(req)(q, params);
-    res.json({ opportunities: r.rows, count: r.rows.length });
+    const limit = Math.min(100, Math.max(1, Number.parseInt(lim, 10) || 15));
+    const opportunities = (await getMarketDashboard(org(req))).opportunities
+      .filter((item) => !type || item.type === type).slice(0, limit);
+    res.json({ opportunities, count: opportunities.length, source: opportunities.length ? "gsc" : "no_data" });
   } catch { res.json({ opportunities: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/competitor-movements", async (req, res) => {
-  const { limit: lim = "20" } = req.query as Record<string, string>;
+  const { limit: lim = "20", domain } = req.query as Record<string, string>;
   try {
-    const r = await db(req)(
-      `SELECT * FROM competitor_movements WHERE org_id=$1 ORDER BY detected_at DESC LIMIT $2`,
-      [org(req), parseInt(lim, 10)]
-    );
-    res.json({ movements: r.rows, count: r.rows.length });
+    const limit = Math.min(100, Math.max(1, Number.parseInt(lim, 10) || 20));
+    const movements = (await detectCompetitorMovements(org(req), domain)).slice(0, limit);
+    res.json({ movements, count: movements.length, source: movements.length ? "competitor_rankings" : "no_data" });
   } catch { res.json({ movements: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/signals", async (req, res) => {
   try {
     const orgId = org(req);
-    await seedMarketData(orgId);
     const r = await db(req)(
       `SELECT * FROM industry_signals WHERE org_id=$1 AND (expires_at IS NULL OR expires_at > now()) ORDER BY created_at DESC LIMIT 20`,
       [orgId]
@@ -103,7 +89,7 @@ router.post("/market-intelligence/competitor-movement", async (req, res) => {
   if (!domain) { res.status(400).json({ error: "domain requis" }); return; }
   try {
     const movement = await detectCompetitorMovements(org(req), domain);
-    res.json({ ok: true, movement });
+    res.json({ ok: true, movements: movement, count: movement.length, source: movement.length ? "competitor_rankings" : "no_data" });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
