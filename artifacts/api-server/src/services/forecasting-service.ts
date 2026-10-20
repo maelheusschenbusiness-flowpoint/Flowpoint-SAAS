@@ -76,52 +76,50 @@ export interface GetForecastParams {
  */
 export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Promise<ForecastData> {
   const url = siteUrl ?? "default";
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    try {
-      const res = await client.query(
-        `SELECT * FROM seo_forecasts
-         WHERE org_id=$1 AND site_url=$2 AND source IN ('gsc','gsc+ga4')
-         ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
-        [orgId, url]
-      );
-      if (res.rows.length > 0) {
-        const forecasts: ForecastPoint[] = res.rows.map((r: Record<string, unknown>) => ({
-          date: String(r["forecast_date"]),
-          predictedTraffic: Number(r["predicted_traffic"] ?? 0),
-          predictedConversions: Number(r["predicted_conversions"] ?? 0),
-          predictedRevenue: Number(r["predicted_revenue"] ?? 0),
-          confidence: Number(r["confidence"] ?? 75),
-          scenario: String(r["scenario"] ?? "realistic") as ForecastPoint["scenario"],
-        }));
-        const realistic = forecasts.filter(f => f.scenario === "realistic");
-        const in30 = realistic.slice(0, 30);
-        const in90 = realistic.slice(0, 90);
-        const realTraffic30  = in30.reduce((s, f) => s + f.predictedTraffic, 0);
-        const realTraffic90  = in90.reduce((s, f) => s + f.predictedTraffic, 0);
-        const prev30 = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
-        const growthPct = prev30 > 0 ? Math.round(((realTraffic30 - prev30) / prev30) * 100) : 0;
-        return {
-          siteUrl: url,
-          forecasts,
-          available: realistic.length > 0,
-          ga4Available: res.rows.some((r: Record<string, unknown>) => r["source"] === "gsc+ga4"),
-          source: "stored",
-          summary: {
-            expectedTrafficIn30d:     realTraffic30,
-            expectedTrafficIn90d:     realTraffic90,
-            expectedConversionsIn30d: in30.reduce((s, f) => s + f.predictedConversions, 0),
-            expectedRevenueIn90d:     in90.reduce((s, f) => s + f.predictedRevenue, 0),
-            confidenceScore: Math.round(
-              realistic.slice(0, 30).reduce((s, f) => s + f.confidence, 0) / Math.max(in30.length, 1)
-            ),
-            growthScenarios: { pessimistic: Math.round(growthPct * 0.6), realistic: growthPct, optimistic: Math.round(growthPct * 1.4) },
-          },
-          generatedAt: new Date().toISOString(),
-        };
-      }
-    } finally { client.release(); }
-  } catch { /* non-fatal */ }
+    const res = await client.query(
+      `SELECT * FROM seo_forecasts
+       WHERE org_id=$1 AND site_url=$2 AND source IN ('gsc','gsc+ga4')
+       ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
+      [orgId, url]
+    );
+    if (res.rows.length > 0) {
+      const forecasts: ForecastPoint[] = res.rows.map((r: Record<string, unknown>) => ({
+        date: String(r["forecast_date"]),
+        predictedTraffic: Number(r["predicted_traffic"] ?? 0),
+        predictedConversions: Number(r["predicted_conversions"] ?? 0),
+        predictedRevenue: Number(r["predicted_revenue"] ?? 0),
+        confidence: Number(r["confidence"] ?? 75),
+        scenario: String(r["scenario"] ?? "realistic") as ForecastPoint["scenario"],
+      }));
+      const realistic = forecasts.filter(f => f.scenario === "realistic");
+      const in30 = realistic.slice(0, 30);
+      const in90 = realistic.slice(0, 90);
+      const realTraffic30  = in30.reduce((s, f) => s + f.predictedTraffic, 0);
+      const realTraffic90  = in90.reduce((s, f) => s + f.predictedTraffic, 0);
+      const prev30 = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
+      const growthPct = prev30 > 0 ? Math.round(((realTraffic30 - prev30) / prev30) * 100) : 0;
+      return {
+        siteUrl: url,
+        forecasts,
+        available: realistic.length > 0,
+        ga4Available: res.rows.some((r: Record<string, unknown>) => r["source"] === "gsc+ga4"),
+        source: "stored",
+        summary: {
+          expectedTrafficIn30d:     realTraffic30,
+          expectedTrafficIn90d:     realTraffic90,
+          expectedConversionsIn30d: in30.reduce((s, f) => s + f.predictedConversions, 0),
+          expectedRevenueIn90d:     in90.reduce((s, f) => s + f.predictedRevenue, 0),
+          confidenceScore: Math.round(
+            realistic.slice(0, 30).reduce((s, f) => s + f.confidence, 0) / Math.max(in30.length, 1)
+          ),
+          growthScenarios: { pessimistic: Math.round(growthPct * 0.6), realistic: growthPct, optimistic: Math.round(growthPct * 1.4) },
+        },
+        generatedAt: new Date().toISOString(),
+      };
+    }
+  } finally { client.release(); }
 
   // A forecast is a business decision aid: never fabricate one in any environment.
   return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
@@ -180,16 +178,29 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
           confidence, scenario });
       }
     }
-    for (const f of forecasts) {
-      await client.query(
-        `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-         ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
-           predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, source=$10, generated_at=NOW()`,
-        [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-          orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue,
-          f.confidence, f.scenario, measuredGa4 ? "gsc+ga4" : "gsc"]
-      );
+    let txActive = false;
+    try {
+      await client.query("BEGIN");
+      txActive = true;
+      for (const f of forecasts) {
+        await client.query(
+          `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+           ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
+             predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, source=$10, generated_at=NOW()`,
+          [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
+            orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue,
+            f.confidence, f.scenario, measuredGa4 ? "gsc+ga4" : "gsc"]
+        );
+      }
+      await client.query("COMMIT");
+      txActive = false;
+    } catch (error) {
+      if (txActive) {
+        await client.query("ROLLBACK").catch(() => {});
+        txActive = false;
+      }
+      throw error;
     }
     const data = await getForecastData({ orgId, siteUrl });
     return {
