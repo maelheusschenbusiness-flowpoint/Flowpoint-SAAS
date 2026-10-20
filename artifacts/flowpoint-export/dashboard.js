@@ -59299,23 +59299,30 @@ function renderDataExplorer() {
     const _points = _fcData?.forecasts || _fcData?.predictions || [];
     const _realistic = _points.filter(p => p.scenario === 'realistic' || p.scenario === 'base').slice(0, 180);
     const _scenarioValue = function(name) {
-      const rows = _points.filter(p => p.scenario === name).slice(0, 30);
+      const rows = _points.filter(p => p.scenario === name).slice(0, 90);
       return rows.reduce((sum, p) => sum + Number(p.predictedTraffic ?? p.predictedValue ?? 0), 0);
     };
+    const _scenarioMetric = function(name, key, days) {
+      return _points.filter(p => p.scenario === name).slice(0, days)
+        .reduce((sum, p) => sum + Number(p[key] ?? 0), 0);
+    };
     const _hasForecast = !!(_fcData?.available && _realistic.length);
+    const _hasGA4Forecast = !!(_fcData?.ga4Available);
+    const _conversionForecast30d = Number(_fcData?.summary?.expectedConversionsIn30d ?? 0);
+    const _revenueForecast90d = Number(_fcData?.summary?.expectedRevenueIn90d ?? 0);
     const fMonths = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => new Date(p.date).toLocaleDateString(getLocale(),{month:'short'})) : [];
     const fTraffic = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Math.round(Number(p.predictedTraffic ?? p.predictedValue ?? 0))) : [];
-    const fConv = [];
-    const fRev = [];
+    const fConv = _hasGA4Forecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Math.round(Number(p.predictedConversions ?? 0))) : [];
+    const fRev = _hasGA4Forecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Number(p.predictedRevenue ?? 0).toLocaleString(getLocale(), { maximumFractionDigits: 2 })) : [];
     const maxF = fTraffic.length ? Math.max(...fTraffic, 1) : 1;
     const scenarios = _hasForecast ? [
-      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#64748b', desc: 'Projection GSC basse' },
-      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#2563EB', desc: 'Tendance GSC observée' },
-      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#22c55e', desc: 'Projection GSC haute' },
+      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('pessimistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('pessimistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#64748b', desc: _hasGA4Forecast ? 'Projection mesurée GSC/GA4' : 'Trafic GSC; conversion/revenu GA4 requis' },
+      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('realistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('realistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#2563EB', desc: _hasGA4Forecast ? 'Tendance GSC/GA4 observée' : 'Tendance de trafic GSC observée' },
+      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('optimistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('optimistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#22c55e', desc: _hasGA4Forecast ? 'Projection mesurée GSC/GA4' : 'Trafic GSC; conversion/revenu GA4 requis' },
     ] : [];
     return `
       ${isUltra && _hasForecast
-        ? aiBlock(`Prévision construite à partir de Google Search Console. Confiance : <strong>${_fcData.summary?.confidenceScore ?? '—'}%</strong>. La conversion et le revenu restent indisponibles sans données analytiques mesurées.`, ['Simuler un scénario', 'Rapport prévision'])
+        ? aiBlock(`Prévision de trafic fondée sur GSC${_hasGA4Forecast ? ' et prévision de conversions/revenus fondée sur GA4' : '; conversions et revenus indisponibles sans 14 jours de données GA4'}. Confiance : <strong>${_fcData.summary?.confidenceScore ?? '—'}%</strong>.`, ['Simuler un scénario', 'Rapport prévision'])
         : isUltra
           ? `<div class="fp-card fp-mb-20" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Prévision indisponible</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_fcData?.reason || 'Au moins 14 jours de données Search Console sont nécessaires pour créer une prévision fiable.')}</div></div>`
           : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
@@ -59327,8 +59334,8 @@ function renderDataExplorer() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Trafic projeté', _hasForecast ? _scenarioValue('realistic').toLocaleString(getLocale()) : '—', _hasForecast ? '90 jours · source GSC' : 'Données insuffisantes', 'neutral')}
-        ${statCard('Conversion', '—', 'Données GA4 requises', 'neutral')}
-        ${statCard('Revenu', '—', 'Données de revenu requises', 'neutral')}
+        ${statCard('Conversion', _hasGA4Forecast ? _conversionForecast30d.toLocaleString(getLocale()) : '—', _hasGA4Forecast ? '30 jours · source GA4' : '14 jours de données GA4 requis', 'neutral')}
+        ${statCard('Revenu', _hasGA4Forecast ? _revenueForecast90d.toLocaleString(getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—', _hasGA4Forecast ? '90 jours · devise de la propriété GA4' : '14 jours de données GA4 requis', 'neutral')}
         ${statCard('Confiance', _hasForecast ? (_fcData.summary?.confidenceScore ?? '—') + '%' : '—', _hasForecast ? 'historique GSC' : 'Données insuffisantes', 'neutral')}
       </div>
 
@@ -59353,7 +59360,7 @@ function renderDataExplorer() {
           `).join('')}
         </div>
         <div style="display:flex;gap:12px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px">
-          ${[{label:'Conv. prévue',vals:fConv,unit:'%'},{label:'Revenue prévu',vals:fRev,unit:'€'}].map(f => `
+          ${[{label:'Conversions prévues',vals:fConv,unit:''},{label:'Revenu prévu (devise GA4)',vals:fRev,unit:''}].map(f => `
             <div style="flex:1">
               <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:4px">${f.label}</div>
               <div style="display:flex;gap:4px">
