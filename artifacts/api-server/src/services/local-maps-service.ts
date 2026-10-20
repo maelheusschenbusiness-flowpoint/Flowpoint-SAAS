@@ -1,10 +1,53 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import {
+  getGoogleMapsResultsAtCoordinate,
+  isDataForSEOConfigured,
+  rembourserQuota,
+  suivreAppelsPayants,
+  verifierEtConsommerQuota,
+} from "./dataforseo-service.js";
+import {
+  buildLocalGeoGrid,
+  findBusinessRank,
+  summarizeMeasuredCells,
+  type MeasuredHeatmapCell,
+} from "./local-heatmap-grid.js";
 
 export interface Heatmap {
   id: string; org_id: string; name: string; keyword: string;
   location_id: string | null; center_lat: number; center_lng: number;
   radius_km: number; grid_size: number; status: string; created_at: string;
+  business_name?: string; cells_data?: MeasuredHeatmapCell[]; summary?: ReturnType<typeof summarizeMeasuredCells>;
+  dominance_score?: number | null; generated_at?: string | null; scan_error?: string | null;
+}
+
+type HeatmapResults = {
+  businessName?: string;
+  cells?: MeasuredHeatmapCell[];
+  summary?: ReturnType<typeof summarizeMeasuredCells>;
+  generatedAt?: string;
+  error?: string;
+};
+
+function exposeHeatmap(row: Record<string, unknown>): Heatmap {
+  let stored: HeatmapResults = {};
+  try {
+    const raw = row.results;
+    stored = (typeof raw === "string" ? JSON.parse(raw) : raw) as HeatmapResults;
+    if (!stored || Array.isArray(stored) || typeof stored !== "object") stored = {};
+  } catch { stored = {}; }
+  const cells = Array.isArray(stored.cells) ? stored.cells : [];
+  const summary = stored.summary ?? summarizeMeasuredCells(cells);
+  return {
+    ...row,
+    business_name: stored.businessName ?? "",
+    cells_data: cells,
+    summary,
+    dominance_score: summary.dominanceScore,
+    generated_at: stored.generatedAt ?? null,
+    scan_error: stored.error ?? null,
+  } as Heatmap;
 }
 
 export interface BusinessPoint {
@@ -41,13 +84,15 @@ export function summarizeLocalMaps(
   competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
 ) {
   const completedScans = heatmaps.filter(h => h.status === "completed").length;
+  const allCells = heatmaps.flatMap(h => h.cells_data ?? []);
+  const scanSummary = summarizeMeasuredCells(allCells);
   return {
     summary: {
       totalHeatmaps: heatmaps.length,
       completedScans,
-      avgRank: null,
-      top3GridPoints: null,
-      coverageScore: null,
+      avgRank: scanSummary.averageRank,
+      top3GridPoints: scanSummary.top3Points,
+      coverageScore: scanSummary.coverageScore,
       competitorsAnalyzed: competitors.resultCount,
       uniqueCompetitors: competitors.uniqueCompetitors,
       searchContexts: competitors.searchContexts,
@@ -56,7 +101,7 @@ export function summarizeLocalMaps(
       averageCompetitorReviews: competitors.averageReviews,
       bestCompetitorName: competitors.bestCompetitorName,
       bestCompetitorRank: competitors.bestCompetitorRank,
-      localVisibilityScore: null,
+      localVisibilityScore: scanSummary.dominanceScore,
     },
     insights: [
       heatmaps.length
@@ -286,24 +331,44 @@ async function getCompetitorSummary(orgId: string): Promise<LocalCompetitorSumma
 export async function getHeatmaps(orgId: string): Promise<Heatmap[]> {
   const client = await pool.connect();
   try {
+    await client.query(
+      `UPDATE local_heatmaps
+          SET status='failed',
+              results=jsonb_set(
+                CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+                '{error}', to_jsonb('Analyse interrompue après un redémarrage du serveur.'::text), true)
+        WHERE org_id=$1 AND status='running'
+          AND (results->>'startedAt')::timestamptz < NOW() - INTERVAL '15 minutes'`,
+      [orgId],
+    );
     const res = await client.query(
       `SELECT * FROM local_heatmaps WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50`,
       [orgId]
     );
-    return res.rows;
+    return res.rows.map((row: Record<string, unknown>) => exposeHeatmap(row));
   } catch { return []; } finally { client.release(); }
 }
 
 export async function getHeatmapDetail(orgId: string, id: string): Promise<Heatmap | null> {
   const client = await pool.connect();
   try {
+    await client.query(
+      `UPDATE local_heatmaps
+          SET status='failed',
+              results=jsonb_set(
+                CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+                '{error}', to_jsonb('Analyse interrompue après un redémarrage du serveur.'::text), true)
+        WHERE id=$1 AND org_id=$2 AND status='running'
+          AND (results->>'startedAt')::timestamptz < NOW() - INTERVAL '15 minutes'`,
+      [id, orgId],
+    );
     const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2 LIMIT 1`, [id, orgId]);
-    return res.rows[0] ?? null;
+    return res.rows[0] ? exposeHeatmap(res.rows[0]) : null;
   } catch { return null; } finally { client.release(); }
 }
 
 export async function createHeatmap(orgId: string, data: {
-  name: string; keyword: string; locationId?: string;
+  name: string; keyword: string; businessName: string; locationId?: string;
   centerLat: number; centerLng: number; radiusKm?: number; gridSize?: number;
 }): Promise<Heatmap> {
   const client = await pool.connect();
@@ -311,14 +376,109 @@ export async function createHeatmap(orgId: string, data: {
     const id = `hm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await client.query(
       `INSERT INTO local_heatmaps
-         (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',NOW())`,
+         (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, results, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10::jsonb,NOW())`,
       [id, orgId, data.locationId ?? null, data.name, data.keyword,
-       data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7]
+       data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7,
+       JSON.stringify({ businessName: data.businessName, cells: [] })]
     );
     const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1`, [id]);
-    return res.rows[0];
+    return exposeHeatmap(res.rows[0]);
   } finally { client.release(); }
+}
+
+/** Claim a pending/failed scan once, then process it off the HTTP request path. */
+export async function startHeatmapScan(orgId: string, id: string): Promise<boolean> {
+  const claimed = await pool.query(
+    `UPDATE local_heatmaps
+        SET status='running',
+            results=jsonb_set(
+              CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+              '{startedAt}', to_jsonb(NOW()::text), true)
+      WHERE id=$1 AND org_id=$2 AND status IN ('pending','failed')
+      RETURNING *`,
+    [id, orgId],
+  );
+  const row = claimed.rows[0] as Record<string, unknown> | undefined;
+  if (!row) return false;
+  void runHeatmapScan(orgId, row).catch(async error => {
+    const errorMessage = error instanceof Error ? error.message : "Échec de l’analyse.";
+    logger.error({ error: errorMessage, orgId, heatmapId: id }, "[local-maps] heatmap scan failed");
+    await pool.query(
+      `UPDATE local_heatmaps
+          SET status='failed',
+              results=jsonb_set(
+                CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+                '{error}', to_jsonb($3::text), true)
+        WHERE id=$1 AND org_id=$2 AND status='running'`,
+      [id, orgId, errorMessage],
+    ).catch(() => {});
+  });
+  return true;
+}
+
+async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Promise<void> {
+  const id = String(row.id);
+  const businessName = String((row.results as HeatmapResults | undefined)?.businessName ?? "");
+  const keyword = String(row.keyword ?? "");
+  const gridSize = Number(row.grid_size);
+  const points = buildLocalGeoGrid(
+    Number(row.center_lat), Number(row.center_lng), Number(row.radius_km), gridSize,
+  );
+  if (!businessName.trim()) throw new Error("Le nom exact de l’établissement est requis.");
+  if (!await isDataForSEOConfigured(orgId)) {
+    await pool.query(
+      `UPDATE local_heatmaps SET status='failed', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
+      [id, orgId, JSON.stringify({ businessName, cells: [], error: "DataForSEO n’est pas configuré." })],
+    );
+    return;
+  }
+
+  const quota = await verifierEtConsommerQuota(orgId, points.length);
+  if (!quota.autorise) {
+    if (quota.motif === "plafond") await rembourserQuota(orgId, points.length);
+    await pool.query(
+      `UPDATE local_heatmaps SET status='failed', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
+      [id, orgId, JSON.stringify({ businessName, cells: [], error: quota.motif === "plafond"
+        ? "Le quota DataForSEO du jour ne permet pas cette grille."
+        : "La vérification du quota est indisponible." })],
+    );
+    return;
+  }
+
+  const cells: MeasuredHeatmapCell[] = [];
+  const { appelsReussis } = await suivreAppelsPayants(async () => {
+    let next = 0;
+    const workers = Array.from({ length: Math.min(4, points.length) }, async () => {
+      while (next < points.length) {
+        const point = points[next++]!;
+        const lookup = await getGoogleMapsResultsAtCoordinate(
+          keyword, point.latitude, point.longitude, orgId,
+        );
+        cells.push({
+          ...point,
+          status: lookup.error ? "error" : "measured",
+          rank: lookup.error ? null : findBusinessRank(lookup.results, businessName),
+        });
+      }
+    });
+    await Promise.all(workers);
+  });
+  if (appelsReussis < points.length) await rembourserQuota(orgId, points.length - appelsReussis);
+
+  cells.sort((a, b) => a.row - b.row || a.column - b.column);
+  const summary = summarizeMeasuredCells(cells);
+  const status = summary.measuredPoints === 0 ? "failed"
+    : summary.measuredPoints < summary.totalPoints ? "partial" : "completed";
+  const error = status === "partial"
+    ? `${summary.totalPoints - summary.measuredPoints} point(s) n’ont pas pu être mesurés.`
+    : status === "failed" ? "Aucun point de la grille n’a pu être mesuré." : undefined;
+  await pool.query(
+    `UPDATE local_heatmaps SET status=$3, results=$4::jsonb WHERE id=$1 AND org_id=$2`,
+    [id, orgId, status, JSON.stringify({
+      businessName, cells, summary, generatedAt: new Date().toISOString(), error,
+    })],
+  );
 }
 
 export async function generateAiLocalRecommendations(orgId: string): Promise<Array<{ title: string; description: string; impact: string; effort: string; priority: string }>> {

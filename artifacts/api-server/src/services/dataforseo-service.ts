@@ -683,6 +683,44 @@ export async function getGoogleMapsResults(
   }
 }
 
+/** Google Maps results for one measured point in a local geo grid. */
+export async function getGoogleMapsResultsAtCoordinate(
+  keyword: string,
+  latitude: number,
+  longitude: number,
+  orgId = "default",
+): Promise<{ results: Array<{ name: string; rank: number }>; error?: string }> {
+  if (!await isDataForSEOConfigured(orgId)) return { results: [], error: "not_configured" };
+  try {
+    type DFSResult = Array<{
+      result?: Array<{
+        items?: Array<{
+          type: string;
+          title?: string;
+          rank_absolute?: number;
+        }>;
+      }>;
+    }>;
+    const coordinate = `${latitude.toFixed(7)},${longitude.toFixed(7)},17z`;
+    const data = await dfsRequest<DFSResult>("/serp/google/maps/live/advanced", [{
+      keyword,
+      location_coordinate: coordinate,
+      language_code: "fr",
+      depth: 20,
+    }], orgId);
+    const allItems = data[0]?.result?.[0]?.items ?? [];
+    return {
+      results: allItems
+        .filter(item => item.type === "maps_search" || item.type === "local_pack")
+        .map(item => ({ name: item.title ?? "", rank: item.rank_absolute ?? 0 }))
+        .filter(item => item.name && item.rank > 0),
+    };
+  } catch (error) {
+    logger.warn({ error, keyword, latitude, longitude }, "[dfs] coordinate maps lookup failed");
+    return { results: [], error: "provider_error" };
+  }
+}
+
 // ── AI Visibility (LLM) ───────────────────────────────────────────────────────
 
 export async function getAIVisibility(
