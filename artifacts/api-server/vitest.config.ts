@@ -13,6 +13,7 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/services/global-monitoring.test.ts",
+      "src/services/workspace-launch-output.test.ts",
       "src/services/market-intel-service.test.ts",
       "src/routes/sla-addon-gate.test.ts",
       "src/services/mailer-nodemailer10.test.ts",
