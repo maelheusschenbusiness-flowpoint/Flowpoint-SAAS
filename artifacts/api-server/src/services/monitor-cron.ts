@@ -379,6 +379,11 @@ export function startMonitorCron(): void {
   // Scheduled audits: launch due audit_schedules rows every minute (#437).
   void runScheduledAuditsTickSafe();
   setInterval(() => void runScheduledAuditsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
+
+  // Scheduled AI workflows are dynamically reconciled and atomically claimed
+  // through workflow_runs, so multiple Render instances can share this poller.
+  void runScheduledWorkflowsTickSafe();
+  setInterval(() => void runScheduledWorkflowsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
 }
 
 async function runScheduledAuditsTickSafe(): Promise<void> {
@@ -393,5 +398,18 @@ async function runScheduledAuditsTickSafe(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, "[monitor-cron] runScheduledAuditsTickSafe failed (non-fatal)");
     markCronRun("audit-scheduler", "error");
+  }
+}
+
+async function runScheduledWorkflowsTickSafe(): Promise<void> {
+  const { markCronRun } = await import("../workers/cron-scheduler.js");
+  try {
+    const { runWorkflowSchedulerTick } = await import("./workflow-schedule-cron.js");
+    const { synced, recovered } = await runWorkflowSchedulerTick();
+    if (synced || recovered) logger.info({ synced, recovered }, "[monitor-cron] scheduled AI workflow tick");
+    markCronRun("workflow-scheduler", "idle");
+  } catch (err) {
+    logger.warn({ err }, "[monitor-cron] runScheduledWorkflowsTickSafe failed (non-fatal)");
+    markCronRun("workflow-scheduler", "error");
   }
 }
