@@ -70130,7 +70130,7 @@ window.FP_REVIEW_INTEL_API = {
     } catch(e) { console.warn('[FP_REVIEW_INTEL_API]', e); }
   },
   async generateReply(reviewId, tone, language) {
-    return await apiFetch(`/api/review-intelligence/reply/${reviewId}`, { method:'POST', body: JSON.stringify({ tone, language }) });
+    return await apiFetch(`/api/review-intelligence/reply/${encodeURIComponent(reviewId)}`, { method:'POST', body: JSON.stringify({ tone, language }) });
   },
   async analyzeReview(data) {
     return await apiFetch('/api/review-intelligence/analyze', { method:'POST', body: JSON.stringify(data) });
