@@ -153,20 +153,30 @@ router.get("/settings/data-export", async (req: Request, res: Response): Promise
 
   // ── Server-side quota enforcement ─────────────────────────────────────────
   try {
-    const { checkQuota } = await import("../services/billing-service.js");
-    const _quota = await checkQuota("exports", orgId);
-    if (!_quota.allowed) {
+    const [{ checkQuota }, { resolveQuotaGate }] = await Promise.all([
+      import("../services/billing-service.js"),
+      import("../services/quota-gate.js"),
+    ]);
+    const gate = await resolveQuotaGate(checkQuota, "exports", orgId);
+    if (gate.status === "exceeded") {
       res.status(402).json({
-        error: `Limite mensuelle d'exports atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack d'exports supplémentaires.`,
+        error: `Limite mensuelle d'exports atteinte (${gate.quota.used}/${gate.quota.limit}). Upgradez votre plan ou achetez un pack d'exports supplémentaires.`,
         code: "QUOTA_EXCEEDED",
         resource: "exports",
-        used: _quota.used,
-        limit: _quota.limit,
+        used: gate.quota.used,
+        limit: gate.quota.limit,
       });
       return;
     }
+    if (gate.status === "unavailable") {
+      logger.error({ err: gate.error, orgId }, "[data-export] quota service unavailable — denying export");
+      res.status(503).json({ error: "Impossible de vérifier le quota d'exports.", code: "QUOTA_CHECK_UNAVAILABLE" });
+      return;
+    }
   } catch (_qErr) {
-    logger.warn({ err: _qErr, orgId }, "[data-export] quota check failed — allowing export");
+    logger.error({ err: _qErr, orgId }, "[data-export] quota gate failed — denying export");
+    res.status(503).json({ error: "Impossible de vérifier le quota d'exports.", code: "QUOTA_CHECK_UNAVAILABLE" });
+    return;
   }
 
   const client = await pool.connect();

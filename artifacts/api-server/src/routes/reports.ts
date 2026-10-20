@@ -258,21 +258,32 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
   // check. pg_advisory_xact_lock is transaction-level — auto-released at commit.
   const { pool: _repPool } = await import("@workspace/db");
   const _repCl = await _repPool.connect();
+  let txActive = false;
   try {
     await _repCl.query("BEGIN");
+    txActive = true;
     await _repCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${_qOrgId}:reports`]);
 
-    const { checkQuota } = await import("../services/billing-service.js");
-    const _quota = await checkQuota("reports", _qOrgId);
-    if (!_quota.allowed) {
+    const [{ checkQuota }, { resolveQuotaGate }] = await Promise.all([
+      import("../services/billing-service.js"),
+      import("../services/quota-gate.js"),
+    ]);
+    const gate = await resolveQuotaGate(checkQuota, "reports", _qOrgId);
+    if (gate.status !== "allowed") {
       await _repCl.query("ROLLBACK");
-      res.status(402).json({
-        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
-        code: "QUOTA_EXCEEDED",
-        resource: "reports",
-        used: _quota.used,
-        limit: _quota.limit,
-      });
+      txActive = false;
+      if (gate.status === "exceeded") {
+        res.status(402).json({
+          error: `Limite mensuelle de rapports PDF atteinte (${gate.quota.used}/${gate.quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+          code: "QUOTA_EXCEEDED",
+          resource: "reports",
+          used: gate.quota.used,
+          limit: gate.quota.limit,
+        });
+      } else {
+        logger.error({ err: gate.error, orgId: _qOrgId }, "[reports] quota service unavailable — denying PDF report");
+        res.status(503).json({ error: "Impossible de vérifier le quota de rapports.", code: "QUOTA_CHECK_UNAVAILABLE" });
+      }
       return;
     }
 
@@ -286,9 +297,12 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
        (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
     await _repCl.query("COMMIT");
+    txActive = false;
   } catch (_repErr) {
-    await _repCl.query("ROLLBACK").catch(() => {});
-    logger.warn({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed — allowing report");
+    if (txActive) await _repCl.query("ROLLBACK").catch(() => {});
+    logger.error({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed — denying report");
+    res.status(503).json({ error: "Impossible de vérifier le quota ou d'enregistrer le rapport.", code: "REPORT_CREATION_UNAVAILABLE" });
+    return;
   } finally {
     _repCl.release();
   }
