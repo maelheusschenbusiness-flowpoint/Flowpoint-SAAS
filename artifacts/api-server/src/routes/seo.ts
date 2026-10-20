@@ -28,6 +28,23 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
+const backlinkRequestUntil = new Map<string, number>();
+const backlinkCooldown = (kind: string) => (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => {
+  const orgId = String((req as unknown as Record<string, unknown>)["orgId"] ?? "default");
+  const now = Date.now();
+  const key = `${orgId}:${kind}`;
+  const until = backlinkRequestUntil.get(key) ?? 0;
+  if (until > now) {
+    res.setHeader("Retry-After", String(Math.ceil((until - now) / 1000)));
+    res.status(429).json({ error: "Veuillez patienter avant de relancer cet appel DataForSEO.", code: "BACKLINK_COOLDOWN" });
+    return;
+  }
+  if (backlinkRequestUntil.size > 5000) {
+    for (const [entry, expiry] of backlinkRequestUntil) if (expiry <= now) backlinkRequestUntil.delete(entry);
+  }
+  backlinkRequestUntil.set(key, now + 30_000);
+  next();
+};
 
 // ── Helper — persisted Local SEO ranking usage ───────────────────────────────
 // `used` is derived from the persisted ranking-history rows for the current day
@@ -226,7 +243,7 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 
 const backlinkAddonGate = requireAddon("backlinkIntelligence", "Backlink Intelligence");
 
-router.get("/seo/backlinks", backlinkAddonGate, withQuota(async (req, res) => {
+router.get("/seo/backlinks", backlinkAddonGate, backlinkCooldown("summary"), withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain } = req.query as Record<string,string>;
   if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
@@ -243,7 +260,7 @@ router.get("/seo/backlinks", backlinkAddonGate, withQuota(async (req, res) => {
 
 // Historical snapshots are fetched on demand from DataForSEO; each successful
 // request is billed by the provider and counted by withQuota per organization.
-router.get("/seo/backlinks/history", backlinkAddonGate, withQuota(async (req, res) => {
+router.get("/seo/backlinks/history", backlinkAddonGate, backlinkCooldown("history"), withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain } = req.query as Record<string,string>;
   const monthsRaw = Number((req.query as Record<string,string>)["months"] ?? 12);
@@ -259,7 +276,7 @@ router.get("/seo/backlinks/history", backlinkAddonGate, withQuota(async (req, re
   }
 }));
 
-router.get("/seo/backlinks/details", backlinkAddonGate, withQuota(async (req, res) => {
+router.get("/seo/backlinks/details", backlinkAddonGate, backlinkCooldown("details"), withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain } = req.query as Record<string,string>;
   if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {

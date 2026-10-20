@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { randomUUID } from "node:crypto";
 
 export interface MarketDashboard {
   trends: MarketTrend[];
@@ -169,18 +170,20 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
 
 export async function generateMarketReport(orgId: string): Promise<Record<string, unknown>> {
   const dashboard = await getMarketDashboard(orgId);
-  const id = `mr_${orgId}_${Date.now()}`;
+  const id = randomUUID();
+  const title = `Rapport Intelligence Marché — ${new Date().toLocaleDateString("fr-FR")}`;
+  const summary = `${dashboard.trends.length} tendances mesurées, ${dashboard.opportunities.length} opportunités calculées`;
   const client = await pool.connect();
   try {
-    await client.query(
+    const saved = await client.query<{ generated_at: string }>(
       `INSERT INTO ai_market_reports (id, org_id, title, summary, data, generated_at)
-       VALUES ($1,$2,$3,$4,$5,NOW()) ON CONFLICT DO NOTHING`,
-      [id, orgId, `Rapport Intelligence Marché — ${new Date().toLocaleDateString("fr-FR")}`,
-       `${dashboard.trends.length} tendances analysées, ${dashboard.opportunities.length} opportunités identifiées`,
-       JSON.stringify(dashboard)]
+       VALUES ($1,$2,$3,$4,$5,NOW())
+       RETURNING generated_at`,
+      [id, orgId, title, summary, JSON.stringify(dashboard)]
     );
+    if (!saved.rows[0]) throw new Error("Market Intelligence report was not persisted.");
+    return { id, org_id: orgId, title, summary, data: dashboard, generated_at: saved.rows[0].generated_at };
   } finally { client.release(); }
-  return { id, ...dashboard };
 }
 
 export async function detectCompetitorMovements(orgId: string, domain?: string): Promise<CompetitorMovement[]> {

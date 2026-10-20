@@ -327,6 +327,22 @@ window.fpLoadBacklinkHistory = async function(button) {
   }
   render();
 };
+window.fpLoadBacklinkSummary = async function(button) {
+  const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
+  const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
+  if (!domain) return;
+  STATE.backlinks = { loading: true, domain, orgId };
+  if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
+  render();
+  try {
+    STATE.backlinks = await apiFetch('/api/seo/backlinks?domain=' + encodeURIComponent(domain));
+    STATE.backlinks.domain = domain;
+    STATE.backlinks.orgId = orgId;
+  } catch (error) {
+    STATE.backlinks = { available: false, domain, orgId, error: error?.message || 'Échec de chargement' };
+  }
+  render();
+};
 window.fpLoadBacklinkDetails = async function(button) {
   const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
   const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
@@ -2158,7 +2174,7 @@ async function loadData(options = {}) {
     apiFetch('/api/me/storage').catch(() => null),
     apiFetch('/api/overview/checklist').catch(() => null),
     apiFetch('/api/notifications'),
-    _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
+    Promise.resolve(null), // DataForSEO backlink calls are explicitly user-triggered.
     _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
     'clients' in _preloaded ? Promise.resolve(_preloaded.clients) : apiFetch('/api/reports/clients'),
     apiFetch('/api/calendar-events'),
@@ -55355,13 +55371,16 @@ function renderCompetitor() {
         <div style="font-size:12px;color:var(--fp-text-muted)">${_blDomain ? `Domaine analysé : <strong>${escHtml(_blDomain)}</strong>` : 'Lancez un audit de site pour sélectionner le domaine à analyser.'}
           <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Les appels de détails et d’historique utilisent DataForSEO et peuvent être facturés par ce fournisseur.</div>
         </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpLoadBacklinkSummary(this)" ${!_blDomain || _blReal?.loading ? 'disabled' : ''}>
+          ${_blReal?.loading && _blReal?.domain === _blDomain ? 'Chargement…' : _blAvailable ? 'Actualiser le résumé' : 'Charger le résumé'}
+        </button>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpLoadBacklinkHistory(this)" ${!_blDomain || _blHistoryState?.loading ? 'disabled' : ''}>
           ${_blHistoryState?.loading && _blHistoryState?.domain === _blDomain ? 'Chargement…' : _blHistory ? 'Actualiser l’historique' : 'Charger l’historique (12 mois)'}
         </button>
       </div>
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Vos backlinks', displayStat(_blReal?.backlinks, null), _blAvailable ? 'total DataForSEO' : 'Données indisponibles', 'neutral')}
+        ${statCard('Vos backlinks', displayStat(_blReal?.backlinks, null), _blAvailable ? 'total DataForSEO' : _blReal?.error || 'Chargez le résumé DataForSEO', 'neutral')}
         ${statCard('Domaines référents', displayStat(_blReal?.referring_domains, null), _blAvailable ? 'total DataForSEO' : 'Données indisponibles', 'neutral')}
         ${statCard('Nouveaux liens', displayStat(_blLatest?.new_backlinks, null), _blLatest ? `période ${_blLatest.date}` : 'Historique non chargé', 'neutral')}
         ${statCard('Liens perdus', displayStat(_blLatest?.lost_backlinks, null), _blLatest ? `période ${_blLatest.date}` : 'Historique non chargé', 'neutral')}
@@ -70606,6 +70625,10 @@ function renderMarketIntelligence() {
             <span style="font-size:10px;color:var(--fp-text-faint)">${r.generated_at?new Date(r.generated_at).toLocaleDateString(getLocale()):''}</span>
           </div>
           ${r.summary?`<div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6;white-space:pre-wrap">${escHtml(r.summary)}</div>`:''}
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;color:var(--fp-accent);font-size:11px">Consulter les données enregistrées</summary>
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:10px;color:var(--fp-text-muted);margin-top:8px">${escHtml(JSON.stringify(r.data ?? {}, null, 2))}</pre>
+          </details>
         </div>
       `).join('')}
     ` : `<div style="padding:24px;text-align:center;color:var(--fp-text-muted)">Contenu en cours de chargement…</div>`}

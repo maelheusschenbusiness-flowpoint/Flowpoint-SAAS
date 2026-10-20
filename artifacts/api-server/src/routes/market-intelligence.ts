@@ -71,11 +71,33 @@ router.get("/market-intelligence/signals", async (req, res) => {
 router.get("/market-intelligence/reports", async (req, res) => {
   try {
     const r = await db(req)(
-      `SELECT * FROM ai_market_reports WHERE org_id=$1 ORDER BY generated_at DESC LIMIT 10`,
+      `SELECT id, title, summary, data, generated_at
+         FROM ai_market_reports
+        WHERE org_id=$1
+        ORDER BY generated_at DESC, id DESC
+        LIMIT 20`,
       [org(req)]
     );
-    res.json({ reports: r.rows, count: r.rows.length });
-  } catch { res.json({ reports: [], count: 0 }); }
+    res.json({ reports: r.rows, count: r.rows.length, source: "saved_reports" });
+  } catch (err) {
+    res.status(503).json({ error: safeErrMsg(err), code: "MARKET_REPORTS_UNAVAILABLE" });
+  }
+});
+
+router.get("/market-intelligence/reports/:id", async (req, res) => {
+  try {
+    const r = await db(req)(
+      `SELECT id, title, summary, data, generated_at
+         FROM ai_market_reports
+        WHERE id=$1 AND org_id=$2
+        LIMIT 1`,
+      [req.params["id"], org(req)]
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Rapport introuvable." }); return; }
+    res.json({ report: r.rows[0] });
+  } catch (err) {
+    res.status(503).json({ error: safeErrMsg(err), code: "MARKET_REPORT_UNAVAILABLE" });
+  }
 });
 
 router.post("/market-intelligence/report/generate", canWrite, async (req, res) => {
