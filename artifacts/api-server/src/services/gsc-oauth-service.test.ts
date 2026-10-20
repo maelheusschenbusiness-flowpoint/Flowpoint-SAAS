@@ -18,6 +18,7 @@ beforeEach(() => {
 
 describe("isolated GSC OAuth", () => {
   it("uses only the read-only Search Console scope and dedicated OAuth client", () => {
+    vi.stubEnv("RENDER_EXTERNAL_URL", "https://flowpoint-test.onrender.com");
     const url = new URL(service.buildGscAuthUrl("f".repeat(64)));
     expect(url.searchParams.get("client_id")).toBe("gsc-client-id");
     const scopes = url.searchParams.get("scope")?.split(" ") ?? [];
@@ -27,7 +28,7 @@ describe("isolated GSC OAuth", () => {
     expect(scopes).toHaveLength(3);
     expect(scopes).not.toContain("https://www.googleapis.com/auth/business.manage");
     expect(scopes).not.toContain("https://www.googleapis.com/auth/analytics.readonly");
-    expect(url.searchParams.get("redirect_uri")).toContain("/api/google/gsc/callback");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://flowpoint-test.onrender.com/api/google/gsc/callback");
   });
 
   it("encrypts tokens with authenticated encryption and rejects tampering", () => {

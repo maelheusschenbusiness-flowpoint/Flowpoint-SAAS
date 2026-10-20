@@ -37,7 +37,7 @@ export function gscPropertyUrl(): string {
 
 export function gscRedirectUri(): string {
   if (process.env["GOOGLE_GSC_REDIRECT_URI"]) return process.env["GOOGLE_GSC_REDIRECT_URI"];
-  const base = process.env["PUBLIC_URL"] ?? process.env["FRONTEND_URL"] ?? "https://app.flowpoint.pro";
+  const base = process.env["RENDER_EXTERNAL_URL"] ?? process.env["PUBLIC_URL"] ?? process.env["FRONTEND_URL"] ?? "https://app.flowpoint.pro";
   return `${base.replace(/\/+$/, "")}/api/google/gsc/callback`;
 }
 
