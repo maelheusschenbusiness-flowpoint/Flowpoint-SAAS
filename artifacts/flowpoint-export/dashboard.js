@@ -61236,6 +61236,18 @@ function renderGrowthKeywords() {
   };
 
   const activeTab = (window._kwTab || 'rankings');
+  const hasKeywordDomination = !!STATE.me?.addons?.keywordDomination;
+
+  window._fpLoadKeywordDomination = async function() {
+    try {
+      const report = await apiFetch('/api/keywords/domination');
+      STATE.keywordDominationReport = report;
+      render(STATE.currentSection);
+    } catch (err) {
+      STATE.keywordDominationError = err?.message || 'Analyse indisponible';
+      render(STATE.currentSection);
+    }
+  };
 
   window._fpLoadContentDecay = async function() {
     const target = document.getElementById('fp-content-decay-results');
@@ -61277,6 +61289,33 @@ function renderGrowthKeywords() {
   };
 
   function renderTab(tab) {
+    if (tab === 'domination') {
+      const report = STATE.keywordDominationReport;
+      if (!report && STATE.keywordDominationError) {
+        return `<div class="fp-card" role="alert" style="padding:20px;color:var(--fp-warning)">${escHtml(STATE.keywordDominationError)}</div>`;
+      }
+      if (!report) {
+        return `<div class="fp-card" style="padding:24px;text-align:center"><div style="color:var(--fp-text-muted);margin-bottom:12px">Analysez vos mots-clés suivis pour trouver les meilleures positions à conquérir.</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpLoadKeywordDomination()">Analyser mes opportunités</button></div>`;
+      }
+      const items = Array.isArray(report.opportunities) ? report.opportunities : [];
+      const atRisk = Array.isArray(report.atRisk) ? report.atRisk : [];
+      const summary = report.summary || {};
+      return `<div class="fp-stat-row fp-mb-16">
+        ${statCard('Suivis', summary.tracked || 0, 'mots-clés', 'neutral')}
+        ${statCard('Top 3', summary.top3 || 0, 'positions', 'up')}
+        ${statCard('À portée', summary.strikingDistance || 0, 'positions 4–20', 'up')}
+        ${statCard('En recul', summary.atRisk || 0, 'perte ≥ 3 positions', summary.atRisk ? 'down' : 'neutral')}
+      </div>
+      <div class="fp-card" style="padding:14px">
+        <div style="font-weight:700;color:var(--fp-text);margin-bottom:4px">Priorités de progression</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">Classement calculé uniquement à partir du volume, de la position et de la difficulté enregistrés. Ce score n’est pas une prévision de trafic.</div>
+        ${items.length ? `<div style="overflow-x:auto"><table class="fp-data-table"><thead><tr><th>Mot-clé</th><th>Position</th><th>Volume mensuel</th><th>Difficulté</th><th>Priorité</th><th>URL</th></tr></thead><tbody>${items.map(item => `<tr><td>${escHtml(item.keyword)}</td><td>${item.position ?? '—'}</td><td>${Number(item.searchVolume || 0).toLocaleString(getLocale())}</td><td>${item.difficulty ?? '—'}</td><td>${item.priorityScore}/100</td><td>${item.url ? `<a href="${escHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escHtml(item.url)}</a>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : `<div style="padding:16px;color:var(--fp-text-muted)">Aucune opportunité en positions 4 à 20 avec volume de recherche disponible.</div>`}
+      </div>
+      <div class="fp-card fp-mt-16" style="padding:14px">
+        <div style="font-weight:700;color:var(--fp-text);margin-bottom:10px">Mots-clés en recul (3 positions ou plus)</div>
+        ${atRisk.length ? atRisk.map(item => `<div style="padding:8px 0;border-top:1px solid var(--fp-border);display:flex;justify-content:space-between;gap:12px"><span>${escHtml(item.keyword)}</span><span style="color:var(--fp-danger)">−${Math.abs(item.change || 0)} · position ${item.position ?? '—'}</span></div>`).join('') : `<div style="color:var(--fp-text-muted)">Aucun recul significatif détecté dans les données enregistrées.</div>`}
+      </div>`;
+    }
     if (tab === 'rankings') {
       if (!kws.length) return `
         <div class="fp-card" style="text-align:center;padding:48px 24px">
@@ -61516,8 +61555,9 @@ function renderGrowthKeywords() {
         ['opportunities', '💡 Opportunités', opps.length],
         ['clusters', '🗂 Clusters IA', clusters.length],
         ['alerts', `🔔 Alertes${unread>0?' ('+unread+')':''}`, alerts.length],
+        ...(hasKeywordDomination ? [['domination', '🎯 Domination', STATE.keywordDominationReport?.summary?.tracked || 0]] : []),
       ].map(([id, label, cnt]) => `
-        <button onclick="window._kwTab='${id}';render(STATE.currentSection)" style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
+        <button onclick="window._kwTab='${id}';STATE.keywordDominationError=null;if('${id}'==='domination')STATE.keywordDominationReport=null;render(STATE.currentSection);if('${id}'==='domination')window._fpLoadKeywordDomination()" style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
           ${label} <span style="font-size:10px;opacity:0.7">${cnt}</span>
         </button>
       `).join('')}
