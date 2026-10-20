@@ -13,6 +13,7 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/services/global-monitoring.test.ts",
+      "src/services/forecasting-service.test.ts",
       "src/services/market-intel-service.test.ts",
       "src/services/market-intel-persistence-db.test.ts",
       "src/services/backlink-intel.test.ts",
@@ -23,6 +24,7 @@ export default defineConfig({
       "src/services/integration-response.test.ts",
       "src/services/executive-report-facts.test.ts",
       "src/services/review-intelligence-themes.test.ts",
+      "src/services/review-intel-reply.test.ts",
       "src/services/local-maps-summary.test.ts",
       "src/services/gbp-posting-publish.test.ts",
       // Conversion B — fp_lid attribution
@@ -247,6 +249,7 @@ export default defineConfig({
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
+      "src/services/quota-gate.test.ts",
       "src/services/workflow-schedule-cron.test.ts",
       "src/services/workflow-schedule-cron-db.test.ts",
     ],

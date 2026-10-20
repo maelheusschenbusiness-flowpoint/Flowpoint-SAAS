@@ -671,6 +671,37 @@ export async function getGA4ConversionHistory(
   }
 }
 
+export async function getGA4ForecastHistory(
+  orgId: string, startDate: string, endDate: string
+): Promise<Array<{ date: string; sessions: number; conversions: number; revenue: number }> | null> {
+  const ctx = await getGA4Context(orgId);
+  if (!ctx) return null;
+  try {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "sessions" }, { name: "conversions" }, { name: "totalRevenue" }],
+      orderBys: [{ dimension: { dimensionName: "date" }, desc: false }],
+      keepEmptyRows: true,
+    });
+    if (!data.rows?.length) return null;
+    return data.rows.map(row => {
+      const rawDate = row.dimensionValues?.[0]?.value ?? "";
+      return {
+        date: rawDate.length === 8
+          ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+          : rawDate,
+        sessions: Number(row.metricValues?.[0]?.value ?? 0) || 0,
+        conversions: Number(row.metricValues?.[1]?.value ?? 0) || 0,
+        revenue: Number(row.metricValues?.[2]?.value ?? 0) || 0,
+      };
+    });
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] forecast history unavailable");
+    return null;
+  }
+}
+
 /**
  * Conversion by geo: country + city with sessions, conversions, revenue.
  * dim[0]=country  dim[1]=city  met[0]=sessions  met[1]=conversions  met[2]=totalRevenue

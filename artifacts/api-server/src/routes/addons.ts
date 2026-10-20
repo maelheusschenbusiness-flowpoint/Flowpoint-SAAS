@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -29,6 +29,7 @@ router.get("/addons", async (req: Request, res: Response) => {
       const includedInPlan = planIncluded.has(key);
       return [key, {
         ...definition,
+        priceEur: getAddonDisplayPrice(key),
         active,
         includedInPlan,
         allowedForPlan: isPlanAllowedAddon(plan, key),
