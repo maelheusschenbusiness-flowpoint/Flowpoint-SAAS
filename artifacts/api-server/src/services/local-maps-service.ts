@@ -86,6 +86,9 @@ export function summarizeLocalMaps(
   const completedScans = heatmaps.filter(h => h.status === "completed").length;
   const allCells = heatmaps.flatMap(h => h.cells_data ?? []);
   const scanSummary = summarizeMeasuredCells(allCells);
+  const scanInsight = scanSummary.measuredPoints
+    ? `${scanSummary.measuredPoints}/${scanSummary.totalPoints} point(s) mesuré(s) ; ${scanSummary.notFoundPoints} point(s) sans établissement correspondant dans le top 20${scanSummary.averageRank == null ? "" : ` ; rang moyen observé #${scanSummary.averageRank}`}.`
+    : "Les positions et la couverture de votre établissement ne sont pas mesurées dans les données disponibles.";
   return {
     summary: {
       totalHeatmaps: heatmaps.length,
@@ -105,7 +108,7 @@ export function summarizeLocalMaps(
     },
     insights: [
       heatmaps.length
-        ? `${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). Les positions et la couverture de votre établissement ne sont pas mesurées dans les données disponibles.`
+        ? `${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). ${scanInsight}`
         : "Aucune carte de suivi locale n’est enregistrée.",
       ...(competitors.resultCount
         ? [`${competitors.uniqueCompetitors} établissement(s) concurrent(s) distinct(s) relevé(s) sur ${competitors.searchContexts} recherche(s), avec ${competitors.top3Results} résultat(s) dans le top 3${competitors.averageRating == null ? "" : ` et une note moyenne de ${competitors.averageRating}/5`}${competitors.averageReviews == null ? "" : ` (${competitors.averageReviews} avis par établissement en moyenne)`}.`]

@@ -24,10 +24,9 @@ describe("DataForSEO local coordinate response mapping", () => {
         status_message: "Ok.",
         result: [{
           items: [
-            { type: "maps_search", title: "Cafe Rene Centre", rank_absolute: 4 },
-            { type: "local_pack", title: "Boulangerie Nord", rank_absolute: 2 },
-            { type: "organic", title: "Cafe Rene Centre", rank_absolute: 1 },
-            { type: "maps_search", title: "Cafe Rene Centre", rank_absolute: 0 },
+            { type: "maps_search", title: "Cafe Rene Centre", rank_group: 4, rank_absolute: 9 },
+            { type: "local_pack", title: "Boulangerie Nord", rank_group: 2, rank_absolute: 7 },
+            { type: "organic", title: "Cafe Rene Centre", rank_group: 1, rank_absolute: 1 },
           ],
         }],
       }],
@@ -53,6 +52,8 @@ describe("DataForSEO local coordinate response mapping", () => {
       location_coordinate: "50.8500000,4.3500000,17z",
       language_code: "fr",
       depth: 20,
+      search_places: false,
+      search_this_area: true,
     }]);
   });
 
@@ -68,5 +69,22 @@ describe("DataForSEO local coordinate response mapping", () => {
 
     await expect(getGoogleMapsResultsAtCoordinate("plombier", 50.85, 4.35, "org-fixture"))
       .resolves.toEqual({ results: [], error: "provider_error" });
+  });
+
+  it("rejects map items without a valid group rank instead of reporting a false absence", async () => {
+    vi.stubEnv("DATAFORSEO_LOGIN", "fixture-login");
+    vi.stubEnv("DATAFORSEO_PASSWORD", "fixture-password");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      tasks: [{
+        status_code: 20000,
+        result: [{ items: [{ type: "maps_search", title: "Cafe Rene Centre", rank_absolute: 4 }] }],
+      }],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+
+    await expect(getGoogleMapsResultsAtCoordinate("plombier", 50.85, 4.35, "org-fixture"))
+      .resolves.toEqual({ results: [], error: "invalid_provider_response" });
   });
 });

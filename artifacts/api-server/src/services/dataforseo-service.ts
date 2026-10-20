@@ -699,6 +699,7 @@ export async function getGoogleMapsResultsAtCoordinate(
         items?: Array<{
           type: string;
           title?: string;
+          rank_group?: number;
           rank_absolute?: number;
         }>;
       }>;
@@ -709,6 +710,8 @@ export async function getGoogleMapsResultsAtCoordinate(
       location_coordinate: coordinate,
       language_code: "fr",
       depth: 20,
+      search_places: false,
+      search_this_area: true,
     }], orgId);
     const task = data[0];
     if (!task || task.status_code !== 20000) {
@@ -722,10 +725,14 @@ export async function getGoogleMapsResultsAtCoordinate(
       return { results: [], error: "provider_error" };
     }
     const allItems = task.result?.[0]?.items ?? [];
+    const mapItems = allItems.filter(item => item.type === "maps_search" || item.type === "local_pack");
+    if (mapItems.some(item => !Number.isInteger(item.rank_group) || item.rank_group! < 1)) {
+      logger.warn({ keyword, latitude, longitude }, "[dfs] coordinate maps response is missing a valid rank_group");
+      return { results: [], error: "invalid_provider_response" };
+    }
     return {
-      results: allItems
-        .filter(item => item.type === "maps_search" || item.type === "local_pack")
-        .map(item => ({ name: item.title ?? "", rank: item.rank_absolute ?? 0 }))
+      results: mapItems
+        .map(item => ({ name: item.title ?? "", rank: item.rank_group! }))
         .filter(item => item.name && item.rank > 0),
     };
   } catch (error) {
