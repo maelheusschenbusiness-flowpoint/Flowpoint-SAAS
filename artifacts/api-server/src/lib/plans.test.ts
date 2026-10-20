@@ -18,6 +18,8 @@ import { describe, it, expect } from "vitest";
 import {
   PLAN_INCLUDED_ADDONS,
   ADDON_PRICE_IDS,
+  DEVELOPMENT_ADDON_DISPLAY_PRICES,
+  getAddonDisplayPrice,
   BETA_ADDONS,
   COMING_SOON_ADDONS,
   VALIDATION_REQUIRED_ADDONS,
@@ -31,6 +33,22 @@ import { FEATURE_FLAGS } from "./config.js";
 const ONE_TIME_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 
 describe("V1 add-on catalogue contract", () => {
+  it("uses working prices only as non-production catalogue display values", () => {
+    expect(DEVELOPMENT_ADDON_DISPLAY_PRICES).toEqual({
+      marketIntelligence: 12,
+      aiCro: 12,
+      revenueLeak: 12,
+      aiForecasting: 15,
+    });
+    expect(getAddonDisplayPrice("marketIntelligence", "development")).toBe(12);
+    expect(getAddonDisplayPrice("aiForecasting", "test")).toBe(15);
+    expect(getAddonDisplayPrice("marketIntelligence", "production")).toBe(49);
+    expect(getAddonDisplayPrice("aiCro", "production")).toBe(34);
+    expect(getAddonDisplayPrice("revenueLeak", "production")).toBe(29);
+    expect(getAddonDisplayPrice("aiForecasting", "production")).toBe(39);
+    expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
+  });
+
   it("keeps the existing 40 product slots and all six protected keys", () => {
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(40);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(

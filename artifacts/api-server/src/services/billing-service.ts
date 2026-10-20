@@ -267,8 +267,9 @@ export async function getUsageSummary(orgId = "default") {
  */
 export async function checkQuota(
   resource: "audits" | "monitors" | "reports" | "exports" | "seats",
-  orgId: string
-): Promise<{ allowed: boolean; used: number; limit: number; plan: string }> {
+  orgId: string,
+  options: { failClosed?: boolean } = {},
+): Promise<{ allowed: boolean; used: number; limit: number; plan: string; available?: boolean }> {
 
   // Safety net: if orgId is unresolved, fall back to standard limits (most restrictive)
   const resolvedOrgId = orgId && orgId !== "default" ? orgId : null;
@@ -296,6 +297,7 @@ export async function checkQuota(
       qtyExtras = computeQtyAddonExtras(addonMap);
     } catch (err) {
       logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed — using standard limits");
+      if (options.failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
     }
   }
   const extraMonitors = qtyExtras["monitors"]    ?? 0;
@@ -353,12 +355,12 @@ export async function checkQuota(
             break;
           }
           case "exports": {
-            // Count all export events this month from usage_events
+            // Count all export events this month from usage_events.kind
             // (CSV client-side, PDF, Health-Score all report via POST /billing/usage-events)
             const r = await client.query(
               `SELECT COUNT(*)::int AS n FROM usage_events
                 WHERE org_id=$1
-                  AND event_type IN ('export','pdf_export','health_export')
+                  AND kind IN ('export','pdf_export','health_export')
                   AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
@@ -372,10 +374,12 @@ export async function checkQuota(
       }
     } catch (err) {
       logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed — allowing");
+      if (options.failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
       return { allowed: true, used: 0, limit: limits[resource as keyof typeof limits] as number || 0, plan };
     }
   } else {
     // No orgId — use standard limits with zero usage (most conservative: allow but log)
+    if (options.failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
     limit = limits[resource as keyof typeof limits] as number || 0;
     logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId — returning standard limit, usage=0");
   }
