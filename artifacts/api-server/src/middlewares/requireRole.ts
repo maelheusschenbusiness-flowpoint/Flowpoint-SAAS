@@ -43,7 +43,7 @@ export function requireRole(allowedRoles: string[]): (req: Request, res: Respons
     const identity = req.orgContext as (typeof req.orgContext & { userId?: string }) | undefined;
     const orgId = (req as Request & { orgId?: string }).orgId;
     const plan = (req as Request & { me?: { plan?: string } }).me?.plan;
-    if (permission && (role === "member" || role === "viewer") && allowedRoles.includes("member")) {
+    if (permission && permission.action !== "view" && role === "member" && allowedRoles.includes("member")) {
       if (!orgId || !identity?.userId) {
         res.status(503).json({ error: "Permission identity unavailable. Please try again." });
         return;

@@ -32,6 +32,7 @@ export function hasRolePermission(
   resource: string,
   action: string,
 ): boolean {
+  if (!ENTERPRISE_PERMISSION_ACTIONS.some(allowed => allowed === action)) return false;
   let parsed = permissions;
   if (typeof parsed === "string") {
     try { parsed = JSON.parse(parsed) as unknown; } catch { return false; }
