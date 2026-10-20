@@ -15,16 +15,16 @@ suite("Market Intelligence persistence — ephemeral PostgreSQL CI", () => {
     const idA = randomUUID();
     const idB = randomUUID();
     try {
-      const schema = await pool.query<{ rls: boolean; policies: string[] }>(
+      const schema = await pool.query<{ rls: boolean; policies: string | null }>(
         `SELECT c.relrowsecurity AS rls,
-                ARRAY(SELECT p.policyname FROM pg_policies p
-                       WHERE p.schemaname='public' AND p.tablename='ai_market_reports'
-                       ORDER BY p.policyname) AS policies
+                (SELECT string_agg(p.policyname::text, ',' ORDER BY p.policyname)
+                   FROM pg_policies p
+                  WHERE p.schemaname='public' AND p.tablename='ai_market_reports') AS policies
            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname='public' AND c.relname='ai_market_reports'`
       );
       expect(schema.rows[0]?.rls).toBe(true);
-      expect(schema.rows[0]?.policies).toEqual(["tenant_delete", "tenant_insert", "tenant_select", "tenant_update"]);
+      expect(schema.rows[0]?.policies).toBe("tenant_delete,tenant_insert,tenant_select,tenant_update");
 
       await pool.query(
         `INSERT INTO ai_market_reports (id, org_id, title, summary, data)
