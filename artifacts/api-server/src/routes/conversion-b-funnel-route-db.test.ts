@@ -93,6 +93,22 @@ describe("Conversion B — jalons navigateur transmis a AI Lab", () => {
     expect(envoyes[0]).toMatchObject({ stage: "visit", source: "marketing" });
   });
 
+  it("transmet a AI Lab l'horodatage persiste de l'etape", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const v = visiteur();
+    await request(app).post("/api/public/funnel-event")
+      .set("Cookie", "fp_analytics_consent=accepted")
+      .send({ etape: "landing_vue", visiteurId: v, fp_lid: FP_LID });
+    await attendreEnvoi();
+
+    const result = await pool.query<{ created_at: Date }>(
+      `SELECT created_at FROM funnel_events WHERE visiteur_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [v],
+    );
+    expect(result.rows[0]?.created_at).toBeInstanceOf(Date);
+    expect(envoyes[0]?.["occurred_at"]).toBe(result.rows[0]?.created_at.toISOString());
+  });
+
   it("un consentement declare autrement qu'accepte ne produit rien", async (ctx) => {
     if (!dbOk) return ctx.skip();
     const v = visiteur();

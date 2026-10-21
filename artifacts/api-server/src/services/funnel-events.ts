@@ -103,6 +103,23 @@ function tronquer(value: string | null | undefined): string | null {
   return trimmed ? trimmed.slice(0, 120) : null;
 }
 
+/** Retourne l'horodatage stocké de l'étape identifiée par sa clé idempotente. */
+export async function horodatageEtape(cleIdempotence: string): Promise<string | null> {
+  try {
+    const result = await pool.query<{ created_at: Date | string }>(
+      `SELECT created_at FROM funnel_events WHERE cle_idempotence = $1`,
+      [cleIdempotence],
+    );
+    const value = result.rows[0]?.created_at;
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  } catch (error) {
+    logger.warn({ error }, "[Tunnel] event timestamp read failed");
+    return null;
+  }
+}
+
 export async function enregistrerEtape(
   event: EvenementTunnel,
 ): Promise<boolean> {

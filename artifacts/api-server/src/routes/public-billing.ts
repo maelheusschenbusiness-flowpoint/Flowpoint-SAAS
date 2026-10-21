@@ -15,6 +15,7 @@ import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import {
   ETAPES_PUBLIQUES,
   enregistrerEtape,
+  horodatageEtape,
   lireAttributionFunnel,
   metadataAttributionFunnel,
   normaliserAttributionFunnel,
@@ -64,12 +65,13 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
   }
   const maintenant = new Date();
   const day = maintenant.toISOString().slice(0, 10);
+  const cleIdempotence = `${etape}:${attribution.visiteurId}:${day}`;
   const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     plan: typeof req.body?.plan === "string" ? req.body.plan : null,
-    cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
+    cleIdempotence,
   });
   // Conversion B : le fp_lid opaque joint par le navigateur devient un jalon,
   // inscrit dans la file durable. Jamais pour un token mal forme, jamais pour
@@ -77,13 +79,16 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
   const fpLid = normalizeFpLid(req.body?.fp_lid);
   const jalon = JALONS_NAVIGATEUR[etape];
   if (insere && jalon && fpLid) {
-    void queueConversionEvent({
-      eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
-      stage: jalon.stage,
-      source: jalon.source,
-      fpLid,
-      occurredAt: maintenant.toISOString(),
-    });
+    const occurredAt = await horodatageEtape(cleIdempotence);
+    if (occurredAt) {
+      void queueConversionEvent({
+        eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
+        stage: jalon.stage,
+        source: jalon.source,
+        fpLid,
+        occurredAt,
+      });
+    }
   }
   res.status(204).end();
 });
