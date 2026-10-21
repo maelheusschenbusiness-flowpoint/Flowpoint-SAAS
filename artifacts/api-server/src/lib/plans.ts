@@ -713,21 +713,10 @@ for (const plan of ["standard", "pro", "ultra"] as const) {
   for (const addonKey of READY_ADDONS_ANY_PLAN) {
     (PLAN_ALLOWED_ADDONS[plan] as Set<string>).add(addonKey);
   }
-  // Beta entries are not certified for broad sale. Preserve the existing
-  // protected-key matrix; included plan entitlements remain free.
-  for (const addonKey of BETA_ADDONS) {
-    if (!PROTECTED_ADDON_KEYS.has(addonKey)) {
-      (PLAN_ALLOWED_ADDONS[plan] as Set<string>).delete(addonKey);
-    }
-  }
 }
 
-/** Returns true when a plan may purchase an add-on, subject to lifecycle state. */
+/** Returns true when a plan is allowed to purchase the given add-on key. */
 export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
-  if (REMOVED_ADDONS.has(addonKey) || getAddonAvailability(addonKey) === "coming_soon") {
-    return false;
-  }
-  if (BETA_ADDONS.has(addonKey) && !PROTECTED_ADDON_KEYS.has(addonKey)) return false;
   const planNorm = plan.toLowerCase();
   const allowed = PLAN_ALLOWED_ADDONS[planNorm];
   if (!allowed) {

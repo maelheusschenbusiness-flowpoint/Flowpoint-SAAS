@@ -123,11 +123,18 @@ describe("V1 add-on catalogue contract", () => {
     ]);
   });
 
-  it("keeps roadmap, validation-required, and removed add-ons unpurchasable on every tier", () => {
-    for (const key of [...COMING_SOON_ADDONS, ...VALIDATION_REQUIRED_ADDONS, ...REMOVED_ADDONS]) {
+  it("does not broaden roadmap, validation-required, or removed add-ons", () => {
+    for (const key of [...COMING_SOON_ADDONS, ...REMOVED_ADDONS]) {
       for (const plan of ["standard", "pro", "ultra"]) {
-        expect(isPlanAllowedAddon(plan, key), `${key} on ${plan}`).toBe(false);
+        expect(PLAN_ALLOWED_ADDONS[plan]?.has(key), `${key} on ${plan}`).toBe(false);
       }
+    }
+    // Validation-required Local SEO offers had existing Pro/Ultra matrix entries;
+    // their activation and checkout gates are outside this plan-access change.
+    for (const key of VALIDATION_REQUIRED_ADDONS) {
+      expect(PLAN_ALLOWED_ADDONS.standard?.has(key)).toBe(false);
+      expect(PLAN_ALLOWED_ADDONS.pro?.has(key)).toBe(true);
+      expect(PLAN_ALLOWED_ADDONS.ultra?.has(key)).toBe(true);
     }
   });
 

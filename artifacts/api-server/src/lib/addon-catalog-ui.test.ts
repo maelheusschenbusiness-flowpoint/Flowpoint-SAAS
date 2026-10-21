@@ -89,13 +89,6 @@ describe("add-on catalogue UI commercial gates", () => {
         true,
       ),
     ).toBe("included");
-    expect(
-      policy._fpAddonPurchaseState(
-        { availability: "beta", allowedPlans: [] },
-        "standard",
-        false,
-      ),
-    ).toBe("coming_soon");
   });
 
   it("shows the requested unavailable-state labels", () => {

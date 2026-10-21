@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, BETA_ADDONS, PROTECTED_ADDON_KEYS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -82,14 +82,6 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
     // Included capabilities are entitlements, never a separately billable
     // add-on. Do not call Stripe or create an org_addons duplicate.
     res.json({ ok: true, addonKey: key, includedInPlan: true, addons: await getOrgAddons(orgId) });
-    return;
-  }
-  if (BETA_ADDONS.has(key) && !PROTECTED_ADDON_KEYS.has(key)) {
-    res.status(503).json({
-      error: "Cet add-on est encore en bêta et n'est pas disponible à l'achat.",
-      code: "ADDON_NOT_CERTIFIED",
-      addonKey: key,
-    });
     return;
   }
   // ── Plan gate: block add-ons incompatible with current plan tier ─────────
