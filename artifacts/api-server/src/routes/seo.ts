@@ -24,6 +24,7 @@ import {
   generateSEOMissions,
 } from "../services/dataforseo-service.js";
 import { checkLLMVisibility } from "../services/llm-visibility.js";
+import { getTopKeywords } from "../services/gsc-service.js";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
@@ -243,52 +244,27 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 
 const backlinkAddonGate = requireAddon("backlinkIntelligence", "Backlink Intelligence");
 
-router.get("/seo/backlinks", backlinkAddonGate, backlinkCooldown("summary"), withQuota(async (req, res) => {
-  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain } = req.query as Record<string,string>;
-  if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
-    res.status(400).json({ error: "A valid domain is required." });
-    return;
-  }
-  try {
-    const data = await getBacklinks(domain, orgId);
-    res.json({ domain, ...data });
-  } catch (e) {
-    res.status(500).json({ error: "Backlinks fetch failed", detail: String(e) });
-  }
-}));
-
-// Historical snapshots are fetched on demand from DataForSEO; each successful
-// request is billed by the provider and counted by withQuota per organization.
-router.get("/seo/backlinks/history", backlinkAddonGate, backlinkCooldown("history"), withQuota(async (req, res) => {
-  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain } = req.query as Record<string,string>;
-  const monthsRaw = Number((req.query as Record<string,string>)["months"] ?? 12);
-  const months = [6, 12, 24].includes(monthsRaw) ? monthsRaw : 12;
-  if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
-    res.status(400).json({ error: "A valid domain is required." });
-    return;
-  }
-  try {
-    res.json(await getBacklinkHistory(domain, orgId, months));
-  } catch (e) {
-    res.status(500).json({ error: "Backlink history fetch failed", detail: String(e) });
-  }
-}));
-
-router.get("/seo/backlinks/details", backlinkAddonGate, backlinkCooldown("details"), withQuota(async (req, res) => {
-  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain } = req.query as Record<string,string>;
-  if (!domain || domain.length > 253 || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes("..")) {
-    res.status(400).json({ error: "A valid domain is required." });
-    return;
-  }
-  try {
-    res.json(await getBacklinkDetails(domain, orgId));
-  } catch (e) {
-    res.status(500).json({ error: "Backlink details fetch failed", detail: String(e) });
-  }
-}));
+router.get("/seo/backlinks", withQuota(async (req, res) => {
+      const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+      const { domain } = req.query as Record<string, string | undefined>;
+      if (!domain || !domain.trim() || domain.length > 253) {
+        res.status(400).json({ error: "domain required", code: "INVALID_DOMAIN" });
+        return;
+      }
+      const target = domain.trim();
+      try {
+        const { loadBillingContext } = await import("../services/billing-context.js");
+        const bCtx = await loadBillingContext(orgId).catch(() => null);
+        if (!bCtx?.addons?.["backlinkIntelligence"]) {
+          res.status(403).json({ error: "L'add-on Backlink Intelligence est requis pour accéder à cette fonctionnalité.", code: "ADDON_REQUIRED", addonKey: "backlinkIntelligence" });
+          return;
+        }
+        const data = await getBacklinks(target, orgId);
+        res.json({ domain: target, ...data });
+      } catch {
+        res.status(503).json({ domain: target, available: false, code: "BACKLINK_DATA_UNAVAILABLE", reason: "provider_error" });
+      }
+    }));
 
 // ── GET /api/seo/domain-metrics ───────────────────────────────────────────────
 
@@ -346,14 +322,18 @@ router.get("/seo/maps", withQuota(async (req, res) => {
 // ── GET /api/seo/ai-mentions ──────────────────────────────────────────────────
 
 router.get("/seo/ai-mentions", withQuota(async (req, res) => {
-  const { keyword = "seo local" } = req.query as Record<string,string>;
-  try {
-    const data = await getAIVisibility(keyword);
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: "AI mentions fetch failed", detail: String(e) });
-  }
-}));
+      const { keyword = "seo local" } = req.query as Record<string, string>;
+      try {
+        const data = await getAIVisibility(keyword);
+        if ("available" in data && data.available === false) {
+          res.status(503).json(data);
+          return;
+        }
+        res.json(data);
+      } catch {
+        res.status(503).json({ available: false, code: "AI_VISIBILITY_UNAVAILABLE", error: "Le service de visibilité IA est indisponible." });
+      }
+    }));
 
 // ── POST /api/seo/content-optimization ───────────────────────────────────────
 
@@ -380,23 +360,30 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
     }).catch(() => {});
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: "Content optimization failed", detail: String(e) });
+    const code = e instanceof Error && "code" in e ? String((e as Error & { code: string }).code) : "DATAFORSEO_PROVIDER_ERROR";
+    const unavailable = code === "DATAFORSEO_NOT_CONFIGURED";
+    res.status(unavailable ? 503 : 502).json({ ok: false, code, error: unavailable ? "DataForSEO n'est pas configuré pour cette organisation." : "DataForSEO n'a pas pu analyser cette page." });
   }
 }));
 
 // ── POST /api/seo/generate-missions ──────────────────────────────────────────
 
-router.post("/seo/generate-missions", canWrite, async (req, res) => {
-  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain } = req.body as { domain?: string };
-  if (!domain) { res.status(400).json({ error: "domain required" }); return; }
-  try {
-    await generateSEOMissions(orgId, domain, []);
-    res.json({ ok: true, message: `Missions SEO générées pour ${domain}` });
-  } catch (e) {
-    res.status(500).json({ error: "Mission generation failed" });
-  }
-});
+router.post("/seo/generate-missions", canWrite, requireAddon("advancedSeoLab", "Advanced SEO Lab"), withQuota(async (req, res) => {
+      const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+      const { domain } = req.body as { domain?: string };
+      if (!domain || typeof domain !== "string" || domain.length > 253) { res.status(400).json({ ok: false, code: "INVALID_DOMAIN", error: "domain required" }); return; }
+      try {
+        const rows = await getTopKeywords(orgId, 20, 28);
+        const keywords = rows.map(row => String((row as { keyword?: unknown })?.keyword ?? "").trim()).filter(Boolean).slice(0, 20);
+        if (!keywords.length) { res.status(422).json({ ok: false, code: "SEO_KEYWORDS_UNAVAILABLE", error: "Aucun mot-clé Google Search Console récent n'est disponible pour générer des missions." }); return; }
+        const missions = await generateSEOMissions(orgId, domain, keywords);
+        res.json({ ok: true, domain, missions });
+      } catch (e) {
+        const code = e instanceof Error && "code" in e ? String((e as Error & { code: string }).code) : "DATAFORSEO_PROVIDER_ERROR";
+        const unavailable = code === "DATAFORSEO_NOT_CONFIGURED";
+        res.status(unavailable ? 503 : 502).json({ ok: false, code, error: unavailable ? "DataForSEO n'est pas configuré pour cette organisation." : "DataForSEO n'a pas pu générer les missions." });
+      }
+    }));
 
 // ── GET /api/seo/llm-visibility ───────────────────────────────────────────────
 
@@ -428,43 +415,20 @@ router.get("/local-seo/status", async (req, res) => {
 });
 
 // ── GET /local-seo/citations ──────────────────────────────────────────────────
-// Returns citation health data — structured from DataForSEO backlinks or fallback
+// DataForSEO backlinks are not local business citations and cannot prove NAP
+// consistency. Until a citation provider is connected, return an explicit
+// unavailable state instead of inventing citation records or health scores.
 router.get("/local-seo/citations", async (req, res) => {
   const domain = req.query.domain as string | undefined;
-  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  try {
-    if (domain && await isDataForSEOConfigured(orgId)) {
-      // Quota non verifiable : on ne tente aucun appel payant et on sert le
-      // repli gratuit plus bas plutot que de refuser la page.
-      const verdict = await verifierEtConsommerQuota(orgId, "citations", 1).catch(
-        () => ({ autorise: false as const, motif: "indisponible" as const }),
-      );
-      if (verdict.autorise) {
-        const { resultat: bl, appelsReussis } = await suivreAppelsPayants(() => getBacklinks(domain, orgId));
-        if (appelsReussis === 0) await rembourserQuota(orgId, 1);
-        res.json({
-          domain,
-          totalCitations: bl?.total ?? 0,
-          activeCitations: bl?.dofollow ?? 0,
-          napConsistency: 85,
-          citations: (bl?.items ?? []).slice(0, 20).map((item: Record<string, unknown>) => ({
-            source: item["domain_from"] ?? "unknown",
-            status: "active",
-            hasPhone: true,
-            hasAddress: true,
-            hasWebsite: true,
-          })),
-        });
-        return;
-      }
-    }
-    res.json({
-      domain: domain ?? "",
-      totalCitations: 0, activeCitations: 0, napConsistency: 0, citations: [],
-    });
-  } catch {
-    res.json({ domain: domain ?? "", totalCitations: 0, activeCitations: 0, napConsistency: 0, citations: [] });
-  }
+  res.json({
+    domain: domain ?? "",
+    available: false,
+    reason: "citation_provider_required",
+    totalCitations: null,
+    activeCitations: null,
+    napConsistency: null,
+    citations: [],
+  });
 });
 
 // ── POST /local-seo/rankings ──────────────────────────────────────────────────
