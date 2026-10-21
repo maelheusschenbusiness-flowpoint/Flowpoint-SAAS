@@ -3,6 +3,11 @@ import { Router, type Request } from "express";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { calculateExperimentResult } from "../services/conversion-observations.js";
+import { aiChat } from "../services/ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
+import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { parseAbTestingSuggestion } from "../services/ab-testing-suggestion.js";
 
 const router = Router();
 type OrgReq = Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
@@ -13,6 +18,89 @@ function validSelector(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 180 &&
     !/[<>;]/.test(value) && /^[#.[\]a-zA-Z0-9_="'():\s-]+$/.test(value);
 }
+
+router.post("/ab-testing/suggest", canWrite, async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? "default";
+  const { siteUrl, page, selector, goalSelector, variantAText } = req.body ?? {};
+  if (typeof siteUrl !== "string" || siteUrl.length > 500 ||
+      typeof page !== "string" || !page.startsWith("/") || page.startsWith("//") || page.length > 300 ||
+      !validSelector(selector) || !validSelector(goalSelector) ||
+      typeof variantAText !== "string" || !variantAText.trim() || variantAText.length > 300) {
+    res.status(400).json({ error: "Site, chemin, sélecteurs CSS et texte témoin valides requis." });
+    return;
+  }
+
+  try {
+    const owned = await orgDb(req)(
+      `SELECT 1 FROM behavior_site_tokens WHERE org_id=$1 AND site_url=$2 LIMIT 1`,
+      [orgId, siteUrl],
+    );
+    if (!owned.rows.length) {
+      res.status(404).json({ error: "Site non connecté à l’analytics comportemental." });
+      return;
+    }
+
+    const signals = await orgDb(req)(
+      `SELECT event_type AS "eventType",
+              COUNT(*)::int AS events,
+              COUNT(DISTINCT session_id)::int AS sessions
+         FROM behavior_events
+        WHERE org_id=$1 AND site_url=$2 AND page=$3
+          AND created_at >= now() - interval '30 days'
+          AND event_type IN ('click','rage_click','dead_click','form_submit','form_abandon','scroll_depth')
+        GROUP BY event_type
+        ORDER BY COUNT(*) DESC
+        LIMIT 12`,
+      [orgId, siteUrl, page],
+    );
+    if (!signals.rows.length) {
+      res.status(409).json({ error: "Aucun signal comportemental récent pour cette page. Installez le snippet et collectez des événements avant de générer une hypothèse." });
+      return;
+    }
+
+    const quota = await checkAIQuota({ feature: "strategist", orgId });
+    if (!quota.allowed) {
+      res.status(402).json(buildQuotaGuidance(quota, await loadOrgAIPrefs(orgId)));
+      return;
+    }
+    const prefs = await loadOrgAIPrefs(orgId);
+    const model = resolveAIModel(prefs, "strategist");
+    const startedAt = Date.now();
+    const generated = await aiChat({
+      provider: model.provider,
+      model: model.model,
+      systemPrompt: "Tu aides à préparer un test A/B. Les signaux fournis sont agrégés et observationnels : ne déduis pas de causalité, n'invente aucune mesure et ne promets aucun gain. Propose une hypothèse à valider et une variante B concise du texte témoin. Retourne uniquement un JSON valide.",
+      messages: [{
+        role: "user",
+        content: `Prépare une proposition de test à partir de ces données uniquement : ${JSON.stringify({
+          page, selector, goalSelector, variantAText: variantAText.trim(), observedSignals: signals.rows,
+        })}\nFormat JSON strict: {"hypothesis":"...","variantBText":"...","rationale":"...","successMetric":"..."}`,
+      }],
+      maxTokens: model.maxTokens,
+      json: true,
+    });
+    const suggestion = parseAbTestingSuggestion(generated.text ?? "");
+    if (!suggestion || suggestion.variantBText === variantAText.trim()) {
+      res.status(502).json({ error: "La proposition IA reçue était incomplète. Réessayez." });
+      return;
+    }
+    recordCompletedUsageDeferred({
+      feature: "strategist",
+      orgId,
+      userId: req.userId ?? "unknown",
+      model: model.model as AIModel,
+      provider: model.provider,
+      tokensIn: generated.usage?.promptTokens ?? 0,
+      tokensOut: generated.usage?.completionTokens ?? 0,
+      latencyMs: Date.now() - startedAt,
+      success: true,
+      requestId: `ab_testing_suggest_${Date.now()}`,
+    });
+    res.json({ ok: true, source: "behavior_events", suggestion });
+  } catch {
+    res.status(503).json({ error: "Impossible de générer une hypothèse à partir des signaux observés." });
+  }
+});
 
 router.get("/ab-testing/experiments", async (req, res) => {
   const orgId = (req as OrgReq).orgId ?? "default";
