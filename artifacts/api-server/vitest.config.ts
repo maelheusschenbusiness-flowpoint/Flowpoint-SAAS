@@ -151,6 +151,7 @@ export default defineConfig({
       "src/services/ensure-stripe-customer.test.ts",
       "src/agent/ai-tool-gate.test.ts",
       "src/lib/plans.test.ts",
+      "src/lib/addon-catalog-ui.test.ts",
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",
