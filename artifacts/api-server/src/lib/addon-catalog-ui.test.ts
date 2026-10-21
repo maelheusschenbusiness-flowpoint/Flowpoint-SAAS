@@ -35,6 +35,10 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(exportedDashboard).toBe(dashboard);
   });
 
+  it("never offers deactivation for an add-on active only because it is included", () => {
+    expect(dashboard).toContain(": a.active && !isInc");
+  });
+
   it("fails closed unless the backend catalogue and allowedPlans are present", () => {
     expect(policy._fpAddonPurchaseState({}, "pro", false)).toBe("catalog_unavailable");
     expect(
