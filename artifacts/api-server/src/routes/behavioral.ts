@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { randomBytes } from "crypto";
+import { BEHAVIORAL_SESSION_ID_FACTORY } from "../services/behavioral-session-id.js";
 import {
   trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights,
 } from "../services/behavioral-service.js";
@@ -331,7 +332,7 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
   const snippet = `<!-- FlowPoint Behavioral Analytics — paste before </body> -->
 <script>
 (function(w,d,s,u,k){
-  var _fpSid='fp_'+Math.random().toString(36).slice(2,10);
+  var _fpSid=(${BEHAVIORAL_SESSION_ID_FACTORY})(w);
   var _fpStart=Date.now();var _fpToken=null;var _fpTokenExp=0;
   var _fpRageMap={};var _fpRageTs=0;
   async function _fpHmac(msg){
