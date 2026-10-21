@@ -26,11 +26,12 @@
 import { createHash } from "node:crypto";
 import { logger } from "./logger.js";
 
-/** Les etapes que ce module sait emettre. `click` et `visit` ne sont pas cables. */
-export type ConversionStage = "signup" | "checkout" | "trial" | "paid";
+/** Les etapes que ce module sait emettre. Le clic est prouve par Smartlead. */
+export type ConversionStage =
+  | "visit" | "signup_page" | "signup" | "checkout" | "trial" | "paid";
 
 /** La provenance de la preuve, telle qu'AI Lab la contraint. */
-export type ConversionSource = "saas" | "stripe";
+export type ConversionSource = "marketing" | "saas" | "stripe";
 
 export interface ConversionEvent {
   /** Identifiant stable et opaque de l'evenement. Jamais un secret en clair. */

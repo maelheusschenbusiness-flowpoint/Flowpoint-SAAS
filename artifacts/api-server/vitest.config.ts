@@ -23,6 +23,8 @@ export default defineConfig({
       // Conversion A — funnel fixes
       "src/lib/carry-params.test.ts",
       "src/services/funnel-events.test.ts",
+      // Le site vitrine declare son consentement et son fp_lid dans le corps.
+      "src/tests/funnel-event-site-consent.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
       "src/lib/startup-retry.test.ts",

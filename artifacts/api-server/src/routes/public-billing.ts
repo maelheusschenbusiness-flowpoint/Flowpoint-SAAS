@@ -10,6 +10,7 @@ import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../s
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
 import {
   ETAPES_PUBLIQUES,
   enregistrerEtape,
@@ -20,6 +21,20 @@ import {
 
 const router = Router();
 const publicFunnelEventRateLimit = createIpRateLimit("public_funnel_event", 60, 60_000);
+
+/**
+ * Les etapes navigateur qui deviennent un jalon AI Lab, avec la source qui peut
+ * la prouver — la meme table que sur `Test-Replit`. La visite vient du site
+ * vitrine ; la page d'inscription, de l'application.
+ */
+const JALONS_NAVIGATEUR: Record<string, {
+  stage: "visit" | "signup_page";
+  source: "marketing" | "saas";
+  prefixe: string;
+}> = {
+  landing_vue:    { stage: "visit",       source: "marketing", prefixe: "marketing:visit" },
+  signup_started: { stage: "signup_page", source: "saas",      prefixe: "saas:signup_page" },
+};
 
 router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Request, res: Response) => {
   const etape = typeof req.body?.etape === "string" ? req.body.etape.trim() : "";
@@ -32,8 +47,14 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     res.status(400).json({ ok: false, error: "visiteurId is required." });
     return;
   }
+  // Le consentement vit sur le domaine qui l'a recueilli. `app.flowpoint.pro`
+  // le lit dans son cookie ; le site vitrine `flowpoint.pro` appelle en
+  // cross-origin, sans cookie, et ne peut que le declarer — il n'emet d'ailleurs
+  // rien tant que le visiteur n'a pas accepte. Un cookie present l'emporte
+  // toujours, refus compris, et la seule valeur admise reste `accepted`.
+  const cookieConsentement = req.cookies?.["fp_analytics_consent"];
   const attribution = normaliserAttributionFunnel(
-    req.cookies?.["fp_analytics_consent"],
+    cookieConsentement ?? req.body?.consentement,
     visiteurId,
     req.body?.source,
   );
@@ -41,14 +62,30 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     res.status(204).end();
     return;
   }
-  const day = new Date().toISOString().slice(0, 10);
-  await enregistrerEtape({
+  const maintenant = new Date();
+  const day = maintenant.toISOString().slice(0, 10);
+  const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     plan: typeof req.body?.plan === "string" ? req.body.plan : null,
     cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
   });
+  // Le navigateur peut joindre son fp_lid opaque : jamais pour un token mal
+  // forme, et seulement pour une etape reellement enregistree. L'identifiant
+  // porte le visiteur et le jour, comme la cle d'idempotence locale. L'emission
+  // ne bloque pas la reponse et ne leve jamais.
+  const fpLid = normalizeFpLid(req.body?.fp_lid);
+  const jalon = JALONS_NAVIGATEUR[etape];
+  if (insere && jalon && fpLid) {
+    void emitConversionEvent({
+      eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
+      stage: jalon.stage,
+      source: jalon.source,
+      fpLid,
+      occurredAt: maintenant.toISOString(),
+    });
+  }
   res.status(204).end();
 });
 
