@@ -5713,7 +5713,7 @@ function renderSidebarStatus() {
     const streak = STATE.streak || 0;
     userEl.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <div class="fp-user-avatar" style="width:46px;height:46px;font-size:18px;border-radius:12px;flex-shrink:0">${escHtml(me.firstName.charAt(0))}</div>
+        <div class="fp-user-avatar" style="width:46px;height:46px;font-size:18px;border-radius:12px;flex-shrink:0">${escHtml(String(me.firstName || me.email || 'U').charAt(0))}</div>
         <div style="flex:1;min-width:0">
           <div class="fp-user-name" style="font-size:14px;font-weight:700">${escHtml(me.firstName)} ${escHtml(me.lastName||'H.')}</div>
           <div style="font-size:10px;color:var(--fp-text-faint);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(me.email||'')}</div>
@@ -9004,6 +9004,11 @@ function renderLocalSEO() {
   const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const _lseo = STATE.localSeo || {};
+  const _zones = Array.isArray(_lseo.zones) ? _lseo.zones : [];
+  const totalZones = _zones.length;
+  const dominatedZones = totalZones > 0
+    ? _zones.filter(zone => zone && zone.dominated === true).length
+    : null;
   const mapsSummary = window.FP_DATA?.localMaps?.summary || {};
   const mapsDataAvailable = !!window.FP_DATA?.localMaps;
   const domScore = PREVIEW_MODE ? 72 : null;
