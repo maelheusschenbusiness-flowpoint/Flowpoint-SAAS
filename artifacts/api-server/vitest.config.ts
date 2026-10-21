@@ -21,6 +21,7 @@ export default defineConfig({
       // File durable des jalons Conversion B : service endormi (21/10/2026).
       "src/lib/conversion-outbox-db.test.ts",
       "src/routes/conversion-b-funnel-route-db.test.ts",
+      "src/tests/funnel-tracking-inscription.test.ts",
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes

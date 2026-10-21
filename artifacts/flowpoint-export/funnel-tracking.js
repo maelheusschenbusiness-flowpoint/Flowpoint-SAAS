@@ -9,6 +9,9 @@
   const VISITOR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
   const ALLOWED_SOURCES = new Set(["smartlead", "google", "direct", "social", "other_campaign"]);
   const APP_ORIGIN = "https://app.flowpoint.pro";
+  // Conversion B : identifiant opaque du lien d'outreach, deja valide et range
+  // dans sessionStorage par la page d'inscription. Jamais derive, jamais cree ici.
+  const FP_LID_RE = /^[A-Za-z0-9_-]{22}$/;
   const TRACKED_API_PATHS = new Set([
     "/api/auth/pre-register",
     "/api/public/checkout-session",
@@ -76,6 +79,15 @@
     } catch {}
   }
 
+  function fpLid() {
+    try {
+      const value = sessionStorage.getItem("fp_lid");
+      return value && FP_LID_RE.test(value) ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   function send(step) {
     const id = visitorId();
     if (!id) return;
@@ -87,7 +99,7 @@
       credentials: "include",
       keepalive: true,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ etape: step, visiteurId: id, source: source() }),
+      body: JSON.stringify({ etape: step, visiteurId: id, source: source(), fp_lid: fpLid() }),
     }).catch(() => {});
   }
 
@@ -95,6 +107,23 @@
   if (pathname === "/") send("landing_vue");
   if (pathname.endsWith("/pricing.html")) send("tarifs_vus");
   if (pathname.endsWith("/checkout.html")) send("signup_started");
+
+  // Page d'inscription : le formulaire affiche (`signup_started`), puis la
+  // premiere saisie (`signup_form_engaged`), une seule fois. Le retour Google
+  // masque le formulaire : rien n'est alors compte comme affiche.
+  if (pathname.endsWith("/signin.html")) {
+    const screen = document.getElementById("signup-screen");
+    if (!screen || screen.style.display !== "none") send("signup_started");
+    const form = document.getElementById("signup-form");
+    if (form) {
+      let engaged = false;
+      form.addEventListener("input", () => {
+        if (engaged) return;
+        engaged = true;
+        send("signup_form_engaged");
+      });
+    }
+  }
 
   if (pathname.endsWith("/pricing.html")) {
     document.addEventListener("click", (event) => {
