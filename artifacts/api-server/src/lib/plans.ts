@@ -690,9 +690,9 @@ export const PLAN_ALLOWED_ADDONS: Record<string, ReadonlySet<string>> = {
 
 /**
  * The six protected bundled add-ons keep their existing plan-purchase matrix.
- * For every other commercially available add-on, plan tier controls bundling,
- * not whether a customer may buy it. Beta, roadmap, and removed entries retain
- * their existing lifecycle gates and are not broadened by this rule.
+ * Every other sellable add-on (available or beta) can be purchased on Standard,
+ * Pro, and Ultra. Plan tier controls bundling, not purchase eligibility.
+ * Roadmap/validation-required and removed entries retain their lifecycle gates.
  */
 export const PROTECTED_ADDON_KEYS = new Set<string>([
   "whiteLabel",
@@ -703,14 +703,15 @@ export const PROTECTED_ADDON_KEYS = new Set<string>([
   "enterprisePermissions",
 ]);
 
-const READY_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
+const SELLABLE_ADDON_AVAILABILITIES = new Set<AddonAvailability>(["available", "beta"]);
+const SELLABLE_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
   !PROTECTED_ADDON_KEYS.has(key) &&
   !REMOVED_ADDONS.has(key) &&
-  getAddonAvailability(key) === "available"
+  SELLABLE_ADDON_AVAILABILITIES.has(getAddonAvailability(key))
 );
 
 for (const plan of ["standard", "pro", "ultra"] as const) {
-  for (const addonKey of READY_ADDONS_ANY_PLAN) {
+  for (const addonKey of SELLABLE_ADDONS_ANY_PLAN) {
     (PLAN_ALLOWED_ADDONS[plan] as Set<string>).add(addonKey);
   }
 }

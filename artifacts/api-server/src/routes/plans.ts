@@ -6,6 +6,7 @@ import {
   PLAN_ALLOWED_ADDONS,
   QTY_ADDONS,
   getAddonAvailability,
+  REMOVED_ADDONS,
 } from "../lib/plans.js";
 
 const router = Router();
@@ -65,7 +66,9 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
     }
   }
 
-  const addons = Object.entries(ADDON_DEFINITIONS).map(([key, def]) => {
+  const addons = Object.entries(ADDON_DEFINITIONS)
+    .filter(([key]) => !REMOVED_ADDONS.has(key))
+    .map(([key, def]) => {
     const availability = getAddonAvailability(key);
     return {
       key,
