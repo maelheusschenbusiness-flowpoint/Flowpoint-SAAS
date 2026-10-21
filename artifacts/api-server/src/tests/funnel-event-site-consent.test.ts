@@ -54,17 +54,15 @@ vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
 }));
 
+// La route confie ses jalons a la file durable (`conversion-outbox.ts`), qui a
+// ses propres tests. Ici, seul compte ce que la route lui confie.
 const emitted: Record<string, unknown>[] = [];
-vi.mock("../lib/conversion-events.js", async () => {
-  const actual = await import("../lib/conversion-events.js");
-  return {
-    ...actual,
-    emitConversionEvent: vi.fn(async (e: Record<string, unknown>) => {
-      emitted.push(e);
-      return "sent";
-    }),
-  };
-});
+vi.mock("../lib/conversion-outbox.js", () => ({
+  queueConversionEvent: vi.fn(async (e: Record<string, unknown>) => {
+    emitted.push(e);
+    return "queued";
+  }),
+}));
 
 import express from "express";
 import cookieParser from "cookie-parser";

@@ -10,7 +10,8 @@ import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../s
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
-import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
+import { stableEventId } from "../lib/conversion-events.js";
+import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import {
   ETAPES_PUBLIQUES,
   enregistrerEtape,
@@ -76,14 +77,15 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
   // forme, et seulement pour une etape reellement enregistree. L'identifiant
   // porte le visiteur et le jour, comme la cle d'idempotence locale, et
   // l'horodatage est celui de la ligne en base : un meme identifiant decrit
-  // toujours le meme instant. Sans cette date, rien n'est emis. L'emission ne
-  // bloque pas la reponse et ne leve jamais.
+  // toujours le meme instant. Sans cette date, rien n'est emis. Le jalon passe
+  // par la file durable : il survit au sommeil d'AI Lab, sans bloquer la
+  // reponse ni lever.
   const fpLid = normalizeFpLid(req.body?.fp_lid);
   const jalon = JALONS_NAVIGATEUR[etape];
   if (insere && jalon && fpLid) {
     const occurredAt = await horodatageEtape(cleIdempotence);
     if (occurredAt) {
-      void emitConversionEvent({
+      void queueConversionEvent({
         eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
         stage: jalon.stage,
         source: jalon.source,

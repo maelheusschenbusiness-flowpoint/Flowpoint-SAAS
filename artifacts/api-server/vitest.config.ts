@@ -32,6 +32,10 @@ export default defineConfig({
       "src/tests/pdf_white_label.test.ts",
       "src/tests/session_restore_precedence.test.ts",
       "src/tests/signup-session-dashboard-refresh.test.ts",
+      // File durable des jalons Conversion B : service endormi (21/10/2026).
+      "src/lib/conversion-outbox-db.test.ts",
+      // Site vitrine -> route publique -> file durable, sur une vraie base (21/10/2026).
+      "src/lib/conversion-outbox-funnel-db.test.ts",
       "src/services/ai-economy.test.ts",
       "src/services/ai-engine.credit-calc.test.ts",
       "src/services/ai-economy-db.test.ts",
