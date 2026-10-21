@@ -44,13 +44,13 @@ router.get("/automation/workflows", async (req: Request, res: Response) => {
     const data = await getWorkflowsData(org(req));
     res.json(data);
   } catch {
-    // Fallback: DB unavailable or table missing — return empty state, never 500
-    try {
-      const data = await getWorkflowsData("default");
-      res.json(data);
-    } catch {
-      res.json({ workflows: [], runs: [], stats: { active: 0, totalRuns: 0, successRate: 0, avgDuration: 0 } });
-    }
+    // An org-scoped read failure must never retry against the shared tenant.
+    res.status(503).json({
+      error: "Les workflows sont temporairement indisponibles.",
+      workflows: [],
+      runs: [],
+      stats: { active: 0, totalRuns: 0, successRate: null, avgDuration: null },
+    });
   }
 });
 
