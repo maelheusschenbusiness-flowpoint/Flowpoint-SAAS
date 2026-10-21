@@ -415,43 +415,20 @@ router.get("/local-seo/status", async (req, res) => {
 });
 
 // ── GET /local-seo/citations ──────────────────────────────────────────────────
-// Returns citation health data — structured from DataForSEO backlinks or fallback
+// DataForSEO backlinks are not local business citations and cannot prove NAP
+// consistency. Until a citation provider is connected, return an explicit
+// unavailable state instead of inventing citation records or health scores.
 router.get("/local-seo/citations", async (req, res) => {
   const domain = req.query.domain as string | undefined;
-  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  try {
-    if (domain && await isDataForSEOConfigured(orgId)) {
-      // Quota non verifiable : on ne tente aucun appel payant et on sert le
-      // repli gratuit plus bas plutot que de refuser la page.
-      const verdict = await verifierEtConsommerQuota(orgId, "citations", 1).catch(
-        () => ({ autorise: false as const, motif: "indisponible" as const }),
-      );
-      if (verdict.autorise) {
-        const { resultat: bl, appelsReussis } = await suivreAppelsPayants(() => getBacklinks(domain, orgId));
-        if (appelsReussis === 0) await rembourserQuota(orgId, 1);
-        res.json({
-          domain,
-          totalCitations: bl?.total ?? 0,
-          activeCitations: bl?.dofollow ?? 0,
-          napConsistency: 85,
-          citations: (bl?.items ?? []).slice(0, 20).map((item: Record<string, unknown>) => ({
-            source: item["domain_from"] ?? "unknown",
-            status: "active",
-            hasPhone: true,
-            hasAddress: true,
-            hasWebsite: true,
-          })),
-        });
-        return;
-      }
-    }
-    res.json({
-      domain: domain ?? "",
-      totalCitations: 0, activeCitations: 0, napConsistency: 0, citations: [],
-    });
-  } catch {
-    res.json({ domain: domain ?? "", totalCitations: 0, activeCitations: 0, napConsistency: 0, citations: [] });
-  }
+  res.json({
+    domain: domain ?? "",
+    available: false,
+    reason: "citation_provider_required",
+    totalCitations: null,
+    activeCitations: null,
+    napConsistency: null,
+    citations: [],
+  });
 });
 
 // ── POST /local-seo/rankings ──────────────────────────────────────────────────

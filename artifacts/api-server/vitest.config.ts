@@ -222,6 +222,7 @@ export default defineConfig({
       // ranking-history result counts / usage contract
       "src/routes/local-seo-entitlement.test.ts",
        "src/routes/local-seo-rankings-route.test.ts",
+      "src/routes/local-seo-citations.test.ts",
       // Task #628 — Agency Lab / client-mode backend reliability: SQL/schema
       // failures surface (no silent empty arrays), genuine empty states preserved.
       "src/services/client-mode-service.test.ts",
