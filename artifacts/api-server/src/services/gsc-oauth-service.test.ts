@@ -36,7 +36,8 @@ describe("isolated GSC OAuth", () => {
     expect(encrypted).not.toContain("refresh-secret");
     expect(service.decryptGscToken(encrypted)).toBe("refresh-secret");
     const [iv, tag, body] = encrypted.split(":");
-    expect(() => service.decryptGscToken(`${iv}:${tag}:${body.slice(0, -2)}00`)).toThrow();
+    const tamperedTag = `${tag[0] === "0" ? "1" : "0"}${tag.slice(1)}`;
+    expect(() => service.decryptGscToken(`${iv}:${tamperedTag}:${body}`)).toThrow();
   });
 
   it("stores only a hash of single-use state with expiry and deletes it atomically on consume", async () => {

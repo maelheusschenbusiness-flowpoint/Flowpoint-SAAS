@@ -338,30 +338,32 @@ export async function getCompetitors(
   } catch { return []; }
 }
 
-export async function getBacklinks(
-  domain: string, orgId = "default"
-): Promise<{ available: boolean; reason?: string; referring_domains: number | null; backlinks: number | null; domain_rank: number | null; total: number | null; dofollow: number | null; items: Record<string, unknown>[] }> {
-  const empty = { available: false, reason: "not_configured", referring_domains: null, backlinks: null, domain_rank: null, total: null, dofollow: null, items: [] as Record<string, unknown>[] };
-  if (!await isDataForSEOConfigured(orgId)) return empty;
-  try {
-    type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
-    const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }], orgId);
-    const r = data[0]?.result?.[0];
-    if (!r) return { ...empty, reason: "no_provider_data" };
-    const totalValue = nullableMetric(r["backlinks"]);
-    const dofollowValue = nullableMetric(r["dofollow_links"]);
-    return {
-      available: true,
-      referring_domains: nullableMetric(r["referring_domains"]),
-      backlinks: totalValue,
-      domain_rank: nullableMetric(r["rank"]),
-      total: totalValue,
-      dofollow: dofollowValue,
-      items:             (r["items"] as Record<string, unknown>[] | undefined) ?? [],
-    };
-  } catch { return { ...empty, reason: "provider_error" }; }
-}
+export type BacklinksData =
+      | { available: true; referring_domains: number | null; backlinks: number | null; domain_rank: number | null; total: number | null; dofollow: number | null; items: Record<string, unknown>[]; domainRating: number | null; totalBacklinks: number | null; totalDomains: number | null; newBacklinks: null; lostBacklinks: null }
+      | { available: false; code: "BACKLINK_DATA_UNAVAILABLE"; reason: "not_configured" | "provider_error" | "no_result"; referring_domains: null; backlinks: null; domain_rank: null; total: null; dofollow: null; items: []; domainRating: null; totalBacklinks: null; totalDomains: null; newBacklinks: null; lostBacklinks: null };
 
+    export function normalizeBacklinksSummary(result: Record<string, unknown>): BacklinksData | null {
+      const backlinks = nullableMetric(result["backlinks"]);
+      const referringDomains = nullableMetric(result["referring_domains"]);
+      const domainRank = nullableMetric(result["rank"]);
+      const dofollow = nullableMetric(result["dofollow_links"]);
+      if (backlinks === null && referringDomains === null && domainRank === null && dofollow === null) return null;
+      const items = Array.isArray(result["items"]) ? (result["items"] as Record<string, unknown>[]) : [];
+      return { available: true, referring_domains: referringDomains, backlinks, domain_rank: domainRank, total: backlinks, dofollow, items, domainRating: domainRank, totalBacklinks: backlinks, totalDomains: referringDomains, newBacklinks: null, lostBacklinks: null };
+    }
+
+    export async function getBacklinks(domain: string, orgId = "default"): Promise<BacklinksData> {
+      const empty = (reason: "not_configured" | "provider_error" | "no_result"): BacklinksData => ({ available: false, code: "BACKLINK_DATA_UNAVAILABLE", reason, referring_domains: null, backlinks: null, domain_rank: null, total: null, dofollow: null, items: [], domainRating: null, totalBacklinks: null, totalDomains: null, newBacklinks: null, lostBacklinks: null });
+      if (!await isDataForSEOConfigured(orgId)) return empty("not_configured");
+      try {
+        type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
+        const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }], orgId);
+        const result = data[0]?.result?.[0];
+        if (!result) return empty("no_result");
+        return normalizeBacklinksSummary(result) ?? empty("no_result");
+      } catch { return empty("provider_error"); }
+    }
+    
 export interface BacklinkHistoryPoint {
   date: string;
   rank: number | null;
