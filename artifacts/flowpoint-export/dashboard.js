@@ -21568,6 +21568,21 @@ function bindGlobalEvents() {
     'Générer les recommandations': 'Generate recommendations',
     'Lancer l\'audit IA': 'Launch AI audit',
     'événement(s)': 'event(s)',
+    'Simuler': 'Simulate',
+    'Aucune prévision mesurée disponible pour ce scénario.': 'No measured forecast is available for this scenario.',
+    'Simulation — Scénario prudent': 'Simulation — Conservative scenario',
+    'Simulation — Scénario réaliste': 'Simulation — Realistic scenario',
+    'Simulation — Scénario ambitieux': 'Simulation — Ambitious scenario',
+    'Appliquez une variation hypothétique aux valeurs de ce scénario. Le calcul reste dans votre navigateur et ne modifie pas vos prévisions enregistrées.': 'Apply a hypothetical change to this scenario. The calculation stays in your browser and does not change your saved forecasts.',
+    'Variation hypothétique (%) — de −50 à +200': 'Hypothetical change (%) — from −50 to +200',
+    'La simulation est indicative et repose sur une variation linéaire du scénario sélectionné.': 'This is an indicative simulation based on a linear change to the selected scenario.',
+    'Fermer': 'Close',
+    'Calculer': 'Calculate',
+    'Saisissez une variation entre −50 et +200 %.': 'Enter a change between −50 and +200%.',
+    'Trafic sur 90 jours : {traffic} clics': 'Traffic over 90 days: {traffic} clicks',
+    'Conversions sur 30 jours : {conversions}': 'Conversions over 30 days: {conversions}',
+    'Revenu sur 90 jours : {revenue} (devise GA4)': 'Revenue over 90 days: {revenue} (GA4 currency)',
+    'Projection indicative ({change} %) — {details}': 'Indicative projection ({change}%) — {details}',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -59497,7 +59512,7 @@ function renderDataExplorer() {
                     </div>
                   `).join('')}
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" type="button" data-fp-forecast-simulate="${s.key}">Simuler</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" type="button" data-fp-forecast-simulate="${s.key}">${fpT('Simuler')}</button>
               </div>
             </div>
           `).join('')}
@@ -69914,7 +69929,7 @@ window._fpOpenForecastSimulation = function(scenarioKey) {
     ? forecast.forecasts.filter(point => point.scenario === scenarioKey).slice(0, 90)
     : [];
   if (!forecast?.available || !points.length) {
-    showToast('error', 'Aucune prévision mesurée disponible pour ce scénario.');
+    showToast('error', fpT('Aucune prévision mesurée disponible pour ce scénario.'));
     return;
   }
 
@@ -69933,14 +69948,14 @@ window._fpOpenForecastSimulation = function(scenarioKey) {
   const title = document.createElement('h2');
   title.id = 'fp-forecast-sim-title';
   title.style.cssText = 'margin:0 0 8px;font-size:18px';
-  title.textContent = `Simulation — ${labels[scenarioKey]}`;
+  title.textContent = fpT(`Simulation — ${labels[scenarioKey]}`);
   const explanation = document.createElement('p');
   explanation.style.cssText = 'margin:0 0 18px;font-size:13px;line-height:1.5;color:var(--fp-text-muted,#94a3b8)';
-  explanation.textContent = 'Appliquez une variation hypothétique aux valeurs de ce scénario. Le calcul reste dans votre navigateur et ne modifie pas vos prévisions enregistrées.';
+  explanation.textContent = fpT('Appliquez une variation hypothétique aux valeurs de ce scénario. Le calcul reste dans votre navigateur et ne modifie pas vos prévisions enregistrées.');
   const label = document.createElement('label');
   label.htmlFor = 'fp-forecast-sim-change';
   label.style.cssText = 'display:block;margin-bottom:6px;font-size:12px;font-weight:600';
-  label.textContent = 'Variation hypothétique (%) — de −50 à +200';
+  label.textContent = fpT('Variation hypothétique (%) — de −50 à +200');
   const input = document.createElement('input');
   input.id = 'fp-forecast-sim-change';
   input.type = 'number';
@@ -69953,18 +69968,18 @@ window._fpOpenForecastSimulation = function(scenarioKey) {
   const result = document.createElement('div');
   result.setAttribute('aria-live', 'polite');
   result.style.cssText = 'min-height:44px;padding:12px;border-radius:10px;background:rgba(37,99,235,.08);font-size:12px;line-height:1.5;color:var(--fp-text-muted,#94a3b8)';
-  result.textContent = 'La simulation est indicative et repose sur une variation linéaire du scénario sélectionné.';
+  result.textContent = fpT('La simulation est indicative et repose sur une variation linéaire du scénario sélectionné.');
 
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px';
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
   closeButton.className = 'fp-btn fp-btn-ghost fp-btn-sm';
-  closeButton.textContent = 'Fermer';
+  closeButton.textContent = fpT('Fermer');
   const calculateButton = document.createElement('button');
   calculateButton.type = 'button';
   calculateButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
-  calculateButton.textContent = 'Calculer';
+  calculateButton.textContent = fpT('Calculer');
   actions.append(closeButton, calculateButton);
   dialog.append(title, explanation, label, input, result, actions);
   overlay.appendChild(dialog);
@@ -69985,21 +70000,21 @@ window._fpOpenForecastSimulation = function(scenarioKey) {
   calculateButton.addEventListener('click', () => {
     const change = Number(input.value);
     if (!Number.isFinite(change) || change < -50 || change > 200) {
-      input.setCustomValidity('Saisissez une variation entre −50 et +200 %.');
+      input.setCustomValidity(fpT('Saisissez une variation entre −50 et +200 %.'));
       input.reportValidity();
       return;
     }
     input.setCustomValidity('');
     const factor = 1 + change / 100;
     const traffic = points.reduce((sum, point) => sum + Number(point.predictedTraffic || 0), 0) * factor;
-    const details = [`Trafic sur 90 jours : ${Math.round(traffic).toLocaleString(getLocale())} clics`];
+    const details = [fpT('Trafic sur 90 jours : {traffic} clics', { traffic: Math.round(traffic).toLocaleString(getLocale()) })];
     if (forecast.ga4Available) {
       const conversions = points.slice(0, 30).reduce((sum, point) => sum + Number(point.predictedConversions || 0), 0) * factor;
       const revenue = points.reduce((sum, point) => sum + Number(point.predictedRevenue || 0), 0) * factor;
-      details.push(`Conversions sur 30 jours : ${Math.round(conversions).toLocaleString(getLocale())}`);
-      details.push(`Revenu sur 90 jours : ${revenue.toLocaleString(getLocale(), { maximumFractionDigits: 2 })} (devise GA4)`);
+      details.push(fpT('Conversions sur 30 jours : {conversions}', { conversions: Math.round(conversions).toLocaleString(getLocale()) }));
+      details.push(fpT('Revenu sur 90 jours : {revenue} (devise GA4)', { revenue: revenue.toLocaleString(getLocale(), { maximumFractionDigits: 2 }) }));
     }
-    result.textContent = `Projection indicative (${change >= 0 ? '+' : ''}${change} %) — ${details.join(' · ')}`;
+    result.textContent = fpT('Projection indicative ({change} %) — {details}', { change: `${change >= 0 ? '+' : ''}${change}`, details: details.join(' · ') });
   });
   input.focus();
 };
