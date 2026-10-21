@@ -8,7 +8,13 @@ import { getRoles, createRole, updateRole, deleteRole, assignRole, getPermission
 import { ENTERPRISE_PERMISSION_ACTIONS, ENTERPRISE_PERMISSION_RESOURCES } from "../services/enterprise-permission-engine.js";
 
 const router = Router();
-router.use(requireAddon("enterprisePermissions", "Enterprise Permissions"));
+// This router is mounted in the shared API router. Keep the entitlement gate
+// on its own endpoints; a router-wide gate would also block unrelated routes
+// mounted after this router (for example /client-mode/*).
+router.use(
+  ["/permissions", "/roles", "/team/permissions", "/access/logs", "/team/remove"],
+  requireAddon("enterprisePermissions", "Enterprise Permissions"),
+);
 const org  = (req: import("express").Request) => req.orgId ?? "default";
 const plan = (req: import("express").Request) => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
 

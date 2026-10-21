@@ -40,6 +40,8 @@ describe("Enterprise Permissions entitlement", () => {
       next();
     });
     app.use("/api", permissionsRouter);
+    // The shared API mounts unrelated routers after permissionsRouter.
+    app.use("/api/client-mode", (_req, res) => res.json({ ok: true }));
     server = app.listen(0, "127.0.0.1");
     await new Promise<void>(resolve => server.once("listening", resolve));
     const address = server.address();
@@ -59,5 +61,11 @@ describe("Enterprise Permissions entitlement", () => {
     const response = await fetch(`${baseUrl}/api/permissions`, { headers: { "x-enterprise-permissions": "active" } });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ enterprisePermissionsActive: true });
+  });
+
+  it("does not block unrelated routes mounted after the permissions router", async () => {
+    const response = await fetch(`${baseUrl}/api/client-mode/status`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
   });
 });
