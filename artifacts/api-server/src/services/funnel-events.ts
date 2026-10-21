@@ -6,6 +6,7 @@ export const ETAPES_TUNNEL = [
   "tarifs_vus",
   "cta_clique",
   "signup_started",
+  "signup_form_engaged",
   "signup_form_completed",
   "checkout_started",
   "checkout_completed",
@@ -19,6 +20,7 @@ export const ETAPES_PUBLIQUES = new Set<string>([
   "tarifs_vus",
   "cta_clique",
   "signup_started",
+  "signup_form_engaged",
 ]);
 
 const ETAPES = new Set<string>(ETAPES_TUNNEL);

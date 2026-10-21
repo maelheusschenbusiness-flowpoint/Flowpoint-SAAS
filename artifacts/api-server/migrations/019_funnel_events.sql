@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.funnel_events (
     'tarifs_vus',
     'cta_clique',
     'signup_started',
+    'signup_form_engaged',
     'signup_form_completed',
     'checkout_started',
     'checkout_completed',
@@ -32,3 +33,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS funnel_events_idem_uniq
 
 ALTER TABLE public.funnel_events ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.funnel_events FROM PUBLIC;
+
+-- Conversion B (21/10/2026) : `signup_form_engaged`, la premiere saisie dans le
+-- formulaire d'inscription. Une table creee avant porte l'ancienne contrainte :
+-- on la remplace, sans toucher aux lignes existantes, qui la respectent toutes.
+ALTER TABLE public.funnel_events DROP CONSTRAINT IF EXISTS funnel_events_etape_check;
+ALTER TABLE public.funnel_events ADD CONSTRAINT funnel_events_etape_check CHECK (etape IN (
+  'landing_vue', 'tarifs_vus', 'cta_clique', 'signup_started', 'signup_form_engaged',
+  'signup_form_completed', 'checkout_started', 'checkout_completed', 'trial_activated',
+  'trial_expired', 'subscription_activated'
+));

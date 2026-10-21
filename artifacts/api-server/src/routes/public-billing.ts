@@ -10,6 +10,8 @@ import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../s
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { stableEventId } from "../lib/conversion-events.js";
+import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import {
   ETAPES_PUBLIQUES,
   enregistrerEtape,
@@ -20,6 +22,20 @@ import {
 
 const router = Router();
 const publicFunnelEventRateLimit = createIpRateLimit("public_funnel_event", 60, 60_000);
+
+/**
+ * Les etapes navigateur qui deviennent un jalon Conversion B. `landing_vue` vient
+ * du site vitrine ; les deux autres de la page d'inscription de l'application.
+ */
+const JALONS_NAVIGATEUR: Record<string, {
+  stage: "visit" | "signup_page" | "signup_started";
+  source: "marketing" | "saas";
+  prefixe: string;
+}> = {
+  landing_vue:         { stage: "visit",          source: "marketing", prefixe: "marketing:visit" },
+  signup_started:      { stage: "signup_page",    source: "saas",      prefixe: "saas:signup_page" },
+  signup_form_engaged: { stage: "signup_started", source: "saas",      prefixe: "saas:signup_started" },
+};
 
 router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Request, res: Response) => {
   const etape = typeof req.body?.etape === "string" ? req.body.etape.trim() : "";
@@ -32,8 +48,13 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     res.status(400).json({ ok: false, error: "visiteurId is required." });
     return;
   }
+  // Le consentement vit sur le domaine qui l'a recueilli. `app.flowpoint.pro`
+  // le lit dans son cookie ; le site vitrine `flowpoint.pro` appelle en
+  // cross-origin, sans cookie, et ne peut que le declarer. Un cookie present
+  // l'emporte toujours, et seule la valeur `accepted` produit quelque chose.
+  const cookieConsentement = req.cookies?.["fp_analytics_consent"];
   const attribution = normaliserAttributionFunnel(
-    req.cookies?.["fp_analytics_consent"],
+    cookieConsentement ?? req.body?.consentement,
     visiteurId,
     req.body?.source,
   );
@@ -41,14 +62,29 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     res.status(204).end();
     return;
   }
-  const day = new Date().toISOString().slice(0, 10);
-  await enregistrerEtape({
+  const maintenant = new Date();
+  const day = maintenant.toISOString().slice(0, 10);
+  const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     plan: typeof req.body?.plan === "string" ? req.body.plan : null,
     cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
   });
+  // Conversion B : le fp_lid opaque joint par le navigateur devient un jalon,
+  // inscrit dans la file durable. Jamais pour un token mal forme, jamais pour
+  // une autre etape, et sans bloquer la reponse.
+  const fpLid = normalizeFpLid(req.body?.fp_lid);
+  const jalon = JALONS_NAVIGATEUR[etape];
+  if (insere && jalon && fpLid) {
+    void queueConversionEvent({
+      eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
+      stage: jalon.stage,
+      source: jalon.source,
+      fpLid,
+      occurredAt: maintenant.toISOString(),
+    });
+  }
   res.status(204).end();
 });
 
