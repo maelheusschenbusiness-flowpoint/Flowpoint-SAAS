@@ -97,6 +97,8 @@ export default defineConfig({
       // Mesure du tunnel commercial (18/10/2026).
       "src/services/funnel-events-db.test.ts",
       "src/routes/funnel-endpoint-db.test.ts",
+      // File durable des jalons Conversion B : service endormi (21/10/2026).
+      "src/lib/conversion-outbox-db.test.ts",
       // Enumeration de comptes sur login-request (18/10/2026).
       "src/routes/login-request-enumeration.test.ts",
       // Mesure du tunnel posee sur la page d'inscription (18/10/2026).
