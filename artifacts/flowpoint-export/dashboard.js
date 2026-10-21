@@ -53643,20 +53643,22 @@ function radarChartSvg(dims, sz) {
 // ─────────────────────────────────────────────────────────────────
 function renderGrowthProjections() {
   const avgSc = avgScore();
-  if (!avgSc) return `<div style="display:flex;flex-direction:column;gap:16px">
+  const _auditHP = ((STATE.overview && STATE.overview.auditHistory) || [])
+    .map(function(h){ return Number(h.avg || h.score || 0); })
+    .filter(function(v){ return Number.isFinite(v) && v > 0; });
+  if (!avgSc || _auditHP.length < 2) return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="fp-section-header">
       <div><h1>Projections IA</h1><div class="fp-section-sub">Modèles prédictifs · Scénarios sur 6 mois</div></div>
     </div>
     <div class="fp-card">
       <div style="text-align:center;padding:32px 16px;color:var(--fp-text-faint);font-size:12px">
         <div style="font-size:28px;margin-bottom:8px">📈</div>
-        <div style="font-weight:600;margin-bottom:4px">Aucune donnée d'audit</div>
-        <div style="font-size:11px">Lancez votre premier audit SEO pour générer des projections basées sur vos données réelles.</div>
+        <div style="font-weight:600;margin-bottom:4px">Historique insuffisant pour une projection</div>
+        <div style="font-size:11px">Réalisez au moins deux audits SEO pour calculer une tendance à partir de vos données réelles.</div>
       </div>
     </div>
   </div>`;
-  const _auditHP = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
-  const past   = _auditHP.length >= 2 ? _auditHP.slice(-7) : Array(7).fill(avgSc);
+  const past = _auditHP.slice(-7);
   // Use the same deterministic helper as Command Center — no synthetic fallback slope
   const _projResult = computeGrowthProjection((STATE.overview && STATE.overview.auditHistory) || []);
   const _stepRaw = _projResult ? _projResult.stepPerWeek : 0;
@@ -53666,33 +53668,27 @@ function renderGrowthProjections() {
   const _p30 = Math.round(_stepP*4), _p60 = Math.round(_stepP*8), _p90 = Math.round(_stepP*12);
   const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.max(0, Math.min(99, avgSc + _stepP * i))); });
   const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString(getLocale(),{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
-  const _hasTrend = _auditHP.length >= 2 && _stepRaw > 0;
-  // When no measurable trend (< 2 audits or flat history), apply scenario-specific
-  // baseline gains so scenarios are always differentiated and actionable.
-  // Optimiste: assumes user follows all Quick Wins (+3 pts/month).
-  // Réaliste:  assumes some actions taken (+1.5 pts/month).
-  // Prudent:   status quo — no change (forces comparison to be meaningful).
-  const _optMin  = _hasTrend ? 0 : 3;   // pts/month optimiste minimum
-  const _realMin = _hasTrend ? 0 : 1.5; // pts/month réaliste minimum
+  const _trendLabel = _stepRaw > 0 ? 'positive' : _stepRaw < 0 ? 'négative' : 'stable';
+  const _p30Label = (_p30 > 0 ? '+' : '') + _p30;
   const scenarios = [
     { label:'🚀 Optimiste',  color:'#22c55e',          bg:'rgba(34,197,94,.07)',  border:'rgba(34,197,94,.2)',
-      desc:'Toutes les Quick Wins exécutées + 2 audits/mois',
-      s30:Math.min(99,avgSc+Math.max(Math.round(_stepP*6),  Math.round(_optMin*1))),
-      s60:Math.min(99,avgSc+Math.max(Math.round(_stepP*12), Math.round(_optMin*2))),
-      s90:Math.min(99,avgSc+Math.max(Math.round(_stepP*18), Math.round(_optMin*3))),
+      desc:'Projection fondée sur la tendance observée',
+      s30:Math.max(0,Math.min(99,avgSc+Math.round(_stepP*6))),
+      s60:Math.max(0,Math.min(99,avgSc+Math.round(_stepP*12))),
+      s90:Math.max(0,Math.min(99,avgSc+Math.round(_stepP*18))),
       traffic:PREVIEW_MODE?'+28%':'—', leads:PREVIEW_MODE?'+35%':'—', roi:PREVIEW_MODE?'+1 840€':'—' },
     { label:'📈 Réaliste',   color:'var(--fp-accent)',  bg:'rgba(37,99,235,.07)', border:'rgba(37,99,235,.2)',
-      desc:'Rythme actuel maintenu, corrections critiques faites',
-      s30:Math.min(99,avgSc+Math.max(_p30, Math.round(_realMin*1))),
-      s60:Math.min(99,avgSc+Math.max(_p60, Math.round(_realMin*2))),
-      s90:Math.min(99,avgSc+Math.max(_p90, Math.round(_realMin*3))),
+      desc:'Tendance mesurée prolongée sans gain ajouté',
+      s30:Math.max(0,Math.min(99,avgSc+_p30)),
+      s60:Math.max(0,Math.min(99,avgSc+_p60)),
+      s90:Math.max(0,Math.min(99,avgSc+_p90)),
       traffic:PREVIEW_MODE?'+18%':'—', leads:PREVIEW_MODE?'+22%':'—', roi:PREVIEW_MODE?'+1 240€':'—' },
     { label:'⚠️ Prudent',   color:'#f59e0b',           bg:'rgba(245,158,11,.06)', border:'rgba(245,158,11,.2)',
-      desc:'Sans action supplémentaire, croissance organique seule',
-      s30:Math.min(99,avgSc+Math.round(_stepP*2)), s60:Math.min(99,avgSc+Math.round(_stepP*4)),  s90:Math.min(99,avgSc+Math.round(_stepP*6)),
+      desc:'Projection prudente fondée sur la tendance observée',
+      s30:Math.max(0,Math.min(99,avgSc+Math.round(_stepP*2))), s60:Math.max(0,Math.min(99,avgSc+Math.round(_stepP*4))), s90:Math.max(0,Math.min(99,avgSc+Math.round(_stepP*6))),
       traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
   ];
-  const _monthStep = Math.max(_stepP * 4, _realMin);
+  const _monthStep = _stepP * 4;
   const monthData = months.map(function(m, i) {
     const sc = Math.max(0, Math.min(99, Math.round(avgSc + _monthStep*(i+1))));
     const _d = sc - avgSc;
@@ -53710,12 +53706,12 @@ function renderGrowthProjections() {
       <div class="fp-section-actions">${btn('Exporter PDF','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}</div>
     </div>
 
-    ${aiBlock((_hasTrend ? 'Sur la base de votre tendance mesurée de <strong>+' + _p30 + ' pts/mois</strong>' : 'Sur la base d\'une estimation par défaut de <strong>+' + _p30 + ' pts/mois</strong> (historique d\'audits insuffisant)') + ', vous pouvez atteindre <strong>' + Math.min(99, avgSc+_p60) + '/100</strong> en 60 jours. L\'exécution des Quick Wins actives pourrait accélérer jusqu\'à <strong>+' + Math.round(_stepP*12) + ' pts en 60 jours</strong>.',['Voir Quick Wins','Définir objectifs'])}
+    ${aiBlock(('Tendance mesurée ' + _trendLabel + ' : <strong>' + _p30Label + ' pts estimés sur 30 jours</strong>. Score projeté : <strong>' + Math.max(0, Math.min(99, avgSc+_p60)) + '/100</strong> sur 60 jours, selon la tendance observée.'),['Voir Quick Wins','Définir objectifs'])}
 
     <div class="fp-stat-row">
-      ${statCard('Score dans 30j',  Math.min(99,avgSc+_p30)+'/100',  '+'+_p30+' pts estimés',  'up', _hasTrend ? 'Scénario réaliste' : 'Estimation par défaut')}
-      ${statCard('Score dans 60j',  Math.min(99,avgSc+_p60)+'/100', '+'+_p60+' pts estimés', 'up', _hasTrend ? 'Scénario réaliste' : 'Estimation par défaut')}
-      ${statCard('Score dans 90j',  Math.min(99,avgSc+_p90)+'/100', '+'+_p90+' pts estimés', 'up', _hasTrend ? 'Scénario réaliste' : 'Estimation par défaut')}
+      ${statCard('Score dans 30j',  Math.max(0,Math.min(99,avgSc+_p30))+'/100',  _p30Label+' pts estimés',  _p30 >= 0 ? 'up' : 'down', 'Tendance mesurée')}
+      ${statCard('Score dans 60j',  Math.max(0,Math.min(99,avgSc+_p60))+'/100', (_p60 > 0 ? '+' : '')+_p60+' pts estimés', _p60 >= 0 ? 'up' : 'down', 'Tendance mesurée')}
+      ${statCard('Score dans 90j',  Math.max(0,Math.min(99,avgSc+_p90))+'/100', (_p90 > 0 ? '+' : '')+_p90+' pts estimés', _p90 >= 0 ? 'up' : 'down', 'Tendance mesurée')}
       ${statCard('ROI cumulé 90j', displayStat(null, PREVIEW_MODE ? '+3 720€' : '—'), PREVIEW_MODE ? 'leads estimés' : 'Connectez analytics', 'neutral')}
     </div>
 
