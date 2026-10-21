@@ -26,11 +26,12 @@
 import { createHash } from "node:crypto";
 import { logger } from "./logger.js";
 
-/** Les etapes que ce module sait emettre. `click` et `visit` ne sont pas cables. */
-export type ConversionStage = "signup" | "checkout" | "trial" | "paid";
+/** Les etapes que ce module sait emettre. Le clic est prouve par Smartlead. */
+export type ConversionStage =
+  | "visit" | "signup_page" | "signup_started" | "signup" | "checkout" | "trial" | "paid";
 
 /** La provenance de la preuve, telle qu'AI Lab la contraint. */
-export type ConversionSource = "saas" | "stripe";
+export type ConversionSource = "marketing" | "saas" | "stripe";
 
 export interface ConversionEvent {
   /** Identifiant stable et opaque de l'evenement. Jamais un secret en clair. */
@@ -114,11 +115,32 @@ function readConfig(): Config | null {
  * pris soin d'eviter partout ailleurs.
  */
 export async function emitConversionEvent(event: ConversionEvent): Promise<EmitOutcome> {
+  return (await envoyerJalon(event)).outcome;
+}
+
+/** L'envoi, ses validations et son statut HTTP — que seule la file d'attente lit. */
+export function conversionConfiguree(): boolean {
+  return readConfig() !== null;
+}
+
+/** Valide le contrat localement, sans reseau. */
+export function jalonValide(event: ConversionEvent): boolean {
+  return FP_LID_RE.test(event.fpLid) && !!event.eventId && event.eventId.length >= 8
+    && event.eventId.length <= 128 && !!event.occurredAt;
+}
+
+/**
+ * Comme `emitConversionEvent`, avec le statut HTTP d'un refus : la file
+ * d'attente doit distinguer un refus definitif (contrat invalide, `fp_lid`
+ * inconnu) d'un refus passager (service endormi, secret pas encore pose).
+ */
+export async function envoyerJalon(
+  event: ConversionEvent,
+  timeoutMs?: number,
+): Promise<{ outcome: EmitOutcome; status?: number }> {
   const config = readConfig();
-  if (!config) return "not-configured";
-  if (!FP_LID_RE.test(event.fpLid)) return "invalid-input";
-  if (!event.eventId || event.eventId.length < 8 || event.eventId.length > 128) return "invalid-input";
-  if (!event.occurredAt) return "invalid-input";
+  if (!config) return { outcome: "not-configured" };
+  if (!jalonValide(event)) return { outcome: "invalid-input" };
 
   try {
     const response = await fetch(config.url, {
@@ -131,7 +153,7 @@ export async function emitConversionEvent(event: ConversionEvent): Promise<EmitO
         fp_lid: event.fpLid,
         occurred_at: event.occurredAt,
       }),
-      signal: AbortSignal.timeout(config.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs ?? config.timeoutMs),
     });
 
     if (response.ok) {
@@ -141,7 +163,7 @@ export async function emitConversionEvent(event: ConversionEvent): Promise<EmitO
       const outcome: EmitOutcome = body?.duplicate === true ? "duplicate" : "sent";
       logger.debug({ stage: event.stage, eventId: event.eventId, outcome },
         "[AI Lab] conversion milestone emitted");
-      return outcome;
+      return { outcome, status: response.status };
     }
 
     // Un refus est une information sur NOTRE appel, jamais sur le parcours de
@@ -149,11 +171,11 @@ export async function emitConversionEvent(event: ConversionEvent): Promise<EmitO
     // il peut citer ce qu'on vient d'envoyer.
     logger.warn({ stage: event.stage, eventId: event.eventId, status: response.status },
       "[AI Lab] conversion milestone refused (non-fatal)");
-    return "rejected";
+    return { outcome: "rejected", status: response.status };
   } catch (err) {
     // Timeout, DNS, reseau, TLS : tout atterrit ici, et rien ne remonte.
     logger.warn({ stage: event.stage, eventId: event.eventId, err: (err as Error)?.name },
       "[AI Lab] conversion milestone unreachable (non-fatal)");
-    return "unreachable";
+    return { outcome: "unreachable" };
   }
 }

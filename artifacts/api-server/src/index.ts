@@ -494,6 +494,11 @@ async function main() {
 
     // Durable recovery of AI usage writes that failed after provider consumption
     // (idempotent replays — survives restarts, unlike in-process timers).
+    // Conversion B : relivre les jalons qu'AI Lab n'a pas encore accuses.
+    import("./lib/conversion-outbox.js")
+      .then(({ startConversionOutboxWorker }) => startConversionOutboxWorker())
+      .catch((err) => logger.warn({ err }, "[AI Lab] conversion outbox worker not started"));
+
     import("./services/ai-engine.js")
       .then(({ startAiUsageOutboxWorker }) => startAiUsageOutboxWorker())
       .catch((err) => logger.warn({ err }, "[AI] usage outbox worker not started"));
