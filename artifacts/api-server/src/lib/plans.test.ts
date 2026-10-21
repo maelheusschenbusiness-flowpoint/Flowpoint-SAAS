@@ -25,6 +25,10 @@ import {
   VALIDATION_REQUIRED_ADDONS,
   getAddonAvailability,
   getAddonStatus,
+  PLAN_ALLOWED_ADDONS,
+  PROTECTED_ADDON_KEYS,
+  REMOVED_ADDONS,
+  isPlanAllowedAddon,
   ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
@@ -81,6 +85,57 @@ describe("V1 add-on catalogue contract", () => {
       quantity: true,
       oneTime: false,
     });
+    expect(PROTECTED_ADDON_KEYS).toEqual(new Set([
+      "whiteLabel", "advancedWebhooks", "retention90d",
+      "advancedSeoLab", "backlinkIntelligence", "enterprisePermissions",
+    ]));
+    expect([
+      CANONICAL_ADDON_DEFINITIONS.whiteLabel.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.advancedWebhooks.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.retention90d.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.advancedSeoLab.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.backlinkIntelligence.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.enterprisePermissions.priceEur,
+    ]).toEqual([17, 14, 9, 29, 24, 19]);
+  });
+
+  it("opens every ready, non-protected add-on to Starter, Pro, and Ultra without changing protected gates", () => {
+    const readyAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key =>
+      !PROTECTED_ADDON_KEYS.has(key) &&
+      !REMOVED_ADDONS.has(key) &&
+      getAddonAvailability(key) === "available"
+    );
+    expect(readyAddons.length).toBeGreaterThan(0);
+    for (const plan of ["standard", "pro", "ultra"]) {
+      for (const key of readyAddons) {
+        expect(PLAN_ALLOWED_ADDONS[plan]?.has(key), `${key} on ${plan}`).toBe(true);
+      }
+    }
+
+    // Snapshot the six protected purchase rules; this request must not widen them.
+    expect(["standard", "pro", "ultra"].map(plan =>
+      ["whiteLabel", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence", "enterprisePermissions"]
+        .map(key => isPlanAllowedAddon(plan, key))
+    )).toEqual([
+      [false, false, true, false, false, false],
+      [false, false, true, false, false, true],
+      [false, false, true, false, false, true],
+    ]);
+  });
+
+  it("does not broaden roadmap, validation-required, or removed add-ons", () => {
+    for (const key of [...COMING_SOON_ADDONS, ...REMOVED_ADDONS]) {
+      for (const plan of ["standard", "pro", "ultra"]) {
+        expect(PLAN_ALLOWED_ADDONS[plan]?.has(key), `${key} on ${plan}`).toBe(false);
+      }
+    }
+    // Validation-required Local SEO offers had existing Pro/Ultra matrix entries;
+    // their activation and checkout gates are outside this plan-access change.
+    for (const key of VALIDATION_REQUIRED_ADDONS) {
+      expect(PLAN_ALLOWED_ADDONS.standard?.has(key)).toBe(false);
+      expect(PLAN_ALLOWED_ADDONS.pro?.has(key)).toBe(true);
+      expect(PLAN_ALLOWED_ADDONS.ultra?.has(key)).toBe(true);
+    }
   });
 
   it("keeps the three Local SEO offers priced but unavailable for purchase before approval", () => {
