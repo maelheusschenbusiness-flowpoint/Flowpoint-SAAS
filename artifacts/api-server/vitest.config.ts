@@ -147,6 +147,7 @@ export default defineConfig({
       "src/routes/team-files.test.ts",
       "src/services/ga4-connection-status.test.ts",
       "src/routes/overview.test.ts",
+      "src/tests/forecast-growth-projections.test.ts",
       "src/tests/overview-cache-key.test.ts",
       "src/tests/overview-uptime-honest.test.ts",
       "src/routes/growth-objectives.test.ts",
