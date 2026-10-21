@@ -803,13 +803,15 @@
         keepalive: true,
         // fp_lid : l'identifiant opaque du lien d'outreach, deja valide plus haut.
         body: JSON.stringify({ etape: etape, visiteurId: vid, source: fpSource(),
-                               fp_lid: fpLidValue || undefined })
+                               fp_lid: (typeof fpLidValue === 'string' && fpLidValue) || undefined })
       }).catch(function () {});       // une mesure ratee ne doit jamais se voir
     } catch (e) { /* ignore */ }
   }
 
   fpIngestAttribution();
   fpEtape('signup_started');
+
+  /* ── Step 1: form submit → POST /auth/pre-register ── */
   /* Inscription commencee : la premiere saisie dans le formulaire, une fois. */
   (function () {
     var form = document.getElementById('signup-form');
@@ -821,8 +823,6 @@
       fpEtape('signup_form_engaged');
     });
   })();
-
-  /* ── Step 1: form submit → POST /auth/pre-register ── */
   var signupBtn = document.getElementById('signup-btn');
   var signupMsg = document.getElementById('signup-msg');
 

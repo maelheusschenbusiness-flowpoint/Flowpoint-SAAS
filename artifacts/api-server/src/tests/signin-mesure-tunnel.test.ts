@@ -93,6 +93,20 @@ describe("la mesure est posee et exploitable", () => {
     expect(PAGE).toContain("fpEtape('signup_started')");
   });
 
+  it("inscription commencee : signup_form_engaged part une seule fois, a la premiere saisie", () => {
+    const debut = PAGE.indexOf("fpEtape('signup_form_engaged')");
+    expect(debut).toBeGreaterThan(-1);
+    expect(PAGE.match(/fpEtape\('signup_form_engaged'\)/g)).toHaveLength(1);
+    const bloc = PAGE.slice(PAGE.lastIndexOf("(function () {", debut), debut);
+    expect(bloc).toContain("addEventListener('input'");
+    expect(bloc).toContain("if (engaged) return;");
+  });
+
+  it("chaque etape navigateur joint le fp_lid deja valide, jamais un autre", () => {
+    const fn = PAGE.slice(PAGE.indexOf("function fpEtape(etape)"), PAGE.indexOf("fpIngestAttribution();"));
+    expect(fn).toContain("fp_lid: (typeof fpLidValue === 'string' && fpLidValue) || undefined");
+  });
+
   it("le formulaire transmet le MEME identifiant de visiteur", () => {
     // C'est ce lien qui rend le tunnel joignable : sans lui, on sait combien de
     // formulaires ont ete envoyes, mais pas combien ont ete commences.
