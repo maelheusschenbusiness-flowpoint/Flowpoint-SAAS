@@ -27,7 +27,8 @@ import { createHash } from "node:crypto";
 import { logger } from "./logger.js";
 
 /** Les etapes que ce module sait emettre. Le clic est prouve par Smartlead. */
-export type ConversionStage = "visit" | "signup" | "checkout" | "trial" | "paid";
+export type ConversionStage =
+  | "visit" | "signup_page" | "signup_started" | "signup" | "checkout" | "trial" | "paid";
 
 /** La provenance de la preuve, telle qu'AI Lab la contraint. */
 export type ConversionSource = "marketing" | "saas" | "stripe";

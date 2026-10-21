@@ -41,6 +41,7 @@ export const ETAPES_TUNNEL = [
   "tarifs_vus",              // page tarifs affichee
   "cta_clique",              // clic sur un appel a l'action
   "signup_started",          // formulaire d'inscription affiche
+  "signup_form_engaged",     // premiere saisie dans le formulaire d'inscription
   "signup_form_completed",   // formulaire envoye et accepte
   "checkout_started",        // session Stripe Checkout creee
   "checkout_completed",      // paiement/essai confirme par Stripe
@@ -55,7 +56,7 @@ const ETAPES = new Set<string>(ETAPES_TUNNEL);
 
 /** Les etapes qu'un navigateur peut declarer. Les autres viennent du serveur. */
 export const ETAPES_PUBLIQUES = new Set<string>([
-  "landing_vue", "tarifs_vus", "cta_clique", "signup_started",
+  "landing_vue", "tarifs_vus", "cta_clique", "signup_started", "signup_form_engaged",
 ]);
 
 const VISITEUR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;

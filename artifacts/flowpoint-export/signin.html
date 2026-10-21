@@ -801,13 +801,26 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         keepalive: true,
-        body: JSON.stringify({ etape: etape, visiteurId: vid, source: fpSource() })
+        // fp_lid : l'identifiant opaque du lien d'outreach, deja valide plus haut.
+        body: JSON.stringify({ etape: etape, visiteurId: vid, source: fpSource(),
+                               fp_lid: fpLidValue || undefined })
       }).catch(function () {});       // une mesure ratee ne doit jamais se voir
     } catch (e) { /* ignore */ }
   }
 
   fpIngestAttribution();
   fpEtape('signup_started');
+  /* Inscription commencee : la premiere saisie dans le formulaire, une fois. */
+  (function () {
+    var form = document.getElementById('signup-form');
+    if (!form) return;
+    var engaged = false;
+    form.addEventListener('input', function () {
+      if (engaged) return;
+      engaged = true;
+      fpEtape('signup_form_engaged');
+    });
+  })();
 
   /* ── Step 1: form submit → POST /auth/pre-register ── */
   var signupBtn = document.getElementById('signup-btn');

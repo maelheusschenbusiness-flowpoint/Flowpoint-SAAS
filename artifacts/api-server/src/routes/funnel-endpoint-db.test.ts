@@ -118,3 +118,84 @@ describe("POST /api/public/funnel-event", () => {
     expect(await compter(VISITEUR)).toBe(1);   // idempotence par visiteur/etape/jour
   });
 });
+
+describe("Conversion B — jalons navigateur transmis a AI Lab", () => {
+  const SECRET = "conversion-test-secret-at-least-32-characters";
+  const FP_LID = "TestLeadFp_0000000002B";
+  let envoyes: Record<string, unknown>[] = [];
+
+  beforeEach(() => {
+    envoyes = [];
+    process.env["AI_LAB_CONVERSION_URL"] = "https://ai-lab.internal/events/conversion";
+    process.env["CONVERSION_EVENT_SECRET"] = SECRET;
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      envoyes.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify({ recorded: true, duplicate: false }), { status: 202 });
+    });
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+    delete process.env["AI_LAB_CONVERSION_URL"];
+    delete process.env["CONVERSION_EVENT_SECRET"];
+  });
+
+  const attendreEnvoi = async () => {
+    for (let i = 0; i < 50 && envoyes.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
+  };
+
+  for (const [etape, stage, source] of [
+    ["landing_vue", "visit", "marketing"],
+    ["signup_started", "signup_page", "saas"],
+    ["signup_form_engaged", "signup_started", "saas"],
+  ] as const) it(`${etape} devient le jalon ${stage} prouve par ${source}`, async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const visiteur = `fp-test-${randomUUID().replaceAll("-", "")}`;
+    const r = await request(app).post("/api/public/funnel-event")
+      .set("Cookie", "fp_analytics_consent=accepted")
+      .send({ etape, visiteurId: visiteur, source: "smartlead", fp_lid: FP_LID });
+    expect(r.status).toBe(204);
+    await attendreEnvoi();
+    expect(envoyes).toHaveLength(1);
+    expect(envoyes[0]).toMatchObject({ stage, source, fp_lid: FP_LID });
+  });
+
+  it("les autres etapes navigateur ne produisent aucun jalon", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const visiteur = `fp-test-${randomUUID().replaceAll("-", "")}`;
+    await request(app).post("/api/public/funnel-event")
+      .set("Cookie", "fp_analytics_consent=accepted")
+      .send({ etape: "tarifs_vus", visiteurId: visiteur, fp_lid: FP_LID });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(envoyes).toHaveLength(0);
+  });
+
+  it("le site vitrine, sans cookie, peut declarer un consentement accepte", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const visiteur = `fp-test-${randomUUID().replaceAll("-", "")}`;
+    await request(app).post("/api/public/funnel-event")
+      .send({ etape: "landing_vue", visiteurId: visiteur, consentement: "accepted", fp_lid: FP_LID });
+    expect(await compter(visiteur)).toBe(1);
+    await attendreEnvoi();
+    expect(envoyes[0]).toMatchObject({ stage: "visit", source: "marketing" });
+  });
+
+  it("un consentement declare autrement qu'accepte ne produit rien", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const visiteur = `fp-test-${randomUUID().replaceAll("-", "")}`;
+    await request(app).post("/api/public/funnel-event")
+      .send({ etape: "landing_vue", visiteurId: visiteur, consentement: "refused", fp_lid: FP_LID });
+    expect(await compter(visiteur)).toBe(0);
+    expect(envoyes).toHaveLength(0);
+  });
+
+  it("un refus porte par le cookie l'emporte sur le corps de la requete", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const visiteur = `fp-test-${randomUUID().replaceAll("-", "")}`;
+    await request(app).post("/api/public/funnel-event")
+      .set("Cookie", "fp_analytics_consent=refused")
+      .send({ etape: "landing_vue", visiteurId: visiteur, consentement: "accepted", fp_lid: FP_LID });
+    expect(await compter(visiteur)).toBe(0);
+    expect(envoyes).toHaveLength(0);
+  });
+});
