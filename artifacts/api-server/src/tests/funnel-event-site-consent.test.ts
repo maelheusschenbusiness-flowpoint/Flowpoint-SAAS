@@ -13,21 +13,32 @@
  *   - un cookie present l'emporte toujours, un refus compris ;
  *   - `fp_lid` valide (22 caracteres) : un jalon AI Lab pour les seules etapes
  *     prevues, une fois par visiteur et par jour ; invalide : aucun jalon, mais
- *     l'etape est enregistree comme sans `fp_lid`.
+ *     l'etape est enregistree comme sans `fp_lid` ;
+ *   - le jalon porte l'horodatage de la ligne en base : un meme `eventId`
+ *     decrit toujours le meme instant, et sans cette date rien n'est emis.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 const inserts: unknown[][] = [];
-const cles = new Set<string>();
+// La table factice : cle d'idempotence -> created_at, pose par la base a l'insertion.
+const lignes = new Map<string, Date>();
+// L'instant que la base attribue a la prochaine insertion (DEFAULT now()).
+let horlogeBase = new Date("2026-10-21T08:15:30.123Z");
+let lectureEnPanne = false;
 
 function fakeQuery(sql: string, p?: unknown[]): { rows: unknown[]; rowCount: number } {
   const q = sql.replace(/\s+/g, " ").trim();
   if (/INSERT INTO funnel_events/i.test(q)) {
     const cle = String((p ?? [])[5] ?? "");
-    if (cle && cles.has(cle)) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
-    cles.add(cle);
+    if (cle && lignes.has(cle)) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
+    lignes.set(cle, horlogeBase);
     inserts.push(p ?? []);
     return { rows: [], rowCount: 1 };
+  }
+  if (/SELECT created_at FROM funnel_events WHERE cle_idempotence/i.test(q)) {
+    if (lectureEnPanne) throw new Error("db down");
+    const date = lignes.get(String((p ?? [])[0] ?? ""));
+    return { rows: date ? [{ created_at: date }] : [], rowCount: date ? 1 : 0 };
   }
   return { rows: [], rowCount: 0 };
 }
@@ -73,7 +84,9 @@ beforeAll(async () => {
 beforeEach(() => {
   inserts.length = 0;
   emitted.length = 0;
-  cles.clear();
+  lignes.clear();
+  horlogeBase = new Date("2026-10-21T08:15:30.123Z");
+  lectureEnPanne = false;
 });
 
 /** Un visiteur neuf a chaque appel : la cle d'idempotence ne masque rien. */
@@ -156,7 +169,7 @@ describe("POST /api/public/funnel-event — fp_lid", () => {
     expect(e).toMatchObject({ stage: "visit", source: "marketing", fpLid: FP_LID });
     expect(String(e.eventId)).toMatch(/^marketing:visit:[0-9a-f]{32}$/);
     expect(String(e.eventId)).not.toContain(FP_LID);
-    expect(Number.isNaN(Date.parse(String(e.occurredAt)))).toBe(false);
+    expect(e.occurredAt).toBe("2026-10-21T08:15:30.123Z");
   });
 
   it("fp_lid valide sur signup_started : un jalon signup_page/saas", async () => {
@@ -186,6 +199,35 @@ describe("POST /api/public/funnel-event — fp_lid", () => {
     await envoyer({ etape: "landing_vue", visiteurId: v, consentement: "accepted", fp_lid: FP_LID });
     expect(inserts).toHaveLength(1);
     expect(emitted).toHaveLength(1);
+  });
+
+  it("occurredAt est l'horodatage de la ligne en base, jamais l'heure de la requete", async () => {
+    horlogeBase = new Date("2026-10-21T00:00:01.000Z");
+    const avant = Date.now();
+    await envoyer({ etape: "landing_vue", visiteurId: visiteur(), consentement: "accepted", fp_lid: FP_LID });
+    expect(emitted[0]?.occurredAt).toBe("2026-10-21T00:00:01.000Z");
+    expect(Date.parse(String(emitted[0]?.occurredAt))).toBeLessThan(avant);
+  });
+
+  it("un meme eventId porte toujours le meme occurredAt", async () => {
+    const v = visiteur();
+    await envoyer({ etape: "landing_vue", visiteurId: v, consentement: "accepted", fp_lid: FP_LID });
+    // La ligne existe deja : une autre instance qui la relit plus tard obtient la meme date.
+    horlogeBase = new Date("2026-10-21T23:59:59.000Z");
+    const { horodatageEtape } = await import("../services/funnel-events.js");
+    const cle = String(inserts[0]?.[5]);
+    expect(await horodatageEtape(cle)).toBe(emitted[0]?.occurredAt);
+    await envoyer({ etape: "landing_vue", visiteurId: v, consentement: "accepted", fp_lid: FP_LID });
+    expect(emitted).toHaveLength(1);
+  });
+
+  it("horodatage illisible : l'etape reste enregistree, aucun jalon n'est invente", async () => {
+    lectureEnPanne = true;
+    const r = await envoyer({ etape: "landing_vue", visiteurId: visiteur(), consentement: "accepted",
+      fp_lid: FP_LID });
+    expect(r.status).toBe(204);
+    expect(inserts).toHaveLength(1);
+    expect(emitted).toHaveLength(0);
   });
 
   it("sans consentement, un fp_lid valide ne produit ni ecriture ni jalon", async () => {

@@ -14,6 +14,7 @@ import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js"
 import {
   ETAPES_PUBLIQUES,
   enregistrerEtape,
+  horodatageEtape,
   lireAttributionFunnel,
   metadataAttributionFunnel,
   normaliserAttributionFunnel,
@@ -62,29 +63,34 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     res.status(204).end();
     return;
   }
-  const maintenant = new Date();
-  const day = maintenant.toISOString().slice(0, 10);
+  const day = new Date().toISOString().slice(0, 10);
+  const cleIdempotence = `${etape}:${attribution.visiteurId}:${day}`;
   const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     plan: typeof req.body?.plan === "string" ? req.body.plan : null,
-    cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
+    cleIdempotence,
   });
   // Le navigateur peut joindre son fp_lid opaque : jamais pour un token mal
   // forme, et seulement pour une etape reellement enregistree. L'identifiant
-  // porte le visiteur et le jour, comme la cle d'idempotence locale. L'emission
-  // ne bloque pas la reponse et ne leve jamais.
+  // porte le visiteur et le jour, comme la cle d'idempotence locale, et
+  // l'horodatage est celui de la ligne en base : un meme identifiant decrit
+  // toujours le meme instant. Sans cette date, rien n'est emis. L'emission ne
+  // bloque pas la reponse et ne leve jamais.
   const fpLid = normalizeFpLid(req.body?.fp_lid);
   const jalon = JALONS_NAVIGATEUR[etape];
   if (insere && jalon && fpLid) {
-    void emitConversionEvent({
-      eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
-      stage: jalon.stage,
-      source: jalon.source,
-      fpLid,
-      occurredAt: maintenant.toISOString(),
-    });
+    const occurredAt = await horodatageEtape(cleIdempotence);
+    if (occurredAt) {
+      void emitConversionEvent({
+        eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${day}`),
+        stage: jalon.stage,
+        source: jalon.source,
+        fpLid,
+        occurredAt,
+      });
+    }
   }
   res.status(204).end();
 });

@@ -101,6 +101,28 @@ function tronquer(value: string | null | undefined): string | null {
   return trimmed ? trimmed.slice(0, 120) : null;
 }
 
+/**
+ * L'horodatage persiste d'une etape, retrouve par sa cle d'idempotence (index
+ * unique). Un jalon AI Lab doit toujours decrire le meme instant pour le meme
+ * identifiant : c'est cette date, et jamais l'heure d'une requete, qui le fixe.
+ * `null` si la ligne est introuvable ou la base indisponible.
+ */
+export async function horodatageEtape(cleIdempotence: string): Promise<string | null> {
+  try {
+    const result = await pool.query<{ created_at: Date | string }>(
+      `SELECT created_at FROM funnel_events WHERE cle_idempotence = $1`,
+      [cleIdempotence],
+    );
+    const brut = result.rows[0]?.created_at;
+    if (!brut) return null;
+    const date = brut instanceof Date ? brut : new Date(brut);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  } catch (error) {
+    logger.warn({ error }, "[Tunnel] event timestamp read failed");
+    return null;
+  }
+}
+
 export async function enregistrerEtape(
   event: EvenementTunnel,
 ): Promise<boolean> {
