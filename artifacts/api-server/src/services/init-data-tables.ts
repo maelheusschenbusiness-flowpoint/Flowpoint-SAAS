@@ -2875,6 +2875,33 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE INDEX IF NOT EXISTS gsc_sync_logs_org_idx ON gsc_sync_logs(org_id)`);
       await applyTenantRls("gsc_sync_logs");
 
+      // GSC OAuth credentials and one-time state are isolated from google_tokens
+      // (the shared GBP/GA4 connection). Schema is idempotent; never run against
+      // production without explicit database-isolation approval.
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_oauth_states (
+          state_hash TEXT PRIMARY KEY,
+          org_id TEXT NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS gsc_oauth_states_expiry_idx ON gsc_oauth_states(expires_at)`);
+      await applyTenantRls("gsc_oauth_states");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gsc_oauth_tokens (
+          org_id TEXT PRIMARY KEY,
+          property_url TEXT NOT NULL,
+          account_email TEXT NOT NULL,
+          access_token TEXT NOT NULL,
+          refresh_token TEXT NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await applyTenantRls("gsc_oauth_tokens");
+
       // ── reviews ─────────────────────────────────────────────────────────────
       await run(client, `
         CREATE TABLE IF NOT EXISTS reviews (

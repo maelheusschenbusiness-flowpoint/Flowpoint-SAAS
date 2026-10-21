@@ -37,8 +37,8 @@ vi.mock("@workspace/db", () => ({
     })),
   },
 }));
-vi.mock("./google-service.js", () => ({
-  getValidToken: vi.fn(async () => "fake-google-token"),
+vi.mock("./gsc-oauth-service.js", () => ({
+  getGscValidToken: vi.fn(async () => "fake-gsc-token"),
 }));
 vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

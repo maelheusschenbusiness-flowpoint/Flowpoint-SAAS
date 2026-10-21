@@ -165,6 +165,7 @@ export default defineConfig({
       // aucune voie : affectation, paquet construit, configuration, ordre des gardes.
       "src/routes/stripe-webhook-unsigned-containment.test.ts",
       "src/services/google-oauth-scopes.test.ts",
+      "src/services/gsc-oauth-service.test.ts",
       "src/services/monitor-addon-quota.test.ts",
       "src/routes/addon-activate-quantity.test.ts",
       "src/routes/gsc-site-ownership.test.ts",
