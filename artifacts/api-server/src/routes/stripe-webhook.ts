@@ -14,7 +14,8 @@ import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../service
 import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
-import { emitConversionEvent, type ConversionStage } from "../lib/conversion-events.js";
+import { type ConversionStage } from "../lib/conversion-events.js";
+import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
@@ -2707,7 +2708,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const outcomes: Record<string, string> = {};
       let allDelivered = true;
       for (const stage of stages) {
-        const outcome = await emitConversionEvent({
+        const outcome = await queueConversionEvent({
           eventId: `stripe:${eventId}:${stage}`,
           stage,
           source: "stripe",
@@ -2715,9 +2716,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           occurredAt,
         });
         outcomes[stage] = outcome;
-        // `sent` et `duplicate` sont tous deux des succes : le jalon est chez AI
-        // Lab. Tout le reste reste marque non emis, donc rattrapable.
-        if (outcome !== "sent" && outcome !== "duplicate") allDelivered = false;
+        // `sent` et `duplicate` : le jalon est chez AI Lab. `queued` : il est
+        // inscrit dans la file durable, qui le relivrera. Tout le reste reste
+        // marque non emis, et le worker de la file le rattrape.
+        if (outcome !== "sent" && outcome !== "duplicate" && outcome !== "queued") allDelivered = false;
       }
       await noteEmission(allDelivered
         ? { aiLabEmitted: true, aiLabOutcomes: outcomes }

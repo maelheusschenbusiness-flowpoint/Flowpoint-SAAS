@@ -19,7 +19,8 @@ import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
-import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
+import { stableEventId } from "../lib/conversion-events.js";
+import { queueConversionEvent } from "../lib/conversion-outbox.js";
 
 const router = Router();
 
@@ -1251,7 +1252,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     //
     // Apres, parce qu'un jalon ne doit annoncer que ce qui est reellement
     // enregistre. En meilleur effort, parce qu'une indisponibilite d'AI Lab ne
-    // peut pas faire echouer une inscription : `emitConversionEvent` ne leve
+    // peut pas faire echouer une inscription : `queueConversionEvent` ne leve
     // jamais, et l'appel est detache pour ne pas meme ajouter sa latence ici.
     //
     // L'identifiant derive du jeton par condensat : le jeton de pre-inscription
@@ -1261,7 +1262,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       const _emitFpLid = normalizeFpLid(_preRegInserted.rows[0]?.fp_lid);
       const _emitAt = _preRegInserted.rows[0]?.created_at;
       if (_emitFpLid && _emitAt) {
-        void emitConversionEvent({
+        void queueConversionEvent({
           eventId: stableEventId("signup", preToken),
           stage: "signup",
           source: "saas",

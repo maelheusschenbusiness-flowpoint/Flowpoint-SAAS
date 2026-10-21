@@ -23,7 +23,8 @@ import {
 } from "../services/checkout-subscription-claim.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
-import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
+import { stableEventId } from "../lib/conversion-events.js";
+import { queueConversionEvent } from "../lib/conversion-outbox.js";
 
 import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 const router = Router();
@@ -687,7 +688,7 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
   const fpLid = normalizeFpLid(req.body?.fp_lid);
   const jalon = JALONS_NAVIGATEUR[etape];
   if (insere && jalon && fpLid) {
-    void emitConversionEvent({
+    void queueConversionEvent({
       eventId: stableEventId(jalon.prefixe, `${fpLid}:${attribution.visiteurId}:${jour}`),
       stage: jalon.stage,
       source: jalon.source,
