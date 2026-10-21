@@ -69580,6 +69580,24 @@ window.FP_V1_ADDON_PANELS = {
       clientInput.type = 'text'; clientInput.maxLength = 160;
       clientInput.placeholder = 'Nom du client pour le pack complet';
       clientInput.setAttribute('aria-label', 'Nom du client');
+      const auditSelect = document.createElement('select');
+      auditSelect.setAttribute('aria-label', 'Audit à inclure dans les rapports');
+      const noAuditOption = document.createElement('option');
+      noAuditOption.value = '';
+      noAuditOption.textContent = 'Sans audit lié';
+      auditSelect.appendChild(noAuditOption);
+      const audits = Array.isArray(result?.audits) ? result.audits : [];
+      for (const audit of audits) {
+        const option = document.createElement('option');
+        option.value = String(audit.id || '');
+        const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
+          ? 'score indisponible'
+          : `score ${audit.score}`;
+        const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : '';
+        option.textContent = [audit.url || 'Site', measuredScore, measuredDate].filter(Boolean).join(' · ');
+        auditSelect.appendChild(option);
+      }
+      if (audits.length) auditSelect.value = String(audits[0].id || '');
       const bundleButton = document.createElement('button');
       bundleButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
       bundleButton.textContent = 'Créer le pack complet (3 rapports)';
@@ -69588,13 +69606,19 @@ window.FP_V1_ADDON_PANELS = {
         if (clientName.length < 2) { showToast('error', 'Saisissez le nom du client'); return; }
         bundleButton.disabled = true;
         try {
-          const bundle = await apiFetch('/api/reports/agency-packs/generate', { method: 'POST', body: JSON.stringify({ clientName }) });
+          const bundle = await apiFetch('/api/reports/agency-packs/generate', {
+            method: 'POST',
+            body: JSON.stringify({
+              clientName,
+              auditId: auditSelect.value || undefined,
+            }),
+          });
           if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
           showToast('success', 'Pack créé : 3 rapports vérifiés pour ' + clientName);
           render();
         } catch { showToast('error', 'Le pack complet n’a pas pu être créé'); bundleButton.disabled = false; }
       });
-      bundleControls.append(clientInput, bundleButton);
+      bundleControls.append(clientInput, auditSelect, bundleButton);
       target.appendChild(bundleControls);
       for (const pack of (result?.packs || [])) {
         const row = document.createElement('div');
@@ -69607,7 +69631,15 @@ window.FP_V1_ADDON_PANELS = {
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {
-            await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify({ name: pack.name, templateKey: pack.templateKey, format: 'PDF' }) });
+            await apiFetch('/api/reports', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: pack.name,
+                templateKey: pack.templateKey,
+                format: 'PDF',
+                auditId: auditSelect.value || undefined,
+              }),
+            });
             showToast('success', 'Rapport créé');
             render();
           } catch { showToast('error', 'Impossible de créer le rapport'); button.disabled = false; }

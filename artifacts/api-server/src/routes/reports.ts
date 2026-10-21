@@ -24,14 +24,28 @@ const REPORT_TEMPLATES = {
   ai:         { label: "Rapport IA Lab" },
 } as const;
 
-router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), (_req, res) => {
-  res.json({
-    packs: [
-      { id: "executive-monthly", name: "Executive mensuel", templateKey: "executive", description: "Synthèse exécutive mensuelle." },
-      { id: "seo-growth", name: "SEO & croissance", templateKey: "seo", description: "Suivi des performances SEO." },
-      { id: "local-presence", name: "Présence locale", templateKey: "local", description: "Rapport de visibilité locale." },
-    ],
-  });
+router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), async (req, res) => {
+  try {
+    const audits = await db(req)(
+      `SELECT id, url, score, status, created_at
+         FROM audits
+        WHERE org_id=$1
+        ORDER BY created_at DESC
+        LIMIT 100`,
+      [org(req)],
+    );
+    res.json({
+      packs: [
+        { id: "executive-monthly", name: "Executive mensuel", templateKey: "executive", description: "Synthèse exécutive mensuelle." },
+        { id: "seo-growth", name: "SEO & croissance", templateKey: "seo", description: "Suivi des performances SEO." },
+        { id: "local-presence", name: "Présence locale", templateKey: "local", description: "Rapport de visibilité locale." },
+      ],
+      audits: audits.rows,
+    });
+  } catch (err) {
+    logger.warn({ err, orgId: org(req) }, "[reports] agency pack audit list unavailable");
+    res.status(503).json({ error: "Impossible de charger les audits de cette organisation.", packs: [], audits: [] });
+  }
 });
 
 // Build one client-ready bundle atomically from three specialized report types.
@@ -45,6 +59,23 @@ router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agenc
     { key: "local", label: "Présence locale" },
   ];
   const orgId = org(req);
+  const selectedAuditId = typeof auditId === "string" ? auditId.trim().slice(0, 200) : "";
+  if (selectedAuditId) {
+    try {
+      const ownedAudit = await db(req)(
+        `SELECT id FROM audits WHERE id=$1 AND org_id=$2 LIMIT 1`,
+        [selectedAuditId, orgId],
+      );
+      if (!ownedAudit.rows.length) {
+        res.status(404).json({ error: "Audit introuvable pour cette organisation.", code: "AUDIT_NOT_FOUND" });
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err, orgId }, "[reports] agency pack audit validation failed");
+      res.status(503).json({ error: "Impossible de vérifier l’audit sélectionné." });
+      return;
+    }
+  }
   const { pool: reportPool } = await import("@workspace/db");
   const client = await reportPool.connect();
   let txActive = false;
@@ -65,7 +96,7 @@ router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agenc
       const id = "r_" + randomBytes(12).toString("hex");
       await client.query(
         "INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by) VALUES ($1,$2,$3,'PDF',$4,$5,0,false,$6,false,true,'[]',$7,$8,$9)",
-        [id, orgId, clientName + " — " + template.label, template.key, new Date().toISOString(), typeof auditId === "string" ? auditId.slice(0, 200) : "", typeof dateStart === "string" ? dateStart.slice(0, 40) : "", typeof dateEnd === "string" ? dateEnd.slice(0, 40) : "", (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
+        [id, orgId, clientName + " — " + template.label, template.key, new Date().toISOString(), selectedAuditId, typeof dateStart === "string" ? dateStart.slice(0, 40) : "", typeof dateEnd === "string" ? dateEnd.slice(0, 40) : "", (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
       );
       ids.push(id);
     }
