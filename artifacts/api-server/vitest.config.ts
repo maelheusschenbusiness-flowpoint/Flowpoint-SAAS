@@ -18,6 +18,9 @@ export default defineConfig({
       "src/tests/ai-lab-conversion-emitters.test.ts",
       // Les handlers eux-memes : prouve que quelqu un appelle l emetteur.
       "src/tests/ai-lab-conversion-handlers.test.ts",
+      // File durable des jalons Conversion B : service endormi (21/10/2026).
+      "src/lib/conversion-outbox-db.test.ts",
+      "src/routes/conversion-b-funnel-route-db.test.ts",
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes

@@ -37,16 +37,14 @@ let statusWrites: Record<string, unknown>[];
 const emitted: Record<string, unknown>[] = [];
 let emitOutcome: string;
 
-vi.mock("../lib/conversion-events.js", async () => {
-  const actual = await import("../lib/conversion-events.js");
-  return {
-    ...actual,
-    emitConversionEvent: vi.fn(async (e: Record<string, unknown>) => {
-      emitted.push(e);
-      return emitOutcome;
-    }),
-  };
-});
+// Le webhook confie ses jalons a la file durable (`conversion-outbox.ts`), qui
+// a ses propres tests. Ici, seul compte ce que le webhook lui confie.
+vi.mock("../lib/conversion-outbox.js", () => ({
+  queueConversionEvent: vi.fn(async (e: Record<string, unknown>) => {
+    emitted.push(e);
+    return emitOutcome;
+  }),
+}));
 
 function fakeQuery(sql: string, p?: unknown[]): { rows: unknown[]; rowCount: number } {
   const q = sql.replace(/\s+/g, " ").trim();
@@ -513,6 +511,12 @@ describe("un jalon perdu reste rattrapable", () => {
     emitOutcome = "duplicate";
     await deliver(invoice());
     expect(metadataWrites.at(-1)).toMatchObject({ aiLabEmitted: true });
+  });
+
+  it("un jalon confie a la file durable compte comme emis : la file le relivrera", async () => {
+    emitOutcome = "queued";
+    await deliver(invoice());
+    expect(metadataWrites.at(-1)).toMatchObject({ aiLabEmitted: true, aiLabOutcomes: { paid: "queued" } });
   });
 
   it("une panne laisse le jalon NON emis, donc retrouvable", async () => {
