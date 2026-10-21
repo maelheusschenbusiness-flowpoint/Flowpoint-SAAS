@@ -21568,6 +21568,21 @@ function bindGlobalEvents() {
     'Générer les recommandations': 'Generate recommendations',
     'Lancer l\'audit IA': 'Launch AI audit',
     'événement(s)': 'event(s)',
+    'Simuler': 'Simulate',
+    'Aucune prévision mesurée disponible pour ce scénario.': 'No measured forecast is available for this scenario.',
+    'Simulation — Scénario prudent': 'Simulation — Conservative scenario',
+    'Simulation — Scénario réaliste': 'Simulation — Realistic scenario',
+    'Simulation — Scénario ambitieux': 'Simulation — Ambitious scenario',
+    'Appliquez une variation hypothétique aux valeurs de ce scénario. Le calcul reste dans votre navigateur et ne modifie pas vos prévisions enregistrées.': 'Apply a hypothetical change to this scenario. The calculation stays in your browser and does not change your saved forecasts.',
+    'Variation hypothétique (%) — de −50 à +200': 'Hypothetical change (%) — from −50 to +200',
+    'La simulation est indicative et repose sur une variation linéaire du scénario sélectionné.': 'This is an indicative simulation based on a linear change to the selected scenario.',
+    'Fermer': 'Close',
+    'Calculer': 'Calculate',
+    'Saisissez une variation entre −50 et +200 %.': 'Enter a change between −50 and +200%.',
+    'Trafic sur 90 jours : {traffic} clics': 'Traffic over 90 days: {traffic} clicks',
+    'Conversions sur 30 jours : {conversions}': 'Conversions over 30 days: {conversions}',
+    'Revenu sur 90 jours : {revenue} (devise GA4)': 'Revenue over 90 days: {revenue} (GA4 currency)',
+    'Projection indicative ({change} %) — {details}': 'Indicative projection ({change}%) — {details}',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -59420,9 +59435,9 @@ function renderDataExplorer() {
     const fRev = _hasGA4Forecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Number(p.predictedRevenue ?? 0).toLocaleString(getLocale(), { maximumFractionDigits: 2 })) : [];
     const maxF = fTraffic.length ? Math.max(...fTraffic, 1) : 1;
     const scenarios = _hasForecast ? [
-      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('pessimistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('pessimistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#64748b', desc: _hasGA4Forecast ? 'Projection mesurée GSC/GA4' : 'Trafic GSC; conversion/revenu GA4 requis' },
-      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('realistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('realistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#2563EB', desc: _hasGA4Forecast ? 'Tendance GSC/GA4 observée' : 'Tendance de trafic GSC observée' },
-      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('optimistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('optimistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#22c55e', desc: _hasGA4Forecast ? 'Projection mesurée GSC/GA4' : 'Trafic GSC; conversion/revenu GA4 requis' },
+      { key: 'pessimistic', name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('pessimistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('pessimistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#64748b', desc: _hasGA4Forecast ? 'Projection mesurée GSC/GA4' : 'Trafic GSC; conversion/revenu GA4 requis' },
+      { key: 'realistic', name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('realistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('realistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#2563EB', desc: _hasGA4Forecast ? 'Tendance GSC/GA4 observée' : 'Tendance de trafic GSC observée' },
+      { key: 'optimistic', name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: _hasGA4Forecast ? _scenarioMetric('optimistic', 'predictedConversions', 30).toLocaleString(getLocale()) : '—', rev: _hasGA4Forecast ? _scenarioMetric('optimistic', 'predictedRevenue', 90).toLocaleString(getLocale(), { maximumFractionDigits: 2 }) : '—', color: '#22c55e', desc: _hasGA4Forecast ? 'Projection mesurée GSC/GA4' : 'Trafic GSC; conversion/revenu GA4 requis' },
     ] : [];
     return `
       ${isUltra && _hasForecast
@@ -59497,7 +59512,7 @@ function renderDataExplorer() {
                     </div>
                   `).join('')}
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="Simulation de scénarios — bientôt disponible">Simuler (bientôt)</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" type="button" data-fp-forecast-simulate="${s.key}">${fpT('Simuler')}</button>
               </div>
             </div>
           `).join('')}
@@ -69933,6 +69948,113 @@ window.FP_FORECAST_API = {
     } catch(e) { showToast('error', String(e)); }
   },
 };
+
+window._fpOpenForecastSimulation = function(scenarioKey) {
+  const labels = {
+    pessimistic: 'Scénario prudent',
+    realistic: 'Scénario réaliste',
+    optimistic: 'Scénario ambitieux',
+  };
+  if (!Object.prototype.hasOwnProperty.call(labels, scenarioKey)) return;
+  const forecast = window.FP_DATA?.forecast;
+  const points = Array.isArray(forecast?.forecasts)
+    ? forecast.forecasts.filter(point => point.scenario === scenarioKey).slice(0, 90)
+    : [];
+  if (!forecast?.available || !points.length) {
+    showToast('error', fpT('Aucune prévision mesurée disponible pour ce scénario.'));
+    return;
+  }
+
+  document.querySelector('[data-fp-forecast-dialog]')?.remove();
+  const overlay = document.createElement('div');
+  overlay.dataset.fpForecastDialog = 'true';
+  overlay.className = 'fp-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(2,6,23,.72)';
+  const dialog = document.createElement('section');
+  dialog.className = 'fp-modal';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'fp-forecast-sim-title');
+  dialog.style.cssText = 'width:min(100%,520px);padding:22px;border-radius:16px;background:var(--fp-card,#111827);color:var(--fp-text,#f8fafc);border:1px solid var(--fp-border,rgba(148,163,184,.25));box-shadow:0 24px 70px rgba(0,0,0,.4)';
+
+  const title = document.createElement('h2');
+  title.id = 'fp-forecast-sim-title';
+  title.style.cssText = 'margin:0 0 8px;font-size:18px';
+  title.textContent = fpT(`Simulation — ${labels[scenarioKey]}`);
+  const explanation = document.createElement('p');
+  explanation.style.cssText = 'margin:0 0 18px;font-size:13px;line-height:1.5;color:var(--fp-text-muted,#94a3b8)';
+  explanation.textContent = fpT('Appliquez une variation hypothétique aux valeurs de ce scénario. Le calcul reste dans votre navigateur et ne modifie pas vos prévisions enregistrées.');
+  const label = document.createElement('label');
+  label.htmlFor = 'fp-forecast-sim-change';
+  label.style.cssText = 'display:block;margin-bottom:6px;font-size:12px;font-weight:600';
+  label.textContent = fpT('Variation hypothétique (%) — de −50 à +200');
+  const input = document.createElement('input');
+  input.id = 'fp-forecast-sim-change';
+  input.type = 'number';
+  input.min = '-50';
+  input.max = '200';
+  input.step = '1';
+  input.value = '10';
+  input.className = 'fp-input';
+  input.style.cssText = 'width:100%;margin-bottom:14px';
+  const result = document.createElement('div');
+  result.setAttribute('aria-live', 'polite');
+  result.style.cssText = 'min-height:44px;padding:12px;border-radius:10px;background:rgba(37,99,235,.08);font-size:12px;line-height:1.5;color:var(--fp-text-muted,#94a3b8)';
+  result.textContent = fpT('La simulation est indicative et repose sur une variation linéaire du scénario sélectionné.');
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px';
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'fp-btn fp-btn-ghost fp-btn-sm';
+  closeButton.textContent = fpT('Fermer');
+  const calculateButton = document.createElement('button');
+  calculateButton.type = 'button';
+  calculateButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
+  calculateButton.textContent = fpT('Calculer');
+  actions.append(closeButton, calculateButton);
+  dialog.append(title, explanation, label, input, result, actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKeydown);
+  };
+  const onKeydown = event => {
+    if (event.key === 'Escape') close();
+  };
+  closeButton.addEventListener('click', close);
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener('keydown', onKeydown);
+  calculateButton.addEventListener('click', () => {
+    const change = Number(input.value);
+    if (!Number.isFinite(change) || change < -50 || change > 200) {
+      input.setCustomValidity(fpT('Saisissez une variation entre −50 et +200 %.'));
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity('');
+    const factor = 1 + change / 100;
+    const traffic = points.reduce((sum, point) => sum + Number(point.predictedTraffic || 0), 0) * factor;
+    const details = [fpT('Trafic sur 90 jours : {traffic} clics', { traffic: Math.round(traffic).toLocaleString(getLocale()) })];
+    if (forecast.ga4Available) {
+      const conversions = points.slice(0, 30).reduce((sum, point) => sum + Number(point.predictedConversions || 0), 0) * factor;
+      const revenue = points.reduce((sum, point) => sum + Number(point.predictedRevenue || 0), 0) * factor;
+      details.push(fpT('Conversions sur 30 jours : {conversions}', { conversions: Math.round(conversions).toLocaleString(getLocale()) }));
+      details.push(fpT('Revenu sur 90 jours : {revenue} (devise GA4)', { revenue: revenue.toLocaleString(getLocale(), { maximumFractionDigits: 2 }) }));
+    }
+    result.textContent = fpT('Projection indicative ({change} %) — {details}', { change: `${change >= 0 ? '+' : ''}${change}`, details: details.join(' · ') });
+  });
+  input.focus();
+};
+
+document.addEventListener('click', event => {
+  const button = event.target?.closest?.('[data-fp-forecast-simulate]');
+  if (button) window._fpOpenForecastSimulation(button.dataset.fpForecastSimulate);
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP AUTOMATION API — Real Automation Workflows client
