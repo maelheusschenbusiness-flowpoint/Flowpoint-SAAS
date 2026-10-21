@@ -53706,7 +53706,7 @@ function renderGrowthProjections() {
       <div class="fp-section-actions">${btn('Exporter PDF','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}</div>
     </div>
 
-    ${aiBlock(('Tendance mesurée ' + _trendLabel + ' : <strong>' + _p30Label + ' pts estimés sur 30 jours</strong>. Score projeté : <strong>' + Math.max(0, Math.min(99, avgSc+_p60)) + '/100</strong> sur 60 jours, selon la tendance observée.'),['Voir Quick Wins','Définir objectifs'])}
+      ${aiBlock(('Tendance mesurée ' + _trendLabel + ' : <strong>' + _p30Label + ' pts estimés sur 30 jours</strong>. Score projeté : <strong>' + Math.max(0, Math.min(99, avgSc+_p60)) + '/100</strong> sur 60 jours, selon la tendance observée.') ,['Voir Quick Wins','Définir objectifs'])}
 
     <div class="fp-stat-row">
       ${statCard('Score dans 30j',  Math.max(0,Math.min(99,avgSc+_p30))+'/100',  _p30Label+' pts estimés',  _p30 >= 0 ? 'up' : 'down', 'Tendance mesurée')}
