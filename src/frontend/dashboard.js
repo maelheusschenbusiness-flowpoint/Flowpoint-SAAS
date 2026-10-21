@@ -69834,10 +69834,23 @@ window.FP_AB_TEST_API = {
     if (!name) return;
     const selector = prompt('Sélecteur CSS de l’élément à modifier (ex. #cta-principal):');
     const goalSelector = prompt('Sélecteur CSS de conversion (ex. form#contact button[type=submit]):');
-    const hypothesis = prompt('Hypothèse (optionnel):', '');
     const variantAText = prompt('Texte témoin affiché avant toute modification du site:');
-    const variantBText = prompt('Texte de la variante:');
-    if (!selector || !goalSelector || !variantAText || !variantBText) return;
+    if (!selector || !goalSelector || !variantAText) return;
+    let suggestion = null;
+    try {
+      const generated = await apiFetch('/api/ab-testing/suggest', {
+        method: 'POST',
+        body: JSON.stringify({ siteUrl, page, selector, goalSelector, variantAText }),
+      });
+      suggestion = generated?.suggestion || null;
+      if (suggestion) showToast('success', `Proposition fondée sur les signaux observés. Raison : ${suggestion.rationale} Mesure : ${suggestion.successMetric}`);
+    } catch (e) {
+      showToast('error', String(e));
+      if (!confirm('Continuer sans suggestion IA et saisir les textes manuellement ?')) return;
+    }
+    const hypothesis = prompt('Hypothèse à valider:', suggestion?.hypothesis || '');
+    const variantBText = prompt('Texte de la variante B:', suggestion?.variantBText || '');
+    if (!variantBText) return;
     try {
       await apiFetch('/api/ab-testing/experiments', { method: 'POST', body: JSON.stringify({ siteUrl, page, name, selector, goalSelector, hypothesis, variantAText, variantBText }) });
       showToast('success', 'Brouillon créé. Réinstallez le nouveau snippet, puis démarrez le test.');
