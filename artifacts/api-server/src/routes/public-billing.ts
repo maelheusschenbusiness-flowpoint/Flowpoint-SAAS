@@ -23,6 +23,7 @@ import {
 } from "../services/checkout-subscription-claim.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { emitConversionEvent, stableEventId } from "../lib/conversion-events.js";
 
 import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 const router = Router();
@@ -647,14 +648,29 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
   }
   // Idempotence par visiteur, etape et JOUR : un rechargement de page ne cree
   // pas de doublon, mais un retour le lendemain reste compte.
-  const jour = new Date().toISOString().slice(0, 10);
-  await enregistrerEtape({
+  const maintenant = new Date();
+  const jour = maintenant.toISOString().slice(0, 10);
+  const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     plan:   typeof req.body?.plan   === "string" ? req.body.plan   : null,
     cleIdempotence: `${etape}:${visiteurId}:${jour}`,
   });
+  // Le site marketing peut joindre son fp_lid opaque a `landing_vue`. On
+  // n'emet jamais `visit` pour une autre etape et jamais pour un token mal
+  // forme. L'emission reste non bloquante : l'affichage de la page ne depend
+  // ni d'AI Lab, ni de son reseau.
+  const fpLid = normalizeFpLid(req.body?.fp_lid);
+  if (insere && etape === "landing_vue" && fpLid) {
+    void emitConversionEvent({
+      eventId: stableEventId("marketing:visit", `${fpLid}:${jour}`),
+      stage: "visit",
+      source: "marketing",
+      fpLid,
+      occurredAt: maintenant.toISOString(),
+    });
+  }
   // 204 : rien a renvoyer, et surtout aucune information sur ce qui existe deja.
   res.status(204).end();
 });

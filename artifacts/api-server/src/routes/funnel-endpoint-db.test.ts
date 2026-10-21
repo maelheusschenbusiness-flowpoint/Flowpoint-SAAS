@@ -64,6 +64,19 @@ describe("POST /api/public/funnel-event", () => {
     expect(await compter(VISITEUR)).toBe(1);
   });
 
+  it("accepte le fp_lid opaque sur une visite marketing sans le stocker", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const fpLid = "TestLeadFp_0000000001A";
+    const visiteur = `fp-test-${randomUUID().replaceAll("-", "")}`;
+    const r = await request(app).post("/api/public/funnel-event")
+      .set("Cookie", "fp_analytics_consent=accepted")
+      .send({ etape: "landing_vue", visiteurId: visiteur, source: "smartlead", fp_lid: fpLid });
+    expect(r.status).toBe(204);
+    const stored = await pool.query(
+      `SELECT * FROM funnel_events WHERE visiteur_id = $1`, [visiteur]);
+    expect(JSON.stringify(stored.rows)).not.toContain(fpLid);
+  });
+
   it("n'enregistre aucun visiteur sans consentement accepté", async (ctx) => {
     if (!dbOk) return ctx.skip();
     const r = await request(app).post("/api/public/funnel-event")

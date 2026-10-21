@@ -100,6 +100,12 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      # Conversion B : endpoint prive de l'AI Lab et secret partage. Les
+      # valeurs restent gerees dans Render, jamais dans Git.
+      - key: AI_LAB_CONVERSION_URL
+        sync: false
+      - key: CONVERSION_EVENT_SECRET
+        sync: false
       # Les autres variables en vigueur ne sont pas declarees ici : leur
       # inventaire vit dans GET /api/diagnostics, qui les reduit a set/not_set
       # sans jamais exposer de valeur. Render les conserve telles quelles.
@@ -152,4 +158,8 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: FRONTEND_URL
+        sync: false
+      - key: AI_LAB_CONVERSION_URL
+        sync: false
+      - key: CONVERSION_EVENT_SECRET
         sync: false
