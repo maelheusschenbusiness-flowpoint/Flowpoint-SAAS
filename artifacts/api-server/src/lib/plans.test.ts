@@ -99,15 +99,19 @@ describe("V1 add-on catalogue contract", () => {
     ]).toEqual([17, 14, 9, 29, 24, 19]);
   });
 
-  it("opens every ready, non-protected add-on to Starter, Pro, and Ultra without changing protected gates", () => {
-    const readyAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key =>
+  it("opens every sellable non-protected add-on to Standard, Pro, and Ultra without changing protected gates", () => {
+    const nonProtectedAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(
+      key => !PROTECTED_ADDON_KEYS.has(key),
+    );
+    const sellableAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key =>
       !PROTECTED_ADDON_KEYS.has(key) &&
       !REMOVED_ADDONS.has(key) &&
-      getAddonAvailability(key) === "available"
+      ["available", "beta"].includes(getAddonAvailability(key))
     );
-    expect(readyAddons.length).toBeGreaterThan(0);
+    expect(nonProtectedAddons).toHaveLength(34);
+    expect(sellableAddons.length).toBeGreaterThan(0);
     for (const plan of ["standard", "pro", "ultra"]) {
-      for (const key of readyAddons) {
+      for (const key of sellableAddons) {
         expect(PLAN_ALLOWED_ADDONS[plan]?.has(key), `${key} on ${plan}`).toBe(true);
       }
     }
