@@ -20102,6 +20102,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Ranking data unavailable Advanced to detect link opportunities",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Ranking data unavailable and configure your Local SEO zones to launch competitive analysis by city.",
     "Données de liens non disponibles": "Link data not available",
+    "Données de citations non disponibles": "Citation data not available",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Backlink velocity data available with link data.",
     "Données en cours de collecte": "Data currently being collected",
     "Données en cours de collecte…": "Data currently being collected…",
@@ -22986,6 +22987,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Datos de clasificación no disponibles Avanzados para detectar oportunidades de enlaces",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Datos de clasificación no disponibles y configura tus zonas de SEO Local para iniciar el análisis competitivo por ciudad.",
     "Données de liens non disponibles": "Datos de enlaces no disponibles",
+    "Données de citations non disponibles": "Datos de citas no disponibles",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Datos de velocidad de backlinks disponibles con datos de enlaces.",
     "Données en cours de collecte": "Datos en proceso de recopilación",
     "Données en cours de collecte…": "Datos en proceso de recopilación…",
@@ -25911,6 +25913,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Rankingdaten nicht verfügbar, um fortgeschrittene Linkmöglichkeiten zu erkennen",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Rankingdaten nicht verfügbar und konfigurieren Sie Ihre Local SEO-Zonen, um die Wettbewerbsanalyse nach Stadt zu starten.",
     "Données de liens non disponibles": "Linkdaten nicht verfügbar",
+    "Données de citations non disponibles": "Zitationsdaten nicht verfügbar",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Backlink-Geschwindigkeitsdaten verfügbar mit Linkdaten.",
     "Données en cours de collecte": "Daten werden derzeit gesammelt",
     "Données en cours de collecte…": "Daten werden derzeit gesammelt…",
@@ -28864,6 +28867,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Dati di ranking non disponibili per rilevare opportunità di link avanzate",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Dati di ranking non disponibili e configura le tue zone SEO locali per avviare l'analisi competitiva per città.",
     "Données de liens non disponibles": "Dati dei link non disponibili",
+    "Données de citations non disponibles": "Dati delle citazioni non disponibili",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Dati sulla velocità dei backlink disponibili con i dati dei link.",
     "Données en cours de collecte": "Dati in fase di raccolta",
     "Données en cours de collecte…": "Dati in fase di raccolta…",
@@ -31798,6 +31802,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Dados de classificação indisponíveis Avançados para detectar oportunidades de links",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Dados de classificação indisponíveis e configure suas zonas de SEO Local para iniciar a análise competitiva por cidade.",
     "Données de liens non disponibles": "Dados de links não disponíveis",
+    "Données de citations non disponibles": "Dados de citações não disponíveis",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Dados de velocidade de backlinks disponíveis com dados de links.",
     "Données en cours de collecte": "Dados sendo coletados",
     "Données en cours de collecte…": "Dados sendo coletados…",
@@ -34732,6 +34737,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Rankinggegevens niet beschikbaar Geavanceerd om linkmogelijkheden te detecteren",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Rankinggegevens niet beschikbaar en configureer uw lokale SEO-zones om de concurrentieanalyse per stad te starten.",
     "Données de liens non disponibles": "Linkgegevens niet beschikbaar",
+    "Données de citations non disponibles": "Citaties niet beschikbaar",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Backlink-snelheidsgegevens beschikbaar met linkgegevens.",
     "Données en cours de collecte": "Gegevens worden verzameld",
     "Données en cours de collecte…": "Gegevens worden verzameld…",
@@ -37666,6 +37672,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Dane o rankingach niedostępne zaawansowane do wykrywania możliwości linków",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Dane o rankingach niedostępne i skonfiguruj swoje strefy SEO lokalne, aby uruchomić analizę konkurencji według miasta.",
     "Données de liens non disponibles": "Dane linków niedostępne",
+    "Données de citations non disponibles": "Dane o cytowaniach są niedostępne",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Dane o prędkości backlinków dostępne z danymi linków.",
     "Données en cours de collecte": "Dane są zbierane",
     "Données en cours de collecte…": "Dane są zbierane…",
@@ -40600,6 +40607,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Rankingdata inte tillgänglig Avancerad för att upptäcka länk möjligheter",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Rankingdata inte tillgänglig och konfigurera dina lokala SEO-zoner för att starta konkurrensanalys per stad.",
     "Données de liens non disponibles": "Länkdata inte tillgänglig",
+    "Données de citations non disponibles": "Citationsdata är inte tillgängliga",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Backlink-hastighetsdata tillgängliga med länkdata.",
     "Données en cours de collecte": "Data samlas för närvarande",
     "Données en cours de collecte…": "Data samlas för närvarande…",
@@ -43534,6 +43542,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Datele de clasament nu sunt disponibile Avansat pentru a detecta oportunități de linkuri",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Datele de clasament nu sunt disponibile și configurează-ți zonele SEO locale pentru a lansa analiza competitivă pe oraș.",
     "Données de liens non disponibles": "Datele de linkuri nu sunt disponibile",
+    "Données de citations non disponibles": "Datele despre citări nu sunt disponibile",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Datele de viteză a backlink-urilor disponibile cu datele de linkuri.",
     "Données en cours de collecte": "Datele sunt colectate",
     "Données en cours de collecte…": "Datele sunt colectate…",
@@ -46468,6 +46477,7 @@ function bindGlobalEvents() {
     "Données de classement indisponibles Advanced pour détecter des opportunités de liens": "Data o hodnocení nejsou k dispozici Pokročilé pro detekci příležitostí k odkazům",
     "Données de classement indisponibles et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.": "Data o hodnocení nejsou k dispozici a nastavte své místní SEO zóny pro spuštění konkurenční analýzy podle města.",
     "Données de liens non disponibles": "Data odkazů nejsou k dispozici",
+    "Données de citations non disponibles": "Data citací nejsou k dispozici",
     "Données de vélocité backlinks disponibles avec les données de liens.": "Data o rychlosti zpětných odkazů dostupná s daty odkazů.",
     "Données en cours de collecte": "Data se aktuálně shromažďují",
     "Données en cours de collecte…": "Data se aktuálně shromažďují…",
@@ -52910,19 +52920,38 @@ function renderLocalSEOOpportunities() {
   const isStd  = plan === 'Standard';
   const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
+  if (!PREVIEW_MODE && !STATE.localSeo?._citationData && !window._fpCitationAvailabilityLoading) {
+    window._fpCitationAvailabilityLoading = true;
+    apiFetch('/api/local-seo/citations').then(function(data) {
+      if (!STATE.localSeo) STATE.localSeo = {};
+      STATE.localSeo._citationData = data;
+    }).catch(function() {
+      if (!STATE.localSeo) STATE.localSeo = {};
+      STATE.localSeo._citationData = { available: false, reason: 'provider_error' };
+    }).finally(function() {
+      window._fpCitationAvailabilityLoading = false;
+      if (STATE.currentSection === 'local-seo') render();
+    });
+  }
 
   const opps = PREVIEW_MODE ? [
     { id: 'o1', title: 'Page locale — zone à fort potentiel',           type: 'Page locale',   effort: '1h30', potential: '+340 rech/mois', difficulty: 'Facile',  impact: 'Élevé',   icon: '📄', cat: 'pages'    },
     { id: 'o2', title: 'Catégorie secondaire sur GBP',                  type: 'GBP',           effort: '10 min', potential: '+180 rech/mois', difficulty: 'Facile', impact: 'Moyen',  icon: '🏪', cat: 'gbp'      },
     { id: 'o3', title: 'Posts GBP "offre du moment" hebdomadaires',     type: 'Contenu',       effort: '15 min/sem', potential: '+12% engagement', difficulty: 'Moyen', impact: 'Moyen', icon: '📝', cat: 'content'  },
-    { id: 'o4', title: 'Liens NAP cohérents sur 15 annuaires',          type: 'Citations',     effort: '1h30', potential: '+11% autorité', difficulty: 'Moyen',  impact: 'Élevé',   icon: '📋', cat: 'citations' },
     { id: 'o5', title: 'Répondre aux avis sans réponse',                type: 'Réputation',    effort: '2 min/avis', potential: '+0.3 étoile moy.', difficulty: 'Facile', impact: 'Élevé', icon: '⭐', cat: 'gbp'    },
     { id: 'o6', title: 'Balises Q&A sur la fiche GBP',                  type: 'GBP',           effort: '45 min', potential: '+18% visibilité', difficulty: 'Moyen', impact: 'Moyen', icon: '❓', cat: 'gbp'      },
     { id: 'o7', title: 'Ajouter photos de produits et de l\'équipe',    type: 'Médias',        effort: '30 min', potential: '+28% CTR', difficulty: 'Facile', impact: 'Élevé',    icon: '📸', cat: 'media'    },
     { id: 'o8', title: 'Page service — zone secondaire ciblée',         type: 'Page locale',   effort: '2h', potential: '+480 rech/mois', difficulty: 'Moyen', impact: 'Élevé',    icon: '📄', cat: 'pages'    },
   ] : [];
 
-  const citations = Array.isArray(STATE.localSeo?.citations) ? STATE.localSeo.citations : [];
+  const citationData = STATE.localSeo?._citationData;
+  const citationsVerified = citationData?.available === true
+    && Array.isArray(citationData.citations)
+    && citationData.citations.length > 0
+    && citationData.citations.every(c => c?.verified === true)
+    && typeof citationData.napConsistency === 'number'
+    && Number.isFinite(citationData.napConsistency);
+  const citations = citationsVerified ? citationData.citations : [];
   const hyperlocal = Array.isArray(STATE.localSeo?.hyperlocal) ? STATE.localSeo.hyperlocal : [];
 
   return `
@@ -52932,7 +52961,7 @@ function renderLocalSEOOpportunities() {
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Opportunités totales', opps.length, 'non exploitées', 'down')}
       ${statCard('Potentiel cumulé', displayStat(null, null), 'estimation indisponible', 'neutral')}
-      ${statCard('Annuaires à vérifier', citations.length, 'répertoires locaux', 'neutral')}
+      ${statCard('Annuaires vérifiés', citationsVerified ? String(citationData.totalCitations ?? citations.length) : '—', citationsVerified ? 'données vérifiées' : fpT('Données de citations non disponibles'), 'neutral')}
       ${statCard('Faciles à faire', opps.filter(o => o.difficulty === 'Facile').length, 'moins de 1h chacune', 'up')}
     </div>
 
@@ -52978,7 +53007,11 @@ function renderLocalSEOOpportunities() {
           Opportunités de citations locales
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${citations.map(c => `
+          ${citationsVerified ? `
+            <div class="fp-stat-row" style="margin-bottom:8px">
+              ${statCard('Cohérence NAP', `${Number(citationData.napConsistency)}%`, 'calculée à partir de fiches vérifiées', 'neutral')}
+            </div>
+            ${citations.map(c => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(37,99,235,0.03)">
               <div style="width:8px;height:8px;border-radius:50%;background:#64748b;flex-shrink:0"></div>
               <div style="flex:1;min-width:0">
@@ -52988,6 +53021,7 @@ function renderLocalSEOOpportunities() {
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="window._fpMQ('Référencer sur ${escHtml(c.name)}','Local SEO','medium')">Vérifier</button>
             </div>
           `).join('')}
+          ` : `<div role="status" style="padding:12px;color:var(--fp-text-muted);font-size:12px">${fpT('Données de citations non disponibles')}</div>`}
         </div>
       </div>
 
