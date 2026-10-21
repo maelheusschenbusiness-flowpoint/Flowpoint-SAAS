@@ -43,6 +43,7 @@ import ssoRouter, { publicSsoRouter } from "./sso.js";
 import whiteLabelRouter from "./white-label.js";
 import aiWorkspaceLaunchRouter from "./ai-workspace-launch.js";
 import googleRouter, { googlePublicRouter } from "./google.js";
+import { gscOAuthPublicRouter, gscOAuthRouter } from "./google-gsc-oauth.js";
 import seoRouter from "./seo.js";
 import mapsRouter from "./maps.js";
 import ga4Router from "./ga4.js";
@@ -97,6 +98,7 @@ router.get("/billing/config", (_req, res) => {
 // Google OAuth callbacks — must be public; Google redirects here without our Bearer token.
 // All other /google/* management routes are protected below after requireAuth.
 router.use(googlePublicRouter);
+router.use(gscOAuthPublicRouter);
 
 // Admin routes — protected by x-admin-key header (not user session).
 // Must be registered before requireAuth so ops scripts don't need a user session.
@@ -227,6 +229,7 @@ router.use(ssoRouter);
 router.use(whiteLabelRouter);
 router.use(aiWorkspaceLaunchRouter);
 router.use(googleRouter);
+router.use(gscOAuthRouter);
 router.use(seoRouter);
 router.use(mapsRouter);
 router.use(ga4Router);
