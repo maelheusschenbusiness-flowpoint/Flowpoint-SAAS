@@ -746,77 +746,56 @@ export async function getGoogleMapsResultsAtCoordinate(
 // ── AI Visibility (LLM) ───────────────────────────────────────────────────────
 
 export async function getAIVisibility(
-  domain: string
-): Promise<{ score: number; mentions: number; sentiment: string; models: string[] }> {
-  // DataForSEO does not yet have a standard LLM visibility endpoint.
-  // This will be implemented when the endpoint becomes available.
-  return { score: 0, mentions: 0, sentiment: "neutral", models: ["ChatGPT", "Claude", "Gemini", "Perplexity"] };
-}
+      _domain: string
+    ): Promise<{ available: false; code: "AI_VISIBILITY_UNAVAILABLE"; error: string }> {
+      return {
+        available: false,
+        code: "AI_VISIBILITY_UNAVAILABLE",
+        error: "Aucune source de mesure de visibilité IA n'est actuellement configurée.",
+      };
+    }
 
-// ── Content optimisation ──────────────────────────────────────────────────────
+    // ── Content optimisation ──────────────────────────────────────────────────────
 
-export async function getContentOptimization(
-  url: string, keyword: string, orgId = "default"
-): Promise<{ score: number; wordCount: number; headings: number; recommendations: string[] }> {
-  if (!await isDataForSEOConfigured(orgId)) {
-    return { score: 0, wordCount: 0, headings: 0, recommendations: [] };
-  }
-  try {
-    type DFSResult = Array<{
-      result?: Array<{
-        main_keyword?: string;
-        content_quality_score?: number;
-        word_count?: number;
-        meta?: { htags?: Record<string, string[]> };
-        recommendations?: string[];
-      }>;
-    }>;
-    const data = await dfsRequest<DFSResult>("/content_analysis/summary/live", [{
-      url, keyword, location_name: "France", language_code: "fr",
-    }], orgId);
-    const r = data[0]?.result?.[0] ?? {};
-    const htags = r.meta?.htags ?? {};
-    const headings = Object.values(htags).flat().length;
-    return {
-      score:           Math.round((r.content_quality_score ?? 0) * 100),
-      wordCount:       r.word_count ?? 0,
-      headings,
-      recommendations: r.recommendations ?? [],
-    };
-  } catch { return { score: 0, wordCount: 0, headings: 0, recommendations: [] }; }
-}
+export class DataForSEOUnavailableError extends Error {
+      constructor(readonly code: "DATAFORSEO_NOT_CONFIGURED" | "DATAFORSEO_NO_RESULT" | "DATAFORSEO_PROVIDER_ERROR") {
+        super(code);
+        this.name = "DataForSEOUnavailableError";
+      }
+    }
 
-// ── SEO Missions (generated from competitor gap analysis) ─────────────────────
+    export async function getContentOptimization(
+      url: string, keyword: string, orgId = "default"
+    ): Promise<{ score: number; wordCount: number; headings: number; recommendations: string[] }> {
+      if (!await isDataForSEOConfigured(orgId)) throw new DataForSEOUnavailableError("DATAFORSEO_NOT_CONFIGURED");
+      type DFSResult = Array<{ result?: Array<{
+        main_keyword?: string; content_quality_score?: number; word_count?: number;
+        meta?: { htags?: Record<string, string[]> }; recommendations?: string[];
+      }> }>;
+      let data: DFSResult;
+      try {
+        data = await dfsRequest<DFSResult>("/content_analysis/summary/live", [{ url, keyword, location_name: "France", language_code: "fr" }], orgId);
+      } catch { throw new DataForSEOUnavailableError("DATAFORSEO_PROVIDER_ERROR"); }
+      const r = data[0]?.result?.[0];
+      if (!r) throw new DataForSEOUnavailableError("DATAFORSEO_NO_RESULT");
+      const headings = Object.values(r.meta?.htags ?? {}).flat().length;
+      return { score: Math.round((r.content_quality_score ?? 0) * 100), wordCount: r.word_count ?? 0, headings, recommendations: r.recommendations ?? [] };
+    }
 
-export async function generateSEOMissions(
-  orgId: string, domain: string, keywords: string[] = []
-): Promise<unknown[]> {
-  if (!await isDataForSEOConfigured(orgId) || keywords.length === 0) return [];
-  try {
-    type DFSResult = Array<{
-      result?: Array<{
-        keyword: string;
-        keyword_difficulty: number;
-        search_volume: number;
-      }>;
-    }>;
-    const data = await dfsRequest<DFSResult>(
-      "/dataforseo_labs/google/keyword_difficulty/live",
-      [{ keywords: keywords.slice(0, 20), location_name: "France" }],
-      orgId
-    );
-    return (data[0]?.result ?? []).map((r, i) => ({
-      id:               `dfs_mission_${i}`,
-      keyword:           r.keyword,
-      difficulty:        r.keyword_difficulty,
-      volume:            r.search_volume,
-      estimatedClicks:   Math.round(r.search_volume * 0.08),
-      actionPlan:       ["Créer du contenu optimisé", "Obtenir des backlinks ciblés", "Améliorer l'UX de la page"],
-    }));
-  } catch { return []; }
-}
+    export async function generateSEOMissions(orgId: string, domain: string, keywords: string[] = []): Promise<unknown[]> {
+      if (!await isDataForSEOConfigured(orgId)) throw new DataForSEOUnavailableError("DATAFORSEO_NOT_CONFIGURED");
+      if (!keywords.length) return [];
+      type DFSResult = Array<{ result?: Array<{ keyword: string; keyword_difficulty: number; search_volume: number }> }>;
+      let data: DFSResult;
+      try {
+        data = await dfsRequest<DFSResult>("/dataforseo_labs/google/keyword_difficulty/live", [{ keywords: keywords.slice(0, 20), location_name: "France" }], orgId);
+      } catch { throw new DataForSEOUnavailableError("DATAFORSEO_PROVIDER_ERROR"); }
+      const results = data[0]?.result ?? [];
+      if (!results.length) throw new DataForSEOUnavailableError("DATAFORSEO_NO_RESULT");
+      return results.map((r, i) => ({ id: "dfs_mission_" + i, keyword: r.keyword, difficulty: r.keyword_difficulty, volume: r.search_volume, estimatedClicks: Math.round(r.search_volume * 0.08), actionPlan: ["Créer du contenu optimisé", "Obtenir des backlinks ciblés", "Améliorer l'UX de la page"] }));
+    }
 
-/** Refresh cached domain metrics for a given domain (used by cron). */
+    /** Refresh cached domain metrics for a given domain (used by cron). */
 export async function refreshSEOCache(domain: string, orgId = "default"): Promise<void> {
   await getDomainMetrics(domain, orgId).catch(() => {});
 }
