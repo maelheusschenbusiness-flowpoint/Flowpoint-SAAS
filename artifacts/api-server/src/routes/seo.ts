@@ -347,14 +347,18 @@ router.get("/seo/maps", withQuota(async (req, res) => {
 // ── GET /api/seo/ai-mentions ──────────────────────────────────────────────────
 
 router.get("/seo/ai-mentions", withQuota(async (req, res) => {
-  const { keyword = "seo local" } = req.query as Record<string,string>;
-  try {
-    const data = await getAIVisibility(keyword);
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: "AI mentions fetch failed", detail: String(e) });
-  }
-}));
+      const { keyword = "seo local" } = req.query as Record<string, string>;
+      try {
+        const data = await getAIVisibility(keyword);
+        if ("available" in data && data.available === false) {
+          res.status(503).json(data);
+          return;
+        }
+        res.json(data);
+      } catch {
+        res.status(503).json({ available: false, code: "AI_VISIBILITY_UNAVAILABLE", error: "Le service de visibilité IA est indisponible." });
+      }
+    }));
 
 // ── POST /api/seo/content-optimization ───────────────────────────────────────
 

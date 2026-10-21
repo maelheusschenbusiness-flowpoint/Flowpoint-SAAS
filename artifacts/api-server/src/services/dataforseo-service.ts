@@ -744,14 +744,16 @@ export async function getGoogleMapsResultsAtCoordinate(
 // ── AI Visibility (LLM) ───────────────────────────────────────────────────────
 
 export async function getAIVisibility(
-  domain: string
-): Promise<{ score: number; mentions: number; sentiment: string; models: string[] }> {
-  // DataForSEO does not yet have a standard LLM visibility endpoint.
-  // This will be implemented when the endpoint becomes available.
-  return { score: 0, mentions: 0, sentiment: "neutral", models: ["ChatGPT", "Claude", "Gemini", "Perplexity"] };
-}
+      _domain: string
+    ): Promise<{ available: false; code: "AI_VISIBILITY_UNAVAILABLE"; error: string }> {
+      return {
+        available: false,
+        code: "AI_VISIBILITY_UNAVAILABLE",
+        error: "Aucune source de mesure de visibilité IA n'est actuellement configurée.",
+      };
+    }
 
-// ── Content optimisation ──────────────────────────────────────────────────────
+    // ── Content optimisation ──────────────────────────────────────────────────────
 
 export class DataForSEOUnavailableError extends Error {
       constructor(readonly code: "DATAFORSEO_NOT_CONFIGURED" | "DATAFORSEO_NO_RESULT" | "DATAFORSEO_PROVIDER_ERROR") {
