@@ -10352,6 +10352,7 @@ function renderBilling() {
       if (!Array.isArray(addon.allowedPlans)) return 'catalog_unavailable';
       if (!['available', 'beta', 'live'].includes(status)) return 'catalog_unavailable';
       if (included) return 'included';
+      if (status === 'beta' && addon.allowedPlans.length === 0) return 'coming_soon';
       const normalizedPlan = String(plan || '').toLowerCase();
       return addon.allowedPlans.some(value => String(value).toLowerCase() === normalizedPlan)
         ? 'purchasable'

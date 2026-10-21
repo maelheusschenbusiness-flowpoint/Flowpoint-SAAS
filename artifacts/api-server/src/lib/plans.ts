@@ -688,8 +688,46 @@ export const PLAN_ALLOWED_ADDONS: Record<string, ReadonlySet<string>> = {
   agency:   new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
 };
 
-/** Returns true when a plan is allowed to purchase the given add-on key. */
+/**
+ * The six protected bundled add-ons keep their existing plan-purchase matrix.
+ * For every other commercially available add-on, plan tier controls bundling,
+ * not whether a customer may buy it. Beta, roadmap, and removed entries retain
+ * their existing lifecycle gates and are not broadened by this rule.
+ */
+export const PROTECTED_ADDON_KEYS = new Set<string>([
+  "whiteLabel",
+  "advancedWebhooks",
+  "retention90d",
+  "advancedSeoLab",
+  "backlinkIntelligence",
+  "enterprisePermissions",
+]);
+
+const READY_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
+  !PROTECTED_ADDON_KEYS.has(key) &&
+  !REMOVED_ADDONS.has(key) &&
+  getAddonAvailability(key) === "available"
+);
+
+for (const plan of ["standard", "pro", "ultra"] as const) {
+  for (const addonKey of READY_ADDONS_ANY_PLAN) {
+    (PLAN_ALLOWED_ADDONS[plan] as Set<string>).add(addonKey);
+  }
+  // Beta entries are not certified for broad sale. Preserve the existing
+  // protected-key matrix; included plan entitlements remain free.
+  for (const addonKey of BETA_ADDONS) {
+    if (!PROTECTED_ADDON_KEYS.has(addonKey)) {
+      (PLAN_ALLOWED_ADDONS[plan] as Set<string>).delete(addonKey);
+    }
+  }
+}
+
+/** Returns true when a plan may purchase an add-on, subject to lifecycle state. */
 export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
+  if (REMOVED_ADDONS.has(addonKey) || getAddonAvailability(addonKey) === "coming_soon") {
+    return false;
+  }
+  if (BETA_ADDONS.has(addonKey) && !PROTECTED_ADDON_KEYS.has(addonKey)) return false;
   const planNorm = plan.toLowerCase();
   const allowed = PLAN_ALLOWED_ADDONS[planNorm];
   if (!allowed) {

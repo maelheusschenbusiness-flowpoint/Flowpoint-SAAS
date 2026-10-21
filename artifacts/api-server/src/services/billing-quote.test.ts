@@ -240,17 +240,26 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     ).toThrow("ADDON_REMOVED");
   });
 
-  it("blocks an addon that is not purchasable on the chosen plan", () => {
-    // ssoEnterprise and aiWorkspaceLaunch are coming_soon so skip those.
-    // Find an addon that is ONLY in ultra's allowed set, not standard.
-    const ultraOnlyKey = [...(PLAN_ALLOWED_ADDONS["ultra"] ?? [])].find(
-      k => !PLAN_ALLOWED_ADDONS["standard"]?.has(k) && !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k),
-    );
-    if (!ultraOnlyKey) return; // No ultra-only addon available — skip gracefully
+  it("allows a ready non-protected add-on purchase from Starter, Pro, and Ultra", () => {
+    for (const plan of ["standard", "pro", "ultra"]) {
+      const quote = createBillingQuote({
+        plan: "",
+        inclusionPlan: plan,
+        addons: { keywordDomination: true },
+      });
+      expect(quote.lines.find(line => line.key === "keywordDomination")).toMatchObject({
+        includedInPlan: false,
+        amountMinor: 3900,
+      });
+    }
+  });
 
-    expect(
-      () => createBillingQuote({ plan: "standard", addons: { [ultraOnlyKey]: true } }),
-    ).toThrow("ADDON_NOT_ALLOWED_FOR_PLAN");
+  it("still blocks a protected add-on outside its existing purchase tiers", () => {
+    expect(() => createBillingQuote({
+      plan: "",
+      inclusionPlan: "standard",
+      addons: { enterprisePermissions: true },
+    })).toThrow("ADDON_NOT_ALLOWED_FOR_PLAN");
   });
 
   it("allowedPlans in PLAN_ALLOWED_ADDONS never includes coming_soon addons", () => {

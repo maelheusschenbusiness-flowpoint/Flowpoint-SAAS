@@ -5,7 +5,10 @@ import {
   PLAN_INCLUDED_ADDONS,
   PLAN_PRICE_IDS,
   COMING_SOON_ADDONS,
+  BETA_ADDONS,
+  PROTECTED_ADDON_KEYS,
   REMOVED_ADDONS,
+  getAddonAvailability,
   isPlanAllowedAddon,
   getPlanPriceId,
 } from "../lib/plans.js";
@@ -160,7 +163,9 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     // Order matters: COMING_SOON/REMOVED fire before definition checks so that
     // unknown coming-soon keys still get a descriptive error code.
     if (REMOVED_ADDONS.has(key))      throw new Error("ADDON_REMOVED");
-    if (COMING_SOON_ADDONS.has(key))  throw new Error("ADDON_COMING_SOON");
+    if (COMING_SOON_ADDONS.has(key) || getAddonAvailability(key) === "coming_soon") {
+      throw new Error("ADDON_COMING_SOON");
+    }
     const definition = ADDON_DEFINITIONS[key];
     const priceId = ADDON_PRICE_IDS[key];
     if (!definition || !priceId) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
@@ -169,6 +174,9 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     // Included addons are always compatible with the plan (they're free).
     // Only block addons that are neither included nor purchasable on this tier.
     const includedInPlan = included.has(key);
+    if (BETA_ADDONS.has(key) && !PROTECTED_ADDON_KEYS.has(key) && !includedInPlan) {
+      throw new Error("ADDON_NOT_CERTIFIED");
+    }
     const gatingPlan = plan || (selection.inclusionPlan ?? "").trim().toLowerCase();
     if (gatingPlan && !includedInPlan && !isPlanAllowedAddon(gatingPlan, key)) {
       throw new Error("ADDON_NOT_ALLOWED_FOR_PLAN");
