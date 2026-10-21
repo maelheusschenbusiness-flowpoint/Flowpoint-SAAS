@@ -24,6 +24,7 @@ import {
   generateSEOMissions,
 } from "../services/dataforseo-service.js";
 import { checkLLMVisibility } from "../services/llm-visibility.js";
+import { getTopKeywords } from "../services/gsc-service.js";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
@@ -380,23 +381,30 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
     }).catch(() => {});
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: "Content optimization failed", detail: String(e) });
+    const code = e instanceof Error && "code" in e ? String((e as Error & { code: string }).code) : "DATAFORSEO_PROVIDER_ERROR";
+    const unavailable = code === "DATAFORSEO_NOT_CONFIGURED";
+    res.status(unavailable ? 503 : 502).json({ ok: false, code, error: unavailable ? "DataForSEO n'est pas configuré pour cette organisation." : "DataForSEO n'a pas pu analyser cette page." });
   }
 }));
 
 // ── POST /api/seo/generate-missions ──────────────────────────────────────────
 
-router.post("/seo/generate-missions", canWrite, async (req, res) => {
-  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain } = req.body as { domain?: string };
-  if (!domain) { res.status(400).json({ error: "domain required" }); return; }
-  try {
-    await generateSEOMissions(orgId, domain, []);
-    res.json({ ok: true, message: `Missions SEO générées pour ${domain}` });
-  } catch (e) {
-    res.status(500).json({ error: "Mission generation failed" });
-  }
-});
+router.post("/seo/generate-missions", canWrite, requireAddon("advancedSeoLab", "Advanced SEO Lab"), withQuota(async (req, res) => {
+      const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+      const { domain } = req.body as { domain?: string };
+      if (!domain || typeof domain !== "string" || domain.length > 253) { res.status(400).json({ ok: false, code: "INVALID_DOMAIN", error: "domain required" }); return; }
+      try {
+        const rows = await getTopKeywords(orgId, 20, 28);
+        const keywords = rows.map(row => String((row as { keyword?: unknown })?.keyword ?? "").trim()).filter(Boolean).slice(0, 20);
+        if (!keywords.length) { res.status(422).json({ ok: false, code: "SEO_KEYWORDS_UNAVAILABLE", error: "Aucun mot-clé Google Search Console récent n'est disponible pour générer des missions." }); return; }
+        const missions = await generateSEOMissions(orgId, domain, keywords);
+        res.json({ ok: true, domain, missions });
+      } catch (e) {
+        const code = e instanceof Error && "code" in e ? String((e as Error & { code: string }).code) : "DATAFORSEO_PROVIDER_ERROR";
+        const unavailable = code === "DATAFORSEO_NOT_CONFIGURED";
+        res.status(unavailable ? 503 : 502).json({ ok: false, code, error: unavailable ? "DataForSEO n'est pas configuré pour cette organisation." : "DataForSEO n'a pas pu générer les missions." });
+      }
+    }));
 
 // ── GET /api/seo/llm-visibility ───────────────────────────────────────────────
 
