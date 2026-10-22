@@ -13,16 +13,33 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
       const rules = await client.query(
         `SELECT ar.*, o.owner_email AS org_email
          FROM alert_rules ar
-         LEFT JOIN organizations o ON ar.org_id = o.id
+         LEFT JOIN organizations o ON ar.org_id::text = o.id::text
          WHERE ar.enabled = true AND ar.type = 'seo_score' AND ar.org_id = $1`,
         [orgId]
       );
       for (const rule of rules.rows) {
-        let triggered = false;
-        if (rule.operator === "lt" && score < rule.threshold) triggered = true;
-        if (rule.operator === "gt" && score > rule.threshold) triggered = true;
-        if (rule.operator === "eq" && score === rule.threshold) triggered = true;
-        if (triggered) {
+        const configuredSites = (() => {
+          try {
+            const value = typeof rule.site_urls === "string" ? JSON.parse(rule.site_urls) : rule.site_urls;
+            return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+          } catch { return []; }
+        })();
+        const normalizeSite = (value: string) => {
+          try {
+            const parsed = new URL(value);
+            return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`.toLowerCase();
+          } catch { return value.trim().replace(/\/+$/, "").toLowerCase(); }
+        };
+        const siteMatches = configuredSites.length === 0 || configuredSites.some(site =>
+          normalizeSite(site) === normalizeSite(url) ||
+          (() => {
+            try { return new URL(site).origin.toLowerCase() === new URL(url).origin.toLowerCase(); }
+            catch { return false; }
+          })()
+        );
+        const threshold = Number(rule.threshold);
+        const { evaluateCondition } = await import("./alert-events-service.js");
+        if (siteMatches && evaluateCondition(Number(score), String(rule.operator), threshold)) {
           logger.info({ url, score, rule: rule.name }, "[monitor-cron] Alert rule triggered");
           // BUG-W2-ALT-003: write real alert_event (dedupe by org+rule+day)
           try {
