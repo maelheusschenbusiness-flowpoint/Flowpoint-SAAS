@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   loadOrgAIPrefs: vi.fn(),
   resolveAIModel: vi.fn(),
   buildQuotaGuidance: vi.fn(),
+  addonAllowed: true,
 }));
 
 vi.mock("@workspace/db", () => ({
@@ -41,7 +42,13 @@ vi.mock("../middlewares/requireRole.js", () => ({
   canWrite: (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../middlewares/planGate.js", () => ({
-  requireAddon: () => (_req: any, _res: any, next: any) => next(),
+  requireAddon: () => (_req: any, res: any, next: any) => {
+    if (!mocks.addonAllowed) {
+      res.status(402).json({ error: "addon_gate_blocked" });
+      return;
+    }
+    next();
+  },
 }));
 
 import keywordsRouter from "./keywords.js";
@@ -85,6 +92,7 @@ function pageRows(page: string, declining = true) {
 describe("SEO Content Decay Radar routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.addonAllowed = true;
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("STRIPE_TEST_MODE", "true");
     mocks.checkAIQuota.mockResolvedValue({ allowed: true });
@@ -109,13 +117,12 @@ describe("SEO Content Decay Radar routes", () => {
     const rows = pageRows("https://site.example/guide");
     mocks.orgDb.mockResolvedValue({ rows });
 
-    const response = await request(makeApp()).get("/api/keywords/content-decay?simulateAddon=1");
+    const response = await request(makeApp()).get("/api/keywords/content-decay");
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
       source: "google_search_console",
-      simulationAccess: true,
     });
     expect(response.body.opportunities[0]).toMatchObject({
       page: "https://site.example/guide",
@@ -134,7 +141,7 @@ describe("SEO Content Decay Radar routes", () => {
     mocks.orgDb.mockResolvedValue({ rows: pageRows(page) });
 
     const response = await request(makeApp())
-      .post("/api/keywords/content-decay/strategy?simulateAddon=1")
+      .post("/api/keywords/content-decay/strategy")
       .send({ page });
 
     expect(response.status).toBe(200);
@@ -168,6 +175,21 @@ describe("SEO Content Decay Radar routes", () => {
     expect(response.status).toBe(404);
     expect(response.body.error).toMatch(/Aucune baisse mesurable/i);
     expect(mocks.checkAIQuota).not.toHaveBeenCalled();
+    expect(mocks.aiChat).not.toHaveBeenCalled();
+  });
+
+  it("does not bypass the add-on gate with the simulation query flag", async () => {
+    mocks.addonAllowed = false;
+    const getResponse = await request(makeApp()).get("/api/keywords/content-decay?simulateAddon=1");
+    const postResponse = await request(makeApp())
+      .post("/api/keywords/content-decay/strategy?simulateAddon=1")
+      .send({ page: "https://site.example/guide" });
+
+    expect(getResponse.status).toBe(402);
+    expect(postResponse.status).toBe(402);
+    expect(getResponse.body).toEqual({ error: "addon_gate_blocked" });
+    expect(postResponse.body).toEqual({ error: "addon_gate_blocked" });
+    expect(mocks.orgDb).not.toHaveBeenCalled();
     expect(mocks.aiChat).not.toHaveBeenCalled();
   });
 });
