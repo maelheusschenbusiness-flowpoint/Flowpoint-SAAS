@@ -25,7 +25,7 @@ type GeneratedWorkflowReport = {
 };
 type ReportWorkflowDependencies = {
   database?: Pick<typeof pool, "query" | "connect">;
-  authorizeAWL?: (orgId: string) => Promise<boolean>;
+  hasEntitlement?: (orgId: string, addonKey: string) => Promise<boolean>;
   checkReportsQuota?: (orgId: string) => Promise<boolean>;
   checkAIQuota?: (orgId: string) => Promise<boolean>;
   generate?: (orgId: string, params: Record<string, unknown>, requestId: string) => Promise<GeneratedWorkflowReport>;
@@ -69,10 +69,9 @@ export async function generateAndPersistWorkflowReport(
   const database = dependencies.database ?? pool;
   const recordUsage = dependencies.recordUsage ?? recordReportAIUsage;
   if (params["source"] === "ai_workspace_launch") {
-    const authorized = dependencies.authorizeAWL
-      ? await dependencies.authorizeAWL(orgId)
-      : await hasAddonEntitlementForOrg(orgId, "aiWorkspaceLaunch") &&
-        await hasAddonEntitlementForOrg(orgId, "aiWorkflows");
+    const hasEntitlement = dependencies.hasEntitlement ?? hasAddonEntitlementForOrg;
+    const authorized = await hasEntitlement(orgId, "aiWorkspaceLaunch") &&
+      await hasEntitlement(orgId, "aiWorkflows");
     if (!authorized) throw new Error("AI_WORKSPACE_LAUNCH_ENTITLEMENT_REQUIRED");
   }
   const reportId = `r_${createHash("sha256").update(`${orgId}\0${requestId}`).digest("hex").slice(0, 32)}`;

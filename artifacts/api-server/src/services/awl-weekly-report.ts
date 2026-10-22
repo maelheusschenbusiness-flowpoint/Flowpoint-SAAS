@@ -25,8 +25,9 @@ export async function upsertAWLWeeklyReportWorkflow(
   sessionId: string,
   profileId: string,
   timezone: string,
+  database: Pick<typeof pool, "query" | "connect"> = pool,
 ): Promise<{ id: string; enabled: true }> {
-  const client = await pool.connect();
+  const client = await database.connect();
   let txActive = false;
   try {
     await client.query("BEGIN");
@@ -95,8 +96,12 @@ export async function upsertAWLWeeklyReportWorkflow(
   }
 }
 
-export async function disableAWLWeeklyReportWorkflow(orgId: string, sessionId: string): Promise<boolean> {
-  const result = await pool.query(
+export async function disableAWLWeeklyReportWorkflow(
+  orgId: string,
+  sessionId: string,
+  database: Pick<typeof pool, "query" | "connect"> = pool,
+): Promise<boolean> {
+  const result = await database.query(
     `UPDATE automation_workflows SET enabled=false, updated_at=NOW()
       WHERE org_id=$1 AND trigger_type='schedule' AND enabled=true
         AND trigger_config->>'source'=$2 AND trigger_config->>'sessionId'=$3
@@ -106,8 +111,12 @@ export async function disableAWLWeeklyReportWorkflow(orgId: string, sessionId: s
   return (result.rowCount ?? result.rows.length) > 0;
 }
 
-export async function hasActiveAWLWeeklyReportWorkflow(orgId: string, sessionId: string): Promise<boolean> {
-  const result = await pool.query(
+export async function hasActiveAWLWeeklyReportWorkflow(
+  orgId: string,
+  sessionId: string,
+  database: Pick<typeof pool, "query" | "connect"> = pool,
+): Promise<boolean> {
+  const result = await database.query(
     `SELECT 1 FROM automation_workflows
       WHERE org_id=$1 AND trigger_type='schedule' AND enabled=true
         AND trigger_config->>'source'=$2 AND trigger_config->>'sessionId'=$3
