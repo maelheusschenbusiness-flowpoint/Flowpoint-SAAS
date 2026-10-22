@@ -56,6 +56,7 @@ export default defineConfig({
       "src/services/behavioral-session-id.test.ts",
       "src/services/ab-testing-suggestion.test.ts",
       "src/routes/ab-testing-suggest.test.ts",
+      "src/routes/ab-testing-lifecycle.test.ts",
       "src/tests/dashboard-render-regressions.test.ts",
       // Conversion A — funnel fixes
       "src/routes/seo-quota-gate.test.ts",
