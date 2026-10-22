@@ -208,4 +208,23 @@ router.post("/ab-testing/experiments/:id/stop", canWrite, async (req, res) => {
   }
 });
 
+router.delete("/ab-testing/experiments/:id", canWrite, async (req, res) => {
+  const orgId = (req as OrgReq).orgId ?? "default";
+  try {
+    const result = await orgDb(req)(
+      `DELETE FROM cro_experiments
+        WHERE id=$1 AND org_id=$2 AND status IN ('draft','stopped')
+        RETURNING id`,
+      [req.params.id, orgId],
+    );
+    if (!result.rows.length) {
+      res.status(409).json({ error: "Seuls les brouillons et tests arrêtés peuvent être supprimés." });
+      return;
+    }
+    res.json({ ok: true, id: result.rows[0]?.id });
+  } catch {
+    res.status(503).json({ error: "Impossible de supprimer l’expérience." });
+  }
+});
+
 export default router;
