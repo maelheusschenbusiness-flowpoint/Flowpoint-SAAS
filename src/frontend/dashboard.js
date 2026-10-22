@@ -62964,8 +62964,8 @@ async function loadAIWorkspaceLast() {
       missions: Array.isArray(result.missions) ? result.missions : [],
       missionsGenerated: result.missions?.length || 0,
       missionsVerified: result.missions?.length || 0,
-      dashboardsCreated: 0,
-      alertsConfigured: 0,
+      dashboardsCreated: Number(session.dashboards_created ?? 0),
+      alertsConfigured: Number(session.alerts_configured ?? 0),
       reportsScheduled: 0,
     });
   } catch (error) {
@@ -63054,6 +63054,12 @@ async function _awlAnimate() {
       throw new Error('La réponse ne contient pas de stratégie persistée complète.');
     }
     fpTenantWrite('fp:ai-workspace-launch:last-session', result.sessionId);
+    if (result.dashboard && Array.isArray(STATE.customDashboards)) {
+      STATE.customDashboards = [result.dashboard, ...STATE.customDashboards.filter(d => d.id !== result.dashboard.id)];
+    }
+    if (result.alertRule && Array.isArray(STATE.alertRules)) {
+      STATE.alertRules = [result.alertRule, ...STATE.alertRules.filter(rule => rule.id !== result.alertRule.id)];
+    }
     clearInterval(iv);
     if (barEl) barEl.style.width = '100%';
     if (pctEl) pctEl.textContent = '100%';

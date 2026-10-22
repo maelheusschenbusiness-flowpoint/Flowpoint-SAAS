@@ -53,6 +53,15 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
     const now = new Date();
     const sessionId = `ows_${randomUUID()}`;
     const profileId = `awp_${randomUUID()}`;
+    const dashboardId = `awl_dash_${randomUUID()}`;
+    const alertRuleId = `awl_alert_${randomUUID()}`;
+    const dashboardName = `${businessName ?? "Workspace"} — lancement IA`;
+    const dashboardDescription = "Dashboard configuré depuis les audits et missions réellement enregistrés.";
+    const alertName = `Score SEO critique — ${businessName ?? "Workspace"}`;
+    const dashboardWidgets = [
+      { id: "seo-score", name: "Score SEO", source: "audits", visualization: "metric" },
+      { id: "ai-missions", name: "Missions IA", source: "missions", visualization: "list" },
+    ];
 
     const client = await pool.connect();
 
@@ -170,7 +179,10 @@ RÈGLES IMPORTANTES :
           location ?? null,
           now,
           now,
-          JSON.stringify({ goals, competitors, stack, priorities, aiGenerated: aiGenerationSucceeded }),
+           JSON.stringify({
+             goals, competitors, stack, priorities, aiGenerated: aiGenerationSucceeded,
+             dashboardId, alertRuleId, dashboardsCreated: 1, alertsConfigured: 1,
+           }),
         ]
       );
 
@@ -242,6 +254,33 @@ RÈGLES IMPORTANTES :
       if (verifiedMissions.rows.length !== actionableMissionIds.length) {
         throw new Error(`Workspace mission verification failed: expected ${actionableMissionIds.length}, got ${verifiedMissions.rows.length}`);
       }
+      await client.query(
+        `INSERT INTO custom_dashboards
+           (id, org_id, name, description, widgets, icon, color, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,'📊','#6366f1',NOW(),NOW())`,
+        [
+          dashboardId,
+          orgId,
+          dashboardName,
+          dashboardDescription,
+          JSON.stringify(dashboardWidgets),
+        ],
+      );
+      await client.query(
+        `INSERT INTO alert_rules
+           (id, org_id, name, type, operator, threshold, duration_min, channels, site_urls, enabled)
+         VALUES ($1,$2,$3,'seo_score','lt',50,0,'["email"]'::jsonb,$4::jsonb,true)`,
+        [alertRuleId, orgId, alertName, JSON.stringify(siteUrl ? [siteUrl] : [])],
+      );
+      const persistedSetup = await client.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM custom_dashboards WHERE org_id=$1 AND id=$2) AS dashboards,
+           (SELECT COUNT(*)::int FROM alert_rules WHERE org_id=$1 AND id=$3) AS alerts`,
+        [orgId, dashboardId, alertRuleId],
+      );
+      if (Number(persistedSetup.rows[0]?.dashboards) !== 1 || Number(persistedSetup.rows[0]?.alerts) !== 1) {
+        throw new Error("Workspace dashboard or alert persistence verification failed");
+      }
       const persistedProfile = await client.query<{
         generated_roadmap: typeof roadmap;
         generated_strategy: string;
@@ -306,9 +345,18 @@ RÈGLES IMPORTANTES :
       missionsGenerated: persistedMissions.length,
       missionsVerified: persistedMissions.length,
       roadmapSteps: persistedRoadmap.length,
-      alertsConfigured: 0,
-      dashboardsCreated: 0,
+       alertsConfigured: 1,
+       dashboardsCreated: 1,
       reportsScheduled: 0,
+       dashboard: {
+         id: dashboardId, name: dashboardName, description: dashboardDescription,
+         widgets: dashboardWidgets, icon: "📊", color: "#6366f1", created_at: now,
+       },
+       alertRule: {
+         id: alertRuleId, name: alertName, type: "seo_score",
+         operator: "lt", threshold: 50, duration_min: 0,
+         channels: ["email"], site_urls: siteUrl ? [siteUrl] : [], enabled: true,
+       },
       aiGenerated: aiGenerationSucceeded,
       message: `Plan de lancement personnalisé généré et missions enregistrées pour ${businessName ?? "votre workspace"}.`,
       _ai: aiGenerationSucceeded ? { provider: actualProvider, model: actualModel } : null,
@@ -331,7 +379,9 @@ router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", 
   }
 
   const sql = `SELECT s.*, p.id AS profile_id, p.generated_roadmap, p.generated_strategy, p.seo_score,
-        (SELECT COUNT(*) FROM ai_generated_missions WHERE org_id = $2 AND profile_id = p.id) as mission_count
+        (SELECT COUNT(*) FROM ai_generated_missions WHERE org_id = $2 AND profile_id = p.id) as mission_count,
+        (SELECT COUNT(*)::int FROM custom_dashboards cd WHERE cd.org_id = s.org_id AND cd.id = s.metadata->>'dashboardId') AS dashboards_created,
+        (SELECT COUNT(*)::int FROM alert_rules ar WHERE ar.org_id = s.org_id AND ar.id = s.metadata->>'alertRuleId') AS alerts_configured
        FROM onboarding_sessions s
        LEFT JOIN ai_workspace_profiles p ON p.session_id = s.id AND p.org_id = s.org_id
        WHERE s.id = $1 AND s.org_id = $2`;
