@@ -8164,10 +8164,13 @@ function renderReports() {
         showToast('info', fpT('Génération de la synthèse exécutive…'));
         try {
           const result = await apiFetch('/api/reports/ai-executive-summary', { method: 'POST', body: JSON.stringify({}) });
-          if (!result || result.ok === false) throw new Error(result?.error || fpT('La synthèse n’a pas pu être générée.'));
+          if (!result || result.ok === false || !result.reportId) throw new Error(result?.error || fpT('La synthèse n’a pas pu être générée.'));
+          const reports = await apiFetch('/api/reports');
+          if (!Array.isArray(reports) || !reports.some(report => String(report.id) === String(result.reportId))) {
+            throw new Error(fpT('La synthèse n’a pas pu être générée.'));
+          }
+          STATE.reports = reports;
           showToast('success', fpT('Synthèse créée dans vos rapports.'));
-          const reports = await apiFetch('/api/reports').catch(() => null);
-          if (Array.isArray(reports)) STATE.reports = reports;
           render(STATE.currentSection);
         } catch (error) {
           showToast('error', error instanceof Error ? error.message : fpT('La synthèse n’a pas pu être générée.'));
