@@ -15,6 +15,7 @@ export default defineConfig({
       "src/services/keyword-domination.test.ts",
       "src/services/global-monitoring.test.ts",
       "src/services/content-decay-strategy.test.ts",
+      "src/routes/content-decay-routes.test.ts",
       "src/services/workspace-launch-output.test.ts",
       "src/routes/ai-workspace-launch.test.ts",
       "src/tests/workspace-launch-frontend.test.ts",
