@@ -91,6 +91,9 @@ describe("AI Workspace Launch persisted flow", () => {
       if (String(sql).includes("SELECT id FROM missions")) {
         return { rows: ((values?.[1] as string[]) ?? []).map(id => ({ id })) };
       }
+      if (String(sql).includes("AS dashboards") && String(sql).includes("AS alerts")) {
+        return { rows: [{ dashboards: 1, alerts: 1 }] };
+      }
       if (String(sql).includes("FROM ai_workspace_profiles")) {
         return { rows: [{
           generated_roadmap: completeOutput().roadmap,
@@ -123,15 +126,17 @@ describe("AI Workspace Launch persisted flow", () => {
       missions: completeOutput().missions,
       missionsGenerated: 12,
       missionsVerified: 12,
-      dashboardsCreated: 0,
-      alertsConfigured: 0,
+      dashboardsCreated: 1,
+      alertsConfigured: 1,
       reportsScheduled: 0,
     });
     const writes = queryMock.mock.calls.filter(([sql]) =>
-      /INSERT INTO (onboarding_sessions|ai_workspace_profiles|ai_generated_missions|missions)/.test(String(sql)),
+      /INSERT INTO (onboarding_sessions|ai_workspace_profiles|ai_generated_missions|missions|custom_dashboards|alert_rules)/.test(String(sql)),
     );
     expect(writes.length).toBeGreaterThan(0);
     expect(writes.every(([, values]) => (values as unknown[])[1] === "org-a")).toBe(true);
+    expect(writes.some(([sql]) => String(sql).includes("INSERT INTO custom_dashboards"))).toBe(true);
+    expect(writes.some(([sql]) => String(sql).includes("INSERT INTO alert_rules"))).toBe(true);
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining("WHERE org_id = $1 AND id = ANY($2::text[])"),
       ["org-a", expect.any(Array)],
