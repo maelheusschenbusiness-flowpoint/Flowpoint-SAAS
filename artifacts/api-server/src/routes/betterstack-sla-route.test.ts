@@ -1,15 +1,18 @@
 import express from "express";
 import request from "supertest";
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getMonitorSLA: vi.fn(),
+  listMonitors: vi.fn(),
   isBSConfigured: vi.fn(),
   poolQuery: vi.fn(),
+  summarizeGlobalMonitoring: vi.fn(),
 }));
 
 vi.mock("../services/betterstack-service.js", () => ({
-  listMonitors: vi.fn(),
+  listMonitors: mocks.listMonitors,
   getMonitor: vi.fn(),
   createMonitor: vi.fn(),
   updateMonitor: vi.fn(),
@@ -42,7 +45,9 @@ vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../services/init-bs-ownership.js", () => ({ registreAppartenancePresent: vi.fn() }));
-vi.mock("../services/global-monitoring.js", () => ({ summarizeGlobalMonitoring: vi.fn() }));
+vi.mock("../services/global-monitoring.js", () => ({
+  summarizeGlobalMonitoring: mocks.summarizeGlobalMonitoring,
+}));
 
 import betterstackRouter from "./betterstack.js";
 
@@ -112,5 +117,36 @@ describe("Better Stack SLA report route", () => {
     expect(response.status).toBe(503);
     expect(response.body).toMatchObject({ configured: false });
     expect(mocks.getMonitorSLA).not.toHaveBeenCalled();
+  });
+
+  it("summarizes only monitors loaded for the authenticated organization", async () => {
+    const monitors = [{ id: "qa-monitor-a", attributes: { name: "QA monitor" } }];
+    const summary = { configuredRegionCount: 1, configuredMonitorCount: 1, regions: [] };
+    mocks.listMonitors.mockResolvedValue(monitors);
+    mocks.summarizeGlobalMonitoring.mockReturnValue(summary);
+
+    const response = await request(makeApp()).get("/api/betterstack/global-overview");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(summary);
+    expect(mocks.listMonitors).toHaveBeenCalledWith("qa-org-a");
+    expect(mocks.summarizeGlobalMonitoring).toHaveBeenCalledWith(monitors);
+  });
+
+  it("fails explicitly for Global Monitoring when Better Stack is not configured", async () => {
+    mocks.isBSConfigured.mockReturnValue(false);
+
+    const response = await request(makeApp()).get("/api/betterstack/global-overview");
+
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({ configured: false });
+    expect(mocks.listMonitors).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Global Monitoring endpoint behind its existing add-on gate", () => {
+    const source = readFileSync(new URL("./betterstack.ts", import.meta.url), "utf8");
+    expect(source).toMatch(
+      /router\.get\("\/betterstack\/global-overview",\s*requireAddon\("globalMonitoring",\s*"Global Monitoring"\)/,
+    );
   });
 });
