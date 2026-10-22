@@ -105,4 +105,29 @@ describe("A/B testing experiment lifecycle", () => {
       ["org-a", "exp-a"],
     );
   });
+
+  it("deletes only an organization-owned draft or stopped experiment", async () => {
+    orgDbMock.mockResolvedValueOnce({ rows: [{ id: "exp-a" }] });
+
+    const response = await request(makeApp()).delete("/api/ab-testing/experiments/exp-a");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, id: "exp-a" });
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("id=$1 AND org_id=$2 AND status IN ('draft','stopped')"),
+      ["exp-a", "org-a"],
+    );
+  });
+
+  it("cannot delete a running or foreign experiment", async () => {
+    orgDbMock.mockResolvedValueOnce({ rows: [] });
+
+    const response = await request(makeApp()).delete("/api/ab-testing/experiments/exp-running");
+
+    expect(response.status).toBe(409);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("id=$1 AND org_id=$2 AND status IN ('draft','stopped')"),
+      ["exp-running", "org-a"],
+    );
+  });
 });
