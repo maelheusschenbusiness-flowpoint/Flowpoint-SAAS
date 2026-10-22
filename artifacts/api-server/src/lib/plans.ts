@@ -450,10 +450,9 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
 
-  // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
-  // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
-  // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
-  // Not commercially released.
+  // aiWorkspaceLaunch: POST + GET routes enforce requireAddon; AI output is
+  // validated and the route refuses to persist generic fallback content.
+  // Still not commercially released pending functional certification.
   "aiWorkspaceLaunch",
 
   // customDomain: route exists but feature is not commercially available yet for
