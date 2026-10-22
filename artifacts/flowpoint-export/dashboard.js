@@ -62975,6 +62975,22 @@ async function loadAIWorkspaceLast() {
 }
 
 function awlGo(step) {
+  if (step === 4) {
+    const url = document.getElementById('awl-url')?.value?.trim() || '';
+    const businessName = document.getElementById('awl-biz')?.value?.trim() || '';
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch (_) {}
+    if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol)) {
+      if (typeof showToast === 'function') showToast('Saisissez une URL de site valide en http ou https.', 'error');
+      else window.alert('Saisissez une URL de site valide en http ou https.');
+      return;
+    }
+    if (!businessName) {
+      if (typeof showToast === 'function') showToast('Saisissez le nom de votre entreprise.', 'error');
+      else window.alert('Saisissez le nom de votre entreprise.');
+      return;
+    }
+  }
   for (let i = 1; i <= 5; i++) {
     const s = document.getElementById('fp-awl-s' + i);
     if (s) s.style.display = (i === step) ? 'block' : 'none';
@@ -62989,24 +63005,27 @@ let _awlInFlight = false;
 async function _awlAnimate() {
   if (_awlInFlight) return;
   _awlInFlight = true;
-  const logEl = document.getElementById('awl-log');
-  const barEl = document.getElementById('awl-bar');
-  const msgEl = document.getElementById('awl-load-msg');
-  const pctEl = document.getElementById('awl-pct');
+  const logEl  = document.getElementById('awl-log');
+  const barEl  = document.getElementById('awl-bar');
+  const msgEl  = document.getElementById('awl-load-msg');
+  const pctEl  = document.getElementById('awl-pct');
   const retryEl = document.getElementById('awl-retry');
-  const url = document.getElementById('awl-url')?.value?.trim() || '';
-  const name = document.getElementById('awl-biz')?.value?.trim() || '';
-  const niche = document.getElementById('awl-niche')?.value || 'Agence digitale';
-  const loc = document.getElementById('awl-loc')?.value || 'France';
+  const url    = document.getElementById('awl-url')?.value?.trim() || '';
+  const name   = document.getElementById('awl-biz')?.value?.trim() || '';
+  const niche  = document.getElementById('awl-niche')?.value || 'Agence digitale';
+  const loc    = document.getElementById('awl-loc')?.value  || 'France';
   const checked = selector => Array.from(document.querySelectorAll(selector) || []).map(input => input.value).filter(Boolean);
   const payload = {
-    siteUrl: url, businessName: name, niche, location: loc,
+    siteUrl: url,
+    businessName: name,
+    niche,
+    location: loc,
     goals: checked('#fp-awl-s2 input[type=checkbox]:checked').slice(0, 8),
     competitors: (document.getElementById('awl-comp')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 10),
-    stack: checked('#fp-awl-s3 input[type=checkbox]:checked').slice(0, 10),
+    stack: checked('#fp-awl-s3 input[type=checkbox]:checked').filter(value => STACKS.includes(value)).slice(0, 10),
     priorities: checked('#fp-awl-s3 input[value*="SEO"]:checked,#fp-awl-s3 input[value*="Conversion"]:checked').slice(0, 8),
   };
-  const token = _fpCurrentSessionToken();
+  const tok = _fpCurrentSessionToken();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
   if (retryEl) retryEl.style.display = 'none';
@@ -63015,7 +63034,7 @@ async function _awlAnimate() {
   let pct = 8;
   if (barEl) barEl.style.width = pct + '%';
   if (pctEl) pctEl.textContent = pct + '%';
-  const progress = setInterval(() => {
+  const iv = setInterval(() => {
     pct = Math.min(85, pct + 4);
     if (barEl) barEl.style.width = pct + '%';
     if (pctEl) pctEl.textContent = pct + '%';
@@ -63023,33 +63042,40 @@ async function _awlAnimate() {
   try {
     const response = await fetch('/api/ai-workspace-launch', _fpSessionFetchOptions({
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-      body: JSON.stringify(payload), signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(tok ? { 'Authorization': 'Bearer ' + tok } : {}) },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
     }));
     const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result?.ok) throw new Error(result?.error || `La génération a échoué (HTTP ${response.status}).`);
+    if (!response.ok || !result?.ok) {
+      throw new Error(result?.error || `La génération a échoué (HTTP ${response.status}).`);
+    }
     if (!Array.isArray(result.roadmap) || !Array.isArray(result.missions) || !result.strategy) {
       throw new Error('La réponse ne contient pas de stratégie persistée complète.');
     }
     fpTenantWrite('fp:ai-workspace-launch:last-session', result.sessionId);
-    if (Array.isArray(STATE.customDashboards) && result.dashboard) {
+    if (result.dashboard && Array.isArray(STATE.customDashboards)) {
       STATE.customDashboards = [result.dashboard, ...STATE.customDashboards.filter(d => d.id !== result.dashboard.id)];
     }
-    if (Array.isArray(STATE.alertRules) && result.alertRule) {
+    if (result.alertRule && Array.isArray(STATE.alertRules)) {
       STATE.alertRules = [result.alertRule, ...STATE.alertRules.filter(rule => rule.id !== result.alertRule.id)];
     }
-    if (logEl) logEl.textContent = `Génération terminée · ${result.roadmapSteps} étapes et ${result.missionsVerified} missions enregistrées.`;
+    clearInterval(iv);
     if (barEl) barEl.style.width = '100%';
     if (pctEl) pctEl.textContent = '100%';
+    if (logEl) logEl.textContent = `Génération terminée · ${result.roadmapSteps} étapes et ${result.missionsVerified} missions enregistrées.`;
     _awlResults({ ...result, businessName: name, niche, location: loc });
   } catch (error) {
-    if (msgEl) msgEl.textContent = error?.name === 'AbortError' ? 'La génération a dépassé le délai autorisé. Réessayez.' : (error?.message || 'La génération a échoué. Réessayez.');
+    clearInterval(iv);
+    const message = error?.name === 'AbortError'
+      ? 'La génération a dépassé le délai autorisé. Réessayez.'
+      : (error?.message || 'La génération a échoué. Réessayez.');
+    if (msgEl) msgEl.textContent = message;
     if (logEl) logEl.textContent = 'Aucun résultat confirmé. Aucune donnée de démonstration n’a été affichée.';
     if (barEl) barEl.style.width = '0%';
     if (pctEl) pctEl.textContent = '—';
     if (retryEl) retryEl.style.display = 'inline-block';
   } finally {
-    clearInterval(progress);
     clearTimeout(timeout);
     _awlInFlight = false;
   }
@@ -63062,6 +63088,7 @@ function _awlResults(result) {
   const loc = result.location || '';
   const sub = document.getElementById('awl-res-sub');
   if (sub) sub.textContent = `${name} · ${niche} · ${loc} · session ${result.sessionId}`;
+
   const kpis = [
     { icon:'🗺️', label:'Étapes de roadmap enregistrées', val:String(result.roadmapSteps ?? result.roadmap?.length ?? 0), color:'#8b5cf6' },
     { icon:'🎯', label:'Missions vérifiées en base', val:String(result.missionsVerified ?? 0), color:'#f59e0b' },
@@ -63073,36 +63100,42 @@ function _awlResults(result) {
   if (kpiGrid) kpiGrid.innerHTML = kpis.map(k=>`
     <div style="background:var(--fp-inner-card);border:1px solid ${k.color}22;border-radius:12px;padding:14px;display:flex;align-items:center;gap:9px">
       <span style="font-size:22px">${k.icon}</span>
-      <div><div style="font-size:9px;color:#64748b;font-weight:600">${escHtml(k.label)}</div><div style="font-size:16px;font-weight:800;color:${k.color}">${escHtml(k.val)}</div></div>
+      <div><div style="font-size:9px;color:#64748b;font-weight:600">${k.label}</div><div style="font-size:16px;font-weight:800;color:${k.color}">${k.val}</div></div>
     </div>`).join('');
+
   const roadmap = Array.isArray(result.roadmap) ? result.roadmap : [];
   const rmEl = document.getElementById('awl-roadmap');
   if (rmEl) rmEl.innerHTML = roadmap.map(r=>`
     <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
       <div style="width:22px;height:22px;border-radius:50%;background:#8b5cf622;border:1px solid #8b5cf644;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#a78bfa;flex-shrink:0">${escHtml(r.priority)}</div>
-      <div style="flex:1;min-width:0"><div style="font-size:12px;color:#e2e8f0;font-weight:600">${escHtml(r.label)}</div>
-        <div style="font-size:10px;color:#64748b;margin-top:1px">Impact estimé : ${escHtml(r.impact)}</div></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:#e2e8f0;font-weight:600">${escHtml(r.label)}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:1px">Impact estimé : ${escHtml(r.impact)}</div>
+      </div>
       <span style="font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;background:#8b5cf622;color:#a78bfa;flex-shrink:0">${escHtml(r.tag)}</span>
     </div>`).join('');
+
   const stratEl = document.getElementById('awl-strat');
-  if (stratEl) stratEl.innerHTML = `<strong style="color:#a78bfa">🤖 Stratégie IA personnalisée pour ${escHtml(name)}</strong><br><br><span style="white-space:pre-wrap">${escHtml(result.strategy || '')}</span>`;
+  if (stratEl) stratEl.innerHTML = `<strong style="color:#a78bfa">🤖 Stratégie IA personnalisée pour ${escHtml(name)}</strong><br><br><span style="white-space:pre-wrap">${escHtml(result.strategy)}</span>`;
+
   const missions = Array.isArray(result.missions) ? result.missions : [];
   const missionsEl = document.getElementById('awl-missions');
   if (missionsEl) missionsEl.innerHTML = missions.map(m => `<div style="padding:9px 11px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px"><strong>${escHtml(m.priority)}. ${escHtml(m.title)}</strong><span style="display:block;color:#64748b;margin-top:3px">${escHtml(m.category)} · ${escHtml(m.effort)} · ${escHtml(m.impact)}</span></div>`).join('');
   const alertsEl = document.getElementById('awl-alerts');
   if (alertsEl) {
-    const configured = [
-      result.dashboardsCreated ? `${result.dashboardsCreated} dashboard(s) configuré(s)` : 'Aucun dashboard créé',
-      result.alertsConfigured ? `${result.alertsConfigured} alerte(s) configurée(s)` : 'Aucune alerte configurée',
-      result.reportsScheduled ? `${result.reportsScheduled} rapport(s) planifié(s)` : 'Aucun rapport planifié',
+    const notConfigured = [
+      (result.dashboardsCreated ?? 0) === 0 ? 'Aucun dashboard créé' : `${result.dashboardsCreated} dashboard(s) créé(s)`,
+      (result.alertsConfigured ?? 0) === 0 ? 'Aucune alerte configurée' : `${result.alertsConfigured} alerte(s) configurée(s)`,
+      (result.reportsScheduled ?? 0) === 0 ? 'Aucun rapport planifié' : `${result.reportsScheduled} rapport(s) planifié(s)`,
     ];
-    alertsEl.innerHTML = configured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
+    alertsEl.innerHTML = notConfigured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
   }
 }
 
 window.openAIWorkspaceLaunch  = openAIWorkspaceLaunch;
 window.closeAIWorkspaceLaunch = closeAIWorkspaceLaunch;
 window.awlGo                  = awlGo;
+window.loadAIWorkspaceLast    = loadAIWorkspaceLast;
 
 // ══════════════════════════════════════════════════════════════════════
 // GA4 ANALYTICS — SHARED HELPERS
