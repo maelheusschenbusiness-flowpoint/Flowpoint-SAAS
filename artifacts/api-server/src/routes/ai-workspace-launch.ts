@@ -10,6 +10,9 @@ import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { parseWorkspaceLaunchOutput } from "../services/workspace-launch-output.js";
+import { hasAddonEntitlementForOrg } from "../services/addon-entitlement.js";
+import { disableAWLWeeklyReportWorkflow, hasActiveAWLWeeklyReportWorkflow, upsertAWLWeeklyReportWorkflow } from "../services/awl-weekly-report.js";
+import { isValidSchedule } from "../services/workflow-schedule-cron.js";
 
 const router = Router();
 
@@ -28,6 +31,8 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       competitors = [],
       stack = [],
       priorities = [],
+      scheduleWeeklyReport = false,
+      reportTimezone = "UTC",
     } = req.body as {
       siteUrl?: string;
       businessName?: string;
@@ -37,6 +42,8 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       competitors?: string[];
       stack?: string[];
       priorities?: string[];
+      scheduleWeeklyReport?: boolean;
+      reportTimezone?: string;
     };
 
     const validText = (value: unknown, max: number) =>
@@ -45,6 +52,8 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       value === undefined || (Array.isArray(value) && value.length <= 12 && value.every((item: unknown) =>
         typeof item === "string" && item.trim().length > 0 && item.length <= 160));
     if (!validText(siteUrl, 500) || !validText(businessName, 160) || !validText(niche, 120) || !validText(location, 120) ||
+        typeof scheduleWeeklyReport !== "boolean" || typeof reportTimezone !== "string" || reportTimezone.length > 80 ||
+        (scheduleWeeklyReport && !isValidSchedule("0 9 * * 1", reportTimezone)) ||
         !validList(goals) || !validList(competitors) || !validList(stack) || !validList(priorities)) {
       res.status(400).json({ ok: false, code: "INVALID_PROFILE", error: "Le profil contient un champ invalide ou trop long." });
       return;
@@ -56,6 +65,17 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       return;
     }
     const userId = req.userId ?? "anonymous";
+    if (scheduleWeeklyReport) {
+      try {
+        if (!(await hasAddonEntitlementForOrg(orgId, "aiWorkflows"))) {
+          res.status(402).json({ ok: false, code: "ADDON_REQUIRED", addonKey: "aiWorkflows", error: "AI Automation Workflows est requis pour planifier les rapports." });
+          return;
+        }
+      } catch {
+        res.status(503).json({ ok: false, code: "ENTITLEMENT_UNAVAILABLE", error: "Impossible de vérifier les droits de planification." });
+        return;
+      }
+    }
 
     // Read-only quota check before AI work — no DB write until AI succeeds
     const quotaCheck = await checkAIQuota({ feature: "strategist", orgId });
@@ -339,6 +359,18 @@ RÈGLES IMPORTANTES :
       client.release();
     }
 
+    let reportsScheduled = 0;
+    let reportScheduleError: string | undefined;
+    if (scheduleWeeklyReport) {
+      try {
+        await upsertAWLWeeklyReportWorkflow(orgId, sessionId, profileId, reportTimezone);
+        reportsScheduled = Number(await hasActiveAWLWeeklyReportWorkflow(orgId, sessionId));
+      } catch (scheduleErr) {
+        logger.error({ err: scheduleErr, orgId, sessionId }, "[AWL] weekly report schedule persistence failed");
+        reportScheduleError = "Le workspace est créé, mais le rapport hebdomadaire n’a pas pu être planifié.";
+      }
+    }
+
     store.logActivity({
       userId,
       userName: "IA FlowPoint",
@@ -362,7 +394,8 @@ RÈGLES IMPORTANTES :
       roadmapSteps: persistedRoadmap.length,
        alertsConfigured: 1,
        dashboardsCreated: 1,
-      reportsScheduled: 0,
+      reportsScheduled,
+      ...(reportScheduleError ? { reportScheduleError } : {}),
        dashboard: {
          id: dashboardId, name: dashboardName, description: dashboardDescription,
          widgets: dashboardWidgets, icon: "📊", color: "#6366f1", created_at: now,
@@ -424,7 +457,27 @@ router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", 
         [orgId, session.profile_id],
       )
       : { rows: [] };
-    return res.json({ ok: true, session, missions: missions.rows });
+    let reportsScheduled = 0;
+    try {
+      const entitled = await Promise.all([
+        hasAddonEntitlementForOrg(orgId, "aiWorkspaceLaunch"),
+        hasAddonEntitlementForOrg(orgId, "aiWorkflows"),
+      ]);
+      if (entitled.every(Boolean)) {
+        const scheduled = await client.query(
+          `SELECT 1 FROM automation_workflows
+            WHERE org_id=$1 AND enabled=true AND trigger_type='schedule'
+              AND trigger_config->>'source'='ai_workspace_launch'
+              AND trigger_config->>'sessionId'=$2
+            LIMIT 1`,
+          [orgId, sessionId],
+        );
+        reportsScheduled = scheduled.rows.length ? 1 : 0;
+      }
+    } catch (scheduleStatusErr) {
+      logger.warn({ err: scheduleStatusErr, orgId, sessionId }, "[AWL-GET] schedule status unavailable; reporting zero");
+    }
+    return res.json({ ok: true, session, missions: missions.rows, reportsScheduled });
   } catch (err: any) {
     logger.error({
       orgId,
@@ -442,5 +495,90 @@ router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", 
     client.release();
   }
 });
+
+router.put(
+  "/ai-workspace-launch/:sessionId/report-schedule",
+  requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"),
+  requireAddon("aiWorkflows", "AI Automation Workflows"),
+  canWrite,
+  async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const sessionId = String(req.params.sessionId ?? "");
+    const timezone = typeof req.body?.timezone === "string" ? req.body.timezone : "UTC";
+    if (!orgId || orgId === "default") {
+      res.status(401).json({ ok: false, error: "Organization context required" });
+      return;
+    }
+    if (!isValidSchedule("0 9 * * 1", timezone)) {
+      res.status(400).json({ ok: false, code: "INVALID_TIMEZONE", error: "Fuseau horaire IANA invalide." });
+      return;
+    }
+    try {
+      const entitlement = await Promise.all([
+        hasAddonEntitlementForOrg(orgId, "aiWorkspaceLaunch"),
+        hasAddonEntitlementForOrg(orgId, "aiWorkflows"),
+      ]);
+      if (!entitlement.every(Boolean)) {
+        res.status(402).json({ ok: false, code: "ADDON_REQUIRED", addonKey: entitlement[0] ? "aiWorkflows" : "aiWorkspaceLaunch" });
+        return;
+      }
+      const session = await pool.query<{ profile_id: string }>(
+        `SELECT p.id AS profile_id FROM onboarding_sessions s
+          JOIN ai_workspace_profiles p ON p.session_id=s.id AND p.org_id=s.org_id
+         WHERE s.id=$1 AND s.org_id=$2 LIMIT 1`,
+        [sessionId, orgId],
+      );
+      if (!session.rows[0]) {
+        res.status(404).json({ ok: false, code: "SESSION_NOT_FOUND" });
+        return;
+      }
+      await upsertAWLWeeklyReportWorkflow(orgId, sessionId, session.rows[0].profile_id, timezone);
+      const active = await hasActiveAWLWeeklyReportWorkflow(orgId, sessionId);
+      res.json({ ok: true, reportsScheduled: active ? 1 : 0, timezone });
+    } catch (err) {
+      logger.error({ err, orgId, sessionId }, "[AWL] schedule update failed");
+      res.status(503).json({ ok: false, code: "SCHEDULE_UNAVAILABLE", error: "Le rapport hebdomadaire n’a pas pu être enregistré." });
+    }
+  },
+);
+
+router.delete(
+  "/ai-workspace-launch/:sessionId/report-schedule",
+  requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"),
+  requireAddon("aiWorkflows", "AI Automation Workflows"),
+  canWrite,
+  async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const sessionId = String(req.params.sessionId ?? "");
+    if (!orgId || orgId === "default") {
+      res.status(401).json({ ok: false, error: "Organization context required" });
+      return;
+    }
+    try {
+      const entitlement = await Promise.all([
+        hasAddonEntitlementForOrg(orgId, "aiWorkspaceLaunch"),
+        hasAddonEntitlementForOrg(orgId, "aiWorkflows"),
+      ]);
+      if (!entitlement.every(Boolean)) {
+        res.status(402).json({ ok: false, code: "ADDON_REQUIRED", addonKey: entitlement[0] ? "aiWorkflows" : "aiWorkspaceLaunch" });
+        return;
+      }
+      const owned = await pool.query(
+        `SELECT 1 FROM onboarding_sessions WHERE id=$1 AND org_id=$2 LIMIT 1`,
+        [sessionId, orgId],
+      );
+      if (!owned.rows.length) {
+        res.status(404).json({ ok: false, code: "SESSION_NOT_FOUND" });
+        return;
+      }
+      await disableAWLWeeklyReportWorkflow(orgId, sessionId);
+      const active = await hasActiveAWLWeeklyReportWorkflow(orgId, sessionId);
+      res.json({ ok: true, reportsScheduled: active ? 1 : 0 });
+    } catch (err) {
+      logger.error({ err, orgId, sessionId }, "[AWL] schedule disable failed");
+      res.status(503).json({ ok: false, code: "SCHEDULE_UNAVAILABLE" });
+    }
+  },
+);
 
 export default router;

@@ -62958,6 +62958,10 @@ function openAIWorkspaceLaunch() {
             <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Priorités business</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">${PRIOS.map((p,i)=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,0.07);background:var(--fp-inner-card);font-size:11px;color:#e2e8f0"><input type="checkbox" value="${p}" ${i<4?'checked':''} style="accent-color:#8b5cf6;margin:0"/>${p}</label>`).join('')}</div>
           </div>
+          <label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.25);background:rgba(34,197,94,0.05);font-size:11px;color:#cbd5e1;line-height:1.5">
+            <input id="awl-weekly-report" type="checkbox" style="accent-color:#22c55e;margin-top:2px"/>
+            <span><strong style="color:#22c55e">Rapport SEO hebdomadaire facultatif</strong><br/>Génère et sauvegarde un rapport chaque lundi à 09:00 (${Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'}). Nécessite AI Automation Workflows.</span>
+          </label>
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:14px">
@@ -63056,7 +63060,7 @@ async function loadAIWorkspaceLast() {
       missionsVerified: result.missions?.length || 0,
       dashboardsCreated: Number(session.dashboards_created ?? 0),
       alertsConfigured: Number(session.alerts_configured ?? 0),
-      reportsScheduled: 0,
+      reportsScheduled: Number(result.reportsScheduled ?? 0),
     });
   } catch (error) {
     if (typeof showToast === 'function') showToast(error?.message || 'Impossible de charger cette configuration.', 'error');
@@ -63114,6 +63118,8 @@ async function _awlAnimate() {
     competitors: (document.getElementById('awl-comp')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 10),
     stack: checked('#fp-awl-s3 input[type=checkbox]:checked').filter(value => STACKS.includes(value)).slice(0, 10),
     priorities: checked('#fp-awl-s3 input[value*="SEO"]:checked,#fp-awl-s3 input[value*="Conversion"]:checked').slice(0, 8),
+    scheduleWeeklyReport: !!document.getElementById('awl-weekly-report')?.checked,
+    reportTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   };
   const tok = _fpCurrentSessionToken();
   const controller = new AbortController();
@@ -63155,6 +63161,7 @@ async function _awlAnimate() {
     if (pctEl) pctEl.textContent = '100%';
     if (logEl) logEl.textContent = `Génération terminée · ${result.roadmapSteps} étapes et ${result.missionsVerified} missions enregistrées.`;
     _awlResults({ ...result, businessName: name, niche, location: loc });
+    if (result.reportScheduleError && typeof showToast === 'function') showToast(result.reportScheduleError, 'error');
   } catch (error) {
     clearInterval(iv);
     const message = error?.name === 'AbortError'

@@ -318,6 +318,7 @@ export async function initDataTables(): Promise<void> {
         white_label        BOOLEAN NOT NULL DEFAULT false,
         pdf_ready          BOOLEAN NOT NULL DEFAULT false,
         meeting_notes_json TEXT DEFAULT '[]',
+        generation_metadata_json TEXT NOT NULL DEFAULT '{}',
         date_start         TEXT DEFAULT '',
         date_end           TEXT DEFAULT '',
         created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -356,6 +357,7 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS shared BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pdf_ready BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS meeting_notes_json TEXT DEFAULT '[]';`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS generation_metadata_json TEXT NOT NULL DEFAULT '{}';`);
     await run(client, `CREATE INDEX IF NOT EXISTS reports_org_id_idx ON reports(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS reports_date_idx ON reports(date DESC);`);
 
