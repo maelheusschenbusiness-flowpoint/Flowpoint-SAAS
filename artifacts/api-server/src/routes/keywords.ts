@@ -1,4 +1,4 @@
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { db, trackedKeywordsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -12,7 +12,7 @@ import { logger } from "../lib/logger.js";
 import { withCache } from "../middlewares/cacheControl.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
-import { canSimulateContentDecayAddon, findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
+import { findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
 import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
@@ -21,13 +21,7 @@ import { parseContentDecayStrategy } from "../services/content-decay-strategy.js
 import { buildKeywordDominationReport } from "../services/keyword-domination.js";
 
 const router = Router();
-const contentDecayGate: RequestHandler = (req, res, next) => {
-  if (canSimulateContentDecayAddon(process.env["NODE_ENV"], process.env["STRIPE_TEST_MODE"], req.query["simulateAddon"])) {
-    next();
-    return;
-  }
-  requireAddon("aiContentStrategist", "SEO Content Decay Radar")(req, res, next);
-};
+const contentDecayGate = requireAddon("aiContentStrategist", "SEO Content Decay Radar");
 
 type OrgReq = import("express").Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
 
@@ -60,9 +54,6 @@ router.get("/keywords/content-decay", contentDecayGate, async (req, res) => {
       ok: true,
       source: "google_search_console",
       comparison: { currentDays: 28, previousDays: 28 },
-      simulationAccess: canSimulateContentDecayAddon(
-        process.env["NODE_ENV"], process.env["STRIPE_TEST_MODE"], req.query["simulateAddon"],
-      ),
       opportunities: findContentDecayOpportunities(result.rows, now.getTime()),
       ctrOpportunities: findLowCtrOpportunities(result.rows, now.getTime()),
     });

@@ -181,11 +181,3 @@ export function findLowCtrOpportunities(
   }
   return opportunities.sort((a, b) => (b.ctrGap * b.impressions) - (a.ctrGap * a.impressions)).slice(0, 100);
 }
-
-export function canSimulateContentDecayAddon(
-  nodeEnv: string | undefined,
-  stripeTestMode: string | undefined,
-  simulate: unknown,
-): boolean {
-  return nodeEnv !== "production" && stripeTestMode === "true" && simulate === "1";
-}

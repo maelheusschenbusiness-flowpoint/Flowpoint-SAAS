@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSimulateContentDecayAddon, findContentDecayOpportunities, findLowCtrOpportunities } from "./content-decay.js";
+import { findContentDecayOpportunities, findLowCtrOpportunities } from "./content-decay.js";
 
 const NOW = Date.parse("2026-10-18T12:00:00.000Z");
 
@@ -56,11 +56,3 @@ describe("SEO content decay opportunities", () => {
   });
 });
 
-describe("content-decay add-on simulation gate", () => {
-  it("only allows simulation outside production with test billing explicitly enabled", () => {
-    expect(canSimulateContentDecayAddon("development", "true", "1")).toBe(true);
-    expect(canSimulateContentDecayAddon("production", "true", "1")).toBe(false);
-    expect(canSimulateContentDecayAddon("development", "false", "1")).toBe(false);
-    expect(canSimulateContentDecayAddon("development", "true", "0")).toBe(false);
-  });
-});
