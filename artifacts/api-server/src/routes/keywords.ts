@@ -1,4 +1,4 @@
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { db, trackedKeywordsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
