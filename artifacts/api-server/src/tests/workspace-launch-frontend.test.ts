@@ -80,4 +80,15 @@ describe("AI Workspace Launch frontend", () => {
     expect(panel).toContain("createdIds.some(id => !visibleIds.has(id))");
     expect(panel).toContain("window._fpReportsAPI.create");
   });
+
+  it("shows AI Executive Reporting success only after the saved report appears in the Reports list", () => {
+    const start = dashboard.indexOf("window.FP_EXECUTIVE_REPORT_API =");
+    const end = dashboard.indexOf("return `", start);
+    const flow = dashboard.slice(start, end);
+    expect(flow).toContain("!result.reportId");
+    expect(flow).toContain("await apiFetch('/api/reports')");
+    expect(flow).toContain("String(report.id) === String(result.reportId)");
+    expect(flow.indexOf("STATE.reports = reports")).toBeLessThan(flow.indexOf("showToast('success'"));
+    expect(flow).not.toContain("apiFetch('/api/reports').catch(() => null)");
+  });
 });
