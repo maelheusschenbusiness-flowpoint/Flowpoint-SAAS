@@ -60625,10 +60625,44 @@ function renderClientMode() {
 // NEW SUB-PAGE RENDERS
 // ─────────────────────────────────────────────────────────────────
 
+function renderBetterStackSlaPanel() {
+  const today = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return `
+    <section class="fp-card fp-mb-16" aria-labelledby="fp-bs-sla-title">
+      <div class="fp-card-header">
+        <div>
+          <h2 id="fp-bs-sla-title">SLA Better Stack</h2>
+          <p class="fp-text-muted">Disponibilité et incidents mesurés par Better Stack pour un monitor de cette organisation.</p>
+        </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadSla()">Charger le rapport</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:12px 0">
+        <label style="display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)">
+          Monitor
+          <select id="fp-bs-sla-monitor" class="fp-select" aria-label="Monitor Better Stack pour le rapport SLA">
+            <option value="">Charger les monitors…</option>
+          </select>
+        </label>
+        <label style="display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)">
+          Du
+          <input id="fp-bs-sla-from" class="fp-input" type="date" value="${from}" max="${today}"/>
+        </label>
+        <label style="display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)">
+          Au
+          <input id="fp-bs-sla-to" class="fp-input" type="date" value="${today}" max="${today}"/>
+        </label>
+      </div>
+      <div id="fp-bs-sla-status" class="fp-text-muted" role="status" aria-live="polite">Sélectionnez un monitor et une période pour charger les mesures.</div>
+      <div id="fp-bs-sla-result" style="margin-top:12px"></div>
+    </section>`;
+}
+
 function renderMonitorsSLA() {
   const plan = STATE.me?.plan || 'Pro';
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
+  const hasAdvancedSla = !!STATE.me?.addons?.slaMonitoring;
   const monitors = STATE.monitors;
   // slaData uses m.uptime (real DB rolling-30d value from monitor_checks).
   // "Measured" = monitor has run at least one check, signaled by m.lastCheck != null.
@@ -60681,6 +60715,8 @@ function renderMonitorsSLA() {
         ${btn('Page statut', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', `onclick="const u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>showToast('success','Lien copié : '+u)).catch(()=>showToast('info','URL : '+u));"  `)}
       </div>
     </div>
+
+    ${hasAdvancedSla ? renderBetterStackSlaPanel() : ''}
 
     ${aiBlock(
       globalUptime == null
@@ -69590,10 +69626,14 @@ window.FP_BETTERSTACK_API = {
     try { return await apiFetch('/api/betterstack/stats').catch(() => null); } catch(e) { return null; }
   },
   async loadMonitors() {
-    try { const r = await apiFetch('/api/betterstack/monitors').catch(() => null); return r?.data || []; } catch(e) { return []; }
+    const r = await apiFetch('/api/betterstack/monitors');
+    return Array.isArray(r?.data) ? r.data : [];
   },
   async loadGlobalOverview() {
     return apiFetch('/api/betterstack/global-overview');
+  },
+  async loadConfig() {
+    return apiFetch('/api/betterstack/config');
   },
   async loadIncidents(params) {
     try {
@@ -69633,12 +69673,10 @@ window.FP_BETTERSTACK_API = {
     try { return await apiFetch('/api/betterstack/status-pages', { method: 'POST', body: JSON.stringify(payload) }); } catch(e) { return null; }
   },
   async getMonitorSLA(bsId, from, to) {
-    try {
-      const q = new URLSearchParams();
-      if (from) q.set('from', from);
-      if (to) q.set('to', to);
-      return await apiFetch(`/api/betterstack/monitors/${bsId}/sla?${q}`).catch(() => null);
-    } catch(e) { return null; }
+    const q = new URLSearchParams();
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    return apiFetch(`/api/betterstack/monitors/${encodeURIComponent(bsId)}/sla?${q}`);
   },
   async getResponseTimes(bsId, period = '24h') {
     try { return await apiFetch(`/api/betterstack/monitors/${bsId}/response-times?period=${period}`).catch(() => null); } catch(e) { return null; }
@@ -69666,6 +69704,90 @@ function renderAgencyPacksPanel() {
 }
 
 window.FP_V1_ADDON_PANELS = {
+  async loadSla() {
+    const status = document.getElementById('fp-bs-sla-status');
+    const target = document.getElementById('fp-bs-sla-result');
+    const select = document.getElementById('fp-bs-sla-monitor');
+    const fromInput = document.getElementById('fp-bs-sla-from');
+    const toInput = document.getElementById('fp-bs-sla-to');
+    if (!status || !target || !select || !fromInput || !toInput) return;
+    status.textContent = 'Chargement des monitors Better Stack…';
+    target.replaceChildren();
+    try {
+      const config = await window.FP_BETTERSTACK_API.loadConfig();
+      if (config?.configured !== true) throw new Error('Better Stack n’est pas configuré pour ce serveur.');
+      const monitors = await window.FP_BETTERSTACK_API.loadMonitors();
+      const previous = select.value;
+      select.replaceChildren();
+      for (const monitor of monitors) {
+        const id = String(monitor?.id || '');
+        const name = String(monitor?.attributes?.name || monitor?.attributes?.url || id);
+        if (!id) continue;
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = name;
+        select.appendChild(option);
+      }
+      if (!select.options.length) {
+        status.textContent = 'Aucun monitor Better Stack appartenant à cette organisation.';
+        return;
+      }
+      if (monitors.some(monitor => String(monitor?.id || '') === previous)) select.value = previous;
+
+      const from = fromInput.value;
+      const to = toInput.value;
+      const today = new Date().toISOString().slice(0, 10);
+      const validDate = value => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      };
+      if (!validDate(from) || !validDate(to) || from > to || to > today) {
+        throw new Error('Choisissez une période valide, du plus ancien au plus récent.');
+      }
+      const report = await window.FP_BETTERSTACK_API.getMonitorSLA(select.value, from, to);
+      const metrics = report?.data?.attributes;
+      const availability = Number(metrics?.availability);
+      if (!metrics || !Number.isFinite(availability) || availability < 0 || availability > 100) {
+        throw new Error('Better Stack n’a pas renvoyé de mesures SLA exploitables pour cette période.');
+      }
+      const formatDuration = value => {
+        const seconds = Number(value);
+        if (!Number.isFinite(seconds) || seconds < 0) return '—';
+        const total = Math.round(seconds);
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        const remaining = total % 60;
+        return [hours ? `${hours} h` : '', minutes ? `${minutes} min` : '', (!hours && !minutes) ? `${remaining} s` : '']
+          .filter(Boolean).join(' ');
+      };
+      const cards = [
+        ['Disponibilité', `${availability.toFixed(4)} %`],
+        ['Temps d’indisponibilité', formatDuration(metrics.total_downtime)],
+        ['Incidents', typeof metrics.number_of_incidents === 'number' && Number.isFinite(metrics.number_of_incidents) && metrics.number_of_incidents >= 0 ? String(metrics.number_of_incidents) : '—'],
+        ['Incident le plus long', formatDuration(metrics.longest_incident)],
+        ['Durée moyenne d’incident', formatDuration(metrics.average_incident)],
+      ];
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px';
+      for (const [label, value] of cards) {
+        const card = document.createElement('div');
+        card.className = 'fp-card fp-card-sm';
+        const heading = document.createElement('div');
+        heading.style.cssText = 'font-size:10px;color:var(--fp-text-faint);margin-bottom:6px';
+        heading.textContent = label;
+        const measured = document.createElement('strong');
+        measured.style.cssText = 'font-size:17px;color:var(--fp-text)';
+        measured.textContent = value;
+        card.append(heading, measured);
+        grid.appendChild(card);
+      }
+      target.appendChild(grid);
+      status.textContent = `Mesures Better Stack du ${from} au ${to}.`;
+    } catch (err) {
+      status.textContent = err?.message || 'Impossible de charger le rapport SLA Better Stack.';
+    }
+  },
   async loadGlobal() {
     const target = document.getElementById('fp-global-monitoring-result');
     if (!target) return;
