@@ -13,7 +13,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
@@ -566,43 +566,67 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
 });
 
 // ── POST /api/admin/test-session ──────────────────────────────────────────────
-// Creates a short-lived (1h) test session for org "default" (admin role).
-// Returns the token so automated tests can authenticate against production.
-// Token is revoked automatically when it expires.
+// Test-only session for the existing internal QA organization. This endpoint
+// never provisions organizations, users, memberships, roles, or entitlements.
 router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
 
-  const { orgId = "default", ttlMinutes = 60, role: rawRole = "admin" } = req.body as { orgId?: string; ttlMinutes?: number; role?: string };
-  const VALID_ROLES = ["owner", "admin", "member", "viewer"];
-  const role = VALID_ROLES.includes(rawRole) ? rawRole : "admin";
+  if (process.env["NODE_ENV"] !== "test") {
+    res.status(404).json({ ok: false, error: "Not found" });
+    return;
+  }
+
+  const { orgId = "10000000-0000-4000-8000-000000000002", ttlMinutes = 60 } =
+    req.body as { orgId?: string; ttlMinutes?: number };
+  const QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
+  const QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+  if (orgId !== QA_ORG_UUID) {
+    res.status(403).json({ ok: false, error: "Only the existing internal QA organization is allowed." });
+    return;
+  }
+  if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 60) {
+    res.status(400).json({ ok: false, error: "ttlMinutes must be an integer between 1 and 60." });
+    return;
+  }
 
   const client = await pool.connect();
   try {
-    // Test convenience: when the orgId is a UUID, ensure a matching organizations
-    // row exists — AI usage tables (ai_usage_logs / ai_monthly_usage) have an FK
-    // to organizations(id), so a session on a non-existent org could never track usage.
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
-      await client.query(
-        `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
-         VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
-         ON CONFLICT (id) DO NOTHING`,
-        [orgId]
-      );
+    const existingQaOrg = await client.query(
+      `SELECT id FROM organizations
+        WHERE id = $1::uuid AND is_internal_qa = true AND status = 'active'
+        LIMIT 1`,
+      [QA_ORG_UUID],
+    );
+    if (!existingQaOrg.rows.length) {
+      res.status(404).json({ ok: false, error: "The authorized QA organization does not exist." });
+      return;
     }
-    const token = `fp_prodtest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+
+    const membership = await client.query(
+      `SELECT role FROM organization_members
+        WHERE organization_id::text = $1 AND user_id = $2::uuid AND status = 'active'
+        LIMIT 1`,
+      [QA_ORG_UUID, QA_USER_UUID],
+    );
+    const role = membership.rows[0]?.role;
+    if (!role || !["owner", "admin", "member", "viewer"].includes(role)) {
+      res.status(403).json({ ok: false, error: "The internal QA user has no active membership." });
+      return;
+    }
+
+    const token = `fp_qa_${randomBytes(32).toString("hex")}`;
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     await client.query(
       `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
-       VALUES ($1, 'test-admin', $2, 'test@flowpoint.pro', $4, $3, NOW())
-       ON CONFLICT DO NOTHING`,
-      [token, orgId, expiresAt, role]
+       VALUES ($1, $2, $3, 'qa@flowpoint.pro', $4, $5, NOW())`,
+      [token, QA_USER_UUID, QA_ORG_UUID, role, expiresAt],
     );
     res.json({
       ok: true,
       token,
-      orgId,
+      orgId: QA_ORG_UUID,
       expiresAt: expiresAt.toISOString(),
-      note: "Short-lived test token — expires in " + ttlMinutes + " min. Do not store in code.",
+      note: "Short-lived Test-only QA token. It is never logged.",
     });
   } catch (err) {
     console.error("[Admin] test-session failed:", err);
