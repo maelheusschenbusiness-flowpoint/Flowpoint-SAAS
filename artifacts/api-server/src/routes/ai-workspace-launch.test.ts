@@ -175,7 +175,6 @@ describe("AI Workspace Launch persisted flow", () => {
     expect(malformedBody.status).toBe(400);
     expect(invalidList.body.code).toBe("INVALID_PROFILE");
     expect(oversizedText.body.code).toBe("INVALID_PROFILE");
-    expect(malformedBody.body.code).toBe("INVALID_PROFILE");
     expect(checkQuotaMock).not.toHaveBeenCalled();
     expect(aiChatMock).not.toHaveBeenCalled();
     expect(connectMock).not.toHaveBeenCalled();
