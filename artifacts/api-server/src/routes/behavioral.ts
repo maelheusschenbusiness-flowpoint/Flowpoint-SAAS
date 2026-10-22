@@ -203,7 +203,10 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
     }
   }
   try {
-    await trackBehaviorEvent({ sessionId, orgId: eventOrgId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
+    const persisted = await trackBehaviorEvent({ sessionId, orgId: eventOrgId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
+    if (!persisted) {
+      res.status(503).json({ error: "Behavioral event could not be persisted." }); return;
+    }
     res.status(201).json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to track event" });

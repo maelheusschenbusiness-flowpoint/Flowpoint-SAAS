@@ -20,7 +20,7 @@ export async function trackBehaviorEvent(event: {
   scrollDepth?: number;
   timeOnPage?: number;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const id = randomUUID();
     await db.insert(behaviorEventsTable).values({
@@ -45,8 +45,10 @@ export async function trackBehaviorEvent(event: {
         WHERE id = ${event.sessionId} AND org_id = ${event.orgId}
       `);
     }
+    return true;
   } catch (err) {
     logger.error({ err }, "[Behavioral] Failed to track event");
+    return false;
   }
 }
 
