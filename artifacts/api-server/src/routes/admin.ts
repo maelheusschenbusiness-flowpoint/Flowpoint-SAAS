@@ -17,6 +17,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
+import { INSERT_QA_TEST_SESSION_SQL } from "../services/qa-test-session.js";
 
 const router = Router();
 
@@ -631,9 +632,8 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
     const token = `fp_qa_${randomBytes(32).toString("hex")}`;
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     await client.query(
-      `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
-       VALUES ($1, $2, $3, 'qa@flowpoint.pro', $4, $5, NOW(), $2::uuid)`,
-      [token, QA_USER_UUID, QA_ORG_UUID, role, expiresAt],
+      INSERT_QA_TEST_SESSION_SQL,
+      [token, QA_USER_UUID, QA_ORG_UUID, role, expiresAt, QA_USER_UUID],
     );
     res.json({
       ok: true,
