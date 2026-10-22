@@ -46,6 +46,25 @@ function requireAdminKey(req: Request, res: Response): boolean {
   return true;
 }
 
+/** Dedicated non-production credential for the fixed QA session endpoint. */
+function requireQaTestSessionKey(req: Request, res: Response): boolean {
+  if (process.env["NODE_ENV"] !== "test") {
+    res.status(404).json({ ok: false, error: "Not found" });
+    return false;
+  }
+  const key = process.env["QA_TEST_SESSION_KEY"];
+  if (!key || key.length < ADMIN_KEY_MIN_LEN) {
+    res.status(503).json({ ok: false, error: "QA_TEST_SESSION_KEY is not configured for this Test service." });
+    return false;
+  }
+  const provided = req.headers["x-admin-key"];
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
+    res.status(403).json({ ok: false, error: "Invalid QA session key." });
+    return false;
+  }
+  return true;
+}
+
 // ── Seller management: scoped key ─────────────────────────────────────────────
 // The four seller-management routes (create, list, update, report) also accept
 // SELLER_ADMIN_KEY, sent in its own header, x-seller-admin-key. It unlocks nothing
@@ -569,20 +588,7 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
 // Test-only session for the existing internal QA organization. This endpoint
 // never provisions organizations, users, memberships, roles, or entitlements.
 router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
-  if (process.env["NODE_ENV"] !== "test") {
-    res.status(404).json({ ok: false, error: "Not found" });
-    return;
-  }
-  const testSessionKey = process.env["QA_TEST_SESSION_KEY"];
-  const providedKey = req.headers["x-admin-key"];
-  if (!testSessionKey || testSessionKey.length < ADMIN_KEY_MIN_LEN) {
-    res.status(503).json({ ok: false, error: "QA_TEST_SESSION_KEY is not configured for this Test service." });
-    return;
-  }
-  if (typeof providedKey !== "string" || !keysEqual(providedKey, testSessionKey)) {
-    res.status(403).json({ ok: false, error: "Invalid QA session key." });
-    return;
-  }
+  if (!requireQaTestSessionKey(req, res)) return;
 
   const { orgId = "10000000-0000-4000-8000-000000000002", ttlMinutes = 60 } =
     req.body as { orgId?: string; ttlMinutes?: number };
