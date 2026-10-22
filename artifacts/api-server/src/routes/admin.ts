@@ -53,8 +53,8 @@ function requireQaTestSessionKey(req: Request, res: Response): boolean {
     return false;
   }
   const key = process.env["QA_TEST_SESSION_KEY"];
-  if (!key || key.length < ADMIN_KEY_MIN_LEN) {
-    res.status(503).json({ ok: false, error: "QA_TEST_SESSION_KEY is not configured for this Test service." });
+  if (!key || key.length < ADMIN_KEY_MIN_LEN || key === process.env["ADMIN_KEY"]) {
+    res.status(503).json({ ok: false, error: "QA_TEST_SESSION_KEY must be at least 32 characters and different from ADMIN_KEY." });
     return false;
   }
   const provided = req.headers["x-admin-key"];

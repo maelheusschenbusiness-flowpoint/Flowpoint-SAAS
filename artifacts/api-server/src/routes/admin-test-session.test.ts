@@ -75,17 +75,32 @@ describe("POST /api/admin/test-session", () => {
     expect(mocks.connect).not.toHaveBeenCalled();
   });
 
-  it("requires a dedicated Test key and never falls back to ADMIN_KEY", async () => {
-    vi.stubEnv("ADMIN_KEY", "a-production-style-admin-key-that-must-not-work");
+  it("requires a dedicated Test key of at least 32 characters, distinct from ADMIN_KEY", async () => {
+    const adminKey = "a-production-style-admin-key-that-must-not-work";
+    vi.stubEnv("ADMIN_KEY", adminKey);
     vi.stubEnv("QA_TEST_SESSION_KEY", "");
     const missing = await request(app()).post("/api/admin/test-session")
-      .set("x-admin-key", "a-production-style-admin-key-that-must-not-work").send({});
+      .set("x-admin-key", adminKey).send({});
     expect(missing.status).toBe(503);
+    expect(JSON.stringify(missing.body)).not.toContain(adminKey);
+
+    vi.stubEnv("QA_TEST_SESSION_KEY", "short");
+    const short = await request(app()).post("/api/admin/test-session")
+      .set("x-admin-key", "short").send({});
+    expect(short.status).toBe(503);
+    expect(JSON.stringify(short.body)).not.toContain("short");
+
+    vi.stubEnv("QA_TEST_SESSION_KEY", adminKey);
+    const sameAsAdmin = await request(app()).post("/api/admin/test-session")
+      .set("x-admin-key", adminKey).send({ orgId: QA_ORG });
+    expect(sameAsAdmin.status).toBe(503);
+    expect(JSON.stringify(sameAsAdmin.body)).not.toContain(adminKey);
 
     vi.stubEnv("QA_TEST_SESSION_KEY", QA_TEST_SESSION_KEY);
     const invalid = await request(app()).post("/api/admin/test-session")
       .set("x-admin-key", "a-wrong-test-key-that-must-not-work").send({});
     expect(invalid.status).toBe(403);
+    expect(JSON.stringify(invalid.body)).not.toContain("a-wrong-test-key-that-must-not-work");
     expect(mocks.connect).not.toHaveBeenCalled();
   });
 
