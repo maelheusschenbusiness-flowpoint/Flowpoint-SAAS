@@ -6,6 +6,8 @@ const dashboard = readFileSync(resolve(process.cwd(), "../../src/frontend/dashbo
 const start = dashboard.indexOf("async function _awlAnimate()");
 const end = dashboard.indexOf("window.openAIWorkspaceLaunch", start);
 const flow = dashboard.slice(start, end);
+const persistenceStart = dashboard.indexOf("async function loadAIWorkspaceLast()");
+const persistence = dashboard.slice(persistenceStart, end);
 
 describe("AI Workspace Launch frontend", () => {
   it("renders only the API result and surfaces failed requests instead of demo metrics", () => {
@@ -15,9 +17,9 @@ describe("AI Workspace Launch frontend", () => {
     expect(flow).toContain("if (!response.ok || !result?.ok)");
     expect(flow).toContain("_awlResults({ ...result");
     expect(flow).toContain("Aucune donnée de démonstration");
-    expect(flow).toContain("window.loadAIWorkspaceLast()");
-    expect(flow).toContain("fpTenantRead('fp:ai-workspace-launch:last-session')");
-    expect(flow).toContain("/api/ai-workspace-launch/' + encodeURIComponent(sessionId)");
+    expect(dashboard).toContain("window.loadAIWorkspaceLast()");
+    expect(persistence).toContain("fpTenantRead('fp:ai-workspace-launch:last-session')");
+    expect(persistence).toContain("/api/ai-workspace-launch/' + encodeURIComponent(sessionId)");
     expect(flow).not.toContain("+340€");
     expect(flow).not.toContain("64/100");
     expect(flow).not.toContain("Uptime < 99%");
