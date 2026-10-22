@@ -617,8 +617,8 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
     const token = `fp_qa_${randomBytes(32).toString("hex")}`;
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     await client.query(
-      `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
-       VALUES ($1, $2, $3, 'qa@flowpoint.pro', $4, $5, NOW())`,
+      `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at, user_id_v2)
+       VALUES ($1, $2, $3, 'qa@flowpoint.pro', $4, $5, NOW(), $2::uuid)`,
       [token, QA_USER_UUID, QA_ORG_UUID, role, expiresAt],
     );
     res.json({

@@ -64,6 +64,7 @@ describe("POST /api/admin/test-session", () => {
     );
     const sessionInsert = mocks.query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO user_sessions"));
     expect(sessionInsert?.[1]).toEqual([response.body.token, QA_USER, QA_ORG, "owner", expect.any(Date)]);
+    expect(sessionInsert?.[0]).toContain("user_id_v2");
     expect(mocks.query.mock.calls.some(([sql]) => /INSERT\s+INTO\s+organizations/i.test(String(sql)))).toBe(false);
   });
 
