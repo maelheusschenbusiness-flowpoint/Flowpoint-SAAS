@@ -56701,12 +56701,12 @@ function renderConversion() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ex.name)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(ex.hypo)} · ${escHtml(ex.page)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">A : ${ex.a.exposures} expositions / ${ex.a.conversions} conversions · B : ${ex.b.exposures} / ${ex.b.conversions}</div>
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
                   <span style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${ex.result.status === 'significant' ? `Résultat significatif · p=${Number(ex.result.pValue).toFixed(3)} · gagnant ${escHtml(ex.result.winner)}` : ex.result.status === 'inconclusive' ? `Non concluant · p=${Number(ex.result.pValue).toFixed(3)}` : 'Données insuffisantes — 30 expositions/variante requises'} · ${escHtml(ex.status)}</span>
-                    <div style="display:flex;gap:6px;flex-shrink:0">
-                      ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">Démarrer</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">Arrêter</button>` : ''}
-                      ${ex.status === 'draft' || ex.status === 'stopped' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-ab-delete="${escHtml(ex.id)}">Supprimer</button>` : ''}
-                    </div>
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">Démarrer</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">Arrêter</button>` : ''}
+                    ${ex.status === 'draft' || ex.status === 'stopped' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-ab-delete="${escHtml(ex.id)}">Supprimer</button>` : ''}
+                  </div>
                 </div>
               </div>
             `).join("")}

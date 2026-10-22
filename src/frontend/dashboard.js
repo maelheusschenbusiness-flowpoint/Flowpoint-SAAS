@@ -10277,7 +10277,7 @@ function renderBilling() {
       // ── Monitoring ──
       { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'Pack de monitors supplémentaires',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime','Cumulable avec les autres packs'] },
       { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'Pack de monitors supplémentaires',    desc:'Pack de monitors supplémentaires avec suivi de disponibilité et rapports.', features:['50 monitors simultanés','Alertes SMS — bientôt disponible','Suivi SLA','Rapport PDF de disponibilité','Escalade par équipe'] },
-      { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), tag:'Ultra',      roi:'Suivi régional de disponibilité',    desc:'Synthèse des régions de contrôle Better Stack configurées.', features:['État des régions configurées','Latence par région lorsque disponible','Détection CDN et cache edge','Alertes géo-localisées','Rapport de disponibilité'] },
+      { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), tag:'Ultra',      roi:'Vue agrégée des monitors Better Stack', desc:'Synthèse des statuts des monitors configurés dans les régions Better Stack. Les résultats ne sont pas des mesures indépendantes par région.', features:['Régions configurées sur les monitors','Statuts et disponibilité agrégés','Détail des monitors concernés','Aucune mesure régionale indépendante'] },
       { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), tag:'Pro',             roi:'Suivi des engagements de disponibilité',    desc:'Rapports SLA, incidents et analytics de disponibilité.', features:['Suivi SLA par client','Rapport incidents horodaté','Historique de disponibilité','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
       { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:!!(me.addons?.advancedSeoLab), tag:'Pro inclus',      roi:'Analyse sémantique des pages',    desc:'Lab SEO IA : analyse sémantique, gap analysis et topical authority.', features:['Analyse sémantique IA par page','Analyse des écarts dans les résultats de recherche','Score topical authority','Suggestions de silos thématiques','Rapport de couverture sémantique'] },
@@ -56701,9 +56701,12 @@ function renderConversion() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ex.name)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(ex.hypo)} · ${escHtml(ex.page)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">A : ${ex.a.exposures} expositions / ${ex.a.conversions} conversions · B : ${ex.b.exposures} / ${ex.b.conversions}</div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
                   <span style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${ex.result.status === 'significant' ? `Résultat significatif · p=${Number(ex.result.pValue).toFixed(3)} · gagnant ${escHtml(ex.result.winner)}` : ex.result.status === 'inconclusive' ? `Non concluant · p=${Number(ex.result.pValue).toFixed(3)}` : 'Données insuffisantes — 30 expositions/variante requises'} · ${escHtml(ex.status)}</span>
-                  ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">Démarrer</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">Arrêter</button>` : ''}
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">Démarrer</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">Arrêter</button>` : ''}
+                    ${ex.status === 'draft' || ex.status === 'stopped' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-ab-delete="${escHtml(ex.id)}">Supprimer</button>` : ''}
+                  </div>
                 </div>
               </div>
             `).join("")}
@@ -70127,12 +70130,25 @@ window.FP_AB_TEST_API = {
       await this.refresh(window.FP_DATA?.activeSite);
     } catch (e) { showToast('error', String(e)); }
   },
+  async remove(id) {
+    if (!window.confirm('Supprimer définitivement ce brouillon ou ce test arrêté ?')) return;
+    try {
+      await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      showToast('success', 'Expérience supprimée.');
+      await this.refresh(window.FP_DATA?.activeSite);
+    } catch (e) { showToast('error', String(e)); }
+  },
   async refresh(siteUrl) {
     if (window.FP_DATA?.cro) window.FP_DATA.cro.experiments = await this.load(siteUrl);
     if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA?.cro || STATE.cro;
     render();
   },
 };
+document.addEventListener('click', event => {
+  const target = event.target instanceof Element ? event.target.closest('[data-ab-delete]') : null;
+  const experimentId = target?.getAttribute('data-ab-delete');
+  if (experimentId) void window.FP_AB_TEST_API?.remove(experimentId);
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP REVENUE LEAK API — Real Revenue Leak Detector client
