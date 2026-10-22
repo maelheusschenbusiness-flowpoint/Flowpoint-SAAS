@@ -41,6 +41,7 @@ export default defineConfig({
       "src/services/integration-response.test.ts",
       "src/services/executive-report-facts.test.ts",
       "src/routes/agency-packs.test.ts",
+       "src/routes/agency-packs-postgres.test.ts",
       "src/routes/automation-org-isolation.test.ts",
       "src/services/review-intelligence-themes.test.ts",
       "src/services/review-intel-reply.test.ts",
