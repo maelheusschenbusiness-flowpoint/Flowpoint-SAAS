@@ -32,7 +32,7 @@ describe("QA test-session PostgreSQL parameter types", () => {
       const result = await client.query("SELECT user_id, org_id, user_id_v2 FROM user_sessions WHERE token = $1::text", [token]);
       expect(result.rows).toEqual([{ user_id: QA_USER, org_id: QA_ORG, user_id_v2: QA_USER }]);
     } finally {
-      await client.query("DROP TABLE IF EXISTS user_sessions").catch(() => {});
+      await client.query("DROP TABLE IF EXISTS pg_temp.user_sessions").catch(() => {});
       client.release();
     }
   });
