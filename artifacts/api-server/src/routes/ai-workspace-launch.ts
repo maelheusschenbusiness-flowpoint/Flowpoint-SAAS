@@ -15,6 +15,10 @@ const router = Router();
 
 router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), canWrite, async (req: Request, res: Response) => {
   try {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      res.status(400).json({ ok: false, code: "INVALID_PROFILE", error: "Un profil workspace valide est requis." });
+      return;
+    }
     const {
       siteUrl,
       businessName,
@@ -34,6 +38,17 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       stack?: string[];
       priorities?: string[];
     };
+
+    const validText = (value: unknown, max: number) =>
+      value === undefined || value === null || value === "" || (typeof value === "string" && value.trim().length > 0 && value.length <= max);
+    const validList = (value: unknown) =>
+      value === undefined || (Array.isArray(value) && value.length <= 12 && value.every((item: unknown) =>
+        typeof item === "string" && item.trim().length > 0 && item.length <= 160));
+    if (!validText(siteUrl, 500) || !validText(businessName, 160) || !validText(niche, 120) || !validText(location, 120) ||
+        !validList(goals) || !validList(competitors) || !validList(stack) || !validList(priorities)) {
+      res.status(400).json({ ok: false, code: "INVALID_PROFILE", error: "Le profil contient un champ invalide ou trop long." });
+      return;
+    }
 
     const orgId = req.orgId;
     if (!orgId || orgId === "default") {

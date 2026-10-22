@@ -158,6 +158,28 @@ describe("AI Workspace Launch persisted flow", () => {
     expect(connectMock).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed or oversized profiles before quota, AI, or database work", async () => {
+    const invalidList = await request(makeApp({ orgId: "org-a", role: "owner" }))
+      .post("/ai-workspace-launch")
+      .send({ goals: "not-an-array" });
+    const oversizedText = await request(makeApp({ orgId: "org-a", role: "owner" }))
+      .post("/ai-workspace-launch")
+      .send({ businessName: "x".repeat(161) });
+    const malformedBody = await request(makeApp({ orgId: "org-a", role: "owner" }))
+      .post("/ai-workspace-launch")
+      .set("content-type", "application/json")
+      .send("null");
+
+    expect(invalidList.status).toBe(400);
+    expect(oversizedText.status).toBe(400);
+    expect(malformedBody.status).toBe(400);
+    expect(invalidList.body.code).toBe("INVALID_PROFILE");
+    expect(oversizedText.body.code).toBe("INVALID_PROFILE");
+    expect(checkQuotaMock).not.toHaveBeenCalled();
+    expect(aiChatMock).not.toHaveBeenCalled();
+    expect(connectMock).not.toHaveBeenCalled();
+  });
+
   it("rejects writes without an organization context", async () => {
     const response = await request(makeApp({ role: "owner" }))
       .post("/ai-workspace-launch")
