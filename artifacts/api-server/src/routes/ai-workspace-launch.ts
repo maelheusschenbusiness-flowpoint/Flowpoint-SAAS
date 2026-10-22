@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
@@ -6,12 +7,13 @@ import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { parseWorkspaceLaunchOutput } from "../services/workspace-launch-output.js";
 
 const router = Router();
 
-router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
+router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), canWrite, async (req: Request, res: Response) => {
   try {
     const {
       siteUrl,
@@ -33,7 +35,11 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       priorities?: string[];
     };
 
-    const orgId = req.orgId ?? "default";
+    const orgId = req.orgId;
+    if (!orgId || orgId === "default") {
+      res.status(401).json({ ok: false, error: "An authenticated organization is required." });
+      return;
+    }
     const userId = req.userId ?? "anonymous";
 
     // Read-only quota check before AI work — no DB write until AI succeeds
@@ -45,12 +51,12 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
     }
 
     const now = new Date();
-    const sessionId = `ows_${Date.now()}`;
-    const profileId = `awp_${Date.now()}`;
+    const sessionId = `ows_${randomUUID()}`;
+    const profileId = `awp_${randomUUID()}`;
 
     const client = await pool.connect();
 
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `req_${randomUUID()}`;
     let roadmap: Array<{ priority: number; label: string; impact: string; tag: string }> = [];
     let missionTemplates: Array<{ title: string; category: string; priority: number; impact: string; effort: string }> = [];
     let strategy = "";
@@ -60,6 +66,9 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
     let aiTokensIn = 0;
     let aiTokensOut = 0;
     let aiLatencyMs = 0;
+    let persistedRoadmap = roadmap;
+    let persistedStrategy = strategy;
+    let persistedMissions = missionTemplates;
 
     try {
       const prefs = await loadOrgAIPrefs(orgId);
@@ -187,7 +196,7 @@ RÈGLES IMPORTANTES :
       );
 
       for (const m of missionTemplates) {
-        const mId = `agm_${Date.now()}_${m.priority}`;
+        const mId = `agm_${sessionId}_${m.priority}`;
         await client.query(
           `INSERT INTO ai_generated_missions (id, org_id, profile_id, title, category, priority, estimated_impact, estimated_effort, status)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending')
@@ -208,7 +217,7 @@ RÈGLES IMPORTANTES :
           `INSERT INTO ai_setup_logs (id, org_id, session_id, step, message, level)
            VALUES ($1,$2,$3,$4,$5,'info')
            ON CONFLICT (id) DO NOTHING`,
-          [`asl_${Date.now()}_${l.step}`, orgId, sessionId, l.step, l.message]
+          [`asl_${sessionId}_${l.step}`, orgId, sessionId, l.step, l.message]
         );
       }
 
@@ -233,6 +242,41 @@ RÈGLES IMPORTANTES :
       if (verifiedMissions.rows.length !== actionableMissionIds.length) {
         throw new Error(`Workspace mission verification failed: expected ${actionableMissionIds.length}, got ${verifiedMissions.rows.length}`);
       }
+      const persistedProfile = await client.query<{
+        generated_roadmap: typeof roadmap;
+        generated_strategy: string;
+      }>(
+        `SELECT generated_roadmap, generated_strategy
+           FROM ai_workspace_profiles
+          WHERE org_id = $1 AND id = $2 AND session_id = $3`,
+        [orgId, profileId, sessionId],
+      );
+      const storedGeneratedMissions = await client.query<{
+        title: string;
+        category: string;
+        priority: number;
+        estimated_impact: string;
+        estimated_effort: string;
+      }>(
+        `SELECT title, category, priority, estimated_impact, estimated_effort
+           FROM ai_generated_missions
+          WHERE org_id = $1 AND profile_id = $2
+          ORDER BY priority ASC`,
+        [orgId, profileId],
+      );
+      if (persistedProfile.rows.length !== 1 ||
+          storedGeneratedMissions.rows.length !== missionTemplates.length) {
+        throw new Error("Workspace result persistence verification failed");
+      }
+      persistedRoadmap = persistedProfile.rows[0]!.generated_roadmap;
+      persistedStrategy = persistedProfile.rows[0]!.generated_strategy;
+      persistedMissions = storedGeneratedMissions.rows.map(mission => ({
+        title: mission.title,
+        category: mission.category as typeof missionTemplates[number]["category"],
+        priority: mission.priority,
+        impact: mission.estimated_impact,
+        effort: mission.estimated_effort,
+      }));
       await client.query("COMMIT");
     } catch (persistErr) {
       await client.query("ROLLBACK").catch(() => {});
@@ -256,9 +300,12 @@ RÈGLES IMPORTANTES :
       ok: true,
       sessionId,
       profileId,
-      missionsGenerated: missionTemplates.length,
-      missionsVerified: missionTemplates.length,
-      roadmapSteps: roadmap.length,
+      strategy: persistedStrategy,
+      roadmap: persistedRoadmap,
+      missions: persistedMissions,
+      missionsGenerated: persistedMissions.length,
+      missionsVerified: persistedMissions.length,
+      roadmapSteps: persistedRoadmap.length,
       alertsConfigured: 0,
       dashboardsCreated: 0,
       reportsScheduled: 0,
@@ -274,19 +321,19 @@ RÈGLES IMPORTANTES :
 
 router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
   const { sessionId } = req.params;
-  const orgId = req.orgId;
+    const orgId = req.orgId;
 
   logger.info({ orgId, sessionId }, "[AWL-GET] incoming request");
 
-  if (!orgId) {
+  if (!orgId || orgId === "default") {
     logger.warn({ sessionId }, "[AWL-GET] orgId is undefined — rejecting 401");
     return res.status(401).json({ ok: false, error: "Organization context required" });
   }
 
-  const sql = `SELECT s.*, p.generated_roadmap, p.generated_strategy, p.seo_score,
-        (SELECT COUNT(*) FROM ai_generated_missions WHERE profile_id = p.id) as mission_count
+  const sql = `SELECT s.*, p.id AS profile_id, p.generated_roadmap, p.generated_strategy, p.seo_score,
+        (SELECT COUNT(*) FROM ai_generated_missions WHERE org_id = $2 AND profile_id = p.id) as mission_count
        FROM onboarding_sessions s
-       LEFT JOIN ai_workspace_profiles p ON p.session_id = s.id
+       LEFT JOIN ai_workspace_profiles p ON p.session_id = s.id AND p.org_id = s.org_id
        WHERE s.id = $1 AND s.org_id = $2`;
   const params = [sessionId, orgId];
 
@@ -301,7 +348,18 @@ router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", 
     if (sess.rows.length === 0) {
       return res.status(404).json({ ok: false, code: "SESSION_NOT_FOUND" });
     }
-    return res.json({ ok: true, session: sess.rows[0] });
+    const session = sess.rows[0];
+    const missions = session.profile_id
+      ? await client.query(
+        `SELECT id, title, category, priority, estimated_impact AS impact,
+                estimated_effort AS effort, status
+           FROM ai_generated_missions
+          WHERE org_id = $1 AND profile_id = $2
+          ORDER BY priority ASC`,
+        [orgId, session.profile_id],
+      )
+      : { rows: [] };
+    return res.json({ ok: true, session, missions: missions.rows });
   } catch (err: any) {
     logger.error({
       orgId,
@@ -314,7 +372,7 @@ router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", 
       pg_routine:    err?.routine,
       message:       err?.message,
     }, "[AWL-GET] PostgreSQL error");
-    return res.status(500).json({ ok: false, code: "DB_ERROR", error: err?.message ?? "Internal server error" });
+    return res.status(500).json({ ok: false, code: "DB_ERROR", error: "Workspace session could not be loaded." });
   } finally {
     client.release();
   }

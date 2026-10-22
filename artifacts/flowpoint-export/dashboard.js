@@ -62819,6 +62819,7 @@ function openAIWorkspaceLaunch() {
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:14px">
+        <button id="awl-load-last" onclick="window.loadAIWorkspaceLast()" style="display:none;margin-right:8px;padding:12px 18px;border-radius:10px;background:var(--fp-track);border:1px solid rgba(255,255,255,0.1);color:#c4b5fd;font-size:13px;cursor:pointer">Reprendre la dernière configuration</button>
         <button onclick="window.awlGo(2)" style="padding:12px 28px;border-radius:10px;background:linear-gradient(135deg,#8b5cf6,#06b6d4);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Continuer →</button>
       </div>
     </div>
@@ -62886,6 +62887,7 @@ function openAIWorkspaceLaunch() {
           <div id="awl-bar" style="height:100%;background:linear-gradient(90deg,#8b5cf6,#06b6d4,#22c55e);border-radius:99px;width:0%;transition:width .6s ease"></div>
         </div>
         <div id="awl-pct" style="font-size:11px;color:#475569;margin-top:8px">0%</div>
+         <button id="awl-retry" onclick="window.awlGo(3)" style="display:none;margin-top:16px;padding:10px 18px;border-radius:9px;background:var(--fp-track);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:12px;cursor:pointer">Réessayer</button>
       </div>
     </div>
 
@@ -62894,7 +62896,7 @@ function openAIWorkspaceLaunch() {
       <div style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:20px;margin-bottom:14px;display:flex;align-items:center;gap:14px">
         <span style="font-size:36px">✅</span>
         <div>
-          <div style="font-size:18px;font-weight:800;color:#22c55e">Workspace configuré avec succès !</div>
+          <div style="font-size:18px;font-weight:800;color:#22c55e">Plan IA généré et missions enregistrées</div>
           <div id="awl-res-sub" style="font-size:12px;color:#64748b;margin-top:2px">Votre Growth OS IA est prêt</div>
         </div>
       </div>
@@ -62904,8 +62906,12 @@ function openAIWorkspaceLaunch() {
         <div id="awl-roadmap" style="display:flex;flex-direction:column;gap:7px"></div>
       </div>
       <div style="background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.22);border-radius:14px;padding:16px;margin-bottom:14px;font-size:12px;color:#c4b5fd;line-height:1.7" id="awl-strat"></div>
+       <div style="background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:16px">
+         <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">🎯 Missions enregistrées</div>
+         <div id="awl-missions" style="display:grid;gap:7px"></div>
+       </div>
       <div style="background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:16px">
-        <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">🔔 Alertes configurées automatiquement</div>
+         <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">🔔 État des autres éléments</div>
         <div id="awl-alerts" style="display:flex;flex-wrap:wrap;gap:7px"></div>
       </div>
       <div style="display:flex;gap:10px">
@@ -62922,6 +62928,9 @@ function openAIWorkspaceLaunch() {
   </style>`;
 
   document.body.appendChild(overlay);
+  const lastSessionId = fpTenantRead('fp:ai-workspace-launch:last-session');
+  const loadLastButton = document.getElementById('awl-load-last');
+  if (lastSessionId && loadLastButton) loadLastButton.style.display = 'inline-flex';
 }
 
 function closeAIWorkspaceLaunch() {
@@ -62929,7 +62938,59 @@ function closeAIWorkspaceLaunch() {
   if (el) el.remove();
 }
 
+async function loadAIWorkspaceLast() {
+  const sessionId = fpTenantRead('fp:ai-workspace-launch:last-session');
+  if (!sessionId) return;
+  const button = document.getElementById('awl-load-last');
+  if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
+  try {
+    const tok = _fpCurrentSessionToken();
+    const response = await fetch('/api/ai-workspace-launch/' + encodeURIComponent(sessionId), _fpSessionFetchOptions({
+      method: 'GET',
+      headers: tok ? { 'Authorization': 'Bearer ' + tok } : {},
+    }));
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.ok || !result.session) {
+      throw new Error(result?.error || 'La dernière configuration n’est plus disponible.');
+    }
+    const session = result.session;
+    _awlResults({
+      sessionId,
+      businessName: session.business_name || '',
+      niche: session.niche || '',
+      location: session.location || '',
+      strategy: session.generated_strategy || '',
+      roadmap: Array.isArray(session.generated_roadmap) ? session.generated_roadmap : [],
+      missions: Array.isArray(result.missions) ? result.missions : [],
+      missionsGenerated: result.missions?.length || 0,
+      missionsVerified: result.missions?.length || 0,
+      dashboardsCreated: 0,
+      alertsConfigured: 0,
+      reportsScheduled: 0,
+    });
+  } catch (error) {
+    if (typeof showToast === 'function') showToast(error?.message || 'Impossible de charger cette configuration.', 'error');
+    if (button) { button.disabled = false; button.textContent = 'Réessayer'; }
+  }
+}
+
 function awlGo(step) {
+  if (step === 4) {
+    const url = document.getElementById('awl-url')?.value?.trim() || '';
+    const businessName = document.getElementById('awl-biz')?.value?.trim() || '';
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch (_) {}
+    if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol)) {
+      if (typeof showToast === 'function') showToast('Saisissez une URL de site valide en http ou https.', 'error');
+      else window.alert('Saisissez une URL de site valide en http ou https.');
+      return;
+    }
+    if (!businessName) {
+      if (typeof showToast === 'function') showToast('Saisissez le nom de votre entreprise.', 'error');
+      else window.alert('Saisissez le nom de votre entreprise.');
+      return;
+    }
+  }
   for (let i = 1; i <= 5; i++) {
     const s = document.getElementById('fp-awl-s' + i);
     if (s) s.style.display = (i === step) ? 'block' : 'none';
@@ -62940,71 +63001,94 @@ function awlGo(step) {
   if (step === 4) _awlAnimate();
 }
 
-function _awlAnimate() {
+let _awlInFlight = false;
+async function _awlAnimate() {
+  if (_awlInFlight) return;
+  _awlInFlight = true;
   const logEl  = document.getElementById('awl-log');
   const barEl  = document.getElementById('awl-bar');
   const msgEl  = document.getElementById('awl-load-msg');
   const pctEl  = document.getElementById('awl-pct');
-  const url    = document.getElementById('awl-url')?.value  || 'votre-site.fr';
-  const name   = document.getElementById('awl-biz')?.value  || 'Votre Business';
+  const retryEl = document.getElementById('awl-retry');
+  const url    = document.getElementById('awl-url')?.value?.trim() || '';
+  const name   = document.getElementById('awl-biz')?.value?.trim() || '';
   const niche  = document.getElementById('awl-niche')?.value || 'Agence digitale';
   const loc    = document.getElementById('awl-loc')?.value  || 'France';
-
-  const logs = [
-    `[IA] Initialisation du moteur FlowPoint AI…`,
-    `[IA] Analyse du domaine : ${url}`,
-    `[IA] Détection de niche : ${niche}`,
-    `[IA] Localisation configurée : ${loc}`,
-    `[IA] Génération du profil business "${name}"…`,
-    `[IA] Création du dashboard principal…`,
-    `[IA] Configuration des KPIs sectoriels…`,
-    `[IA] Génération de 12 missions prioritaires…`,
-    `[IA] Configuration de 8 alertes uptime & SEO…`,
-    `[IA] Analyse concurrentielle en cours…`,
-    `[IA] Calcul du score SEO initial…`,
-    `[IA] Génération de la roadmap personnalisée…`,
-    `[IA] Configuration des rapports automatiques…`,
-    `[IA] Optimisation des modules de conversion…`,
-    `[✓] Workspace "${name}" configuré avec succès !`,
-  ];
-  const msgs = [
-    'Analyse de votre site et de votre secteur…',
-    'Génération du profil business IA…',
-    'Configuration des dashboards et KPIs…',
-    'Création des missions et alertes…',
-    'Finalisation de votre Growth OS…',
-  ];
-
-  let idx = 0;
+  const checked = selector => Array.from(document.querySelectorAll(selector) || []).map(input => input.value).filter(Boolean);
+  const payload = {
+    siteUrl: url,
+    businessName: name,
+    niche,
+    location: loc,
+    goals: checked('#fp-awl-s2 input[type=checkbox]:checked').slice(0, 8),
+    competitors: (document.getElementById('awl-comp')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 10),
+    stack: checked('#fp-awl-s3 input[type=checkbox]:checked').filter(value => STACKS.includes(value)).slice(0, 10),
+    priorities: checked('#fp-awl-s3 input[value*="SEO"]:checked,#fp-awl-s3 input[value*="Conversion"]:checked').slice(0, 8),
+  };
+  const tok = _fpCurrentSessionToken();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000);
+  if (retryEl) retryEl.style.display = 'none';
+  if (logEl) logEl.textContent = 'Envoi du profil à FlowPoint AI…';
+  if (msgEl) msgEl.textContent = 'Génération de votre stratégie personnalisée…';
+  let pct = 8;
+  if (barEl) barEl.style.width = pct + '%';
+  if (pctEl) pctEl.textContent = pct + '%';
   const iv = setInterval(() => {
-    if (idx < logs.length) {
-      if (logEl) logEl.innerHTML += (idx > 0 ? '\n' : '') + logs[idx];
-      const pct = Math.round((idx / logs.length) * 100);
-      if (barEl) barEl.style.width = pct + '%';
-      if (pctEl) pctEl.textContent = pct + '%';
-      if (msgEl) msgEl.textContent = msgs[Math.min(Math.floor(idx / 3), msgs.length - 1)];
-      idx++;
-    } else {
-      clearInterval(iv);
-      if (barEl) barEl.style.width = '100%';
-      if (pctEl) pctEl.textContent = '100%';
-      setTimeout(() => _awlResults(name, niche, loc, url), 500);
+    pct = Math.min(85, pct + 4);
+    if (barEl) barEl.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+  }, 700);
+  try {
+    const response = await fetch('/api/ai-workspace-launch', _fpSessionFetchOptions({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(tok ? { 'Authorization': 'Bearer ' + tok } : {}) },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    }));
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.ok) {
+      throw new Error(result?.error || `La génération a échoué (HTTP ${response.status}).`);
     }
-  }, 260);
+    if (!Array.isArray(result.roadmap) || !Array.isArray(result.missions) || !result.strategy) {
+      throw new Error('La réponse ne contient pas de stratégie persistée complète.');
+    }
+    fpTenantWrite('fp:ai-workspace-launch:last-session', result.sessionId);
+    clearInterval(iv);
+    if (barEl) barEl.style.width = '100%';
+    if (pctEl) pctEl.textContent = '100%';
+    if (logEl) logEl.textContent = `Génération terminée · ${result.roadmapSteps} étapes et ${result.missionsVerified} missions enregistrées.`;
+    _awlResults({ ...result, businessName: name, niche, location: loc });
+  } catch (error) {
+    clearInterval(iv);
+    const message = error?.name === 'AbortError'
+      ? 'La génération a dépassé le délai autorisé. Réessayez.'
+      : (error?.message || 'La génération a échoué. Réessayez.');
+    if (msgEl) msgEl.textContent = message;
+    if (logEl) logEl.textContent = 'Aucun résultat confirmé. Aucune donnée de démonstration n’a été affichée.';
+    if (barEl) barEl.style.width = '0%';
+    if (pctEl) pctEl.textContent = '—';
+    if (retryEl) retryEl.style.display = 'inline-block';
+  } finally {
+    clearTimeout(timeout);
+    _awlInFlight = false;
+  }
 }
 
-function _awlResults(name, niche, loc, url) {
+function _awlResults(result) {
   awlGo(5);
+  const name = result.businessName || '';
+  const niche = result.niche || '';
+  const loc = result.location || '';
   const sub = document.getElementById('awl-res-sub');
-  if (sub) sub.textContent = `${name} · ${niche} · ${loc}`;
+  if (sub) sub.textContent = `${name} · ${niche} · ${loc} · session ${result.sessionId}`;
 
   const kpis = [
-    { icon:'📊', label:'Dashboards créés', val:'4', color:'#8b5cf6' },
-    { icon:'🎯', label:'Missions générées', val:'12', color:'#f59e0b' },
-    { icon:'🔔', label:'Alertes configurées', val:'8', color:'#ef4444' },
-    { icon:'📈', label:'Rapports auto', val:'3', color:'#22c55e' },
-    { icon:'🔍', label:'Score SEO initial', val:'64/100', color:'#06b6d4' },
-    { icon:'🚀', label:'Quick wins détectés', val:'7', color:'#8b5cf6' },
+    { icon:'🗺️', label:'Étapes de roadmap enregistrées', val:String(result.roadmapSteps ?? result.roadmap?.length ?? 0), color:'#8b5cf6' },
+    { icon:'🎯', label:'Missions vérifiées en base', val:String(result.missionsVerified ?? 0), color:'#f59e0b' },
+    { icon:'📊', label:'Dashboards créés', val:String(result.dashboardsCreated ?? 0), color:'#06b6d4' },
+    { icon:'🔔', label:'Alertes configurées', val:String(result.alertsConfigured ?? 0), color:'#ef4444' },
+    { icon:'📈', label:'Rapports planifiés', val:String(result.reportsScheduled ?? 0), color:'#22c55e' },
   ];
   const kpiGrid = document.getElementById('awl-kpi-grid');
   if (kpiGrid) kpiGrid.innerHTML = kpis.map(k=>`
@@ -63013,53 +63097,39 @@ function _awlResults(name, niche, loc, url) {
       <div><div style="font-size:9px;color:#64748b;font-weight:600">${k.label}</div><div style="font-size:16px;font-weight:800;color:${k.color}">${k.val}</div></div>
     </div>`).join('');
 
-  const roadmap = [
-    { n:1, label:'Optimiser balises meta et titres H1', impact:'+18% trafic organique', tag:'SEO', color:'#2563EB' },
-    { n:2, label:'Améliorer vitesse mobile (Core Web Vitals)', impact:'+24% Core Web Vitals', tag:'Performance', color:'#f59e0b' },
-    { n:3, label:'Créer 3 landing pages conversion optimisées', impact:'+31% taux conversion', tag:'CRO', color:'#ef4444' },
-    { n:4, label:'Configurer Google Business Profile complet', impact:'+42% visibilité locale', tag:'Local SEO', color:'#22c55e' },
-    { n:5, label:'Mettre en place schema markup FAQ + Review', impact:'+15% CTR SERP', tag:'SEO', color:'#8b5cf6' },
-  ];
+  const roadmap = Array.isArray(result.roadmap) ? result.roadmap : [];
   const rmEl = document.getElementById('awl-roadmap');
   if (rmEl) rmEl.innerHTML = roadmap.map(r=>`
     <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
-      <div style="width:22px;height:22px;border-radius:50%;background:${r.color}22;border:1px solid ${r.color}44;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${r.color};flex-shrink:0">${r.n}</div>
+      <div style="width:22px;height:22px;border-radius:50%;background:#8b5cf622;border:1px solid #8b5cf644;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#a78bfa;flex-shrink:0">${escHtml(r.priority)}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;color:#e2e8f0;font-weight:600">${r.label}</div>
-        <div style="font-size:10px;color:#64748b;margin-top:1px">Impact estimé : ${r.impact}</div>
+        <div style="font-size:12px;color:#e2e8f0;font-weight:600">${escHtml(r.label)}</div>
+        <div style="font-size:10px;color:#64748b;margin-top:1px">Impact estimé : ${escHtml(r.impact)}</div>
       </div>
-      <span style="font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;background:${r.color}22;color:${r.color};flex-shrink:0">${r.tag}</span>
+      <span style="font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;background:#8b5cf622;color:#a78bfa;flex-shrink:0">${escHtml(r.tag)}</span>
     </div>`).join('');
 
   const stratEl = document.getElementById('awl-strat');
-  if (stratEl) stratEl.innerHTML = `<strong style="color:#a78bfa">🤖 Stratégie IA personnalisée pour ${name}</strong><br><br>
-    Sur la base de votre niche <strong>${niche}</strong>et de votre localisation<strong>${loc}</strong>, l\'IA a identifié
-    <strong>7 opportunités de croissance immédiates</strong>. Priorité absolue : le SEO local et l\'optimisation des Core Web Vitals
-    représentent ensemble <strong>+340€/mois de revenus additionnels estimés</strong>.
-    Vos 12 missions ont été priorisées automatiquement selon votre secteur et vos objectifs.`;
+  if (stratEl) stratEl.innerHTML = `<strong style="color:#a78bfa">🤖 Stratégie IA personnalisée pour ${escHtml(name)}</strong><br><br><span style="white-space:pre-wrap">${escHtml(result.strategy)}</span>`;
 
-  const alerts = ['🔴 Uptime < 99%','📉 Trafic -20%','⚡ LCP > 2.5s','🔍 Position #1 perdue','⭐ Note Google < 4','💸 Conversion < 1%','🔒 Certificat SSL','📊 Rapport hebdo'];
+  const missions = Array.isArray(result.missions) ? result.missions : [];
+  const missionsEl = document.getElementById('awl-missions');
+  if (missionsEl) missionsEl.innerHTML = missions.map(m => `<div style="padding:9px 11px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px"><strong>${escHtml(m.priority)}. ${escHtml(m.title)}</strong><span style="display:block;color:#64748b;margin-top:3px">${escHtml(m.category)} · ${escHtml(m.effort)} · ${escHtml(m.impact)}</span></div>`).join('');
   const alertsEl = document.getElementById('awl-alerts');
-  if (alertsEl) alertsEl.innerHTML = alerts.map(a=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fca5a5">${a}</span>`).join('');
-
-  // Call real API
-  const payload = {
-    siteUrl: url, businessName: name, niche, location: loc,
-    goals: [...(document.querySelectorAll('#fp-awl-overlay input[type=checkbox]:checked') || [])].map(i=>i.value).slice(0, 8),
-    competitors: (document.getElementById('awl-comp')?.value||'').split(',').map(s=>s.trim()).filter(Boolean),
-    priorities: [...(document.querySelectorAll('#fp-awl-overlay input[value*="SEO"]:checked,#fp-awl-overlay input[value*="Conversion"]:checked') || [])].map(i=>i.value),
-  };
-  const tok = _fpCurrentSessionToken();
-  fetch('/api/ai-workspace-launch', _fpSessionFetchOptions({
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(tok ? { 'Authorization': 'Bearer ' + tok } : {}) },
-    body: JSON.stringify(payload),
-  })).catch(() => {});
+  if (alertsEl) {
+    const notConfigured = [
+      (result.dashboardsCreated ?? 0) === 0 ? 'Aucun dashboard créé' : `${result.dashboardsCreated} dashboard(s) créé(s)`,
+      (result.alertsConfigured ?? 0) === 0 ? 'Aucune alerte configurée' : `${result.alertsConfigured} alerte(s) configurée(s)`,
+      (result.reportsScheduled ?? 0) === 0 ? 'Aucun rapport planifié' : `${result.reportsScheduled} rapport(s) planifié(s)`,
+    ];
+    alertsEl.innerHTML = notConfigured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
+  }
 }
 
 window.openAIWorkspaceLaunch  = openAIWorkspaceLaunch;
 window.closeAIWorkspaceLaunch = closeAIWorkspaceLaunch;
 window.awlGo                  = awlGo;
+window.loadAIWorkspaceLast    = loadAIWorkspaceLast;
 
 // ══════════════════════════════════════════════════════════════════════
 // GA4 ANALYTICS — SHARED HELPERS

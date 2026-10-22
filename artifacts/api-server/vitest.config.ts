@@ -16,6 +16,8 @@ export default defineConfig({
       "src/services/global-monitoring.test.ts",
       "src/services/content-decay-strategy.test.ts",
       "src/services/workspace-launch-output.test.ts",
+      "src/routes/ai-workspace-launch.test.ts",
+      "src/tests/workspace-launch-frontend.test.ts",
       "src/services/forecasting-service.test.ts",
       "src/services/forecasting-service.atomic.test.ts",
       "src/services/market-intel-service.test.ts",
