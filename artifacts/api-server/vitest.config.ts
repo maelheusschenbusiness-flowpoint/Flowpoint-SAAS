@@ -29,6 +29,7 @@ export default defineConfig({
       "src/routes/permissions-entitlement.test.ts",
       "src/services/backlink-intel.test.ts",
       "src/routes/sla-addon-gate.test.ts",
+      "src/routes/betterstack-sla-route.test.ts",
       "src/services/mailer-nodemailer10.test.ts",
       "src/services/nodemailer10-transport.test.ts",
       "src/services/webhook-url-safety.test.ts",
