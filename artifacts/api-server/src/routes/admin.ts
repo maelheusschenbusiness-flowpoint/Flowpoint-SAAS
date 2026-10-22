@@ -569,10 +569,18 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
 // Test-only session for the existing internal QA organization. This endpoint
 // never provisions organizations, users, memberships, roles, or entitlements.
 router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
-
   if (process.env["NODE_ENV"] !== "test") {
     res.status(404).json({ ok: false, error: "Not found" });
+    return;
+  }
+  const testSessionKey = process.env["QA_TEST_SESSION_KEY"];
+  const providedKey = req.headers["x-admin-key"];
+  if (!testSessionKey || testSessionKey.length < ADMIN_KEY_MIN_LEN) {
+    res.status(503).json({ ok: false, error: "QA_TEST_SESSION_KEY is not configured for this Test service." });
+    return;
+  }
+  if (typeof providedKey !== "string" || !keysEqual(providedKey, testSessionKey)) {
+    res.status(403).json({ ok: false, error: "Invalid QA session key." });
     return;
   }
 

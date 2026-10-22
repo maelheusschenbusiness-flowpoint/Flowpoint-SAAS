@@ -17,7 +17,7 @@ import adminRouter from "./admin.js";
 
 const QA_ORG = "10000000-0000-4000-8000-000000000002";
 const QA_USER = "10000000-0000-4000-8000-000000000001";
-const ADMIN_KEY = "test-only-admin-key-that-is-long-enough";
+const QA_TEST_SESSION_KEY = "test-only-qa-session-key-long-enough";
 
 function app() {
   const server = express();
@@ -30,7 +30,7 @@ describe("POST /api/admin/test-session", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("NODE_ENV", "test");
-    vi.stubEnv("ADMIN_KEY", ADMIN_KEY);
+    vi.stubEnv("QA_TEST_SESSION_KEY", QA_TEST_SESSION_KEY);
     mocks.connect.mockResolvedValue({
       query: mocks.query,
       release: vi.fn(),
@@ -48,7 +48,7 @@ describe("POST /api/admin/test-session", () => {
   it("issues a short-lived session only for the existing internal QA org and membership", async () => {
     const response = await request(app())
       .post("/api/admin/test-session")
-      .set("x-admin-key", ADMIN_KEY)
+      .set("x-admin-key", QA_TEST_SESSION_KEY)
       .send({ orgId: QA_ORG, ttlMinutes: 30, role: "admin" });
 
     expect(response.status).toBe(200);
@@ -70,16 +70,30 @@ describe("POST /api/admin/test-session", () => {
 
   it("is unavailable outside Test without touching the database", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const response = await request(app()).post("/api/admin/test-session").set("x-admin-key", ADMIN_KEY).send({});
+    const response = await request(app()).post("/api/admin/test-session").set("x-admin-key", QA_TEST_SESSION_KEY).send({});
     expect(response.status).toBe(404);
+    expect(mocks.connect).not.toHaveBeenCalled();
+  });
+
+  it("requires a dedicated Test key and never falls back to ADMIN_KEY", async () => {
+    vi.stubEnv("ADMIN_KEY", "a-production-style-admin-key-that-must-not-work");
+    vi.stubEnv("QA_TEST_SESSION_KEY", "");
+    const missing = await request(app()).post("/api/admin/test-session")
+      .set("x-admin-key", "a-production-style-admin-key-that-must-not-work").send({});
+    expect(missing.status).toBe(503);
+
+    vi.stubEnv("QA_TEST_SESSION_KEY", QA_TEST_SESSION_KEY);
+    const invalid = await request(app()).post("/api/admin/test-session")
+      .set("x-admin-key", "a-wrong-test-key-that-must-not-work").send({});
+    expect(invalid.status).toBe(403);
     expect(mocks.connect).not.toHaveBeenCalled();
   });
 
   it("rejects another org and invalid session durations before database access", async () => {
     const otherOrg = await request(app()).post("/api/admin/test-session")
-      .set("x-admin-key", ADMIN_KEY).send({ orgId: "10000000-0000-4000-8000-000000000099" });
+      .set("x-admin-key", QA_TEST_SESSION_KEY).send({ orgId: "10000000-0000-4000-8000-000000000099" });
     const invalidTtl = await request(app()).post("/api/admin/test-session")
-      .set("x-admin-key", ADMIN_KEY).send({ orgId: QA_ORG, ttlMinutes: 61 });
+      .set("x-admin-key", QA_TEST_SESSION_KEY).send({ orgId: QA_ORG, ttlMinutes: 61 });
     expect(otherOrg.status).toBe(403);
     expect(invalidTtl.status).toBe(400);
     expect(mocks.connect).not.toHaveBeenCalled();
@@ -88,14 +102,14 @@ describe("POST /api/admin/test-session", () => {
   it("does not issue a session if the QA org or its owner membership is absent", async () => {
     mocks.query.mockResolvedValueOnce({ rows: [] });
     const missingOrg = await request(app()).post("/api/admin/test-session")
-      .set("x-admin-key", ADMIN_KEY).send({ orgId: QA_ORG });
+      .set("x-admin-key", QA_TEST_SESSION_KEY).send({ orgId: QA_ORG });
     expect(missingOrg.status).toBe(404);
     expect(mocks.query).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO user_sessions"), expect.anything());
 
     mocks.query.mockReset();
     mocks.query.mockResolvedValueOnce({ rows: [{ id: QA_ORG }] }).mockResolvedValueOnce({ rows: [] });
     const missingMembership = await request(app()).post("/api/admin/test-session")
-      .set("x-admin-key", ADMIN_KEY).send({ orgId: QA_ORG });
+      .set("x-admin-key", QA_TEST_SESSION_KEY).send({ orgId: QA_ORG });
     expect(missingMembership.status).toBe(403);
     expect(mocks.query).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO user_sessions"), expect.anything());
   });
