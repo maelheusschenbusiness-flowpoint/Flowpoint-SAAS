@@ -59204,6 +59204,51 @@ function renderDataExplorer() {
       { name: 'Taux de conversion',  icon:'🎯', plan: 'Ultra'    },
       { name: 'Comparatif concurrent',icon:'⚔️',plan: 'Ultra'   },
     ];
+    const widgetCache = STATE.customDashboardWidgetData || (STATE.customDashboardWidgetData = {});
+    const renderDashboardWidget = (dashboard, widget) => {
+      const source = String(widget?.source || '');
+      const orgKey = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || 'unknown');
+      const key = `${orgKey}:${dashboard.id}:${source}`;
+      let result = widgetCache[key];
+      if (!result) {
+        result = widgetCache[key] = { status: 'loading' };
+        const query = new URLSearchParams({ source, days: '90', limit: '200' });
+        apiFetch('/api/data-explorer/query?' + query.toString()).then(data => {
+          if (!data || data.source !== source || !Array.isArray(data.rows)) throw new Error('Réponse de données invalide');
+          widgetCache[key] = { status: 'ready', data };
+        }).catch(error => {
+          widgetCache[key] = { status: 'error', message: error?.message || 'Données indisponibles' };
+        }).finally(() => {
+          if (STATE.currentSection === 'data-explorer' && STATE.subRoute === 'dashboards') render(STATE.currentSection);
+        });
+        return `<div class="fp-card" style="padding:14px;color:var(--fp-text-faint)">Chargement des données mesurées…</div>`;
+      }
+      const title = escHtml(widget?.name || (source === 'audits' ? 'Score SEO' : 'Missions'));
+      if (result.status === 'loading') return `<div class="fp-card" style="padding:14px;color:var(--fp-text-faint)">Chargement des données mesurées…</div>`;
+      if (result.status === 'error') return `<div class="fp-card" style="padding:14px"><strong>${title}</strong><div style="margin-top:8px;color:#ef4444;font-size:11px">${escHtml(result.message)}</div></div>`;
+      const rows = result.data.rows;
+      if (source === 'audits') {
+        const scored = rows.filter(row => row.score !== null && row.score !== undefined && Number.isFinite(Number(row.score)));
+        const average = scored.length ? Math.round(scored.reduce((sum, row) => sum + Number(row.score), 0) / scored.length) : null;
+        return `<div class="fp-card" style="padding:16px">
+          <div class="fp-card-title">${title}</div>
+          ${average === null
+            ? `<div style="padding:14px 0;color:var(--fp-text-faint);font-size:12px">Aucun audit mesuré sur les 90 derniers jours.</div>`
+            : `<div style="display:flex;align-items:baseline;gap:8px;margin:12px 0"><strong style="font-size:32px;color:${average < 50 ? '#ef4444' : average < 70 ? '#f59e0b' : '#22c55e'}">${average}</strong><span style="color:var(--fp-text-muted)">score moyen · ${scored.length} audits chargés</span></div>
+              <div style="display:grid;gap:7px">${scored.slice(0,4).map(row => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:11px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(row.url)}</span><strong>${escHtml(row.score)}/100</strong></div>`).join('')}</div>`}
+        </div>`;
+      }
+      if (source === 'missions') {
+        return `<div class="fp-card" style="padding:16px">
+          <div class="fp-card-title">${title}</div>
+          <div style="margin:10px 0;color:var(--fp-text-muted);font-size:11px">${result.data.total} missions enregistrées · 90 jours</div>
+          ${rows.length
+            ? `<div style="display:grid;gap:8px">${rows.slice(0,5).map(row => `<div style="border-left:2px solid #6366f1;padding-left:9px"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(row.title)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(row.status)} · ${escHtml(row.priority)}</div></div>`).join('')}</div>`
+            : `<div style="padding:10px 0;color:var(--fp-text-faint);font-size:12px">Aucune mission enregistrée sur les 90 derniers jours.</div>`}
+        </div>`;
+      }
+      return `<div class="fp-card" style="padding:14px"><strong>${title}</strong><div style="margin-top:8px;color:var(--fp-text-faint);font-size:11px">Source de widget non prise en charge : ${escHtml(source || '—')}</div></div>`;
+    };
     // Fetch from API if not yet loaded or if returning to the page
     if (!Array.isArray(_realDash)) {
       apiFetch('/api/data-explorer/dashboards').then(r => {
@@ -59299,6 +59344,9 @@ function renderDataExplorer() {
                         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="Supprimer" data-did="${escHtml(p.id)}" onclick="window._fpDeleteDashboard(this.dataset.did,${escHtml(JSON.stringify(p.name))})">✕</button>
                       </div>
                     </div>
+                    ${(Array.isArray(p.widgets) && p.widgets.length)
+                      ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:14px">${p.widgets.map(widget => renderDashboardWidget(p, widget)).join('')}</div>`
+                      : `<div style="margin-top:12px;padding:12px;border:1px dashed var(--fp-border);border-radius:9px;color:var(--fp-text-faint);font-size:11px">Aucun widget configuré.</div>`}
                   </div>`).join('')}
                </div>`
         }
@@ -69691,6 +69739,11 @@ window.FP_V1_ADDON_PANELS = {
             }),
           });
           if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
+          const createdIds = Array.isArray(bundle.reports) ? bundle.reports.map(report => String(report.id || '')).filter(Boolean) : [];
+          if (createdIds.length !== 3) throw new Error('Les trois rapports persistés ne sont pas confirmés');
+          await window._fpReportsAPI.load({ force: true });
+          const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
+          if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
           showToast('success', 'Pack créé : 3 rapports vérifiés pour ' + clientName);
           render();
         } catch { showToast('error', 'Le pack complet n’a pas pu être créé'); bundleButton.disabled = false; }
@@ -69708,16 +69761,13 @@ window.FP_V1_ADDON_PANELS = {
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {
-            await apiFetch('/api/reports', {
-              method: 'POST',
-              body: JSON.stringify({
-                name: pack.name,
-                templateKey: pack.templateKey,
-                format: 'PDF',
-                auditId: auditSelect.value || undefined,
-              }),
+            const created = await window._fpReportsAPI.create({
+              name: pack.name,
+              templateKey: pack.templateKey,
+              format: 'PDF',
+              auditId: auditSelect.value || undefined,
             });
-            showToast('success', 'Rapport créé');
+            if (!created?.id) throw new Error('Rapport non confirmé');
             render();
           } catch { showToast('error', 'Impossible de créer le rapport'); button.disabled = false; }
         });

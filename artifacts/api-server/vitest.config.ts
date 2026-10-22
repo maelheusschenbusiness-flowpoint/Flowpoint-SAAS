@@ -18,6 +18,8 @@ export default defineConfig({
       "src/services/workspace-launch-output.test.ts",
       "src/routes/ai-workspace-launch.test.ts",
       "src/tests/workspace-launch-frontend.test.ts",
+      "src/services/monitor-cron.test.ts",
+      "src/routes/data-explorer.test.ts",
       "src/services/forecasting-service.test.ts",
       "src/services/forecasting-service.atomic.test.ts",
       "src/services/market-intel-service.test.ts",

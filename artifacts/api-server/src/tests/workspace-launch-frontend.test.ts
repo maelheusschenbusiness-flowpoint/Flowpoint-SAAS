@@ -54,4 +54,30 @@ describe("AI Workspace Launch frontend", () => {
     expect(servedFlow).not.toContain("+340€");
     expect(servedFlow).not.toContain("Uptime < 99%");
   });
+
+  it("renders persisted dashboard widgets from the tenant-scoped Data Explorer API", () => {
+    const dashboards = dashboard.slice(
+      dashboard.indexOf("if (sub === 'dashboards')"),
+      dashboard.indexOf("// SUB: AI INSIGHTS CENTER"),
+    );
+    expect(dashboards).toContain("/api/data-explorer/query?");
+    expect(dashboards).toContain("source, days: '90', limit: '200'");
+    expect(dashboards).toContain("`${orgKey}:${dashboard.id}:${source}`");
+    expect(dashboards).toContain("row.score");
+    expect(dashboards).toContain("row.title");
+    expect(dashboards).toContain("Aucun audit mesuré");
+    expect(dashboards).toContain("Aucune mission enregistrée");
+    expect(dashboards).toContain("p.widgets.map(widget => renderDashboardWidget(p, widget))");
+  });
+
+  it("confirms Agency Reporting Pack reports are persisted and visible after generation", () => {
+    const packsStart = dashboard.indexOf("async loadAgencyPacks()");
+    const packsEnd = dashboard.indexOf("\n  },\n};", packsStart);
+    const panel = dashboard.slice(packsStart, packsEnd);
+    expect(panel).toContain("reports/agency-packs/generate");
+    expect(panel).toContain("bundle?.verifiedCount !== 3");
+    expect(panel).toContain("window._fpReportsAPI.load({ force: true })");
+    expect(panel).toContain("createdIds.some(id => !visibleIds.has(id))");
+    expect(panel).toContain("window._fpReportsAPI.create");
+  });
 });
