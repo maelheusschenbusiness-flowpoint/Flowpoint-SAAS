@@ -175,7 +175,9 @@ router.post("/ab-testing/experiments/:id/start", canWrite, async (req, res) => {
           AND EXISTS (
             SELECT 1 FROM behavior_events b
              WHERE b.org_id=e.org_id AND b.site_url=e.site_url
+               AND b.page=e.page
                AND b.event_type='tracker_ready'
+               AND b.metadata->>'version'='2'
                AND b.created_at >= now() - interval '7 days'
           )
         RETURNING e.id, e.status, e.started_at`,
