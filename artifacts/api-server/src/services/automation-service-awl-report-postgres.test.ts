@@ -79,7 +79,7 @@ describeIsolatedCi("AWL report generation PostgreSQL isolation (isolated CI DB o
 
   const baseDependencies = (overrides: Record<string, unknown> = {}) => ({
     database: testDb,
-    authorizeAWL: async () => true,
+    hasEntitlement: async () => true,
     checkReportsQuota: async () => true,
     checkAIQuota: async () => true,
     generate: async () => ({
