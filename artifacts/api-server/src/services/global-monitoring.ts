@@ -41,6 +41,8 @@ export function summarizeGlobalMonitoring(monitors: BSMonitor[]) {
   return {
     configuredRegionCount: byRegion.size,
     configuredMonitorCount: new Set(entries.map(entry => entry.monitorId)).size,
+    measurementScope: "better_stack_monitor_aggregate",
+    regionalChecksPerformed: false,
     regions: [...byRegion.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
             .map(([region, monitorsInRegion]) => {
