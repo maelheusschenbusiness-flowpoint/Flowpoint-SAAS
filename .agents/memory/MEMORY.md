@@ -153,3 +153,4 @@
 - [Add-on V1 test-only boundary](addon-v1-testing-boundary.md) — keep add-on refactor work on Test-Replit; never touch Flowpoint production, production PostgreSQL, or Stripe live without explicit approval.
 - [GSC page opportunity analysis](gsc-page-opportunity-analysis.md) — page-level GSC tables support decay detection, but separate query/page tables cannot prove keyword cannibalization.
 - [Test execution context](test-execution-context.md) — explicitly set test mode; live-server tests also depend on the running API's tenant and billing state.
+- [A/B exposure ordering](ab-exposure-ordering.md) — the site snippet must persist an exposure before reporting a conversion; otherwise a fast click can be rejected as unarmed.

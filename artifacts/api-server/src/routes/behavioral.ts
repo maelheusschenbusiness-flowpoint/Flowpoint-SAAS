@@ -361,7 +361,7 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
     if(!_fpToken)return;
     var ts=Date.now(),nonce=Math.random().toString(36).slice(2,10);
     var payload=JSON.stringify(Object.assign({sessionId:_fpSid,siteUrl:s,page:location.pathname,eventType:type,sessionToken:_fpToken,ts:ts,nonce:nonce},data));
-    fetch(u+'/behavioral/event',{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true}).catch(function(){});
+    return fetch(u+'/behavioral/event',{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true}).catch(function(){return null;});
   }
   async function _fpSession(){
     if(!_fpToken||Date.now()>=_fpTokenExp)await _fpGetToken();
@@ -386,11 +386,12 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
         try{target=d.querySelector(cfg.selector)}catch(_){return}
         if(!target||typeof cfg.text!=='string')return;
         target.textContent=cfg.text;
-        _fpSend('experiment_exposure',{metadata:{experimentId:ex.experimentId,variant:ex.variant}});
+        var exposureRequest=_fpSend('experiment_exposure',{metadata:{experimentId:ex.experimentId,variant:ex.variant}});
         var goals;
         try{goals=d.querySelectorAll(cfg.goalSelector)}catch(_){goals=[]}
-        goals.forEach(function(goal){goal.addEventListener('click',function(){
-          _fpSend('experiment_conversion',{metadata:{experimentId:ex.experimentId,variant:ex.variant}});
+        goals.forEach(function(goal){goal.addEventListener('click',async function(){
+          var exposure=await exposureRequest;
+          if(exposure&&exposure.ok)_fpSend('experiment_conversion',{metadata:{experimentId:ex.experimentId,variant:ex.variant}});
         },{once:true})});
       });
     }catch(e){}
