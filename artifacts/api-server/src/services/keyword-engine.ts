@@ -174,15 +174,15 @@ export async function syncOrgRankings(orgId: string): Promise<{ configured: bool
                ELSE 'stable' END,
              last_sync_at = NOW(),
              updated_at   = NOW()
-           WHERE id = $2`,
-          [position, kw.id]
+           WHERE id = $2 AND org_id = $3`,
+          [position, kw.id, orgId]
         ).catch(e => logger.debug({ e }, "[keyword-engine] update position failed"));
 
         // Append to history
         await client.query(
           `INSERT INTO keyword_history (org_id, keyword_id, position, search_volume, recorded_at)
            SELECT $1, $2, $3,
-                  COALESCE((SELECT search_volume FROM tracked_keywords WHERE id=$2 LIMIT 1), 0),
+                   COALESCE((SELECT search_volume FROM tracked_keywords WHERE id=$2 AND org_id=$1 LIMIT 1), 0),
                   NOW()
            ON CONFLICT DO NOTHING`,
           [orgId, kw.id, position]
