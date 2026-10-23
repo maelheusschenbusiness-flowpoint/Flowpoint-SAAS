@@ -128,7 +128,10 @@ describe("SEO Content Decay Radar routes", () => {
       page: "https://site.example/guide",
       previous: { clicks: 100, impressions: 1_000 },
       current: { clicks: 50, impressions: 900 },
-      reasons: ["clicks_declining", "ranking_declining"],
+      lostClicks: 50,
+      lostImpressions: 100,
+      ctrDrop: expect.any(Number),
+      reasons: ["clicks_declining", "ctr_declining", "ranking_declining"],
     });
     expect(mocks.orgDb).toHaveBeenCalledWith(
       expect.stringContaining("WHERE org_id = $1 AND date >= $2 AND date < $3"),

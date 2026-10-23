@@ -17,8 +17,10 @@ export type ContentDecayOpportunity = {
   previous: { clicks: number; impressions: number; ctr: number; position: number };
   current: { clicks: number; impressions: number; ctr: number; position: number };
   lostClicks: number;
+  lostImpressions: number;
+  ctrDrop: number;
   positionDrop: number;
-  reasons: ("clicks_declining" | "ranking_declining")[];
+  reasons: ("clicks_declining" | "impressions_declining" | "ctr_declining" | "ranking_declining")[];
   priorityScore: number;
   recommendedAction: string;
 };
@@ -82,12 +84,24 @@ export function findContentDecayOpportunities(
     if (windows.previous.impressions < 100 || windows.current.impressions < 50) continue;
     const previous = metrics(windows.previous);
     const current = metrics(windows.current);
-    const lostClicks = previous.clicks - current.clicks;
+    const lostClicks = Math.max(0, previous.clicks - current.clicks);
+    const lostImpressions = Math.max(0, previous.impressions - current.impressions);
+    const ctrDrop = Math.max(0, previous.ctr - current.ctr);
     const positionDrop = current.position - previous.position;
     const reasons: ContentDecayOpportunity["reasons"] = [];
     if (lostClicks >= Math.max(5, previous.clicks * 0.2)) reasons.push("clicks_declining");
+    if (lostImpressions >= Math.max(50, previous.impressions * 0.2)) reasons.push("impressions_declining");
+    if (ctrDrop >= Math.max(0.001, previous.ctr * 0.2)) reasons.push("ctr_declining");
     if (positionDrop >= 3) reasons.push("ranking_declining");
     if (reasons.length === 0) continue;
+
+    const recommendedAction = reasons.includes("ranking_declining")
+      ? "Vérifier l'intention de recherche, l'indexation et les liens internes avant de modifier la page."
+      : reasons.includes("impressions_declining")
+        ? "Vérifier l'indexation, la demande de recherche et la couverture des requêtes sur cette période."
+        : reasons.includes("ctr_declining")
+          ? "Comparer les titres et descriptions affichés ainsi que les changements de résultats de recherche."
+          : "Comparer les clics, les requêtes et l'extrait affiché pour identifier la baisse mesurée.";
 
     results.push({
       page,
@@ -104,12 +118,17 @@ export function findContentDecayOpportunities(
         position: Number(current.position.toFixed(1)),
       },
       lostClicks: Math.round(lostClicks),
+      lostImpressions: Math.round(lostImpressions),
+      ctrDrop: Number(ctrDrop.toFixed(4)),
       positionDrop: Number(positionDrop.toFixed(1)),
       reasons,
-      priorityScore: Number((Math.max(0, lostClicks) + Math.max(0, positionDrop) * 5).toFixed(1)),
-      recommendedAction: reasons.includes("ranking_declining")
-        ? "Vérifier l'intention de recherche, actualiser la page et renforcer ses liens internes."
-        : "Contrôler le titre et la description dans les résultats, puis comparer les pages concurrentes.",
+      priorityScore: Number((
+        lostClicks
+        + lostImpressions * 0.05
+        + ctrDrop * 100
+        + Math.max(0, positionDrop) * 5
+      ).toFixed(1)),
+      recommendedAction,
     });
   }
 
