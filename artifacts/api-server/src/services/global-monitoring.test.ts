@@ -64,4 +64,16 @@ describe("global monitoring regional coverage summary", () => {
       regions: [],
     });
   });
+
+  it("keeps missing uptime unavailable instead of converting null to zero", () => {
+    const nullUptimeMonitor = monitor("unknown-uptime", ["eu"], "unknown");
+    nullUptimeMonitor.attributes.uptime_percentage = null as unknown as string;
+    const summary = summarizeGlobalMonitoring([
+      nullUptimeMonitor,
+      monitor("zero-uptime", ["us"], "down", "0"),
+    ]);
+
+    expect(summary.regions.find(region => region.region === "eu")?.monitors[0]?.uptimePercentage).toBeNull();
+    expect(summary.regions.find(region => region.region === "us")?.monitors[0]?.uptimePercentage).toBe(0);
+  });
 });
