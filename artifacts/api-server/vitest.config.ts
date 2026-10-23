@@ -55,6 +55,8 @@ export default defineConfig({
       "src/services/gbp-location-quota.test.ts",
        "src/services/local-presence-optimizer.test.ts",
        "src/services/maps-service.test.ts",
+       "src/services/conversion-opportunity-engine.test.ts",
+       "src/routes/conversion-opportunity-engine.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
