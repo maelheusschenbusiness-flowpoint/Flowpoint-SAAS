@@ -6,10 +6,16 @@ function domainOf(value: unknown): string | null {
   try { return new URL(value).hostname.toLowerCase(); } catch { return null; }
 }
 
+function measuredNumber(value: unknown): number | null {
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 export function buildExecutiveReportFacts(audits: AuditRow[], monitors: MonitorRow[]) {
   const validAudits = audits.slice(0, 8).flatMap(row => {
-    const score = Number(row.score);
-    if (!Number.isFinite(score) || score < 0 || score > 100) return [];
+    const score = measuredNumber(row.score);
+    if (score === null || score < 0 || score > 100) return [];
     return [{
       domain: domainOf(row.url),
       score: Math.round(score),
@@ -18,14 +24,14 @@ export function buildExecutiveReportFacts(audits: AuditRow[], monitors: MonitorR
     }];
   });
   const validMonitors = monitors.slice(0, 12).map(row => {
-    const uptime = Number(row.uptime);
-    const responseTime = Number(row.response_time);
+    const uptime = measuredNumber(row.uptime);
+    const responseTime = measuredNumber(row.response_time);
     return {
       name: typeof row.name === "string" ? row.name.slice(0, 100) : null,
       domain: domainOf(row.url),
       status: typeof row.status === "string" ? row.status : null,
-      uptime: Number.isFinite(uptime) && uptime >= 0 && uptime <= 100 ? Math.round(uptime * 100) / 100 : null,
-      responseTimeMs: Number.isFinite(responseTime) && responseTime >= 0 ? Math.round(responseTime) : null,
+      uptime: uptime !== null && uptime >= 0 && uptime <= 100 ? Math.round(uptime * 100) / 100 : null,
+      responseTimeMs: responseTime !== null && responseTime >= 0 ? Math.round(responseTime) : null,
     };
   });
   const scores = validAudits.map(row => row.score);
