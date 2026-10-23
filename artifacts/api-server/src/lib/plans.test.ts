@@ -18,6 +18,7 @@ import { describe, it, expect } from "vitest";
 import {
   PLAN_INCLUDED_ADDONS,
   ADDON_PRICE_IDS,
+  ADDON_PRICE_IDS_TEST,
   DEVELOPMENT_ADDON_DISPLAY_PRICES,
   getAddonDisplayPrice,
   BETA_ADDONS,
@@ -53,12 +54,13 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps 41 product slots and all six protected keys", () => {
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(41);
+  it("keeps all 42 product slots and all six protected keys", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(42);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
         "monitorsPack50",
+        "gbpPerformanceLeads",
         "whiteLabel",
         "retention90d",
         "retention365d",
@@ -79,6 +81,11 @@ describe("V1 add-on catalogue contract", () => {
       oneTime: false,
     });
     expect(CANONICAL_ADDON_DEFINITIONS.whiteLabel.priceEur).toBe(17);
+    expect(CANONICAL_ADDON_DEFINITIONS.gbpPerformanceLeads).toMatchObject({
+      priceEur: 15,
+      quantity: false,
+      oneTime: false,
+    });
     expect(CANONICAL_ADDON_DEFINITIONS.retention90d.priceEur).toBe(9);
     expect(CANONICAL_ADDON_DEFINITIONS.retention365d.priceEur).toBe(19);
     expect(CANONICAL_ADDON_DEFINITIONS.extraSeats).toMatchObject({
@@ -142,9 +149,9 @@ describe("V1 add-on catalogue contract", () => {
     }
   });
 
-  it("keeps the three Local SEO offers priced but unavailable for purchase before approval", () => {
+  it("keeps Local SEO add-ons priced but unavailable until validation", () => {
     const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(41);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(42);
     expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
@@ -317,6 +324,10 @@ describe("canonical add-on availability", () => {
     expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
     expect(getAddonAvailability("abTestingAI")).toBe("coming_soon");
     expect(COMING_SOON_ADDONS.has("abTestingAI")).toBe(true);
+    const gbpTestPriceReady = Boolean(ADDON_PRICE_IDS_TEST.gbpPerformanceLeads) &&
+      (process.env["STRIPE_TEST_MODE"] === "true") &&
+      (process.env["STRIPE_TEST_KEY"] ?? "").startsWith("sk_test_");
+    expect(getAddonAvailability("gbpPerformanceLeads")).toBe(gbpTestPriceReady ? "available" : "coming_soon");
     expect(getAddonAvailability("marketIntelligence")).toBe("beta");
     expect(getAddonAvailability("monitorsPack10")).toBe("available");
   });
