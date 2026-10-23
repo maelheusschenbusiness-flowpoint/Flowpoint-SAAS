@@ -53810,39 +53810,24 @@ function renderGrowthProjections() {
     </div>
 
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">⚡ Impact des Quick Wins sur la projection</div>
+      <div class="fp-card-title" style="margin-bottom:14px">⚡ Quick Wins actives</div>
       ${(function(){
-        // Calcul 100% déterministe — aucune analyse IA.
-        // Gain par quick win : nombre de points extrait du texte de la mission
-        // (regex "+N pts"), sinon barème fixe par priorité.
-        var _prioGain = { critical: 4, high: 3, medium: 2, low: 1 };
         var _qwList = (STATE.missions || [])
           .filter(function(m){ return (m.aiQuickWin || m.ai_quick_win) && m.status !== 'done' && m.status !== 'completed'; })
           .slice(0, 6)
-          .map(function(m){
-            var _mt = String(m.title || '') + ' ' + String(m.gain || m.impact || '');
-            var _gm = _mt.match(/\+\s*(\d+)\s*(?:pts?|points?)/i);
-            var _g  = _gm ? parseInt(_gm[1],10) : (_prioGain[m.priority] || 2);
-            return { title: m.title || 'Quick Win', gain: _g };
-          });
-        var _base30 = _projResult ? _projResult.score30d : avgSc;
+          .map(function(m){ return { title: m.title || '', status: m.status }; })
+          .filter(function(m){ return !!m.title; });
         if (_qwList.length === 0) {
-          return '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune Quick Win active. Lancez un audit et générez des missions Quick Win pour voir leur impact projeté (calcul déterministe à partir des gains de points).</div>';
+          return '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune Quick Win active issue des données disponibles.</div>';
         }
-        var _totGain = _qwList.reduce(function(s,q){ return s+q.gain; }, 0);
-        var _cum = _base30;
-        var _rows = _qwList.map(function(q, i){
-          _cum = Math.min(99, _cum + q.gain);
+        return _qwList.map(function(q, i){
           var _col = i % 2 === 0 ? '#22c55e' : 'var(--fp-accent)';
           return '<div class="fp-qw-item" style="display:flex;align-items:center;gap:12px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">'+
             '<div style="width:20px;height:20px;border-radius:50%;background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--fp-accent);flex-shrink:0">'+(i+1)+'</div>'+
             '<div style="flex:1;font-size:12px;font-weight:600">'+escHtml(q.title)+'</div>'+
-            '<span style="font-size:12px;font-weight:700;color:'+_col+'">+'+q.gain+' pts</span>'+
-            '<div style="font-size:11px;color:var(--fp-text-faint)">Cumul : <strong style="color:'+_col+'">'+_cum+'/100</strong></div>'+
+            '<span style="font-size:11px;color:'+_col+'">'+(q.status === 'in_progress' ? 'En cours' : 'À démarrer')+'</span>'+
           '</div>';
         }).join('');
-        var _summary = '<div style="padding:11px 14px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;font-size:12px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px">En exécutant les<strong>'+_qwList.length+' Quick Wins actives</strong>, votre projection à 30 jours passe de <strong>'+_base30+'/100</strong> à <strong>'+Math.min(99,_base30+_totGain)+'/100</strong> (+'+_totGain+' pts, calcul déterministe basé sur les gains de points des missions).</div>';
-        return _summary + '<div style="display:flex;flex-direction:column;gap:8px">' + _rows + '</div>';
       })()}
     </div>
   </div>`;
@@ -54078,45 +54063,38 @@ function renderGrowthCommandCenter() {
     return _m.status === 'done' ? 100 : 0;
   };
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
-  const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r, i) {
+  const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r) {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
-    // N'afficher que des impacts trafic réels — jamais de montants €/mois inventés
-    const _roiLbl = r.estimated_traffic_impact ? '+' + r.estimated_traffic_impact + ' visites/mois' : '';
-    return { title: r.title, impact: r.estimatedUplift ? '+' + Math.round(r.estimatedUplift * 100) + '%' : '', roi: _roiLbl, time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: _qwPct(r.title) };
+    const _trafficImpact = Number(r.estimated_traffic_impact);
+    const _roiLbl = Number.isFinite(_trafficImpact) && _trafficImpact > 0
+      ? '+' + _trafficImpact + ' visites/mois'
+      : '';
+    return { title: r.title, impact: '', roi: _roiLbl, time: '', diff: diff, pct: _qwPct(r.title) };
   }) : (function() {
     const _aw = [];
     const _aud = STATE.audits || [];
     const _mon = STATE.monitors || [];
-    const _slow = _aud.filter(function(a){ return (a.speed||100) < 60; });
-    const _low  = _aud.filter(function(a){ return (a.score||100) < 70; });
+    const _slow = _aud.filter(function(a){ return Number.isFinite(a.speed) && a.speed < 60; });
+    const _low  = _aud.filter(function(a){ return Number.isFinite(a.score) && a.score < 70; });
     const _down = _mon.filter(function(m){ return m.status === 'down'; });
     if (_down.length > 0) {
       var _dt = 'Résoudre le monitor DOWN : '+(_down[0].url||_down[0].name||'site').replace(/^https?:\/\//,'').split('/')[0];
-      _aw.push({title:_dt, impact:'Uptime ↑', roi:'Trafic récupéré', time:'15 min', diff:1, pct:_qwPct(_dt)});
+      _aw.push({title:_dt, impact:'Monitor indisponible', roi:'', time:'', diff:1, pct:_qwPct(_dt)});
     }
     if (_low.length > 0) {
       var _s = _low[0].url||''; var _u = _s.replace(/^https?:\/\//,'').split('/')[0] || 'site';
-      var _pts = Math.round((70-Math.min(70,_low[0].score||50))*0.5);
       var _lt = 'Améliorer le score SEO de '+_u;
-      _aw.push({title:_lt, impact:'+'+_pts+' pts', roi:'+'+_pts+' pts de score', time:'45 min', diff:2, pct:_qwPct(_lt)});
+      _aw.push({title:_lt, impact:'Score actuel : '+_low[0].score+'/100', roi:'', time:'', diff:2, pct:_qwPct(_lt)});
     }
     if (_slow.length > 0) {
       var _s2 = _slow[0].url||''; var _u2 = _s2.replace(/^https?:\/\//,'').split('/')[0] || 'site';
       var _pt = 'Optimiser la performance mobile de '+_u2;
-      _aw.push({title:_pt, impact:'+perf. mobile', roi:'+15% conv.', time:'2h', diff:3, pct:_qwPct(_pt)});
+      _aw.push({title:_pt, impact:'Score mobile actuel : '+_slow[0].speed+'/100', roi:'', time:'', diff:3, pct:_qwPct(_pt)});
     }
-    if (!_lseo.gbpConnected && !_lseo.domScore) {
+    if (_lseo.gbpConnected === false && _lseo.domScore == null) {
       var _gt = 'Connecter Google Business Profile';
-      _aw.push({title:_gt, impact:'+visibilité locale', roi:'+clients locaux', time:'15 min', diff:1, pct:_qwPct(_gt)});
+      _aw.push({title:_gt, impact:'Connexion GBP absente', roi:'', time:'', diff:1, pct:_qwPct(_gt)});
     }
-    var _genWins = [
-      {title:'Optimiser les balises meta description', impact:'+8% CTR',  roi: PREVIEW_MODE ? '+90€/mois'  : 'ROI estimé', time:'30 min', diff:1, pct:_qwPct('Optimiser les balises meta description')},
-      {title:'Ajouter le balisage Schema.org', impact:'+12% CTR', roi: PREVIEW_MODE ? '+110€/mois' : 'ROI estimé', time:'45 min', diff:2, pct:_qwPct('Ajouter le balisage Schema.org')},
-      {title:'Améliorer la vitesse de chargement mobile', impact:'+perf.', roi: PREVIEW_MODE ? '+150€/mois' : 'ROI estimé', time:'2h', diff:3, pct:_qwPct('Améliorer la vitesse de chargement mobile')},
-      {title:'Créer des pages de service géolocalisées', impact:'+trafic local', roi:'+clients', time:'3h', diff:3, pct:_qwPct('Créer des pages de service géolocalisées')},
-    ];
-    var _gi = 0;
-    while (_aw.length < 4 && _gi < _genWins.length) { _aw.push(_genWins[_gi++]); }
     return _aw;
   })();
   const diffColors = ['','var(--fp-success)','var(--fp-warning)','var(--fp-danger)'];
@@ -54217,7 +54195,7 @@ function renderGrowthCommandCenter() {
         effort: time,
         status: 'todo',
         source_type: 'quick-win',
-        ai_explanation: 'Quick Win généré automatiquement — action à fort ROI.',
+        ai_explanation: 'Action proposée à partir des signaux disponibles.',
         created_at: new Date().toISOString()
       };
       STATE.missions = (STATE.missions || []).concat([ms]);
@@ -54377,12 +54355,12 @@ function renderGrowthCommandCenter() {
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
         <div>
           <div class="fp-card-title">⚡ Quick Wins Engine</div>
-          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Actions haute valeur · ROI immédiat · Classées par impact</div>
+          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Actions issues des signaux observés · Priorisées par sévérité</div>
         </div>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')">Toutes les missions →</button>
       </div>
       <div class="fp-growth-wins-grid">
-        ${wins.map(w => `
+        ${wins.length ? wins.map(w => `
           <div class="fp-growth-win-card">
             <div class="fp-growth-win-hd">
               <span class="fp-growth-win-diff" style="background:${diffColors[w.diff]}1e;color:${diffColors[w.diff]}">● ${diffLabels[w.diff]}</span>
@@ -54398,7 +54376,7 @@ function renderGrowthCommandCenter() {
               ${w.pct===100?'✓ Terminé':w.pct>0?'Continuer →':'Commencer →'}
             </button>
           </div>
-        `).join('')}
+        `).join('') : '<div style="grid-column:1/-1;padding:18px;color:var(--fp-text-faint);font-size:12px">Aucune action Quick Win ne peut être confirmée avec les données disponibles.</div>'}
       </div>
     </div>
 
@@ -54676,27 +54654,26 @@ function renderGrowthCommandCenter() {
             } else if (avgSc < 70) {
               _msgs.push('Votre score est <strong>'+avgSc+'/100</strong>. Vous êtes en phase de croissance active. Exécutez les Quick Wins identifiés pour atteindre le niveau Expert (70+).');
             } else {
-              _msgs.push('Excellent score : <strong>'+avgSc+'/100</strong>. Vous êtes au niveau '+levelNames[level-1]+'. Concentrez-vous sur la conversion et le référencement local pour maximiser le ROI.');
+              _msgs.push('Excellent score : <strong>'+avgSc+'/100</strong>. Vous êtes au niveau '+levelNames[level-1]+'.');
             }
             // Message 2 : alerte critique ou performance
             if (_nDown>0) {
-              _msgs.push('⚠️ <strong>Alerte critique :</strong> '+_nDown+' monitor(s) DOWN en ce moment. Chaque heure d\'indisponibilité impact directement votre positionnement Google.');
+              _msgs.push('⚠️ <strong>Alerte critique :</strong> '+_nDown+' monitor(s) sont actuellement indisponibles.');
             } else if (_nSlow>0) {
-              _msgs.push('<strong>Performance mobile :</strong> '+_nSlow+' site(s) en dessous de 60/100. Chaque seconde de chargement gagnée vaut +7% de taux de conversion en moyenne.');
+              _msgs.push('<strong>Performance mobile :</strong> '+_nSlow+' audit(s) rapportent un score inférieur à 60/100.');
             } else if (_nLow>0) {
-              _msgs.push('<strong>'+_nLow+' site(s)</strong> avec des erreurs SEO critiques à corriger. Ces corrections peuvent générer +'+Math.round(_nLow*15)+'% de trafic organique supplémentaire.');
+              _msgs.push('<strong>'+_nLow+' audit(s)</strong> rapportent un score SEO inférieur à 70/100.');
             } else if (_mon.length>0) {
-              _msgs.push('Tous vos <strong>'+_mon.length+' monitor(s)</strong> sont opérationnels ✓. Maintenez un uptime > 99% pour protéger votre positionnement SEO.');
+              _msgs.push('Vos <strong>'+_mon.length+' monitor(s)</strong> ne signalent actuellement aucune panne.');
             }
             // Message 3 : priorité locale ou mots-clés
             if (_lseo.domScore && _lseo.domScore < 70) {
               _msgs.push('<strong>SEO Local :</strong> Score local de '+_lseo.domScore+'/100. Optimiser votre Google Business Profile et créer des pages locales peut significativement booster votre visibilité géolocalisée.');
             } else if ((STATE.keywordData?.keywords||[]).filter(function(k){return k.pos>3&&k.pos<=10;}).length>0) {
               var _ck = (STATE.keywordData?.keywords||[]).filter(function(k){return k.pos>3&&k.pos<=10;}).length;
-              _msgs.push('<strong>'+_ck+' mot(s)-clé(s)</strong> en positions 4–10 — très proches du top 3. Un contenu ciblé peut faire passer ces mots-clés en première page et doubler leur trafic.');
+              _msgs.push('<strong>'+_ck+' mot(s)-clé(s)</strong> sont observés en positions 4–10.');
             }
-            // Message 4 : projection
-            _msgs.push('En exécutant les <strong>'+wins.length+' Quick Win(s)</strong>identifiés, votre projection passe à<strong>'+(Math.round(_projStep*6)>=0?'+':'')+Math.round(_projStep*6)+' pts</strong> estimés sur les 30 prochains jours.');
+            if (wins.length > 0) _msgs.push('<strong>'+wins.length+' Quick Win(s)</strong> sont affichées à partir des signaux disponibles; aucun gain futur n’est estimé ici.');
             return _msgs.slice(0,4).map(function(msg,i){ return '<div class="fp-growth-strategy-msg" style="animation-delay:'+(i*0.12)+'s"><div style="font-size:12.5px;color:var(--fp-text-soft);line-height:1.6">'+msg+'</div></div>'; }).join('');
           })()}
         </div>
