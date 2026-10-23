@@ -17,6 +17,7 @@ import type { Request, Response, NextFunction } from "express";
 import { getSession, deleteSession }              from "../services/sessions.js";
 import { logger }                                from "../lib/logger.js";
 import { pool }                                  from "@workspace/db";
+import { apiKeysDisabled, isDeterministicPublicKey, PUBLIC_KEY_ROLE, SECRET_KEY_ROLE } from "../lib/api-keys.js";
 
 export interface OrgContext {
   orgId:    string;
@@ -130,7 +131,7 @@ async function _orgContext(req: Request, res: Response, next: NextFunction): Pro
     }
 
     // 3. FlowPoint API keys (fp_pub_ / fp_sec_) stored in user_prefs.settings
-    if (token.startsWith("fp_pub_") || token.startsWith("fp_sec_")) {
+    if ((token.startsWith("fp_pub_") || token.startsWith("fp_sec_")) && !apiKeysDisabled()) {
       const isSecret = token.startsWith("fp_sec_");
       const field    = isSecret ? "secretApiKey" : "publicApiKey";
       try {
@@ -138,14 +139,16 @@ async function _orgContext(req: Request, res: Response, next: NextFunction): Pro
           `SELECT org_id FROM user_prefs WHERE settings->>'${field}' = $1 LIMIT 1`,
           [token]
         );
-        if (result.rows.length > 0) {
-          const orgId = result.rows[0].org_id;
+        const orgId = result.rows[0]?.org_id;
+        // Legacy default public keys are no longer accepted.
+        if (orgId && !(!isSecret && isDeterministicPublicKey(token, orgId))) {
           req.orgId      = orgId;
           req.userId     = `apikey:${orgId}`;
           req.orgContext = {
             orgId,
             userId: `apikey:${orgId}`,
-            role:   isSecret ? "owner" : "member",
+            // A key never carries owner powers (billing, data purge, key rotation).
+            role:   isSecret ? SECRET_KEY_ROLE : PUBLIC_KEY_ROLE,
           };
           next();
           return;

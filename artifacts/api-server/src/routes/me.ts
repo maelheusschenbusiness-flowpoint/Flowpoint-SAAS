@@ -8,6 +8,7 @@ import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js"
 import { loadOrgData }                         from "../services/org-data.js";
 import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
+import { displayablePublicKey, isApiKeyPrincipal, redactApiKeys, stripApiKeyFields } from "../lib/api-keys.js";
 import {
   loadMeEntitlement,
   BillingDataUnavailableError,
@@ -167,13 +168,12 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       const firstName = dbData?.firstName || billingData?.firstName ||
         (req.orgContext?.email?.split("@")[0] ?? "User");
 
-      const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
-      // Allow regenerated key stored in user_prefs.settings to override the deterministic hash
+      // Only a regenerated (random) public key is shown, and only to owners/admins in an
+      // interactive session — never a legacy default key.
       const prefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
       const _storedPubKey = (prefsRow.rows[0] as Record<string,unknown>)?.settings as Record<string,unknown> | null;
-      const _publicApiKey = (typeof _storedPubKey?.publicApiKey === "string" && _storedPubKey.publicApiKey)
-        ? _storedPubKey.publicApiKey
-        : `fp_pub_${_pkHash}`;
+      const _canSeeKeys = ["owner", "admin"].includes(String(req.orgContext?.role ?? "")) && !isApiKeyPrincipal(req);
+      const _publicApiKey = _canSeeKeys ? displayablePublicKey(_storedPubKey, orgId) : null;
 
       // Normalise subscription status — include trialConsumedAt for pending_billing detection
       const _normStatusBase = normalizeSubscriptionStatus({
@@ -498,14 +498,11 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 
   const plan   = current?.plan ?? "standard";
   const limits = PLAN_LIMITS[plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
-  // Resolve publicApiKey — check user_prefs for a stored custom key, fall back to deterministic hash.
-  // This mirrors the GET /api/me logic so PATCH returns a consistent, valid publicApiKey.
+  // Same rule as GET /api/me: a regenerated public key only, to owners/admins only.
   const _patchPrefsRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
   const _patchStoredKey = (_patchPrefsRow.rows[0] as Record<string,unknown>)?.settings as Record<string,unknown> | null;
-  const _publicApiKey = (typeof _patchStoredKey?.publicApiKey === "string" && _patchStoredKey.publicApiKey)
-    ? _patchStoredKey.publicApiKey
-    : `fp_pub_${_pkHash}`;
+  const _canSeeKeys = ["owner", "admin"].includes(String(req.orgContext?.role ?? "")) && !isApiKeyPrincipal(req);
+  const _publicApiKey = _canSeeKeys ? displayablePublicKey(_patchStoredKey, orgId) : null;
 
   res.json({
     firstName:          current?.firstName ?? "",
@@ -609,7 +606,7 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
     const row = r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null };
     const timezone = await getActivityTimezone(db, orgId);
     const streak = await computeUserStreak(db, orgId, userId, timezone);
-    res.json({ ...row, streak: streak.current });
+    res.json({ ...row, settings: redactApiKeys(row.settings), streak: streak.current });
   } catch {
     res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
   }
@@ -647,7 +644,8 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
   if (settings && typeof settings === "object") {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { dataForSEO: _dfs, statusPageUrl: _spUrl, ...rest } = settings;
-    settings = rest;
+    // API keys are written by regeneration only.
+    settings = stripApiKeyFields(rest);
   }
 
   // Convenience: top-level statusPageUrl is merged into settings so the value
@@ -700,7 +698,7 @@ router.get("/me/settings", async (req: Request, res: Response): Promise<void> =>
   if (!orgId) return;
   try {
     const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    res.json(r.rows[0]?.settings ?? {});
+    res.json(redactApiKeys(r.rows[0]?.settings ?? {}));
   } catch {
     res.json({});
   }
@@ -739,7 +737,7 @@ router.patch("/me/settings", canAdmin, async (req: Request, res: Response): Prom
       [orgId, JSON.stringify(patch)]
     );
     const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    res.json(r.rows[0]?.settings ?? patch);
+    res.json(redactApiKeys(r.rows[0]?.settings ?? patch));
   } catch (err) {
     logger.error({ err, orgId }, "[PATCH /me/settings] upsert failed");
     res.status(500).json({ ok: false, error: "Failed to save settings" });
@@ -863,39 +861,23 @@ router.get("/me/storage", async (req: Request, res: Response): Promise<void> => 
 });
 
 // ── GET /api/settings/api-keys ───────────────────────────────────────────────
-router.get("/settings/api-keys", async (req: Request, res: Response): Promise<void> => {
+// Owners and admins only, interactive sessions only (API keys are refused upstream by
+// requireAuth). The secret key value is never returned here: it is shown once, by
+// POST /settings/api-keys/regenerate. No key is created implicitly.
+router.get("/settings/api-keys", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-
-  // API-key principals (fp_pub_ / fp_sec_) must never see the raw secret key value.
-  // Only interactive sessions (browser login) may retrieve it.
-  const isApiKeyPrincipal = (req.orgContext?.userId ?? "").startsWith("apikey:");
-
+  if (isApiKeyPrincipal(req)) {
+    res.status(403).json({ error: "Forbidden: API keys cannot read API keys" });
+    return;
+  }
   try {
     const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
-    const prefs = (r.rows[0] as Record<string, unknown>)?.settings as Record<string, string> | null;
-    const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
-    const publicKey  = prefs?.publicApiKey  ?? `fp_pub_${_pkHash}`;
-    const secretKey  = prefs?.secretApiKey  ?? null;
-
-    // Auto-persist the deterministic public key if it hasn't been stored yet.
-    // This ensures it is findable by orgContext on future API requests.
-    if (!prefs?.publicApiKey) {
-      orgDb(req)(
-        `INSERT INTO user_prefs (org_id, settings, updated_at)
-         VALUES ($1, jsonb_build_object('publicApiKey', $2::text), now())
-         ON CONFLICT (org_id) DO UPDATE SET
-           settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || jsonb_build_object('publicApiKey', $2::text),
-           updated_at = now()`,
-        [orgId, publicKey]
-      ).catch((err: unknown) => logger.warn({ err }, "[api-keys] auto-persist publicApiKey failed"));
-    }
-
+    const prefs = (r.rows[0] as Record<string, unknown>)?.settings as Record<string, unknown> | null;
     res.json({
-      publicKey,
-      // Never expose the actual secret to API-key callers — they already have their own credential.
-      secretKey:  isApiKeyPrincipal ? null : secretKey,
-      hasSecret:  !!secretKey,
+      publicKey:          displayablePublicKey(prefs, orgId),
+      secretKey:          null,
+      hasSecret:          typeof prefs?.secretApiKey === "string" && !!prefs.secretApiKey,
       publicKeyCreatedAt: prefs?.publicApiKeyCreatedAt ?? null,
       secretKeyCreatedAt: prefs?.secretApiKeyCreatedAt ?? null,
     });
