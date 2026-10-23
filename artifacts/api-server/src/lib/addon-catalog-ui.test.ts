@@ -110,12 +110,12 @@ describe("add-on catalogue UI commercial gates", () => {
     );
   });
 
-  it("keeps the UI button and backend authorization aligned for all 35 non-protected add-ons on all plans", () => {
+  it("keeps the UI button and backend authorization aligned for all 36 non-protected add-ons on all plans", () => {
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key),
     );
-    expect(keys).toHaveLength(35);
+    expect(keys).toHaveLength(36);
 
     for (const key of keys) {
       const removed = REMOVED_ADDONS.has(key);
@@ -150,7 +150,7 @@ describe("add-on catalogue UI commercial gates", () => {
     }
   });
 
-  it("publishes the exact 35-key plan matrix consumed by the UI and omits retired offers", async () => {
+  it("publishes the exact 36-key plan matrix consumed by the UI and omits retired offers", async () => {
     const app = express();
     app.use(plansRouter);
     const response = await request(app).get("/plans/catalog").expect(200);
@@ -165,7 +165,7 @@ describe("add-on catalogue UI commercial gates", () => {
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key),
     );
-    expect(keys).toHaveLength(35);
+    expect(keys).toHaveLength(36);
     expect(entries.has("prioritySupport")).toBe(false);
 
     for (const key of keys) {
