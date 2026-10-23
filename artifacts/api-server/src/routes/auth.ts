@@ -15,6 +15,7 @@ import { createSession, deleteSession, getSession, invalidateAllSessions, SESSIO
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
+import { captureTestMail } from "../services/mailer.js";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { getStripeKey } from "../services/stripe-factory.js";
@@ -440,11 +441,6 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
   const smtpPass  = process.env["SMTP_PASS"];
   const smtpHost  = process.env["SMTP_HOST"];
 
-  if (!resendKey && (!smtpPass || !smtpHost)) {
-    logger.warn("[Auth] No complete email transport (Resend, or SMTP_HOST + SMTP_PASS) — cannot send magic link");
-    throw new Error("EMAIL_TRANSPORT_MISSING");
-  }
-
   // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var.
   // Do NOT fall back to ALERT_EMAIL_FROM: that variable may hold a domain that is
   // not verified in Resend, causing a synchronous "Invalid from field" error.
@@ -583,6 +579,25 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
 
 </body>
 </html>`;
+
+  // A configured test mailbox is a strict, local-only transport. Fail closed if
+  // its safety guards do not pass; never fall through to Resend or SMTP.
+  if (process.env["TEST_MAIL_DIR"]) {
+    const captured = await captureTestMail({
+      to: email,
+      subject: _emailSubject,
+      html: _emailHtml,
+      from: fromEmail,
+      tag: "magic-link",
+    });
+    if (!captured) throw new Error("TEST_MAILER_NOT_ENABLED");
+    return;
+  }
+
+  if (!resendKey && (!smtpPass || !smtpHost)) {
+    logger.warn("[Auth] No complete email transport (Resend, or SMTP_HOST + SMTP_PASS) — cannot send magic link");
+    throw new Error("EMAIL_TRANSPORT_MISSING");
+  }
 
   if (resendKey) {
     // ── Resend SDK path ──────────────────────────────────────────────────────
@@ -766,12 +781,13 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
 
   const smtpConfigured = !!(process.env["SMTP_HOST"] && process.env["SMTP_PASS"]);
-  if (resendKey || smtpConfigured) {
+  const testCaptureRequested = Boolean(process.env["TEST_MAIL_DIR"]);
+  if (resendKey || smtpConfigured || testCaptureRequested) {
     try {
       await sendMagicEmail(email, verifyPath);
       logger.info({ email }, "[Auth] login-request: magic link sent successfully");
       // In dev workspace always include debugLink so Playwright tests can auth
-      if (isDevWorkspace) {
+      if (isDevWorkspace || process.env["TEST_MAIL_DIR"]) {
         res.json({ ok: true, debugLink: verifyPath, message: "Lien de connexion envoyé par email." });
       } else {
         res.json({ ok: true, message: "Lien de connexion envoyé par email." });
