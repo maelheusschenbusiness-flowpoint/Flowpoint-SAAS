@@ -53,6 +53,11 @@ export async function getNearbyPlaces(lat: number, lng: number, type: string, ra
 
     const res = await fetchBorne(url, {}, DELAIS.cartographie);
     const data = await res.json() as Record<string, unknown>;
+    const status = String(data["status"] ?? "");
+    if (status && status !== "OK" && status !== "ZERO_RESULTS") {
+      const detail = typeof data["error_message"] === "string" ? `: ${data["error_message"]}` : "";
+      throw new Error(`Google Places search failed (${status})${detail}`);
+    }
     const pageResults = (data["results"] as unknown[]) ?? [];
     allResults.push(...pageResults);
 
@@ -155,19 +160,8 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
         lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
       });
     }
-  } else if (EFF_RADIUS > 15000) {
-    // 15–50 km — 4-point grid (centre + 3 surrounding at 120° for triangular coverage)
-    // Ring at 60% of EFF_RADIUS gives comfortable overlap between search circles.
-    const RING_M = EFF_RADIUS * 0.6;
-    for (let i = 0; i < 3; i++) {
-      const ang = (i * 2 * Math.PI) / 3; // 0°, 120°, 240°
-      centres.push({
-        lat: lat + (RING_M / 111_000) * Math.sin(ang),
-        lng: lng + (RING_M / (111_000 * cosLat)) * Math.cos(ang),
-      });
-    }
   }
-  // ≤15 km — single centre; pagination inside getNearbyPlaces gives ≤60 results
+  // ≤50 km — one centre is sufficient; pagination inside getNearbyPlaces gives ≤60 results.
 
   // Each centre uses the actual requested radius (capped to 50 km per Google limit)
   const SEARCH_RADIUS_PER_CENTRE = Math.min(50000, EFF_RADIUS);
@@ -177,12 +171,13 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
   // (with the mandatory 2 s inter-page delay). This keeps total latency bounded by
   // the slowest centre (~4 s for 3 pages) rather than multiplying across all centres.
   await Promise.all(centres.map(async (c) => {
-    let raw: Array<Record<string, unknown>>;
-    try {
-      raw = await getNearbyPlaces(c.lat, c.lng, "establishment", SEARCH_RADIUS_PER_CENTRE, keyword) as Array<Record<string, unknown>>;
-    } catch {
-      raw = [];
-    }
+    const raw = await getNearbyPlaces(
+      c.lat,
+      c.lng,
+      "establishment",
+      SEARCH_RADIUS_PER_CENTRE,
+      keyword,
+    ) as Array<Record<string, unknown>>;
     for (const p of raw) {
       const pid = String(p["place_id"] ?? "");
       if (!pid || seen.has(pid)) continue;
@@ -216,6 +211,14 @@ export async function analyzeCompetitors(lat: number, lng: number, keyword: stri
   return Array.from(seen.values()).sort(
     (a, b) => (a["distanceM"] as number) - (b["distanceM"] as number),
   );
+}
+
+/** Prefer an explicit Maps search term; otherwise use the organization's activity. */
+export function resolveMapsSearchKeyword(keyword: unknown, industry: unknown): string | null {
+  const explicit = typeof keyword === "string" ? keyword.trim() : "";
+  if (explicit) return explicit;
+  const activity = typeof industry === "string" ? industry.trim() : "";
+  return activity || null;
 }
 
 /**
