@@ -422,11 +422,11 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  * When an add-on ships, remove it from this set and add a Stripe price.
  */
 export const COMING_SOON_ADDONS = new Set<string>([
-  // ── No requireAddon gate in any route ─────────────────────────────────────
-  // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
-  // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
+  // The Better Stack SLA endpoint exists and enforces requireAddon; the add-on
+  // remains unavailable for purchase pending real QA certification.
   "slaMonitoring",
-  // globalMonitoring: no routes exist.
+  // /betterstack/global-overview summarizes configured Better Stack monitor
+  // regions only; it does not perform independent regional checks.
   "globalMonitoring",
   // aiContentStrategist: SEO Content Decay Radar route exists for test/simulation,
   // but the add-on remains unavailable for purchase until validated.
