@@ -16,6 +16,7 @@ export default defineConfig({
        "src/routes/admin-test-session-postgres.test.ts",
       "src/services/keyword-domination.test.ts",
        "src/routes/keyword-domination-postgres.test.ts",
+      "src/services/keyword-engine-sync.test.ts",
        "src/routes/ab-testing-postgres.test.ts",
       "src/services/global-monitoring.test.ts",
        "src/services/global-monitoring-postgres.test.ts",
