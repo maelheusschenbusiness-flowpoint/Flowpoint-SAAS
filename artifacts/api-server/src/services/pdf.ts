@@ -8,6 +8,17 @@ interface MeetingNote { title: string; date: string; notes: string; site?: strin
 interface MonitorRow { name: string; url?: string; status?: string; uptime?: number | null; }
 interface MissionRow { title: string; status?: string; priority?: string; dueDate?: string | null; }
 
+export function readMeasuredMetric(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function formatMeasuredMetric(value: unknown, suffix = ""): string {
+  const number = readMeasuredMetric(value);
+  return number === null ? "—" : `${number}${suffix}`;
+}
+
 // ── Logo fetch (http→buffer, SSRF-hardened) ──────────────────────────────────
 // The logo URL is user-controlled config, so this fetch must never reach
 // loopback/private/internal addresses (same rules as monitor URL validation),
@@ -197,12 +208,16 @@ export async function streamReportPdf(
       const cardW  = (CONTENT_W - 12) / 3;
       const cardH  = 56;
       const startY = doc.y;
-      const scoreColor = audit.score >= 70 ? GREEN : audit.score >= 50 ? AMBER : RED;
+      const score = readMeasuredMetric(audit.score);
+      const speed = readMeasuredMetric(audit.speed);
+      const issues = readMeasuredMetric(audit.issues);
+      const scoreColor = score === null ? GRAY : score >= 70 ? GREEN : score >= 50 ? AMBER : RED;
+      const speedColor = speed === null ? GRAY : speed >= 70 ? GREEN : AMBER;
 
-      kpiCard("Score SEO Global", `${audit.score}/100`, scoreColor, MARGIN, startY, cardW, cardH);
-      kpiCard("Vitesse Desktop", `${audit.speed ?? 0}/100`, audit.speed != null && audit.speed >= 70 ? GREEN : AMBER,
+      kpiCard("Score SEO Global", formatMeasuredMetric(score, "/100"), scoreColor, MARGIN, startY, cardW, cardH);
+      kpiCard("Vitesse Desktop", formatMeasuredMetric(speed, "/100"), speedColor,
         MARGIN + cardW + 6, startY, cardW, cardH);
-      kpiCard("Problèmes détectés", String(audit.issues ?? 0), (audit.issues ?? 0) === 0 ? GREEN : RED,
+      kpiCard("Problèmes détectés", formatMeasuredMetric(issues), issues === null ? GRAY : issues === 0 ? GREEN : RED,
         MARGIN + (cardW + 6) * 2, startY, cardW, cardH);
 
       doc.y = startY + cardH + 12;
@@ -294,22 +309,22 @@ export async function streamReportPdf(
     // Recommendations derived from the audited data only — never fabricated claims (#437).
     const recs: Array<{ priority: string; title: string; desc: string }> = [];
     if (audit) {
-      const speedScore = Number(audit.speed ?? 0);
-      const globalScore = Number(audit.score ?? 0);
-      const issueCount = Number(audit.issues ?? 0);
-      if (speedScore > 0 && speedScore < 70) {
+      const speedScore = readMeasuredMetric(audit.speed);
+      const globalScore = readMeasuredMetric(audit.score);
+      const issueCount = readMeasuredMetric(audit.issues);
+      if (speedScore !== null && speedScore < 70) {
         recs.push({ priority: speedScore < 50 ? "CRITIQUE" : "HAUTE", title: "Améliorer la performance de chargement",
           desc: `Le score performance mesuré est de ${speedScore}/100 sur ${audit.url}. Compresser les images, activer le lazy loading et réduire le JavaScript bloquant amélioreront les Core Web Vitals.` });
       }
-      if (globalScore > 0 && globalScore < 70) {
+      if (globalScore !== null && globalScore < 70) {
         recs.push({ priority: globalScore < 50 ? "CRITIQUE" : "HAUTE", title: "Corriger les fondamentaux SEO",
           desc: `Le score SEO global mesuré est de ${globalScore}/100. Prioriser les corrections listées dans l'audit pour repasser au-dessus de 70/100.` });
       }
-      if (issueCount > 0) {
+      if (issueCount !== null && issueCount > 0) {
         recs.push({ priority: issueCount > 5 ? "HAUTE" : "MOYENNE", title: `Traiter les ${issueCount} problème${issueCount > 1 ? "s" : ""} détecté${issueCount > 1 ? "s" : ""}`,
           desc: `L'audit a détecté ${issueCount} problème${issueCount > 1 ? "s" : ""} critique${issueCount > 1 ? "s" : ""} (mobile + desktop). Le détail est disponible dans la page Audits du tableau de bord.` });
       }
-      if (recs.length === 0 && globalScore >= 70) {
+      if (recs.length === 0 && globalScore !== null && globalScore >= 70) {
         recs.push({ priority: "MOYENNE", title: "Maintenir la trajectoire",
           desc: `Score SEO mesuré : ${globalScore}/100. Poursuivre le suivi planifié pour détecter toute régression (Core Web Vitals, indexation, contenu).` });
       }
