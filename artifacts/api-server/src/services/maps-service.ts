@@ -131,13 +131,11 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
  *
  * Proof of complete coverage
  * ──────────────────────────
- * For a disk of radius R covered by circles of radius r = 50 km, the ring
- * radius is chosen such that the worst-case point (on the R perimeter, 30°
- * from the nearest ring point) is exactly r from that ring point:
- *   ring = R × √3/2  →  d² = ring² + R² − 2·ring·R·cos30° = R²·(3/4 + 1 − 3/2) = 0 ≠ r²
- * Wait — actual derivation: ring = R × √3/2, cos30° = √3/2:
- *   d² = (R√3/2)² + R² − 2·(R√3/2)·R·(√3/2)
- *      = 3R²/4 + R² − 3R²/2 = 4R²/4 − 6R²/4 + 3R²/4 = R²/4  →  d = R/2 = 50 km when R=100 km ✓
+ * For a disk of radius R=100 km, six ring centres at R × √3/2 and 60°
+ * intervals leave the worst boundary point 30° from its nearest centre:
+ *   d² = R² + 3R²/4 − 2·(R√3/2)·R·(√3/2) = R²/4
+ *   d = R/2 = 50 km. The centre search covers the inner disk and overlaps
+ * each ring search, so there are no gaps.
  * The 6-fold symmetry (60° steps) means every point inside the disk is within
  * 50 km of at least one of the 7 centres — no gaps anywhere, including diagonals.
  */
