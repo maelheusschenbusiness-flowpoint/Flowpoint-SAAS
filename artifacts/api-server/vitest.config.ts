@@ -290,6 +290,7 @@ export default defineConfig({
       "src/services/quota-gate.test.ts",
       "src/services/workflow-schedule-cron.test.ts",
       "src/services/workflow-schedule-cron-db.test.ts",
+      "src/services/automation-service-awl-report-postgres.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.

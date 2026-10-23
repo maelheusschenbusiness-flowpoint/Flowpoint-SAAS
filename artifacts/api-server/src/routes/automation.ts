@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { getWorkflowsData, executeWorkflow } from "../services/automation-service.js";
 import { store } from "../services/store.js";
 import { requireAddon } from "../middlewares/planGate.js";
+import { hasAddonEntitlementForOrg } from "../services/addon-entitlement.js";
+import { isAWLReportWorkflow } from "../services/awl-weekly-report.js";
 
 const router = Router();
 
@@ -63,6 +65,15 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
   if (!name || !triggerType || !actions) {
     res.status(400).json({ error: "name, triggerType, actions required" }); return;
   }
+  if (isAWLReportWorkflow({ triggerConfig, actions })) {
+    try {
+      if (!(await hasAddonEntitlementForOrg(org(req), "aiWorkspaceLaunch"))) {
+        res.status(402).json({ code: "ADDON_REQUIRED", addonKey: "aiWorkspaceLaunch" }); return;
+      }
+    } catch {
+      res.status(503).json({ error: "Subscription status unavailable. Please try again." }); return;
+    }
+  }
   const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     await db(req)(
@@ -85,6 +96,30 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
 
 router.patch("/automation/workflows/:id", async (req: Request, res: Response) => {
   const { enabled, name, triggerConfig, actions } = req.body ?? {};
+  const orgId = org(req);
+  let existing: Record<string, unknown> | undefined;
+  try {
+    const owned = await db(req)(
+      `SELECT id, trigger_config, actions FROM automation_workflows WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, orgId],
+    );
+    existing = owned.rows[0];
+  } catch {
+    res.status(503).json({ error: "Workflow indisponible." }); return;
+  }
+  if (!existing) { res.status(404).json({ error: "Workflow not found" }); return; }
+  if (isAWLReportWorkflow({
+    triggerConfig: triggerConfig ?? existing["trigger_config"],
+    actions: actions ?? existing["actions"],
+  })) {
+    try {
+      if (!(await hasAddonEntitlementForOrg(orgId, "aiWorkspaceLaunch"))) {
+        res.status(402).json({ code: "ADDON_REQUIRED", addonKey: "aiWorkspaceLaunch" }); return;
+      }
+    } catch {
+      res.status(503).json({ error: "Subscription status unavailable. Please try again." }); return;
+    }
+  }
   const setClauses: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
 
@@ -145,6 +180,15 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
 
 router.delete("/automation/workflows/:id", async (req: Request, res: Response) => {
   try {
+    const existing = await db(req)(
+      `SELECT trigger_config, actions FROM automation_workflows WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [req.params.id, org(req)],
+    );
+    if (!existing.rows[0]) { res.status(404).json({ error: "Workflow not found" }); return; }
+    if (isAWLReportWorkflow({ triggerConfig: existing.rows[0]["trigger_config"], actions: existing.rows[0]["actions"] }) &&
+        !(await hasAddonEntitlementForOrg(org(req), "aiWorkspaceLaunch"))) {
+      res.status(402).json({ code: "ADDON_REQUIRED", addonKey: "aiWorkspaceLaunch" }); return;
+    }
     await db(req)(`DELETE FROM automation_workflows WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
   } catch {

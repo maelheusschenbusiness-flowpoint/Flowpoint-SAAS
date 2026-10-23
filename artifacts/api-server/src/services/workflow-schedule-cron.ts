@@ -4,6 +4,8 @@ import { pool } from "@workspace/db";
 import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 import { executeWorkflow } from "./automation-service.js";
+import { hasAddonEntitlementForOrg } from "./addon-entitlement.js";
+import { isAWLReportWorkflow } from "./awl-weekly-report.js";
 
 type WorkflowRow = {
   id: string;
@@ -72,6 +74,7 @@ export async function claimScheduledWorkflowRun(
   runId: string,
   slot: Date,
   db: Queryable = pool,
+  retryFailedAWL = false,
 ): Promise<boolean> {
   const claim = await db.query(
     `INSERT INTO workflow_runs
@@ -80,6 +83,7 @@ export async function claimScheduledWorkflowRun(
        jsonb_build_object('scheduler', jsonb_build_object('slot', $4::text, 'attempt', 1)))
      ON CONFLICT (id) DO UPDATE
        SET status='running', started_at=NOW(), ended_at=NULL, error=NULL,
+            steps_failed=CASE WHEN $5::boolean THEN 0 ELSE workflow_runs.steps_failed END,
            output=jsonb_set(
              COALESCE(workflow_runs.output, '{}'::jsonb),
              '{scheduler,attempt}',
@@ -88,10 +92,13 @@ export async function claimScheduledWorkflowRun(
            )
      WHERE workflow_runs.workflow_id=EXCLUDED.workflow_id
        AND workflow_runs.org_id=EXCLUDED.org_id
-       AND workflow_runs.status='running'
-       AND workflow_runs.started_at < NOW() - INTERVAL '5 minutes'
+        AND (
+          (workflow_runs.status='running' AND workflow_runs.started_at < NOW() - INTERVAL '5 minutes')
+          OR ($5::boolean AND workflow_runs.status='failed'
+              AND COALESCE(NULLIF(workflow_runs.output #>> '{scheduler,attempt}', '')::integer, 1) < 3)
+        )
      RETURNING id`,
-    [runId, workflowId, orgId, slot.toISOString()],
+    [runId, workflowId, orgId, slot.toISOString(), retryFailedAWL],
   );
   return (claim.rowCount ?? claim.rows.length) > 0;
 }
@@ -106,7 +113,16 @@ export async function runScheduledWorkflow(
   const runId = scheduledWorkflowRunId(orgId, workflowId, slot);
   try {
     if (!(await hasWorkflowEntitlement(orgId))) return "ineligible";
-    if (!(await claimScheduledWorkflowRun(workflowId, orgId, runId, slot))) return "duplicate";
+    const workflow = await pool.query<{ trigger_config: unknown; actions: unknown; enabled: boolean; trigger_type: string }>(
+      `SELECT trigger_config, actions, enabled, trigger_type FROM automation_workflows
+        WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [workflowId, orgId],
+    );
+    const row = workflow.rows[0];
+    if (!row?.enabled || row.trigger_type !== "schedule") return "ineligible";
+    const awlWorkflow = isAWLReportWorkflow({ triggerConfig: row.trigger_config, actions: row.actions });
+    if (awlWorkflow && !(await hasAddonEntitlementForOrg(orgId, "aiWorkspaceLaunch"))) return "ineligible";
+    if (!(await claimScheduledWorkflowRun(workflowId, orgId, runId, slot, pool, awlWorkflow))) return "duplicate";
     // Keep the existing lease fresh during long-running actions. If this process
     // dies, the lease expires and another instance can reclaim the same run.
     const heartbeat = setInterval(() => {
@@ -140,8 +156,12 @@ async function recoverInterruptedRuns(): Promise<number> {
        FROM workflow_runs r
        JOIN automation_workflows w
          ON w.id=r.workflow_id AND w.org_id=r.org_id
-      WHERE r.status='running'
-        AND r.started_at < NOW() - INTERVAL '5 minutes'
+       WHERE (
+           (r.status='running' AND r.started_at < NOW() - INTERVAL '5 minutes')
+           OR (r.status='failed'
+               AND w.trigger_config->>'source'='ai_workspace_launch'
+               AND COALESCE(NULLIF(r.output #>> '{scheduler,attempt}', '')::integer, 1) < 3)
+         )
         AND r.output #>> '{scheduler,slot}' IS NOT NULL
         AND w.enabled=true AND w.trigger_type='schedule'
       ORDER BY r.started_at ASC

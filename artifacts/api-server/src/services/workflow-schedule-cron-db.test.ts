@@ -91,4 +91,37 @@ describeIsolatedCi("scheduled workflow PostgreSQL claims (isolated CI database o
     );
     expect(await claimScheduledWorkflowRun("wf-retry", "org-a", runId, slot, clientA)).toBe(true);
   });
+
+  it("retries a failed AWL run at most twice and clears the failed step count", async () => {
+    const slot = new Date("2026-10-20T08:33:00.000Z");
+    const runId = scheduledWorkflowRunId("org-a", "wf-awl-retry", slot);
+    expect(await claimScheduledWorkflowRun("wf-awl-retry", "org-a", runId, slot, clientA, true)).toBe(true);
+    await clientA.query(
+      `UPDATE workflow_runs SET status='failed', steps_failed=1,
+        output=jsonb_set(output, '{scheduler,attempt}', '1'::jsonb) WHERE id=$1`,
+      [runId],
+    );
+    expect(await claimScheduledWorkflowRun("wf-awl-retry", "org-a", runId, slot, clientB, true)).toBe(true);
+    let row = await clientA.query(
+      `SELECT status, steps_failed, output #>> '{scheduler,attempt}' AS attempt
+         FROM workflow_runs WHERE id=$1`,
+      [runId],
+    );
+    expect(row.rows[0]).toMatchObject({ status: "running", steps_failed: 0, attempt: "2" });
+
+    await clientA.query(
+      `UPDATE workflow_runs SET status='failed', steps_failed=1,
+        output=jsonb_set(output, '{scheduler,attempt}', '3'::jsonb) WHERE id=$1`,
+      [runId],
+    );
+    expect(await claimScheduledWorkflowRun("wf-awl-retry", "org-a", runId, slot, clientB, true)).toBe(false);
+  });
+
+  it("does not allow a failed non-AWL workflow to bypass the normal single-run claim", async () => {
+    const slot = new Date("2026-10-20T08:34:00.000Z");
+    const runId = scheduledWorkflowRunId("org-a", "wf-normal-failure", slot);
+    expect(await claimScheduledWorkflowRun("wf-normal-failure", "org-a", runId, slot, clientA)).toBe(true);
+    await clientA.query(`UPDATE workflow_runs SET status='failed' WHERE id=$1`, [runId]);
+    expect(await claimScheduledWorkflowRun("wf-normal-failure", "org-a", runId, slot, clientB)).toBe(false);
+  });
 });

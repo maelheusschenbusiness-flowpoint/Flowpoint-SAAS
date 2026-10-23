@@ -43,6 +43,9 @@ describe("scheduled AI workflows", () => {
   it("lets only one of two instances claim the same scheduled minute", async () => {
     const claimed = new Set<string>();
     query.mockImplementation(async (sql: string, values: unknown[]) => {
+      if (String(sql).includes("SELECT trigger_config, actions, enabled, trigger_type")) {
+        return { rows: [{ trigger_config: {}, actions: [], enabled: true, trigger_type: "schedule" }], rowCount: 1 };
+      }
       if (String(sql).includes("AS addon_active")) {
         return { rows: [{ plan: "standard", addon_active: true }], rowCount: 1 };
       }
@@ -77,6 +80,9 @@ describe("scheduled AI workflows", () => {
     const slot = "2026-10-20T08:30:00.000Z";
     query.mockImplementation(async (sql: string, values: unknown[]) => {
       const text = String(sql);
+      if (text.includes("SELECT trigger_config, actions, enabled, trigger_type")) {
+        return { rows: [{ trigger_config: {}, actions: [], enabled: true, trigger_type: "schedule" }], rowCount: 1 };
+      }
       if (text.includes("FROM automation_workflows") && text.includes("trigger_type='schedule'")) {
         return { rows: [], rowCount: 0 };
       }
