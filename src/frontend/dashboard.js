@@ -61515,9 +61515,10 @@ function renderGrowthKeywords() {
         <div style="padding:12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
           <a href="${escHtml(item.page)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:var(--fp-accent);font-size:12px;overflow-wrap:anywhere">${escHtml(item.page)}</a>
           <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:11px;color:var(--fp-text-muted)">
-            <span>${Number(item.lostClicks) > 0 ? `−${Number(item.lostClicks)} clics` : 'Positions en baisse'}</span>
+            <span>Clics : ${Number(item.previous?.clicks).toLocaleString(getLocale())} → ${Number(item.current?.clicks).toLocaleString(getLocale())}${Number(item.lostClicks) > 0 ? ` (−${Number(item.lostClicks).toLocaleString(getLocale())})` : ''}</span>
+            <span>Impressions : ${Number(item.previous?.impressions).toLocaleString(getLocale())} → ${Number(item.current?.impressions).toLocaleString(getLocale())}${Number(item.lostImpressions) > 0 ? ` (−${Number(item.lostImpressions).toLocaleString(getLocale())})` : ''}</span>
+            <span>CTR : ${(Number(item.previous?.ctr) * 100).toLocaleString(getLocale(), { maximumFractionDigits: 2 })}% → ${(Number(item.current?.ctr) * 100).toLocaleString(getLocale(), { maximumFractionDigits: 2 })}%</span>
             <span>Position : ${Number(item.previous?.position).toFixed(1)} → ${Number(item.current?.position).toFixed(1)}</span>
-            <span>Impressions : ${Number(item.previous?.impressions).toLocaleString(getLocale())} → ${Number(item.current?.impressions).toLocaleString(getLocale())}</span>
           </div>
           <div style="font-size:11px;color:var(--fp-text)">${escHtml(item.recommendedAction || '')}</div>
           <div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" data-ai-content-strategy data-ai-content-strategy-page="${escHtml(item.page)}">Générer les recommandations IA</button><div data-ai-content-strategy-result></div></div>

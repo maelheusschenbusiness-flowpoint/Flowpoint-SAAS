@@ -22,10 +22,37 @@ describe("SEO content decay opportunities", () => {
     expect(results[0]).toMatchObject({
       page: "https://example.com/guide",
       lostClicks: 40,
+      lostImpressions: 100,
+      ctrDrop: expect.any(Number),
       positionDrop: 4,
-      reasons: ["clicks_declining", "ranking_declining"],
+      reasons: ["clicks_declining", "ctr_declining", "ranking_declining"],
     });
     expect(results[0].priorityScore).toBeGreaterThan(results[1].priorityScore);
+  });
+
+  it("detects impression and CTR losses separately and reports their measured deltas", () => {
+    const rows = [
+      row("https://example.com/demand", "2026-09-10", 100, 1000, 5),
+      row("https://example.com/demand", "2026-10-10", 110, 700, 5),
+      row("https://example.com/snippet", "2026-09-10", 100, 1000, 5),
+      row("https://example.com/snippet", "2026-10-10", 120, 1500, 5),
+    ];
+
+    const results = findContentDecayOpportunities(rows, NOW);
+    const demand = results.find(item => item.page.endsWith("/demand"));
+    const snippet = results.find(item => item.page.endsWith("/snippet"));
+
+    expect(demand).toMatchObject({
+      lostClicks: 0,
+      lostImpressions: 300,
+      reasons: ["impressions_declining"],
+    });
+    expect(snippet).toMatchObject({
+      lostClicks: 0,
+      lostImpressions: 0,
+      ctrDrop: 0.02,
+      reasons: ["ctr_declining"],
+    });
   });
 
   it("ignores low-volume pages and rows outside the comparison window", () => {

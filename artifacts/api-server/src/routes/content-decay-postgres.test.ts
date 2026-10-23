@@ -85,7 +85,10 @@ describe("Content Decay Radar PostgreSQL integration (synthetic GSC fixtures)", 
       page: pageA,
       previous: { clicks: 100, impressions: 1000 },
       current: { clicks: 50, impressions: 900 },
-      reasons: ["clicks_declining", "ranking_declining"],
+      lostClicks: 50,
+      lostImpressions: 100,
+      ctrDrop: expect.any(Number),
+      reasons: ["clicks_declining", "ctr_declining", "ranking_declining"],
     });
     expect(response.body.opportunities.some((item: { page: string }) => item.page === pageB)).toBe(false);
   });
