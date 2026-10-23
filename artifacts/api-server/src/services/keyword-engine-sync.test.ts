@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   isConfigured: vi.fn(),
   checkQuota: vi.fn(),
+  refundQuota: vi.fn(),
   dfsRequest: vi.fn(),
 }));
 
@@ -18,6 +19,7 @@ vi.mock("../lib/logger.js", () => ({
 vi.mock("./dataforseo-service.js", () => ({
   isDataForSEOConfigured: mocks.isConfigured,
   checkAndIncrementQuota: mocks.checkQuota,
+  rembourserQuota: mocks.refundQuota,
   dfsRequest: mocks.dfsRequest,
 }));
 vi.mock("./ai-prefs.js", () => ({
@@ -76,6 +78,35 @@ describe("syncOrgRankings tenant scoping", () => {
     );
     expect(history?.[0]).toContain("WHERE id=$2 AND org_id=$1");
     expect(history?.[1]).toEqual([ORG_ID, "keyword-owned", 4]);
+    expect(mocks.refundQuota).not.toHaveBeenCalled();
     expect(mocks.release).toHaveBeenCalledOnce();
+  });
+
+  it("refunds the reserved batch quota when DataForSEO rejects the request", async () => {
+    mocks.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT website FROM org_settings")) {
+        return { rows: [{ website: "https://owned.example" }] };
+      }
+      if (sql.includes("FROM tracked_keywords") && sql.includes("ORDER BY COALESCE(last_sync_at")) {
+        return {
+          rows: [
+            { id: "keyword-owned-1", keyword: "owned keyword one", location: "Belgium", device: "desktop", url: "https://owned.example/one" },
+            { id: "keyword-owned-2", keyword: "owned keyword two", location: "Belgium", device: "desktop", url: "https://owned.example/two" },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    mocks.dfsRequest.mockRejectedValue(new Error("DataForSEO 503"));
+
+    const result = await syncOrgRankings(ORG_ID);
+
+    expect(result).toEqual({ configured: true, synced: 0 });
+    expect(mocks.checkQuota).toHaveBeenCalledWith(ORG_ID, 2);
+    expect(mocks.refundQuota).toHaveBeenCalledOnce();
+    expect(mocks.refundQuota).toHaveBeenCalledWith(ORG_ID, 2);
+    expect(mocks.query.mock.calls.some(([sql]) =>
+      String(sql).includes("UPDATE tracked_keywords SET") || String(sql).includes("INSERT INTO keyword_history"),
+    )).toBe(false);
   });
 });
