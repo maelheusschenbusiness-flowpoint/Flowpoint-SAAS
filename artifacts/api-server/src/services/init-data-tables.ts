@@ -3074,6 +3074,16 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE INDEX IF NOT EXISTS google_locations_org_idx ON google_locations(org_id)`);
       await applyTenantRls("google_locations");
 
+      // ── GBP Performance & Leads configuration — per-organization settings ───
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS gbp_performance_settings (
+          org_id      TEXT        PRIMARY KEY,
+          settings    JSONB       NOT NULL DEFAULT '{"locationId":null,"periodDays":30,"goals":{},"alertDropPercent":20}'::jsonb,
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await applyTenantRls("gbp_performance_settings");
+
       // ── org_auth_config — sso-service.ts ON CONFLICT(org_id) uses these columns ─
       await run(client, `
         CREATE TABLE IF NOT EXISTS org_auth_config (

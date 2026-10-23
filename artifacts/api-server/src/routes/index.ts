@@ -71,6 +71,7 @@ import clientModeRouter from "./client-mode.js";
 import progressionRouter from "./progression.js";
 import orgDataExportRouter from "./org-data-export.js";
 import onboardingRouter from "./onboarding.js";
+import gbpPerformanceRouter from "./gbp-performance.js";
 
 const router: IRouter = Router();
 
@@ -229,6 +230,7 @@ router.use(ssoRouter);
 router.use(whiteLabelRouter);
 router.use(aiWorkspaceLaunchRouter);
 router.use(googleRouter);
+router.use(gbpPerformanceRouter);
 router.use(gscOAuthRouter);
 router.use(seoRouter);
 router.use(mapsRouter);
