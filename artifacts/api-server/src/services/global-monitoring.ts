@@ -20,13 +20,14 @@ export function summarizeGlobalMonitoring(monitors: BSMonitor[]) {
     for (const rawRegion of regions) {
       const region = String(rawRegion || "").trim();
       if (!region) continue;
-      const parsedUptime = Number(monitor.attributes.uptime_percentage);
+      const rawUptime = monitor.attributes.uptime_percentage;
+      const parsedUptime = rawUptime == null || rawUptime === "" ? null : Number(rawUptime);
       entries.push({
         region,
         monitorId: monitor.id,
         monitorName: monitor.attributes.name || monitor.attributes.url || monitor.id,
         status: monitor.attributes.paused ? "paused" : String(monitor.attributes.status || "unknown"),
-        uptimePercentage: Number.isFinite(parsedUptime) ? parsedUptime : null,
+        uptimePercentage: parsedUptime !== null && Number.isFinite(parsedUptime) ? parsedUptime : null,
       });
     }
   }
