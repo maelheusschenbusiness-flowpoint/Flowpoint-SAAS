@@ -204,6 +204,13 @@ type SendOpts = {
   from?: string;
 };
 
+export async function captureTestMail(opts: SendOpts): Promise<boolean> {
+  if (!isTestMailerEnabled()) return false;
+  const result = await send(opts);
+  if (!result.ok) throw new Error(result.error ?? "TEST_MAIL_CAPTURE_FAILED");
+  return true;
+}
+
 async function send(opts: SendOpts): Promise<MailResult> {
   // ── Test transport: write to TEST_MAIL_DIR (requires ENABLE_TEST_MAILER=true) ──
   if (isTestMailerEnabled()) {
