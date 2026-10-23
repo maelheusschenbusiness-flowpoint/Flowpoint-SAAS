@@ -12,6 +12,7 @@ import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
   dfsRequest,
+  rembourserQuota,
 } from "./dataforseo-service.js";
 import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 import { aiChat } from "./ai-provider.js";
@@ -136,6 +137,7 @@ export async function syncOrgRankings(orgId: string): Promise<{ configured: bool
       try {
         results = await batchSERP(tasks, orgId);
       } catch (e) {
+        await rembourserQuota(orgId, batch.length);
         logger.warn({ e, orgId, batch: i }, "[keyword-engine] SERP batch request failed");
         continue;
       }
