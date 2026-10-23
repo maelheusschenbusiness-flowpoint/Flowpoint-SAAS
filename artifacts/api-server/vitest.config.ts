@@ -53,6 +53,7 @@ export default defineConfig({
       "src/services/dataforseo-coordinate-fixture.test.ts",
       "src/services/gbp-posting-publish.test.ts",
       "src/services/gbp-location-quota.test.ts",
+       "src/services/local-presence-optimizer.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).

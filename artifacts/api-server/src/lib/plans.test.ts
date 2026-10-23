@@ -54,7 +54,7 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps the 41 product entries and all six protected legacy keys", () => {
+  it("keeps 41 product slots and all six protected keys", () => {
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(41);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
@@ -149,10 +149,10 @@ describe("V1 add-on catalogue contract", () => {
     }
   });
 
-  it("keeps the legacy Local SEO offers gated until their replacement rollout is complete", () => {
-    const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps"];
+  it("keeps the three Local SEO offers priced but unavailable for purchase before approval", () => {
+    const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(41);
-    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15]);
+    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
       expect(getAddonAvailability(key)).toBe("coming_soon");
