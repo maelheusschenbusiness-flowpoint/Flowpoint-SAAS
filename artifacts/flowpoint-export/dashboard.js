@@ -50071,7 +50071,7 @@ function renderSubPageContent(route, sub) {
     if (sub === 'competitors-map') return renderLocalCompetitorMap();
     if (sub === 'zones')           return renderLocalSEOZones();
     if (sub === 'competitors')     return renderLocalSEOCompetitors();
-    if (sub === 'opportunities')   return renderLocalSEOOpportunities();
+    if (sub === 'opportunities')   return renderLocalLandingOpportunities();
     if (sub === 'reviews')          return renderLocalSEOReviews();
     if (sub === 'gbp')             return renderLocalSEOGBP();
     if (sub === 'presence')        return renderLocalPresenceOptimizer();
@@ -53051,6 +53051,91 @@ function renderLocalSEOCompetitors() {
     </div>
   `;
 }
+
+let _fpLocalLandingData = null;
+let _fpLocalLandingLoading = false;
+let _fpLocalLandingError = '';
+
+function loadLocalLandingOpportunities() {
+  if (_fpLocalLandingLoading) return;
+  _fpLocalLandingLoading = true;
+  apiFetch('/api/local-landing-opportunities').then(data => {
+    _fpLocalLandingData = data;
+    _fpLocalLandingError = '';
+  }).catch(error => {
+    _fpLocalLandingError = String(error?.message || error);
+  }).finally(() => {
+    _fpLocalLandingLoading = false;
+    if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
+  });
+}
+
+function renderLocalLandingOpportunities() {
+  if (!_fpLocalLandingData && !_fpLocalLandingLoading && !_fpLocalLandingError) loadLocalLandingOpportunities();
+  if (!_fpLocalLandingData) {
+    return `<section class="fp-card"><div class="fp-card-title">Local Landing Opportunities</div>
+      <p style="color:var(--fp-text-muted)">${escHtml(_fpLocalLandingError || 'Chargement des requêtes Google Search Console…')}</p>
+      ${_fpLocalLandingError ? '<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-landing-retry>Réessayer</button>' : ''}</section>`;
+  }
+  const data = _fpLocalLandingData;
+  const settings = data.settings || {};
+  const opportunities = Array.isArray(data.opportunities) ? data.opportunities : [];
+  return `<section class="fp-card fp-mb-20" aria-labelledby="fp-local-landing-title">
+    <div class="fp-card-title" id="fp-local-landing-title">Local Landing Opportunities</div>
+    <p style="font-size:12px;color:var(--fp-text-muted)">Requêtes réellement observées dans Google Search Console. Les recommandations ne prédisent pas de gains et ne supposent pas qu’une page est absente.</p>
+    <form data-fp-local-landing-settings style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:14px 0">
+      <label style="font-size:12px">Services ciblés
+        <input class="fp-input" name="services" value="${escHtml((settings.services || []).join(', '))}" placeholder="plombier, dépannage" required>
+      </label>
+      <label style="font-size:12px">Villes ou zones
+        <input class="fp-input" name="locations" value="${escHtml((settings.locations || []).join(', '))}" placeholder="Bruxelles, Ixelles" required>
+      </label>
+      <label style="font-size:12px">Impressions minimum
+        <input class="fp-input" name="minimumImpressions" type="number" min="1" max="100000" value="${escHtml(settings.minimumImpressions ?? 10)}" required>
+      </label>
+      <label style="font-size:12px">Position maximum
+        <input class="fp-input" name="maximumPosition" type="number" min="4" max="100" step="1" value="${escHtml(settings.maximumPosition ?? 30)}" required>
+      </label>
+      <div style="display:flex;align-items:end"><button class="fp-btn fp-btn-primary fp-btn-sm" type="submit">Enregistrer les critères</button></div>
+    </form>
+    ${opportunities.length ? `<div style="display:grid;gap:8px">${opportunities.map(item => `<article style="padding:12px;border:1px solid var(--fp-border);border-radius:var(--fp-radius-lg)">
+      <strong>${escHtml(item.keyword)}</strong>
+      <div style="font-size:12px;color:var(--fp-text-muted);margin-top:5px">${escHtml(item.impressions)} impressions · ${escHtml(item.clicks)} clics · position moyenne ${escHtml(item.averagePosition)}</div>
+      <div style="font-size:12px;margin-top:6px">${escHtml(item.recommendation)}</div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">${escHtml(item.evidence)}</div>
+    </article>`).join('')}</div>` : `<div style="padding:16px;text-align:center;color:var(--fp-text-muted)">Aucune requête ne correspond aux critères enregistrés sur les 28 derniers jours. Vérifiez la connexion Search Console ou ajustez les services, zones et seuils.</div>`}
+  </section>`;
+}
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-fp-local-landing-retry]')) return;
+  _fpLocalLandingError = '';
+  loadLocalLandingOpportunities();
+});
+
+document.addEventListener('submit', async event => {
+  const form = event.target.closest('[data-fp-local-landing-settings]');
+  if (!form) return;
+  event.preventDefault();
+  const values = new FormData(form);
+  const split = key => String(values.get(key) || '').split(',').map(term => term.trim()).filter(Boolean);
+  try {
+    const saved = await apiFetch('/api/local-landing-opportunities/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        services: split('services'),
+        locations: split('locations'),
+        minimumImpressions: Number(values.get('minimumImpressions')),
+        maximumPosition: Number(values.get('maximumPosition')),
+      }),
+    });
+    if (!saved?.ok) throw new Error(saved?.error || 'Enregistrement impossible.');
+    _fpLocalLandingData = null;
+    _fpLocalLandingError = '';
+    loadLocalLandingOpportunities();
+    showToast('success', 'Critères locaux enregistrés.');
+  } catch (error) { showToast('error', String(error?.message || error)); }
+});
 
 function renderLocalSEOOpportunities() {
   const plan = STATE.me?.plan || 'Pro';
