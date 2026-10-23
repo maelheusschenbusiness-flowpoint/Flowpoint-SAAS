@@ -21,4 +21,23 @@ describe("buildExecutiveReportFacts", () => {
       monitorsIncluded: 0, monitorsDown: 0, averageUptime: null,
     });
   });
+
+  it("does not convert missing database metrics to zero and preserves a measured zero", () => {
+    const facts = buildExecutiveReportFacts(
+      [{ score: null }, { score: "" }, { score: 0 }],
+      [
+        { name: "missing", status: "up", uptime: null, response_time: null },
+        { name: "measured-zero", status: "down", uptime: 0, response_time: 0 },
+      ],
+    );
+    expect(facts.audits).toHaveLength(1);
+    expect(facts.measured).toEqual({
+      auditsIncluded: 1, latestAuditScore: 0, previousAuditScore: null, scoreChange: null,
+      monitorsIncluded: 2, monitorsDown: 1, averageUptime: 0,
+    });
+    expect(facts.monitors.map(monitor => [monitor.uptime, monitor.responseTimeMs])).toEqual([
+      [null, null],
+      [0, 0],
+    ]);
+  });
 });
