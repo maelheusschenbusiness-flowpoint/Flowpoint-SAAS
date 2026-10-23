@@ -19800,6 +19800,23 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Opportunités de pages locales": "Local landing opportunities",
+    "Chargement des requêtes Google Search Console…": "Loading Google Search Console queries…",
+    "Réessayer": "Retry",
+    "Requêtes réellement observées dans Google Search Console. Les recommandations ne prédisent pas de gains et ne supposent pas qu’une page est absente.": "Queries actually observed in Google Search Console. Recommendations do not predict gains or assume a page is missing.",
+    "Services ciblés": "Target services",
+    "Villes ou zones": "Cities or areas",
+    "Impressions minimum": "Minimum impressions",
+    "Position maximum": "Maximum position",
+    "Enregistrer les critères": "Save criteria",
+    "impressions": "impressions",
+    "clics": "clicks",
+    "Position moyenne {value}": "Average position {value}",
+    "Aucune requête ne correspond aux critères enregistrés sur les 28 derniers jours. Vérifiez la connexion Search Console ou ajustez les services, zones et seuils.": "No queries match the saved criteria in the last 28 days. Check the Search Console connection or adjust services, areas, and thresholds.",
+    "Enregistrement impossible.": "Could not save settings.",
+    "Critères locaux enregistrés.": "Local criteria saved.",
+    "Données réelles de requêtes Google Search Console sur les 28 derniers jours.": "Real Google Search Console query data from the last 28 days.",
+    "Vérifiez si une page dédiée à ce service et à cette zone existe; sinon, créez-en une.": "Check whether a dedicated page for this service and area exists; if not, create one.",
     "&#128508; Domination territoriale — 2 zones dominées · 3 à conquérir": "&#128508; Territorial domination — 2 areas dominated · 3 to conquer",
     "&#8593; +1 ce mois · Score 74/100": "&#8593; +1 this month · Score 74/100",
     "' : 'Sur la base d'une estimation par défaut de": "' : 'Based on a default estimate of",
@@ -53073,37 +53090,37 @@ function loadLocalLandingOpportunities() {
 function renderLocalLandingOpportunities() {
   if (!_fpLocalLandingData && !_fpLocalLandingLoading && !_fpLocalLandingError) loadLocalLandingOpportunities();
   if (!_fpLocalLandingData) {
-    return `<section class="fp-card"><div class="fp-card-title">Local Landing Opportunities</div>
-      <p style="color:var(--fp-text-muted)">${escHtml(_fpLocalLandingError || 'Chargement des requêtes Google Search Console…')}</p>
-      ${_fpLocalLandingError ? '<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-landing-retry>Réessayer</button>' : ''}</section>`;
+    return `<section class="fp-card"><div class="fp-card-title">${fpT('Opportunités de pages locales')}</div>
+      <p style="color:var(--fp-text-muted)">${escHtml(_fpLocalLandingError || fpT('Chargement des requêtes Google Search Console…'))}</p>
+      ${_fpLocalLandingError ? `<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-landing-retry>${fpT('Réessayer')}</button>` : ''}</section>`;
   }
   const data = _fpLocalLandingData;
   const settings = data.settings || {};
   const opportunities = Array.isArray(data.opportunities) ? data.opportunities : [];
   return `<section class="fp-card fp-mb-20" aria-labelledby="fp-local-landing-title">
-    <div class="fp-card-title" id="fp-local-landing-title">Local Landing Opportunities</div>
-    <p style="font-size:12px;color:var(--fp-text-muted)">Requêtes réellement observées dans Google Search Console. Les recommandations ne prédisent pas de gains et ne supposent pas qu’une page est absente.</p>
+    <div class="fp-card-title" id="fp-local-landing-title">${fpT('Opportunités de pages locales')}</div>
+    <p style="font-size:12px;color:var(--fp-text-muted)">${fpT('Requêtes réellement observées dans Google Search Console. Les recommandations ne prédisent pas de gains et ne supposent pas qu’une page est absente.')}</p>
     <form data-fp-local-landing-settings style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:14px 0">
-      <label style="font-size:12px">Services ciblés
-        <input class="fp-input" name="services" value="${escHtml((settings.services || []).join(', '))}" placeholder="plombier, dépannage" required>
+      <label style="font-size:12px">${fpT('Services ciblés')}
+        <input class="fp-input" name="services" value="${escHtml((settings.services || []).join(', '))}" placeholder="${fpT('Services ciblés')}" required>
       </label>
-      <label style="font-size:12px">Villes ou zones
-        <input class="fp-input" name="locations" value="${escHtml((settings.locations || []).join(', '))}" placeholder="Bruxelles, Ixelles" required>
+      <label style="font-size:12px">${fpT('Villes ou zones')}
+        <input class="fp-input" name="locations" value="${escHtml((settings.locations || []).join(', '))}" placeholder="${fpT('Villes ou zones')}" required>
       </label>
-      <label style="font-size:12px">Impressions minimum
+      <label style="font-size:12px">${fpT('Impressions minimum')}
         <input class="fp-input" name="minimumImpressions" type="number" min="1" max="100000" value="${escHtml(settings.minimumImpressions ?? 10)}" required>
       </label>
-      <label style="font-size:12px">Position maximum
+      <label style="font-size:12px">${fpT('Position maximum')}
         <input class="fp-input" name="maximumPosition" type="number" min="4" max="100" step="1" value="${escHtml(settings.maximumPosition ?? 30)}" required>
       </label>
-      <div style="display:flex;align-items:end"><button class="fp-btn fp-btn-primary fp-btn-sm" type="submit">Enregistrer les critères</button></div>
+      <div style="display:flex;align-items:end"><button class="fp-btn fp-btn-primary fp-btn-sm" type="submit">${fpT('Enregistrer les critères')}</button></div>
     </form>
     ${opportunities.length ? `<div style="display:grid;gap:8px">${opportunities.map(item => `<article style="padding:12px;border:1px solid var(--fp-border);border-radius:var(--fp-radius-lg)">
       <strong>${escHtml(item.keyword)}</strong>
-      <div style="font-size:12px;color:var(--fp-text-muted);margin-top:5px">${escHtml(item.impressions)} impressions · ${escHtml(item.clicks)} clics · position moyenne ${escHtml(item.averagePosition)}</div>
-      <div style="font-size:12px;margin-top:6px">${escHtml(item.recommendation)}</div>
-      <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">${escHtml(item.evidence)}</div>
-    </article>`).join('')}</div>` : `<div style="padding:16px;text-align:center;color:var(--fp-text-muted)">Aucune requête ne correspond aux critères enregistrés sur les 28 derniers jours. Vérifiez la connexion Search Console ou ajustez les services, zones et seuils.</div>`}
+      <div style="font-size:12px;color:var(--fp-text-muted);margin-top:5px">${escHtml(item.impressions)} ${fpT('impressions')} · ${escHtml(item.clicks)} ${fpT('clics')} · ${fpT('Position moyenne {value}', { value: escHtml(item.averagePosition) })}</div>
+      <div style="font-size:12px;margin-top:6px">${fpT(item.recommendation)}</div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">${fpT(item.evidence)}</div>
+    </article>`).join('')}</div>` : `<div style="padding:16px;text-align:center;color:var(--fp-text-muted)">${fpT('Aucune requête ne correspond aux critères enregistrés sur les 28 derniers jours. Vérifiez la connexion Search Console ou ajustez les services, zones et seuils.')}</div>`}
   </section>`;
 }
 
@@ -53129,11 +53146,11 @@ document.addEventListener('submit', async event => {
         maximumPosition: Number(values.get('maximumPosition')),
       }),
     });
-    if (!saved?.ok) throw new Error(saved?.error || 'Enregistrement impossible.');
+    if (!saved?.ok) throw new Error(saved?.error || fpT('Enregistrement impossible.'));
     _fpLocalLandingData = null;
     _fpLocalLandingError = '';
     loadLocalLandingOpportunities();
-    showToast('success', 'Critères locaux enregistrés.');
+    showToast('success', fpT('Critères locaux enregistrés.'));
   } catch (error) { showToast('error', String(error?.message || error)); }
 });
 
