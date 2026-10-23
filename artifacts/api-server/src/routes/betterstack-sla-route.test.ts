@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   listMonitors: vi.fn(),
   isBSConfigured: vi.fn(),
   poolQuery: vi.fn(),
+  poolConnect: vi.fn(),
   summarizeGlobalMonitoring: vi.fn(),
 }));
 
@@ -32,7 +33,7 @@ vi.mock("../services/betterstack-service.js", () => ({
   isBSConfigured: mocks.isBSConfigured,
 }));
 vi.mock("@workspace/db", () => ({
-  pool: { query: mocks.poolQuery, connect: vi.fn() },
+  pool: { query: mocks.poolQuery, connect: mocks.poolConnect },
 }));
 vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -41,9 +42,6 @@ vi.mock("../middlewares/requireRole.js", () => ({
   canAdmin: (_req: any, _res: any, next: any) => next(),
   canWrite: (_req: any, _res: any, next: any) => next(),
 }));
-vi.mock("../middlewares/planGate.js", () => ({
-  requireAddon: () => (_req: any, _res: any, next: any) => next(),
-}));
 vi.mock("../services/init-bs-ownership.js", () => ({ registreAppartenancePresent: vi.fn() }));
 vi.mock("../services/global-monitoring.js", () => ({
   summarizeGlobalMonitoring: mocks.summarizeGlobalMonitoring,
@@ -51,10 +49,13 @@ vi.mock("../services/global-monitoring.js", () => ({
 
 import betterstackRouter from "./betterstack.js";
 
-function makeApp() {
+const QA_ORG_A = "10000000-0000-4000-8000-00000000000a";
+const QA_ORG_B = "10000000-0000-4000-8000-00000000000b";
+
+function makeApp(orgId = QA_ORG_A) {
   const app = express();
   app.use((req, _res, next) => {
-    Object.assign(req, { orgId: "qa-org-a" });
+    Object.assign(req, { orgId });
     next();
   });
   app.use("/api", betterstackRouter);
@@ -65,6 +66,15 @@ describe("Better Stack SLA report route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.isBSConfigured.mockReturnValue(true);
+    mocks.poolConnect.mockResolvedValue({
+      query: mocks.poolQuery,
+      release: vi.fn(),
+    });
+    mocks.poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan FROM organizations")) return { rows: [{ plan: "standard" }] };
+      if (sql.includes("SELECT active FROM org_addons")) return { rows: [{ active: true }] };
+      return { rows: [] };
+    });
     mocks.getMonitorSLA.mockResolvedValue({
       data: {
         id: "monitor-42",
@@ -94,10 +104,42 @@ describe("Better Stack SLA report route", () => {
     });
     expect(mocks.getMonitorSLA).toHaveBeenCalledWith(
       "monitor-42",
-      "qa-org-a",
+      QA_ORG_A,
       "2026-09-01",
       "2026-09-30",
     );
+  });
+
+  it("denies SLA data when the organization has no active SLA add-on", async () => {
+    mocks.poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan FROM organizations")) return { rows: [{ plan: "standard" }] };
+      return { rows: [] };
+    });
+
+    const response = await request(makeApp()).get("/api/betterstack/monitors/monitor-42/sla");
+
+    expect(response.status).toBe(402);
+    expect(response.body).toMatchObject({ code: "ADDON_REQUIRED", addonKey: "slaMonitoring" });
+    expect(mocks.getMonitorSLA).not.toHaveBeenCalled();
+  });
+
+  it("does not let organization A use organization B's active SLA add-on", async () => {
+    mocks.poolQuery.mockImplementation(async (sql: string, values: unknown[] = []) => {
+      if (sql.includes("SELECT plan FROM organizations")) return { rows: [{ plan: "standard" }] };
+      if (sql.includes("SELECT active FROM org_addons") && values[0] === QA_ORG_B) {
+        return { rows: [{ active: true }] };
+      }
+      return { rows: [] };
+    });
+
+    const denied = await request(makeApp(QA_ORG_A)).get("/api/betterstack/monitors/monitor-42/sla");
+    const allowed = await request(makeApp(QA_ORG_B)).get("/api/betterstack/monitors/monitor-42/sla");
+
+    expect(denied.status).toBe(402);
+    expect(denied.body).toMatchObject({ code: "ADDON_REQUIRED", addonKey: "slaMonitoring" });
+    expect(allowed.status).toBe(200);
+    expect(mocks.getMonitorSLA).toHaveBeenCalledTimes(1);
+    expect(mocks.getMonitorSLA).toHaveBeenCalledWith("monitor-42", QA_ORG_B, undefined, undefined);
   });
 
   it("preserves an ownership rejection instead of exposing another organization's monitor", async () => {
@@ -106,7 +148,7 @@ describe("Better Stack SLA report route", () => {
     const response = await request(makeApp()).get("/api/betterstack/monitors/monitor-other/sla");
 
     expect(response.status).toBe(404);
-    expect(mocks.getMonitorSLA).toHaveBeenCalledWith("monitor-other", "qa-org-a", undefined, undefined);
+    expect(mocks.getMonitorSLA).toHaveBeenCalledWith("monitor-other", QA_ORG_A, undefined, undefined);
   });
 
   it("fails explicitly when Better Stack is not configured and makes no provider call", async () => {
@@ -129,8 +171,21 @@ describe("Better Stack SLA report route", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(summary);
-    expect(mocks.listMonitors).toHaveBeenCalledWith("qa-org-a");
+    expect(mocks.listMonitors).toHaveBeenCalledWith(QA_ORG_A);
     expect(mocks.summarizeGlobalMonitoring).toHaveBeenCalledWith(monitors);
+  });
+
+  it("denies Global Monitoring when the organization has no active add-on", async () => {
+    mocks.poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan FROM organizations")) return { rows: [{ plan: "standard" }] };
+      return { rows: [] };
+    });
+
+    const response = await request(makeApp()).get("/api/betterstack/global-overview");
+
+    expect(response.status).toBe(402);
+    expect(response.body).toMatchObject({ code: "ADDON_REQUIRED", addonKey: "globalMonitoring" });
+    expect(mocks.listMonitors).not.toHaveBeenCalled();
   });
 
   it("fails explicitly for Global Monitoring when Better Stack is not configured", async () => {
