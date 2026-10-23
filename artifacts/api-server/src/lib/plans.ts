@@ -156,6 +156,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
                        ?? process.env["STRIPE_TEST_PRICE_ID_10MONITORS"]        ?? "",
     monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
                        ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
+    localPresenceOptimizer: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"] ?? "",
     advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
     backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
@@ -265,6 +266,7 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   aiGbpPosting:         process.env["STRIPE_PRICE_ID_AI_GBP_POSTING"]           ?? "price_1TYovC9eqtbj6iPBw0C7qgjS",
   reviewIntelligence:   process.env["STRIPE_PRICE_ID_REVIEW_INTELLIGENCE"]      ?? "price_1TYow19eqtbj6iPB1HLzhN1U",
   localDominationMaps:  process.env["STRIPE_PRICE_ID_LOCAL_DOMINATION_MAPS"]    ?? "price_1TYowh9eqtbj6iPBqI7YxqYu",
+  localPresenceOptimizer: process.env["STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER"] ?? "",
 
   // ── Conversion / AI ────────────────────────────────────────────────────────
   aiCro:                process.env["STRIPE_PRICE_ID_AI_CRO_STRATEGIST"]        ?? "price_1TYpDs9eqtbj6iPBGyjqL3mu",
@@ -350,6 +352,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 12, oneTime: false, quantity: false },
   reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 9, oneTime: false, quantity: false },
   localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 15, oneTime: false, quantity: false },
+  localPresenceOptimizer: { name: "Local Presence Optimizer", category: "Local SEO", description: "Priorisation des informations manquantes sur vos fiches GBP", priceEur: 9, oneTime: false, quantity: false },
   aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO fondées sur les événements observés", priceEur: 34, oneTime: false, quantity: false },
   behavioralAI:         { name: "Behavioral AI",            category: "Conversion",   description: "Analyse comportementale et insights IA", priceEur: 44, oneTime: false, quantity: false },
   revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Opportunités de conversion observées; pertes financières uniquement si mesurées", priceEur: 29, oneTime: false, quantity: false },
@@ -398,7 +401,7 @@ export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NO
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
   "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist",
-  "aiGbpPosting","reviewIntelligence","localDominationMaps",
+  "aiGbpPosting","reviewIntelligence","localDominationMaps","localPresenceOptimizer",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
   "marketIntelligence","aiWorkflows",
@@ -466,6 +469,7 @@ export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
   "aiGbpPosting",
   "reviewIntelligence",
   "localDominationMaps",
+  "localPresenceOptimizer",
 ]);
 
 /**
@@ -668,7 +672,7 @@ const _PRO_EXCLUSIVE = new Set<string>([
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
   //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
   "keywordDomination",
-  "aiGbpPosting", "reviewIntelligence", "localDominationMaps",
+  "aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer",
   "aiCro", "behavioralAI", "revenueLeak",
   "zapierIntegration",
   "aiForecasting", "marketIntelligence",

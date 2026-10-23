@@ -8981,6 +8981,99 @@ function _fpSafeColor(v) {
 }
 
 /* ── LOCAL SEO ── */
+window.FP_LOCAL_PRESENCE_API = {
+  async load() {
+    const data = await apiFetch('/api/local-presence');
+    window.FP_DATA = window.FP_DATA || {};
+    window.FP_DATA.localPresence = data;
+    return data;
+  },
+  async save(settings) {
+    return apiFetch('/api/local-presence/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+};
+
+function renderLocalPresenceOptimizer() {
+  const data = window.FP_DATA?.localPresence;
+  if (!data && !window._fpLocalPresenceLoading) {
+    window._fpLocalPresenceLoading = true;
+    window.FP_LOCAL_PRESENCE_API.load().catch(error => {
+      window._fpLocalPresenceError = String(error?.message || error);
+    }).finally(() => {
+      window._fpLocalPresenceLoading = false;
+      if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
+    });
+  }
+  if (!data) return `<section class="fp-card"><div class="fp-card-title">Local Presence Optimizer</div><p style="color:var(--fp-text-muted)">${escHtml(window._fpLocalPresenceError || 'Analyse des fiches GBP…')}</p>${window._fpLocalPresenceError ? '<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-billing>Gérer les add-ons</button>' : ''}</section>`;
+  const settings = data.settings || {};
+  const selected = new Set(settings.trackedFields || []);
+  const fields = data.analysis?.fields || [];
+  const opportunities = data.analysis?.opportunities || [];
+  const locationOptions = (data.locations || []).map(location =>
+    `<option value="${escHtml(location.id)}" ${location.id === settings.locationId ? 'selected' : ''}>${escHtml(location.name)}</option>`
+  ).join('');
+  return `<section class="fp-card fp-mb-20" aria-labelledby="fp-local-presence-title">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div><div class="fp-card-title" id="fp-local-presence-title">Local Presence Optimizer</div>
+      <p style="font-size:12px;color:var(--fp-text-muted)">Priorités calculées à partir des champs présents dans votre fiche GBP synchronisée.</p></div>
+      <button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-refresh>Actualiser</button>
+    </div>
+    ${!data.connected ? `<p role="status">Aucune fiche GBP synchronisée. Connectez Google Business Profile puis synchronisez vos fiches.</p>` : `
+      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">
+        <strong style="font-size:28px">${Number(data.analysis?.score ?? 0)}%</strong>
+        <span style="font-size:12px;color:var(--fp-text-muted)">${Number(data.analysis?.completedFields ?? 0)} critères renseignés sur ${Number(data.analysis?.totalFields ?? 0)}</span>
+      </div>
+      <form data-fp-local-presence-settings>
+        <label style="display:block;font-size:12px;margin-bottom:10px">Établissement
+          <select name="locationId" class="fp-input" style="margin-top:5px">${locationOptions}</select>
+        </label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+          ${fields.map(field => `<label style="padding:10px;border:1px solid var(--fp-border);border-radius:8px;font-size:12px"><input type="checkbox" name="trackedFields" value="${escHtml(field.key)}" ${selected.has(field.key) ? 'checked' : ''}/> ${escHtml(field.label)} <span style="float:right">${field.complete ? 'Complet' : 'À compléter'}</span></label>`).join('')}
+        </div>
+        <button type="submit" class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px">Enregistrer mes critères</button>
+      </form>
+      <div style="margin-top:16px"><strong>Prochaines actions</strong>
+        ${opportunities.length ? `<ul>${opportunities.map(item => `<li style="margin:8px 0">${escHtml(item.title)} <span style="color:var(--fp-text-muted)">— ${escHtml(item.evidence)}</span></li>`).join('')}</ul>` : `<p style="color:var(--fp-text-muted)">Tous les critères suivis sont présents dans les dernières données synchronisées.</p>`}
+      </div>
+    `}
+    <small style="color:var(--fp-text-faint)">Dernière synchronisation : ${data.profile?.lastSyncAt ? escHtml(new Date(data.profile.lastSyncAt).toLocaleString(getLocale())) : 'aucune'}</small>
+  </section>`;
+}
+
+document.addEventListener('click', async event => {
+  if (event.target.closest('[data-fp-local-presence-billing]')) {
+    navigate('billing');
+    setTimeout(() => navigateSub('addons'), 50);
+    return;
+  }
+  const button = event.target.closest('[data-fp-local-presence-refresh]');
+  if (!button) return;
+  button.disabled = true;
+  try { await window.FP_LOCAL_PRESENCE_API.load(); render(STATE.currentSection); }
+  catch (error) { showToast('error', String(error?.message || error)); }
+  finally { button.disabled = false; }
+});
+
+document.addEventListener('submit', async event => {
+  const form = event.target.closest('[data-fp-local-presence-settings]');
+  if (!form) return;
+  event.preventDefault();
+  const formData = new FormData(form);
+  try {
+    const result = await window.FP_LOCAL_PRESENCE_API.save({
+      locationId: String(formData.get('locationId') || ''),
+      trackedFields: formData.getAll('trackedFields').map(String),
+    });
+    if (!result?.ok) throw new Error(result?.error || 'Enregistrement impossible.');
+    await window.FP_LOCAL_PRESENCE_API.load();
+    showToast('success', 'Critères de présence enregistrés.');
+    render(STATE.currentSection);
+  } catch (error) { showToast('error', String(error?.message || error)); }
+});
+
 function renderLocalSEO() {
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 3, statH: 80, cards: 0 });
@@ -15695,7 +15788,7 @@ const SUB_NAVS = {
   'missions':   [{id:null,label:'Toutes'},{id:'todo',label:'À faire'},{id:'inprogress',label:'En cours'},{id:'done',label:'Terminées'},{id:'ai',label:'IA Missions'}],
   'audits':     [{id:null,label:'Liste'},{id:'analysis',label:'Analyse'},{id:'compare',label:'Comparaison'},{id:'history',label:'Historique'},{id:'opportunites',label:'Opportunités'}],
   'monitors':   [{id:null,label:'Status'},{id:'performance',label:'Performance'},{id:'incidents',label:'Incidents'},{id:'config',label:'Config'},{id:'sla',label:'SLA'}],
-  'local-seo':  [{id:null,label:'Aperçu'},{id:'map',label:'Carte'},{id:'competitors-map',label:'Concurrents'},{id:'zones',label:'Zones'},{id:'opportunities',label:'Opportunités'},{id:'reviews',label:'Avis IA'},{id:'gbp',label:'GBP'}],
+  'local-seo':  [{id:null,label:'Aperçu'},{id:'map',label:'Carte'},{id:'competitors-map',label:'Concurrents'},{id:'zones',label:'Zones'},{id:'opportunities',label:'Opportunités'},{id:'reviews',label:'Avis IA'},{id:'gbp',label:'GBP'},{id:'presence',label:'Présence GBP'}],
   'reports':    [{id:null,label:'Command Center'},{id:'exec',label:'Executive'},{id:'seo',label:'SEO'},{id:'monitoring',label:'Monitoring'},{id:'local',label:'Local SEO'},{id:'conversion',label:'Conversion'},{id:'client',label:'White-Label'},{id:'ai',label:'IA Lab'}],
   'team':       [{id:null,label:'Membres'},{id:'chat',label:'Chat'},{id:'activity',label:'Activité'},{id:'files',label:'Fichiers'},{id:'performance',label:'Performance'}],
   'growth':     [{id:null,label:'Tendances'},{id:'projections',label:'Projections'},{id:'objectives',label:'Objectifs'},{id:'keywords',label:'Mots-clés'}],
@@ -49980,6 +50073,7 @@ function renderSubPageContent(route, sub) {
     if (sub === 'opportunities')   return renderLocalSEOOpportunities();
     if (sub === 'reviews')          return renderLocalSEOReviews();
     if (sub === 'gbp')             return renderLocalSEOGBP();
+    if (sub === 'presence')        return renderLocalPresenceOptimizer();
   }
   if (route === 'reports') {
     // renderReports() handles exec/seo/monitoring/local/conversion/client/ai via STATE.subRoute.

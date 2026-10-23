@@ -3074,6 +3074,15 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE INDEX IF NOT EXISTS google_locations_org_idx ON google_locations(org_id)`);
       await applyTenantRls("google_locations");
 
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS local_presence_settings (
+          org_id TEXT PRIMARY KEY,
+          settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await applyTenantRls("local_presence_settings");
+
       // ── org_auth_config — sso-service.ts ON CONFLICT(org_id) uses these columns ─
       await run(client, `
         CREATE TABLE IF NOT EXISTS org_auth_config (

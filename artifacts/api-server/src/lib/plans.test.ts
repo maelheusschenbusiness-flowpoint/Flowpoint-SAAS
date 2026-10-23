@@ -53,8 +53,8 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps the existing 40 product slots and all six protected keys", () => {
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(40);
+  it("keeps 41 product slots and all six protected keys", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(41);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
@@ -108,7 +108,7 @@ describe("V1 add-on catalogue contract", () => {
       !REMOVED_ADDONS.has(key) &&
       ["available", "beta"].includes(getAddonAvailability(key))
     );
-    expect(nonProtectedAddons).toHaveLength(34);
+    expect(nonProtectedAddons).toHaveLength(35);
     expect(sellableAddons.length).toBeGreaterThan(0);
     for (const plan of ["standard", "pro", "ultra"]) {
       for (const key of sellableAddons) {
@@ -143,9 +143,9 @@ describe("V1 add-on catalogue contract", () => {
   });
 
   it("keeps the three Local SEO offers priced but unavailable for purchase before approval", () => {
-    const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps"];
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(40);
-    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15]);
+    const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(41);
+    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
       expect(getAddonAvailability(key)).toBe("coming_soon");
