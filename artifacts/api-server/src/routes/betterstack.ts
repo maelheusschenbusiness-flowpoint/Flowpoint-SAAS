@@ -181,10 +181,24 @@ router.post("/betterstack/monitors/:id/resume", canAdmin, async (req, res) => {
   }
 });
 
+function isSlaDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 router.get("/betterstack/monitors/:id/sla", requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
-    const { from, to } = req.query as { from?: string; to?: string };
+    const { from, to } = req.query as Record<string, unknown>;
+    if ((from !== undefined && !isSlaDate(from)) || (to !== undefined && !isSlaDate(to))) {
+      res.status(400).json({ error: "from et to doivent être des dates valides au format AAAA-MM-JJ.", code: "INVALID_SLA_RANGE" });
+      return;
+    }
+    if (typeof from === "string" && typeof to === "string" && from > to) {
+      res.status(400).json({ error: "La date from doit être antérieure ou égale à la date to.", code: "INVALID_SLA_RANGE" });
+      return;
+    }
     const data = await getMonitorSLA(String(req.params.id), (req as unknown as { orgId?: string }).orgId ?? "default", from, to);
     res.json(data);
   } catch (err) {

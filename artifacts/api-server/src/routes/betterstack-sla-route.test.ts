@@ -110,6 +110,24 @@ describe("Better Stack SLA report route", () => {
     );
   });
 
+  it("rejects impossible calendar dates before calling Better Stack", async () => {
+    const response = await request(makeApp())
+      .get("/api/betterstack/monitors/monitor-42/sla?from=2026-02-30&to=2026-03-01");
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_SLA_RANGE");
+    expect(mocks.getMonitorSLA).not.toHaveBeenCalled();
+  });
+
+  it("rejects reversed SLA date ranges before calling Better Stack", async () => {
+    const response = await request(makeApp())
+      .get("/api/betterstack/monitors/monitor-42/sla?from=2026-09-30&to=2026-09-01");
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_SLA_RANGE");
+    expect(mocks.getMonitorSLA).not.toHaveBeenCalled();
+  });
+
   it("denies SLA data when the organization has no active SLA add-on", async () => {
     mocks.poolQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT plan FROM organizations")) return { rows: [{ plan: "standard" }] };

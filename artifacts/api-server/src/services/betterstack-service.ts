@@ -338,9 +338,13 @@ export async function getMonitorSLA(bsId: string, orgId: string, fromDate?: stri
   const cached = getCache<unknown>(cacheKey);
   if (cached) return cached;
 
-  let path = `/monitors/${bsId}/sla`;
-  if (fromDate || toDate) path += `?from=${fromDate || ''}&to=${toDate || ''}`;
-  const data = await bsRequest<unknown>(path);
+  const path = `/monitors/${encodeURIComponent(bsId)}/sla`;
+  const params = new URLSearchParams();
+  if (fromDate) params.set("from", fromDate);
+  if (toDate) params.set("to", toDate);
+  const query = params.toString();
+  const requestPath = query ? `${path}?${query}` : path;
+  const data = await bsRequest<unknown>(requestPath);
   setCache(cacheKey, data, 300_000); // 5 min cache
   return data;
 }
