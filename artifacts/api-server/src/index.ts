@@ -3,6 +3,7 @@ import { logger } from "./lib/logger.js";
 import { getStripeKey } from "./services/stripe-factory.js";
 import { plansRepliantSurPrixLive } from "./lib/plans.js";
 import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
+import { attestResolvedPool } from "./services/db-startup-attestation.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -74,26 +75,28 @@ async function main() {
   // schema d'une base qui n'est pas la sienne. La garde arrive avant toute
   // ecriture, et avant meme la premiere connexion.
   {
+    const isRenderTest =
+      process.env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() === "flowpoint-test" ||
+      process.env["RENDER_GIT_BRANCH"] === "Test-Replit";
     try {
-      const { verifiee, cible } = verifierCibleBase();
-      if (verifiee && cible) {
-        logger.info(`[Base] cible declaree confirmee : ${decrireCibleSurement(cible)}`);
+      if (isRenderTest) {
+        const attestation = await attestResolvedPool(pool);
+        process.stdout.write(`${JSON.stringify(attestation)}\n`);
+        if (attestation.status !== "PASS") {
+          process.exit(1);
+        }
       } else {
-        // Garde non armee. On journalise la destination REELLE — hote et nom de
-        // base seulement, jamais l'utilisateur ni le mot de passe — pour que
-        // l'exploitant puisse lire la valeur a declarer et armer la garde.
-        logger.warn(
-          `[Base] DB_HOTE_ATTENDU non posee — ce service modifie le schema au demarrage ` +
-          `sans verifier sa cible. Destination actuelle : ` +
-          `${decrireCibleSurement(lireCible(process.env["DATABASE_URL"]))}. ` +
-          `Posez DB_HOTE_ATTENDU a cette valeur pour armer la garde.`
-        );
+        const { verifiee, cible } = verifierCibleBase();
+        if (verifiee && cible) {
+          logger.info(`[Base] cible declaree confirmee : ${decrireCibleSurement(cible)}`);
+        } else {
+          logger.warn(
+            "[Base] DB_HOTE_ATTENDU non posee — cible non attestee."
+          );
+        }
       }
     } catch (err) {
-      logger.fatal(
-        { err: (err as Error).message },
-        "[Base] FATAL : la base visee ne correspond pas a la declaration de ce service."
-      );
+      logger.fatal("[Base] FATAL : la cible de base ne correspond pas a la declaration.");
       process.exit(1);
     }
   }

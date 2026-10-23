@@ -112,6 +112,7 @@ export default defineConfig({
       "src/services/tables-pre-compte-rls-db.test.ts",
       // Garde de cible : un service ne modifie que la base qu'il declare (18/10/2026).
       "src/services/garde-cible-base.test.ts",
+      "src/services/db-startup-attestation.test.ts",
       // Fuite reelle d'un identifiant dans le journal de la garde (18/10/2026).
       "src/services/fuite-journal-cible.test.ts",
       // Ordre du durcissement RLS au demarrage, mesure sur base neuve (18/10/2026).

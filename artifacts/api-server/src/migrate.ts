@@ -32,6 +32,7 @@ import { stampSchemaGate } from "./services/schema-gate-status.js";
 import { findMisalignedOrgPolicies, TENANT_GUC } from "./services/rls-guc-repair.js";
 import { reconcileSchema, reconcileDefaults } from "./services/init-schema-reconcile.js";
 import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
+import { attestResolvedPool } from "./services/db-startup-attestation.js";
 import { initAiMigration }       from "./services/init-ai-migration.js";
 import { runCanonicalSystemSeeds } from "./services/canonical-system-seeds.js";
 
@@ -42,26 +43,35 @@ function section(label: string) {
 }
 
 async function migrate() {
+  const isRenderTest =
+    process.env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() === "flowpoint-test" ||
+    process.env["RENDER_GIT_BRANCH"] === "Test-Replit";
   console.log("=".repeat(60));
   console.log("FlowPoint — full migration runner");
   console.log("=".repeat(60));
-  // Le masquage precedent — remplacer `//…@` — ne coupait qu'au PREMIER `@`.
-  // Mesure du 18/10/2026 : avec un PGHOST contenant une chaine de connexion,
-  // un second `@` suivait, et l'identifiant survivait au masquage. On ne
-  // journalise donc plus que l'hote et la base, par la description sure.
-  console.log(`  Cible            : ${decrireCibleSurement(lireCible(process.env["DATABASE_URL"]))}`);
+  if (!isRenderTest) {
+    console.log(`  Cible            : ${decrireCibleSurement(lireCible(process.env["DATABASE_URL"]))}`);
+  }
   console.log(`  Timestamp         : ${new Date().toISOString()}`);
   console.log("=".repeat(60));
 
   // ── 0. La base visee est-elle bien celle declaree ? ────────────────────────
   // Une migration est l'ecriture la moins reversible du systeme. Elle refuse
   // de s'executer sur une base que l'appelant n'a pas declaree.
-  try {
-    const { verifiee, cible } = verifierCibleBase();
-    if (verifiee && cible) console.log(`  ✓ Cible declaree confirmee : ${decrireCibleSurement(cible)}`);
-  } catch (err: any) {
-    console.error(`  ✗ ${err.message}`);
-    process.exit(1);
+  if (isRenderTest) {
+    const attestation = await attestResolvedPool(pool);
+    console.log(JSON.stringify(attestation));
+    if (attestation.status !== "PASS") {
+      process.exit(1);
+    }
+  } else {
+    try {
+      const { verifiee } = verifierCibleBase();
+      if (!verifiee) console.warn("[Base] DB_HOTE_ATTENDU non posee — cible non attestee.");
+    } catch {
+      console.error("[Base] Migration refused: target guard failed.");
+      process.exit(1);
+    }
   }
 
   // ── 1. Verify connectivity ──────────────────────────────────────────────────
