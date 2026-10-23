@@ -49142,7 +49142,10 @@ async function init() {
           else                 STATE.settings.secretApiKey  = key;
           await navigator.clipboard.writeText(key);
           showToast('success', fpT('Clé copiée !'));
-        } else { showToast('info', keyId === 'sec' ? 'Aucune clé secrète — cliquez Régénérer' : 'Clé non disponible'); }
+        } else if (keyId === 'sec' && r?.hasSecret) {
+          // La clé secrète n'est jamais relue : elle n'est montrée qu'à sa régénération.
+          showToast('info', fpT('La clé secrète n\u2019est affichée qu\u2019une fois, à sa création. Régénérez-la pour en obtenir une nouvelle.'));
+        } else { showToast('info', keyId === 'sec' ? 'Aucune clé secrète — cliquez Régénérer' : 'Aucune clé publique — cliquez Régénérer'); }
       } catch(e) { showToast('info', fpT('Impossible de copier automatiquement')); }
       btn.textContent = 'Copier';
     } else {
