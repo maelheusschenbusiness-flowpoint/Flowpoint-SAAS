@@ -8549,6 +8549,7 @@ function renderReports() {
       </div>
 
       <!-- GBP PERFORMANCE -->
+      ${renderGbpPerformanceAddon()}
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">📍 Performance Google Business Profile — ${CUR_MONTH}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
@@ -70651,6 +70652,7 @@ window.fpTrackUsage = async function(kind) {
     window.FP_MARKET_INTEL_API.load().then(_reloadIfData('marketIntel')).catch(() => {});
     window.FP_PERMISSIONS_API.load().then(_reloadIfData('permissions')).catch(() => {});
     window.FP_REVIEW_INTEL_API.load().then(_reloadIfData('reviewIntel')).catch(() => {});
+    window.FP_GBP_PERFORMANCE_API.load().then(_reloadIfData('gbpPerformance')).catch(() => {});
     window.FP_GBP_POSTS_API.load().then(_reloadIfData('gbpPosts')).catch(() => {});
     window.FP_LOCAL_MAPS_API.load().then(_reloadIfData('localMaps')).catch(() => {});
     window.FP_SSO_API.load().then(_reloadIfData('sso')).catch(() => {});
@@ -70807,6 +70809,137 @@ window.FP_REVIEW_INTEL_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP GBP POSTS API
 // ═══════════════════════════════════════════════════════════════════════════════
+window.FP_GBP_PERFORMANCE_API = {
+  async load() {
+    try {
+      const data = await apiFetch('/api/gbp-performance');
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.gbpPerformance = { ...data, loadedAt: Date.now() };
+      return data;
+    } catch (error) {
+      if (error?.status !== 403) console.warn('[FP_GBP_PERFORMANCE_API]', error);
+      return null;
+    }
+  },
+  async save(settings) {
+    return await apiFetch('/api/gbp-performance/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+};
+
+function renderGbpPerformanceAddon() {
+  const data = window.FP_DATA?.gbpPerformance;
+  if (!data) return '';
+  const settings = data.settings || { locationId: null, periodDays: 30, goals: {}, alertDropPercent: 20 };
+  const goals = settings.goals || {};
+  const metrics = [
+    ['CALL_CLICKS', 'Appels depuis la fiche'],
+    ['WEBSITE_CLICKS', 'Clics vers le site'],
+    ['BUSINESS_DIRECTION_REQUESTS', 'Demandes d’itinéraire'],
+    ['BUSINESS_IMPRESSIONS_DESKTOP_MAPS', 'Impressions Maps — ordinateur'],
+    ['BUSINESS_IMPRESSIONS_MOBILE_MAPS', 'Impressions Maps — mobile'],
+  ];
+  const number = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString(getLocale()) : '—';
+  const locationOptions = (data.locations || []).map(location =>
+    `<option value="${escHtml(location.id)}" ${location.id === settings.locationId ? 'selected' : ''}>${escHtml(location.name)}</option>`
+  ).join('');
+  const connectionMessage = data.connectionRequired
+    ? data.message
+    : (!data.configured ? 'Synchronisez vos fiches Google Business Profile pour commencer.' : '');
+  const kpis = data.configured ? metrics.map(([key, label]) => {
+    const current = data.current?.[key];
+    const previous = data.previous?.[key];
+    const change = Number.isFinite(current) && Number.isFinite(previous)
+      ? `${current > previous ? '+' : ''}${number(current - previous)} vs période précédente`
+      : 'Pas de comparaison disponible';
+    const drop = data.drops?.[key];
+    const goal = goals[key];
+    const goalText = goal != null ? `Objectif : ${number(goal)} sur ${settings.periodDays} j` : '';
+    return `<article style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+      <div style="font-size:21px;font-weight:800;color:var(--fp-text)">${number(current)}</div>
+      <div style="font-size:11px;color:var(--fp-text-muted);margin:3px 0">${label}</div>
+      <div style="font-size:10px;color:${drop ? '#ef4444' : 'var(--fp-text-faint)'}">${drop ? `Baisse observée de ${drop}%` : escHtml(change)}</div>
+      ${goalText ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${escHtml(goalText)}</div>` : ''}
+    </article>`;
+  }).join('') : '';
+  return `<section class="fp-card fp-mb-20" aria-labelledby="fp-gbp-performance-title">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <div>
+        <div class="fp-card-title" id="fp-gbp-performance-title" style="margin:0">GBP Performance &amp; Leads</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">Actions et performances mesurées par Google Business Profile. Les clics ne sont pas assimilés à des conversions.</div>
+      </div>
+      <button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-gbp-performance-refresh>Actualiser</button>
+    </div>
+    ${connectionMessage ? `<div role="status" style="padding:12px;border-radius:8px;background:var(--fp-inner-card);color:var(--fp-text-muted);font-size:12px">${escHtml(connectionMessage)}</div>` : ''}
+    ${data.configured ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:12px 0">${kpis}</div>` : ''}
+    <form data-fp-gbp-performance-settings style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;align-items:end;margin-top:12px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Fiche
+        <select name="locationId" class="fp-input" style="margin-top:5px" ${locationOptions ? '' : 'disabled'}>
+          ${locationOptions || '<option value="">Aucune fiche synchronisée</option>'}
+        </select>
+      </label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Période
+        <select name="periodDays" class="fp-input" style="margin-top:5px">
+          ${[7, 30, 90].map(days => `<option value="${days}" ${Number(settings.periodDays) === days ? 'selected' : ''}>${days} jours</option>`).join('')}
+        </select>
+      </label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Seuil de baisse pour alerte (%)
+        <input name="alertDropPercent" type="number" min="5" max="80" step="1" class="fp-input" value="${Number(settings.alertDropPercent) || 20}" style="margin-top:5px"/>
+      </label>
+      ${metrics.slice(0, 3).map(([key, label]) => `<label style="font-size:11px;color:var(--fp-text-muted)">Objectif — ${label}
+        <input name="${key}" type="number" min="0" step="1" class="fp-input" value="${goals[key] ?? ''}" placeholder="Aucun objectif" style="margin-top:5px"/>
+      </label>`).join('')}
+      <button type="submit" class="fp-btn fp-btn-primary fp-btn-sm">Enregistrer les objectifs</button>
+    </form>
+    ${data.period ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:10px">Période mesurée : ${settings.periodDays} jours, jusqu’au ${new Date(data.period.end).toLocaleDateString(getLocale())}.</div>` : ''}
+  </section>`;
+}
+
+document.addEventListener('click', async event => {
+  if (!event.target.closest('[data-fp-gbp-performance-refresh]')) return;
+  const button = event.target.closest('[data-fp-gbp-performance-refresh]');
+  button.disabled = true;
+  try {
+    await window.FP_GBP_PERFORMANCE_API.load();
+    render(STATE.currentSection);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.addEventListener('submit', async event => {
+  const form = event.target.closest('[data-fp-gbp-performance-settings]');
+  if (!form) return;
+  event.preventDefault();
+  const formData = new FormData(form);
+  const goals = {};
+  for (const key of ['CALL_CLICKS', 'WEBSITE_CLICKS', 'BUSINESS_DIRECTION_REQUESTS']) {
+    const value = String(formData.get(key) ?? '').trim();
+    if (value !== '') goals[key] = Number(value);
+  }
+  const settings = {
+    locationId: String(formData.get('locationId') || '') || null,
+    periodDays: Number(formData.get('periodDays')),
+    alertDropPercent: Number(formData.get('alertDropPercent')),
+    goals,
+  };
+  const submit = form.querySelector('[type="submit"]');
+  if (submit) submit.disabled = true;
+  try {
+    const result = await window.FP_GBP_PERFORMANCE_API.save(settings);
+    if (!result?.ok) throw new Error(result?.error || 'Impossible d’enregistrer ces paramètres.');
+    await window.FP_GBP_PERFORMANCE_API.load();
+    showToast('success', 'Objectifs GBP enregistrés.');
+    render(STATE.currentSection);
+  } catch (error) {
+    showToast('error', String(error?.message || error));
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+});
+
 window.FP_GBP_POSTS_API = {
   async load() {
     try {

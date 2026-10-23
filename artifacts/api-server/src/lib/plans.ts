@@ -168,6 +168,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
     extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
     gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
+    gbpPerformanceLeads:  process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"] ?? "",
     aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
     aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
     aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
@@ -262,6 +263,8 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
 
   // ── Local SEO ─────────────────────────────────────────────────────────────
   gbpSlots10:           process.env["STRIPE_PRICE_ID_10GBPLOCATIONS"]           ?? "price_1TYouI9eqtbj6iPBAykG6DyI",
+  // Intentionally unassigned in LIVE during the Test-Replit rollout.
+  gbpPerformanceLeads:  "",
   aiGbpPosting:         process.env["STRIPE_PRICE_ID_AI_GBP_POSTING"]           ?? "price_1TYovC9eqtbj6iPBw0C7qgjS",
   reviewIntelligence:   process.env["STRIPE_PRICE_ID_REVIEW_INTELLIGENCE"]      ?? "price_1TYow19eqtbj6iPB1HLzhN1U",
   localDominationMaps:  process.env["STRIPE_PRICE_ID_LOCAL_DOMINATION_MAPS"]    ?? "price_1TYowh9eqtbj6iPBqI7YxqYu",
@@ -347,6 +350,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
   aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
   gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
+  gbpPerformanceLeads:  { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
   aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 12, oneTime: false, quantity: false },
   reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 9, oneTime: false, quantity: false },
   localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 15, oneTime: false, quantity: false },
@@ -398,7 +402,7 @@ export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NO
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
   "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist",
-  "aiGbpPosting","reviewIntelligence","localDominationMaps",
+  "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
   "marketIntelligence","aiWorkflows",
@@ -422,6 +426,8 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  * When an add-on ships, remove it from this set and add a Stripe price.
  */
 export const COMING_SOON_ADDONS = new Set<string>([
+  // Test mode only opens this after a dedicated test price is configured below.
+  "gbpPerformanceLeads",
   // The Better Stack SLA endpoint exists and enforces requireAddon; the add-on
   // remains unavailable for purchase pending real QA certification.
   "slaMonitoring",
@@ -460,6 +466,15 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // getAddonStatus returns "included" first for Ultra users so this is safe.
   "customDomain",
 ]);
+
+// A test price makes the feature purchasable only when the active Stripe key is
+// explicitly test-mode. Without a live price, production remains fail-closed.
+if (
+  ADDON_PRICE_IDS_TEST.gbpPerformanceLeads &&
+  getStripeKey().startsWith("sk_test_")
+) {
+  COMING_SOON_ADDONS.delete("gbpPerformanceLeads");
+}
 
 /** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
 export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
