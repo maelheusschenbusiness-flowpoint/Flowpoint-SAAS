@@ -140,6 +140,23 @@ async function run(client: PoolClient, sql: string): Promise<void> {
 export async function initDataTables(): Promise<void> {
   const client = await pool.connect();
   try {
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS conversion_opportunity_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE conversion_opportunity_settings ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE conversion_opportunity_settings FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS conversion_opportunity_settings_tenant ON conversion_opportunity_settings`);
+    await run(client, `
+      CREATE POLICY conversion_opportunity_settings_tenant
+      ON conversion_opportunity_settings
+      USING (org_id = current_setting('app.current_org_id', true))
+      WITH CHECK (org_id = current_setting('app.current_org_id', true))
+    `);
+
     // ── org_settings legacy mirror / profile store ────────────────────────────
     // organizations is the canonical billing source, but this table remains a
     // read-only/dual-write compatibility surface during the auth migration.
@@ -3101,6 +3118,54 @@ export async function initDataTables(): Promise<void> {
         )
       `);
       await applyTenantRls("local_landing_opportunity_settings");
+
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS seo_change_impact_settings (
+          org_id TEXT PRIMARY KEY,
+          settings JSONB NOT NULL DEFAULT '{"lookbackDays":30,"minimumScoreChange":0}'::jsonb,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await applyTenantRls("seo_change_impact_settings");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS agency_portfolio_priority_settings (
+          org_id TEXT PRIMARY KEY,
+          settings JSONB NOT NULL DEFAULT '{"priorityWeights":{}}'::jsonb,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS agency_portfolio_priority_settings_updated_idx ON agency_portfolio_priority_settings(updated_at)`);
+      await applyTenantRls("agency_portfolio_priority_settings");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS technical_seo_fix_verifications (
+          id TEXT PRIMARY KEY,
+          org_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          before_audit_id TEXT NOT NULL,
+          after_audit_id TEXT NOT NULL,
+          before_issue_count INTEGER NOT NULL,
+          after_issue_count INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (org_id, before_audit_id, after_audit_id)
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS technical_seo_fix_verifications_org_created_idx ON technical_seo_fix_verifications(org_id, created_at DESC)`);
+      await applyTenantRls("technical_seo_fix_verifications");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS organic_campaign_goals (
+          id TEXT PRIMARY KEY,
+          org_id TEXT NOT NULL,
+          keyword TEXT NOT NULL,
+          target_position REAL NOT NULL CHECK (target_position > 0),
+          minimum_clicks INTEGER NOT NULL CHECK (minimum_clicks >= 0),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (org_id, keyword)
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS organic_campaign_goals_org_idx ON organic_campaign_goals(org_id)`);
+      await applyTenantRls("organic_campaign_goals");
 
       // ── org_auth_config — sso-service.ts ON CONFLICT(org_id) uses these columns ─
       await run(client, `
