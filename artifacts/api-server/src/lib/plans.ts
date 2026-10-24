@@ -184,8 +184,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 
 /**
  * Returns the correct Stripe price ID for an add-on, respecting test-mode overrides.
- * In test mode (sk_test_ key active) → prefer ADDON_PRICE_IDS_TEST[key].
- * In live mode or when no test override exists → fall back to ADDON_PRICE_IDS[key].
+ * In test mode, missing TEST price IDs fail closed; LIVE IDs are never a fallback.
  */
 /**
  * Identifiant de prix Stripe du PLAN, conscient du mode.
@@ -205,8 +204,12 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 export function getPlanPriceId(plan: string, stripeKey?: string): string | undefined {
   const key = String(plan ?? "").toLowerCase();
   const activeKey = stripeKey ?? getStripeKey();
-  const isTestMode = activeKey.startsWith("sk_test_");
-  if (isTestMode) return PLAN_PRICE_IDS_TEST[key] || undefined;
+  const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
+  const isTestMode = testModeRequested || activeKey.startsWith("sk_test_");
+  if (isTestMode) {
+    if (!activeKey.startsWith("sk_test_")) return undefined;
+    return PLAN_PRICE_IDS_TEST[key] || undefined;
+  }
   return PLAN_PRICE_IDS[key] || undefined;
 }
 
@@ -243,8 +246,12 @@ export function plansRepliantSurPrixLive(stripeKey?: string): PlanAuPrixLive[] {
 }
 
 export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
-  const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
-  if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];
+  const activeKey = stripeKey ?? getStripeKey();
+  const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
+  if (testModeRequested || activeKey.startsWith("sk_test_")) {
+    if (!activeKey.startsWith("sk_test_")) return undefined;
+    return ADDON_PRICE_IDS_TEST[key] || undefined;
+  }
   return ADDON_PRICE_IDS[key] || undefined;
 }
 

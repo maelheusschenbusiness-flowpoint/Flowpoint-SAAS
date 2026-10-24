@@ -105,14 +105,14 @@ describe("plansRepliantSurPrixLive", () => {
       .toEqual(["pro", "ultra"]);
   });
 
-  it("coherence avec getPlanPriceId : un plan signale resout bien vers le prix live", async () => {
+  it("coherence avec getPlanPriceId : un prix TEST manquant ne resout jamais vers LIVE", async () => {
     process.env["STRIPE_TEST_MODE"] = "true";
     process.env["STRIPE_TEST_KEY"] = "sk_test_abc";
     process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_test_std";
     const { plansRepliantSurPrixLive, getPlanPriceId } = await charger();
     for (const r of plansRepliantSurPrixLive()) {
       expect(getPlanPriceId(r.plan), `${r.plan} ne resout pas vers le prix signale`)
-        .toBe(r.priceIdLive);
+        .toBeUndefined();
     }
     // et le plan correctement configure ne doit pas etre signale
     expect(getPlanPriceId("standard")).toBe("price_test_std");

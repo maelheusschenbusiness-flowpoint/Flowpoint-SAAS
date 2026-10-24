@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -119,7 +119,7 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     desc:     def.description,
     oneTime:  def.oneTime,
     quantity: def.quantity,
-    priceId:  ADDON_PRICE_IDS[id] ?? "",
+    priceId:  getAddonPriceId(id) ?? "",
     // Public billing has no organisation entitlement context. Its status is
     // therefore the canonical product lifecycle; GET /api/addons refines this
     // to "included" or "active" for an authenticated organisation.

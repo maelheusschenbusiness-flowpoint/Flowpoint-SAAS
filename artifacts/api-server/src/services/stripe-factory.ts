@@ -72,6 +72,8 @@ export function getStripeKey(): string {
   if (process.env["STRIPE_TEST_MODE"] === "true") {
     const testKey = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"];
     if (testKey?.startsWith("sk_test_")) return testKey;
+    // A test service with a missing/invalid test key must not silently use LIVE.
+    return "";
   }
   return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || "";
 }
