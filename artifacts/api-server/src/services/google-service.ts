@@ -12,6 +12,7 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypt
 import { logger } from "../lib/logger.js";
 import { getOrgAddons } from "./addons-service.js";
 import { selectGbpLocations } from "./gbp-location-quota.js";
+import { GBP_PERFORMANCE_METRICS } from "./gbp-performance-addon.js";
 
 const GOOGLE_AUTH_BASE  = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token";
@@ -299,22 +300,32 @@ export async function getPerformance(
   if (!token) return { metricValues: [] };
   const start = new Date(opts.startTime);
   const end   = new Date(opts.endTime);
-  const url = [
-    `https://businessprofileperformance.googleapis.com/v1/${locationName}:getDailyMetricsTimeSeries`,
-    `?dailyMetric=ALL`,
-    `&dailyRange.startDate.year=${start.getFullYear()}`,
-    `&dailyRange.startDate.month=${start.getMonth() + 1}`,
-    `&dailyRange.startDate.day=${start.getDate()}`,
-    `&dailyRange.endDate.year=${end.getFullYear()}`,
-    `&dailyRange.endDate.month=${end.getMonth() + 1}`,
-    `&dailyRange.endDate.day=${end.getDate()}`,
-  ].join("");
+  const locationId = locationName.match(/(?:^|\/)locations\/([^/]+)$/)?.[1]
+    ?? (/^[^/]+$/.test(locationName) ? locationName : "");
+  if (!locationId || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    throw new Error("Invalid Google Business Profile performance request");
+  }
+  const params = new URLSearchParams();
+  for (const metric of GBP_PERFORMANCE_METRICS) params.append("dailyMetrics", metric);
+  for (const [prefix, date] of [["start_date", start], ["end_date", end]] as const) {
+    params.set(`dailyRange.${prefix}.year`, String(date.getUTCFullYear()));
+    params.set(`dailyRange.${prefix}.month`, String(date.getUTCMonth() + 1));
+    params.set(`dailyRange.${prefix}.day`, String(date.getUTCDate()));
+  }
+  const url = `https://businessprofileperformance.googleapis.com/v1/locations/${encodeURIComponent(locationId)}:fetchMultiDailyMetricsTimeSeries?${params}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(12_000),
   });
-  if (!res.ok) return { metricValues: [] };
-  return res.json();
+  if (!res.ok) {
+    throw new Error(`Google Business Profile Performance API returned HTTP ${res.status}`);
+  }
+  const data = await res.json() as {
+    multiDailyMetricTimeSeries?: Array<{
+      dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: unknown }>;
+    }>;
+  };
+  return (data.multiDailyMetricTimeSeries ?? []).flatMap((group) => group.dailyMetricTimeSeries ?? []);
 }
 
 export async function publishGBPPost(
