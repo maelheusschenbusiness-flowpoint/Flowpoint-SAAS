@@ -84,6 +84,8 @@ export default defineConfig({
       // Account deletion — early session revocation (preKillSessions) patch
       "src/services/account-deletion-session-kill.test.ts",
       "src/tests/cross_tenant_rbac_sso.test.ts",
+      // Cles API fp_pub_/fp_sec_ : roles, organisations, journaux, revocation, interrupteur (23/10/2026).
+      "src/tests/security-api-keys-db.test.ts",
       // Phase 7 — analyze_url SSRF IPv6 + IPv4 classification
       "src/services/url-fetcher-ipv6.test.ts",
       "src/services/url-fetcher-ipv4.test.ts",
