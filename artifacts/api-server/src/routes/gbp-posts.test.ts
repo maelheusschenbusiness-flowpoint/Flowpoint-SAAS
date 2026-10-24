@@ -89,7 +89,7 @@ describe("GBP post studio API", () => {
     });
 
     expect(response.status).toBe(422);
-    expect(response.body.error).toBe("Internal server error");
+    expect(response.body.error).toBe("AI_GENERATION_OVER_LIMIT");
   });
 
   it("maps a rejected publish request to 422 without leaking internal details", async () => {
@@ -98,6 +98,6 @@ describe("GBP post studio API", () => {
     const response = await request(app).post("/gbp-posts/post-1/publish").send({});
 
     expect(response.status).toBe(422);
-    expect(response.body.error).toBe("Internal server error");
+    expect(response.body.error).toBe("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
   });
 });

@@ -65,7 +65,7 @@ describe("add-on catalogue UI commercial gates", () => {
       "fp-gbp-keywords",
       "fp-gbp-max-characters",
     ]) expect(dashboard).toContain(field);
-    expect(dashboard).toContain("Relisez-le");
+    expect(dashboard).toContain("Vérifiez le texte");
     expect(dashboard).toContain("generationOptions");
   });
 
