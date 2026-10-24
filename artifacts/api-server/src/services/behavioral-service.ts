@@ -560,7 +560,9 @@ export async function analyzeBehaviorFunnel(
   steps: BehavioralFunnelStep[],
 ) {
   const safePeriod = [7, 30, 90].includes(periodDays) ? periodDays : 30;
-  const since = new Date(Date.now() - safePeriod * 24 * 60 * 60 * 1000);
+  const now = Date.now();
+  const since = new Date(now - safePeriod * 24 * 60 * 60 * 1000);
+  const comparisonSince = new Date(now - safePeriod * 2 * 24 * 60 * 60 * 1000);
   const events = await db.select({
     sessionId: behaviorEventsTable.sessionId,
     page: behaviorEventsTable.page,
@@ -571,12 +573,26 @@ export async function analyzeBehaviorFunnel(
   }).from(behaviorEventsTable).where(and(
     eq(behaviorEventsTable.orgId, orgId),
     eq(behaviorEventsTable.siteUrl, siteUrl),
-    gte(behaviorEventsTable.createdAt, since),
+    gte(behaviorEventsTable.createdAt, comparisonSince),
   )).orderBy(desc(behaviorEventsTable.createdAt)).limit(20_000);
+  const currentEvents = events.filter(e => e.createdAt && e.createdAt >= since);
+  const previousEvents = events.filter(e => e.createdAt && e.createdAt < since);
+  const currentSteps = evaluateBehaviorFunnel(currentEvents, steps);
+  const previousSteps = evaluateBehaviorFunnel(previousEvents, steps);
   return {
     siteUrl,
     periodDays: safePeriod,
     dataLimited: events.length >= 20_000,
-    steps: evaluateBehaviorFunnel(events, steps),
+    comparison: { previousPeriodDays: safePeriod },
+    steps: currentSteps.map((step, index) => {
+      const previousSessions = previousSteps[index]?.sessions ?? 0;
+      return {
+        ...step,
+        previousSessions,
+        changePercent: previousSessions > 0
+          ? Math.round((step.sessions - previousSessions) / previousSessions * 1000) / 10
+          : null,
+      };
+    }),
   };
 }

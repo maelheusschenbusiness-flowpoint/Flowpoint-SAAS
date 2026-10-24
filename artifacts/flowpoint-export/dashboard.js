@@ -59537,6 +59537,7 @@ function renderDataExplorer() {
             <div style="font-size:10px;color:var(--fp-text-muted)">${i+1}. ${escHtml(s.label)}</div>
             <div style="font-size:18px;font-weight:800;color:var(--fp-text)">${s.sessions.toLocaleString(getLocale())}</div>
             <div style="font-size:10px;color:var(--fp-text-faint)">${s.rateFromPrevious==null?'—':`${s.rateFromPrevious}% ${fpT('depuis l’étape précédente')}`}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('Période précédente')}: ${Number(s.previousSessions||0).toLocaleString(getLocale())} · ${s.changePercent==null?'—':`${s.changePercent>0?'+':''}${s.changePercent}%`}</div>
             ${s.abandonments==null?'':`<div style="font-size:10px;color:#ef4444">${s.abandonments} ${fpT('abandons')}</div>`}
           </div>`).join('')}</div>` : ''}
         ${behavioralFunnel?.dataLimited ? `<div style="margin-top:8px;font-size:10px;color:#f59e0b">${fpT('Résultat limité aux événements les plus récents (plafond de sécurité atteint).')}</div>` : ''}
