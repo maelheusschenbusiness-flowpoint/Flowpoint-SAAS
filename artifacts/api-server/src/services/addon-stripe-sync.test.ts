@@ -32,6 +32,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "false";
+});
+
 // ─── Shared state captured by mocks ──────────────────────────────────────────
 
 // Stripe API call recorder
@@ -80,7 +84,7 @@ let mockBillingCtx: {
 
 // ─── Mock: stripe-factory ─────────────────────────────────────────────────────
 vi.mock("../services/stripe-factory.js", () => ({
-  getStripeKey: vi.fn(() => "sk_test_fake"),
+  getStripeKey: vi.fn(() => "sk_live_fake"),
   createStripeClient: vi.fn(() => mockStripeClient()),
 }));
 

@@ -24,6 +24,13 @@ import request from "supertest";
 import { PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
 import { setStripeForTesting } from "../services/stripe-factory.js";
 
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_ci_test_standard";
+  process.env["STRIPE_TEST_PRICE_ID_PRO"] = "price_ci_test_pro";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"] = "price_ci_test_monitors10";
+  process.env["STRIPE_TEST_PRICE_AI_50K"] = "price_ci_test_ai50k";
+});
+
 vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
 }));
@@ -214,7 +221,7 @@ beforeEach(() => {
   // setStripeForTesting refuses to run under NODE_ENV=production (correct in
   // prod; here we are in vitest, so force a test env for the injection).
   process.env["NODE_ENV"] = "test";
-  process.env["STRIPE_SECRET_KEY"] ||= "sk_live_dummy_for_tests";
+  process.env["STRIPE_TEST_KEY"] ||= "sk_test_dummy_for_tests";
   canonicalAnchorCustomer = null;
   setStripeForTesting(makeFakeStripe());
 });

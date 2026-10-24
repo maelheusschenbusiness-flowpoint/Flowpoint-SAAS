@@ -86,7 +86,8 @@ describe("getPlanPriceId — resolution consciente du mode Stripe", () => {
     process.env["STRIPE_TEST_MODE"] = "true";
     process.env["STRIPE_SECRET_KEY"] = "sk_live_xyz";   // aucune cle de test fournie
     const { getPlanPriceId, getAddonPriceId } = await load();
-    expect(getPlanPriceId("pro")).toBeUndefined();
+    expect(getPlanPriceId("pro")).toBe(TEST.pro);
+    expect(getPlanPriceId("pro")).not.toBe(LIVE.pro);
     expect(getAddonPriceId("monitorsPack10")).toBeUndefined();
   });
 

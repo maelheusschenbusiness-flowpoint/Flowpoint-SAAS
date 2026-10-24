@@ -164,13 +164,13 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     if (COMING_SOON_ADDONS.has(key))  throw new Error("ADDON_COMING_SOON");
     const definition = ADDON_DEFINITIONS[key];
     if (!definition) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
+    const includedInPlan = included.has(key);
     const priceId = getAddonPriceId(key);
-    if (!priceId) throw new Error("MISSING_PRICE_ID");
+    if (!priceId && !includedInPlan) throw new Error("MISSING_PRICE_ID");
     const quantity = typeof rawQuantity === "number" ? rawQuantity : 1;
     if (!Number.isInteger(quantity) || quantity < 1) throw new Error("INVALID_ADDON_QUANTITY");
     // Included addons are always compatible with the plan (they're free).
     // Only block addons that are neither included nor purchasable on this tier.
-    const includedInPlan = included.has(key);
     const gatingPlan = plan || (selection.inclusionPlan ?? "").trim().toLowerCase();
     if (gatingPlan && !includedInPlan && !isPlanAllowedAddon(gatingPlan, key)) {
       throw new Error("ADDON_NOT_ALLOWED_FOR_PLAN");
@@ -191,7 +191,7 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
       key,
       kind: "addon",
       name: definition.name,
-      priceId,
+      priceId: priceId ?? "",
       quantity,
       unitAmountMinor,
       amountMinor: includedInPlan ? 0 : unitAmountMinor * quantity,

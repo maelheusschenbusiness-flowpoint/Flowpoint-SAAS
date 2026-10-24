@@ -203,11 +203,13 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
  */
 export function getPlanPriceId(plan: string, stripeKey?: string): string | undefined {
   const key = String(plan ?? "").toLowerCase();
-  const activeKey = stripeKey ?? getStripeKey();
+  const activeKey = stripeKey ?? getStripeKey() ?? "";
   const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
-  const isTestMode = testModeRequested || activeKey.startsWith("sk_test_");
-  if (isTestMode) {
-    if (!activeKey.startsWith("sk_test_")) return undefined;
+  if (testModeRequested) {
+    if (stripeKey && !stripeKey.startsWith("sk_test_")) return undefined;
+    return PLAN_PRICE_IDS_TEST[key] || undefined;
+  }
+  if (activeKey.startsWith("sk_test_")) {
     return PLAN_PRICE_IDS_TEST[key] || undefined;
   }
   return PLAN_PRICE_IDS[key] || undefined;
@@ -246,10 +248,13 @@ export function plansRepliantSurPrixLive(stripeKey?: string): PlanAuPrixLive[] {
 }
 
 export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
-  const activeKey = stripeKey ?? getStripeKey();
+  const activeKey = stripeKey ?? getStripeKey() ?? "";
   const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
-  if (testModeRequested || activeKey.startsWith("sk_test_")) {
-    if (!activeKey.startsWith("sk_test_")) return undefined;
+  if (testModeRequested) {
+    if (stripeKey && !stripeKey.startsWith("sk_test_")) return undefined;
+    return ADDON_PRICE_IDS_TEST[key] || undefined;
+  }
+  if (activeKey.startsWith("sk_test_")) {
     return ADDON_PRICE_IDS_TEST[key] || undefined;
   }
   return ADDON_PRICE_IDS[key] || undefined;
