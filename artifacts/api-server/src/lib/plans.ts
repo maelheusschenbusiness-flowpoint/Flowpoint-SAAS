@@ -510,27 +510,6 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "customDomain",
 ]);
 
-// A test price makes the feature purchasable only when the active Stripe key is
-// explicitly test-mode. Without a live price, production remains fail-closed.
-if (
-  ADDON_PRICE_IDS_TEST.gbpPerformanceLeads &&
-  getStripeKey().startsWith("sk_test_")
-) {
-  COMING_SOON_ADDONS.delete("gbpPerformanceLeads");
-}
-if (
-  ADDON_PRICE_IDS_TEST.localLandingOpportunities &&
-  getStripeKey().startsWith("sk_test_")
-) {
-  COMING_SOON_ADDONS.delete("localLandingOpportunities");
-}
-if (
-  ADDON_PRICE_IDS_TEST.conversionOpportunityEngine &&
-  getStripeKey().startsWith("sk_test_")
-) {
-  COMING_SOON_ADDONS.delete("conversionOpportunityEngine");
-}
-
 /** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
 export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
   "aiGbpPosting",
@@ -538,6 +517,27 @@ export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
   "localDominationMaps",
   "localPresenceOptimizer",
 ]);
+
+// TEST prices release only the eight replacement add-ons in TEST mode.
+// No LIVE price or protected/historical entitlement is changed by this gate.
+const TEST_PURCHASABLE_REPLACEMENT_ADDONS = [
+  "gbpPerformanceLeads",
+  "localPresenceOptimizer",
+  "localLandingOpportunities",
+  "conversionOpportunityEngine",
+  "seoChangeImpact",
+  "agencyPortfolioPriorities",
+  "technicalSeoFixVerification",
+  "organicCampaignTracker",
+] as const;
+
+if (getStripeKey().startsWith("sk_test_")) {
+  for (const addonKey of TEST_PURCHASABLE_REPLACEMENT_ADDONS) {
+    if (!ADDON_PRICE_IDS_TEST[addonKey]) continue;
+    COMING_SOON_ADDONS.delete(addonKey);
+    VALIDATION_REQUIRED_ADDONS.delete(addonKey);
+  }
+}
 
 /**
  * Audit fonctionnel (2026-08-24) — critère BETA :
