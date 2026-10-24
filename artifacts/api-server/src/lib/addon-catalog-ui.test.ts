@@ -47,6 +47,14 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(exportedDashboard).toBe(dashboard);
   });
 
+  it("shows an accessible GBP state for missing entitlement and provider failures", () => {
+    expect(dashboard).toContain("gbpPerformanceError");
+    expect(dashboard).toContain("status === 402");
+    expect(dashboard).toContain("status === 502");
+    expect(dashboard).toContain('role="alert"');
+    expect(dashboard).toContain("data-fp-gbp-performance-retry");
+  });
+
   it("never offers deactivation for an add-on active only because it is included", () => {
     expect(dashboard).toContain(": a.active && !isInc");
   });
