@@ -157,10 +157,10 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
                        ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
     conversionOpportunityEngine: process.env["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"] ?? "",
-    seoChangeImpact: "",
+    seoChangeImpact: process.env["STRIPE_TEST_PRICE_ID_ADDON_SEO_CHANGE_IMPACT"] ?? "",
     agencyPortfolioPriorities: process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"] ?? "",
-    technicalSeoFixVerification: "",
-    organicCampaignTracker: "",
+    technicalSeoFixVerification: process.env["STRIPE_TEST_PRICE_ID_ADDON_TECHNICAL_SEO_FIX_VERIFICATION"] ?? "",
+    organicCampaignTracker: process.env["STRIPE_TEST_PRICE_ID_ADDON_ORGANIC_CAMPAIGN_TRACKER"] ?? "",
     localPresenceOptimizer: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"] ?? "",
     advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
