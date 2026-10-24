@@ -55,6 +55,8 @@ export default defineConfig({
       "src/services/gbp-posting-publish.test.ts",
       "src/services/gbp-location-quota.test.ts",
        "src/services/local-presence-optimizer.test.ts",
+       "src/services/local-landing-opportunities.test.ts",
+       "src/routes/local-landing-opportunities.test.ts",
        "src/services/maps-service.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",

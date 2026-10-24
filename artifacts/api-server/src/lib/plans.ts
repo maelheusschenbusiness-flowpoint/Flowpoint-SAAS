@@ -170,6 +170,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
     gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
     gbpPerformanceLeads:  process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"] ?? "",
+    localLandingOpportunities: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"] ?? "",
     aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
     aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
     aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
@@ -270,6 +271,7 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   reviewIntelligence:   process.env["STRIPE_PRICE_ID_REVIEW_INTELLIGENCE"]      ?? "price_1TYow19eqtbj6iPB1HLzhN1U",
   localDominationMaps:  process.env["STRIPE_PRICE_ID_LOCAL_DOMINATION_MAPS"]    ?? "price_1TYowh9eqtbj6iPBqI7YxqYu",
   localPresenceOptimizer: process.env["STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER"] ?? "",
+  localLandingOpportunities: "",
 
   // ── Conversion / AI ────────────────────────────────────────────────────────
   aiCro:                process.env["STRIPE_PRICE_ID_AI_CRO_STRATEGIST"]        ?? "price_1TYpDs9eqtbj6iPBGyjqL3mu",
@@ -353,6 +355,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
   gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
   gbpPerformanceLeads:  { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
+  localLandingOpportunities: { name: "Local Landing Opportunities", category: "Local SEO", description: "Repérez les recherches locales réelles qui justifient une page de service ou de zone.", priceEur: 15, oneTime: false, quantity: false },
   aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 12, oneTime: false, quantity: false },
   reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 9, oneTime: false, quantity: false },
   localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 15, oneTime: false, quantity: false },
@@ -405,7 +408,7 @@ export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NO
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
   "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist",
-  "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads","localPresenceOptimizer",
+  "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads","localPresenceOptimizer","localLandingOpportunities",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
   "marketIntelligence","aiWorkflows",
@@ -420,6 +423,13 @@ export const FLAG_ADDONS = new Set([
 export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
 
 /**
+ * Retired products cannot be newly purchased, but remain recognized by the
+ * entitlement and Stripe reconciliation paths for customers who already own
+ * them. A replacement always receives a different commercial key.
+ */
+export const RETIRED_ADDONS = new Set<string>(["localDominationMaps"]);
+
+/**
  * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
  * available for purchase.  Activation is blocked at every layer:
  *   1. API  — POST /api/addons/:key/activate returns 503
@@ -431,6 +441,7 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
 export const COMING_SOON_ADDONS = new Set<string>([
   // Test mode only opens this after a dedicated test price is configured below.
   "gbpPerformanceLeads",
+  "localLandingOpportunities",
   // The Better Stack SLA endpoint exists and enforces requireAddon; the add-on
   // remains unavailable for purchase pending real QA certification.
   "slaMonitoring",
@@ -477,6 +488,12 @@ if (
   getStripeKey().startsWith("sk_test_")
 ) {
   COMING_SOON_ADDONS.delete("gbpPerformanceLeads");
+}
+if (
+  ADDON_PRICE_IDS_TEST.localLandingOpportunities &&
+  getStripeKey().startsWith("sk_test_")
+) {
+  COMING_SOON_ADDONS.delete("localLandingOpportunities");
 }
 
 /** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
@@ -725,6 +742,7 @@ const SELLABLE_ADDON_AVAILABILITIES = new Set<AddonAvailability>(["available", "
 const SELLABLE_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
   !PROTECTED_ADDON_KEYS.has(key) &&
   !REMOVED_ADDONS.has(key) &&
+  !RETIRED_ADDONS.has(key) &&
   SELLABLE_ADDON_AVAILABILITIES.has(getAddonAvailability(key))
 );
 
@@ -736,6 +754,7 @@ for (const plan of ["standard", "pro", "ultra"] as const) {
 
 /** Returns true when a plan is allowed to purchase the given add-on key. */
 export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
+  if (RETIRED_ADDONS.has(addonKey)) return false;
   const planNorm = plan.toLowerCase();
   const allowed = PLAN_ALLOWED_ADDONS[planNorm];
   if (!allowed) {

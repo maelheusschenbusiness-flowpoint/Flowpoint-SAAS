@@ -10,6 +10,7 @@ import {
   PLAN_INCLUDED_ADDONS,
   PROTECTED_ADDON_KEYS,
   REMOVED_ADDONS,
+  RETIRED_ADDONS,
 } from "./plans.js";
 import plansRouter from "../routes/plans.js";
 
@@ -113,12 +114,12 @@ describe("add-on catalogue UI commercial gates", () => {
   it("keeps the UI button and backend authorization aligned for all 36 non-protected add-ons on all plans", () => {
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
-      key => !PROTECTED_ADDON_KEYS.has(key),
+      key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
     expect(keys).toHaveLength(36);
 
     for (const key of keys) {
-      const removed = REMOVED_ADDONS.has(key);
+      const removed = REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key);
       const availability = getAddonAvailability(key);
       const sellable = !removed && ["available", "beta"].includes(availability);
       const allowedPlans = sellable
@@ -163,13 +164,13 @@ describe("add-on catalogue UI commercial gates", () => {
     ]));
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
-      key => !PROTECTED_ADDON_KEYS.has(key),
+      key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
     expect(keys).toHaveLength(36);
     expect(entries.has("prioritySupport")).toBe(false);
 
     for (const key of keys) {
-      if (REMOVED_ADDONS.has(key)) continue;
+      if (REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key)) continue;
       const entry = entries.get(key);
       expect(entry, `${key} should exist in the public catalog`).toBeDefined();
       if (!entry) continue;
