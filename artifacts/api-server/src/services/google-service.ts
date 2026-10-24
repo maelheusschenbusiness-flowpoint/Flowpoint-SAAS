@@ -320,7 +320,20 @@ export async function getPerformance(
 export async function publishGBPPost(
   orgId: string,
   locationName: string,
-  post: { summary: string; callToAction?: { actionType: string; url: string } }
+  post: {
+    summary: string;
+    topicType?: "STANDARD" | "EVENT" | "OFFER";
+    languageCode?: string;
+    callToAction?: { actionType: string; url?: string };
+    media?: Array<{ mediaFormat: "PHOTO"; sourceUrl: string }>;
+    event?: { title: string; schedule: {
+      startDate: { year: number; month: number; day: number };
+      startTime: { hours: number; minutes: number };
+      endDate: { year: number; month: number; day: number };
+      endTime: { hours: number; minutes: number };
+    }};
+    offer?: { couponCode?: string; redeemOnlineUrl?: string; termsConditions?: string };
+  }
 ): Promise<{ ok: boolean; error?: string; postName?: string }> {
   try {
     const token = await getValidToken(orgId);

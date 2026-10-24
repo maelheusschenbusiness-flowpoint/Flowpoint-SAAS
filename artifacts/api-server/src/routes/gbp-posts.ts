@@ -61,14 +61,45 @@ router.get("/gbp-posts/queue", async (req, res) => {
 router.post("/gbp-posts", async (req, res) => {
   const {
     locationId, locationName, postType, title, content, ctaType, ctaUrl,
-    mediaUrls, scheduledAt, seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
+    mediaUrls, scheduledAt, seoKeywords, eventTitle, eventStart, eventEnd, offerCode, offerTerms, manualApproval,
+    generationOptions,
   } = req.body as {
     locationId?: string; locationName?: string; postType?: string; title?: string; content?: string;
     ctaType?: string; ctaUrl?: string; mediaUrls?: string[]; scheduledAt?: string;
-    seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
+    seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string; offerTerms?: string;
+    manualApproval?: boolean;
+    generationOptions?: import("../services/gbp-posting-service.js").PostGenerationOptions;
   };
   if (!content) { res.status(400).json({ error: "content requis" }); return; }
   if (content.length > 1500) { res.status(400).json({ error: "content trop long (1500 caractères maximum)" }); return; }
+  if (postType && !["standard", "event", "offer", "product"].includes(postType)) {
+    res.status(400).json({ error: "Format de post non pris en charge." }); return;
+  }
+  if (scheduledAt && postType === "product") {
+    res.status(422).json({ error: "L’API Google connectée ne prend pas en charge les posts Produit. Enregistrez ce format comme brouillon." }); return;
+  }
+  if (scheduledAt && manualApproval !== true) {
+    res.status(400).json({ error: "Confirmez la validation manuelle du contenu avant de le programmer." }); return;
+  }
+  if (scheduledAt && postType === "event" && (!eventTitle?.trim() || !eventStart || !eventEnd)) {
+    res.status(400).json({ error: "Le titre, l’heure de début et l’heure de fin sont requis pour programmer un événement." }); return;
+  }
+  if (postType === "event" && (eventStart || eventEnd) &&
+      (!eventTitle?.trim() || !eventStart || !eventEnd || !Number.isFinite(Date.parse(eventStart)) ||
+       !Number.isFinite(Date.parse(eventEnd)) || Date.parse(eventEnd) <= Date.parse(eventStart))) {
+    res.status(400).json({ error: "Un titre et une plage de dates valide sont requis pour un événement." }); return;
+  }
+  if (ctaType && !["CALL", "LEARN_MORE", "ORDER", "BOOK", "SIGN_UP", "SHOP", "GET_OFFER", "NONE"].includes(ctaType)) {
+    res.status(400).json({ error: "Type de bouton d’action non pris en charge." }); return;
+  }
+  if (mediaUrls !== undefined && (!Array.isArray(mediaUrls) || mediaUrls.length > 10 ||
+      mediaUrls.some(url => typeof url !== "string" || !/^https:\/\//i.test(url)))) {
+    res.status(400).json({ error: "Ajoutez au maximum 10 URL d’image publiques en HTTPS." }); return;
+  }
+  if (ctaUrl) {
+    try { if (new URL(ctaUrl).protocol !== "https:") throw new Error("invalid scheme"); }
+    catch { res.status(400).json({ error: "Le lien du bouton doit être une URL HTTPS valide." }); return; }
+  }
   if (scheduledAt && (!locationId || !Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) {
     res.status(400).json({ error: "Un établissement connecté et une date future valide sont requis pour planifier." }); return;
   }
@@ -78,7 +109,13 @@ router.post("/gbp-posts", async (req, res) => {
     const post = await createPost(org(req), {
       locationId, locationName, postType: postType as PostType, title, content,
       ctaType: ctaType as CtaType, ctaUrl, mediaUrls, scheduledAt,
-      seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
+      seoKeywords, eventTitle, eventStart, eventEnd, offerCode, offerTerms,
+      generationOptions: {
+        ...generationOptions,
+        eventStartLocal: generationOptions?.eventStartLocal || eventStart,
+        eventEndLocal: generationOptions?.eventEndLocal || eventEnd,
+      },
+      approvedAt: scheduledAt && manualApproval === true ? new Date().toISOString() : undefined,
     });
     res.status(201).json({ ok: true, post });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
@@ -86,25 +123,31 @@ router.post("/gbp-posts", async (req, res) => {
 
 // AI post generation requires the aiGbpPosting add-on
 router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), async (req, res) => {
-  const { locationId, locationName, postType, industry, keywords, tone, objective } = req.body as {
+  const { locationId, locationName, postType, industry, keywords, tone, objective, language, maxCharacters } = req.body as {
     locationId?: string; locationName?: string; postType?: string; industry?: string;
-    keywords?: string[]; tone?: string; objective?: string;
+    keywords?: string[]; tone?: string; objective?: string; language?: string; maxCharacters?: number;
   };
   if (!locationId) { res.status(400).json({ error: "locationId requis" }); return; }
   try {
     type PostType = import("../services/gbp-posting-service.js").PostType;
     const generated = await generateAiPost(org(req), {
-      locationId, locationName, postType: postType as PostType, industry, keywords, tone, objective,
+      locationId, locationName, postType: postType as PostType, industry, keywords, tone, objective, language, maxCharacters,
     });
     res.json({ ok: true, ...generated });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    res.status(message === "AI_GENERATION_OVER_LIMIT" ? 422 : 500).json({ error: safeErrMsg(err) });
+  }
 });
 
 router.post("/gbp-posts/:id/publish", async (req, res) => {
   try {
     const post = await publishPost(org(req), req.params.id);
     res.json({ ok: true, post });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    res.status(["GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH", "GBP_EVENT_SCHEDULE_REQUIRED", "GBP_EVENT_SCHEDULE_INVALID", "GBP_MEDIA_URL_INVALID"].includes(message) ? 422 : 500).json({ error: safeErrMsg(err) });
+  }
 });
 
 router.patch("/gbp-posts/:id", async (req, res) => {
