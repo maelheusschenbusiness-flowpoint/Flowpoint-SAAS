@@ -16,6 +16,7 @@ export default defineConfig({
        "src/routes/admin-test-session-postgres.test.ts",
       "src/services/keyword-domination.test.ts",
       "src/services/seo-change-impact.test.ts",
+      "src/routes/seo-change-impact.test.ts",
        "src/routes/keyword-domination-postgres.test.ts",
       "src/services/keyword-engine-sync.test.ts",
        "src/routes/ab-testing-postgres.test.ts",
@@ -58,6 +59,8 @@ export default defineConfig({
        "src/services/local-landing-opportunities.test.ts",
        "src/routes/local-landing-opportunities.test.ts",
        "src/services/maps-service.test.ts",
+       "src/services/conversion-opportunity-engine.test.ts",
+       "src/routes/conversion-opportunity-engine.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
@@ -247,6 +250,8 @@ export default defineConfig({
       // P0 — addon lifecycle guards: coming_soon, removed, plan-restricted
       // P0/P1 — streak owner vs member isolation
       "src/routes/streak-owner-member.test.ts",
+      // PATCH /me/prefs — persistence without settings, SQL failures not hidden
+      "src/routes/me-prefs-db.test.ts",
       // Canonical activity-day source, identity, and timezone-safe streak semantics
       "src/services/activity-streak.test.ts",
       // Canonical user_id/org_id session contract and legacy-session policy
