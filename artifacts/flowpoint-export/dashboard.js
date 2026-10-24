@@ -59398,30 +59398,36 @@ function renderDataExplorer() {
   // SUB: USER BEHAVIOR LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'behavior') {
-    const userFlowSteps = STATE.behavioral?.userFlowSteps || (PREVIEW_MODE ? [
-      { stage: 'Atterrissage',     users: 12640, drop: null,  next: 7820 },
-      { stage: 'Navigation',       users: 7820,  drop: 38.1,  next: 3240 },
-      { stage: 'Page de service',  users: 3240,  drop: 58.6,  next: 892  },
-      { stage: 'Contact initié',   users: 892,   drop: 72.5,  next: 134  },
-      { stage: 'Conversion',       users: 134,   drop: 85.0,  next: 28   },
-    ] : []);
-    const segments = STATE.behavioral?.segments || (PREVIEW_MODE ? [
-      { name: 'Visiteurs fidèles',    pct: 18, conv: 4.8, eng: 88, color: '#22c55e', desc: '2+ visites · session > 3 min' },
-      { name: 'Explorateurs mobiles', pct: 42, conv: 0.8, eng: 41, color: '#f59e0b', desc: 'Mobile · 1 session · rebond 72%' },
-      { name: 'Chercheurs locaux',    pct: 24, conv: 3.2, eng: 76, color: '#2563EB', desc: 'Google Maps · recherche locale' },
-      { name: 'Rebondisseurs',        pct: 16, conv: 0.0, eng: 12, color: '#ef4444', desc: '< 10 sec · 0 interaction' },
-    ] : []);
-    const pageEngage = STATE.behavioral?.pageEngage || (PREVIEW_MODE ? [
-      { page: 'Accueil',    eng: 62, scroll: 48, time: '1m 12s', abandon: 38 },
-      { page: 'Services',   eng: 71, scroll: 61, time: '2m 04s', abandon: 29 },
-      { page: 'Tarifs',     eng: 48, scroll: 39, time: '0m 58s', abandon: 61 },
-      { page: 'Contact',    eng: 38, scroll: 28, time: '0m 32s', abandon: 67 },
-      { page: 'Blog',       eng: 84, scroll: 78, time: '3m 28s', abandon: 16 },
-    ] : []);
+    const behavioralAnalysis = STATE.behavioral?.analysis || null;
+    const behavioralInsights = window.FP_DATA?.behavioral?.insights || [];
+    const behavioralError = STATE.behavioral?.error || null;
+    const behavioralLoading = STATE.behavioral?.loading || false;
+    const userFlowSteps = STATE.behavioral?.userFlowSteps || [];
+    const segments = STATE.behavioral?.segments || [];
+    const pageEngage = STATE.behavioral?.pageEngage || [];
+    const behavioralFunnel = window.FP_DATA?.behavioral?.customFunnel || null;
+    const journeys = behavioralAnalysis?.journeys || [];
+    const friction = behavioralAnalysis?.friction || [];
+    const periodComparison = behavioralAnalysis?.comparison || null;
+    const flowMax = Math.max(1, ...userFlowSteps.map(s => s.users || 0));
+    const totalBehaviorSessions = behavioralAnalysis?.sessionsWithPageView || 0;
+    const formSubmitRate = totalBehaviorSessions
+      ? Math.round(behavioralAnalysis.sessionsWithFormSubmit / totalBehaviorSessions * 1000) / 10
+      : null;
+    const topLoss = userFlowSteps.find(s => s.drop !== null && s.drop > 0);
+    const siteSelectionMessage = !STATE.siteUrl ? fpT('Sélectionnez un site enregistré pour isoler les données Behavioral AI.') : null;
     return `
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px">
+        <label for="fp-behavior-period" style="font-size:11px;color:var(--fp-text-muted)">${fpT('Période')}</label>
+        <select id="fp-behavior-period" class="fp-select" onchange="window.FP_BEHAVIORAL_API.setPeriod(this.value)">
+          ${[7,30,90].map(d=>`<option value="${d}" ${(behavioralAnalysis?.periodDays||30)===d?'selected':''}>${d} ${fpT('jours')}</option>`).join('')}
+        </select>
+      </div>
+      ${siteSelectionMessage ? `<div role="status" class="fp-card fp-mb-20" style="padding:14px;color:var(--fp-text-muted);font-size:12px">${siteSelectionMessage}</div>` : ''}
+      ${behavioralAnalysis?.dataLimited ? `<div role="status" style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:rgba(245,158,11,.08);color:#f59e0b;font-size:11px">${fpT('Résultats calculés sur un échantillon plafonné d’événements récents.')}</div>` : ''}
       ${isPro
-        ? aiBlock(segments.length > 0
-            ? (() => { const _mob = segments.find(s=>s.name.toLowerCase().includes('mobile')||s.pct>35&&s.conv<1); const _loc = segments.find(s=>s.name.toLowerCase().includes('local')||s.name.toLowerCase().includes('maps')); const _worst = [...pageEngage].sort((a,b)=>b.abandon-a.abandon)[0]; return (_mob ? `<strong>${_mob.name} (${_mob.pct}%)</strong> ont un taux de conversion ${_mob.conv}% — le segment le plus faible. ` : '') + (_loc ? `Les visiteurs locaux convertissent à ${_loc.conv}%. ` : '') + (_worst ? `La page ${_worst.page} génère ${_worst.abandon}% d'abandons.` : ''); })()
+        ? aiBlock(behavioralAnalysis
+            ? (() => { const _worst = [...pageEngage].filter(p=>p.abandon!==null).sort((a,b)=>b.abandon-a.abandon)[0]; return `${totalBehaviorSessions} ${fpT('sessions avec page vue sur cette période')}. ` + (formSubmitRate===null ? fpT('Aucune soumission de formulaire mesurable.') : `${formSubmitRate}% ${fpT('des sessions observées ont soumis un formulaire')}. `) + (_worst ? `${fpT('Taux d’abandon formulaire le plus élevé')}: <strong>${escHtml(_worst.page)} (${_worst.abandon}%)</strong>.` : ''); })()
             : 'Connectez vos analytics pour analyser les flux utilisateurs, segments comportementaux et taux d\'abandon par page.',
             ['Optimiser pour les mobiles', 'Analyser la page Tarifs', 'Plan segmentation'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
@@ -59431,38 +59437,109 @@ function renderDataExplorer() {
           </div>`
       }
 
+      <div class="fp-card fp-mb-20">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+          <div class="fp-card-title" style="margin:0">🧠 ${fpT('Recommandations fondées sur les événements')}</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_BEHAVIORAL_API.generateInsights(window.STATE?.siteUrl||'')">${fpT('Générer')}</button>
+        </div>
+        ${behavioralLoading ? `<div style="padding:16px;text-align:center;color:var(--fp-text-muted)">${fpT('Chargement des données comportementales…')}</div>` : ''}
+        ${behavioralError ? `<div role="alert" style="padding:12px;border-radius:8px;background:rgba(239,68,68,.08);color:#ef4444;font-size:11px">${escHtml(behavioralError)}</div>` : ''}
+        ${!behavioralLoading && !behavioralError && behavioralInsights.length ? `<div style="display:flex;flex-direction:column;gap:9px">${behavioralInsights.map(item=>`
+          <div style="padding:11px 13px;border:1px solid var(--fp-border);border-radius:9px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;font-weight:700;color:${item.severity==='critical'?'#ef4444':item.severity==='high'?'#f59e0b':'#2563EB'}">${escHtml(item.severity)}</span><strong style="font-size:12px">${escHtml(item.title)}</strong></div>
+            <div style="font-size:11px;color:var(--fp-text-muted);margin-top:5px">${escHtml(item.description)}</div>
+            ${item.aiSuggestion?`<div style="font-size:11px;color:var(--fp-text);margin-top:7px"><strong>${fpT('Action')}:</strong> ${escHtml(item.aiSuggestion)}</div>`:''}
+            ${Array.isArray(item.affectedPages)&&item.affectedPages.length?`<div style="font-size:10px;color:var(--fp-text-faint);margin-top:5px">${fpT('Pages concernées')}: ${item.affectedPages.map(escHtml).join(', ')}</div>`:''}
+            ${/^\d+ événements observés$/.test(String(item.estimatedImpact||''))?`<div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('Preuve observée')}: ${escHtml(item.estimatedImpact)}</div>`:''}
+          </div>`).join('')}</div>` : ''}
+        ${!behavioralLoading && !behavioralError && !behavioralInsights.length ? `<div style="padding:12px;text-align:center;color:var(--fp-text-faint);font-size:11px">${behavioralAnalysis ? fpT('Aucun signal ne dépasse actuellement les seuils de détection.') : fpT('Sélectionnez un site et attendez les premiers événements du snippet.')}</div>` : ''}
+      </div>
+
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Sessions analysées', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString(getLocale()) : null, '12 640'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
-        ${statCard('Taux engagement moy.', displayStat(null, '61%'), PREVIEW_MODE ? '+8% vs M-1' : 'Connectez analytics', 'neutral')}
-        ${statCard('Abandons funnel', displayStat(null, '85%'), PREVIEW_MODE ? 'avant conversion' : 'Connectez analytics', 'neutral')}
-        ${statCard('Durée session moy.', displayStat(null, '1m 52s'), PREVIEW_MODE ? '+18s vs M-1' : 'Connectez analytics', 'neutral')}
+        ${statCard(fpT('Sessions avec page vue'), behavioralAnalysis ? totalBehaviorSessions.toLocaleString(getLocale()) : '—', `${behavioralAnalysis?.periodDays||30} ${fpT('jours')}`, 'neutral')}
+        ${statCard(fpT('Pages visitées'), behavioralAnalysis ? behavioralAnalysis.pageViews.toLocaleString(getLocale()) : '—', fpT('Événements page_view observés'), 'neutral')}
+        ${statCard(fpT('Soumissions de formulaire'), behavioralAnalysis ? behavioralAnalysis.sessionsWithFormSubmit.toLocaleString(getLocale()) : '—', formSubmitRate===null ? fpT('Donnée indisponible') : `${formSubmitRate}% ${fpT('des sessions')}`, 'neutral')}
+        ${statCard(fpT('Abandons de formulaire'), behavioralAnalysis ? behavioralAnalysis.formAbandons.toLocaleString(getLocale()) : '—', fpT('Événements form_abandon observés'), 'neutral')}
+      </div>
+      <div class="fp-grid-2 fp-mb-20">
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:8px">${fpT('Comparaison avec la période précédente')}</div>
+          ${periodComparison ? `<div style="display:flex;gap:20px;flex-wrap:wrap">
+            <div><div style="font-size:10px;color:var(--fp-text-muted)">${fpT('Sessions avec page vue')}</div><strong>${periodComparison.previousSessionsWithPageView.toLocaleString(getLocale())}</strong><span style="margin-left:7px;color:${periodComparison.sessionsChangePercent==null?'var(--fp-text-faint)':periodComparison.sessionsChangePercent>=0?'#22c55e':'#ef4444'}">${periodComparison.sessionsChangePercent==null?'—':`${periodComparison.sessionsChangePercent>0?'+':''}${periodComparison.sessionsChangePercent}%`}</span></div>
+            <div><div style="font-size:10px;color:var(--fp-text-muted)">${fpT('Sessions avec formulaire envoyé')}</div><strong>${periodComparison.previousSessionsWithFormSubmit.toLocaleString(getLocale())}</strong><span style="margin-left:7px;color:${periodComparison.formSubmitsChangePercent==null?'var(--fp-text-faint)':periodComparison.formSubmitsChangePercent>=0?'#22c55e':'#ef4444'}">${periodComparison.formSubmitsChangePercent==null?'—':`${periodComparison.formSubmitsChangePercent>0?'+':''}${periodComparison.formSubmitsChangePercent}%`}</span></div>
+          </div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:7px">${fpT('Valeurs précédentes · variation par rapport à la période courante')}</div>${periodComparison.dataLimited?`<div style="font-size:10px;color:#f59e0b;margin-top:5px">${fpT('Comparaison limitée par le plafond de données.')}</div>`:''}` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Comparaison indisponible sans site sélectionné.')}</div>`}
+        </div>
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:8px">${fpT('Référents observés')}</div>
+          ${(behavioralAnalysis?.referrerSegments||[]).length ? `<div style="display:flex;flex-direction:column;gap:6px">${behavioralAnalysis.referrerSegments.map(source=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span>${escHtml(source.referrerHost)}</span><strong>${source.sessions} ${fpT('sessions')}</strong></div>`).join('')}</div>` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Aucun référent externe mesurable dans les événements reçus.')}</div>`}
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:7px">${fpT('Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.')}</div>
+        </div>
       </div>
 
       <!-- USER FLOW -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('git-branch').replace('stroke="currentColor"', 'stroke="#8b5cf6"')}
-          Flux utilisateur — Du trafic à la conversion
+          ${fpT('Parcours mesuré — page vue vers formulaire')}
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
+          ${userFlowSteps.length ? '' : `<div style="padding:18px;text-align:center;color:var(--fp-text-faint)">${fpT('Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.')}</div>`}
           ${userFlowSteps.map((s, idx) => `
             <div style="display:flex;align-items:center;gap:10px">
               <div style="width:130px;font-size:11px;color:var(--fp-text-muted);text-align:right;flex-shrink:0">${escHtml(s.stage)}</div>
               <div style="flex:1;background:var(--fp-inner-card);border-radius:6px;height:32px;overflow:hidden">
-                <div style="height:100%;width:${Math.max(2, s.users / 12640 * 100)}%;background:linear-gradient(90deg,${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}99,${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
-                  ${s.users >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.users.toLocaleString(getLocale())}</span>` : ''}
+                <div style="height:100%;width:${Math.max(2, s.users / flowMax * 100)}%;background:linear-gradient(90deg,${idx === 0 ? '#2563EB' : idx === userFlowSteps.length-1 ? '#22c55e' : '#8b5cf6'}99,${idx === 0 ? '#2563EB' : idx === userFlowSteps.length-1 ? '#22c55e' : '#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
+                  ${s.users > 0 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.users.toLocaleString(getLocale())}</span>` : ''}
                 </div>
               </div>
               <div style="min-width:80px;text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:800;color:${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}">${s.users.toLocaleString(getLocale())}</div>
+                <div style="font-size:12px;font-weight:800;color:${idx === 0 ? '#2563EB' : idx === userFlowSteps.length-1 ? '#22c55e' : '#8b5cf6'}">${s.users.toLocaleString(getLocale())}</div>
                 ${s.drop !== null ? `<div style="font-size:10px;color:#ef4444;font-weight:600">-${s.drop}%</div>` : ''}
               </div>
             </div>
           `).join('')}
         </div>
-        <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444">
-          ⚠ 85% des visiteurs n\'atteignent pas la conversion — la plus grande perte : Navigation → Service (-59%)
+        ${topLoss ? `<div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444">⚠ ${escHtml(topLoss.drop)}% ${fpT('de perte mesurée à l’étape')} ${escHtml(topLoss.stage)}.</div>` : ''}
+      </div>
+
+      <!-- SEGMENTS + PAGE ENGAGEMENT -->
+      <div class="fp-grid-2 fp-mb-20">
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:12px">↪ ${fpT('Parcours les plus fréquents')}</div>
+          ${journeys.length ? `<div style="display:flex;flex-direction:column;gap:8px">${journeys.map(j=>`
+            <div style="display:flex;align-items:center;gap:8px;font-size:11px">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(j.from)}</span>
+              <span style="color:var(--fp-text-faint)">→</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(j.to)}</span>
+              <strong style="white-space:nowrap">${j.sessions} ${fpT('sessions')}</strong>
+            </div>`).join('')}</div>` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.')}</div>`}
+          <div style="margin-top:12px;font-size:10px;color:var(--fp-text-faint)">${fpT('Pages d’entrée')}: ${(behavioralAnalysis?.entryPages||[]).slice(0,4).map(p=>`${escHtml(p.page)} (${p.sessions})`).join(' · ')||'—'}<br>${fpT('Pages de sortie')}: ${(behavioralAnalysis?.exitPages||[]).slice(0,4).map(p=>`${escHtml(p.page)} (${p.sessions})`).join(' · ')||'—'}</div>
         </div>
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:12px">⚠ ${fpT('Frottements observés')}</div>
+          ${friction.length ? `<div style="display:flex;flex-direction:column;gap:8px">${friction.map(f=>`
+            <div style="padding:9px 11px;border-radius:8px;background:rgba(239,68,68,.06);font-size:11px">
+              <strong>${escHtml(f.page)}</strong><div style="color:var(--fp-text-muted);margin-top:3px">${f.evidence.map(escHtml).join(' · ')}</div>
+            </div>`).join('')}</div>` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Aucun clic de friction ni abandon de formulaire observé sur la période.')}</div>`}
+          <div style="margin-top:10px;font-size:10px;color:var(--fp-text-faint)">${fpT('Non mesuré avec les événements actuels')}: ${(behavioralAnalysis?.unavailable||[]).map(escHtml).join(', ')}</div>
+        </div>
+      </div>
+
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:8px">◎ ${fpT('Créer et analyser un funnel comportemental')}</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:10px">${fpT('Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.')}</div>
+        <form onsubmit="return window.FP_BEHAVIORAL_API.runFunnel(event)" style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="fp-behavior-funnel-steps" class="fp-input" style="flex:1;min-width:240px" value="page_view, form_submit" placeholder="page_view:/pricing, click, form_submit:/contact">
+          <button class="fp-btn fp-btn-primary fp-btn-sm" type="submit">${fpT('Analyser')}</button>
+        </form>
+        ${behavioralFunnel ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:14px">${behavioralFunnel.steps.map((s,i)=>`
+          <div style="padding:10px 12px;border:1px solid var(--fp-border);border-radius:8px">
+            <div style="font-size:10px;color:var(--fp-text-muted)">${i+1}. ${escHtml(s.label)}</div>
+            <div style="font-size:18px;font-weight:800;color:var(--fp-text)">${s.sessions.toLocaleString(getLocale())}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">${s.rateFromPrevious==null?'—':`${s.rateFromPrevious}% ${fpT('depuis l’étape précédente')}`}</div>
+            ${s.abandonments==null?'':`<div style="font-size:10px;color:#ef4444">${s.abandonments} ${fpT('abandons')}</div>`}
+          </div>`).join('')}</div>` : ''}
+        ${behavioralFunnel?.dataLimited ? `<div style="margin-top:8px;font-size:10px;color:#f59e0b">${fpT('Résultat limité aux événements les plus récents (plafond de sécurité atteint).')}</div>` : ''}
       </div>
 
       <!-- SEGMENTS + PAGE ENGAGEMENT -->
@@ -59476,7 +59553,7 @@ function renderDataExplorer() {
                   <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(seg.name)}</span>
                   <div style="display:flex;gap:8px">
                     <span style="font-size:11px;font-weight:700;color:${seg.color}">${seg.pct}%</span>
-                    <span style="font-size:11px;font-weight:700;color:${seg.conv>=2?'#22c55e':seg.conv>=0.5?'#f59e0b':'#ef4444'}">conv. ${seg.conv}%</span>
+                    <span style="font-size:11px;font-weight:700;color:${seg.conv==null?'var(--fp-text-faint)':seg.conv>=2?'#22c55e':seg.conv>=0.5?'#f59e0b':'#ef4444'}">${fpT('formulaires')} ${seg.conv==null?'—':`${seg.conv}%`}</span>
                   </div>
                 </div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(seg.desc)}</div>
@@ -59492,19 +59569,20 @@ function renderDataExplorer() {
           <table class="fp-data-table">
             <thead><tr>
               <th>Page</th>
-              <th style="text-align:center">Eng.</th>
+              <th style="text-align:center">${fpT('Clics')}</th>
               <th style="text-align:center">Scroll</th>
               <th style="text-align:center">Durée</th>
               <th style="text-align:center">Abandon</th>
             </tr></thead>
             <tbody>
               ${pageEngage.map(p => `<tr>
-                <td style="font-weight:600">${p.page}</td>
-                <td style="text-align:center;color:${p.eng>=70?'#22c55e':p.eng>=50?'#f59e0b':'#ef4444'};font-weight:700">${p.eng}%</td>
-                <td style="text-align:center;color:var(--fp-text-muted)">${p.scroll}%</td>
-                <td style="text-align:center;font-family:monospace;font-size:11px">${p.time}</td>
-                <td style="text-align:center;color:${p.abandon>=60?'#ef4444':p.abandon>=40?'#f59e0b':'#22c55e'};font-weight:700">${p.abandon}%</td>
+                <td style="font-weight:600">${escHtml(p.page)}<div style="font-size:9px;color:var(--fp-text-faint)">${p.sessions} ${fpT('sessions')}</div></td>
+                <td style="text-align:center;color:var(--fp-text-muted)">${p.clicks.toLocaleString(getLocale())}</td>
+                <td style="text-align:center;color:var(--fp-text-muted)">${p.scroll==null?'—':`${p.scroll}%`}</td>
+                <td style="text-align:center;font-family:monospace;font-size:11px">${p.time==null?'—':`${p.time}s`}</td>
+                <td style="text-align:center;color:${p.abandon==null?'var(--fp-text-muted)':p.abandon>=60?'#ef4444':p.abandon>=40?'#f59e0b':'#22c55e'};font-weight:700">${p.abandon==null?'—':`${p.abandon}%`}</td>
               </tr>`).join('')}
+              ${pageEngage.length===0?`<tr><td colspan="5" style="text-align:center;color:var(--fp-text-faint);padding:18px">${fpT('Aucune donnée de page disponible')}</td></tr>`:''}
             </tbody>
           </table>
         </div>
@@ -70315,23 +70393,122 @@ window.FP_KEYWORDS_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 window.FP_BEHAVIORAL_API = {
-  async load(siteUrl) {
+  async load(siteUrl, periodDays = 30) {
+    siteUrl = siteUrl || window.STATE?.siteUrl || '';
+    if (window.STATE) {
+      window.STATE.behavioral = {
+        ...window.STATE.behavioral,
+        loading: Boolean(siteUrl),
+        error: siteUrl ? null : fpT('Sélectionnez un site enregistré pour isoler les données Behavioral AI.'),
+      };
+    }
+    if (!siteUrl) return;
     try {
-      const url = siteUrl ? `/api/behavioral/insights?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/behavioral/insights';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const params = new URLSearchParams({ periodDays: String(periodDays) });
+      if (siteUrl) params.set('siteUrl', siteUrl);
+      const url = `/api/behavioral/insights?${params.toString()}`;
+      const data = await apiFetch(url);
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.behavioral = {
         sessionStats:  data.sessionStats  || data.stats  || null,
+        analysis:      data.analysis      || null,
         insights:      data.insights      || [],
-        sessions:      data.sessions      || [],
-        totalSessions: data.totalSessions || data.sessionCount || 0,
-        avgEngagement: data.avgEngagement || 0,
-        topPages:      data.topPages      || [],
+        sessions:      [],
+        totalSessions: data.analysis?.sessionsWithPageView || 0,
+        avgEngagement: null,
+        topPages:      data.analysis?.pageStats || [],
       };
+      if (window.STATE) {
+        const a = data.analysis;
+        if (!a) {
+          window.STATE.behavioral = {
+            ...window.STATE.behavioral, analysis: null, loading: false, error: null, userFlowSteps: [],
+            segments: [], pageEngage: [],
+          };
+        } else {
+        const totalSessions = a.sessionsWithPageView || 0;
+        window.STATE.behavioral = {
+          ...window.STATE.behavioral,
+          loading: false,
+          error: null,
+          analysis: a,
+          periodDays: a.periodDays,
+          userFlowSteps: a.funnel.map((step, i) => ({
+            stage: step.step,
+            users: step.sessions,
+            drop: i === 0 || !a.funnel[i - 1]?.sessions ? null :
+              Math.round((1 - step.sessions / a.funnel[i - 1].sessions) * 1000) / 10,
+          })),
+          segments: a.deviceSegments.map(segment => ({
+            name: segment.device === 'unknown' ? fpT('Appareil inconnu') : fpT(segment.device),
+            pct: totalSessions ? Math.round(segment.sessions / totalSessions * 100) : 0,
+            conv: segment.formSubmitRate,
+            eng: totalSessions ? Math.round(segment.sessions / totalSessions * 100) : 0,
+            color: segment.device === 'mobile' ? '#8b5cf6' : segment.device === 'desktop' ? '#2563EB' : '#64748b',
+            desc: `${segment.sessions} ${fpT('sessions observées')}`,
+          })),
+          pageEngage: a.pageStats.map(page => ({
+            page: page.page,
+            clicks: page.clicks,
+            scroll: page.avgScrollDepth,
+            time: page.avgTimeOnPageSeconds,
+            abandon: page.formSubmits + page.formAbandons > 0
+              ? Math.round(page.formAbandons / (page.formSubmits + page.formAbandons) * 100)
+              : null,
+            sessions: page.sessions,
+          })),
+        };
+        }
+      }
       // Also load snippet status (non-blocking)
       this.loadStatus(siteUrl).catch(() => {});
-    } catch(e) { console.warn('[FP_BEHAVIORAL_API] load error:', e); }
+    } catch(e) {
+      if (window.STATE) window.STATE.behavioral = { ...window.STATE.behavioral, loading: false, error: String(e) };
+      console.warn('[FP_BEHAVIORAL_API] load error:', e);
+    }
+  },
+
+  async setPeriod(periodDays) {
+    const days = Number(periodDays);
+    if (![7, 30, 90].includes(days)) return;
+    const pending = this.load(window.STATE?.siteUrl || '', days);
+    render();
+    await pending;
+    render();
+  },
+
+  async runFunnel(event) {
+    event.preventDefault();
+    const raw = document.getElementById('fp-behavior-funnel-steps')?.value || '';
+    const tokens = raw.split(',').map(value => value.trim()).filter(Boolean);
+    if (tokens.length < 2 || tokens.length > 6) {
+      showToast('error', fpT('Un funnel doit contenir de 2 à 6 étapes.'));
+      return false;
+    }
+    const steps = tokens.map(token => {
+      const separator = token.indexOf(':');
+      const eventType = (separator < 0 ? token : token.slice(0, separator)).trim();
+      const page = separator < 0 ? '' : token.slice(separator + 1).trim();
+      return { eventType, label: page ? `${eventType} · ${page}` : eventType, ...(page ? { page } : {}) };
+    });
+    const siteUrl = window.STATE?.siteUrl || '';
+    if (!siteUrl) {
+      showToast('error', fpT('Sélectionnez un site avant d’analyser un funnel.'));
+      return false;
+    }
+    try {
+      const result = await apiFetch('/api/behavioral/funnels/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ siteUrl, periodDays: window.STATE?.behavioral?.periodDays || 30, steps }),
+      });
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.behavioral = window.FP_DATA.behavioral || {};
+      window.FP_DATA.behavioral.customFunnel = result;
+      render();
+    } catch (error) {
+      showToast('error', String(error));
+    }
+    return false;
   },
 
   async loadStatus(siteUrl) {
@@ -70360,8 +70537,19 @@ window.FP_BEHAVIORAL_API = {
     if (!siteUrl) { showToast('error', fpT('siteUrl requis')); return; }
     showToast('info', fpT('Génération des insights comportementaux…'));
     try {
-      const r = await apiFetch('/api/behavioral/generate-insights', { method: 'POST', body: JSON.stringify({ siteUrl }) });
-      if (r?.ok) { await this.load(siteUrl); render(); showToast('success', fpT('Insights comportementaux générés')); }
+      const r = await apiFetch('/api/behavioral/generate-insights', {
+        method: 'POST',
+        body: JSON.stringify({ siteUrl, periodDays: window.STATE?.behavioral?.periodDays || 7 }),
+      });
+      if (r?.ok) {
+        await this.load(siteUrl);
+        render();
+        showToast(r.aiGenerated ? 'success' : 'info', r.aiGenerated
+          ? fpT('Insights IA générés à partir des événements observés')
+          : r.count > 0
+            ? fpT('Signaux mesurés générés ; recommandations IA indisponibles')
+            : fpT('Aucun signal ne dépasse actuellement les seuils de détection.'));
+      }
       else showToast('error', r?.error || 'Erreur');
     } catch(e) { showToast('error', String(e)); }
   },
