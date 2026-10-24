@@ -160,6 +160,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     seoChangeImpact: "",
     agencyPortfolioPriorities: process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"] ?? "",
     technicalSeoFixVerification: "",
+    organicCampaignTracker: "",
     localPresenceOptimizer: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"] ?? "",
     advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
@@ -280,6 +281,7 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   seoChangeImpact: "",
   agencyPortfolioPriorities: "",
   technicalSeoFixVerification: "",
+  organicCampaignTracker: "",
 
   // ── Conversion / AI ────────────────────────────────────────────────────────
   aiCro:                process.env["STRIPE_PRICE_ID_AI_CRO_STRATEGIST"]        ?? "price_1TYpDs9eqtbj6iPBGyjqL3mu",
@@ -364,6 +366,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   seoChangeImpact:      { name: "SEO Change Impact",          category: "SEO",          description: "Comparez les variations réellement mesurées entre audits SEO terminés.", priceEur: 0, oneTime: false, quantity: false },
   agencyPortfolioPriorities: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
   technicalSeoFixVerification: { name: "Technical SEO Fix Verification", category: "SEO", description: "Comparez le nombre de problèmes signalés entre deux audits de la même URL.", priceEur: 19, oneTime: false, quantity: false },
+  organicCampaignTracker: { name: "Organic Campaign Tracker", category: "SEO", description: "Suivez les objectifs de clics et de position à partir des données GSC mesurées.", priceEur: 12, oneTime: false, quantity: false },
   gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
   gbpPerformanceLeads:  { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
   localLandingOpportunities: { name: "Local Landing Opportunities", category: "Local SEO", description: "Repérez les recherches locales réelles qui justifient une page de service ou de zone.", priceEur: 15, oneTime: false, quantity: false },
@@ -419,7 +422,7 @@ export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NO
 
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
-  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoChangeImpact","agencyPortfolioPriorities","technicalSeoFixVerification",
+  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoChangeImpact","agencyPortfolioPriorities","technicalSeoFixVerification","organicCampaignTracker",
   "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads","localPresenceOptimizer","localLandingOpportunities",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
@@ -458,6 +461,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "seoChangeImpact",
   "agencyPortfolioPriorities",
   "technicalSeoFixVerification",
+  "organicCampaignTracker",
   // The Better Stack SLA endpoint exists and enforces requireAddon; the add-on
   // remains unavailable for purchase pending real QA certification.
   "slaMonitoring",

@@ -3152,6 +3152,20 @@ export async function initDataTables(): Promise<void> {
       `);
       await run(client, `CREATE INDEX IF NOT EXISTS technical_seo_fix_verifications_org_created_idx ON technical_seo_fix_verifications(org_id, created_at DESC)`);
       await applyTenantRls("technical_seo_fix_verifications");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS organic_campaign_goals (
+          id TEXT PRIMARY KEY,
+          org_id TEXT NOT NULL,
+          keyword TEXT NOT NULL,
+          target_position REAL NOT NULL CHECK (target_position > 0),
+          minimum_clicks INTEGER NOT NULL CHECK (minimum_clicks >= 0),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (org_id, keyword)
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS organic_campaign_goals_org_idx ON organic_campaign_goals(org_id)`);
+      await applyTenantRls("organic_campaign_goals");
 
       // ── org_auth_config — sso-service.ts ON CONFLICT(org_id) uses these columns ─
       await run(client, `

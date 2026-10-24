@@ -10383,6 +10383,7 @@ function renderBilling() {
       { key:'aiContentStrategist', cat:'SEO',        name:'SEO Content Decay Radar', icon:'📉', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'GSC',             roi:'Détection des baisses de performance',    desc:'Repère les baisses de clics, de positions et les CTR faibles par rapport aux pages GSC comparables.', features:['Comparaison de périodes GSC','Détection des pertes de clics et de positions','Détection des CTR faibles par position moyenne','Priorisation selon les données observées','Aucune génération IA ni appel externe'] },
         { key:'seoChangeImpact', cat:'SEO',             name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), availability:'coming_soon', tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
         { key:'technicalSeoFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), availability:'coming_soon', tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
+        { key:'organicCampaignTracker', cat:'SEO', name:'Organic Campaign Tracker', icon:'🎯', color:'#2563EB', active:!!(me.addons?.organicCampaignTracker), availability:'coming_soon', tag:'GSC', roi:'Suivi des objectifs de campagnes organiques', desc:'Suivez les objectifs de clics et de position à partir des données GSC mesurées.', features:['Objectifs configurables par mot-clé','Clics et position moyenne sur 28 jours','Statuts fondés sur les données GSC','Aucune performance estimée'] },
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'Gestion de fiches GBP supplémentaires',    desc:'Gérez des fiches Google Business Profile supplémentaires depuis FlowPoint.', features:['Gestion de fiches GBP supplémentaires','Publication de posts GBP','Synchronisation des horaires et informations NAP','Alertes sur les avis sans réponse','Informations de complétude de fiche'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'Création assistée de publications GBP',    desc:'Posts GBP générés par IA à partir des informations de votre établissement.', features:['Posts GBP rédigés par IA','Calendrier de publication','Adaptation aux événements renseignés','Sélection de photos disponibles','Rapport d’engagement'] },
@@ -10731,6 +10732,8 @@ function renderBilling() {
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenSEOChangeImpact()">${fpT('Ouvrir')}</button>`
                     : a.key === 'technicalSeoFixVerification'
                       ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenTechnicalSEOFixVerification()">${fpT('Ouvrir')}</button>`
+                      : a.key === 'organicCampaignTracker'
+                        ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenOrganicCampaignTracker()">${fpT('Ouvrir')}</button>`
                     : a.key === 'agencyPortfolioPriorities'
                       ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenAgencyPortfolioPriorities()">${fpT('Ouvrir')}</button>`
                     : (_FP_QTY_ADDON_KEYS[a.key]
@@ -16356,6 +16359,14 @@ function _doRender() {
         if (root && renderAddon) renderAddon(root);
       }, 0);
       break;
+    case 'organic-campaign-tracker':
+      html = '<div id="fp-addon-organic-campaign-tracker"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-organic-campaign-tracker');
+        const renderAddon = window.FP_ADDON_RENDERERS?.organicCampaignTracker;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'agency-portfolio-priorities':
       html = '<div id="fp-addon-agency-portfolio-priorities"></div>';
       setTimeout(() => {
@@ -21802,6 +21813,28 @@ function bindGlobalEvents() {
     'Audits non comparables': 'Audits cannot be compared',
     'Impossible de comparer ces audits.': 'Unable to compare these audits.',
     'Impossible de charger les audits.': 'Unable to load audits.',
+    'Suivi des campagnes organiques': 'Organic campaign tracker',
+    'Fixez des objectifs par requête et comparez-les aux données Search Console mesurées sur 28 jours.': 'Set targets by query and compare them with measured Search Console data over 28 days.',
+    'Chargement des campagnes…': 'Loading campaigns…',
+    'Objectif atteint': 'Goal met',
+    'Objectif à améliorer': 'Needs attention',
+    'Aucune donnée GSC correspondante': 'No matching GSC data',
+    'Aucune mesure GSC pour cette requête sur la période.': 'No GSC measurement for this query in the selected period.',
+    'clics': 'clicks',
+    'position moyenne': 'average position',
+    'Objectif': 'Goal',
+    'position': 'position',
+    'Mot-clé': 'Keyword',
+    'Position cible': 'Target position',
+    'Clics minimum (28 jours)': 'Minimum clicks (28 days)',
+    'Enregistrer l’objectif': 'Save goal',
+    'Objectif enregistré.': 'Goal saved.',
+    'Impossible d’enregistrer cet objectif.': 'Unable to save this goal.',
+    'Impossible de supprimer cet objectif.': 'Unable to delete this goal.',
+    'Dernière mesure': 'Last measurement',
+    'Campagnes suivies': 'Tracked campaigns',
+    'Aucun objectif enregistré.': 'No goals saved yet.',
+    'Impossible de charger les campagnes.': 'Unable to load campaigns.',
     'Classez vos sites à partir des audits SEO et des clics GSC réellement mesurés.': 'Rank your sites using measured SEO audits and GSC clicks.',
     'Chargement des priorités…': 'Loading priorities…',
     'Pondérations de priorité': 'Priority weights',
@@ -66197,6 +66230,9 @@ window.fpOpenSEOChangeImpact = function () {
 };
 window.fpOpenTechnicalSEOFixVerification = function () {
   window.navigate('technical-seo-fix-verification');
+};
+window.fpOpenOrganicCampaignTracker = function () {
+  window.navigate('organic-campaign-tracker');
 };
 window.fpOpenAgencyPortfolioPriorities = function () {
   window.navigate('agency-portfolio-priorities');
