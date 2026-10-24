@@ -2946,7 +2946,10 @@ div[style*="overflow-x: auto"] {
 @media (max-width: 600px) {
   .fp-stat-row { grid-template-columns: 1fr; }
   .fp-topbar-score { display: none; }
-  .fp-fab-wrap { bottom: 16px; right: 16px; }
+  .fp-fab-wrap {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
