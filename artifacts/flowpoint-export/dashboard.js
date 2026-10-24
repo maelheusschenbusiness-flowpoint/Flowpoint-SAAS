@@ -10381,6 +10381,7 @@ function renderBilling() {
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'Suivi et analyse des mots-clés', desc:'Suivi des mots-clés, clustering, fonctionnalités SERP et cannibalisation.', features:['Suivi de mots-clés','Clustering sémantique','Détection de cannibalisation','Suivi des fonctionnalités SERP','Alertes de volatilité des résultats'] },
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
       { key:'aiContentStrategist', cat:'SEO',        name:'SEO Content Decay Radar', icon:'📉', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'GSC',             roi:'Détection des baisses de performance',    desc:'Repère les baisses de clics, de positions et les CTR faibles par rapport aux pages GSC comparables.', features:['Comparaison de périodes GSC','Détection des pertes de clics et de positions','Détection des CTR faibles par position moyenne','Priorisation selon les données observées','Aucune génération IA ni appel externe'] },
+       { key:'seoChangeImpact', cat:'SEO',             name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), availability:'coming_soon', tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'Gestion de fiches GBP supplémentaires',    desc:'Gérez des fiches Google Business Profile supplémentaires depuis FlowPoint.', features:['Gestion de fiches GBP supplémentaires','Publication de posts GBP','Synchronisation des horaires et informations NAP','Alertes sur les avis sans réponse','Informations de complétude de fiche'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'Création assistée de publications GBP',    desc:'Posts GBP générés par IA à partir des informations de votre établissement.', features:['Posts GBP rédigés par IA','Calendrier de publication','Adaptation aux événements renseignés','Sélection de photos disponibles','Rapport d’engagement'] },
@@ -10724,7 +10725,9 @@ function renderBilling() {
               : a.active && !isInc
                 ? a.key === 'conversionOpportunityEngine'
                   ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenConversionOpportunityEngine()">${fpT('Ouvrir')}</button>`
-                  : (_FP_QTY_ADDON_KEYS[a.key]
+                  : a.key === 'seoChangeImpact'
+                    ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenSEOChangeImpact()">${fpT('Ouvrir')}</button>`
+                    : (_FP_QTY_ADDON_KEYS[a.key]
                     ? `<div style="display:flex;align-items:center;gap:8px">${accessState === 'purchasable' ? `<div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button>` : `<span>${escHtml(_fpAddonAccessLabel(accessState))}</span>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
                 : accessState !== 'purchasable'
@@ -15778,6 +15781,7 @@ const PAGE_NAMES = {
   'team': 'Équipe', 'billing': 'Facturation', 'settings': 'Paramètres', 'ai': 'Assistant IA',
   'growth': 'Croissance', 'competitor': 'Concurrents', 'conversion': 'Conversion',
   'conversion-opportunity-engine': 'Conversion Opportunity Engine',
+  'seo-change-impact': 'SEO Change Impact',
   'alerts-center': 'Centre d\'alertes', 'activity-feed': 'Activité',
   'data-explorer': 'Data Explorer', 'client-mode': 'Mode Client',
   'analytics': 'Analytics GA4', 'traffic': 'Trafic & Sources',
@@ -16327,6 +16331,14 @@ function _doRender() {
       setTimeout(() => {
         const root = document.getElementById('fp-addon-conversion-opportunity-engine');
         const renderAddon = window.FP_ADDON_RENDERERS?.conversionOpportunityEngine;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+    case 'seo-change-impact':
+      html = '<div id="fp-addon-seo-change-impact"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-seo-change-impact');
+        const renderAddon = window.FP_ADDON_RENDERERS?.seoChangeImpact;
         if (root && renderAddon) renderAddon(root);
       }, 0);
       break;
@@ -19824,6 +19836,29 @@ function bindGlobalEvents() {
     "Données GA4 mesurées sur les 28 derniers jours.": "Measured GA4 data for the last 28 days.",
     "Aucune page mesurée ne correspond aux critères.": "No measured pages match the criteria.",
     "Impossible de charger les données GA4.": "Could not load GA4 data.",
+    "Impact des changements SEO": "SEO Change Impact",
+    "Comparez les scores et métriques mesurés entre les deux derniers audits terminés.": "Compare scores and measured metrics between the two latest completed audits.",
+    "Chargement des audits…": "Loading audits…",
+    "Paramètres de comparaison": "Comparison settings",
+    "Période observée (jours)": "Lookback window (days)",
+    "Seuil minimal de variation du score": "Minimum score change threshold",
+    "Enregistrer": "Save",
+    "Comparaisons fondées uniquement sur les audits terminés de votre organisation.": "Comparisons are based only on completed audits in your organization.",
+    "Comparaisons SEO mesurées": "Measured SEO comparisons",
+    "Score SEO": "SEO score",
+    "Problèmes critiques mesurés": "Measured critical issues",
+    "Score de vitesse": "Speed score",
+    "Deux audits terminés sont nécessaires pour afficher un impact mesuré.": "Two completed audits are needed to show measured impact.",
+    "Paramètres enregistrés.": "Settings saved.",
+    "Impossible d’enregistrer les paramètres.": "Could not save settings.",
+    "Impossible de charger les audits SEO.": "Could not load SEO audits.",
+    "SEO Change Impact": "SEO Change Impact",
+    "Impact mesuré entre deux audits": "Measured impact between two audits",
+    "Comparez les variations réellement mesurées entre audits SEO terminés.": "Compare changes actually measured between completed SEO audits.",
+    "Évolution du score SEO": "SEO score change",
+    "Évolution des problèmes critiques": "Critical issues change",
+    "Évolution du score de vitesse": "Speed score change",
+    "Paramètres de période et de seuil enregistrés": "Saved lookback and threshold settings",
     "Ouvrir": "Open",
     "Opportunités de pages locales": "Local landing opportunities",
     "Chargement des requêtes Google Search Console…": "Loading Google Search Console queries…",
@@ -66100,6 +66135,9 @@ window.showToast   = showToast;
 window.navigate    = navigate;
 window.fpOpenConversionOpportunityEngine = function () {
   window.navigate('conversion-opportunity-engine');
+};
+window.fpOpenSEOChangeImpact = function () {
+  window.navigate('seo-change-impact');
 };
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
