@@ -2782,11 +2782,14 @@ export async function initDataTables(): Promise<void> {
           event_start    TIMESTAMPTZ,
           event_end      TIMESTAMPTZ,
           offer_code     TEXT,
+           offer_terms    TEXT,
           status         TEXT        NOT NULL DEFAULT 'draft',
           scheduled_at   TIMESTAMPTZ,
+           approved_at    TIMESTAMPTZ,
           published_at   TIMESTAMPTZ,
           google_post_id TEXT,
           seo_keywords   JSONB       NOT NULL DEFAULT '[]',
+           generation_options JSONB   NOT NULL DEFAULT '{}',
           ai_generated   BOOLEAN     NOT NULL DEFAULT false,
           views          INTEGER     NOT NULL DEFAULT 0,
           clicks         INTEGER     NOT NULL DEFAULT 0,
@@ -3277,7 +3280,7 @@ export async function initDataTables(): Promise<void> {
         login_audits:     ["method","failure_reason"],
         ga4_properties:   ["property_name"],
         gsc_sites:        ["permission_level"],
-        gbp_posts:        ["published_at"],
+        gbp_posts:        ["published_at","generation_options","offer_terms","approved_at"],
         local_heatmaps:   ["location_id","center_lat","radius_km","status"],
         crm_integrations: ["name","status","token_expires_at","portal_id","metadata"],
         crm_sync_logs:       ["records_processed","records_created","records_failed","duration_ms"],
@@ -3445,6 +3448,9 @@ export async function initDataTables(): Promise<void> {
     // gbp_posts: published_at
     await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ`);
     await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS google_post_id TEXT`);
+    await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS generation_options JSONB NOT NULL DEFAULT '{}'`);
+    await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS offer_terms TEXT`);
+    await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`);
     // local_heatmaps: full new column set
     await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS location_id TEXT`);
     await run(client, `ALTER TABLE local_heatmaps ADD COLUMN IF NOT EXISTS name        TEXT`);

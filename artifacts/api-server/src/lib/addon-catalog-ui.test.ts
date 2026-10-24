@@ -55,6 +55,20 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(dashboard).toContain("data-fp-gbp-performance-retry");
   });
 
+  it("keeps AI post generation editable and stores the selected generation settings", () => {
+    for (const field of [
+      "fp-gbp-post-type",
+      "fp-gbp-language",
+      "fp-gbp-industry",
+      "fp-gbp-tone",
+      "fp-gbp-objective",
+      "fp-gbp-keywords",
+      "fp-gbp-max-characters",
+    ]) expect(dashboard).toContain(field);
+    expect(dashboard).toContain("Relisez-le");
+    expect(dashboard).toContain("generationOptions");
+  });
+
   it("never offers deactivation for an add-on active only because it is included", () => {
     expect(dashboard).toContain(": a.active && !isInc");
   });

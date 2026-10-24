@@ -72062,6 +72062,28 @@ window._fpRenderGBPPostsPanel = function() {
     });
   }
   const posts = Array.isArray(data?.posts) ? data.posts : [];
+  const month = new Date();
+  month.setDate(1);
+  month.setMonth(month.getMonth() + (Number(window._fpGbpCalendarOffset) || 0));
+  const monthLabel = month.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' });
+  const firstOffset = (month.getDay() + 6) % 7;
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const scheduled = posts.filter(post => post.status === 'scheduled' && post.scheduled_at);
+  const calendarCells = Array.from({ length: Math.ceil((firstOffset + daysInMonth) / 7) * 7 }, (_, index) => {
+    const day = index - firstOffset + 1;
+    if (day < 1 || day > daysInMonth) return `<div aria-hidden="true" style="min-height:64px;border:1px solid var(--fp-border);border-radius:6px;opacity:.35"></div>`;
+    const dayPosts = scheduled.filter(post => {
+      const date = new Date(post.scheduled_at);
+      return date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth() && date.getDate() === day;
+    });
+    return `<div style="min-height:64px;padding:5px;border:1px solid var(--fp-border);border-radius:6px;overflow:hidden">
+      <div style="font-size:10px;color:var(--fp-text-muted)">${day}</div>
+      ${dayPosts.slice(0, 2).map(post => `<div title="${escHtml(post.location_name || 'Fiche Google')}" style="font-size:9px;line-height:1.2;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fp-accent)">${escHtml(post.location_name || 'Fiche')} · ${escHtml(post.post_type || 'standard')}</div>`).join('')}
+      ${dayPosts.length > 2 ? `<div style="font-size:9px;color:var(--fp-text-muted)">+${dayPosts.length - 2}</div>` : ''}
+    </div>`;
+  }).join('');
+  const statusFilter = window._fpGbpPostStatus || 'all';
+  const filteredPosts = posts.filter(post => statusFilter === 'all' || post.status === statusFilter);
   return `<section class="fp-card fp-mb-20" aria-labelledby="fp-gbp-posts-title">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div class="fp-card-title" id="fp-gbp-posts-title" style="margin:0">Posts Google Business Profile</div>
@@ -72071,17 +72093,42 @@ window._fpRenderGBPPostsPanel = function() {
       </div>
     </div>
     ${!data ? `<div style="font-size:12px;color:var(--fp-text-muted)">${window._fpGbpPostsLoaded ? 'Posts indisponibles pour ce compte ou cette offre.' : 'Chargement des posts…'}</div>` :
-      posts.length ? `<div style="display:flex;flex-direction:column;gap:8px">${posts.slice(0,6).map(post => `
+      `<div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="fp-btn ${window._fpGbpPostsView !== 'history' ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._fpSetGbpPostsView('calendar')">Calendrier</button>
+        <button class="fp-btn ${window._fpGbpPostsView === 'history' ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._fpSetGbpPostsView('history')">Historique et brouillons</button>
+      </div>
+      ${window._fpGbpPostsView !== 'history' ? `<div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" aria-label="Mois précédent" onclick="window._fpChangeGbpCalendar(-1)">‹</button>
+          <strong style="font-size:12px;text-transform:capitalize">${escHtml(monthLabel)}</strong>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" aria-label="Mois suivant" onclick="window._fpChangeGbpCalendar(1)">›</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:4px">${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(day => `<div style="text-align:center;font-size:9px;color:var(--fp-text-muted)">${day}</div>`).join('')}</div>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px">${calendarCells}</div>
+        ${scheduled.length ? '' : `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:8px">Aucun post programmé ce mois-ci.</div>`}
+      </div>` : `<div>
+        <label style="font-size:11px;color:var(--fp-text-muted)">Filtrer par statut
+          <select class="fp-input" style="max-width:180px;margin-left:6px" onchange="window._fpSetGbpPostStatus(this.value)">
+            ${[['all','Tous'],['draft','Brouillons'],['scheduled','Programmés'],['published','Publiés'],['failed','Échec']].map(([value,label]) => `<option value="${value}" ${statusFilter === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </label>
+        ${filteredPosts.length ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${filteredPosts.map(post => `
         <article style="padding:11px 12px;border:1px solid var(--fp-border);border-radius:9px;display:flex;gap:10px;align-items:flex-start">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
-            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString())}` : ''}</div>
+            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString())}` : ''}</div>
           </div>
-          ${['draft','scheduled','failed'].includes(post.status) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          ${['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          ${String(post.post_type || '').toLowerCase() === 'product' ? `<span title="Format non pris en charge par l’API Google connectée" style="font-size:10px;color:var(--fp-text-muted)">Brouillon seulement</span>` : ''}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpDeleteGBPPost(this.dataset.postId)" aria-label="Supprimer ce post">Supprimer</button>
-        </article>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted)">Aucun post enregistré. Créez un brouillon, planifiez-le ou publiez-le sur un établissement connecté.</div>`}
+        </article>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted);margin-top:10px">Aucun post pour ce filtre.</div>`}
+      </div>`}`}
   </section>`;
 };
+
+window._fpSetGbpPostsView = function(view) { window._fpGbpPostsView = view === 'history' ? 'history' : 'calendar'; render(); };
+window._fpSetGbpPostStatus = function(status) { window._fpGbpPostStatus = status || 'all'; render(); };
+window._fpChangeGbpCalendar = function(delta) { window._fpGbpCalendarOffset = (Number(window._fpGbpCalendarOffset) || 0) + Number(delta || 0); render(); };
 
 window._fpRenderLocalMapsStoredPanel = function() {
   const data = window.FP_DATA?.localMaps;
@@ -72116,6 +72163,7 @@ window._fpReloadGBPPosts = async function() {
 
 window._fpOpenGBPPostComposer = function() {
   const locations = Array.isArray(STATE.gbp?.locations) ? STATE.gbp.locations : [];
+  const language = String(localStorage.getItem('fp:language') || 'fr').toLowerCase();
   const options = locations.map(loc => {
     let raw = loc.raw_data || {};
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (_) { raw = {}; } }
@@ -72123,27 +72171,128 @@ window._fpOpenGBPPostComposer = function() {
     const name = loc.name || raw.title || value;
     return value ? `<option value="${escHtml(value)}" data-location-name="${escHtml(name)}">${escHtml(name)}</option>` : '';
   }).join('');
-  openFloatPanel('Créer un post GBP', `<div style="padding:16px;display:flex;flex-direction:column;gap:10px">
-    <label style="font-size:11px;color:var(--fp-text-muted)">Établissement Google<select id="fp-gbp-location" class="fp-input" style="margin-top:5px">${options}</select></label>
+  openFloatPanel('Studio de publications GBP', `<div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+    <label style="font-size:11px;color:var(--fp-text-muted)">Établissement Google<select id="fp-gbp-location" class="fp-input" style="margin-top:5px" ${locations.length ? '' : 'disabled'}>${options}</select></label>
     ${locations.length ? '' : `<div style="font-size:11px;color:var(--fp-warning)">Connectez et synchronisez Google Business Profile avant de créer un post.</div>`}
-    <label style="font-size:11px;color:var(--fp-text-muted)">Contenu<textarea id="fp-gbp-content" class="fp-input" rows="5" maxlength="1500" placeholder="Rédigez votre actualité…"></textarea></label>
-    <label style="font-size:11px;color:var(--fp-text-muted)">Date de planification (facultatif)<input id="fp-gbp-schedule" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Format<select id="fp-gbp-post-type" class="fp-input" style="margin-top:5px"><option value="standard">Actualité</option><option value="event">Événement</option><option value="offer">Offre</option><option value="product">Produit — brouillon seulement</option></select></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Langue<select id="fp-gbp-language" class="fp-input" style="margin-top:5px">
+        ${[['fr','Français'],['en','English'],['nl','Nederlands'],['de','Deutsch'],['es','Español'],['it','Italiano'],['pt','Português']].map(([code,label]) => `<option value="${code}" ${language === code ? 'selected' : ''}>${label}</option>`).join('')}
+      </select></label>
+    </div>
+    <div id="fp-gbp-event-fields" hidden style="grid-template-columns:1fr 1fr;gap:8px">
+      <label style="grid-column:1/-1;font-size:11px;color:var(--fp-text-muted)">Titre de l’événement<input id="fp-gbp-event-title" class="fp-input" maxlength="120" style="margin-top:5px"/></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Début — heure locale de la fiche<input id="fp-gbp-event-start" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Fin<input id="fp-gbp-event-end" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    </div>
+    <div id="fp-gbp-offer-fields" hidden style="flex-direction:column;gap:8px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Code promotionnel<input id="fp-gbp-offer-code" class="fp-input" maxlength="80" style="margin-top:5px"/></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Conditions<textarea id="fp-gbp-offer-terms" class="fp-input" rows="2" maxlength="500" style="margin-top:5px"></textarea></label>
+    </div>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Secteur<input id="fp-gbp-industry" class="fp-input" maxlength="100" placeholder="Ex. restaurant, plomberie…" style="margin-top:5px"/></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Ton<select id="fp-gbp-tone" class="fp-input" style="margin-top:5px"><option value="professional">Professionnel</option><option value="friendly">Chaleureux</option><option value="expert">Expert</option><option value="promotional">Promotionnel</option></select></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Objectif<select id="fp-gbp-objective" class="fp-input" style="margin-top:5px"><option value="engagement">Engagement local</option><option value="visits">Visites en magasin</option><option value="calls">Appels</option><option value="booking">Réservations</option></select></label>
+    </div>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Mots-clés<input id="fp-gbp-keywords" class="fp-input" maxlength="480" placeholder="Séparés par des virgules" style="margin-top:5px"/></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Longueur cible (100–1500 caractères)<input id="fp-gbp-max-characters" class="fp-input" type="number" min="100" max="1500" value="500" style="margin-top:5px"/></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Bouton d’action<select id="fp-gbp-cta-type" class="fp-input" style="margin-top:5px"><option value="NONE">Aucun</option><option value="LEARN_MORE">En savoir plus</option><option value="BOOK">Réserver</option><option value="ORDER">Commander</option><option value="SIGN_UP">S’inscrire</option><option value="SHOP">Voir les produits</option><option value="CALL">Appeler</option></select></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Lien d’action ou de l’offre<input id="fp-gbp-cta-url" class="fp-input" type="url" placeholder="https://…" style="margin-top:5px"/></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Images publiques HTTPS (une URL par ligne)<textarea id="fp-gbp-media-urls" class="fp-input" rows="2" maxlength="2000" placeholder="https://exemple.fr/photo.jpg"></textarea></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Contenu<textarea id="fp-gbp-content" class="fp-input" rows="5" maxlength="1500" placeholder="Générez une proposition, relisez-la puis modifiez-la ici…"></textarea></label>
+    <div id="fp-gbp-char-count" aria-live="polite" style="font-size:10px;color:var(--fp-text-muted);text-align:right">0 / 500</div>
+    <div id="fp-gbp-post-preview" aria-label="Aperçu du post" style="border:1px solid var(--fp-border);border-radius:10px;padding:12px;background:var(--fp-surface-2)">
+      <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">APERÇU — GOOGLE BUSINESS PROFILE</div>
+      <div data-preview-content style="font-size:12px;line-height:1.5"></div>
+      <div data-preview-media style="display:flex;gap:6px;overflow:auto;margin-top:8px"></div>
+      <div data-preview-cta style="font-size:11px;color:var(--fp-accent);margin-top:8px"></div>
+    </div>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Planifier (facultatif)<input id="fp-gbp-schedule" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    <label id="fp-gbp-approval-row" hidden style="gap:8px;align-items:flex-start;font-size:11px;color:var(--fp-text-muted)"><input id="fp-gbp-manual-approval" type="checkbox"/> J’ai relu et validé ce contenu pour publication à la date choisie.</label>
+    <div id="fp-gbp-format-warning" hidden role="status" style="font-size:10px;color:var(--fp-warning)">Le format Produit sera conservé en brouillon : l’API Google ne permet pas sa publication.</div>
+    <div role="note" style="font-size:10px;color:var(--fp-text-muted)">La génération prépare un brouillon. Vérifiez le texte, les médias et la fiche avant d’enregistrer ou de programmer.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpGenerateGBPPost()">Générer avec l’IA</button>
-      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpSaveGBPPost()">Enregistrer</button>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpSaveGBPPost()">Enregistrer le brouillon / planifier</button>
     </div>
   </div>`);
+  const textarea = document.getElementById('fp-gbp-content');
+  const counter = document.getElementById('fp-gbp-char-count');
+  const maxCharacters = document.getElementById('fp-gbp-max-characters');
+  const postType = document.getElementById('fp-gbp-post-type');
+  const schedule = document.getElementById('fp-gbp-schedule');
+  const formatWarning = document.getElementById('fp-gbp-format-warning');
+  const eventFields = document.getElementById('fp-gbp-event-fields');
+  const offerFields = document.getElementById('fp-gbp-offer-fields');
+  const approvalRow = document.getElementById('fp-gbp-approval-row');
+  const approvalInput = document.getElementById('fp-gbp-manual-approval');
+  const mediaInput = document.getElementById('fp-gbp-media-urls');
+  const ctaTypeInput = document.getElementById('fp-gbp-cta-type');
+  const ctaUrlInput = document.getElementById('fp-gbp-cta-url');
+  const updateCount = () => { if (textarea && counter) counter.textContent = `${textarea.value.length} / ${Math.max(100, Math.min(1500, Number(maxCharacters?.value) || 500))}`; };
+  const updateFormat = () => {
+    const draftOnly = postType?.value === 'product';
+    if (schedule) { schedule.disabled = draftOnly; if (draftOnly) schedule.value = ''; }
+    if (approvalInput) approvalInput.checked = false;
+    if (formatWarning) formatWarning.hidden = !draftOnly;
+    if (eventFields) { eventFields.hidden = postType?.value !== 'event'; eventFields.style.display = postType?.value === 'event' ? 'grid' : 'none'; }
+    if (offerFields) { offerFields.hidden = postType?.value !== 'offer'; offerFields.style.display = postType?.value === 'offer' ? 'flex' : 'none'; }
+    if (approvalRow) { approvalRow.hidden = !schedule?.value || draftOnly; approvalRow.style.display = approvalRow.hidden ? 'none' : 'flex'; }
+  };
+  const updatePreview = () => {
+    const preview = document.getElementById('fp-gbp-post-preview');
+    if (!preview) return;
+    const contentNode = preview.querySelector('[data-preview-content]');
+    if (contentNode) contentNode.textContent = textarea?.value || 'Votre texte apparaîtra ici après rédaction.';
+    const mediaNode = preview.querySelector('[data-preview-media]');
+    const urls = String(mediaInput?.value || '').split(/[\n,]/).map(value => value.trim()).filter(value => {
+      try { return new URL(value).protocol === 'https:'; } catch { return false; }
+    }).slice(0, 10);
+    if (mediaNode) mediaNode.innerHTML = urls.map(url => `<img src="${escHtml(url)}" alt="Aperçu du média" style="width:70px;height:56px;object-fit:cover;border-radius:6px"/>`).join('');
+    const ctaNode = preview.querySelector('[data-preview-cta]');
+    if (ctaNode) ctaNode.textContent = ctaTypeInput?.value && ctaTypeInput.value !== 'NONE' ? `${ctaTypeInput.selectedOptions?.[0]?.textContent || ''}${ctaUrlInput?.value ? ` · ${ctaUrlInput.value}` : ''}` : '';
+  };
+  if (schedule) schedule.addEventListener('input', () => {
+    if (approvalInput) approvalInput.checked = false;
+    if (approvalRow) { approvalRow.hidden = !schedule.value || postType?.value === 'product'; approvalRow.style.display = approvalRow.hidden ? 'none' : 'flex'; }
+  });
+  [textarea, mediaInput, ctaTypeInput, ctaUrlInput, ...['fp-gbp-event-title','fp-gbp-event-start','fp-gbp-event-end','fp-gbp-offer-code','fp-gbp-offer-terms'].map(id => document.getElementById(id))]
+    .forEach(input => ['input','change'].forEach(eventName => input?.addEventListener(eventName, () => { if (approvalInput) approvalInput.checked = false; })));
+  [textarea, mediaInput, ctaTypeInput, ctaUrlInput].forEach(input => input?.addEventListener('input', updatePreview));
+  ctaTypeInput?.addEventListener('change', updatePreview);
+  if (textarea && counter) textarea.addEventListener('input', updateCount);
+  if (maxCharacters) maxCharacters.addEventListener('input', updateCount);
+  if (postType) { postType.addEventListener('change', updateFormat); updateFormat(); }
+  updatePreview();
 };
 
 window._fpGenerateGBPPost = async function() {
   const locationId = document.getElementById('fp-gbp-location')?.value;
   if (!locationId) { showToast('error', 'Sélectionnez un établissement Google connecté.'); return; }
   try {
-    const result = await window.FP_GBP_POSTS_API.generateAI({ locationId, objective: 'actualité locale', tone: 'professional' });
+    const location = document.getElementById('fp-gbp-location');
+    const keywords = String(document.getElementById('fp-gbp-keywords')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
+    const result = await window.FP_GBP_POSTS_API.generateAI({
+      locationId,
+      locationName: location?.selectedOptions?.[0]?.dataset.locationName,
+      postType: document.getElementById('fp-gbp-post-type')?.value || 'standard',
+      language: document.getElementById('fp-gbp-language')?.value || 'fr',
+      industry: document.getElementById('fp-gbp-industry')?.value?.trim(),
+      tone: document.getElementById('fp-gbp-tone')?.value || 'professional',
+      objective: document.getElementById('fp-gbp-objective')?.value || 'engagement',
+      keywords,
+      maxCharacters: Number(document.getElementById('fp-gbp-max-characters')?.value) || 500,
+    });
     const content = result?.content || result?.post?.content || result?.generated?.content || '';
     if (!content) throw new Error(result?.error || 'Aucun contenu généré.');
     const textarea = document.getElementById('fp-gbp-content');
-    if (textarea) textarea.value = content;
+    if (textarea) {
+      textarea.value = content;
+      const limit = Number(document.getElementById('fp-gbp-max-characters')?.value) || 500;
+      document.getElementById('fp-gbp-char-count').textContent = `${content.length} / ${Math.max(100, Math.min(1500, limit))}`;
+    }
+    const previewContent = document.querySelector('#fp-gbp-post-preview [data-preview-content]');
+    if (previewContent) previewContent.textContent = content;
   } catch (error) { showToast('error', String(error?.message || error)); }
 };
 
@@ -72151,10 +72300,54 @@ window._fpSaveGBPPost = async function() {
   const location = document.getElementById('fp-gbp-location');
   const content = document.getElementById('fp-gbp-content')?.value?.trim();
   const scheduledValue = document.getElementById('fp-gbp-schedule')?.value;
+  const postType = document.getElementById('fp-gbp-post-type')?.value || 'standard';
+  const manualApproval = document.getElementById('fp-gbp-manual-approval')?.checked === true;
+  const eventTitle = document.getElementById('fp-gbp-event-title')?.value?.trim();
+  const eventStartLocal = document.getElementById('fp-gbp-event-start')?.value || '';
+  const eventEndLocal = document.getElementById('fp-gbp-event-end')?.value || '';
+  const ctaType = document.getElementById('fp-gbp-cta-type')?.value || 'NONE';
+  const ctaUrl = document.getElementById('fp-gbp-cta-url')?.value?.trim() || '';
   if (!location?.value || !content) { showToast('error', 'Choisissez un établissement et ajoutez le contenu du post.'); return; }
+  if (scheduledValue && !manualApproval) { showToast('error', 'Validez manuellement le contenu avant de le programmer.'); return; }
+  if (postType === 'event' && (!eventTitle || !eventStartLocal || !eventEndLocal || new Date(eventEndLocal) <= new Date(eventStartLocal))) {
+    showToast('error', 'Renseignez le titre et une plage horaire valide pour l’événement.'); return;
+  }
+  if (ctaType !== 'NONE' && ctaType !== 'CALL' && !/^https:\/\//i.test(ctaUrl)) {
+    showToast('error', 'Ajoutez une URL HTTPS valide pour ce bouton d’action.'); return;
+  }
   try {
     const scheduledAt = scheduledValue ? new Date(scheduledValue).toISOString() : undefined;
-    const result = await window.FP_GBP_POSTS_API.createPost({ locationId: location.value, locationName: location.selectedOptions?.[0]?.dataset.locationName, content, scheduledAt });
+    const keywords = String(document.getElementById('fp-gbp-keywords')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
+    const mediaUrls = String(document.getElementById('fp-gbp-media-urls')?.value || '').split(/[\n,]/).map(value => value.trim()).filter(Boolean).slice(0, 10);
+    const generationOptions = {
+      language: document.getElementById('fp-gbp-language')?.value || 'fr',
+      tone: document.getElementById('fp-gbp-tone')?.value || 'professional',
+      objective: document.getElementById('fp-gbp-objective')?.value || 'engagement',
+      industry: document.getElementById('fp-gbp-industry')?.value?.trim() || '',
+      keywords,
+      maxCharacters: Number(document.getElementById('fp-gbp-max-characters')?.value) || 500,
+      eventStartLocal,
+      eventEndLocal,
+      eventTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    };
+    const result = await window.FP_GBP_POSTS_API.createPost({
+      locationId: location.value,
+      locationName: location.selectedOptions?.[0]?.dataset.locationName,
+      postType,
+      content,
+      scheduledAt,
+      manualApproval,
+      ctaType,
+      ctaUrl,
+      mediaUrls,
+      eventTitle,
+      eventStart: eventStartLocal ? new Date(eventStartLocal).toISOString() : undefined,
+      eventEnd: eventEndLocal ? new Date(eventEndLocal).toISOString() : undefined,
+      offerCode: document.getElementById('fp-gbp-offer-code')?.value?.trim(),
+      offerTerms: document.getElementById('fp-gbp-offer-terms')?.value?.trim(),
+      seoKeywords: keywords,
+      generationOptions,
+    });
     if (result?.ok === false || result?.error) throw new Error(result.error || 'Impossible d’enregistrer le post.');
     closeFloatPanel();
     await window._fpReloadGBPPosts();

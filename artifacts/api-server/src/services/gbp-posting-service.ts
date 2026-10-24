@@ -3,7 +3,37 @@ import { logger } from "../lib/logger.js";
 import { publishGBPPost } from "./google-service.js";
 
 export type PostType = "standard" | "event" | "offer" | "product";
-export type CtaType = "CALL" | "LEARN_MORE" | "ORDER" | "BOOK" | "SIGN_UP" | "GET_OFFER" | "NONE";
+export type CtaType = "CALL" | "LEARN_MORE" | "ORDER" | "BOOK" | "SIGN_UP" | "SHOP" | "GET_OFFER" | "NONE";
+export interface PostGenerationOptions {
+  language?: string;
+  tone?: string;
+  objective?: string;
+  industry?: string;
+  keywords?: string[];
+  maxCharacters?: number;
+  eventStartLocal?: string;
+  eventEndLocal?: string;
+  eventTimezone?: string;
+}
+const GENERATION_LANGUAGES = new Set(["fr", "en", "nl", "de", "es", "it", "pt"]);
+const cleanOption = (value: unknown, max: number): string =>
+  String(value ?? "").replace(/[<>]/g, "").trim().slice(0, max);
+function normalizeGenerationOptions(options?: PostGenerationOptions): Required<PostGenerationOptions> {
+  const language = String(options?.language || "fr").toLowerCase();
+  return {
+    language: GENERATION_LANGUAGES.has(language) ? language : "fr",
+    tone: cleanOption(options?.tone, 80),
+    objective: cleanOption(options?.objective, 120),
+    industry: cleanOption(options?.industry, 100),
+    keywords: Array.isArray(options?.keywords)
+      ? options.keywords.slice(0, 8).map(keyword => cleanOption(keyword, 60)).filter(Boolean)
+      : [],
+    maxCharacters: Math.max(100, Math.min(1500, Math.floor(Number(options?.maxCharacters) || 500))),
+    eventStartLocal: cleanOption(options?.eventStartLocal, 30),
+    eventEndLocal: cleanOption(options?.eventEndLocal, 30),
+    eventTimezone: cleanOption(options?.eventTimezone, 80),
+  };
+}
 
 export interface GBPPost {
   id: string;
@@ -21,6 +51,8 @@ export interface GBPPost {
   event_end: string | null;
   offer_code: string | null;
   offer_terms: string | null;
+  approved_at: string | null;
+  generation_options: PostGenerationOptions | null;
   status: "draft" | "scheduled" | "publishing" | "published" | "failed";
   scheduled_at: string | null;
   published_at: string | null;
@@ -68,6 +100,8 @@ export async function createPost(orgId: string, data: {
   title?: string; content: string; ctaType?: CtaType; ctaUrl?: string;
   mediaUrls?: string[]; scheduledAt?: string; seoKeywords?: string[];
   eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
+  offerTerms?: string; approvedAt?: string;
+  generationOptions?: PostGenerationOptions;
 }): Promise<GBPPost> {
   const client = await pool.connect();
   try {
@@ -77,9 +111,9 @@ export async function createPost(orgId: string, data: {
       `INSERT INTO gbp_posts (
         id, org_id, location_id, location_name, post_type, title, content,
         cta_type, cta_url, media_urls, event_title, event_start, event_end,
-        offer_code, status, scheduled_at, seo_keywords, ai_generated,
+        offer_code, offer_terms, status, scheduled_at, approved_at, seo_keywords, generation_options, ai_generated,
         views, clicks, calls, created_at, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,false,0,0,0,NOW(),NOW())`,
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,false,0,0,0,NOW(),NOW())`,
       [
         id, orgId,
         data.locationId ?? null,
@@ -94,9 +128,12 @@ export async function createPost(orgId: string, data: {
         data.eventStart ?? null,
         data.eventEnd ?? null,
         data.offerCode ?? null,
+        data.offerTerms ?? null,
         status,
         data.scheduledAt ?? null,
+        data.approvedAt ?? null,
         data.seoKeywords ?? [],
+        JSON.stringify(normalizeGenerationOptions(data.generationOptions)),
       ]
     );
     const res = await client.query(`SELECT * FROM gbp_posts WHERE id=$1`, [id]);
@@ -104,20 +141,28 @@ export async function createPost(orgId: string, data: {
   } finally { client.release(); }
 }
 
-export async function generateAiPost(orgId: string, data?: { locationId?: string; locationName?: string; postType?: PostType; industry?: string; keywords?: string[]; tone?: string; objective?: string; }): Promise<{ content: string; callToAction: string; type: string }> {
+export async function generateAiPost(orgId: string, data?: { locationId?: string; locationName?: string; postType?: PostType } & PostGenerationOptions): Promise<{ content: string; callToAction: string; type: string }> {
   void orgId;
   const { aiChatCompletion } = await import("../lib/openai-client.js");
-  const postType = data?.postType ?? "tip";
-  const ctaByType: Record<string, string> = { promo: "Réserver", news: "En savoir plus", tip: "Nous contacter", event: "S'inscrire" };
+  const postType = data?.postType ?? "standard";
+  const languageNames: Record<string, string> = { fr: "français", en: "anglais", nl: "néerlandais", de: "allemand", es: "espagnol", it: "italien", pt: "portugais" };
+  const options = normalizeGenerationOptions(data);
+  const languageCode = options.language;
+  const language = languageNames[languageCode] || languageNames.fr;
+  const maxCharacters = options.maxCharacters;
+  const { keywords, tone, objective, industry } = options;
+  const locationName = cleanOption(data?.locationName, 120);
+  const ctaByType: Record<string, string> = { standard: "En savoir plus", offer: "Profiter de l’offre", event: "S’inscrire", product: "Découvrir le produit" };
   const raw = await aiChatCompletion({
-    systemPrompt: `Tu es un expert en marketing local français. Tu rédiges des posts Google Business Profile courts (300-500 caractères), engageants, avec 1-2 émojis pertinents et des hashtags. Réponds UNIQUEMENT en JSON: {"content": "...", "callToAction": "..."}`,
-    userPrompt: `Rédige un post GBP de type "${postType}"${data?.locationName ? ` pour l'établissement "${data.locationName}"` : ""}${data?.industry ? ` (secteur: ${data.industry})` : ""}${data?.keywords?.length ? `. Mots-clés à intégrer: ${data.keywords.join(", ")}` : ""}${data?.tone ? `. Ton: ${data.tone}` : ""}${data?.objective ? `. Objectif: ${data.objective}` : ""}.`,
+    systemPrompt: `Tu es un expert en marketing local. Rédige en ${language} un post Google Business Profile exact et utile, sans inventer de prix, d'horaires, de faits ou de promesses. Respecte strictement la limite de ${maxCharacters} caractères, espaces compris. Réponds UNIQUEMENT en JSON: {"content": "...", "callToAction": "..."}`,
+    userPrompt: `Rédige un post GBP de type "${postType}"${locationName ? ` pour l'établissement "${locationName}"` : ""}${industry ? ` (secteur: ${industry})` : ""}${keywords.length ? `. Mots-clés à intégrer naturellement: ${keywords.join(", ")}` : ""}${tone ? `. Ton: ${tone}` : ""}${objective ? `. Objectif: ${objective}` : ""}.`,
     json: true,
     maxTokens: 400,
   });
   let parsed: { content?: string; callToAction?: string } = {};
   try { parsed = JSON.parse(raw); } catch { /* handled below */ }
   if (!parsed.content) throw new Error("AI_GENERATION_FAILED");
+  if (Array.from(parsed.content).length > maxCharacters) throw new Error("AI_GENERATION_OVER_LIMIT");
   return { type: postType, content: parsed.content, callToAction: parsed.callToAction || ctaByType[postType] || "En savoir plus" };
 }
 
@@ -132,6 +177,7 @@ export async function publishPost(orgId: string, postId: string): Promise<{ ok: 
   const post = claimed.rows[0] as GBPPost | undefined;
   if (!post) throw new Error("GBP_POST_NOT_FOUND_OR_ALREADY_PUBLISHED");
   try {
+    if (post.scheduled_at && !post.approved_at) throw new Error("GBP_POST_MANUAL_APPROVAL_REQUIRED");
     if (!post.location_id) throw new Error("GBP_LOCATION_REQUIRED");
     const location = await pool.query(
       `SELECT raw_data->>'name' AS resource_name
@@ -145,15 +191,55 @@ export async function publishPost(orgId: string, postId: string): Promise<{ ok: 
     if (resourceParts.length !== 4 || resourceParts[0] !== "accounts" || !resourceParts[1] || resourceParts[2] !== "locations" || !resourceParts[3]) {
       throw new Error("GBP_LOCATION_NOT_VERIFIED_FOR_ORG");
     }
-    if (String(post.post_type).toLowerCase() !== "standard") {
-      throw new Error("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
-    }
-    const callToAction = post.cta_type && post.cta_url
-      ? { actionType: post.cta_type, url: post.cta_url }
+    const postType = String(post.post_type || "standard").toLowerCase();
+    if (postType === "product") throw new Error("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
+    const topicType = postType === "event" ? "EVENT" : postType === "offer" ? "OFFER" : "STANDARD";
+    const generationOptions = typeof post.generation_options === "string"
+      ? (() => { try { return JSON.parse(post.generation_options) as PostGenerationOptions; } catch { return {}; } })()
+      : post.generation_options ?? {};
+    const callToAction = postType !== "offer" && post.cta_type && post.cta_type !== "NONE"
+      ? { actionType: post.cta_type, ...(post.cta_type === "CALL" || !post.cta_url ? {} : { url: post.cta_url }) }
       : undefined;
+    const mediaUrls = Array.isArray(post.media_urls) ? post.media_urls : [];
+    if (mediaUrls.some(url => typeof url !== "string" || !/^https:\/\//i.test(url))) {
+      throw new Error("GBP_MEDIA_URL_INVALID");
+    }
+    const googleDateTime = (localValue: string | undefined, storedValue: string | null) => {
+      const raw = localValue || storedValue || "";
+      const local = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      if (local) return {
+        date: { year: Number(local[1]), month: Number(local[2]), day: Number(local[3]) },
+        time: { hours: Number(local[4]), minutes: Number(local[5]) },
+      };
+      const date = new Date(raw);
+      if (!Number.isFinite(date.getTime())) throw new Error("GBP_EVENT_SCHEDULE_REQUIRED");
+      return {
+        date: { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() },
+        time: { hours: date.getUTCHours(), minutes: date.getUTCMinutes() },
+      };
+    };
+    let event: { title: string; schedule: { startDate: { year: number; month: number; day: number }; startTime: { hours: number; minutes: number }; endDate: { year: number; month: number; day: number }; endTime: { hours: number; minutes: number } } } | undefined;
+    if (postType === "event") {
+      if (!post.event_title || !post.event_start || !post.event_end) throw new Error("GBP_EVENT_SCHEDULE_REQUIRED");
+      const start = googleDateTime(generationOptions.eventStartLocal, post.event_start);
+      const end = googleDateTime(generationOptions.eventEndLocal, post.event_end);
+      if (new Date(post.event_end).getTime() <= new Date(post.event_start).getTime()) throw new Error("GBP_EVENT_SCHEDULE_INVALID");
+      event = { title: post.event_title, schedule: { startDate: start.date, startTime: start.time, endDate: end.date, endTime: end.time } };
+    }
+    const offer = postType === "offer" ? {
+      ...(post.offer_code ? { couponCode: post.offer_code } : {}),
+      ...(post.cta_url ? { redeemOnlineUrl: post.cta_url } : {}),
+      ...(post.offer_terms ? { termsConditions: post.offer_terms } : {}),
+    } : undefined;
+    const languageCode = GENERATION_LANGUAGES.has(generationOptions.language || "") ? generationOptions.language : "fr";
     const result = await publishGBPPost(orgId, resourceName, {
       summary: post.content,
+      topicType,
+      languageCode,
+      ...(mediaUrls.length ? { media: mediaUrls.slice(0, 10).map(sourceUrl => ({ mediaFormat: "PHOTO" as const, sourceUrl })) } : {}),
       ...(callToAction ? { callToAction } : {}),
+      ...(event ? { event } : {}),
+      ...(offer ? { offer } : {}),
     });
     if (!result.ok) throw new Error(result.error || "GBP_PUBLISH_FAILED");
     const publishedAt = new Date().toISOString();

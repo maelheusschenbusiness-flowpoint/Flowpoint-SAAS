@@ -31,7 +31,11 @@ describe("GBP post publishing", () => {
 
     expect(published.ok).toBe(true);
     expect(published.googlePostId).toContain("localPosts/post-9");
-    expect(publishGBPPost).toHaveBeenCalledWith("org-1", "accounts/acct-1/locations/place-1", { summary: "Open this week" });
+    expect(publishGBPPost).toHaveBeenCalledWith("org-1", "accounts/acct-1/locations/place-1", {
+      summary: "Open this week",
+      topicType: "STANDARD",
+      languageCode: "fr",
+    });
     expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining("id=$1 AND org_id=$2"), ["post-1", "org-1"]);
     expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining("org_id=$1"), ["org-1", "loc-1"]);
   });
@@ -44,5 +48,61 @@ describe("GBP post publishing", () => {
 
     await expect(publishPost("org-1", "post-1")).rejects.toThrow("GBP_LOCATION_NOT_VERIFIED_FOR_ORG");
     expect(publishGBPPost).not.toHaveBeenCalled();
+  });
+
+  it("never publishes a scheduled post without a persisted manual approval", async () => {
+    const unapprovedScheduled = {
+      ...post,
+      status: "scheduled",
+      scheduled_at: new Date(Date.now() + 60_000).toISOString(),
+      approved_at: null,
+    } as GBPPost;
+    query
+      .mockResolvedValueOnce(result([unapprovedScheduled]))
+      .mockResolvedValueOnce(result([]));
+
+    await expect(publishPost("org-1", "post-1")).rejects.toThrow("GBP_POST_MANUAL_APPROVAL_REQUIRED");
+    expect(publishGBPPost).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes supported event posts with event metadata and HTTPS media", async () => {
+    const start = new Date(Date.now() + 172_800_000);
+    const end = new Date(Date.now() + 259_200_000);
+    const eventPost = {
+      ...post,
+      post_type: "event",
+      event_title: "Open house",
+      event_start: start.toISOString(),
+      event_end: end.toISOString(),
+      media_urls: ["https://example.com/event.jpg"],
+      generation_options: {
+        language: "en",
+        eventStartLocal: "2026-10-26T10:00",
+        eventEndLocal: "2026-10-27T17:00",
+      },
+    } as GBPPost;
+    query
+      .mockResolvedValueOnce(result([eventPost]))
+      .mockResolvedValueOnce(result([{ resource_name: "accounts/acct-1/locations/place-1" }]))
+      .mockResolvedValueOnce(result([]));
+    vi.mocked(publishGBPPost).mockResolvedValue({ ok: true, postName: "event-post" });
+
+    await publishPost("org-1", "post-1");
+
+    expect(publishGBPPost).toHaveBeenCalledWith("org-1", "accounts/acct-1/locations/place-1", expect.objectContaining({
+      topicType: "EVENT",
+      languageCode: "en",
+      event: {
+        title: "Open house",
+        schedule: {
+          startDate: { year: 2026, month: 10, day: 26 },
+          startTime: { hours: 10, minutes: 0 },
+          endDate: { year: 2026, month: 10, day: 27 },
+          endTime: { hours: 17, minutes: 0 },
+        },
+      },
+      media: [{ mediaFormat: "PHOTO", sourceUrl: "https://example.com/event.jpg" }],
+    }));
   });
 });
