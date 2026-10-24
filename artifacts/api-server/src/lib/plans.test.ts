@@ -29,6 +29,7 @@ import {
   PLAN_ALLOWED_ADDONS,
   PROTECTED_ADDON_KEYS,
   REMOVED_ADDONS,
+  RETIRED_ADDONS,
   isPlanAllowedAddon,
   ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
 } from "./plans.js";
@@ -54,19 +55,29 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps 41 product slots and all six protected keys", () => {
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(42);
+  it("keeps 42 sellable product slots, preserving retired metadata for existing entitlements", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(43);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(42);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
         "monitorsPack50",
         "gbpPerformanceLeads",
+        "localLandingOpportunities",
         "whiteLabel",
         "retention90d",
         "retention365d",
         "extraSeats",
       ]),
     );
+  });
+
+  it("retires Local Domination Maps from new sales without removing its legacy entitlement key", () => {
+    expect(RETIRED_ADDONS.has("localDominationMaps")).toBe(true);
+    expect(isPlanAllowedAddon("pro", "localDominationMaps")).toBe(false);
+    expect(ADDON_PRICE_IDS.localDominationMaps).toBeTruthy();
+    expect(CANONICAL_ADDON_DEFINITIONS.localLandingOpportunities.priceEur).toBe(15);
+    expect(ADDON_PRICE_IDS.localLandingOpportunities).toBe("");
   });
 
   it("preserves protected add-on prices, pack sizes, and recurring behavior", () => {
@@ -108,11 +119,12 @@ describe("V1 add-on catalogue contract", () => {
 
   it("opens every sellable non-protected add-on to Standard, Pro, and Ultra without changing protected gates", () => {
     const nonProtectedAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(
-      key => !PROTECTED_ADDON_KEYS.has(key),
+      key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
     const sellableAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key =>
       !PROTECTED_ADDON_KEYS.has(key) &&
       !REMOVED_ADDONS.has(key) &&
+      !RETIRED_ADDONS.has(key) &&
       ["available", "beta"].includes(getAddonAvailability(key))
     );
     expect(nonProtectedAddons).toHaveLength(36);
@@ -151,7 +163,7 @@ describe("V1 add-on catalogue contract", () => {
 
   it("keeps the Local SEO offers priced but unavailable for purchase before approval", () => {
     const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(42);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(43);
     expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
@@ -159,6 +171,7 @@ describe("V1 add-on catalogue contract", () => {
       expect(getAddonStatus(key)).toBe("coming_soon");
       expect(getAddonStatus(key, { included: true })).toBe("included");
     }
+    expect(getAddonAvailability("localLandingOpportunities")).toBe("coming_soon");
   });
 });
 
