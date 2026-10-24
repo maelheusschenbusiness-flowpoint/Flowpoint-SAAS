@@ -157,10 +157,10 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
                        ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
     conversionOpportunityEngine: process.env["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"] ?? "",
-    seoChangeImpact: "",
+    seoChangeImpact: process.env["STRIPE_TEST_PRICE_ID_ADDON_SEO_CHANGE_IMPACT"] ?? "",
     agencyPortfolioPriorities: process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"] ?? "",
-    technicalSeoFixVerification: "",
-    organicCampaignTracker: "",
+    technicalSeoFixVerification: process.env["STRIPE_TEST_PRICE_ID_ADDON_TECHNICAL_SEO_FIX_VERIFICATION"] ?? "",
+    organicCampaignTracker: process.env["STRIPE_TEST_PRICE_ID_ADDON_ORGANIC_CAMPAIGN_TRACKER"] ?? "",
     localPresenceOptimizer: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"] ?? "",
     advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
@@ -510,27 +510,6 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "customDomain",
 ]);
 
-// A test price makes the feature purchasable only when the active Stripe key is
-// explicitly test-mode. Without a live price, production remains fail-closed.
-if (
-  ADDON_PRICE_IDS_TEST.gbpPerformanceLeads &&
-  getStripeKey().startsWith("sk_test_")
-) {
-  COMING_SOON_ADDONS.delete("gbpPerformanceLeads");
-}
-if (
-  ADDON_PRICE_IDS_TEST.localLandingOpportunities &&
-  getStripeKey().startsWith("sk_test_")
-) {
-  COMING_SOON_ADDONS.delete("localLandingOpportunities");
-}
-if (
-  ADDON_PRICE_IDS_TEST.conversionOpportunityEngine &&
-  getStripeKey().startsWith("sk_test_")
-) {
-  COMING_SOON_ADDONS.delete("conversionOpportunityEngine");
-}
-
 /** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
 export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
   "aiGbpPosting",
@@ -538,6 +517,28 @@ export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
   "localDominationMaps",
   "localPresenceOptimizer",
 ]);
+
+// TEST prices release only the eight replacement add-ons in TEST mode.
+// No LIVE price or protected/historical entitlement is changed by this gate.
+const TEST_PURCHASABLE_REPLACEMENT_ADDONS = [
+  "gbpPerformanceLeads",
+  "localPresenceOptimizer",
+  "localLandingOpportunities",
+  "conversionOpportunityEngine",
+  "seoChangeImpact",
+  "agencyPortfolioPriorities",
+  "technicalSeoFixVerification",
+  "organicCampaignTracker",
+] as const;
+
+const activeStripeKey = typeof getStripeKey === "function" ? getStripeKey() : "";
+if (typeof activeStripeKey === "string" && activeStripeKey.startsWith("sk_test_")) {
+  for (const addonKey of TEST_PURCHASABLE_REPLACEMENT_ADDONS) {
+    if (!ADDON_PRICE_IDS_TEST[addonKey]) continue;
+    COMING_SOON_ADDONS.delete(addonKey);
+    VALIDATION_REQUIRED_ADDONS.delete(addonKey);
+  }
+}
 
 /**
  * Audit fonctionnel (2026-08-24) — critère BETA :
