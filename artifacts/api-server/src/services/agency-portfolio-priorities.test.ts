@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { rankAgencyPortfolioPriorities } from "./agency-portfolio-priorities.js";
+import {
+  normalizeAgencyPortfolioSettings,
+  rankAgencyPortfolioPriorities,
+  validateAgencyPortfolioSettings,
+} from "./agency-portfolio-priorities.js";
 
 const site = (overrides: Partial<Parameters<typeof rankAgencyPortfolioPriorities>[0][number]> = {}) => ({
   siteId: "site-1",
@@ -7,7 +11,7 @@ const site = (overrides: Partial<Parameters<typeof rankAgencyPortfolioPriorities
   currentScore: 80,
   previousScore: 80,
   criticalIssues: 0,
-  monthlyOrganicSessions: 2500,
+  monthlyOrganicClicks: 2500,
   priorityWeight: 3,
   ...overrides,
 });
@@ -35,5 +39,13 @@ describe("Agency Portfolio Priorities", () => {
   it("rejects impossible or missing metrics instead of inventing a rank", () => {
     expect(() => rankAgencyPortfolioPriorities([site({ currentScore: 130 })])).toThrow(RangeError);
     expect(rankAgencyPortfolioPriorities([])).toEqual([]);
+  });
+
+  it("normalizes and validates persisted per-domain weights", () => {
+    expect(normalizeAgencyPortfolioSettings({ priorityWeights: { "HTTPS://Example.com/path": 5, bad: 8 } }))
+      .toEqual({ priorityWeights: { "example.com": 5 } });
+    expect(validateAgencyPortfolioSettings({ priorityWeights: { "example.com": 4 } }))
+      .toEqual({ priorityWeights: { "example.com": 4 } });
+    expect(validateAgencyPortfolioSettings({ priorityWeights: { "example.com": 8 } })).toBeNull();
   });
 });
