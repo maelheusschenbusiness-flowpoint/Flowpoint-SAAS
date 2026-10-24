@@ -21835,6 +21835,10 @@ function bindGlobalEvents() {
     'Campagnes suivies': 'Tracked campaigns',
     'Aucun objectif enregistré.': 'No goals saved yet.',
     'Impossible de charger les campagnes.': 'Unable to load campaigns.',
+    'Cet add-on n’est pas actif pour votre organisation.': 'This add-on is not active for your organization.',
+    'Vous n’avez pas accès à ces données.': 'You do not have access to this data.',
+    'Les performances Google Business Profile sont temporairement indisponibles. Réessayez.': 'Google Business Profile performance is temporarily unavailable. Try again.',
+    'Impossible de charger les performances Google Business Profile.': 'Unable to load Google Business Profile performance.',
     'Classez vos sites à partir des audits SEO et des clics GSC réellement mesurés.': 'Rank your sites using measured SEO audits and GSC clicks.',
     'Chargement des priorités…': 'Loading priorities…',
     'Pondérations de priorité': 'Priority weights',
@@ -70992,7 +70996,9 @@ window.fpTrackUsage = async function(kind) {
     window.FP_MARKET_INTEL_API.load().then(_reloadIfData('marketIntel')).catch(() => {});
     window.FP_PERMISSIONS_API.load().then(_reloadIfData('permissions')).catch(() => {});
     window.FP_REVIEW_INTEL_API.load().then(_reloadIfData('reviewIntel')).catch(() => {});
-    window.FP_GBP_PERFORMANCE_API.load().then(_reloadIfData('gbpPerformance')).catch(() => {});
+    window.FP_GBP_PERFORMANCE_API.load().then(() => {
+      if (window.FP_DATA?.gbpPerformance || window.FP_DATA?.gbpPerformanceError) render();
+    }).catch(() => {});
     window.FP_GBP_POSTS_API.load().then(_reloadIfData('gbpPosts')).catch(() => {});
     window.FP_LOCAL_MAPS_API.load().then(_reloadIfData('localMaps')).catch(() => {});
     window.FP_SSO_API.load().then(_reloadIfData('sso')).catch(() => {});
@@ -71155,9 +71161,23 @@ window.FP_GBP_PERFORMANCE_API = {
       const data = await apiFetch('/api/gbp-performance');
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.gbpPerformance = { ...data, loadedAt: Date.now() };
+      window.FP_DATA.gbpPerformanceError = null;
       return data;
     } catch (error) {
-      if (error?.status !== 403) console.warn('[FP_GBP_PERFORMANCE_API]', error);
+      window.FP_DATA = window.FP_DATA || {};
+      const status = Number(error?.status) || 0;
+      const messageKey = status === 402
+        ? 'Cet add-on n’est pas actif pour votre organisation.'
+        : status === 403
+          ? 'Vous n’avez pas accès à ces données.'
+          : status === 502
+            ? 'Les performances Google Business Profile sont temporairement indisponibles. Réessayez.'
+            : 'Impossible de charger les performances Google Business Profile.';
+      window.FP_DATA.gbpPerformanceError = {
+        status,
+        message: typeof window.fpT === 'function' ? window.fpT(messageKey) : messageKey,
+      };
+      if (![402, 403].includes(status)) console.warn('[FP_GBP_PERFORMANCE_API]', error);
       return null;
     }
   },
@@ -71171,7 +71191,15 @@ window.FP_GBP_PERFORMANCE_API = {
 
 function renderGbpPerformanceAddon() {
   const data = window.FP_DATA?.gbpPerformance;
-  if (!data) return '';
+  if (!data) {
+    const loadError = window.FP_DATA?.gbpPerformanceError;
+    if (!loadError) return '';
+    return `<section class="fp-card fp-mb-20" role="alert" aria-labelledby="fp-gbp-performance-title">
+      <div class="fp-card-title" id="fp-gbp-performance-title">GBP Performance &amp; Leads</div>
+      <p>${escHtml(loadError.message)}</p>
+      <button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-gbp-performance-retry>${fpT('Réessayer')}</button>
+    </section>`;
+  }
   const settings = data.settings || { locationId: null, periodDays: 30, goals: {}, alertDropPercent: 20 };
   const goals = settings.goals || {};
   const metrics = [
@@ -71238,8 +71266,8 @@ function renderGbpPerformanceAddon() {
 }
 
 document.addEventListener('click', async event => {
-  if (!event.target.closest('[data-fp-gbp-performance-refresh]')) return;
-  const button = event.target.closest('[data-fp-gbp-performance-refresh]');
+  const button = event.target.closest('[data-fp-gbp-performance-refresh], [data-fp-gbp-performance-retry]');
+  if (!button) return;
   button.disabled = true;
   try {
     await window.FP_GBP_PERFORMANCE_API.load();
