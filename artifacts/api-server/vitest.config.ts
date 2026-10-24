@@ -15,6 +15,8 @@ export default defineConfig({
       "src/routes/admin-test-session.test.ts",
        "src/routes/admin-test-session-postgres.test.ts",
       "src/services/keyword-domination.test.ts",
+      "src/services/technical-seo-fix-verification.test.ts",
+      "src/routes/technical-seo-fix-verification.test.ts",
       "src/services/agency-portfolio-priorities.test.ts",
       "src/routes/agency-portfolio-priorities.test.ts",
       "src/services/seo-change-impact.test.ts",

@@ -10381,7 +10381,8 @@ function renderBilling() {
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'Suivi et analyse des mots-clés', desc:'Suivi des mots-clés, clustering, fonctionnalités SERP et cannibalisation.', features:['Suivi de mots-clés','Clustering sémantique','Détection de cannibalisation','Suivi des fonctionnalités SERP','Alertes de volatilité des résultats'] },
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
       { key:'aiContentStrategist', cat:'SEO',        name:'SEO Content Decay Radar', icon:'📉', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'GSC',             roi:'Détection des baisses de performance',    desc:'Repère les baisses de clics, de positions et les CTR faibles par rapport aux pages GSC comparables.', features:['Comparaison de périodes GSC','Détection des pertes de clics et de positions','Détection des CTR faibles par position moyenne','Priorisation selon les données observées','Aucune génération IA ni appel externe'] },
-       { key:'seoChangeImpact', cat:'SEO',             name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), availability:'coming_soon', tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
+        { key:'seoChangeImpact', cat:'SEO',             name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), availability:'coming_soon', tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
+        { key:'technicalSeoFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), availability:'coming_soon', tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'Gestion de fiches GBP supplémentaires',    desc:'Gérez des fiches Google Business Profile supplémentaires depuis FlowPoint.', features:['Gestion de fiches GBP supplémentaires','Publication de posts GBP','Synchronisation des horaires et informations NAP','Alertes sur les avis sans réponse','Informations de complétude de fiche'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'Création assistée de publications GBP',    desc:'Posts GBP générés par IA à partir des informations de votre établissement.', features:['Posts GBP rédigés par IA','Calendrier de publication','Adaptation aux événements renseignés','Sélection de photos disponibles','Rapport d’engagement'] },
@@ -10728,6 +10729,8 @@ function renderBilling() {
                   ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenConversionOpportunityEngine()">${fpT('Ouvrir')}</button>`
                   : a.key === 'seoChangeImpact'
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenSEOChangeImpact()">${fpT('Ouvrir')}</button>`
+                    : a.key === 'technicalSeoFixVerification'
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenTechnicalSEOFixVerification()">${fpT('Ouvrir')}</button>`
                     : a.key === 'agencyPortfolioPriorities'
                       ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenAgencyPortfolioPriorities()">${fpT('Ouvrir')}</button>`
                     : (_FP_QTY_ADDON_KEYS[a.key]
@@ -16345,6 +16348,14 @@ function _doRender() {
         if (root && renderAddon) renderAddon(root);
       }, 0);
       break;
+    case 'technical-seo-fix-verification':
+      html = '<div id="fp-addon-technical-seo-fix-verification"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-technical-seo-fix-verification');
+        const renderAddon = window.FP_ADDON_RENDERERS?.technicalSeoFixVerification;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'agency-portfolio-priorities':
       html = '<div id="fp-addon-agency-portfolio-priorities"></div>';
       setTimeout(() => {
@@ -21774,6 +21785,23 @@ function bindGlobalEvents() {
     'Revenu sur 90 jours : {revenue} (devise GA4)': 'Revenue over 90 days: {revenue} (GA4 currency)',
     'Projection indicative ({change} %) — {details}': 'Indicative projection ({change}%) — {details}',
     'Priorités du portefeuille d’agences': 'Agency portfolio priorities',
+    'Vérification SEO technique': 'Technical SEO fix verification',
+    'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.': 'Compare the total issue count between two completed audits of the same URL.',
+    'Les audits enregistrent un total agrégé, pas le détail par règle. La comparaison ne confirme donc pas une correction spécifique.': 'Audits store an aggregate count, not rule-level details. This comparison cannot confirm a specific fix.',
+    'Chargement des audits…': 'Loading audits…',
+    'problèmes': 'issues',
+    'Il faut au moins deux audits terminés pour comparer une URL.': 'At least two completed audits are needed to compare one URL.',
+    'Audit de référence': 'Baseline audit',
+    'Audit après la correction': 'After-fix audit',
+    'Comparer les audits': 'Compare audits',
+    'Comparaisons enregistrées': 'Saved comparisons',
+    'Résolu selon le nouvel audit': 'Resolved according to the new audit',
+    'Amélioration mesurée': 'Measured improvement',
+    'Toujours présent': 'Still present',
+    'Aucun problème dans l’audit de référence': 'No issue in the baseline audit',
+    'Audits non comparables': 'Audits cannot be compared',
+    'Impossible de comparer ces audits.': 'Unable to compare these audits.',
+    'Impossible de charger les audits.': 'Unable to load audits.',
     'Classez vos sites à partir des audits SEO et des clics GSC réellement mesurés.': 'Rank your sites using measured SEO audits and GSC clicks.',
     'Chargement des priorités…': 'Loading priorities…',
     'Pondérations de priorité': 'Priority weights',
@@ -66166,6 +66194,9 @@ window.fpOpenConversionOpportunityEngine = function () {
 };
 window.fpOpenSEOChangeImpact = function () {
   window.navigate('seo-change-impact');
+};
+window.fpOpenTechnicalSEOFixVerification = function () {
+  window.navigate('technical-seo-fix-verification');
 };
 window.fpOpenAgencyPortfolioPriorities = function () {
   window.navigate('agency-portfolio-priorities');
