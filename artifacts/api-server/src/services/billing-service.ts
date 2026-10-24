@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getPlanPriceId } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -65,6 +65,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   aiGbpPosting:          { icon: "📱", unit: "publication IA GBP"   },
   reviewIntelligence:    { icon: "⭐", unit: "IA avis clients"       },
   localDominationMaps:   { icon: "🗺️", unit: "cartes locales"        },
+  localLandingOpportunities: { icon: "📍", unit: "opportunités locales" },
   // ── Conversion / IA ────────────────────────────────────────────────────────
   aiCro:                 { icon: "🚀", unit: "CRO IA"               },
   behavioralAI:          { icon: "🧠", unit: "comportemental IA"    },
@@ -104,7 +105,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
-  if (REMOVED_ADDONS.has(id)) return [];
+  if (REMOVED_ADDONS.has(id) || RETIRED_ADDONS.has(id)) return [];
   const def = ADDON_DEFINITIONS[id];
   if (!def) {
     logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key — omitted");

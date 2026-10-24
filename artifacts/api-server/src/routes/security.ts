@@ -6,6 +6,8 @@ import { Router, type Request, type Response } from "express";
 import { requireOrgId } from "../lib/require-org-id.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { logger } from "../lib/logger.js";
+import { canAdmin } from "../middlewares/requireRole.js";
+import { displayablePublicKey, redactApiKeys } from "../lib/api-keys.js";
 
 const router = Router();
 
@@ -112,23 +114,20 @@ router.post("/security/2fa/verify", async (_req: Request, res: Response): Promis
 });
 
 // ── GET /api/security/api-keys ───────────────────────────────────────────────
-router.get("/security/api-keys", async (req: Request, res: Response): Promise<void> => {
+// Lists keys by prefix only (never a full value), owners/admins only. Legacy default keys
+// are not listed.
+router.get("/security/api-keys", canAdmin, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
-  res.json({
-    keys: [
-      {
-        id:          "pk_default",
-        name:        "Clé publique (lecture seule)",
-        prefix:      `fp_pub_${_pkHash.slice(0, 8)}`,
-        permissions: ["read"],
-        createdAt:   new Date().toISOString(),
-        lastUsed:    null,
-        secret:      false,
-      },
-    ],
-  });
+  const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [] }));
+  const prefs = (r.rows[0] as Record<string, unknown> | undefined)?.settings as Record<string, unknown> | null;
+  const pub = displayablePublicKey(prefs, orgId);
+  const keys = [];
+  if (pub) keys.push({ id: "pk_default", name: "Clé publique (lecture seule)", prefix: pub.slice(0, 15), permissions: ["read"],
+    createdAt: prefs?.publicApiKeyCreatedAt ?? null, lastUsed: null, secret: false });
+  if (typeof prefs?.secretApiKey === "string" && prefs.secretApiKey) keys.push({ id: "sk_default", name: "Clé secrète", prefix: "fp_sec_",
+    permissions: ["read", "write"], createdAt: prefs?.secretApiKeyCreatedAt ?? null, lastUsed: null, secret: true });
+  res.json({ keys });
 });
 
 // ── GET /api/preferences — alias for /api/me/prefs ──────────────────────────
@@ -137,7 +136,8 @@ router.get("/preferences", async (req: Request, res: Response): Promise<void> =>
   if (!orgId) return;
   try {
     const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    res.json(r.rows[0] ?? { streak: 0, pinned: {}, checklist: null, settings: null });
+    const row = r.rows[0];
+    res.json(row ? { ...row, settings: redactApiKeys(row.settings) } : { streak: 0, pinned: {}, checklist: null, settings: null });
   } catch {
     res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
   }

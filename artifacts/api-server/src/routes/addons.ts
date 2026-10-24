@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -24,7 +24,10 @@ router.get("/addons", async (req: Request, res: Response) => {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
     const quotas = getQuotaLimits(plan, liveAddons);
-    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
+    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS)
+      .filter(([key]) => !REMOVED_ADDONS.has(key))
+      .filter(([key]) => !RETIRED_ADDONS.has(key) || Boolean(liveAddons[key]))
+      .map(([key, definition]) => {
       const active = liveAddons[key] ?? false;
       const includedInPlan = planIncluded.has(key);
       return [key, {
@@ -58,9 +61,9 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // ── Removed-from-catalogue gate ────────────────────────────────────────────
   // "prioritySupport" was removed from the commercial catalogue (feature not
   // implemented). Block any activation attempt regardless of plan.
-  if (REMOVED_ADDONS.has(key)) {
+  if (REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key)) {
     logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — removed from catalogue");
-    res.status(410).json({ error: "Cet add-on n'est plus disponible.", code: "ADDON_REMOVED" }); return;
+    res.status(410).json({ error: "Cet add-on n'est plus disponible à l'achat.", code: "ADDON_RETIRED" }); return;
   }
   // ── Coming-soon gate ───────────────────────────────────────────────────────
   // Add-ons in COMING_SOON_ADDONS are visible on the pricing/UI as roadmap items
