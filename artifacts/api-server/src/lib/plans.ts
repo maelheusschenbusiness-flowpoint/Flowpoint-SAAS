@@ -363,7 +363,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
   aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
-  seoChangeImpact:      { name: "SEO Change Impact",          category: "SEO",          description: "Comparez les variations réellement mesurées entre audits SEO terminés.", priceEur: 0, oneTime: false, quantity: false },
+  seoChangeImpact:      { name: "SEO Change Impact",          category: "SEO",          description: "Comparez les variations réellement mesurées entre audits SEO terminés.", priceEur: 15, oneTime: false, quantity: false },
   agencyPortfolioPriorities: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
   technicalSeoFixVerification: { name: "Technical SEO Fix Verification", category: "SEO", description: "Comparez le nombre de problèmes signalés entre deux audits de la même URL.", priceEur: 19, oneTime: false, quantity: false },
   organicCampaignTracker: { name: "Organic Campaign Tracker", category: "SEO", description: "Suivez les objectifs de clics et de position à partir des données GSC mesurées.", priceEur: 12, oneTime: false, quantity: false },
@@ -442,7 +442,16 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  * entitlement and Stripe reconciliation paths for customers who already own
  * them. A replacement always receives a different commercial key.
  */
-export const RETIRED_ADDONS = new Set<string>(["localDominationMaps"]);
+export const RETIRED_ADDONS = new Set<string>([
+  "gbpSlots10",
+  "reviewIntelligence",
+  "localDominationMaps",
+  "abTestingAI",
+  "aiWorkflows",
+  "enterprisePermissions",
+  "advancedWebhooks",
+  "zapierIntegration",
+]);
 
 /**
  * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet

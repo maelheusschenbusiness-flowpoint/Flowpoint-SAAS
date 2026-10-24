@@ -60,34 +60,33 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   keywordDomination:     { icon: "🎯", unit: "domination mots-clés" },
   backlinkIntelligence:  { icon: "🔗", unit: "backlinks IA"         },
   aiContentStrategist:   { icon: "✍️",  unit: "IA contenu"           },
+  seoChangeImpact:       { icon: "↕️", unit: "impact SEO mesuré"     },
+  technicalSeoFixVerification: { icon: "🛠️", unit: "vérification corrective" },
+  organicCampaignTracker: { icon: "🎯", unit: "suivi de campagne"    },
   // ── Local SEO ──────────────────────────────────────────────────────────────
-  gbpSlots10:            { icon: "📍", unit: "+10 fiches GBP"       },
+  gbpPerformanceLeads:   { icon: "📊", unit: "performance GBP"      },
   aiGbpPosting:          { icon: "📱", unit: "publication IA GBP"   },
-  reviewIntelligence:    { icon: "⭐", unit: "IA avis clients"       },
-  localDominationMaps:   { icon: "🗺️", unit: "cartes locales"        },
+  localPresenceOptimizer: { icon: "📍", unit: "optimisation fiches GBP" },
   localLandingOpportunities: { icon: "📍", unit: "opportunités locales" },
   // ── Conversion / IA ────────────────────────────────────────────────────────
   aiCro:                 { icon: "🚀", unit: "CRO IA"               },
+  conversionOpportunityEngine: { icon: "📈", unit: "opportunités conversion" },
   behavioralAI:          { icon: "🧠", unit: "comportemental IA"    },
   revenueLeak:           { icon: "💰", unit: "fuites revenus IA"    },
-  abTestingAI:           { icon: "🧪", unit: "A/B tests IA"         },
   // ── Reporting ──────────────────────────────────────────────────────────────
   whiteLabel:            { icon: "🏷️", unit: "portail complet"       },
   agencyPacks:           { icon: "🏢", unit: "packs agence"          },
   aiExecutiveReport:     { icon: "📋", unit: "rapport exécutif IA"  },
+  agencyPortfolioPriorities: { icon: "🗂️", unit: "priorités portfolio" },
   aiForecasting:         { icon: "📈", unit: "prévisions IA"         },
   // ── Intelligence ───────────────────────────────────────────────────────────
   marketIntelligence:    { icon: "🌐", unit: "intelligence marché"   },
-  aiWorkflows:           { icon: "⚙️", unit: "workflows IA"          },
   // ── Équipe ─────────────────────────────────────────────────────────────────
   extraSeats:            { icon: "👥", unit: "+5 sièges"             },
-  enterprisePermissions: { icon: "🔐", unit: "permissions avancées" },
   // ── Rétention de données ───────────────────────────────────────────────────
   retention90d:          { icon: "🗄️", unit: "90 jours"             },
   retention365d:         { icon: "🏛️", unit: "365 jours"             },
-  // ── Intégrations ───────────────────────────────────────────────────────────
-  advancedWebhooks:      { icon: "🔔", unit: "webhooks avancés"      },
-  zapierIntegration:     { icon: "⚡", unit: "Zapier + Make"         },
+  // ── Integrations ───────────────────────────────────────────────────────────
   crmIntegration:        { icon: "🤝", unit: "CRM intégré"           },
   // ── Enterprise ─────────────────────────────────────────────────────────────
   customDomain:          { icon: "🌐", unit: "domaine personnalisé"  },

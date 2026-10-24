@@ -55,9 +55,9 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps 47 non-retired product slots, preserving retired metadata for existing entitlements", () => {
+  it("keeps 40 non-retired product slots, preserving retired metadata for existing entitlements", () => {
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(48);
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(47);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(40);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
@@ -74,10 +74,23 @@ describe("V1 add-on catalogue contract", () => {
     );
   });
 
-  it("retires Local Domination Maps from new sales without removing its legacy entitlement key", () => {
-    expect(RETIRED_ADDONS.has("localDominationMaps")).toBe(true);
-    expect(isPlanAllowedAddon("pro", "localDominationMaps")).toBe(false);
-    expect(ADDON_PRICE_IDS.localDominationMaps).toBeTruthy();
+  it("retires the eight replaced offers without removing their legacy entitlement keys", () => {
+    const retired = [
+      "gbpSlots10",
+      "reviewIntelligence",
+      "localDominationMaps",
+      "abTestingAI",
+      "aiWorkflows",
+      "enterprisePermissions",
+      "advancedWebhooks",
+      "zapierIntegration",
+    ];
+    for (const key of retired) {
+      expect(RETIRED_ADDONS.has(key), `${key} remains recognized`).toBe(true);
+      expect(isPlanAllowedAddon("pro", key), `${key} cannot be purchased`).toBe(false);
+      expect(ADDON_PRICE_IDS[key], `${key} keeps its historical Stripe mapping`).toBeTruthy();
+      expect(CANONICAL_ADDON_DEFINITIONS[key], `${key} keeps its historical definition`).toBeDefined();
+    }
     expect(CANONICAL_ADDON_DEFINITIONS.localLandingOpportunities.priceEur).toBe(15);
     expect(ADDON_PRICE_IDS.localLandingOpportunities).toBe("");
   });
@@ -129,7 +142,7 @@ describe("V1 add-on catalogue contract", () => {
       !RETIRED_ADDONS.has(key) &&
       ["available", "beta"].includes(getAddonAvailability(key))
     );
-    expect(nonProtectedAddons).toHaveLength(41);
+    expect(nonProtectedAddons).toHaveLength(36);
     expect(CANONICAL_ADDON_DEFINITIONS.agencyPortfolioPriorities.priceEur).toBe(19);
     expect(getAddonAvailability("agencyPortfolioPriorities")).toBe("coming_soon");
     expect(ADDON_PRICE_IDS.agencyPortfolioPriorities).toBe("");
@@ -152,8 +165,8 @@ describe("V1 add-on catalogue contract", () => {
         .map(key => isPlanAllowedAddon(plan, key))
     )).toEqual([
       [false, false, true, false, false, false],
-      [false, false, true, false, false, true],
-      [false, false, true, false, false, true],
+      [false, false, true, false, false, false],
+      [false, false, true, false, false, false],
     ]);
   });
 
