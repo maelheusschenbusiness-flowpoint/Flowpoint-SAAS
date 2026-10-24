@@ -57,12 +57,11 @@ describe("getPlanPriceId — resolution consciente du mode Stripe", () => {
     expect(getPlanPriceId("standard")).toBe(TEST.standard);
   });
 
-  it("mode test actif mais aucun prix de test pour ce plan : repli sur le prix live", async () => {
+  it("mode test actif sans prix TEST : refuse le repli sur le prix LIVE", async () => {
     process.env["STRIPE_TEST_MODE"] = "true";
     process.env["STRIPE_TEST_SECRET_KEY"] = "sk_test_abc";
     const { getPlanPriceId } = await load();
-    // Mieux vaut un prix live refuse par Stripe qu'un undefined silencieux.
-    expect(getPlanPriceId("ultra")).toBe(LIVE.ultra);
+    expect(getPlanPriceId("ultra")).toBeUndefined();
   });
 
   it("hors mode test : rend le prix LIVE meme si des prix de test sont configures", async () => {
