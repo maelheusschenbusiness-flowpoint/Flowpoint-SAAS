@@ -94,7 +94,8 @@ export async function generateBehaviorInsights(
         eq(behaviorEventsTable.siteUrl, siteUrl),
         gte(behaviorEventsTable.createdAt, since),
       ))
-      .limit(5_000);
+      .orderBy(desc(behaviorEventsTable.createdAt))
+      .limit(20_000);
 
     const rageClicks   = events.filter(e => e.eventType === "rage_click");
     const formAbandons = events.filter(e => e.eventType === "form_abandon");
@@ -474,7 +475,7 @@ export function summarizeBehaviorEvents(
 
 export async function getBehaviorInsights(
   orgId: string,
-  siteUrl?: string,
+  siteUrl: string,
   periodDays = 30,
 ): Promise<{
   insights: Array<typeof behaviorInsightsTable.$inferSelect>;
@@ -485,18 +486,16 @@ export async function getBehaviorInsights(
   const now = Date.now();
   const since = new Date(now - safePeriod * 24 * 60 * 60 * 1000);
   const comparisonSince = new Date(now - safePeriod * 2 * 24 * 60 * 60 * 1000);
-  const insights = siteUrl
-    ? await db.select().from(behaviorInsightsTable)
-        .where(and(eq(behaviorInsightsTable.orgId, orgId), eq(behaviorInsightsTable.siteUrl, siteUrl)))
-        .orderBy(desc(behaviorInsightsTable.createdAt))
-        .limit(20)
-    : await db.select().from(behaviorInsightsTable)
-        .where(eq(behaviorInsightsTable.orgId, orgId))
-        .orderBy(desc(behaviorInsightsTable.createdAt))
-        .limit(20);
+  const insights = await db.select().from(behaviorInsightsTable)
+    .where(and(
+      eq(behaviorInsightsTable.orgId, orgId),
+      eq(behaviorInsightsTable.siteUrl, siteUrl),
+      gte(behaviorInsightsTable.createdAt, since),
+    ))
+    .orderBy(desc(behaviorInsightsTable.createdAt))
+    .limit(20);
 
   let analysis: ReturnType<typeof summarizeBehaviorEvents> | null = null;
-  if (siteUrl) {
     const events = await db.select({
       sessionId: behaviorEventsTable.sessionId,
       page: behaviorEventsTable.page,
@@ -544,7 +543,6 @@ export async function getBehaviorInsights(
       dataLimited: events.length >= 20_000,
     } });
     analysis.dataLimited = events.length >= 20_000;
-  }
 
   return {
     insights,
