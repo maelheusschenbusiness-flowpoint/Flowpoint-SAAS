@@ -55,9 +55,9 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps 44 non-retired product slots, preserving retired metadata for existing entitlements", () => {
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(45);
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(44);
+  it("keeps 45 non-retired product slots, preserving retired metadata for existing entitlements", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(46);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(45);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
@@ -119,7 +119,7 @@ describe("V1 add-on catalogue contract", () => {
     ]).toEqual([17, 14, 9, 29, 24, 19]);
   });
 
-  it("opens every sellable non-protected add-on to Standard, Pro, and Ultra without changing protected gates", () => {
+  it("keeps coming-soon offers closed while allowing sellable add-ons on all plans", () => {
     const nonProtectedAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
@@ -129,7 +129,10 @@ describe("V1 add-on catalogue contract", () => {
       !RETIRED_ADDONS.has(key) &&
       ["available", "beta"].includes(getAddonAvailability(key))
     );
-    expect(nonProtectedAddons).toHaveLength(38);
+    expect(nonProtectedAddons).toHaveLength(39);
+    expect(CANONICAL_ADDON_DEFINITIONS.agencyPortfolioPriorities.priceEur).toBe(19);
+    expect(getAddonAvailability("agencyPortfolioPriorities")).toBe("coming_soon");
+    expect(ADDON_PRICE_IDS.agencyPortfolioPriorities).toBe("");
     expect(sellableAddons.length).toBeGreaterThan(0);
     for (const plan of ["standard", "pro", "ultra"]) {
       for (const key of sellableAddons) {
@@ -165,7 +168,7 @@ describe("V1 add-on catalogue contract", () => {
 
   it("keeps the Local SEO offers priced but unavailable for purchase before approval", () => {
     const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(45);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(46);
     expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);

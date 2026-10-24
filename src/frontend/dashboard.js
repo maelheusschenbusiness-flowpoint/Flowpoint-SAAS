@@ -10397,6 +10397,7 @@ function renderBilling() {
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'Modèles de rapports agence',    desc:'Modèles de rapports réutilisables pour vos clients.', features:['Modèles de rapports Executive, KPI et Local SEO','Personnalisation par client','Envoi de rapports PDF','Rapports multi-sites consolidés','Tableau de bord client'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
+      { key:'agencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), availability:'coming_soon', tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions de trafic et de positions', desc:'Prévisions fondées sur l’historique disponible de trafic et de positions.', features:['Prévisions de trafic','Prévisions de positions par mot-clé','Analyse de l’historique SEO disponible','Alertes sur les risques de baisse','Rapports prévisionnels'] },
       { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Suivi des concurrents et du marché',    desc:'Veille concurrentielle, tendances de marché et alertes sectorielles à partir des données disponibles.', features:['Veille concurrentielle','Analyse des tendances sectorielles','Alertes sur les nouveaux concurrents','Repérage d’opportunités de marché','Synthèses sectorielles'] },
@@ -10727,6 +10728,8 @@ function renderBilling() {
                   ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenConversionOpportunityEngine()">${fpT('Ouvrir')}</button>`
                   : a.key === 'seoChangeImpact'
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenSEOChangeImpact()">${fpT('Ouvrir')}</button>`
+                    : a.key === 'agencyPortfolioPriorities'
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenAgencyPortfolioPriorities()">${fpT('Ouvrir')}</button>`
                     : (_FP_QTY_ADDON_KEYS[a.key]
                     ? `<div style="display:flex;align-items:center;gap:8px">${accessState === 'purchasable' ? `<div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button>` : `<span>${escHtml(_fpAddonAccessLabel(accessState))}</span>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
@@ -16342,6 +16345,14 @@ function _doRender() {
         if (root && renderAddon) renderAddon(root);
       }, 0);
       break;
+    case 'agency-portfolio-priorities':
+      html = '<div id="fp-addon-agency-portfolio-priorities"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-agency-portfolio-priorities');
+        const renderAddon = window.FP_ADDON_RENDERERS?.agencyPortfolioPriorities;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -21762,6 +21773,23 @@ function bindGlobalEvents() {
     'Conversions sur 30 jours : {conversions}': 'Conversions over 30 days: {conversions}',
     'Revenu sur 90 jours : {revenue} (devise GA4)': 'Revenue over 90 days: {revenue} (GA4 currency)',
     'Projection indicative ({change} %) — {details}': 'Indicative projection ({change}%) — {details}',
+    'Priorités du portefeuille d’agences': 'Agency portfolio priorities',
+    'Classez vos sites à partir des audits SEO et des clics GSC réellement mesurés.': 'Rank your sites using measured SEO audits and GSC clicks.',
+    'Chargement des priorités…': 'Loading priorities…',
+    'Pondérations de priorité': 'Priority weights',
+    'Urgent': 'Urgent',
+    'À traiter': 'Needs attention',
+    'Stable': 'Stable',
+    'problèmes critiques': 'critical issues',
+    'clics GSC / 30 jours': 'GSC clicks / 30 days',
+    'Aucun signal de baisse détecté.': 'No decline signal detected.',
+    'Pondération (1 à 5)': 'Priority weight (1 to 5)',
+    'Pondération pour': 'Priority weight for',
+    'Enregistrer les priorités': 'Save priorities',
+    'Aucun audit SEO terminé n’est disponible pour les sites de votre organisation.': 'No completed SEO audits are available for your organization’s sites.',
+    'Paramètres enregistrés.': 'Settings saved.',
+    'Impossible d’enregistrer les priorités.': 'Unable to save priorities.',
+    'Impossible de charger le portefeuille.': 'Unable to load the portfolio.',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -66138,6 +66166,9 @@ window.fpOpenConversionOpportunityEngine = function () {
 };
 window.fpOpenSEOChangeImpact = function () {
   window.navigate('seo-change-impact');
+};
+window.fpOpenAgencyPortfolioPriorities = function () {
+  window.navigate('agency-portfolio-priorities');
 };
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;

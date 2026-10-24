@@ -3127,6 +3127,15 @@ export async function initDataTables(): Promise<void> {
         )
       `);
       await applyTenantRls("seo_change_impact_settings");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS agency_portfolio_priority_settings (
+          org_id TEXT PRIMARY KEY,
+          settings JSONB NOT NULL DEFAULT '{"priorityWeights":{}}'::jsonb,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS agency_portfolio_priority_settings_updated_idx ON agency_portfolio_priority_settings(updated_at)`);
+      await applyTenantRls("agency_portfolio_priority_settings");
 
       // ── org_auth_config — sso-service.ts ON CONFLICT(org_id) uses these columns ─
       await run(client, `
