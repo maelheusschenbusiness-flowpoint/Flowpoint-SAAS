@@ -12,6 +12,8 @@ import {
   REMOVED_ADDONS,
   RETIRED_ADDONS,
 } from "./plans.js";
+import { createBillingQuote } from "../services/billing-quote.js";
+import { ADDON_CATALOG } from "../services/billing-service.js";
 import plansRouter from "../routes/plans.js";
 
 const dashboardPath = fileURLToPath(
@@ -53,6 +55,20 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(dashboard).toContain("status === 502");
     expect(dashboard).toContain('role="alert"');
     expect(dashboard).toContain("data-fp-gbp-performance-retry");
+  });
+
+  it("keeps AI post generation editable and stores the selected generation settings", () => {
+    for (const field of [
+      "fp-gbp-post-type",
+      "fp-gbp-language",
+      "fp-gbp-industry",
+      "fp-gbp-tone",
+      "fp-gbp-objective",
+      "fp-gbp-keywords",
+      "fp-gbp-max-characters",
+    ]) expect(dashboard).toContain(field);
+    expect(dashboard).toContain("Vérifiez le texte");
+    expect(dashboard).toContain("generationOptions");
   });
 
   it("never offers deactivation for an add-on active only because it is included", () => {
@@ -119,12 +135,12 @@ describe("add-on catalogue UI commercial gates", () => {
     );
   });
 
-  it("keeps the UI button and backend authorization aligned for all 41 non-protected add-ons on all plans", () => {
+  it("keeps the UI button and backend authorization aligned for all 36 non-protected add-ons on all plans", () => {
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
-    expect(keys).toHaveLength(41);
+    expect(keys).toHaveLength(36);
 
     for (const key of keys) {
       const removed = REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key);
@@ -159,7 +175,7 @@ describe("add-on catalogue UI commercial gates", () => {
     }
   });
 
-  it("publishes the exact 41-key plan matrix consumed by the UI and omits retired offers", async () => {
+  it("publishes the exact 36-key non-protected plan matrix and omits retired offers", async () => {
     const app = express();
     app.use(plansRouter);
     const response = await request(app).get("/plans/catalog").expect(200);
@@ -170,11 +186,12 @@ describe("add-on catalogue UI commercial gates", () => {
       addon.key,
       addon,
     ]));
+    expect(entries.size).toBe(39);
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
-    expect(keys).toHaveLength(41);
+    expect(keys).toHaveLength(36);
     expect(entries.has("prioritySupport")).toBe(false);
 
     for (const key of keys) {
@@ -205,6 +222,115 @@ describe("add-on catalogue UI commercial gates", () => {
           backendCanBill,
         );
       }
+    }
+
+    const retired = [
+      "gbpSlots10",
+      "reviewIntelligence",
+      "localDominationMaps",
+      "abTestingAI",
+      "aiWorkflows",
+      "enterprisePermissions",
+      "advancedWebhooks",
+      "zapierIntegration",
+    ];
+    const replacements = [
+      ["gbpPerformanceLeads", 15],
+      ["localPresenceOptimizer", 9],
+      ["localLandingOpportunities", 15],
+      ["conversionOpportunityEngine", 12],
+      ["seoChangeImpact", 15],
+      ["agencyPortfolioPriorities", 19],
+      ["technicalSeoFixVerification", 19],
+      ["organicCampaignTracker", 12],
+    ] as const;
+
+    for (const key of retired) {
+      expect(RETIRED_ADDONS.has(key), `${key} remains a historical key`).toBe(true);
+      expect(ADDON_DEFINITIONS[key], `${key} remains defined for existing entitlements`).toBeDefined();
+      expect(entries.has(key), `${key} is absent from new sales`).toBe(false);
+    }
+    for (const [key, priceEur] of replacements) {
+      expect(entries.has(key), `${key} is present in the canonical catalog`).toBe(true);
+      expect(ADDON_DEFINITIONS[key]?.priceEur, `${key} has the approved price`).toBe(priceEur);
+    }
+
+    const includedByPlan = response.body.includedByPlan as Record<string, string[]>;
+    expect(includedByPlan.standard).toHaveLength(1);
+    expect(includedByPlan.pro).toHaveLength(6);
+    expect(includedByPlan.ultra).toHaveLength(10);
+    expect(includedByPlan.pro).toContain("enterprisePermissions");
+    expect(includedByPlan.ultra).toContain("advancedWebhooks");
+    expect(includedByPlan.pro).not.toContain("keywordDomination");
+    for (const key of [
+      "monitorsPack10",
+      "monitorsPack50",
+      "whiteLabel",
+      "extraSeats",
+      "retention90d",
+      "retention365d",
+      "customDomain",
+    ]) {
+      expect(RETIRED_ADDONS.has(key), `${key} stays protected`).toBe(false);
+      expect(ADDON_DEFINITIONS[key]).toBeDefined();
+    }
+
+    const publicBillingIds = new Set(ADDON_CATALOG.map(addon => addon.id));
+    expect(ADDON_CATALOG).toHaveLength(39);
+    for (const key of retired) expect(publicBillingIds.has(key)).toBe(false);
+    for (const [key] of replacements) expect(publicBillingIds.has(key)).toBe(true);
+  });
+
+  it("keeps the marketplace at the pre-refonte card count and syncs the static export", () => {
+    const match = dashboard.match(/const allAddons = \[([\s\S]*?)\n\s*\];/);
+    expect(match, "add-on card definitions should be present").not.toBeNull();
+    const keys = [...(match?.[1] ?? "").matchAll(/key:\s*'([^']+)'/g)].map(item => item[1]);
+    expect(keys).toHaveLength(32);
+    expect(exportedDashboard).toBe(dashboard);
+    for (const key of [
+      "gbpSlots10",
+      "reviewIntelligence",
+      "localDominationMaps",
+      "abTestingAI",
+      "aiWorkflows",
+      "enterprisePermissions",
+      "advancedWebhooks",
+      "zapierIntegration",
+    ]) {
+      expect(keys, `${key} is not a new-sale card`).not.toContain(key);
+    }
+    for (const key of [
+      "gbpPerformanceLeads",
+      "localPresenceOptimizer",
+      "localLandingOpportunities",
+      "conversionOpportunityEngine",
+      "seoChangeImpact",
+      "agencyPortfolioPriorities",
+      "technicalSeoFixVerification",
+      "organicCampaignTracker",
+    ]) {
+      expect(keys, `${key} replaces an old card`).toContain(key);
+    }
+  });
+
+  it("does not let a retired add-on bypass the server-side quote guard", () => {
+    const retired = [
+      "gbpSlots10",
+      "reviewIntelligence",
+      "localDominationMaps",
+      "abTestingAI",
+      "aiWorkflows",
+      "enterprisePermissions",
+      "advancedWebhooks",
+      "zapierIntegration",
+    ];
+    for (const key of retired) {
+      expect(RETIRED_ADDONS.has(key)).toBe(true);
+      expect(isPlanAllowedAddon("pro", key)).toBe(false);
+      expect(
+        () => createBillingQuote({ plan: "pro", addons: { [key]: true } }),
+        `${key} must be rejected even when a client submits it directly`,
+      ).toThrow("ADDON_RETIRED");
     }
   });
 

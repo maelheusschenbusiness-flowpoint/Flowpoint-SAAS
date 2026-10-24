@@ -10385,16 +10385,15 @@ function renderBilling() {
         { key:'technicalSeoFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), availability:'coming_soon', tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
         { key:'organicCampaignTracker', cat:'SEO', name:'Organic Campaign Tracker', icon:'🎯', color:'#2563EB', active:!!(me.addons?.organicCampaignTracker), availability:'coming_soon', tag:'GSC', roi:'Suivi des objectifs de campagnes organiques', desc:'Suivez les objectifs de clics et de position à partir des données GSC mesurées.', features:['Objectifs configurables par mot-clé','Clics et position moyenne sur 28 jours','Statuts fondés sur les données GSC','Aucune performance estimée'] },
       // ── Local SEO ──
-      { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'Gestion de fiches GBP supplémentaires',    desc:'Gérez des fiches Google Business Profile supplémentaires depuis FlowPoint.', features:['Gestion de fiches GBP supplémentaires','Publication de posts GBP','Synchronisation des horaires et informations NAP','Alertes sur les avis sans réponse','Informations de complétude de fiche'] },
+      { key:'gbpPerformanceLeads', cat:'Local SEO', name:'GBP Performance & Leads', icon:'📊', color:'#22c55e', active:!!(me.addons?.gbpPerformanceLeads), tag:'GBP', roi:'Performances et objectifs locaux mesurés', desc:'Suivez les performances réelles de vos fiches Google Business Profile, définissez des objectifs et repérez les baisses d’actions locales.', features:['Statistiques GBP réellement disponibles','Objectifs configurables','Alertes de baisse des actions locales'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'Création assistée de publications GBP',    desc:'Posts GBP générés par IA à partir des informations de votre établissement.', features:['Posts GBP rédigés par IA','Calendrier de publication','Adaptation aux événements renseignés','Sélection de photos disponibles','Rapport d’engagement'] },
-      { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:!!(me.addons?.reviewIntelligence), tag:'Sentiment IA',    roi:'Analyse des avis et du sentiment',    desc:'Analyse des avis Google, réponses assistées et alertes sur les avis critiques.', features:['Analyse du sentiment des avis','Réponses IA personnalisées','Alertes sur les avis négatifs','Rapport de tendance des notes','Synthèse de réputation par établissement'] },
-      { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Cartographie de la visibilité locale',    desc:'Heatmaps de visibilité locale pour analyser votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse des positions du Local Pack','Comparaison avec les concurrents sur la carte','Alertes de perte de position Maps','Rapport de visibilité locale'] },
+      { key:'localPresenceOptimizer', cat:'Local SEO', name:'Local Presence Optimizer', icon:'📍', color:'#22c55e', active:!!(me.addons?.localPresenceOptimizer), tag:'GBP', roi:'Informations de fiches à compléter', desc:'Priorisez les informations manquantes ou incomplètes sur vos fiches Google Business Profile.', features:['État de complétude des fiches','Priorités fondées sur les données disponibles','Recommandations par établissement'] },
+      { key:'localLandingOpportunities', cat:'Local SEO', name:'Local Landing Opportunities', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localLandingOpportunities), tag:'Local SEO', roi:'Recherches locales propices à une page', desc:'Repérez les recherches locales réelles qui justifient une page de service ou de zone.', features:['Opportunités fondées sur les recherches disponibles','Pages de service ou de zone à examiner','Priorisation par opportunité locale'] },
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'Analyse UX et recommandations CRO',    desc:'Recommandations CRO, hypothèses de tests A/B et analyse des frictions.', features:['Analyse UX des pages','Hypothèses A/B générées par IA','Plan d’action conversion priorisé','Analyse des parcours utilisateurs','Rapports fondés sur les données disponibles'] },
       { key:'conversionOpportunityEngine', cat:'Conversion', name:'Conversion Opportunity Engine', icon:'🎯', color:'#f97316', active:!!(me.addons?.conversionOpportunityEngine), tag:'GA4', roi:'Pages avec faible conversion observée', desc:'Priorisez les pages à optimiser à partir des sessions et conversions GA4 réellement mesurées.', features:['Sessions et conversions GA4 mesurées','Seuils de sessions configurables','Taux de conversion maximal configurable','Aucune estimation de revenus non mesurés'], },
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse des interactions visiteurs', desc:'Analyse comportementale à partir des événements collectés par le snippet installé sur votre site.', features:['Heatmaps clics et scroll lorsque les données sont disponibles','Session replay anonymisé','Analyse comportementale','Segmentation des utilisateurs','Alertes de friction'] },
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'Analyse',             roi:'Analyse des frictions de conversion',    desc:'Analyse des abandons et des points de friction de conversion observés.', features:['Détection des abandons de panier ou de formulaire','Priorisation des points de friction observés','Analyse des parcours de conversion','Alertes de dégradation de conversion','Rapport d’analyse'] },
-      { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'Gestion des expérimentations A/B',    desc:'Tests A/B assistés par IA, avec suivi des variantes et résultats observés.', features:['Hypothèses A/B générées par IA','Gestion des variantes','Suivi des expositions et résultats','Analyse statistique lorsque les données le permettent','Rapport par test'] },
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'Modèles de rapports agence',    desc:'Modèles de rapports réutilisables pour vos clients.', features:['Modèles de rapports Executive, KPI et Local SEO','Personnalisation par client','Envoi de rapports PDF','Rapports multi-sites consolidés','Tableau de bord client'] },
@@ -10403,16 +10402,12 @@ function renderBilling() {
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions de trafic et de positions', desc:'Prévisions fondées sur l’historique disponible de trafic et de positions.', features:['Prévisions de trafic','Prévisions de positions par mot-clé','Analyse de l’historique SEO disponible','Alertes sur les risques de baisse','Rapports prévisionnels'] },
       { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Suivi des concurrents et du marché',    desc:'Veille concurrentielle, tendances de marché et alertes sectorielles à partir des données disponibles.', features:['Veille concurrentielle','Analyse des tendances sectorielles','Alertes sur les nouveaux concurrents','Repérage d’opportunités de marché','Synthèses sectorielles'] },
-      { key:'aiWorkflows', cat:'IA',         name:'AI Automation Workflows', icon:'⚡', color:'#8b5cf6', active:!!(me.addons?.aiWorkflows), tag:'Automation',      roi:'Automatisation des tâches récurrentes',    desc:'Workflows d’automatisation IA pour les audits, rapports et alertes.', features:['Workflows no-code','Audits planifiés','Envoi automatisé de rapports','Alertes conditionnelles','Automatisation des tâches récurrentes'] },
       // ── Team ──
       { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
-      { key:'enterprisePermissions', cat:'Équipe',     name:'Permissions Avancées', icon:'🔐', color:'#06b6d4', active:!!(me.addons?.enterprisePermissions), tag:'Sécurité',        roi:'RBAC complet',    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
       { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention90d), tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
       { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention365d), tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
-      { key:'advancedWebhooks', cat:'API',        name:'Webhooks Avancés', icon:'🔔', color:'#14b8a6', active:!!(me.addons?.advancedWebhooks), tag:'Pro inclus',      roi:'Alertes temps réel',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
-      { key:'zapierIntegration', cat:'API',        name:'Zapier/Make Integration', icon:'⚙️', color:'#14b8a6', active:!!(me.addons?.zapierIntegration), tag:'No-code',         roi:'Webhooks pour les automatisations externes',    desc:'Connectez FlowPoint à des automatisations externes via Zapier ou Make.', features:['Webhooks sur les événements FlowPoint pris en charge','Transmission vers vos automatisations configurées','Configuration par webhook','Connexion externe requise'] },
       { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
       { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
@@ -10769,14 +10764,24 @@ function renderBilling() {
     // "Active" derives from the canonical plan catalogue: a plan-included add-on is
     // active for that plan even with no manual purchase. With no extra add-ons an
     // Ultra workspace therefore shows exactly its 10 included = 10 active.
-    const activeCount = allAddons.filter(a => a.active || isIncluded(a)).length;
+    const _backendActive = Array.isArray(STATE.billing?.addons)
+      ? STATE.billing.addons.filter(a => a.active || a.includedInPlan).length : 0;
+    const activeCount = Math.max(
+      allAddons.filter(a => a.active || isIncluded(a)).length,
+      _backendActive,
+    );
     // Manual (paid) extras only — never counts plan-included ones twice.
-    const manualActiveCount = allAddons.filter(a => a.active && !isIncluded(a)).length;
+    const _backendManualActive = Array.isArray(STATE.billing?.addons)
+      ? STATE.billing.addons.filter(a => a.active && !a.includedInPlan).length : 0;
+    const manualActiveCount = Math.max(
+      allAddons.filter(a => a.active && !isIncluded(a)).length,
+      _backendManualActive,
+    );
 
     return `
       ${aiBlock(
-        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (${fpAddonPriceLabel('aiForecasting')}) peut améliorer votre planification growth. <strong>Review Intelligence</strong> est prioritaire si vous gérez des avis Google Business Profile.`,
-        ['Ajouter AI Forecasting', 'Activer Review Intelligence', 'Voir ROI des add-ons']
+        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (${fpAddonPriceLabel('aiForecasting')}) peut améliorer votre planification growth. <strong>Local Presence Optimizer</strong> aide à prioriser les informations manquantes sur vos fiches Google Business Profile.`,
+        ['Ajouter AI Forecasting', 'Voir Local Presence Optimizer', 'Voir ROI des add-ons']
       )}
 
       <div class="fp-stat-row fp-mb-20">
@@ -11110,12 +11115,6 @@ function renderBilling() {
         metrics:['Audits 76% de capacité', 'Seuil prévu J+8', 'ROI : +200€/mois'],
       },
       {
-        title:'Review Intelligence — Quick Win immédiat',
-        body:'14 avis Google sans réponse détectés. Review Intelligence (' + fpAddonPriceLabel('reviewIntelligence') + ') automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
-        priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
-        metrics:['14 sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
-      },
-      {
         title:'AI CRO Strategist — Conversion non exploitée',
         body:'Votre taux de conversion mobile est à 0.8% (benchmark secteur : 2.1%). AI CRO Strategist (' + fpAddonPriceLabel('aiCro') + ') détecterait les frictions et prioriserait les tests. Gain estimé : +1.3% conversion = +€€€.',
         priority:'Moyenne', color:'#2563EB', action:'Essayer AI CRO',
@@ -11129,13 +11128,6 @@ function renderBilling() {
       },
     ] : (() => {
       const arr = [];
-      const _ua = STATE.gbp?.unansweredReviews;
-      if (_ua > 0) arr.push({
-        title:'Review Intelligence — Quick Win immédiat',
-        body:_ua + ' avis Google sans réponse détecté' + (_ua > 1 ? 's' : '') + '. Review Intelligence (' + fpAddonPriceLabel('reviewIntelligence') + ') automatise les réponses IA — impact direct sur votre visibilité locale.',
-        priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
-        metrics:[_ua + ' sans réponse', 'Réponses IA automatisées'],
-      });
       arr.push({
         title:'White-Label — Personnaliser le portail client',
         body:'Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
@@ -72062,6 +72054,28 @@ window._fpRenderGBPPostsPanel = function() {
     });
   }
   const posts = Array.isArray(data?.posts) ? data.posts : [];
+  const month = new Date();
+  month.setDate(1);
+  month.setMonth(month.getMonth() + (Number(window._fpGbpCalendarOffset) || 0));
+  const monthLabel = month.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' });
+  const firstOffset = (month.getDay() + 6) % 7;
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const scheduled = posts.filter(post => post.status === 'scheduled' && post.scheduled_at);
+  const calendarCells = Array.from({ length: Math.ceil((firstOffset + daysInMonth) / 7) * 7 }, (_, index) => {
+    const day = index - firstOffset + 1;
+    if (day < 1 || day > daysInMonth) return `<div aria-hidden="true" style="min-height:64px;border:1px solid var(--fp-border);border-radius:6px;opacity:.35"></div>`;
+    const dayPosts = scheduled.filter(post => {
+      const date = new Date(post.scheduled_at);
+      return date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth() && date.getDate() === day;
+    });
+    return `<div style="min-height:64px;padding:5px;border:1px solid var(--fp-border);border-radius:6px;overflow:hidden">
+      <div style="font-size:10px;color:var(--fp-text-muted)">${day}</div>
+      ${dayPosts.slice(0, 2).map(post => `<div title="${escHtml(post.location_name || 'Fiche Google')}" style="font-size:9px;line-height:1.2;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fp-accent)">${escHtml(post.location_name || 'Fiche')} · ${escHtml(post.post_type || 'standard')}</div>`).join('')}
+      ${dayPosts.length > 2 ? `<div style="font-size:9px;color:var(--fp-text-muted)">+${dayPosts.length - 2}</div>` : ''}
+    </div>`;
+  }).join('');
+  const statusFilter = window._fpGbpPostStatus || 'all';
+  const filteredPosts = posts.filter(post => statusFilter === 'all' || post.status === statusFilter);
   return `<section class="fp-card fp-mb-20" aria-labelledby="fp-gbp-posts-title">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div class="fp-card-title" id="fp-gbp-posts-title" style="margin:0">Posts Google Business Profile</div>
@@ -72071,17 +72085,42 @@ window._fpRenderGBPPostsPanel = function() {
       </div>
     </div>
     ${!data ? `<div style="font-size:12px;color:var(--fp-text-muted)">${window._fpGbpPostsLoaded ? 'Posts indisponibles pour ce compte ou cette offre.' : 'Chargement des posts…'}</div>` :
-      posts.length ? `<div style="display:flex;flex-direction:column;gap:8px">${posts.slice(0,6).map(post => `
+      `<div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="fp-btn ${window._fpGbpPostsView !== 'history' ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._fpSetGbpPostsView('calendar')">Calendrier</button>
+        <button class="fp-btn ${window._fpGbpPostsView === 'history' ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._fpSetGbpPostsView('history')">Historique et brouillons</button>
+      </div>
+      ${window._fpGbpPostsView !== 'history' ? `<div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" aria-label="Mois précédent" onclick="window._fpChangeGbpCalendar(-1)">‹</button>
+          <strong style="font-size:12px;text-transform:capitalize">${escHtml(monthLabel)}</strong>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" aria-label="Mois suivant" onclick="window._fpChangeGbpCalendar(1)">›</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:4px">${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(day => `<div style="text-align:center;font-size:9px;color:var(--fp-text-muted)">${day}</div>`).join('')}</div>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px">${calendarCells}</div>
+        ${scheduled.length ? '' : `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:8px">Aucun post programmé ce mois-ci.</div>`}
+      </div>` : `<div>
+        <label style="font-size:11px;color:var(--fp-text-muted)">Filtrer par statut
+          <select class="fp-input" style="max-width:180px;margin-left:6px" onchange="window._fpSetGbpPostStatus(this.value)">
+            ${[['all','Tous'],['draft','Brouillons'],['scheduled','Programmés'],['published','Publiés'],['failed','Échec']].map(([value,label]) => `<option value="${value}" ${statusFilter === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </label>
+        ${filteredPosts.length ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${filteredPosts.map(post => `
         <article style="padding:11px 12px;border:1px solid var(--fp-border);border-radius:9px;display:flex;gap:10px;align-items:flex-start">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
-            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString())}` : ''}</div>
+            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString())}` : ''}</div>
           </div>
-          ${['draft','scheduled','failed'].includes(post.status) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          ${['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          ${String(post.post_type || '').toLowerCase() === 'product' ? `<span title="Format non pris en charge par l’API Google connectée" style="font-size:10px;color:var(--fp-text-muted)">Brouillon seulement</span>` : ''}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpDeleteGBPPost(this.dataset.postId)" aria-label="Supprimer ce post">Supprimer</button>
-        </article>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted)">Aucun post enregistré. Créez un brouillon, planifiez-le ou publiez-le sur un établissement connecté.</div>`}
+        </article>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted);margin-top:10px">Aucun post pour ce filtre.</div>`}
+      </div>`}`}
   </section>`;
 };
+
+window._fpSetGbpPostsView = function(view) { window._fpGbpPostsView = view === 'history' ? 'history' : 'calendar'; render(); };
+window._fpSetGbpPostStatus = function(status) { window._fpGbpPostStatus = status || 'all'; render(); };
+window._fpChangeGbpCalendar = function(delta) { window._fpGbpCalendarOffset = (Number(window._fpGbpCalendarOffset) || 0) + Number(delta || 0); render(); };
 
 window._fpRenderLocalMapsStoredPanel = function() {
   const data = window.FP_DATA?.localMaps;
@@ -72116,6 +72155,7 @@ window._fpReloadGBPPosts = async function() {
 
 window._fpOpenGBPPostComposer = function() {
   const locations = Array.isArray(STATE.gbp?.locations) ? STATE.gbp.locations : [];
+  const language = String(localStorage.getItem('fp:language') || 'fr').toLowerCase();
   const options = locations.map(loc => {
     let raw = loc.raw_data || {};
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (_) { raw = {}; } }
@@ -72123,27 +72163,128 @@ window._fpOpenGBPPostComposer = function() {
     const name = loc.name || raw.title || value;
     return value ? `<option value="${escHtml(value)}" data-location-name="${escHtml(name)}">${escHtml(name)}</option>` : '';
   }).join('');
-  openFloatPanel('Créer un post GBP', `<div style="padding:16px;display:flex;flex-direction:column;gap:10px">
-    <label style="font-size:11px;color:var(--fp-text-muted)">Établissement Google<select id="fp-gbp-location" class="fp-input" style="margin-top:5px">${options}</select></label>
+  openFloatPanel('Studio de publications GBP', `<div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+    <label style="font-size:11px;color:var(--fp-text-muted)">Établissement Google<select id="fp-gbp-location" class="fp-input" style="margin-top:5px" ${locations.length ? '' : 'disabled'}>${options}</select></label>
     ${locations.length ? '' : `<div style="font-size:11px;color:var(--fp-warning)">Connectez et synchronisez Google Business Profile avant de créer un post.</div>`}
-    <label style="font-size:11px;color:var(--fp-text-muted)">Contenu<textarea id="fp-gbp-content" class="fp-input" rows="5" maxlength="1500" placeholder="Rédigez votre actualité…"></textarea></label>
-    <label style="font-size:11px;color:var(--fp-text-muted)">Date de planification (facultatif)<input id="fp-gbp-schedule" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Format<select id="fp-gbp-post-type" class="fp-input" style="margin-top:5px"><option value="standard">Actualité</option><option value="event">Événement</option><option value="offer">Offre</option><option value="product">Produit — brouillon seulement</option></select></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Langue<select id="fp-gbp-language" class="fp-input" style="margin-top:5px">
+        ${[['fr','Français'],['en','English'],['nl','Nederlands'],['de','Deutsch'],['es','Español'],['it','Italiano'],['pt','Português']].map(([code,label]) => `<option value="${code}" ${language === code ? 'selected' : ''}>${label}</option>`).join('')}
+      </select></label>
+    </div>
+    <div id="fp-gbp-event-fields" hidden style="grid-template-columns:1fr 1fr;gap:8px">
+      <label style="grid-column:1/-1;font-size:11px;color:var(--fp-text-muted)">Titre de l’événement<input id="fp-gbp-event-title" class="fp-input" maxlength="120" style="margin-top:5px"/></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Début — heure locale de la fiche<input id="fp-gbp-event-start" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Fin<input id="fp-gbp-event-end" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    </div>
+    <div id="fp-gbp-offer-fields" hidden style="flex-direction:column;gap:8px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Code promotionnel<input id="fp-gbp-offer-code" class="fp-input" maxlength="80" style="margin-top:5px"/></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Conditions<textarea id="fp-gbp-offer-terms" class="fp-input" rows="2" maxlength="500" style="margin-top:5px"></textarea></label>
+    </div>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Secteur<input id="fp-gbp-industry" class="fp-input" maxlength="100" placeholder="Ex. restaurant, plomberie…" style="margin-top:5px"/></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:11px;color:var(--fp-text-muted)">Ton<select id="fp-gbp-tone" class="fp-input" style="margin-top:5px"><option value="professional">Professionnel</option><option value="friendly">Chaleureux</option><option value="expert">Expert</option><option value="promotional">Promotionnel</option></select></label>
+      <label style="font-size:11px;color:var(--fp-text-muted)">Objectif<select id="fp-gbp-objective" class="fp-input" style="margin-top:5px"><option value="engagement">Engagement local</option><option value="visits">Visites en magasin</option><option value="calls">Appels</option><option value="booking">Réservations</option></select></label>
+    </div>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Mots-clés<input id="fp-gbp-keywords" class="fp-input" maxlength="480" placeholder="Séparés par des virgules" style="margin-top:5px"/></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Longueur cible (100–1500 caractères)<input id="fp-gbp-max-characters" class="fp-input" type="number" min="100" max="1500" value="500" style="margin-top:5px"/></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Bouton d’action<select id="fp-gbp-cta-type" class="fp-input" style="margin-top:5px"><option value="NONE">Aucun</option><option value="LEARN_MORE">En savoir plus</option><option value="BOOK">Réserver</option><option value="ORDER">Commander</option><option value="SIGN_UP">S’inscrire</option><option value="SHOP">Voir les produits</option><option value="CALL">Appeler</option></select></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Lien d’action ou de l’offre<input id="fp-gbp-cta-url" class="fp-input" type="url" placeholder="https://…" style="margin-top:5px"/></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Images publiques HTTPS (une URL par ligne)<textarea id="fp-gbp-media-urls" class="fp-input" rows="2" maxlength="2000" placeholder="https://exemple.fr/photo.jpg"></textarea></label>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Contenu<textarea id="fp-gbp-content" class="fp-input" rows="5" maxlength="1500" placeholder="Générez une proposition, relisez-la puis modifiez-la ici…"></textarea></label>
+    <div id="fp-gbp-char-count" aria-live="polite" style="font-size:10px;color:var(--fp-text-muted);text-align:right">0 / 500</div>
+    <div id="fp-gbp-post-preview" aria-label="Aperçu du post" style="border:1px solid var(--fp-border);border-radius:10px;padding:12px;background:var(--fp-surface-2)">
+      <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">APERÇU — GOOGLE BUSINESS PROFILE</div>
+      <div data-preview-content style="font-size:12px;line-height:1.5"></div>
+      <div data-preview-media style="display:flex;gap:6px;overflow:auto;margin-top:8px"></div>
+      <div data-preview-cta style="font-size:11px;color:var(--fp-accent);margin-top:8px"></div>
+    </div>
+    <label style="font-size:11px;color:var(--fp-text-muted)">Planifier (facultatif)<input id="fp-gbp-schedule" class="fp-input" type="datetime-local" style="margin-top:5px"/></label>
+    <label id="fp-gbp-approval-row" hidden style="gap:8px;align-items:flex-start;font-size:11px;color:var(--fp-text-muted)"><input id="fp-gbp-manual-approval" type="checkbox"/> J’ai relu et validé ce contenu pour publication à la date choisie.</label>
+    <div id="fp-gbp-format-warning" hidden role="status" style="font-size:10px;color:var(--fp-warning)">Le format Produit sera conservé en brouillon : l’API Google ne permet pas sa publication.</div>
+    <div role="note" style="font-size:10px;color:var(--fp-text-muted)">La génération prépare un brouillon. Vérifiez le texte, les médias et la fiche avant d’enregistrer ou de programmer.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpGenerateGBPPost()">Générer avec l’IA</button>
-      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpSaveGBPPost()">Enregistrer</button>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpSaveGBPPost()">Enregistrer le brouillon / planifier</button>
     </div>
   </div>`);
+  const textarea = document.getElementById('fp-gbp-content');
+  const counter = document.getElementById('fp-gbp-char-count');
+  const maxCharacters = document.getElementById('fp-gbp-max-characters');
+  const postType = document.getElementById('fp-gbp-post-type');
+  const schedule = document.getElementById('fp-gbp-schedule');
+  const formatWarning = document.getElementById('fp-gbp-format-warning');
+  const eventFields = document.getElementById('fp-gbp-event-fields');
+  const offerFields = document.getElementById('fp-gbp-offer-fields');
+  const approvalRow = document.getElementById('fp-gbp-approval-row');
+  const approvalInput = document.getElementById('fp-gbp-manual-approval');
+  const mediaInput = document.getElementById('fp-gbp-media-urls');
+  const ctaTypeInput = document.getElementById('fp-gbp-cta-type');
+  const ctaUrlInput = document.getElementById('fp-gbp-cta-url');
+  const updateCount = () => { if (textarea && counter) counter.textContent = `${textarea.value.length} / ${Math.max(100, Math.min(1500, Number(maxCharacters?.value) || 500))}`; };
+  const updateFormat = () => {
+    const draftOnly = postType?.value === 'product';
+    if (schedule) { schedule.disabled = draftOnly; if (draftOnly) schedule.value = ''; }
+    if (approvalInput) approvalInput.checked = false;
+    if (formatWarning) formatWarning.hidden = !draftOnly;
+    if (eventFields) { eventFields.hidden = postType?.value !== 'event'; eventFields.style.display = postType?.value === 'event' ? 'grid' : 'none'; }
+    if (offerFields) { offerFields.hidden = postType?.value !== 'offer'; offerFields.style.display = postType?.value === 'offer' ? 'flex' : 'none'; }
+    if (approvalRow) { approvalRow.hidden = !schedule?.value || draftOnly; approvalRow.style.display = approvalRow.hidden ? 'none' : 'flex'; }
+  };
+  const updatePreview = () => {
+    const preview = document.getElementById('fp-gbp-post-preview');
+    if (!preview) return;
+    const contentNode = preview.querySelector('[data-preview-content]');
+    if (contentNode) contentNode.textContent = textarea?.value || 'Votre texte apparaîtra ici après rédaction.';
+    const mediaNode = preview.querySelector('[data-preview-media]');
+    const urls = String(mediaInput?.value || '').split(/[\n,]/).map(value => value.trim()).filter(value => {
+      try { return new URL(value).protocol === 'https:'; } catch { return false; }
+    }).slice(0, 10);
+    if (mediaNode) mediaNode.innerHTML = urls.map(url => `<img src="${escHtml(url)}" alt="Aperçu du média" style="width:70px;height:56px;object-fit:cover;border-radius:6px"/>`).join('');
+    const ctaNode = preview.querySelector('[data-preview-cta]');
+    if (ctaNode) ctaNode.textContent = ctaTypeInput?.value && ctaTypeInput.value !== 'NONE' ? `${ctaTypeInput.selectedOptions?.[0]?.textContent || ''}${ctaUrlInput?.value ? ` · ${ctaUrlInput.value}` : ''}` : '';
+  };
+  if (schedule) schedule.addEventListener('input', () => {
+    if (approvalInput) approvalInput.checked = false;
+    if (approvalRow) { approvalRow.hidden = !schedule.value || postType?.value === 'product'; approvalRow.style.display = approvalRow.hidden ? 'none' : 'flex'; }
+  });
+  [textarea, mediaInput, ctaTypeInput, ctaUrlInput, ...['fp-gbp-event-title','fp-gbp-event-start','fp-gbp-event-end','fp-gbp-offer-code','fp-gbp-offer-terms'].map(id => document.getElementById(id))]
+    .forEach(input => ['input','change'].forEach(eventName => input?.addEventListener(eventName, () => { if (approvalInput) approvalInput.checked = false; })));
+  [textarea, mediaInput, ctaTypeInput, ctaUrlInput].forEach(input => input?.addEventListener('input', updatePreview));
+  ctaTypeInput?.addEventListener('change', updatePreview);
+  if (textarea && counter) textarea.addEventListener('input', updateCount);
+  if (maxCharacters) maxCharacters.addEventListener('input', updateCount);
+  if (postType) { postType.addEventListener('change', updateFormat); updateFormat(); }
+  updatePreview();
 };
 
 window._fpGenerateGBPPost = async function() {
   const locationId = document.getElementById('fp-gbp-location')?.value;
   if (!locationId) { showToast('error', 'Sélectionnez un établissement Google connecté.'); return; }
   try {
-    const result = await window.FP_GBP_POSTS_API.generateAI({ locationId, objective: 'actualité locale', tone: 'professional' });
+    const location = document.getElementById('fp-gbp-location');
+    const keywords = String(document.getElementById('fp-gbp-keywords')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
+    const result = await window.FP_GBP_POSTS_API.generateAI({
+      locationId,
+      locationName: location?.selectedOptions?.[0]?.dataset.locationName,
+      postType: document.getElementById('fp-gbp-post-type')?.value || 'standard',
+      language: document.getElementById('fp-gbp-language')?.value || 'fr',
+      industry: document.getElementById('fp-gbp-industry')?.value?.trim(),
+      tone: document.getElementById('fp-gbp-tone')?.value || 'professional',
+      objective: document.getElementById('fp-gbp-objective')?.value || 'engagement',
+      keywords,
+      maxCharacters: Number(document.getElementById('fp-gbp-max-characters')?.value) || 500,
+    });
     const content = result?.content || result?.post?.content || result?.generated?.content || '';
     if (!content) throw new Error(result?.error || 'Aucun contenu généré.');
     const textarea = document.getElementById('fp-gbp-content');
-    if (textarea) textarea.value = content;
+    if (textarea) {
+      textarea.value = content;
+      const limit = Number(document.getElementById('fp-gbp-max-characters')?.value) || 500;
+      document.getElementById('fp-gbp-char-count').textContent = `${content.length} / ${Math.max(100, Math.min(1500, limit))}`;
+    }
+    const previewContent = document.querySelector('#fp-gbp-post-preview [data-preview-content]');
+    if (previewContent) previewContent.textContent = content;
   } catch (error) { showToast('error', String(error?.message || error)); }
 };
 
@@ -72151,10 +72292,54 @@ window._fpSaveGBPPost = async function() {
   const location = document.getElementById('fp-gbp-location');
   const content = document.getElementById('fp-gbp-content')?.value?.trim();
   const scheduledValue = document.getElementById('fp-gbp-schedule')?.value;
+  const postType = document.getElementById('fp-gbp-post-type')?.value || 'standard';
+  const manualApproval = document.getElementById('fp-gbp-manual-approval')?.checked === true;
+  const eventTitle = document.getElementById('fp-gbp-event-title')?.value?.trim();
+  const eventStartLocal = document.getElementById('fp-gbp-event-start')?.value || '';
+  const eventEndLocal = document.getElementById('fp-gbp-event-end')?.value || '';
+  const ctaType = document.getElementById('fp-gbp-cta-type')?.value || 'NONE';
+  const ctaUrl = document.getElementById('fp-gbp-cta-url')?.value?.trim() || '';
   if (!location?.value || !content) { showToast('error', 'Choisissez un établissement et ajoutez le contenu du post.'); return; }
+  if (scheduledValue && !manualApproval) { showToast('error', 'Validez manuellement le contenu avant de le programmer.'); return; }
+  if (postType === 'event' && (!eventTitle || !eventStartLocal || !eventEndLocal || new Date(eventEndLocal) <= new Date(eventStartLocal))) {
+    showToast('error', 'Renseignez le titre et une plage horaire valide pour l’événement.'); return;
+  }
+  if (ctaType !== 'NONE' && ctaType !== 'CALL' && !/^https:\/\//i.test(ctaUrl)) {
+    showToast('error', 'Ajoutez une URL HTTPS valide pour ce bouton d’action.'); return;
+  }
   try {
     const scheduledAt = scheduledValue ? new Date(scheduledValue).toISOString() : undefined;
-    const result = await window.FP_GBP_POSTS_API.createPost({ locationId: location.value, locationName: location.selectedOptions?.[0]?.dataset.locationName, content, scheduledAt });
+    const keywords = String(document.getElementById('fp-gbp-keywords')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
+    const mediaUrls = String(document.getElementById('fp-gbp-media-urls')?.value || '').split(/[\n,]/).map(value => value.trim()).filter(Boolean).slice(0, 10);
+    const generationOptions = {
+      language: document.getElementById('fp-gbp-language')?.value || 'fr',
+      tone: document.getElementById('fp-gbp-tone')?.value || 'professional',
+      objective: document.getElementById('fp-gbp-objective')?.value || 'engagement',
+      industry: document.getElementById('fp-gbp-industry')?.value?.trim() || '',
+      keywords,
+      maxCharacters: Number(document.getElementById('fp-gbp-max-characters')?.value) || 500,
+      eventStartLocal,
+      eventEndLocal,
+      eventTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    };
+    const result = await window.FP_GBP_POSTS_API.createPost({
+      locationId: location.value,
+      locationName: location.selectedOptions?.[0]?.dataset.locationName,
+      postType,
+      content,
+      scheduledAt,
+      manualApproval,
+      ctaType,
+      ctaUrl,
+      mediaUrls,
+      eventTitle,
+      eventStart: eventStartLocal ? new Date(eventStartLocal).toISOString() : undefined,
+      eventEnd: eventEndLocal ? new Date(eventEndLocal).toISOString() : undefined,
+      offerCode: document.getElementById('fp-gbp-offer-code')?.value?.trim(),
+      offerTerms: document.getElementById('fp-gbp-offer-terms')?.value?.trim(),
+      seoKeywords: keywords,
+      generationOptions,
+    });
     if (result?.ok === false || result?.error) throw new Error(result.error || 'Impossible d’enregistrer le post.');
     closeFloatPanel();
     await window._fpReloadGBPPosts();

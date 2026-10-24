@@ -6,6 +6,7 @@ import {
   PLAN_PRICE_IDS,
   COMING_SOON_ADDONS,
   REMOVED_ADDONS,
+  RETIRED_ADDONS,
   isPlanAllowedAddon,
   getPlanPriceId,
 } from "../lib/plans.js";
@@ -160,6 +161,7 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     // Order matters: COMING_SOON/REMOVED fire before definition checks so that
     // unknown coming-soon keys still get a descriptive error code.
     if (REMOVED_ADDONS.has(key))      throw new Error("ADDON_REMOVED");
+    if (RETIRED_ADDONS.has(key))     throw new Error("ADDON_RETIRED");
     if (COMING_SOON_ADDONS.has(key))  throw new Error("ADDON_COMING_SOON");
     const definition = ADDON_DEFINITIONS[key];
     const priceId = ADDON_PRICE_IDS[key];
