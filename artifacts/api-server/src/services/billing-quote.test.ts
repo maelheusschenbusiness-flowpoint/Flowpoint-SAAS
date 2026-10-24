@@ -144,7 +144,7 @@ describe("billing quote — inclusions", () => {
       // Roadmap keys may remain in historical inclusion metadata, but the
       // commercial guard must reject them before quote construction.
       const included = [...(PLAN_INCLUDED_ADDONS[planId] ?? [])]
-        .filter(k => !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k));
+        .filter(k => !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k) && !RETIRED_ADDONS.has(k));
       if (!included.length) continue;
       const addons = Object.fromEntries(included.map(k => [k, true]));
 
@@ -204,7 +204,7 @@ describe("billing quote — inclusions", () => {
 });
 
 // ── P0 — addon lifecycle guards ───────────────────────────────────────────────
-import { COMING_SOON_ADDONS, REMOVED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
+import { COMING_SOON_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
 
 describe("billing quote — addon lifecycle guards (P0)", () => {
   const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // slaMonitoring, crmIntegration, ssoEnterprise, aiWorkspaceLaunch, ...
@@ -258,7 +258,7 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     expect(() => createBillingQuote({
       plan: "",
       inclusionPlan: "standard",
-      addons: { enterprisePermissions: true },
+      addons: { advancedSeoLab: true },
     })).toThrow("ADDON_NOT_ALLOWED_FOR_PLAN");
   });
 
