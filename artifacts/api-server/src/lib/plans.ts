@@ -531,7 +531,8 @@ const TEST_PURCHASABLE_REPLACEMENT_ADDONS = [
   "organicCampaignTracker",
 ] as const;
 
-if (getStripeKey().startsWith("sk_test_")) {
+const activeStripeKey = typeof getStripeKey === "function" ? getStripeKey() : "";
+if (typeof activeStripeKey === "string" && activeStripeKey.startsWith("sk_test_")) {
   for (const addonKey of TEST_PURCHASABLE_REPLACEMENT_ADDONS) {
     if (!ADDON_PRICE_IDS_TEST[addonKey]) continue;
     COMING_SOON_ADDONS.delete(addonKey);
