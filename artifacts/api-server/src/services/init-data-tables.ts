@@ -140,6 +140,23 @@ async function run(client: PoolClient, sql: string): Promise<void> {
 export async function initDataTables(): Promise<void> {
   const client = await pool.connect();
   try {
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS conversion_opportunity_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE conversion_opportunity_settings ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE conversion_opportunity_settings FORCE ROW LEVEL SECURITY`);
+    await run(client, `DROP POLICY IF EXISTS conversion_opportunity_settings_tenant ON conversion_opportunity_settings`);
+    await run(client, `
+      CREATE POLICY conversion_opportunity_settings_tenant
+      ON conversion_opportunity_settings
+      USING (org_id = current_setting('app.current_org_id', true))
+      WITH CHECK (org_id = current_setting('app.current_org_id', true))
+    `);
+
     // ── org_settings legacy mirror / profile store ────────────────────────────
     // organizations is the canonical billing source, but this table remains a
     // read-only/dual-write compatibility surface during the auth migration.

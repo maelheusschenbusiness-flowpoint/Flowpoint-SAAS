@@ -55,15 +55,16 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps 42 sellable product slots, preserving retired metadata for existing entitlements", () => {
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(43);
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(42);
+  it("keeps 43 sellable product slots, preserving retired metadata for existing entitlements", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(44);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(43);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
         "monitorsPack50",
         "gbpPerformanceLeads",
         "localLandingOpportunities",
+        "conversionOpportunityEngine",
         "whiteLabel",
         "retention90d",
         "retention365d",
@@ -127,7 +128,7 @@ describe("V1 add-on catalogue contract", () => {
       !RETIRED_ADDONS.has(key) &&
       ["available", "beta"].includes(getAddonAvailability(key))
     );
-    expect(nonProtectedAddons).toHaveLength(36);
+    expect(nonProtectedAddons).toHaveLength(37);
     expect(sellableAddons.length).toBeGreaterThan(0);
     for (const plan of ["standard", "pro", "ultra"]) {
       for (const key of sellableAddons) {
@@ -163,7 +164,7 @@ describe("V1 add-on catalogue contract", () => {
 
   it("keeps the Local SEO offers priced but unavailable for purchase before approval", () => {
     const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(43);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(44);
     expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
