@@ -108,6 +108,8 @@ export default defineConfig({
       // P0 — addon lifecycle guards: coming_soon, removed, plan-restricted
       // P0/P1 — streak owner vs member isolation
       "src/routes/streak-owner-member.test.ts",
+      // PATCH /me/prefs — persistence without settings, SQL failures not hidden
+      "src/routes/me-prefs-db.test.ts",
       // Canonical activity-day source, identity, and timezone-safe streak semantics
       "src/services/activity-streak.test.ts",
       // Canonical user_id/org_id session contract and legacy-session policy

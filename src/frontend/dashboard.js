@@ -2818,8 +2818,10 @@ window._fpSlaViewPage = function() {
       // Write to namespaced key — same as used at init and in save handler.
       fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
       // statusPageUrl top-level only; server strips nested field before JSONB merge.
-      try { await apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' }); } catch(_) {}
-      showToast('success', fpT('Page statut supprim\u00e9e'));
+      try {
+        await apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' });
+        showToast('success', fpT('Page statut supprim\u00e9e'));
+      } catch(_) { showToast('warning', fpT('Supprim\u00e9e localement — synchronisation \u00e9chou\u00e9e (r\u00e9essayez en ligne)')); }
       closeFloatPanel();
       render();
     });
@@ -2870,7 +2872,8 @@ function logActivityEvent(type, label, metadata = {}) {
 function saveCalendarEvents() { /* calendar events persisted via API only */ }
 function saveSettings() {
   fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
-  apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings }).catch(() => {});
+  apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings })
+    .catch(() => showToast('warning', fpT('Paramètres enregistrés localement — synchronisation serveur échouée')));
 }
 function saveChecklist() {
   var _payload = { items: STATE.checklist, extra: STATE.checklistExtra || {} };
@@ -13003,7 +13006,7 @@ function renderSettings() {
         <div class="fp-card-title" style="margin-bottom:14px">${fpT('🎛️ Intensité des recommandations IA')}</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
-            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success', fpT('Intensité ${lvl} appliquée'));})(this)">
+            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';const _ok=await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).then(()=>true,()=>false);showToast(_ok?'success':'warning',_ok?fpT('Intensité ${lvl} appliquée'):fpT('Synchronisation serveur échouée'));})(this)">
               <div style="font-size:18px;margin-bottom:4px">${['🧘','⚖️','🚀'][i]}</div>
               <div style="font-size:12px;font-weight:700;color:${lvl === _savedIntensity ? 'var(--fp-accent)' : 'var(--fp-text)'}" data-int-label>${escHtml(lvl)}${lvl === _savedIntensity ? ' ✓' : ''}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i]}</div>
@@ -16730,7 +16733,7 @@ function bindSectionEvents() {
         { key:'view', icon:'eye',      label:'Voir les détails', action:()=>openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)) },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
         { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
+        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',         action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
       ]);
@@ -16751,7 +16754,7 @@ function bindSectionEvents() {
         { key:'view', icon:'eye',      label:'Voir les détails', action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
         { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); render(); } },
+        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
       ]);
