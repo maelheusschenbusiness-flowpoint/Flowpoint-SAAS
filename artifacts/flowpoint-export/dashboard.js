@@ -2882,8 +2882,10 @@ window._fpSlaViewPage = function() {
       // Write to namespaced key — same as used at init and in save handler.
       fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
       // statusPageUrl top-level only; server strips nested field before JSONB merge.
-      try { await apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' }); } catch(_) {}
-      showToast('success', fpT('Page statut supprim\u00e9e'));
+      try {
+        await apiAction('PATCH', '/api/me/prefs', { statusPageUrl: '' });
+        showToast('success', fpT('Page statut supprim\u00e9e'));
+      } catch(_) { showToast('warning', fpT('Supprim\u00e9e localement — synchronisation \u00e9chou\u00e9e (r\u00e9essayez en ligne)')); }
       closeFloatPanel();
       render();
     });
@@ -2934,7 +2936,8 @@ function logActivityEvent(type, label, metadata = {}) {
 function saveCalendarEvents() { /* calendar events persisted via API only */ }
 function saveSettings() {
   fpTenantWrite('fp:settings', JSON.stringify(STATE.settings));
-  apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings }).catch(() => {});
+  apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings })
+    .catch(() => showToast('warning', fpT('Paramètres enregistrés localement — synchronisation serveur échouée')));
 }
 function saveChecklist() {
   var _payload = { items: STATE.checklist, extra: STATE.checklistExtra || {} };
@@ -10378,6 +10381,8 @@ function renderBilling() {
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'Suivi et analyse des mots-clés', desc:'Suivi des mots-clés, clustering, fonctionnalités SERP et cannibalisation.', features:['Suivi de mots-clés','Clustering sémantique','Détection de cannibalisation','Suivi des fonctionnalités SERP','Alertes de volatilité des résultats'] },
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
       { key:'aiContentStrategist', cat:'SEO',        name:'SEO Content Decay Radar', icon:'📉', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'GSC',             roi:'Détection des baisses de performance',    desc:'Repère les baisses de clics, de positions et les CTR faibles par rapport aux pages GSC comparables.', features:['Comparaison de périodes GSC','Détection des pertes de clics et de positions','Détection des CTR faibles par position moyenne','Priorisation selon les données observées','Aucune génération IA ni appel externe'] },
+        { key:'seoChangeImpact', cat:'SEO',             name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), availability:'coming_soon', tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
+        { key:'technicalSeoFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), availability:'coming_soon', tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'Gestion de fiches GBP supplémentaires',    desc:'Gérez des fiches Google Business Profile supplémentaires depuis FlowPoint.', features:['Gestion de fiches GBP supplémentaires','Publication de posts GBP','Synchronisation des horaires et informations NAP','Alertes sur les avis sans réponse','Informations de complétude de fiche'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'Création assistée de publications GBP',    desc:'Posts GBP générés par IA à partir des informations de votre établissement.', features:['Posts GBP rédigés par IA','Calendrier de publication','Adaptation aux événements renseignés','Sélection de photos disponibles','Rapport d’engagement'] },
@@ -10385,6 +10390,7 @@ function renderBilling() {
       { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Cartographie de la visibilité locale',    desc:'Heatmaps de visibilité locale pour analyser votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse des positions du Local Pack','Comparaison avec les concurrents sur la carte','Alertes de perte de position Maps','Rapport de visibilité locale'] },
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'Analyse UX et recommandations CRO',    desc:'Recommandations CRO, hypothèses de tests A/B et analyse des frictions.', features:['Analyse UX des pages','Hypothèses A/B générées par IA','Plan d’action conversion priorisé','Analyse des parcours utilisateurs','Rapports fondés sur les données disponibles'] },
+      { key:'conversionOpportunityEngine', cat:'Conversion', name:'Conversion Opportunity Engine', icon:'🎯', color:'#f97316', active:!!(me.addons?.conversionOpportunityEngine), tag:'GA4', roi:'Pages avec faible conversion observée', desc:'Priorisez les pages à optimiser à partir des sessions et conversions GA4 réellement mesurées.', features:['Sessions et conversions GA4 mesurées','Seuils de sessions configurables','Taux de conversion maximal configurable','Aucune estimation de revenus non mesurés'], },
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse des interactions visiteurs', desc:'Analyse comportementale à partir des événements collectés par le snippet installé sur votre site.', features:['Heatmaps clics et scroll lorsque les données sont disponibles','Session replay anonymisé','Analyse comportementale','Segmentation des utilisateurs','Alertes de friction'] },
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'Analyse',             roi:'Analyse des frictions de conversion',    desc:'Analyse des abandons et des points de friction de conversion observés.', features:['Détection des abandons de panier ou de formulaire','Priorisation des points de friction observés','Analyse des parcours de conversion','Alertes de dégradation de conversion','Rapport d’analyse'] },
       { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'Gestion des expérimentations A/B',    desc:'Tests A/B assistés par IA, avec suivi des variantes et résultats observés.', features:['Hypothèses A/B générées par IA','Gestion des variantes','Suivi des expositions et résultats','Analyse statistique lorsque les données le permettent','Rapport par test'] },
@@ -10392,6 +10398,7 @@ function renderBilling() {
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'Modèles de rapports agence',    desc:'Modèles de rapports réutilisables pour vos clients.', features:['Modèles de rapports Executive, KPI et Local SEO','Personnalisation par client','Envoi de rapports PDF','Rapports multi-sites consolidés','Tableau de bord client'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
+      { key:'agencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), availability:'coming_soon', tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions de trafic et de positions', desc:'Prévisions fondées sur l’historique disponible de trafic et de positions.', features:['Prévisions de trafic','Prévisions de positions par mot-clé','Analyse de l’historique SEO disponible','Alertes sur les risques de baisse','Rapports prévisionnels'] },
       { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Suivi des concurrents et du marché',    desc:'Veille concurrentielle, tendances de marché et alertes sectorielles à partir des données disponibles.', features:['Veille concurrentielle','Analyse des tendances sectorielles','Alertes sur les nouveaux concurrents','Repérage d’opportunités de marché','Synthèses sectorielles'] },
@@ -10718,7 +10725,15 @@ function renderBilling() {
             ${accessState === 'included'
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">Inclus</button>`
               : a.active && !isInc
-                ? (_FP_QTY_ADDON_KEYS[a.key]
+                ? a.key === 'conversionOpportunityEngine'
+                  ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenConversionOpportunityEngine()">${fpT('Ouvrir')}</button>`
+                  : a.key === 'seoChangeImpact'
+                    ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenSEOChangeImpact()">${fpT('Ouvrir')}</button>`
+                    : a.key === 'technicalSeoFixVerification'
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenTechnicalSEOFixVerification()">${fpT('Ouvrir')}</button>`
+                    : a.key === 'agencyPortfolioPriorities'
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenAgencyPortfolioPriorities()">${fpT('Ouvrir')}</button>`
+                    : (_FP_QTY_ADDON_KEYS[a.key]
                     ? `<div style="display:flex;align-items:center;gap:8px">${accessState === 'purchasable' ? `<div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button>` : `<span>${escHtml(_fpAddonAccessLabel(accessState))}</span>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
                 : accessState !== 'purchasable'
@@ -13247,7 +13262,7 @@ function renderSettings() {
         <div class="fp-card-title" style="margin-bottom:14px">${fpT('🎛️ Intensité des recommandations IA')}</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
-            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success', fpT('Intensité ${lvl} appliquée'));})(this)">
+            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';const _ok=await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).then(()=>true,()=>false);showToast(_ok?'success':'warning',_ok?fpT('Intensité ${lvl} appliquée'):fpT('Synchronisation serveur échouée'));})(this)">
               <div style="font-size:18px;margin-bottom:4px">${['🧘','⚖️','🚀'][i]}</div>
               <div style="font-size:12px;font-weight:700;color:${lvl === _savedIntensity ? 'var(--fp-accent)' : 'var(--fp-text)'}" data-int-label>${escHtml(lvl)}${lvl === _savedIntensity ? ' ✓' : ''}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i]}</div>
@@ -15771,6 +15786,8 @@ const PAGE_NAMES = {
   'monitors': 'Monitors', 'reports': 'Rapports', 'local-seo': 'Local SEO',
   'team': 'Équipe', 'billing': 'Facturation', 'settings': 'Paramètres', 'ai': 'Assistant IA',
   'growth': 'Croissance', 'competitor': 'Concurrents', 'conversion': 'Conversion',
+  'conversion-opportunity-engine': 'Conversion Opportunity Engine',
+  'seo-change-impact': 'SEO Change Impact',
   'alerts-center': 'Centre d\'alertes', 'activity-feed': 'Activité',
   'data-explorer': 'Data Explorer', 'client-mode': 'Mode Client',
   'analytics': 'Analytics GA4', 'traffic': 'Trafic & Sources',
@@ -16315,6 +16332,38 @@ function _doRender() {
     case 'growth':         html = renderGrowth(); break;
     case 'competitor':     html = renderCompetitor(); break;
     case 'conversion':     html = renderGA4Conversion(); break;
+    case 'conversion-opportunity-engine':
+      html = '<div id="fp-addon-conversion-opportunity-engine"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-conversion-opportunity-engine');
+        const renderAddon = window.FP_ADDON_RENDERERS?.conversionOpportunityEngine;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+    case 'seo-change-impact':
+      html = '<div id="fp-addon-seo-change-impact"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-seo-change-impact');
+        const renderAddon = window.FP_ADDON_RENDERERS?.seoChangeImpact;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+    case 'technical-seo-fix-verification':
+      html = '<div id="fp-addon-technical-seo-fix-verification"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-technical-seo-fix-verification');
+        const renderAddon = window.FP_ADDON_RENDERERS?.technicalSeoFixVerification;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+    case 'agency-portfolio-priorities':
+      html = '<div id="fp-addon-agency-portfolio-priorities"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-agency-portfolio-priorities');
+        const renderAddon = window.FP_ADDON_RENDERERS?.agencyPortfolioPriorities;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -16974,7 +17023,7 @@ function bindSectionEvents() {
         { key:'view', icon:'eye',      label:'Voir les détails', action:()=>openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)) },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
         { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
+        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',         action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
       ]);
@@ -16995,7 +17044,7 @@ function bindSectionEvents() {
         { key:'view', icon:'eye',      label:'Voir les détails', action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
         { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); render(); } },
+        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
       ]);
@@ -19800,6 +19849,39 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Conversion Opportunity Engine": "Conversion Opportunity Engine",
+    "Opportunités de conversion": "Conversion opportunities",
+    "Pages avec suffisamment de sessions mais un taux de conversion mesuré faible.": "Pages with enough sessions but a measured low conversion rate.",
+    "Chargement des données GA4…": "Loading GA4 data…",
+    "Sessions minimales": "Minimum sessions",
+    "Taux maximal (%)": "Maximum rate (%)",
+    "Données GA4 mesurées sur les 28 derniers jours.": "Measured GA4 data for the last 28 days.",
+    "Aucune page mesurée ne correspond aux critères.": "No measured pages match the criteria.",
+    "Impossible de charger les données GA4.": "Could not load GA4 data.",
+    "Impact des changements SEO": "SEO Change Impact",
+    "Comparez les scores et métriques mesurés entre les deux derniers audits terminés.": "Compare scores and measured metrics between the two latest completed audits.",
+    "Chargement des audits…": "Loading audits…",
+    "Paramètres de comparaison": "Comparison settings",
+    "Période observée (jours)": "Lookback window (days)",
+    "Seuil minimal de variation du score": "Minimum score change threshold",
+    "Enregistrer": "Save",
+    "Comparaisons fondées uniquement sur les audits terminés de votre organisation.": "Comparisons are based only on completed audits in your organization.",
+    "Comparaisons SEO mesurées": "Measured SEO comparisons",
+    "Score SEO": "SEO score",
+    "Problèmes critiques mesurés": "Measured critical issues",
+    "Score de vitesse": "Speed score",
+    "Deux audits terminés sont nécessaires pour afficher un impact mesuré.": "Two completed audits are needed to show measured impact.",
+    "Paramètres enregistrés.": "Settings saved.",
+    "Impossible d’enregistrer les paramètres.": "Could not save settings.",
+    "Impossible de charger les audits SEO.": "Could not load SEO audits.",
+    "SEO Change Impact": "SEO Change Impact",
+    "Impact mesuré entre deux audits": "Measured impact between two audits",
+    "Comparez les variations réellement mesurées entre audits SEO terminés.": "Compare changes actually measured between completed SEO audits.",
+    "Évolution du score SEO": "SEO score change",
+    "Évolution des problèmes critiques": "Critical issues change",
+    "Évolution du score de vitesse": "Speed score change",
+    "Paramètres de période et de seuil enregistrés": "Saved lookback and threshold settings",
+    "Ouvrir": "Open",
     "Opportunités de pages locales": "Local landing opportunities",
     "Chargement des requêtes Google Search Console…": "Loading Google Search Console queries…",
     "Réessayer": "Retry",
@@ -21702,6 +21784,40 @@ function bindGlobalEvents() {
     'Conversions sur 30 jours : {conversions}': 'Conversions over 30 days: {conversions}',
     'Revenu sur 90 jours : {revenue} (devise GA4)': 'Revenue over 90 days: {revenue} (GA4 currency)',
     'Projection indicative ({change} %) — {details}': 'Indicative projection ({change}%) — {details}',
+    'Priorités du portefeuille d’agences': 'Agency portfolio priorities',
+    'Vérification SEO technique': 'Technical SEO fix verification',
+    'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.': 'Compare the total issue count between two completed audits of the same URL.',
+    'Les audits enregistrent un total agrégé, pas le détail par règle. La comparaison ne confirme donc pas une correction spécifique.': 'Audits store an aggregate count, not rule-level details. This comparison cannot confirm a specific fix.',
+    'Chargement des audits…': 'Loading audits…',
+    'problèmes': 'issues',
+    'Il faut au moins deux audits terminés pour comparer une URL.': 'At least two completed audits are needed to compare one URL.',
+    'Audit de référence': 'Baseline audit',
+    'Audit après la correction': 'After-fix audit',
+    'Comparer les audits': 'Compare audits',
+    'Comparaisons enregistrées': 'Saved comparisons',
+    'Résolu selon le nouvel audit': 'Resolved according to the new audit',
+    'Amélioration mesurée': 'Measured improvement',
+    'Toujours présent': 'Still present',
+    'Aucun problème dans l’audit de référence': 'No issue in the baseline audit',
+    'Audits non comparables': 'Audits cannot be compared',
+    'Impossible de comparer ces audits.': 'Unable to compare these audits.',
+    'Impossible de charger les audits.': 'Unable to load audits.',
+    'Classez vos sites à partir des audits SEO et des clics GSC réellement mesurés.': 'Rank your sites using measured SEO audits and GSC clicks.',
+    'Chargement des priorités…': 'Loading priorities…',
+    'Pondérations de priorité': 'Priority weights',
+    'Urgent': 'Urgent',
+    'À traiter': 'Needs attention',
+    'Stable': 'Stable',
+    'problèmes critiques': 'critical issues',
+    'clics GSC / 30 jours': 'GSC clicks / 30 days',
+    'Aucun signal de baisse détecté.': 'No decline signal detected.',
+    'Pondération (1 à 5)': 'Priority weight (1 to 5)',
+    'Pondération pour': 'Priority weight for',
+    'Enregistrer les priorités': 'Save priorities',
+    'Aucun audit SEO terminé n’est disponible pour les sites de votre organisation.': 'No completed SEO audits are available for your organization’s sites.',
+    'Paramètres enregistrés.': 'Settings saved.',
+    'Impossible d’enregistrer les priorités.': 'Unable to save priorities.',
+    'Impossible de charger le portefeuille.': 'Unable to load the portfolio.',
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -66073,6 +66189,18 @@ window._fpToggleChecklistExtra = function(id, done) {
 };
 window.showToast   = showToast;
 window.navigate    = navigate;
+window.fpOpenConversionOpportunityEngine = function () {
+  window.navigate('conversion-opportunity-engine');
+};
+window.fpOpenSEOChangeImpact = function () {
+  window.navigate('seo-change-impact');
+};
+window.fpOpenTechnicalSEOFixVerification = function () {
+  window.navigate('technical-seo-fix-verification');
+};
+window.fpOpenAgencyPortfolioPriorities = function () {
+  window.navigate('agency-portfolio-priorities');
+};
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 

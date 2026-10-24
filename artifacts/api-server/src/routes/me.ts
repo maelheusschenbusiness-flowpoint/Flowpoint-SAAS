@@ -670,7 +670,7 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
   try {
     await orgDb(req)(
       `INSERT INTO user_prefs (org_id, streak, pinned, checklist, settings, updated_at)
-       VALUES ($1, COALESCE($2,0), COALESCE($3::jsonb,'{}'), $4, $5, now())
+       VALUES ($1, COALESCE($2,0), COALESCE($3::jsonb,'{}'), $4, COALESCE($5::jsonb,'{}'), now())
        ON CONFLICT (org_id) DO UPDATE SET
          streak    = COALESCE($2, user_prefs.streak),
          pinned    = COALESCE($3::jsonb, user_prefs.pinned),
@@ -695,8 +695,9 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
         .catch(() => {});
     }
     res.json({ ok: true });
-  } catch {
-    res.json({ ok: false });
+  } catch (err) {
+    logger.error({ err, orgId }, "[PATCH /me/prefs] upsert failed");
+    res.status(500).json({ ok: false, error: "prefs_save_failed", message: "Les préférences n'ont pas pu être enregistrées." });
   }
 });
 

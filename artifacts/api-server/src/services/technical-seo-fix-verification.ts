@@ -1,9 +1,3 @@
-export type TechnicalSEOIssue = {
-  code: string;
-  severity: "critical" | "high" | "medium" | "low";
-  affectedPages: number;
-};
-
 export type FixVerificationStatus =
   | "verified_resolved"
   | "improved"
@@ -11,66 +5,47 @@ export type FixVerificationStatus =
   | "baseline_issue_not_found"
   | "not_comparable";
 
-const severityRank: Record<TechnicalSEOIssue["severity"], number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-};
-
 export function verifyTechnicalSEOFix(input: {
-  issueCode: string;
   beforeAuditId: string;
   afterAuditId: string;
-  beforeIssues: TechnicalSEOIssue[];
-  afterIssues: TechnicalSEOIssue[];
+  beforeIssueCount: number;
+  afterIssueCount: number;
 }): {
   status: FixVerificationStatus;
-  issueCode: string;
-  beforeAffectedPages: number | null;
-  afterAffectedPages: number | null;
+  beforeIssueCount: number | null;
+  afterIssueCount: number | null;
   evidence: "two_distinct_audits" | "insufficient_audit_evidence";
 } {
   if (!input.beforeAuditId || !input.afterAuditId || input.beforeAuditId === input.afterAuditId) {
     return {
       status: "not_comparable",
-      issueCode: input.issueCode,
-      beforeAffectedPages: null,
-      afterAffectedPages: null,
+      beforeIssueCount: null,
+      afterIssueCount: null,
       evidence: "insufficient_audit_evidence",
     };
   }
-
-  const before = input.beforeIssues.find(issue => issue.code === input.issueCode);
-  if (!before) {
+  if (
+    !Number.isInteger(input.beforeIssueCount) || input.beforeIssueCount < 0
+    || !Number.isInteger(input.afterIssueCount) || input.afterIssueCount < 0
+  ) {
+    throw new RangeError("Audit issue counts must be non-negative integers");
+  }
+  if (input.beforeIssueCount === 0) {
     return {
       status: "baseline_issue_not_found",
-      issueCode: input.issueCode,
-      beforeAffectedPages: null,
-      afterAffectedPages: null,
+      beforeIssueCount: 0,
+      afterIssueCount: input.afterIssueCount,
       evidence: "two_distinct_audits",
     };
   }
-
-  const after = input.afterIssues.find(issue => issue.code === input.issueCode);
-  if (!after) {
-    return {
-      status: "verified_resolved",
-      issueCode: input.issueCode,
-      beforeAffectedPages: before.affectedPages,
-      afterAffectedPages: 0,
-      evidence: "two_distinct_audits",
-    };
-  }
-
-  const improved = after.affectedPages < before.affectedPages
-    || severityRank[after.severity] < severityRank[before.severity];
-
   return {
-    status: improved ? "improved" : "still_present",
-    issueCode: input.issueCode,
-    beforeAffectedPages: before.affectedPages,
-    afterAffectedPages: after.affectedPages,
+    status: input.afterIssueCount === 0
+      ? "verified_resolved"
+      : input.afterIssueCount < input.beforeIssueCount
+        ? "improved"
+        : "still_present",
+    beforeIssueCount: input.beforeIssueCount,
+    afterIssueCount: input.afterIssueCount,
     evidence: "two_distinct_audits",
   };
 }
