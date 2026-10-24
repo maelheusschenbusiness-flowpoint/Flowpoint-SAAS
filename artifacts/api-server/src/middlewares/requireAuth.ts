@@ -1,6 +1,7 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { getSession } from "../services/sessions.js";
 import { logger } from "../lib/logger.js";
+import { API_KEY_DENIED_ROUTES } from "../lib/api-keys.js";
 
 const MISSING_KEY_WARNING_SHOWN = { shown: false };
 
@@ -109,6 +110,11 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
   if (provided.startsWith("fp_pub_") || provided.startsWith("fp_sec_")) {
     const resolvedOrgId = req.orgContext?.orgId;
     if (resolvedOrgId && resolvedOrgId !== "default") {
+      // Key management, billing and side-effecting GETs are never reachable with a key.
+      if (API_KEY_DENIED_ROUTES.some((re) => re.test(req.path))) {
+        res.status(403).json({ error: "Forbidden: this route is not available to API keys" });
+        return;
+      }
       // Public key: read-only — reject any mutating method
       if (provided.startsWith("fp_pub_") && req.method !== "GET") {
         res.status(403).json({ error: "Forbidden: public API key allows read-only access (GET requests only)" });

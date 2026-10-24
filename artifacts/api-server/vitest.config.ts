@@ -54,6 +54,8 @@ export default defineConfig({
       "src/services/gbp-posting-publish.test.ts",
       "src/services/gbp-location-quota.test.ts",
        "src/services/local-presence-optimizer.test.ts",
+       "src/services/local-landing-opportunities.test.ts",
+       "src/routes/local-landing-opportunities.test.ts",
        "src/services/maps-service.test.ts",
        "src/services/conversion-opportunity-engine.test.ts",
        "src/routes/conversion-opportunity-engine.test.ts",
