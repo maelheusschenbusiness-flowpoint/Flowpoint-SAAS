@@ -10385,16 +10385,15 @@ function renderBilling() {
         { key:'technicalSeoFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), availability:'coming_soon', tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
         { key:'organicCampaignTracker', cat:'SEO', name:'Organic Campaign Tracker', icon:'🎯', color:'#2563EB', active:!!(me.addons?.organicCampaignTracker), availability:'coming_soon', tag:'GSC', roi:'Suivi des objectifs de campagnes organiques', desc:'Suivez les objectifs de clics et de position à partir des données GSC mesurées.', features:['Objectifs configurables par mot-clé','Clics et position moyenne sur 28 jours','Statuts fondés sur les données GSC','Aucune performance estimée'] },
       // ── Local SEO ──
-      { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'Gestion de fiches GBP supplémentaires',    desc:'Gérez des fiches Google Business Profile supplémentaires depuis FlowPoint.', features:['Gestion de fiches GBP supplémentaires','Publication de posts GBP','Synchronisation des horaires et informations NAP','Alertes sur les avis sans réponse','Informations de complétude de fiche'] },
+      { key:'gbpPerformanceLeads', cat:'Local SEO', name:'GBP Performance & Leads', icon:'📊', color:'#22c55e', active:!!(me.addons?.gbpPerformanceLeads), tag:'GBP', roi:'Performances et objectifs locaux mesurés', desc:'Suivez les performances réelles de vos fiches Google Business Profile, définissez des objectifs et repérez les baisses d’actions locales.', features:['Statistiques GBP réellement disponibles','Objectifs configurables','Alertes de baisse des actions locales'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'Création assistée de publications GBP',    desc:'Posts GBP générés par IA à partir des informations de votre établissement.', features:['Posts GBP rédigés par IA','Calendrier de publication','Adaptation aux événements renseignés','Sélection de photos disponibles','Rapport d’engagement'] },
-      { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:!!(me.addons?.reviewIntelligence), tag:'Sentiment IA',    roi:'Analyse des avis et du sentiment',    desc:'Analyse des avis Google, réponses assistées et alertes sur les avis critiques.', features:['Analyse du sentiment des avis','Réponses IA personnalisées','Alertes sur les avis négatifs','Rapport de tendance des notes','Synthèse de réputation par établissement'] },
-      { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Cartographie de la visibilité locale',    desc:'Heatmaps de visibilité locale pour analyser votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse des positions du Local Pack','Comparaison avec les concurrents sur la carte','Alertes de perte de position Maps','Rapport de visibilité locale'] },
+      { key:'localPresenceOptimizer', cat:'Local SEO', name:'Local Presence Optimizer', icon:'📍', color:'#22c55e', active:!!(me.addons?.localPresenceOptimizer), tag:'GBP', roi:'Informations de fiches à compléter', desc:'Priorisez les informations manquantes ou incomplètes sur vos fiches Google Business Profile.', features:['État de complétude des fiches','Priorités fondées sur les données disponibles','Recommandations par établissement'] },
+      { key:'localLandingOpportunities', cat:'Local SEO', name:'Local Landing Opportunities', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localLandingOpportunities), tag:'Local SEO', roi:'Recherches locales propices à une page', desc:'Repérez les recherches locales réelles qui justifient une page de service ou de zone.', features:['Opportunités fondées sur les recherches disponibles','Pages de service ou de zone à examiner','Priorisation par opportunité locale'] },
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'Analyse UX et recommandations CRO',    desc:'Recommandations CRO, hypothèses de tests A/B et analyse des frictions.', features:['Analyse UX des pages','Hypothèses A/B générées par IA','Plan d’action conversion priorisé','Analyse des parcours utilisateurs','Rapports fondés sur les données disponibles'] },
       { key:'conversionOpportunityEngine', cat:'Conversion', name:'Conversion Opportunity Engine', icon:'🎯', color:'#f97316', active:!!(me.addons?.conversionOpportunityEngine), tag:'GA4', roi:'Pages avec faible conversion observée', desc:'Priorisez les pages à optimiser à partir des sessions et conversions GA4 réellement mesurées.', features:['Sessions et conversions GA4 mesurées','Seuils de sessions configurables','Taux de conversion maximal configurable','Aucune estimation de revenus non mesurés'], },
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse des interactions visiteurs', desc:'Analyse comportementale à partir des événements collectés par le snippet installé sur votre site.', features:['Heatmaps clics et scroll lorsque les données sont disponibles','Session replay anonymisé','Analyse comportementale','Segmentation des utilisateurs','Alertes de friction'] },
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'Analyse',             roi:'Analyse des frictions de conversion',    desc:'Analyse des abandons et des points de friction de conversion observés.', features:['Détection des abandons de panier ou de formulaire','Priorisation des points de friction observés','Analyse des parcours de conversion','Alertes de dégradation de conversion','Rapport d’analyse'] },
-      { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'Gestion des expérimentations A/B',    desc:'Tests A/B assistés par IA, avec suivi des variantes et résultats observés.', features:['Hypothèses A/B générées par IA','Gestion des variantes','Suivi des expositions et résultats','Analyse statistique lorsque les données le permettent','Rapport par test'] },
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'Modèles de rapports agence',    desc:'Modèles de rapports réutilisables pour vos clients.', features:['Modèles de rapports Executive, KPI et Local SEO','Personnalisation par client','Envoi de rapports PDF','Rapports multi-sites consolidés','Tableau de bord client'] },
@@ -10403,16 +10402,12 @@ function renderBilling() {
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions de trafic et de positions', desc:'Prévisions fondées sur l’historique disponible de trafic et de positions.', features:['Prévisions de trafic','Prévisions de positions par mot-clé','Analyse de l’historique SEO disponible','Alertes sur les risques de baisse','Rapports prévisionnels'] },
       { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Suivi des concurrents et du marché',    desc:'Veille concurrentielle, tendances de marché et alertes sectorielles à partir des données disponibles.', features:['Veille concurrentielle','Analyse des tendances sectorielles','Alertes sur les nouveaux concurrents','Repérage d’opportunités de marché','Synthèses sectorielles'] },
-      { key:'aiWorkflows', cat:'IA',         name:'AI Automation Workflows', icon:'⚡', color:'#8b5cf6', active:!!(me.addons?.aiWorkflows), tag:'Automation',      roi:'Automatisation des tâches récurrentes',    desc:'Workflows d’automatisation IA pour les audits, rapports et alertes.', features:['Workflows no-code','Audits planifiés','Envoi automatisé de rapports','Alertes conditionnelles','Automatisation des tâches récurrentes'] },
       // ── Team ──
       { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
-      { key:'enterprisePermissions', cat:'Équipe',     name:'Permissions Avancées', icon:'🔐', color:'#06b6d4', active:!!(me.addons?.enterprisePermissions), tag:'Sécurité',        roi:'RBAC complet',    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
       { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention90d), tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
       { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention365d), tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
-      { key:'advancedWebhooks', cat:'API',        name:'Webhooks Avancés', icon:'🔔', color:'#14b8a6', active:!!(me.addons?.advancedWebhooks), tag:'Pro inclus',      roi:'Alertes temps réel',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
-      { key:'zapierIntegration', cat:'API',        name:'Zapier/Make Integration', icon:'⚙️', color:'#14b8a6', active:!!(me.addons?.zapierIntegration), tag:'No-code',         roi:'Webhooks pour les automatisations externes',    desc:'Connectez FlowPoint à des automatisations externes via Zapier ou Make.', features:['Webhooks sur les événements FlowPoint pris en charge','Transmission vers vos automatisations configurées','Configuration par webhook','Connexion externe requise'] },
       { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
       { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
@@ -10769,14 +10764,24 @@ function renderBilling() {
     // "Active" derives from the canonical plan catalogue: a plan-included add-on is
     // active for that plan even with no manual purchase. With no extra add-ons an
     // Ultra workspace therefore shows exactly its 10 included = 10 active.
-    const activeCount = allAddons.filter(a => a.active || isIncluded(a)).length;
+    const _backendActive = Array.isArray(STATE.billing?.addons)
+      ? STATE.billing.addons.filter(a => a.active || a.includedInPlan).length : 0;
+    const activeCount = Math.max(
+      allAddons.filter(a => a.active || isIncluded(a)).length,
+      _backendActive,
+    );
     // Manual (paid) extras only — never counts plan-included ones twice.
-    const manualActiveCount = allAddons.filter(a => a.active && !isIncluded(a)).length;
+    const _backendManualActive = Array.isArray(STATE.billing?.addons)
+      ? STATE.billing.addons.filter(a => a.active && !a.includedInPlan).length : 0;
+    const manualActiveCount = Math.max(
+      allAddons.filter(a => a.active && !isIncluded(a)).length,
+      _backendManualActive,
+    );
 
     return `
       ${aiBlock(
-        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (${fpAddonPriceLabel('aiForecasting')}) peut améliorer votre planification growth. <strong>Review Intelligence</strong> est prioritaire si vous gérez des avis Google Business Profile.`,
-        ['Ajouter AI Forecasting', 'Activer Review Intelligence', 'Voir ROI des add-ons']
+        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (${fpAddonPriceLabel('aiForecasting')}) peut améliorer votre planification growth. <strong>Local Presence Optimizer</strong> aide à prioriser les informations manquantes sur vos fiches Google Business Profile.`,
+        ['Ajouter AI Forecasting', 'Voir Local Presence Optimizer', 'Voir ROI des add-ons']
       )}
 
       <div class="fp-stat-row fp-mb-20">
@@ -11110,12 +11115,6 @@ function renderBilling() {
         metrics:['Audits 76% de capacité', 'Seuil prévu J+8', 'ROI : +200€/mois'],
       },
       {
-        title:'Review Intelligence — Quick Win immédiat',
-        body:'14 avis Google sans réponse détectés. Review Intelligence (' + fpAddonPriceLabel('reviewIntelligence') + ') automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
-        priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
-        metrics:['14 sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
-      },
-      {
         title:'AI CRO Strategist — Conversion non exploitée',
         body:'Votre taux de conversion mobile est à 0.8% (benchmark secteur : 2.1%). AI CRO Strategist (' + fpAddonPriceLabel('aiCro') + ') détecterait les frictions et prioriserait les tests. Gain estimé : +1.3% conversion = +€€€.',
         priority:'Moyenne', color:'#2563EB', action:'Essayer AI CRO',
@@ -11129,13 +11128,6 @@ function renderBilling() {
       },
     ] : (() => {
       const arr = [];
-      const _ua = STATE.gbp?.unansweredReviews;
-      if (_ua > 0) arr.push({
-        title:'Review Intelligence — Quick Win immédiat',
-        body:_ua + ' avis Google sans réponse détecté' + (_ua > 1 ? 's' : '') + '. Review Intelligence (' + fpAddonPriceLabel('reviewIntelligence') + ') automatise les réponses IA — impact direct sur votre visibilité locale.',
-        priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
-        metrics:[_ua + ' sans réponse', 'Réponses IA automatisées'],
-      });
       arr.push({
         title:'White-Label — Personnaliser le portail client',
         body:'Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
