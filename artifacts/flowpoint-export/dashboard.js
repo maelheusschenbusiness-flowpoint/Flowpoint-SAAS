@@ -10385,6 +10385,7 @@ function renderBilling() {
       { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Cartographie de la visibilité locale',    desc:'Heatmaps de visibilité locale pour analyser votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse des positions du Local Pack','Comparaison avec les concurrents sur la carte','Alertes de perte de position Maps','Rapport de visibilité locale'] },
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'Analyse UX et recommandations CRO',    desc:'Recommandations CRO, hypothèses de tests A/B et analyse des frictions.', features:['Analyse UX des pages','Hypothèses A/B générées par IA','Plan d’action conversion priorisé','Analyse des parcours utilisateurs','Rapports fondés sur les données disponibles'] },
+      { key:'conversionOpportunityEngine', cat:'Conversion', name:'Conversion Opportunity Engine', icon:'🎯', color:'#f97316', active:!!(me.addons?.conversionOpportunityEngine), tag:'GA4', roi:'Pages avec faible conversion observée', desc:'Priorisez les pages à optimiser à partir des sessions et conversions GA4 réellement mesurées.', features:['Sessions et conversions GA4 mesurées','Seuils de sessions configurables','Taux de conversion maximal configurable','Aucune estimation de revenus non mesurés'], },
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse des interactions visiteurs', desc:'Analyse comportementale à partir des événements collectés par le snippet installé sur votre site.', features:['Heatmaps clics et scroll lorsque les données sont disponibles','Session replay anonymisé','Analyse comportementale','Segmentation des utilisateurs','Alertes de friction'] },
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'Analyse',             roi:'Analyse des frictions de conversion',    desc:'Analyse des abandons et des points de friction de conversion observés.', features:['Détection des abandons de panier ou de formulaire','Priorisation des points de friction observés','Analyse des parcours de conversion','Alertes de dégradation de conversion','Rapport d’analyse'] },
       { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'Gestion des expérimentations A/B',    desc:'Tests A/B assistés par IA, avec suivi des variantes et résultats observés.', features:['Hypothèses A/B générées par IA','Gestion des variantes','Suivi des expositions et résultats','Analyse statistique lorsque les données le permettent','Rapport par test'] },
@@ -10718,7 +10719,9 @@ function renderBilling() {
             ${accessState === 'included'
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">Inclus</button>`
               : a.active && !isInc
-                ? (_FP_QTY_ADDON_KEYS[a.key]
+                ? a.key === 'conversionOpportunityEngine'
+                  ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenConversionOpportunityEngine()">${fpT('Ouvrir')}</button>`
+                  : (_FP_QTY_ADDON_KEYS[a.key]
                     ? `<div style="display:flex;align-items:center;gap:8px">${accessState === 'purchasable' ? `<div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button>` : `<span>${escHtml(_fpAddonAccessLabel(accessState))}</span>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
                 : accessState !== 'purchasable'
@@ -15771,6 +15774,7 @@ const PAGE_NAMES = {
   'monitors': 'Monitors', 'reports': 'Rapports', 'local-seo': 'Local SEO',
   'team': 'Équipe', 'billing': 'Facturation', 'settings': 'Paramètres', 'ai': 'Assistant IA',
   'growth': 'Croissance', 'competitor': 'Concurrents', 'conversion': 'Conversion',
+  'conversion-opportunity-engine': 'Conversion Opportunity Engine',
   'alerts-center': 'Centre d\'alertes', 'activity-feed': 'Activité',
   'data-explorer': 'Data Explorer', 'client-mode': 'Mode Client',
   'analytics': 'Analytics GA4', 'traffic': 'Trafic & Sources',
@@ -16315,6 +16319,14 @@ function _doRender() {
     case 'growth':         html = renderGrowth(); break;
     case 'competitor':     html = renderCompetitor(); break;
     case 'conversion':     html = renderGA4Conversion(); break;
+    case 'conversion-opportunity-engine':
+      html = '<div id="fp-addon-conversion-opportunity-engine"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-conversion-opportunity-engine');
+        const renderAddon = window.FP_ADDON_RENDERERS?.conversionOpportunityEngine;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -19800,6 +19812,16 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Conversion Opportunity Engine": "Conversion Opportunity Engine",
+    "Opportunités de conversion": "Conversion opportunities",
+    "Pages avec suffisamment de sessions mais un taux de conversion mesuré faible.": "Pages with enough sessions but a measured low conversion rate.",
+    "Chargement des données GA4…": "Loading GA4 data…",
+    "Sessions minimales": "Minimum sessions",
+    "Taux maximal (%)": "Maximum rate (%)",
+    "Données GA4 mesurées sur les 28 derniers jours.": "Measured GA4 data for the last 28 days.",
+    "Aucune page mesurée ne correspond aux critères.": "No measured pages match the criteria.",
+    "Impossible de charger les données GA4.": "Could not load GA4 data.",
+    "Ouvrir": "Open",
     "Opportunités de pages locales": "Local landing opportunities",
     "Chargement des requêtes Google Search Console…": "Loading Google Search Console queries…",
     "Réessayer": "Retry",
@@ -66073,6 +66095,9 @@ window._fpToggleChecklistExtra = function(id, done) {
 };
 window.showToast   = showToast;
 window.navigate    = navigate;
+window.fpOpenConversionOpportunityEngine = function () {
+  window.navigate('conversion-opportunity-engine');
+};
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 

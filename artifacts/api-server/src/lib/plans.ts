@@ -156,6 +156,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
                        ?? process.env["STRIPE_TEST_PRICE_ID_10MONITORS"]        ?? "",
     monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
                        ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
+    conversionOpportunityEngine: process.env["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"] ?? "",
     localPresenceOptimizer: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"] ?? "",
     advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
@@ -272,6 +273,7 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   localDominationMaps:  process.env["STRIPE_PRICE_ID_LOCAL_DOMINATION_MAPS"]    ?? "price_1TYowh9eqtbj6iPBqI7YxqYu",
   localPresenceOptimizer: process.env["STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER"] ?? "",
   localLandingOpportunities: "",
+  conversionOpportunityEngine: "",
 
   // ── Conversion / AI ────────────────────────────────────────────────────────
   aiCro:                process.env["STRIPE_PRICE_ID_AI_CRO_STRATEGIST"]        ?? "price_1TYpDs9eqtbj6iPBGyjqL3mu",
@@ -361,6 +363,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 15, oneTime: false, quantity: false },
   localPresenceOptimizer: { name: "Local Presence Optimizer", category: "Local SEO", description: "Priorisation des informations manquantes sur vos fiches GBP", priceEur: 9, oneTime: false, quantity: false },
   aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO fondées sur les événements observés", priceEur: 34, oneTime: false, quantity: false },
+  conversionOpportunityEngine: { name: "Conversion Opportunity Engine", category: "Conversion", description: "Repérez les pages à optimiser à partir des sessions et conversions GA4 mesurées.", priceEur: 12, oneTime: false, quantity: false },
   behavioralAI:         { name: "Behavioral AI",            category: "Conversion",   description: "Analyse comportementale et insights IA", priceEur: 44, oneTime: false, quantity: false },
   revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Opportunités de conversion observées; pertes financières uniquement si mesurées", priceEur: 29, oneTime: false, quantity: false },
   abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Variantes servies et résultats statistiques fondés sur des expositions réelles", priceEur: 24, oneTime: false, quantity: false },
@@ -442,6 +445,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // Test mode only opens this after a dedicated test price is configured below.
   "gbpPerformanceLeads",
   "localLandingOpportunities",
+  "conversionOpportunityEngine",
   // The Better Stack SLA endpoint exists and enforces requireAddon; the add-on
   // remains unavailable for purchase pending real QA certification.
   "slaMonitoring",
@@ -494,6 +498,12 @@ if (
   getStripeKey().startsWith("sk_test_")
 ) {
   COMING_SOON_ADDONS.delete("localLandingOpportunities");
+}
+if (
+  ADDON_PRICE_IDS_TEST.conversionOpportunityEngine &&
+  getStripeKey().startsWith("sk_test_")
+) {
+  COMING_SOON_ADDONS.delete("conversionOpportunityEngine");
 }
 
 /** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
