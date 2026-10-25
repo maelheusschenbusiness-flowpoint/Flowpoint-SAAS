@@ -118,7 +118,7 @@ export async function generateBehaviorInsights(orgId: string, siteUrl: string): 
         title: `${rageClicks.length} rage clicks détectés`,
         description: `Les utilisateurs cliquent frénétiquement sur des éléments non-interactifs. Page la plus touchée : ${worstPage?.[0] ?? "inconnue"}`,
         affectedPages: Object.keys(pageMap),
-        estimatedImpact: `-${Math.round(rageClicks.length * 0.3)}% conversion`,
+        estimatedImpact: `${rageClicks.length} rage clicks sur 7 jours (impact non chiffré)`,
         aiSuggestion: "Vérifiez que les CTAs sont cliquables et que les éléments visuellement interactifs déclenchent bien une action.",
       });
     }
@@ -132,7 +132,7 @@ export async function generateBehaviorInsights(orgId: string, siteUrl: string): 
         title: `${formAbandons.length} abandons de formulaire`,
         description: "Des utilisateurs abandonnent les formulaires en cours de saisie. Friction ou trop de champs requis.",
         affectedPages: [...new Set(formAbandons.map(e => e.page))],
-        estimatedImpact: `-${Math.round(formAbandons.length * 0.8)}% leads potentiels`,
+        estimatedImpact: `${formAbandons.length} abandons sur 7 jours (impact non chiffré)`,
         aiSuggestion: "Réduisez le formulaire à 3-5 champs. Ajoutez une barre de progression. Pré-remplissez les champs connus.",
       });
     }
@@ -147,7 +147,7 @@ export async function generateBehaviorInsights(orgId: string, siteUrl: string): 
         title: "Engagement faible — scroll < 30%",
         description: "La plupart des visiteurs partent sans lire le contenu principal. La proposition de valeur n'est pas visible above the fold.",
         affectedPages: [...new Set(lowScrollPages.map(e => e.page))],
-        estimatedImpact: "-15% à -25% engagement",
+        estimatedImpact: `${lowScrollPages.length} scrolls < 30 % sur 7 jours (impact non chiffré)`,
         aiSuggestion: "Remontez votre CTA principal. Ajoutez un résumé visuel en haut de page. Réduisez les distractions.",
       });
     }
@@ -171,6 +171,7 @@ export async function generateBehaviorInsights(orgId: string, siteUrl: string): 
     }
   } catch (err) {
     logger.error({ err }, "[Behavioral] Failed to generate insights");
+    throw err;
   }
 }
 
