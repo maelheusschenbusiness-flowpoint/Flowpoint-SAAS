@@ -105,6 +105,7 @@ describe("behavioral insight generation", () => {
     expect(mocks.recordCompletedUsageDeferred).toHaveBeenCalledOnce();
   });
 });
+
 describe("behavioral funnel evaluation", () => {
   const at = (seconds: number) => new Date(seconds * 1000);
   const event = (sessionId: string, eventType: string, seconds: number, page = "/") => ({
