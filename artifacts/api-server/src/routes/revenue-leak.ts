@@ -23,7 +23,7 @@ async function loadRevenueOpportunities(req: Request, siteUrl?: string) {
     siteClause = " AND site_url = $2";
   }
   const { rows } = await db(req)(
-    `SELECT page, session_id AS "sessionId", event_type AS "eventType",
+    `SELECT site_url AS "siteUrl", page, session_id AS "sessionId", event_type AS "eventType",
             scroll_depth AS "scrollDepth"
        FROM behavior_events
       WHERE org_id = $1${siteClause}
@@ -70,8 +70,8 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
     const opportunities = await loadRevenueOpportunities(req, siteUrl);
     res.json({
       ok: true, source: "behavior_events", windowDays: 30, opportunities,
-      observations: opportunities.map(({ page, eventType, observedEvents, affectedSessions, confidence }) =>
-        ({ page, eventType, observedEvents, affectedSessions, confidence })),
+      observations: opportunities.map(({ siteUrl, page, eventType, observedEvents, affectedSessions, confidence }) =>
+        ({ siteUrl, page, eventType, observedEvents, affectedSessions, confidence })),
       financial: { status: "unavailable", observedLoss: null, estimatedLoss: null, currency: null },
       noData: opportunities.length === 0,
     });

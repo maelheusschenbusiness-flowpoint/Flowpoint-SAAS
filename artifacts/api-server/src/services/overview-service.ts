@@ -58,7 +58,7 @@ export interface OverviewMetrics {
   gscClicks30d: number | null;
   /** Daily GSC clicks — null when GSC not connected */
   gscClicksHistory: Array<{ date: string; clicks: number }> | null;
-  /** Revenue opportunity in € from revenue_leaks — null when no leaks detected */
+  /** Measured EUR revenue opportunity; null when no verified attribution exists. */
   revenueOpportunity: number | null;
   /** Audits score<50 + monitors down + unresolved alert events */
   criticalIssues: number;
@@ -78,10 +78,10 @@ export interface OverviewMetrics {
   /** Local Pack position history — null when no data persisted yet */
   localPackHistory: Array<{ date: string; value: number }> | null;
   /**
-   * True once at least one revenue_leaks analysis has been run for this org.
-   * When false: no analysis run yet → display "Collecte en cours".
-   * When true + revenueOpportunity === null: analysis done, 0 € detected.
-   * When true + revenueOpportunity > 0: real opportunity detected.
+   * True when the org has behavioral events in the current 30-day window.
+   * When false: no recent behavioral data is available.
+   * When true + revenueOpportunity === null: no measured EUR amount is attributed.
+   * When true + revenueOpportunity > 0: a measured EUR opportunity is available.
    */
   revenueOpportunityAnalyzed: boolean;
 }
@@ -166,7 +166,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
         [orgId]
       ),
       pool.query(
-        `SELECT COUNT(*) as count, COALESCE(SUM(estimated_monthly_loss), 0) as total
+        `SELECT COUNT(*) as count,
+                COALESCE(SUM(estimated_monthly_loss) FILTER (
+                  WHERE metadata->>'financialClassification'='measured'
+                    AND metadata->>'currency'='EUR'
+                ), 0) as total
          FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId]
       ),
@@ -204,9 +208,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
          ORDER BY recorded_date DESC LIMIT 90`,
         [orgId]
       ).catch(() => ({ rows: [] as Array<{ date: string; value: string }> })),
-      // Revenue opportunity analyzed = any row exists in revenue_leaks (regardless of status)
+      // Revenue observations depend on recent behavioral events, not legacy estimated-loss rows.
       pool.query(
-        `SELECT 1 FROM revenue_leaks WHERE org_id=$1 LIMIT 1`,
+        `SELECT 1 FROM behavior_events
+          WHERE org_id=$1 AND created_at >= now() - interval '30 days'
+          LIMIT 1`,
         [orgId]
       ).catch(() => ({ rows: [] })),
     ]);
@@ -340,7 +346,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       ? Math.min(100, Math.round(20 + competitorCount * 15)) : null;
     const seoTrendDelta: number | null = prevScore > 0 && seoScore > 0 ? seoScore - prevScore : null;
 
-    // ── Revenue opportunity: real € from revenue_leaks ───────────────────────────
+    // ── Revenue opportunity: only verified EUR attribution from revenue_leaks ──
     const leakAmount         = Math.round(Number(leakRow?.total ?? 0));
     const revenueOpportunity = leakAmount > 0 ? leakAmount : null;
 
