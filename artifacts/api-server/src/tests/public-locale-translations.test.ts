@@ -20,6 +20,7 @@ function loadLocale(initialLanguage = "en") {
     title: "",
     documentElement: { lang: "" },
     addEventListener: () => undefined,
+    createTreeWalker: () => ({ nextNode: () => null }),
   };
   const localStorage = {
     getItem: (key: string) => key === "fp:language" ? storedLanguage : null,
@@ -45,9 +46,35 @@ describe("public English localization", () => {
 
     expect(window.fpPublicText("Local SEO basique")).toBe("Basic Local SEO");
     expect(window.fpPublicText("Achat unique")).toBe("One-time purchase");
+    expect(window.fpPublicText("Suivant")).toBe("Next");
     expect(window.fpPublicText("Facturation client")).toBe("Client billing");
     expect(window.fpPublicText("Analytics concurrents")).toBe("Competitor analytics");
     expect(window.fpPublicText("Support dédié <1h")).toBe("Dedicated support <1 hour");
+  });
+
+  it("translates carousel navigation aria-labels in English without changing French", () => {
+    const makeButton = () => {
+      const attributes = new Map([["aria-label", "Suivant"]]);
+      return {
+        nodeType: 1,
+        tagName: "BUTTON",
+        matches: () => true,
+        querySelectorAll: () => [],
+        getAttribute: (name: string) => attributes.get(name) ?? null,
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        readAttribute: (name: string) => attributes.get(name),
+      };
+    };
+
+    const english = loadLocale("en").window;
+    const englishButton = makeButton();
+    english.fpTranslatePublicSubtree(englishButton);
+    expect(englishButton.readAttribute("aria-label")).toBe("Next");
+
+    const french = loadLocale("fr").window;
+    const frenchButton = makeButton();
+    french.fpTranslatePublicSubtree(frenchButton);
+    expect(frenchButton.readAttribute("aria-label")).toBe("Suivant");
   });
 
   it("formats dates and numbers in English without changing the saved language", () => {
