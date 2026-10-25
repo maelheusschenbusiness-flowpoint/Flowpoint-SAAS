@@ -21,7 +21,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
-import { PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, ADDON_PRICE_IDS_TEST } from "../lib/plans.js";
 import { setStripeForTesting } from "../services/stripe-factory.js";
 
 vi.hoisted(() => {
@@ -29,6 +29,7 @@ vi.hoisted(() => {
   process.env["STRIPE_TEST_PRICE_ID_PRO"] = "price_ci_test_pro";
   process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"] = "price_ci_test_monitors10";
   process.env["STRIPE_TEST_PRICE_AI_50K"] = "price_ci_test_ai50k";
+  process.env["STRIPE_TEST_PRICE_AI_500K"] = "price_ci_test_ai500k";
 });
 
 vi.mock("../lib/logger.js", () => ({
@@ -222,6 +223,9 @@ beforeEach(() => {
   // prod; here we are in vitest, so force a test env for the injection).
   process.env["NODE_ENV"] = "test";
   process.env["STRIPE_TEST_KEY"] ||= "sk_test_dummy_for_tests";
+  // Le mode TEST refuse tout repli LIVE : l'add-on inclus dans Pro a besoin
+  // d'un prix TEST explicite pour que le devis anonyme soit calculable.
+  if (PRO_INCLUDED) ADDON_PRICE_IDS_TEST[PRO_INCLUDED] ||= "price_ci_test_pro_included";
   canonicalAnchorCustomer = null;
   setStripeForTesting(makeFakeStripe());
 });
