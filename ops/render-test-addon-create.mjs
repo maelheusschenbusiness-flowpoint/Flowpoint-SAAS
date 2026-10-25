@@ -453,7 +453,8 @@ async function main() {
     return emit({
       status: progress.length ? "partial_failure" : "failed",
       accountId: account.id,
-      writesPerformed: usedMethods.has("POST"),
+      writesAttempted: usedMethods.has("POST"),
+      writeOutcomeMayBeUnknown: usedMethods.has("POST"),
       completed: progress,
       rerunIsIdempotent: true,
       details: safeError(error)
@@ -478,7 +479,8 @@ async function main() {
 main().catch(error => {
   emit({
     status: "failed",
-    writesPerformed: usedMethods.has("POST"),
+    writesAttempted: usedMethods.has("POST"),
+    writeOutcomeMayBeUnknown: usedMethods.has("POST"),
     details: safeError(error)
   });
   process.exitCode = 1;
