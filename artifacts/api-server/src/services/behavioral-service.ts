@@ -126,7 +126,7 @@ export async function generateBehaviorInsights(
         title: `${rageClicks.length} rage clicks détectés`,
         description: `Les utilisateurs cliquent frénétiquement sur des éléments non-interactifs. Page la plus touchée : ${worstPage?.[0] ?? "inconnue"}`,
         affectedPages: Object.keys(pageMap),
-        estimatedImpact: `${rageClicks.length} événements observés`,
+        estimatedImpact: `${rageClicks.length} rage clicks sur ${safePeriod} jours (impact non chiffré)`,
         aiSuggestion: "Vérifiez que les CTAs sont cliquables et que les éléments visuellement interactifs déclenchent bien une action.",
       });
     }
@@ -140,7 +140,7 @@ export async function generateBehaviorInsights(
         title: `${formAbandons.length} abandons de formulaire`,
         description: "Des utilisateurs abandonnent les formulaires en cours de saisie. Friction ou trop de champs requis.",
         affectedPages: [...new Set(formAbandons.map(e => e.page))],
-        estimatedImpact: `${formAbandons.length} événements observés`,
+        estimatedImpact: `${formAbandons.length} abandons sur ${safePeriod} jours (impact non chiffré)`,
         aiSuggestion: "Réduisez le formulaire à 3-5 champs. Ajoutez une barre de progression. Pré-remplissez les champs connus.",
       });
     }
@@ -157,7 +157,7 @@ export async function generateBehaviorInsights(
         title: "Engagement faible — scroll < 30%",
         description: `${lowScrollPages.length} événements de profondeur de scroll inférieure à 30% ont été observés.`,
         affectedPages: [...new Set(lowScrollPages.map(e => e.page))],
-        estimatedImpact: `${lowScrollPages.length} événements observés`,
+        estimatedImpact: `${lowScrollPages.length} scrolls < 30 % sur ${safePeriod} jours (impact non chiffré)`,
         aiSuggestion: "Remontez votre CTA principal. Ajoutez un résumé visuel en haut de page. Réduisez les distractions.",
       });
     }

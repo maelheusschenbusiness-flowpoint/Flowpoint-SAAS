@@ -490,6 +490,14 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
 // every unmatched route that reaches this router (26+ route files mounted after it in index.ts).
 router.use("/behavioral", requireAddon("behavioralAI", "Behavioral AI"));
 
+async function siteBelongsToOrg(req: Request, orgId: string, siteUrl: string): Promise<boolean> {
+  const { rows } = await (req as OrgReq).orgDb(
+    `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
+    [orgId, siteUrl]
+  );
+  return rows.length > 0;
+}
+
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
@@ -500,11 +508,9 @@ router.get("/behavioral/insights", async (req: Request, res: Response) => {
       res.status(400).json({ error: "periodDays must be 7, 30, or 90" }); return;
     }
     const reqOrgId = (req as OrgReq).orgId ?? "default";
-    const { rows } = await (req as OrgReq).orgDb(
-      `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
-      [reqOrgId, siteUrl],
-    );
-    if (rows.length === 0) { res.status(404).json({ error: "Site not found" }); return; }
+    if (!(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
+      res.status(404).json({ error: "Site not found" }); return;
+    }
     const data = await getBehaviorInsights(reqOrgId, siteUrl, periodDays);
     res.json(data);
   } catch {
@@ -514,8 +520,7 @@ router.get("/behavioral/insights", async (req: Request, res: Response) => {
 
 router.post("/behavioral/funnels/analyze", async (req: Request, res: Response) => {
   const { siteUrl, steps } = req.body ?? {};
-  const periodRaw = req.body?.periodDays ?? 30;
-  const periodDays = Number(periodRaw);
+  const periodDays = Number(req.body?.periodDays ?? 30);
   if (typeof siteUrl !== "string" || !siteUrl.trim()) {
     res.status(400).json({ error: "siteUrl required" }); return;
   }
@@ -542,11 +547,9 @@ router.post("/behavioral/funnels/analyze", async (req: Request, res: Response) =
   }
   const orgId = (req as OrgReq).orgId ?? "default";
   try {
-    const { rows } = await (req as OrgReq).orgDb(
-      `SELECT 1 FROM behavior_site_tokens WHERE org_id=$1 AND site_url=$2 LIMIT 1`,
-      [orgId, siteUrl],
-    );
-    if (rows.length === 0) { res.status(404).json({ error: "Site not found" }); return; }
+    if (!(await siteBelongsToOrg(req, orgId, siteUrl))) {
+      res.status(404).json({ error: "Site not found" }); return;
+    }
     const result = await analyzeBehaviorFunnel(orgId, siteUrl, periodDays, normalizedSteps);
     res.json(result);
   } catch {
@@ -562,11 +565,9 @@ router.post("/behavioral/generate-insights", async (req: Request, res: Response)
   if (![7, 30, 90].includes(periodDays)) { res.status(400).json({ error: "periodDays must be 7, 30, or 90" }); return; }
   const reqOrgId = (req as OrgReq).orgId ?? "default";
   try {
-    const { rows } = await (req as OrgReq).orgDb(
-      `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
-      [reqOrgId, siteUrl],
-    );
-    if (rows.length === 0) { res.status(404).json({ error: "Site not found" }); return; }
+    if (!(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
+      res.status(404).json({ error: "Site not found" }); return;
+    }
     const userId = (req as Request & { userId?: string }).userId ?? "system";
     const result = await generateBehaviorInsights(reqOrgId, siteUrl, userId, periodDays);
     res.json({ ok: true, ...result });

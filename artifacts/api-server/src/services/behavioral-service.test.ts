@@ -1,15 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ insert: vi.fn(), execute: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  insert: vi.fn(),
+  execute: vi.fn(),
+  select: vi.fn(),
+  checkAIQuota: vi.fn(),
+  aiChat: vi.fn(),
+  recordCompletedUsageDeferred: vi.fn(),
+}));
 
 vi.mock("@workspace/db", () => ({
-  db: { insert: mocks.insert, execute: mocks.execute },
+  db: { insert: mocks.insert, execute: mocks.execute, select: mocks.select },
   behaviorEventsTable: {},
   behaviorSessionsTable: {},
   behaviorInsightsTable: {},
 }));
+vi.mock("./ai-engine.js", () => ({
+  checkAIQuota: mocks.checkAIQuota,
+  recordCompletedUsageDeferred: mocks.recordCompletedUsageDeferred,
+}));
+vi.mock("./ai-provider.js", () => ({ aiChat: mocks.aiChat }));
 
-import { evaluateBehaviorFunnel, summarizeBehaviorEvents, trackBehaviorEvent } from "./behavioral-service.js";
+import {
+  evaluateBehaviorFunnel, generateBehaviorInsights, summarizeBehaviorEvents, trackBehaviorEvent,
+} from "./behavioral-service.js";
 
 const event = {
   sessionId: "session-qa",
@@ -39,6 +53,58 @@ describe("behavioral event persistence", () => {
   });
 });
 
+describe("behavioral insight generation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.checkAIQuota.mockResolvedValue({ allowed: false });
+  });
+
+  function eventsQuery(rows: unknown[]) {
+    const limit = vi.fn().mockResolvedValue(rows);
+    const orderBy = vi.fn().mockReturnValue({ limit });
+    mocks.select.mockReturnValue({ from: () => ({ where: () => ({ orderBy, limit }) }) });
+  }
+
+  it("propagates a read failure instead of reporting success", async () => {
+    mocks.select.mockImplementation(() => { throw new Error("database unavailable"); });
+    await expect(generateBehaviorInsights("org-qa", "https://qa.example")).rejects.toThrow("database unavailable");
+  });
+
+  it("states measured evidence and no invented percentage impact", async () => {
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) });
+    mocks.insert.mockReturnValue({ values });
+    eventsQuery(Array.from({ length: 12 }, () => ({ eventType: "rage_click", page: "/pricing" })));
+
+    await generateBehaviorInsights("org-qa", "https://qa.example");
+
+    const row = values.mock.calls[0]![0];
+    expect(row.insightType).toBe("rage_clicks");
+    expect(row.estimatedImpact).toBe("12 rage clicks sur 7 jours (impact non chiffré)");
+    expect(row.estimatedImpact).not.toMatch(/-\d+%/);
+  });
+
+  it("uses only AI recommendations linked to measured signals and without invented figures", async () => {
+    mocks.checkAIQuota.mockResolvedValue({ allowed: true });
+    mocks.aiChat.mockResolvedValue({
+      text: JSON.stringify({ recommendations: [
+        { referenceId: "E1", priority: "high", action: "Rendez le bouton plus visible.", why: "Les clics répétés sont concentrés sur cette page." },
+        { referenceId: "E2", priority: "high", action: "Augmentez les ventes de 250%.", why: "Prédiction." },
+      ] }),
+      _ai: { model: "gpt-4o-mini", provider: "openai" },
+      usage: { promptTokens: 20, completionTokens: 15 },
+    });
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) });
+    mocks.insert.mockReturnValue({ values });
+    eventsQuery(Array.from({ length: 12 }, () => ({ eventType: "rage_click", page: "/pricing" })));
+
+    const result = await generateBehaviorInsights("org-qa", "https://qa.example");
+
+    expect(result).toEqual({ aiGenerated: true, count: 1 });
+    expect(values.mock.calls[0]![0].aiSuggestion).toContain("Rendez le bouton plus visible.");
+    expect(values.mock.calls[0]![0].aiSuggestion).not.toContain("250%");
+    expect(mocks.recordCompletedUsageDeferred).toHaveBeenCalledOnce();
+  });
+});
 describe("behavioral funnel evaluation", () => {
   const at = (seconds: number) => new Date(seconds * 1000);
   const event = (sessionId: string, eventType: string, seconds: number, page = "/") => ({
