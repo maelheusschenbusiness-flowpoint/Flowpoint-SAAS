@@ -1212,7 +1212,10 @@ function _fmtInvDate(v) {
 
 function exportInvoicesCsv() {
   const invoices = STATE.billing?.invoices?.length > 0
-    ? STATE.billing.invoices.map(inv => ({ id: inv.id||inv.number||'—', date: _fmtInvDate(inv.date||inv.created), plan: inv.plan||'—', amount: String(inv.amount||inv.total||0), status: inv.status||'—' }))
+    ? STATE.billing.invoices.map(inv => {
+        const amount = inv.amount ?? inv.total ?? inv.amount_paid ?? inv.amountPaid;
+        return { id: inv.id||inv.number||'—', date: _fmtInvDate(inv.date||inv.created), plan: inv.plan||'—', amount: amount == null || amount === '' ? '—' : String(amount), status: inv.status||'—' };
+      })
     : (PREVIEW_MODE ? [
         { id:'FP-2026-005', date:'01 Mai 2026', plan:'Pro', amount:'79', status:'Payée' },
         { id:'FP-2026-004', date:'01 Avr 2026', plan:'Pro', amount:'79', status:'Payée' },
@@ -2390,8 +2393,23 @@ async function loadData(options = {}) {
       }
     }).catch(() => {}),
     apiFetch('/api/revenue-leak').then(r => {
-      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.revenueLeak = r; }
-    }).catch(() => {}),
+      if (r && typeof r === 'object') {
+        if (!window.FP_DATA) window.FP_DATA = {};
+        const opportunities = Array.isArray(r.opportunities) ? r.opportunities : [];
+        window.FP_DATA.revenueLeak = {
+          ...r, _fromRealData: true, leaks: opportunities, opportunities,
+          financial: r.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+          noData: r.noData ?? opportunities.length === 0,
+        };
+      }
+    }).catch(() => {
+      if (!window.FP_DATA) window.FP_DATA = {};
+      window.FP_DATA.revenueLeak = {
+        _fromRealData: true, leaks: [], opportunities: [], summary: null,
+        financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
+      };
+    }),
     apiFetch('/api/review-intelligence').then(r => {
       if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.reviewIntelligence = r; }
     }).catch(() => {}),
@@ -2511,27 +2529,15 @@ async function loadData(options = {}) {
       recommendations: _iRecs,
     };
   }
-  // Revenue Leak Intelligence — computed from audits + monitors
+  // Revenue Leak — empty until the API supplies observed behavioral events.
   if (!window.FP_DATA.revenueLeak || !window.FP_DATA.revenueLeak._fromRealData) {
-    const _rlLeaks = [];
-    STATE.monitors.filter(m=>m.status==='down').forEach(m => {
-      const _uptime = (m.uptime != null) ? m.uptime : 99;
-      _rlLeaks.push({ id:'rl_mon_'+m.id, type:'availability', title:`Site DOWN : ${m.name}`, monthly:'Pertes directes en cours', severity:'critical', fix:"Résoudre l'incident immédiatement", url:m.url||'' });
-    });
-    STATE.audits.filter(a=>a.speed!=null&&a.speed<50).slice(0,5).forEach(a => {
-      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
-      _rlLeaks.push({ id:'rl_spd_'+a.id, type:'performance', title:`Vitesse critique : ${_d}`, monthly:`~${Math.round((100-a.speed)*15)}€/mois estimés perdus`, severity:'high', fix:'Optimiser images (WebP), activer le cache navigateur, passer à HTTP/2', url:a.url||'' });
-    });
-    STATE.audits.filter(a=>a.score<50).slice(0,5).forEach(a => {
-      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
-      _rlLeaks.push({ id:'rl_seo_'+a.id, type:'seo', title:`Score SEO critique : ${_d}`, monthly:'Trafic organique manqué', severity:'high', fix:'Corriger balises title/meta, liens cassés, contenu dupliqué', url:a.url||'' });
-    });
     window.FP_DATA.revenueLeak = {
       _fromRealData: true,
-      leaks: _rlLeaks,
-      summary: _rlLeaks.length > 0
-        ? { totalMonthly:`${_rlLeaks.length} fuite${_rlLeaks.length>1?'s':''} détectée${_rlLeaks.length>1?'s':''}`, topIssue: _rlLeaks[0]?.type||'performance' }
-        : null,
+      leaks: [],
+      opportunities: [],
+      summary: null,
+      financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+      noData: true,
     };
   }
 
@@ -8802,7 +8808,7 @@ function _fpSafeColor(v) {
     const aiInsights = _aiInsRaw
       ? _aiInsRaw.map(i=>({ pri:i.priority||i.pri||'high', icon:i.icon||'💡', cat:i.category||i.cat||'IA', title:i.title||'Insight IA', body:i.body||i.description||'', action:i.action||'Analyser' }))
       : (PREVIEW_MODE ? [
-          { pri: 'critical', icon: '🚨', cat: 'Conversion',  title: 'Perte revenue weekend confirmee',        body: 'Samedi et dimanche representent 0% de conversion malgre 22% du trafic mensuel. Impact estime : -800€/weekend. Cause probable : formulaire de contact ferme ou non visible en mobile.', action: 'Corriger le formulaire' },
+          { pri: 'high', icon: '⚠️', cat: 'Conversion', title: 'Exemple — friction de conversion', body: 'Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.', action: 'Corriger le formulaire' },
           { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
           { pri: 'high',     icon: '📍', cat: 'Local SEO',   title: 'Opportunite Maps non capturee',          body: 'Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.',              action: 'Renforcer GBP'           },
           { pri: 'high',     icon: '🔗', cat: 'Trafic',      title: 'Declin referents accelere',              body: 'Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.',             action: 'Analyser les referents'  },
@@ -9959,7 +9965,7 @@ function renderBilling() {
     }
     // fallback canonical (identique au backend)
     return [
-      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h','White-label'], locked:['API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
+      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h','White-label de l’espace'], locked:['API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
       { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h','White-label'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
       { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['1000 audits','300 monitors','1000 rapports PDF','10 utilisateurs','∞ AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','SLA 99.9%','SSO SAML','White-label portail'], locked:[], limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
     ];
@@ -10780,8 +10786,8 @@ function renderBilling() {
 
     return `
       ${aiBlock(
-        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (${fpAddonPriceLabel('aiForecasting')}) peut améliorer votre planification growth. <strong>Local Presence Optimizer</strong> aide à prioriser les informations manquantes sur vos fiches Google Business Profile.`,
-        ['Ajouter AI Forecasting', 'Voir Local Presence Optimizer', 'Voir ROI des add-ons']
+        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Consultez le catalogue pour voir les modules réellement disponibles avec votre offre; les modules indisponibles ou à venir ne sont pas proposés ici.`,
+        ['Voir les add-ons disponibles', 'Voir mon forfait', 'Voir ROI des add-ons']
       )}
 
       <div class="fp-stat-row fp-mb-20">
@@ -10855,7 +10861,10 @@ function renderBilling() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'invoices') {
     const invoices = STATE.billing?.invoices?.length > 0
-      ? STATE.billing.invoices.map(inv => ({ id:inv.id||inv.number||'—', date:_fmtInvDate(inv.date||inv.created), amount:String(inv.amount||inv.total||0), plan:inv.plan||plan, addons:inv.addons||inv.description||'—', status:inv.status||'—', color:inv.status==='failed'?'#ef4444':'#22c55e', pdfUrl:inv.pdfUrl||null, hostedUrl:inv.hostedUrl||inv.hosted_invoice_url||null }))
+      ? STATE.billing.invoices.map(inv => {
+          const amount = inv.amount ?? inv.total ?? inv.amount_paid ?? inv.amountPaid;
+          return { id:inv.id||inv.number||'—', date:_fmtInvDate(inv.date||inv.created), amount:amount == null || amount === '' ? '—' : String(amount), plan:inv.plan||plan, addons:inv.addons||inv.description||'—', status:inv.status||'—', color:inv.status==='failed'?'#ef4444':'#22c55e', pdfUrl:inv.pdfUrl||null, hostedUrl:inv.hostedUrl||inv.hosted_invoice_url||null };
+        })
       : (PREVIEW_MODE ? [
           { id:'FP-2026-051', date:'01/05/2026', amount:'79.00', plan:'Pro', addons:'29€ Priority Support + 19€ Monitors Pack', status:'Payée',   color:'#22c55e' },
           { id:'FP-2026-041', date:'01/04/2026', amount:'79.00', plan:'Pro', addons:'29€ Priority Support + 19€ Monitors Pack', status:'Payée',   color:'#22c55e' },
@@ -10947,7 +10956,7 @@ function renderBilling() {
                 <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(inv.date ? fmtDate(inv.date) : "—")}</td>
                 <td style="text-align:center">${badge(inv.plan, '#2563EB')}</td>
                 <td style="text-align:center;font-size:10px;color:var(--fp-text-faint);max-width:180px">${escHtml(inv.addons)}</td>
-                <td style="text-align:center;font-weight:800;font-family:var(--fp-font-mono)">${escHtml(inv.amount)}€</td>
+                <td style="text-align:center;font-weight:800;font-family:var(--fp-font-mono)">${inv.amount === '—' ? '—' : `${escHtml(inv.amount)}€`}</td>
                 <td style="text-align:center">${badge(inv.status, inv.status === 'Payée' ? '#22c55e' : '#ef4444')}</td>
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
@@ -18954,6 +18963,13 @@ function bindGlobalEvents() {
   // keeps every supported language deterministic across rerenders; user content
   // is deliberately left untouched when it has no UI-key match.
   var FP_I18N_EN = {
+    "Performances GBP indisponibles": "GBP performance data is unavailable",
+    "AI GBP Posting nécessite un accès actif à cette option. Vérifiez votre forfait ou vos droits.": "AI GBP Posting requires active access. Check your plan or permissions.",
+    "Posts GBP indisponibles": "GBP posts are unavailable",
+    "Accès aux posts GBP refusé. Vérifiez votre forfait ou vos droits.": "Access to GBP posts was denied. Check your plan or permissions.",
+    "Posts GBP indisponibles pour le moment.": "GBP posts are temporarily unavailable.",
+    "Chargement des posts…": "Loading posts…",
+    "White-label de l’espace": "Workspace white-label branding",
     "Sites critiques à corriger": "Critical sites to fix",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Some sites have an SEO score below 50/100. Fix missing tags and mobile speed first.",
     "À prioriser": "To prioritize",
@@ -56904,6 +56920,7 @@ function renderConversion() {
     const _rlData = window.FP_DATA && window.FP_DATA.revenueLeak;
     const leaks = (_rlData?.opportunities || []).map(l => ({
       page: l.page || 'Page',
+      siteUrl: l.siteUrl || '',
       issue: `${l.recommendation || ''} ${l.observedEvents || 0} événements sur ${l.affectedSessions || 0} sessions.`,
       events: Number(l.observedEvents || 0),
       sessions: Number(l.affectedSessions || 0),
@@ -56939,7 +56956,7 @@ function renderConversion() {
             return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border-left:3px solid ${sc};background:${sc}08">
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${sc}20;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:${sc}">${i + 1}</div>
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(l.page)}</div>
+                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${l.siteUrl ? `${escHtml(l.siteUrl)} · ` : ''}${escHtml(l.page)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.issue)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${l.events} événements · ${l.sessions} sessions · confiance ${escHtml(l.confidence)} · source behavior_events</div>
               </div>
@@ -57252,36 +57269,20 @@ function renderConversion() {
         </div>
         ${(function() {
           const _realLeaks = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.leaks;
-          const _icons = { slow_page:'⏱️', dead_cta:'📢', abandoned_cart:'🛒', friction:'📱', no_cta:'📝' };
           if (_realLeaks && _realLeaks.length > 0) {
             return _realLeaks.slice(0, 4).map(l => {
-              const lc = (l.impactScore||0) >= 75 ? '#ef4444' : '#f59e0b';
-              const lossStr = l.monthlyLoss ? l.monthlyLoss.toLocaleString(getLocale()) + '€/mois' : '—';
+              const lc = '#f59e0b';
               return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                 <div style="display:flex;align-items:center;gap:8px">
                   <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
                   <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||'Fuite détectée')}</span>
                 </div>
-                <span style="font-size:12px;font-weight:800;color:${lc}">-${lossStr}</span>
+                <span style="font-size:11px;color:var(--fp-text-muted)">Revenu non mesuré</span>
               </div>`;
             }).join('');
           }
           if (PREVIEW_MODE) {
-            return [
-              { page: "Formulaire (8 champs)",  loss: "1 890€/mois", urg: "critical" },
-              { page: "CTA tarifs invisible",   loss: "1 240€/mois", urg: "critical" },
-              { page: "Vitesse mobile 3.2s",    loss: "820€/mois",   urg: "high"     },
-              { page: "Pas de preuves sociales",loss: "630€/mois",   urg: "high"     },
-            ].map(l => {
-              const lc = l.urg === "critical" ? "#ef4444" : "#f59e0b";
-              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
-                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.page)}</span>
-                </div>
-                <span style="font-size:12px;font-weight:800;color:${lc}">-${escHtml(l.loss)}</span>
-              </div>`;
-            }).join('');
+            return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.</div>`;
           }
           return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
         })()}
@@ -69403,12 +69404,26 @@ window.FP_GBP_API = {
         performance: null,
       };
       if (STATE.gbp?.locations?.length && !STATE.gbp.performance) {
-        const perfData = await apiFetch('/api/google/performance').catch(() => null);
-        if (perfData?.ok) STATE.gbp.performance = perfData.data || null;
+        const perfData = await this.getPerformance().catch(e => {
+          console.warn('[FP_GBP_API] performance unavailable:', e);
+          return null;
+        });
+        if (perfData?.ok) STATE.gbp.performance = perfData;
       }
     } catch(e) {
       console.warn('[FP_GBP_API] load error:', e);
       STATE.gbp = { connected: false };
+    }
+  },
+
+  async getPerformance() {
+    try {
+      const data = await apiFetch('/api/gbp-performance');
+      if (data?.ok && STATE.gbp) STATE.gbp.performance = data;
+      return data;
+    } catch (error) {
+      if (STATE.gbp) STATE.gbp.performance = null;
+      return { ok: false, status: Number(error?.status) || 0, code: error?.code || '', error: error?.message || fpT('Performances GBP indisponibles') };
     }
   },
 
@@ -70692,20 +70707,30 @@ window.FP_REVENUE_LEAK_API = {
   async load(siteUrl) {
     try {
       const url = siteUrl ? `/api/revenue-leak?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/revenue-leak';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const data = await apiFetch(url);
+      if (!data || data.ok === false) throw new Error('Les événements comportementaux sont indisponibles.');
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.revenueLeak = {
+        _fromRealData: true,
         leaks:          data.opportunities || [],
         opportunities:  data.opportunities || [],
         summary:        data.summary       || null,
-        trafficLosses:  data.trafficLosses || data.failures || [],
-        conversionFails:data.conversionFailures || [],
+        financial:      data.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        windowDays:     data.windowDays || 30,
         isEmpty:        data.noData        ?? (!(data.opportunities && data.opportunities.length)),
+        noData:         data.noData        ?? (!(data.opportunities && data.opportunities.length)),
         emptyReason:    data.error         || null,
         error:          data.error         || null,
       };
-    } catch(e) { console.warn('[FP_REVENUE_LEAK_API] load error:', e); }
+    } catch(e) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.revenueLeak = {
+        _fromRealData: true, leaks: [], opportunities: [], summary: null,
+        financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
+      };
+      console.warn('[FP_REVENUE_LEAK_API] load error:', e);
+    }
   },
 
   async detect(siteUrl) {
@@ -70715,7 +70740,11 @@ window.FP_REVENUE_LEAK_API = {
       const r = await apiFetch('/api/revenue-leak/detect', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.revenueLeak = { leaks: r.opportunities || [], opportunities: r.opportunities || [], error: r.error || null };
+        window.FP_DATA.revenueLeak = {
+          _fromRealData: true, leaks: r.opportunities || [], opportunities: r.opportunities || [],
+          financial: r.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+          noData: r.noData ?? !(r.opportunities || []).length, error: r.error || null,
+        };
         render();
         showToast('success', `${(r.opportunities||[]).length} opportunités observées`);
       } else showToast('error', r?.error || 'Erreur');
@@ -71491,13 +71520,27 @@ document.addEventListener('submit', async event => {
 
 window.FP_GBP_POSTS_API = {
   async load() {
+    window._fpGbpPostsError = null;
     try {
-      const data = await apiFetch('/api/gbp-posts').catch(()=>null);
-      if (!data) return null;
+      const data = await apiFetch('/api/gbp-posts');
+      if (!data || data.ok === false) {
+        const error = new Error(data?.error || fpT('Posts GBP indisponibles'));
+        error.status = Number(data?.status) || (data?.code === 'ADDON_REQUIRED' ? 403 : 0);
+        error.code = data?.code || '';
+        throw error;
+      }
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.gbpPosts = { ...data, loadedAt: Date.now() };
       return data;
-    } catch(e) { console.warn('[FP_GBP_POSTS_API]', e); }
+    } catch(e) {
+      window._fpGbpPostsError = {
+        status: Number(e?.status) || 0,
+        code: String(e?.code || ''),
+        message: e?.message || fpT('Posts GBP indisponibles'),
+      };
+      console.warn('[FP_GBP_POSTS_API]', e);
+      return null;
+    }
   },
   async createPost(data) {
     return await apiFetch('/api/gbp-posts', { method:'POST', body: JSON.stringify(data) });
@@ -72273,7 +72316,12 @@ window._fpRenderGBPPostsPanel = function() {
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenGBPPostComposer()">Créer un post</button>
       </div>
     </div>
-    ${!data ? `<div style="font-size:12px;color:var(--fp-text-muted)">${window._fpGbpPostsLoaded ? 'Posts indisponibles pour ce compte ou cette offre.' : 'Chargement des posts…'}</div>` :
+    ${!data ? `<div role="status" aria-live="polite" style="font-size:12px;color:var(--fp-text-muted)">
+      ${window._fpGbpPostsLoaded
+        ? `<p>${fpT(window._fpGbpPostsError?.status === 403 ? 'Accès aux posts GBP refusé. Vérifiez votre forfait ou vos droits.' : 'Posts GBP indisponibles pour le moment.')}</p>
+           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpReloadGBPPosts()">${fpT('Réessayer')}</button>`
+        : fpT('Chargement des posts…')}
+    </div>` :
       `<div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="fp-btn ${window._fpGbpPostsView !== 'history' ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._fpSetGbpPostsView('calendar')">Calendrier</button>
         <button class="fp-btn ${window._fpGbpPostsView === 'history' ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._fpSetGbpPostsView('history')">Historique et brouillons</button>
@@ -72474,7 +72522,13 @@ window._fpGenerateGBPPost = async function() {
     }
     const previewContent = document.querySelector('#fp-gbp-post-preview [data-preview-content]');
     if (previewContent) previewContent.textContent = content;
-  } catch (error) { showToast('error', String(error?.message || error)); }
+  } catch (error) {
+    if (Number(error?.status) === 403 || error?.code === 'ADDON_REQUIRED') {
+      showToast('warning', fpT('AI GBP Posting nécessite un accès actif à cette option. Vérifiez votre forfait ou vos droits.'));
+    } else {
+      showToast('error', String(error?.message || error));
+    }
+  }
 };
 
 window._fpSaveGBPPost = async function() {

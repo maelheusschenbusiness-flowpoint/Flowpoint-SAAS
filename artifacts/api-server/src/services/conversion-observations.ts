@@ -1,4 +1,5 @@
 export type ConversionEvent = {
+  siteUrl?: unknown;
   page: unknown;
   sessionId: unknown;
   eventType: unknown;
@@ -6,6 +7,7 @@ export type ConversionEvent = {
 };
 
 export type ConversionObservation = {
+  siteUrl: string | null;
   page: string;
   eventType: string;
   observedEvents: number;
@@ -26,12 +28,13 @@ const recommendations: Record<string, string> = {
 export function deriveConversionObservations(events: ConversionEvent[]): ConversionObservation[] {
   const groups = new Map<string, { count: number; sessions: Set<string> }>();
   for (const event of events) {
+    const siteUrl = String(event.siteUrl ?? "").trim();
     const page = String(event.page ?? "").trim();
     let eventType = String(event.eventType ?? "");
     if ((eventType === "scroll" || eventType === "scroll_depth") && Number(event.scrollDepth) < 30) eventType = "low_scroll";
     if (eventType === "session_end") eventType = "exit";
     if (!page || !recommendations[eventType]) continue;
-    const key = `${page}\u0000${eventType}`;
+    const key = JSON.stringify([siteUrl, page, eventType]);
     const group = groups.get(key) ?? { count: 0, sessions: new Set<string>() };
     group.count += 1;
     const sessionId = String(event.sessionId ?? "");
@@ -40,9 +43,10 @@ export function deriveConversionObservations(events: ConversionEvent[]): Convers
   }
   return [...groups.entries()]
     .map(([key, group]) => {
-      const [page, eventType] = key.split("\u0000") as [string, string];
+      const [siteUrl, page, eventType] = JSON.parse(key) as [string, string, string];
       const affectedSessions = group.sessions.size;
       return {
+        siteUrl: siteUrl || null,
         page,
         eventType,
         observedEvents: group.count,

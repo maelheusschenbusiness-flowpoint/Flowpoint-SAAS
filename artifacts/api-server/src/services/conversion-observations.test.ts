@@ -13,6 +13,8 @@ describe("conversion observations", () => {
       affectedSessions: 12, confidence: "medium", source: "behavior_events",
     });
     expect(item?.recommendation).toContain("formulaire");
+    expect(item).not.toHaveProperty("estimatedMonthlyLoss");
+    expect(item).not.toHaveProperty("impactScore");
   });
 
   it("maps shallow scroll to an actionable observation and ignores empty pages", () => {
@@ -20,6 +22,15 @@ describe("conversion observations", () => {
       { page: "/home", sessionId: "s1", eventType: "scroll", scrollDepth: 20 },
       { page: "", sessionId: "s2", eventType: "exit" },
     ])).toMatchObject([{ eventType: "low_scroll", affectedSessions: 1, confidence: "low" }]);
+  });
+
+  it("keeps identical page paths separate across sites", () => {
+    const observations = deriveConversionObservations([
+      { siteUrl: "https://one.example", page: "/checkout", sessionId: "s1", eventType: "form_abandon" },
+      { siteUrl: "https://two.example", page: "/checkout", sessionId: "s2", eventType: "form_abandon" },
+    ]);
+    expect(observations).toHaveLength(2);
+    expect(observations.map(item => item.siteUrl)).toEqual(["https://one.example", "https://two.example"]);
   });
 });
 

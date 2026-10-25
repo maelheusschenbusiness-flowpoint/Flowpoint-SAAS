@@ -577,6 +577,7 @@ function buildLineItems(
 
   /* Plan */
   const planPriceId = getPlanPriceId(plan);
+  if (plan && !planPriceId) throw new Error("MISSING_PRICE_ID");
   if (planPriceId) subscriptionItems.push({ price: planPriceId, quantity: 1 });
 
   /* Resolve the Stripe key once so getAddonPriceId() can prefer test-mode overrides */
@@ -587,8 +588,9 @@ function buildLineItems(
     if (!addons[key]) continue;
     if (included.has(key)) continue; /* skip included */
     if (AI_CREDIT_PACKS.has(key)) continue;
-    const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
-    if (priceId) subscriptionItems.push({ price: priceId, quantity: 1 });
+    const priceId = getAddonPriceId(key, _stripeKeyForPrices);
+    if (!priceId) throw new Error("MISSING_PRICE_ID");
+    subscriptionItems.push({ price: priceId, quantity: 1 });
   }
 
   /* Qty add-ons */
@@ -597,11 +599,13 @@ function buildLineItems(
     if (qty <= 0) continue;
     if (AI_CREDIT_PACKS.has(key)) {
       /* One-time */
-      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
-      if (priceId) oneTimeItems.push({ price: priceId, quantity: qty });
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices);
+      if (!priceId) throw new Error("MISSING_PRICE_ID");
+      oneTimeItems.push({ price: priceId, quantity: qty });
     } else {
-      const priceId = getAddonPriceId(key, _stripeKeyForPrices) ?? ADDON_PRICE_IDS[key];
-      if (priceId) subscriptionItems.push({ price: priceId, quantity: qty });
+      const priceId = getAddonPriceId(key, _stripeKeyForPrices);
+      if (!priceId) throw new Error("MISSING_PRICE_ID");
+      subscriptionItems.push({ price: priceId, quantity: qty });
     }
   }
 
@@ -751,7 +755,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
   /* Require plan unless it's a pure addon/credits purchase */
   const planKey     = plan.toLowerCase();
-  const hasPlan     = !!PLAN_PRICE_IDS[planKey];
+    const hasPlan     = !!getPlanPriceId(planKey);
   const addonKeys   = Object.keys(addons).filter(k => addons[k]);
   const hasOnlyAICr = addonKeys.length > 0 && addonKeys.every(k => AI_CREDIT_PACKS.has(k));
 
@@ -1383,7 +1387,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   }
 
   const planKey  = plan.toLowerCase();
-  const hasPlan  = !!PLAN_PRICE_IDS[planKey];
+  const hasPlan  = !!getPlanPriceId(planKey);
   /* NOT amountDueTodayMinor: the plan is due today when there is no trial, but
      it is invoiced by its own subscription at creation. Collecting it here too
      would debit the first month twice. Zero falls through to a SetupIntent. */
@@ -2071,7 +2075,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       ? Math.max(0, Math.min(90, Math.round(Number(_rawIntentTrialDays))))
       : 14;
 
-    if (!PLAN_PRICE_IDS[planKey]) {
+    if (!getPlanPriceId(planKey)) {
       /* ── Add-on-only / AI-credits-only cart (no plan change) ────────────────
          The dashboard sends subscribed users here with plan:"" — their existing
          subscription is untouched. The PaymentIntent already charged month 1
@@ -2083,7 +2087,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
              and grant nothing.                                                */
       const _aoKeys = Object.keys(addonsResolved).filter(k => addonsResolved[k]);
       const _aoCreditPacks = _aoKeys.filter(k => AI_CREDIT_PACKS.has(k));
-      const _aoRecurring   = _aoKeys.filter(k => !AI_CREDIT_PACKS.has(k) && ADDON_PRICE_IDS[k]);
+      const _aoRecurring   = _aoKeys.filter(k => !AI_CREDIT_PACKS.has(k) && getAddonPriceId(k));
 
       if (_aoKeys.length === 0) {
         logger.info({ planKey }, "[PublicBilling] finalize: empty cart, nothing to provision");
@@ -2162,7 +2166,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           await stripe.paymentMethods.attach(paymentMethodId!, { customer: _aoCustomerId }).catch(() => {});
 
           const _aoItems = _aoRecurring.map(k => ({
-            price: ADDON_PRICE_IDS[k]!,
+            price: getAddonPriceId(k)!,
             quantity: typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1,
           }));
 

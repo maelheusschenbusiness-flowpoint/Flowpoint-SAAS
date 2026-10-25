@@ -23,7 +23,7 @@ async function loadRevenueOpportunities(req: Request, siteUrl?: string) {
     siteClause = " AND site_url = $2";
   }
   const { rows } = await db(req)(
-    `SELECT page, session_id AS "sessionId", event_type AS "eventType",
+    `SELECT site_url AS "siteUrl", page, session_id AS "sessionId", event_type AS "eventType",
             scroll_depth AS "scrollDepth"
        FROM behavior_events
       WHERE org_id = $1${siteClause}
@@ -55,7 +55,10 @@ async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response):
     }
     return true;
   } catch {
-    res.status(404).json({ error: "Site not found" });
+    // A scoped lookup failure is not evidence that the site is missing.
+    // Return the same generic service error for DB and other infrastructure
+    // failures without disclosing whether a site exists in another org.
+    res.status(503).json({ error: "Site ownership could not be verified. Please retry." });
     return false;
   }
 }
@@ -70,8 +73,8 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
     const opportunities = await loadRevenueOpportunities(req, siteUrl);
     res.json({
       ok: true, source: "behavior_events", windowDays: 30, opportunities,
-      observations: opportunities.map(({ page, eventType, observedEvents, affectedSessions, confidence }) =>
-        ({ page, eventType, observedEvents, affectedSessions, confidence })),
+      observations: opportunities.map(({ siteUrl, page, eventType, observedEvents, affectedSessions, confidence }) =>
+        ({ siteUrl, page, eventType, observedEvents, affectedSessions, confidence })),
       financial: { status: "unavailable", observedLoss: null, estimatedLoss: null, currency: null },
       noData: opportunities.length === 0,
     });
@@ -83,7 +86,6 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
 router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
-  const orgId = (req as OrgReq).orgId ?? "default";
   const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
   if (!owned) return;
   try {

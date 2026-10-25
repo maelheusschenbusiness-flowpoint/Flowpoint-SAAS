@@ -184,8 +184,7 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 
 /**
  * Returns the correct Stripe price ID for an add-on, respecting test-mode overrides.
- * In test mode (sk_test_ key active) → prefer ADDON_PRICE_IDS_TEST[key].
- * In live mode or when no test override exists → fall back to ADDON_PRICE_IDS[key].
+ * In test mode, missing TEST price IDs fail closed; LIVE IDs are never a fallback.
  */
 /**
  * Identifiant de prix Stripe du PLAN, conscient du mode.
@@ -204,26 +203,26 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
  */
 export function getPlanPriceId(plan: string, stripeKey?: string): string | undefined {
   const key = String(plan ?? "").toLowerCase();
-  const activeKey = stripeKey ?? getStripeKey();
-  const isTestMode = activeKey.startsWith("sk_test_");
-  if (isTestMode && PLAN_PRICE_IDS_TEST[key]) return PLAN_PRICE_IDS_TEST[key];
+  const activeKey = stripeKey ?? getStripeKey() ?? "";
+  const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
+  if (testModeRequested) {
+    if (stripeKey && !stripeKey.startsWith("sk_test_")) return undefined;
+    return PLAN_PRICE_IDS_TEST[key] || undefined;
+  }
+  if (activeKey.startsWith("sk_test_")) {
+    return PLAN_PRICE_IDS_TEST[key] || undefined;
+  }
   return PLAN_PRICE_IDS[key] || undefined;
 }
 
 /**
- * Les plans dont le prix, en mode test, retombe sur l'identifiant LIVE.
+ * Les plans sans identifiant de prix TEST configuré.
  *
- * MESURE DU 18/10/2026 sur `flowpoint-test`, qui tourne en mode test :
- * `GET /api/billing/plans` renvoyait pour `pro` et `ultra` exactement les
- * identifiants live de `PLAN_PRICE_IDS`. Stripe refuse ces prix avec une cle
- * `sk_test_` — « No such price … a similar object exists in live mode » — donc
- * la creation d'une session Checkout echoue pour ces deux plans, et seul
- * `standard` fonctionne.
+ * Un prix LIVE ne doit jamais servir de repli en mode TEST. En l'absence de prix
+ * TEST, getPlanPriceId() renvoie undefined et les parcours payants échouent
+ * explicitement avant de créer une session ou un abonnement.
  *
- * Le repli sur le prix live est un choix assume (voir `getPlanPriceId` et
- * `plan-price-mode.test.ts`) : mieux vaut un prix que Stripe refuse qu'un
- * `undefined` silencieux. Mais rien ne le signalait avant l'echec cote Stripe.
- * Cette fonction le rend visible, et nomme la variable a poser.
+ * Cette fonction rend les variables manquantes visibles pour le diagnostic.
  */
 export interface PlanAuPrixLive {
   plan: string;
@@ -249,8 +248,15 @@ export function plansRepliantSurPrixLive(stripeKey?: string): PlanAuPrixLive[] {
 }
 
 export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
-  const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
-  if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];
+  const activeKey = stripeKey ?? getStripeKey() ?? "";
+  const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
+  if (testModeRequested) {
+    if (stripeKey && !stripeKey.startsWith("sk_test_")) return undefined;
+    return ADDON_PRICE_IDS_TEST[key] || undefined;
+  }
+  if (activeKey.startsWith("sk_test_")) {
+    return ADDON_PRICE_IDS_TEST[key] || undefined;
+  }
   return ADDON_PRICE_IDS[key] || undefined;
 }
 
