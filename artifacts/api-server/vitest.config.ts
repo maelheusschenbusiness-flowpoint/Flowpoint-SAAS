@@ -79,6 +79,7 @@ export default defineConfig({
       "src/tests/growth-facts.test.ts",
       // CRO observed-event recommendations and real A/B sample statistics.
       "src/services/conversion-observations.test.ts",
+      "src/routes/revenue-leak-ownership.test.ts",
       // Keep behavioral session identity stable for real experiment assignments.
       "src/services/behavioral-session-id.test.ts",
       "src/services/behavioral-service.test.ts",
