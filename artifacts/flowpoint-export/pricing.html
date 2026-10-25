@@ -460,7 +460,7 @@
   <h2 class="fp-section-title">Personnalisez avec des add-ons</h2>
   <p class="fp-section-sub">Activez uniquement ce dont vous avez besoin — facturé immédiatement par Stripe, annulable à tout moment.</p>
 
-  <div class="fp-addons-grid" id="fp-addons-grid">
+  <div class="fp-addons-grid" id="fp-addons-grid" data-catalog-state="loading" style="display:none">
 
     <!-- ── 8 add-ons toujours visibles ── -->
 
@@ -785,9 +785,9 @@
   </div>
 
   <div class="fp-show-more-wrap">
-    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()">
+    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()" hidden>
       <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
-      <span id="fp-addon-label">Voir tous les add-ons (24 de plus)</span>
+      <span id="fp-addon-label">Chargement du catalogue…</span>
     </button>
   </div>
 </section>
@@ -1231,16 +1231,126 @@
     return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20AC';
   }
 
+  function _fpAddonKeyForButton(btn) {
+    if (!btn) return "";
+    if (btn.dataset && btn.dataset.addonKey) return btn.dataset.addonKey;
+    var match = (btn.getAttribute("onclick") || "").match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+    return match ? match[1] : "";
+  }
+  function _fpAddonButtons() {
+    return document.querySelectorAll("button.fp-addon-btn[data-addon-key],button.fp-addon-btn[onclick*=\"addToCart\"]");
+  }
+  function _fpFindAddonButton(key) {
+    var buttons = _fpAddonButtons();
+    for (var i = 0; i < buttons.length; i++) {
+      if (_fpAddonKeyForButton(buttons[i]) === key) return buttons[i];
+    }
+    return null;
+  }
+  function _fpEscapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
+    });
+  }
+  function _fpRenderAddonCards(cat) {
+    var grid = document.getElementById("fp-addons-grid");
+    if (!grid) throw new Error("Conteneur des add-ons introuvable");
+
+    var featuredKeys = [
+      "gbpPerformanceLeads", "localPresenceOptimizer", "localLandingOpportunities",
+      "conversionOpportunityEngine", "seoChangeImpact", "agencyPortfolioPriorities",
+      "technicalSeoFixVerification", "organicCampaignTracker"
+    ];
+    var icons = {
+      monitorsPack10: "📡", monitorsPack50: "📡", globalMonitoring: "🌍",
+      slaMonitoring: "🛡️", advancedSeoLab: "🔬", keywordDomination: "🚀",
+      backlinkIntelligence: "🔗", aiContentStrategist: "📉",
+      gbpPerformanceLeads: "📊", localPresenceOptimizer: "📍",
+      localLandingOpportunities: "🗺️", conversionOpportunityEngine: "🎯",
+      seoChangeImpact: "↕️", agencyPortfolioPriorities: "🗂️",
+      technicalSeoFixVerification: "🛠️", organicCampaignTracker: "📈",
+      aiGbpPosting: "🤖", aiCro: "📈", behavioralAI: "🧠",
+      revenueLeak: "💸", whiteLabel: "🎨", agencyPacks: "📦",
+      aiExecutiveReport: "📊", aiForecasting: "🔮", marketIntelligence: "🌐",
+      extraSeats: "👥", retention90d: "🗄️", retention365d: "🗄️",
+      crmIntegration: "🏢", customDomain: "🌐", ssoEnterprise: "🔑",
+      aiWorkspaceLaunch: "🤖", auditsPack200: "🔎", auditsPack1000: "🔎",
+      pdfPack200: "📄", exportsPack1000: "📦"
+    };
+    var monthly = cat.addons.filter(function (addon) { return !addon.oneTime; });
+    monthly.sort(function (a, b) {
+      var ai = featuredKeys.indexOf(a.key);
+      var bi = featuredKeys.indexOf(b.key);
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      return cat.addons.indexOf(a) - cat.addons.indexOf(b);
+    });
+    var html = monthly.map(function (addon, index) {
+      var key = _fpEscapeHtml(addon.key);
+      var name = _fpEscapeHtml(addon.name);
+      var description = _fpEscapeHtml(addon.description);
+      var icon = icons[addon.key] || "✦";
+      var quantity = !!addon.quantity;
+      var soon = addon.availability === "coming_soon";
+      var unit = quantity ? " / pack / mois" : " / mois";
+      var savedQuantity = quantity && _cart && _cart.addons
+        ? (_cart.addons[addon.key] === true ? 1 : Number(_cart.addons[addon.key]))
+        : 1;
+      var qtyValue = Math.max(1, Math.min(20, Math.floor(savedQuantity || 1)));
+      var actions = quantity
+        ? '<div class="fp-addon-qty">' +
+            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="-1" data-addon-key="' + key + '" aria-label="Réduire la quantité de ' + name + '">−</button>' +
+            '<input id="qty-' + key + '" class="fp-addon-qty-input" type="number" value="' + qtyValue + '" min="1" max="20" readonly aria-label="Quantité de ' + name + '">' +
+            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="1" data-addon-key="' + key + '" aria-label="Augmenter la quantité de ' + name + '">+</button>' +
+          '</div>'
+        : "";
+      var button = soon
+        ? '<button type="button" class="fp-addon-btn fp-addon-btn-soon" data-addon-key="' + key + '" disabled>🚧 Bientôt disponible</button>'
+        : '<button type="button" class="fp-addon-btn" data-addon-key="' + key + '" data-addon-action="add" data-addon-quantity="' + (quantity ? "true" : "false") + '">Activer →</button>';
+      return '<div class="fp-addon-card' + (index >= 8 ? ' fp-addon-hidden' : '') + '" data-addon-card-key="' + key + '">' +
+        '<div class="fp-addon-top"><span class="fp-addon-icon">' + icon + '</span><div class="fp-addon-name">' + name + '</div></div>' +
+        '<div class="fp-addon-desc">' + description + '</div>' +
+        '<div class="fp-addon-bottom"><div class="fp-addon-price">' + _fpEur(addon.priceMinor) + '<span>' + unit + '</span></div>' +
+        '<div class="fp-addon-actions">' + actions + button + '</div></div></div>';
+    }).join("");
+
+    grid.innerHTML = html;
+    grid.dataset.catalogState = "ready";
+    grid.style.display = "";
+    grid.hidden = false;
+    ADDON_DEFAULT_BOTTOM = {};
+
+    var label = document.getElementById("fp-addon-label");
+    var toggle = document.getElementById("fp-addon-toggle");
+    var hiddenCount = Math.max(0, monthly.length - 8);
+    if (label) label.textContent = hiddenCount ? "Voir tous les add-ons (" + hiddenCount + " de plus)" : "Tous les add-ons";
+    if (toggle) toggle.hidden = hiddenCount === 0;
+
+    if (!grid.dataset.catalogClickBound) {
+      grid.dataset.catalogClickBound = "true";
+      grid.addEventListener("click", function (event) {
+        var target = event.target;
+        var step = target && target.closest ? target.closest("[data-addon-quantity-step]") : null;
+        if (step && typeof window.changeQty === "function") {
+          window.changeQty(step.dataset.addonKey, Number(step.dataset.addonQuantityStep));
+          return;
+        }
+        var button = target && target.closest ? target.closest('button[data-addon-action="add"]') : null;
+        if (button && typeof window.addToCart === "function") {
+          window.addToCart(button, button.dataset.addonKey, button.dataset.addonQuantity === "true");
+        }
+      });
+    }
+  }
+
   /* Overwrites every static SEO price with the canonical one and memorises the
      restored markup (buttons included, so the quantity flag is preserved). */
   function _fpBuildAddonBottoms(cat) {
     var byKey = {};
     cat.addons.forEach(function (a) { byKey[a.key] = a; });
-    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    var btns = _fpAddonButtons();
     Array.prototype.forEach.call(btns, function (btn) {
-      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
-      if (!m) return;
-      var key = m[1];
+      var key = _fpAddonKeyForButton(btn);
+      if (!key) return;
       var def = byKey[key];
       var bottom = btn.closest('.fp-addon-bottom');
       if (!def || !bottom) return;
@@ -1269,11 +1379,10 @@
     cat.addons.forEach(function (a) { stateMap[a.key] = a; });
     window._FP_ADDON_CATALOG_STATES = stateMap;
 
-    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    var btns = _fpAddonButtons();
     Array.prototype.forEach.call(btns, function (btn) {
-      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
-      if (!m) return;
-      var key = m[1];
+      var key = _fpAddonKeyForButton(btn);
+      if (!key) return;
       var def = stateMap[key];
       if (!def) return;
       var card = btn.closest('.fp-addon-card');
@@ -1366,6 +1475,29 @@
       }
     });
   }
+  var _fpLegacyUpdateIncludedAddons = updateIncludedAddons;
+  updateIncludedAddons = function (plan) {
+    _fpLegacyUpdateIncludedAddons(plan);
+    var included = PLAN_INCLUDED[plan] || [];
+    var planLabel = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : plan === 'ultra' ? 'Ultra' : '';
+    var states = window._FP_ADDON_CATALOG_STATES || {};
+    Object.keys(ADDON_DEFAULT_BOTTOM).forEach(function (key) {
+      var btn = _fpFindAddonButton(key);
+      if (!btn) return;
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!bottom) return;
+      if (included.indexOf(key) !== -1 && planLabel) {
+        var def = states[key] || {};
+        var parts = ['\u2713 Inclus ' + planLabel];
+        if (def.beta) parts.push('\uD83E\uDDEA B\u00eata');
+        if (def.comingSoon) parts.push('\uD83D\uDEA7 Bient\u00f4t disponible');
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' + parts.join(' \u00b7 ') + '</div>';
+      } else if (bottom.querySelector('.fp-addon-price-incl')) {
+        bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
+        _fpReapplyStateBadge(key, bottom);
+      }
+    });
+  };
   function setIncludedAddonsFromServer(plan, addons) {
     if (!plan || !addons) return;
     var keys = Array.isArray(addons)
@@ -1381,19 +1513,74 @@
   function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
   updateIncludedAddons('');
 
+  function _fpSyncAddonCartState(ignoreActive) {
+    var cartAddons = (_cart && _cart.addons) || {};
+    var active = ignoreActive ? {} : ((window._fpBillingState && window._fpBillingState.addons) || {});
+    Array.prototype.forEach.call(_fpAddonButtons(), function (btn) {
+      if (!btn.closest("#fp-addons-grid")) return;
+      var key = _fpAddonKeyForButton(btn);
+      if (!key) return;
+      var def = (window._FP_ADDON_CATALOG_STATES || {})[key] || {};
+      if (def.comingSoon) {
+        btn.disabled = true;
+        btn.textContent = '🚧 Bientôt disponible';
+        return;
+      }
+      if (active[key]) {
+        btn.disabled = true;
+        btn.textContent = '✓ Actif';
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.borderColor = 'rgba(16,185,129,0.3)';
+        btn.style.color = '#34d399';
+      } else if (cartAddons[key]) {
+        btn.disabled = false;
+        btn.textContent = '✓ Dans le panier';
+        btn.style.background = 'rgba(16,185,129,0.15)';
+        btn.style.borderColor = 'rgba(16,185,129,0.35)';
+        btn.style.color = '#34d399';
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Activer →';
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }
+    });
+  }
+
   /* Canonical catalogue — sole source of add-on prices and plan inclusions. */
   fetch('/api/plans/catalog')
-    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (r) {
+      if (!r.ok) throw new Error("Catalogue add-ons indisponible (HTTP " + r.status + ")");
+      return r.json();
+    })
     .then(function (cat) {
-      if (!cat || !Array.isArray(cat.addons)) return;
+      if (!cat || !Array.isArray(cat.addons) || !cat.addons.length) {
+        throw new Error("Réponse du catalogue add-ons invalide");
+      }
       FP_CATALOG = cat;
+      _fpRenderAddonCards(cat);
       _fpBuildAddonBottoms(cat);
       _fpApplyCatalogInclusions(cat);
       var sel = document.querySelector('.fp-card.selected');
       var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
       updateIncludedAddons(selId);
+      _fpSyncAddonCartState();
     })
-    .catch(function () {});
+    .catch(function (error) {
+      var grid = document.getElementById("fp-addons-grid");
+      if (grid) { grid.hidden = true; grid.dataset.catalogState = "error"; }
+      var message = document.createElement("p");
+      message.className = "fp-addon-catalog-error";
+      message.setAttribute("role", "alert");
+      message.textContent = "Impossible de charger les add-ons. Actualisez la page pour réessayer.";
+      if (grid && grid.parentNode) {
+        var previous = grid.parentNode.querySelector(".fp-addon-catalog-error");
+        if (previous) previous.remove();
+        grid.parentNode.insertBefore(message, grid.nextSibling);
+      }
+      if (window.console && console.error) console.error("[pricing] Catalogue add-ons indisponible", error);
+    });
 
   /* ── Restore cart from localStorage when redirected from dashboard ──────────
      Sets _cart data silently (plan + addons); visual state of the current plan
@@ -1588,6 +1775,7 @@
       }
     }
     updateCartBadge();
+    _fpSyncAddonCartState();
   };
 
   /* ── Add addon to cart ── */
@@ -1881,6 +2069,7 @@
 
     /* Show 'Inclus dans [Plan]' badge for all plan-included add-ons */
     setIncludedAddonsFromServer(data.plan || '', data.addons || {});
+    _fpSyncAddonCartState();
   }
 
   /* Reverse applyBillingState's DOM mutations back to the anonymous baseline.
@@ -1930,6 +2119,7 @@
     });
     /* Clear plan-inclusion badges rendered from the cached state */
     updateIncludedAddons('');
+    _fpSyncAddonCartState(true);
   }
 
   /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ──
