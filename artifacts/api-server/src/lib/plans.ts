@@ -149,37 +149,60 @@ export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 // ── Add-on price IDs — test-mode overrides (Stripe CLI / test dashboard) ─────
 // Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to override any addon price in test mode.
 // These are resolved at call-time in getAddonPriceId() below.
+/**
+ * Variables d'environnement TEST de chaque add-on. Registre explicite : un
+ * add-on achetable sans entree ici ne peut pas etre vendu en mode TEST, et
+ * aucun prix LIVE ne sert jamais de repli. Le premier nom renseigne l'emporte.
+ */
+export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
+  monitorsPack10: ["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10", "STRIPE_TEST_PRICE_ID_10MONITORS"],
+  monitorsPack50: ["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50", "STRIPE_TEST_PRICE_ID_50MONITORS"],
+  conversionOpportunityEngine: ["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"],
+  seoChangeImpact: ["STRIPE_TEST_PRICE_ID_ADDON_SEO_CHANGE_IMPACT"],
+  agencyPortfolioPriorities: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"],
+  technicalSeoFixVerification: ["STRIPE_TEST_PRICE_ID_ADDON_TECHNICAL_SEO_FIX_VERIFICATION"],
+  organicCampaignTracker: ["STRIPE_TEST_PRICE_ID_ADDON_ORGANIC_CAMPAIGN_TRACKER"],
+  localPresenceOptimizer: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"],
+  advancedSeoLab: ["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"],
+  keywordDomination: ["STRIPE_TEST_PRICE_ID_ADDON_KDE"],
+  backlinkIntelligence: ["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"],
+  behavioralAI: ["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"],
+  aiForecasting: ["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"],
+  enterprisePermissions: ["STRIPE_TEST_PRICE_ID_ADDON_ENT"],
+  advancedWebhooks: ["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"],
+  retention365d: ["STRIPE_TEST_PRICE_ID_ADDON_RET365"],
+  whiteLabel: ["STRIPE_TEST_PRICE_ID_ADDON_WL"],
+  customDomain: ["STRIPE_TEST_PRICE_ID_ADDON_CD"],
+  extraSeats: ["STRIPE_TEST_PRICE_ID_ADDON_SEATS"],
+  gbpSlots10: ["STRIPE_TEST_PRICE_ID_ADDON_GBP10"],
+  gbpPerformanceLeads: ["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"],
+  localLandingOpportunities: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"],
+  aiCreditsPack50k: ["STRIPE_TEST_PRICE_AI_50K"],
+  aiCreditsPack200k: ["STRIPE_TEST_PRICE_AI_200K"],
+  aiCreditsPack500k: ["STRIPE_TEST_PRICE_AI_500K"],
+  retention90d: ["STRIPE_TEST_PRICE_ID_ADDON_RET90"],
+  auditsPack200: ["STRIPE_TEST_PRICE_ID_ADDON_AUDITS200"],
+  auditsPack1000: ["STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000"],
+  pdfPack200: ["STRIPE_TEST_PRICE_ID_ADDON_PDF200"],
+  exportsPack1000: ["STRIPE_TEST_PRICE_ID_ADDON_EXPORTS1000"],
+  aiCro: ["STRIPE_TEST_PRICE_ID_ADDON_AI_CRO"],
+  revenueLeak: ["STRIPE_TEST_PRICE_ID_ADDON_REVENUE_LEAK"],
+  marketIntelligence: ["STRIPE_TEST_PRICE_ID_ADDON_MARKET_INTELLIGENCE"],
+  aiExecutiveReport: ["STRIPE_TEST_PRICE_ID_ADDON_AI_EXECUTIVE_REPORT"],
+  globalMonitoring: ["STRIPE_TEST_PRICE_ID_ADDON_GLOBAL_MONITORING"],
+  slaMonitoring: ["STRIPE_TEST_PRICE_ID_ADDON_SLA_MONITORING"],
+  aiContentStrategist: ["STRIPE_TEST_PRICE_ID_ADDON_AI_CONTENT_STRATEGIST"],
+  aiGbpPosting: ["STRIPE_TEST_PRICE_ID_ADDON_AI_GBP_POSTING"],
+  agencyPacks: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"],
+  crmIntegration: ["STRIPE_TEST_PRICE_ID_ADDON_CRM"],
+  ssoEnterprise: ["STRIPE_TEST_PRICE_ID_ADDON_SSO"],
+  aiWorkspaceLaunch: ["STRIPE_TEST_PRICE_ID_ADDON_AI_WORKSPACE_LAUNCH"],
+};
+
 export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
-  Object.entries({
-    // Keys follow existing Replit secret naming conventions for backward compat.
-    monitorsPack10:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"]  // set via Replit secret
-                       ?? process.env["STRIPE_TEST_PRICE_ID_10MONITORS"]        ?? "",
-    monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
-                       ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
-    conversionOpportunityEngine: process.env["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"] ?? "",
-    seoChangeImpact: process.env["STRIPE_TEST_PRICE_ID_ADDON_SEO_CHANGE_IMPACT"] ?? "",
-    agencyPortfolioPriorities: process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"] ?? "",
-    technicalSeoFixVerification: process.env["STRIPE_TEST_PRICE_ID_ADDON_TECHNICAL_SEO_FIX_VERIFICATION"] ?? "",
-    organicCampaignTracker: process.env["STRIPE_TEST_PRICE_ID_ADDON_ORGANIC_CAMPAIGN_TRACKER"] ?? "",
-    localPresenceOptimizer: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"] ?? "",
-    advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
-    keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
-    backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
-    behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
-    aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
-    enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
-    advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
-    retention365d:        process.env["STRIPE_TEST_PRICE_ID_ADDON_RET365"]      ?? "",
-    whiteLabel:           process.env["STRIPE_TEST_PRICE_ID_ADDON_WL"]          ?? "",
-    customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
-    extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
-    gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
-    gbpPerformanceLeads:  process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"] ?? "",
-    localLandingOpportunities: process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"] ?? "",
-    aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
-    aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
-    aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
-  }).filter(([, v]) => v !== "")
+  Object.entries(ADDON_TEST_PRICE_ENV_VARS)
+    .map(([key, names]) => [key, names.map((n) => process.env[n] ?? "").find((v) => v !== "") ?? ""] as const)
+    .filter(([, v]) => v !== "")
 );
 
 /**
