@@ -46,6 +46,9 @@
     "29 €": "€29",
     "79 €": "€79",
     "149 €": "€149",
+    "4€": "€4",
+    "9€": "€9",
+    "19€": "€19",
     "/mois": "/mo",
     "/ mois": "/ month",
     "/ pack / mois": "/ pack / month",
@@ -70,6 +73,9 @@
     "En vous connectant, vous acceptez nos": "By signing in, you agree to our",
     "Conditions d'utilisation": "Terms of Service",
     "Tarifs FlowPoint — SEO, monitoring & IA pour votre croissance": "FlowPoint pricing — SEO, monitoring & AI for your growth",
+    "Plans FlowPoint : Standard 29€ (30 audits, 10 monitors), Pro 79€ (300 audits, 50 monitors), Ultra 149€ (1000 audits, 300 monitors). Essai 14 jours.": "FlowPoint plans: Standard €29 (30 audits, 10 monitors), Pro €79 (300 audits, 50 monitors), and Ultra €149 (1,000 audits, 300 monitors). Includes a 14-day trial.",
+    "Tarifs FlowPoint — SEO, monitoring & IA": "FlowPoint pricing — SEO, monitoring & AI",
+    "Plans flexibles pour indépendants, équipes et agences. 14 jours d'essai inclus.": "Flexible plans for freelancers, teams, and agencies. Includes a 14-day trial.",
     "Créer un compte": "Create an account",
     "Panier": "Cart",
     "🚀 14 jours d'essai complet inclus avec chaque plan": "🚀 14-day full trial included with every plan",
@@ -145,6 +151,7 @@
     "Domaine personnalisé pour le portail": "Custom portal domain",
     "SSO SAML et OIDC": "SAML and OIDC SSO",
     "Roadmap et missions IA personnalisées à partir du profil renseigné": "Custom AI roadmap and tasks based on your profile",
+    "Agency Lab complet": "Full Agency Lab",
     "⚡ Packs de crédits IA": "⚡ AI credit packs",
     "Achat unique par carte — crédits ajoutés immédiatement à votre compte, sans abonnement ni renouvellement. Cumulables avec votre quota mensuel, utilisables sans limite de temps.": "One-time card purchase — credits are added to your account immediately, with no subscription or renewal. They add to your monthly quota and never expire.",
     "+50 000 crédits IA": "+50,000 AI credits",
@@ -159,16 +166,26 @@
     "Tout ce que chaque plan inclut, en détail.": "Everything included in each plan, in detail.",
     "Fonctionnalité": "Feature",
     "SEO & Analyse": "SEO & Analytics",
+    "IA & Copilot": "AI & Copilot",
     "Audits SEO / mois": "SEO audits / month",
     "Analyse de contenu": "Content analysis",
     "Avancée": "Advanced",
     "Complète": "Full",
     "DataForSEO avancé": "Advanced DataForSEO",
     "Multi-établissements": "Multiple locations",
+    "Review Intelligence IA": "Review Intelligence AI",
+    "Monitors d'uptime": "Uptime monitors",
     "Fréquence de vérification": "Check frequency",
     "Alertes temps réel": "Real-time alerts",
     "Monitoring avancé / SLA": "Advanced monitoring / SLA",
     "Crédits IA / mois": "AI credits / month",
+    "100 000": "100,000",
+    "500 000": "500,000",
+    "∞ (Inclus)": "∞ (Included)",
+    "Inclus": "Included",
+    "Complet": "Full",
+    "Copilot IA": "AI Copilot",
+    "Basiques": "Basic",
     "Limité": "Limited",
     "Rapport exécutif IA": "AI executive report",
     "Rapports": "Reports",
@@ -582,13 +599,14 @@
       var target = PUBLIC_ENGLISH[source];
       if (target) node.nodeValue = node.nodeValue.replace(source, target);
     }
-    var selector = '[placeholder], [aria-label], [title], input[type="submit"], input[type="button"]';
+    var selector = '[placeholder], [aria-label], [title], input[type="submit"], input[type="button"], meta[name="description"], meta[property="og:title"], meta[property="og:description"], meta[name="twitter:title"], meta[name="twitter:description"]';
     var elements = [];
     if (root.nodeType === 1 && root.matches(selector)) elements.push(root);
     if (root.querySelectorAll) elements = elements.concat(Array.prototype.slice.call(root.querySelectorAll(selector)));
     elements.forEach(function (element) {
       var attributes = ['placeholder', 'aria-label', 'title'];
       if (element.tagName === 'INPUT' && /^(submit|button)$/i.test(element.type)) attributes.push('value');
+      if (element.tagName === 'META') attributes.push('content');
       attributes.forEach(function (attribute) {
         var value = element.getAttribute(attribute);
         if (!value) return;
@@ -606,6 +624,7 @@
 
     document.documentElement.lang = 'en';
     if (PUBLIC_ENGLISH[document.title]) document.title = PUBLIC_ENGLISH[document.title];
+    if (document.head) translateSubtree(document.head);
     translateSubtree(document.body);
 
     var countrySelect = document.querySelector('select#country, select[name="country"]');
