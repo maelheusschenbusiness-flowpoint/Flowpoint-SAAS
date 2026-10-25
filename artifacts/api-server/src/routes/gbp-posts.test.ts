@@ -100,4 +100,36 @@ describe("GBP post studio API", () => {
     expect(response.status).toBe(422);
     expect(response.body.error).toBe("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
   });
+
+  it("sanitizes unexpected publish failures", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      vi.mocked(publishPost).mockRejectedValue(new Error("private provider response"));
+
+      const response = await request(app).post("/gbp-posts/post-1/publish").send({});
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe("Internal server error");
+      expect(JSON.stringify(response.body)).not.toContain("private provider response");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("sanitizes unexpected AI generation failures in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      vi.mocked(generateAiPost).mockRejectedValue(new Error("private provider response"));
+
+      const response = await request(app).post("/gbp-posts/ai-generate").send({
+        locationId: "loc-1",
+      });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe("Internal server error");
+      expect(JSON.stringify(response.body)).not.toContain("private provider response");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

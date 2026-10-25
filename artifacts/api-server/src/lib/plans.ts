@@ -201,8 +201,8 @@ export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
 
 export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
   Object.entries(ADDON_TEST_PRICE_ENV_VARS)
-    .map(([key, names]) => [key, names.map((n) => process.env[n] ?? "").find((v) => v !== "") ?? ""] as const)
-    .filter(([, v]) => v !== "")
+    .map(([key, names]) => [key, names.map((name) => process.env[name] ?? "").find((value) => value !== "") ?? ""] as const)
+    .filter(([, value]) => value !== "")
 );
 
 /**
@@ -451,7 +451,7 @@ export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NO
 
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
-  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoChangeImpact","agencyPortfolioPriorities","technicalSeoFixVerification","organicCampaignTracker",
+  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoChangeImpact","conversionOpportunityEngine","agencyPortfolioPriorities","technicalSeoFixVerification","organicCampaignTracker",
   "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads","localPresenceOptimizer","localLandingOpportunities",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
@@ -827,6 +827,22 @@ export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
     return _STANDARD_PURCHASABLE.has(addonKey);
   }
   return allowed.has(addonKey);
+}
+
+/**
+ * Purchase eligibility for the public catalogue, including the active Stripe
+ * mode. TEST mode must not advertise a standalone purchase when its TEST price
+ * is unset; included entitlements remain in PLAN_INCLUDED_ADDONS and are not
+ * affected by this catalogue-only check.
+ */
+export function getAddonPurchasablePlans(addonKey: string): string[] {
+  const stripeKey = getStripeKey() ?? "";
+  const testMode = process.env["STRIPE_TEST_MODE"] === "true" || stripeKey.startsWith("sk_test_");
+  if (getAddonAvailability(addonKey) === "coming_soon") return [];
+  if (testMode && !getAddonPriceId(addonKey, stripeKey)) return [];
+  return (["standard", "pro", "ultra"] as const).filter((plan) =>
+    isPlanAllowedAddon(plan, addonKey),
+  );
 }
 
 export function getPlanForPriceId(priceId: string): string | null {

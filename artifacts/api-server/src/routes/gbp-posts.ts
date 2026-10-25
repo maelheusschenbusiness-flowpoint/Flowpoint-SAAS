@@ -136,7 +136,10 @@ router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posti
     res.json({ ok: true, ...generated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
-    res.status(message === "AI_GENERATION_OVER_LIMIT" ? 422 : 500).json({ error: safeErrMsg(err) });
+    const overLimit = message === "AI_GENERATION_OVER_LIMIT";
+    res.status(overLimit ? 422 : 500).json({
+      error: overLimit ? message : safeErrMsg(err),
+    });
   }
 });
 
@@ -146,7 +149,16 @@ router.post("/gbp-posts/:id/publish", async (req, res) => {
     res.json({ ok: true, post });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
-    res.status(["GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH", "GBP_EVENT_SCHEDULE_REQUIRED", "GBP_EVENT_SCHEDULE_INVALID", "GBP_MEDIA_URL_INVALID"].includes(message) ? 422 : 500).json({ error: safeErrMsg(err) });
+    const validationErrors = [
+      "GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH",
+      "GBP_EVENT_SCHEDULE_REQUIRED",
+      "GBP_EVENT_SCHEDULE_INVALID",
+      "GBP_MEDIA_URL_INVALID",
+    ];
+    const isValidationError = validationErrors.includes(message);
+    res.status(isValidationError ? 422 : 500).json({
+      error: isValidationError ? message : safeErrMsg(err),
+    });
   }
 });
 

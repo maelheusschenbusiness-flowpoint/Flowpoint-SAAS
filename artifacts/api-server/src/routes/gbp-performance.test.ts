@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getPerformance: vi.fn(),
   getValidToken: vi.fn(),
   addonAllowed: true,
+  addonAllowedByKey: {} as Record<string, boolean>,
+  addonGateCalls: [] as string[],
 }));
 
 vi.mock("@workspace/db", () => ({ pool: { query: mocks.query } }));
@@ -14,9 +16,11 @@ vi.mock("../middlewares/requireRole.js", () => ({
   canWrite: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 vi.mock("../middlewares/planGate.js", () => ({
-  requireAddon: () => (_req: unknown, res: any, next: () => void) => {
-    if (!mocks.addonAllowed) {
-      res.status(402).json({ error: "addon_gate_blocked" });
+  requireAddon: (addonKey: string) => (_req: unknown, res: any, next: () => void) => {
+    mocks.addonGateCalls.push(addonKey);
+    const allowed = mocks.addonAllowedByKey[addonKey] ?? mocks.addonAllowed;
+    if (!allowed) {
+      res.status(402).json({ error: "addon_gate_blocked", addonKey });
       return;
     }
     next();
@@ -26,17 +30,25 @@ vi.mock("../services/google-service.js", () => ({
   getPerformance: mocks.getPerformance,
   getValidToken: mocks.getValidToken,
 }));
+vi.mock("../services/ga4-service.js", () => ({
+  getGA4ConversionPages: vi.fn().mockResolvedValue({ rows: [] }),
+}));
 
 import gbpPerformanceRouter from "./gbp-performance.js";
+import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 
 function makeApp(orgId: string | null = "org-a") {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    if (orgId) Object.assign(req, { orgContext: { orgId } });
+    if (orgId) Object.assign(req, {
+      orgContext: { orgId },
+      orgDb: vi.fn().mockResolvedValue({ rows: [] }),
+    });
     next();
   });
   app.use("/api", gbpPerformanceRouter);
+  app.use("/api", conversionOpportunityEngineRouter);
   return app;
 }
 
@@ -44,6 +56,8 @@ describe("GBP Performance & Leads API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.addonAllowed = true;
+    mocks.addonAllowedByKey = {};
+    mocks.addonGateCalls = [];
   });
 
   it("requires a valid authenticated organization context", async () => {
@@ -113,5 +127,18 @@ describe("GBP Performance & Leads API", () => {
 
     expect(response.status).toBe(402);
     expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it("does not apply the GBP entitlement gate to the following Conversion route", async () => {
+    mocks.addonAllowedByKey = {
+      gbpPerformanceLeads: false,
+      conversionOpportunityEngine: true,
+    };
+
+    const response = await request(makeApp()).get("/api/conversion-opportunity-engine");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ ok: true, source: "ga4", opportunities: [] });
+    expect(mocks.addonGateCalls).toEqual(["conversionOpportunityEngine"]);
   });
 });
