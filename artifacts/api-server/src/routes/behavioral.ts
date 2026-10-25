@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { BEHAVIORAL_SESSION_ID_FACTORY } from "../services/behavioral-session-id.js";
 import {
   trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights,
+  analyzeBehaviorFunnel, ALLOWED_BEHAVIOR_FUNNEL_EVENTS,
 } from "../services/behavioral-service.js";
 import { db, behaviorSiteTokensTable, behaviorEventsTable, croExperimentsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
@@ -500,27 +501,76 @@ async function siteBelongsToOrg(req: Request, orgId: string, siteUrl: string): P
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
+    if (!siteUrl?.trim()) { res.status(400).json({ error: "siteUrl required" }); return; }
+    const periodRaw = req.query["periodDays"];
+    const periodDays = periodRaw == null ? 30 : Number(periodRaw);
+    if (![7, 30, 90].includes(periodDays)) {
+      res.status(400).json({ error: "periodDays must be 7, 30, or 90" }); return;
+    }
     const reqOrgId = (req as OrgReq).orgId ?? "default";
-    if (siteUrl && !(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
+    if (!(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
       res.status(404).json({ error: "Site not found" }); return;
     }
-    const data = await getBehaviorInsights(reqOrgId, siteUrl);
+    const data = await getBehaviorInsights(reqOrgId, siteUrl, periodDays);
     res.json(data);
   } catch {
-    res.status(500).json({ error: "Failed to load behavioral insights" });
+    res.status(500).json({ error: "Failed to fetch behavioral analytics" });
+  }
+});
+
+router.post("/behavioral/funnels/analyze", async (req: Request, res: Response) => {
+  const { siteUrl, steps } = req.body ?? {};
+  const periodDays = Number(req.body?.periodDays ?? 30);
+  if (typeof siteUrl !== "string" || !siteUrl.trim()) {
+    res.status(400).json({ error: "siteUrl required" }); return;
+  }
+  if (![7, 30, 90].includes(periodDays)) {
+    res.status(400).json({ error: "periodDays must be 7, 30, or 90" }); return;
+  }
+  if (!Array.isArray(steps) || steps.length < 2 || steps.length > 6) {
+    res.status(400).json({ error: "Provide 2 to 6 funnel steps" }); return;
+  }
+  const normalizedSteps = [];
+  for (const [index, step] of steps.entries()) {
+    if (!step || typeof step !== "object" ||
+        typeof step.eventType !== "string" ||
+        !ALLOWED_BEHAVIOR_FUNNEL_EVENTS.has(step.eventType) ||
+        (step.page != null && (typeof step.page !== "string" || step.page.length > 200))) {
+      res.status(400).json({ error: `Invalid funnel step at position ${index + 1}` }); return;
+    }
+    normalizedSteps.push({
+      label: typeof step.label === "string" && step.label.trim()
+        ? step.label.trim().slice(0, 80) : step.eventType,
+      eventType: step.eventType,
+      ...(typeof step.page === "string" && step.page.trim() ? { page: step.page.trim() } : {}),
+    });
+  }
+  const orgId = (req as OrgReq).orgId ?? "default";
+  try {
+    if (!(await siteBelongsToOrg(req, orgId, siteUrl))) {
+      res.status(404).json({ error: "Site not found" }); return;
+    }
+    const result = await analyzeBehaviorFunnel(orgId, siteUrl, periodDays, normalizedSteps);
+    res.json(result);
+  } catch {
+    res.status(500).json({ error: "Behavioral funnel analysis failed" });
   }
 });
 
 router.post("/behavioral/generate-insights", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
-  if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
+  const periodRaw = req.body?.periodDays ?? 7;
+  const periodDays = Number(periodRaw);
+  if (typeof siteUrl !== "string" || !siteUrl.trim()) { res.status(400).json({ error: "siteUrl required" }); return; }
+  if (![7, 30, 90].includes(periodDays)) { res.status(400).json({ error: "periodDays must be 7, 30, or 90" }); return; }
   const reqOrgId = (req as OrgReq).orgId ?? "default";
   try {
     if (!(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
       res.status(404).json({ error: "Site not found" }); return;
     }
-    await generateBehaviorInsights(reqOrgId, siteUrl);
-    res.json({ ok: true });
+    const userId = (req as Request & { userId?: string }).userId ?? "system";
+    const result = await generateBehaviorInsights(reqOrgId, siteUrl, userId, periodDays);
+    res.json({ ok: true, ...result });
   } catch {
     res.status(500).json({ error: "Failed to generate insights" });
   }
