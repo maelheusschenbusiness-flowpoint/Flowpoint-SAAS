@@ -42,8 +42,8 @@ function _initLocale() {
   return ({'pt-br':'pt-BR',fr:'fr-FR',en:'en-US',es:'es-ES',de:'de-DE',it:'it-IT',pt:'pt-PT',nl:'nl-NL',pl:'pl-PL',sv:'sv-SE',ro:'ro-RO',cs:'cs-CZ'})[
     // NOTE: never reference STATE here — this runs before `const STATE` (TDZ ReferenceError
     // even under typeof) and crashes the whole IIFE, leaving the skeleton frozen.
-    String(localStorage.getItem('fp:language') || 'fr').toLowerCase()
-  ] || 'fr-FR';
+    String(localStorage.getItem('fp:language') || 'en').toLowerCase()
+  ] || 'en-US';
 }
 const CUR_MONTH = new Date().toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear();
 const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear();}());
@@ -2602,8 +2602,8 @@ function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LE
 // Always reads from the live setting so locale changes propagate without reload.
 function getLocale() {
   return ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[
-    String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase()
-  ] || 'fr-FR';
+    String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase()
+  ] || 'en-US';
 }
 
 // ── fpT: lightweight lookup for programmatic (non-DOM) string translation ──
@@ -3505,7 +3505,7 @@ function showToast(type, msg) {
   const id = 't' + Date.now() + Math.random().toString(36).slice(2);
   // Translate the message through the active catalog (French source → target language)
   var _toastCatalog = (typeof FP_I18N !== 'undefined' && FP_I18N) ? FP_I18N : null;
-  var _toastLang = String((typeof STATE !== 'undefined' && STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+  var _toastLang = String((typeof STATE !== 'undefined' && STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase();
   var _toastLookup = _toastCatalog && _toastLang !== 'fr' ? (_toastCatalog[_toastLang] || null) : null;
   var _msgStr = String(msg);
   if (_toastLookup && _toastLookup[_msgStr.trim()]) _msgStr = _toastLookup[_msgStr.trim()];
@@ -11903,7 +11903,7 @@ function renderSettings() {
           <div class="fp-form-group">
             <label class="fp-form-label">Langue</label>
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success', fpT('Langue sauvegardée'))">
-              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
+              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'en')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
             <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('La préférence est sauvegardée et appliquée à l’interface.')}</div>
           </div>
@@ -14706,7 +14706,7 @@ async function sendAIMessage(text) {
     const resp = await fetch('/api/ai/chat', _fpSessionFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined, enableTools: true, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
+      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai', conversationId: STATE._aiConversationId || undefined, enableTools: true, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en' }),
       signal: _ctrl.signal,
     }));
 
@@ -14985,7 +14985,7 @@ async function fetchAuditAIInsights(auditRef) {
         url: audit.url,
         scores: { performance: audit.speed || 0, seo: audit.score || 0 },
         context,
-        language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr',
+        language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en',
       }),
     });
     if (!resp.ok) { showToast('error', fpT('Erreur lors de l\'analyse IA')); return; }
@@ -16232,7 +16232,7 @@ function _doRender() {
   // Leaving the AI chat page (sub-route null): detach and keep the live DOM
   // subtree. A rebuild via renderAI() replays every message, destroys the
   // reading scroll position and drops the in-flight UI state.
-  const _fpAiLang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+  const _fpAiLang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase();
   try {
     if (_prevRenderKey === 'ai||' && _renderKey !== 'ai||') {
       const _leaving = page.querySelector('.fp-page-animated');
@@ -48287,7 +48287,7 @@ function bindGlobalEvents() {
   // so that every onclick attr that calls fpT('…') finds a working function.
   window.fpT = window._fpTFn = function(str, vars) {
     try {
-      var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+      var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase();
       var result = str;
       if (lang !== 'fr') {
         var cat = FP_I18N[lang] || null;
@@ -48308,7 +48308,7 @@ function bindGlobalEvents() {
   var FP_I18N_SKIP = { SCRIPT:1, STYLE:1, TEXTAREA:1, CODE:1, PRE:1 };
   window.fpApplyTranslations = function() {
     try {
-      var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr').toLowerCase();
+      var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase();
       var catalog = FP_I18N[lang] || null; // null/empty ⇒ French ⇒ restore pass
       var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'),
                    document.querySelector('.fp-topbar'), document.getElementById('fp-header'),
@@ -48409,7 +48409,7 @@ async function init() {
   applyTheme();
   // Apply stored language preference before first render
   try {
-    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
+    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en';
     document.documentElement.lang = _lang.split('-')[0];
   } catch(_) {}
   // Apply free modules (compact mode, focus mode, etc.)
@@ -66368,7 +66368,7 @@ window.fpAiConfirmAction = async function(proposalId, btnEl) {
     var r = await apiFetch('/api/ai/conversations/' + encodeURIComponent(convId) + '/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Request-Id': _confirmTraceId },
-      body: JSON.stringify({ proposalId: proposalId, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr' }),
+      body: JSON.stringify({ proposalId: proposalId, language: (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en' }),
     });
     if (!r) { // apiFetch renvoie null sur 401 (redirection en cours)
       btnEl.disabled = false;
@@ -67821,7 +67821,7 @@ async function fpGetPSIAIReco() {
       return `- ${o.title || o.id}${savMs || savKb}`;
     }).join('\n');
 
-    const _lang = (STATE.me?.language || navigator.language || 'fr').slice(0,2);
+    const _lang = (STATE.me?.language || navigator.language || 'en').slice(0,2);
     const _langNames = {fr:'français',en:'English',es:'español',de:'Deutsch',it:'italiano',nl:'Nederlands',pt:'português'};
     const _langInstruction = _lang !== 'fr' ? `\n\nRéponds entièrement en ${_langNames[_lang]||_lang} — aucune phrase en français.` : '';
 

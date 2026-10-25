@@ -15,6 +15,7 @@ import {
   BILLING_DATA_UNAVAILABLE_CODE,
 } from "./me-entitlement.js";
 import { isUUIDFormat } from "../lib/validate-org-id.js";
+import { resolveDashboardLanguage } from "../lib/default-language.js";
 import {
   computeUserStreak,
   getActivityTimezone,
@@ -343,7 +344,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         publicApiKey:       _publicApiKey,
         createdAt:          dbData?.createdAt ?? new Date().toISOString(),
         timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
-        language:  dbData?.language  ?? settingsLanguage ?? null,
+        language:  resolveDashboardLanguage(settingsLanguage, dbData?.language),
         currency:  dbData?.currency  ?? null,
         dateFormat: dbData?.dateFormat ?? null,
         timeFormat: dbData?.timeFormat ?? null,
