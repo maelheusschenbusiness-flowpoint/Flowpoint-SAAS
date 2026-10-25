@@ -27,6 +27,10 @@ import { join } from "node:path";
 import { setStripeForTesting } from "../services/stripe-factory.js";
 import { logger } from "../lib/logger.js";
 
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_ci_test_standard";
+});
+
 vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
 }));
@@ -148,7 +152,7 @@ const PREV_ENV = process.env["NODE_ENV"];
 let fake: ReturnType<typeof makeFakeStripe>;
 beforeEach(() => {
   process.env["NODE_ENV"] = "test";
-  process.env["STRIPE_SECRET_KEY"] ||= "sk_live_dummy_for_tests";
+  process.env["STRIPE_TEST_KEY"] ||= "sk_test_dummy_for_tests";
   for (const k of Object.keys(PENDING)) delete PENDING[k];
   PENDING[TOKEN_S1] = { email: NEW_EMAIL, stripe_customer_id: null };
   PENDING[TOKEN_S2] = { email: "other.signup@exemple.fr", stripe_customer_id: null };

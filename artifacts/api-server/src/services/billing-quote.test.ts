@@ -1,4 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "true";
+  process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_ci_test_standard";
+  process.env["STRIPE_TEST_PRICE_ID_PRO"] = "price_ci_test_pro";
+  process.env["STRIPE_TEST_PRICE_ID_ULTRA"] = "price_ci_test_ultra";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"] = "price_ci_test_monitors10";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"] = "price_ci_test_kde";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"] = "price_ci_test_seola";
+  process.env["STRIPE_TEST_PRICE_AI_50K"] = "price_ci_test_ai50k";
+});
 
 import {
   ADDON_DEFINITIONS,
@@ -185,13 +196,19 @@ describe("billing quote — inclusions", () => {
     // argument here, so neither mode can go unverified in a given shell.
     const planId = Object.keys(PLAN_DEFINITIONS)[0]!;
 
-    expect(getPlanPriceId(planId, "sk_live_x")).toBe(PLAN_PRICE_IDS[planId]);
+    const previousMode = process.env["STRIPE_TEST_MODE"];
+    try {
+      process.env["STRIPE_TEST_MODE"] = "false";
+      expect(getPlanPriceId(planId, "sk_live_x")).toBe(PLAN_PRICE_IDS[planId]);
 
-    const testPrice = PLAN_PRICE_IDS_TEST[planId];
-    expect(getPlanPriceId(planId, "sk_test_x")).toBe(testPrice ?? PLAN_PRICE_IDS[planId]);
-    // Un prix de test absent ne doit jamais faire tomber le checkout de test
-    // sur un prix live : la seule issue acceptable est le prix live declare.
-    if (testPrice) expect(testPrice).not.toBe(PLAN_PRICE_IDS[planId]);
+      const testPrice = PLAN_PRICE_IDS_TEST[planId];
+      process.env["STRIPE_TEST_MODE"] = "true";
+      expect(getPlanPriceId(planId, "sk_test_x")).toBe(testPrice);
+      expect(testPrice).not.toBe(PLAN_PRICE_IDS[planId]);
+    } finally {
+      if (previousMode === undefined) delete process.env["STRIPE_TEST_MODE"];
+      else process.env["STRIPE_TEST_MODE"] = previousMode;
+    }
   });
 
   it("rejects an unknown plan or add-on rather than quoting a guess", () => {
@@ -207,7 +224,9 @@ describe("billing quote — inclusions", () => {
 import { COMING_SOON_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
 
 describe("billing quote — addon lifecycle guards (P0)", () => {
-  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // slaMonitoring, crmIntegration, ssoEnterprise, aiWorkspaceLaunch, ...
+  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS]
+    .filter(key => !REMOVED_ADDONS.has(key) && !RETIRED_ADDONS.has(key))
+    .slice(0, 4);
 
   it("blocks every coming_soon addon on all checkout paths", () => {
     for (const key of COMING_SOON_KEYS) {

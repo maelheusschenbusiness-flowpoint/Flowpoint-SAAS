@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
@@ -2154,7 +2154,9 @@ router.post("/billing/checkout/annual", ownerOnly, async (req: Request, res: Res
     const stripe = await createStripeClient(stripeKey);
 
     const annualPriceEnvKey = `STRIPE_PRICE_${plan.toUpperCase()}_ANNUAL`;
-    const annualPriceId = process.env[annualPriceEnvKey] || getPlanPriceId(plan, stripeKey);
+    const annualPriceId = stripeKey.startsWith("sk_test_")
+      ? process.env[`STRIPE_TEST_PRICE_${plan.toUpperCase()}_ANNUAL`] || undefined
+      : process.env[annualPriceEnvKey] || getPlanPriceId(plan, stripeKey);
 
     if (!annualPriceId) {
       res.status(400).json({ error: `No annual price configured for plan: ${plan}` });
@@ -2399,7 +2401,9 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
     return;
   }
 
-  const priceId = process.env[packInfo.envVar] || ADDON_PRICE_IDS[packInfo.addonKey];
+  const priceId = stripeKey.startsWith("sk_test_")
+    ? getAddonPriceId(packInfo.addonKey, stripeKey)
+    : process.env[packInfo.envVar] || getAddonPriceId(packInfo.addonKey, stripeKey);
   if (!priceId) {
     if (process.env["NODE_ENV"] !== "production") {
       logger.warn(`[Billing] No Stripe price for ${pack} — mock checkout (dev only)`);
@@ -2553,8 +2557,8 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
 
-  const addonPriceId = ADDON_PRICE_IDS[addonKey];
   const stripeKeyForAddonCheck = getStripeKey();
+  const addonPriceId = getAddonPriceId(addonKey, stripeKeyForAddonCheck);
 
   if (stripeKeyForAddonCheck && billingCtx.stripeCustomerId) {
     try {
@@ -2599,7 +2603,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
-  const priceId = ADDON_PRICE_IDS[addonKey];
+  const priceId = getAddonPriceId(addonKey, stripeKey);
   if (!priceId) {
     res.status(422).json({ error: `Aucun prix Stripe configuré pour l'add-on "${addonName || addonKey}". Contactez le support.` });
     return;

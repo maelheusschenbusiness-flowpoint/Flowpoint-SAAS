@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import {
@@ -15,6 +15,10 @@ import {
 import { createBillingQuote } from "../services/billing-quote.js";
 import { ADDON_CATALOG } from "../services/billing-service.js";
 import plansRouter from "../routes/plans.js";
+
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "false";
+});
 
 const dashboardPath = fileURLToPath(
   new URL("../../../../src/frontend/dashboard.js", import.meta.url),

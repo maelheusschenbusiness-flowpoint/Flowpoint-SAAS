@@ -28,7 +28,7 @@
  *   new billing cycle and prorations.
  */
 
-import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
+import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getAddonPriceId, getPlanForPriceId } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
@@ -157,7 +157,7 @@ export async function syncAddonWithStripe(
   if (!stripeKey) return { synced: false, reason: "no_stripe_key" };
   if (ONE_TIME_ADDONS.has(addonKey)) return { synced: false, reason: "one_time_addon" };
 
-  const priceId = ADDON_PRICE_IDS[addonKey];
+  const priceId = getAddonPriceId(addonKey, stripeKey);
   if (!priceId) return { synced: false, reason: "no_price_id" };
 
   try {
