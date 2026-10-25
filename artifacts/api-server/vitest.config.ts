@@ -194,6 +194,8 @@ export default defineConfig({
       "src/services/ensure-stripe-customer.test.ts",
       "src/agent/ai-tool-gate.test.ts",
       "src/lib/plans.test.ts",
+      "src/lib/default-language.test.ts",
+      "src/lib/addon-test-price-coverage.test.ts",
       "src/services/gbp-performance-addon.test.ts",
       "src/routes/gbp-performance.test.ts",
       "src/lib/addon-catalog-ui.test.ts",

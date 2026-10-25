@@ -147,8 +147,9 @@ export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 );
 
 // ── Add-on price IDs — test-mode overrides (Stripe CLI / test dashboard) ─────
-// Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to override any addon price in test mode.
-// These are resolved at call-time in getAddonPriceId() below.
+// Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to configure an add-on price in test mode.
+// Verified catalog IDs below take precedence for the four replacement offers
+// whose Render TEST variables were found to contain incorrect values.
 /**
  * Variables d'environnement TEST de chaque add-on. Registre explicite : un
  * add-on achetable sans entree ici ne peut pas etre vendu en mode TEST, et
@@ -199,9 +200,20 @@ export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
   aiWorkspaceLaunch: ["STRIPE_TEST_PRICE_ID_ADDON_AI_WORKSPACE_LAUNCH"],
 };
 
+/** Read-only Stripe TEST catalog verification; never used with LIVE keys. */
+export const VERIFIED_TEST_ADDON_PRICE_IDS: Readonly<Record<string, string>> = {
+  localLandingOpportunities: "price_1UUTPc9eqtbj6iPBKZ9Zlbay",
+  conversionOpportunityEngine: "price_1UUTPc9eqtbj6iPBcsDZykLW",
+  seoChangeImpact: "price_1UUTPd9eqtbj6iPB18duKFQq",
+  organicCampaignTracker: "price_1UUTPd9eqtbj6iPB6fNR5kLx",
+};
+
 export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
   Object.entries(ADDON_TEST_PRICE_ENV_VARS)
-    .map(([key, names]) => [key, names.map((name) => process.env[name] ?? "").find((value) => value !== "") ?? ""] as const)
+    .map(([key, names]) => {
+      const configured = names.map((name) => process.env[name] ?? "").find((value) => value !== "") ?? "";
+      return [key, VERIFIED_TEST_ADDON_PRICE_IDS[key] ?? configured] as const;
+    })
     .filter(([, value]) => value !== "")
 );
 

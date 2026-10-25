@@ -8,6 +8,10 @@ afterEach(() => {
 });
 
 async function loadPlans(env: Record<string, string> = {}) {
+  // Isolate fixtures from price variables injected into the workspace runtime.
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("STRIPE_TEST_PRICE")) vi.stubEnv(key, "");
+  }
   vi.stubEnv("STRIPE_TEST_MODE", "true");
   vi.stubEnv("STRIPE_TEST_KEY", "sk_test_addon_coverage_fixture");
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
@@ -15,22 +19,25 @@ async function loadPlans(env: Record<string, string> = {}) {
   return import("./plans.js");
 }
 
-it("every purchasable add-on declares an explicit TEST price variable", async () => {
+it("every purchasable add-on declares an explicit TEST price source", async () => {
   const plans = await loadPlans();
   const missing = Object.keys(plans.ADDON_DEFINITIONS).filter(
     (key) =>
       !plans.REMOVED_ADDONS.has(key) &&
       !plans.RETIRED_ADDONS.has(key) &&
       plans.getAddonAvailability(key) !== "coming_soon" &&
-      !(plans.ADDON_TEST_PRICE_ENV_VARS[key]?.length > 0),
+      !(plans.ADDON_TEST_PRICE_ENV_VARS[key]?.length > 0) &&
+      !plans.VERIFIED_TEST_ADDON_PRICE_IDS[key],
   );
   expect(missing).toEqual([]);
 });
 
-it("never uses a LIVE price in TEST mode, and blocks the purchase when no TEST price is set", async () => {
+it("never uses a LIVE price in TEST mode and blocks add-ons without a TEST price source", async () => {
   const plans = await loadPlans();
   for (const key of Object.keys(plans.ADDON_DEFINITIONS)) {
-    expect(plans.getAddonPriceId(key, "sk_test_addon_coverage_fixture")).toBeUndefined();
+    expect(plans.getAddonPriceId(key, "sk_test_addon_coverage_fixture")).toBe(
+      plans.VERIFIED_TEST_ADDON_PRICE_IDS[key],
+    );
   }
 });
 
@@ -46,7 +53,7 @@ it("uses distinct TEST variable names per add-on", async () => {
   expect(new Set(names).size).toBe(names.length);
 });
 
-it("recognizes Conversion Opportunity Engine in the quote allowlist and resolves its TEST price", async () => {
+it("uses the verified Conversion Opportunity Engine TEST price over a stale environment value", async () => {
   const plans = await loadPlans({
     STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY: "price_test_conversion",
   });
@@ -60,7 +67,7 @@ it("recognizes Conversion Opportunity Engine in the quote allowlist and resolves
   });
   expect(quote.lines.find((line) => line.key === "conversionOpportunityEngine")).toMatchObject({
     kind: "addon",
-    priceId: "price_test_conversion",
+    priceId: plans.VERIFIED_TEST_ADDON_PRICE_IDS.conversionOpportunityEngine,
     amountMinor: 1200,
   });
 });
@@ -79,7 +86,7 @@ it("builds quote-only lines for all eight replacement add-ons with TEST price ma
   const env = Object.fromEntries(
     Object.keys(variables).map((key) => [variables[key]!, `price_test_${key}`]),
   );
-  await loadPlans(env);
+  const plans = await loadPlans(env);
   const { createBillingQuote } = await import("../services/billing-quote.js");
 
   for (const key of Object.keys(variables)) {
@@ -92,7 +99,7 @@ it("builds quote-only lines for all eight replacement add-ons with TEST price ma
     expect(quote.checkoutType).toBe("addon_only");
     expect(quote.lines.find((line) => line.key === key)).toMatchObject({
       kind: "addon",
-      priceId: `price_test_${key}`,
+      priceId: plans.VERIFIED_TEST_ADDON_PRICE_IDS[key] ?? `price_test_${key}`,
     });
   }
 });

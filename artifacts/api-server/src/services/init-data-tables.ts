@@ -174,7 +174,7 @@ export async function initDataTables(): Promise<void> {
         website                TEXT,
         logo_url               TEXT,
         timezone               TEXT NOT NULL DEFAULT 'Europe/Paris',
-        language               TEXT NOT NULL DEFAULT 'fr',
+        language               TEXT NOT NULL DEFAULT 'en',
         currency               TEXT NOT NULL DEFAULT 'EUR',
         date_format            TEXT,
         time_format            TEXT,
@@ -1365,6 +1365,7 @@ export async function initDataTables(): Promise<void> {
     // Locale / timezone columns
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS timezone    TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS language    TEXT;`);
+    await run(client, `ALTER TABLE org_settings ALTER COLUMN language SET DEFAULT 'en';`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS currency    TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS date_format TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS time_format TEXT;`);
