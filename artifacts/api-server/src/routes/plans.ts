@@ -3,9 +3,9 @@ import {
   ADDON_DEFINITIONS,
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
-  PLAN_ALLOWED_ADDONS,
   QTY_ADDONS,
   getAddonAvailability,
+  getAddonPurchasablePlans,
   REMOVED_ADDONS,
   RETIRED_ADDONS,
 } from "../lib/plans.js";
@@ -57,16 +57,6 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
     includedAddons:  [...(PLAN_INCLUDED_ADDONS[def.id] ?? new Set<string>())],
   }));
 
-  // Build allowedPlans lookup: for each addon, which plans permit purchasing it.
-  const _addonAllowedPlans: Record<string, string[]> = {};
-  for (const [planId, allowed] of Object.entries(PLAN_ALLOWED_ADDONS)) {
-    if (!["standard", "pro", "ultra"].includes(planId)) continue;
-    for (const addonKey of allowed) {
-      if (!_addonAllowedPlans[addonKey]) _addonAllowedPlans[addonKey] = [];
-      _addonAllowedPlans[addonKey]!.push(planId);
-    }
-  }
-
   const addons = Object.entries(ADDON_DEFINITIONS)
     .filter(([key]) => !REMOVED_ADDONS.has(key) && !RETIRED_ADDONS.has(key))
     .map(([key, def]) => {
@@ -84,7 +74,7 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
       status:        availability,
       comingSoon:    availability === "coming_soon",
       beta:          availability === "beta",
-      allowedPlans:  availability === "coming_soon" ? [] : (_addonAllowedPlans[key] ?? []),
+      allowedPlans:  getAddonPurchasablePlans(key),
       includedByPlan: Object.fromEntries(
         Object.entries(PLAN_INCLUDED_ADDONS)
           .filter(([, set]) => set.has(key))
