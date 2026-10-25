@@ -55,7 +55,10 @@ async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response):
     }
     return true;
   } catch {
-    res.status(404).json({ error: "Site not found" });
+    // A scoped lookup failure is not evidence that the site is missing.
+    // Return the same generic service error for DB and other infrastructure
+    // failures without disclosing whether a site exists in another org.
+    res.status(503).json({ error: "Site ownership could not be verified. Please retry." });
     return false;
   }
 }
@@ -83,7 +86,6 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
 router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
-  const orgId = (req as OrgReq).orgId ?? "default";
   const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
   if (!owned) return;
   try {
