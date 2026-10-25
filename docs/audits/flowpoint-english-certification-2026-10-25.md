@@ -32,8 +32,31 @@ Les états publics vérifiés s’affichent en anglais avec `EN` sélectionné. 
 
 Le serveur de prévisualisation local ne fournit pas l’API : ses réponses 404 sont attendues. Le message de repli du catalogue a été vérifié; les cartes dynamiques ont été vérifiées avec la réponse publique actuelle de Test-Replit.
 
-## Limites restantes
+## Matrice de certification par route et état
 
-- Le tableau de bord privé n’a pas été certifié dans un navigateur : le profil QA disponible ne donnait pas accès (`NEEDS_AUTH`). Aucun contournement d’authentification n’a été tenté; les scripts concernés ont seulement été vérifiés syntaxiquement.
-- `checkout-return.html` n’a pas été ouvert avec une session de paiement. Aucun checkout ou paiement ne devait être lancé pour cet audit.
-- Les corrections de l’interface privée devront être confirmées après obtention d’un accès QA autorisé.
+| Route / état vérifié | Statut | Preuve |
+| --- | --- | --- |
+| `/pricing.html` — catalogue, fonctionnalités développées, comparatif et FAQ | PASS | Playwright local avec les 36 add-ons de la réponse publique Test-Replit simulée; aucun texte français visible; vues 1280 px et 402 px sans débordement. |
+| `/pricing.html` — chargement et erreur de catalogue | PASS | Le repli d’erreur du serveur statique local est affiché en anglais; aucune sélection de plan ni écriture API. |
+| `/signin.html` — formulaire initial | PASS | Route rendue en anglais dans le navigateur local; aucune inscription soumise. |
+| `/login.html` — formulaire initial | PASS | Route rendue en anglais dans le navigateur local; aucun identifiant réel ni demande de lien envoyés. |
+| `/accept-invitation.html` — jeton absent | PASS | État « invitation token missing » rendu en anglais. |
+| `/login-verify.html` — jeton absent | PASS | État « sign-in token missing » rendu en anglais. |
+| `/cancel.html` — page statique d’annulation | PASS | Copie anglaise vérifiée; aucun paiement ni checkout exécuté. |
+| `/success.html` — copie statique de confirmation | PASS, rendu uniquement | Texte anglais vérifié; ne certifie pas une transaction réelle et aucun checkout n’a été lancé. |
+| `/report-view.html` — identifiant absent | PASS | État d’erreur rendu en anglais; les contenus de rapport saisis par des utilisateurs restent exclus de la traduction. |
+| `/checkout-return.html` — retour avec une session de paiement | BLOCKED volontairement | Aucun checkout ou paiement ne devait être créé; cet état n’a pas été simulé avec une session réelle. |
+| `/dashboard.html` et routes privées — équipe, IA, add-ons, paramètres, rapports, facturation | BLOCKED | Le navigateur KERNEL QA n’a pas accédé au dashboard; voir le diagnostic d’authentification ci-dessous. |
+
+Le résultat ne vaut donc pas certification complète : les routes privées et les états de paiement réels restent bloqués ou volontairement non testés.
+
+## Diagnostic d’accès QA
+
+- La connexion KERNEL du profil `QA` pour `flowpoint-test.onrender.com` indique `NEEDS_AUTH`. Le dernier flux enregistré est `LOGIN / FAILED`, avec `error_code=awaiting_input_timeout` : il a expiré en attendant une action utilisateur. `can_reauth=false` et `can_reauth_reason=no_prior_successful_login`; aucun login réussi n’est enregistré. La réauthentification automatique et les contrôles de santé sont désactivés.
+- Le navigateur KERNEL existant a demandé `/dashboard.html` et a terminé sur `/signin.html` (HTTP 200), avec le titre « FlowPoint — Créer votre compte » et le formulaire de création de compte. Il n’a donc pas fourni d’état dashboard authentifié.
+- Aucun login n’a été relancé et aucun identifiant, `ADMIN_KEY` ou jeton de test n’a été utilisé. La reprise autorisée nécessite un flux KERNEL `login` sécurisé pour le profil QA, complété par une personne autorisée dans l’écran hébergé; les identifiants ne doivent pas être envoyés dans le chat. Le statut `no_prior_successful_login` indique qu’il faut un nouveau login, pas une réauthentification automatique.
+
+## CI de la PR
+
+- La CI du commit initial `82c49d0` a échoué sur la parité entre `src/frontend/dashboard.js` et `artifacts/flowpoint-export/dashboard.js`, ainsi que sur un test isolé qui n’injectait pas le helper de locale du chat.
+- La parité a été rétablie et les tests ciblés de ces régressions, plus les nouveaux tests de localisation publique, passent localement : 66 tests réussis sur 7 fichiers. La CI distante doit être relancée et verte avant toute fusion.
