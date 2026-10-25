@@ -2393,8 +2393,23 @@ async function loadData(options = {}) {
       }
     }).catch(() => {}),
     apiFetch('/api/revenue-leak').then(r => {
-      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.revenueLeak = r; }
-    }).catch(() => {}),
+      if (r && typeof r === 'object') {
+        if (!window.FP_DATA) window.FP_DATA = {};
+        const opportunities = Array.isArray(r.opportunities) ? r.opportunities : [];
+        window.FP_DATA.revenueLeak = {
+          ...r, _fromRealData: true, leaks: opportunities, opportunities,
+          financial: r.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+          noData: r.noData ?? opportunities.length === 0,
+        };
+      }
+    }).catch(() => {
+      if (!window.FP_DATA) window.FP_DATA = {};
+      window.FP_DATA.revenueLeak = {
+        _fromRealData: true, leaks: [], opportunities: [], summary: null,
+        financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
+      };
+    }),
     apiFetch('/api/review-intelligence').then(r => {
       if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.reviewIntelligence = r; }
     }).catch(() => {}),
@@ -2514,27 +2529,15 @@ async function loadData(options = {}) {
       recommendations: _iRecs,
     };
   }
-  // Revenue Leak Intelligence — computed from audits + monitors
+  // Revenue Leak — empty until the API supplies observed behavioral events.
   if (!window.FP_DATA.revenueLeak || !window.FP_DATA.revenueLeak._fromRealData) {
-    const _rlLeaks = [];
-    STATE.monitors.filter(m=>m.status==='down').forEach(m => {
-      const _uptime = (m.uptime != null) ? m.uptime : 99;
-      _rlLeaks.push({ id:'rl_mon_'+m.id, type:'availability', title:`Site DOWN : ${m.name}`, monthly:'Pertes directes en cours', severity:'critical', fix:"Résoudre l'incident immédiatement", url:m.url||'' });
-    });
-    STATE.audits.filter(a=>a.speed!=null&&a.speed<50).slice(0,5).forEach(a => {
-      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
-      _rlLeaks.push({ id:'rl_spd_'+a.id, type:'performance', title:`Vitesse critique : ${_d}`, monthly:`~${Math.round((100-a.speed)*15)}€/mois estimés perdus`, severity:'high', fix:'Optimiser images (WebP), activer le cache navigateur, passer à HTTP/2', url:a.url||'' });
-    });
-    STATE.audits.filter(a=>a.score<50).slice(0,5).forEach(a => {
-      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
-      _rlLeaks.push({ id:'rl_seo_'+a.id, type:'seo', title:`Score SEO critique : ${_d}`, monthly:'Trafic organique manqué', severity:'high', fix:'Corriger balises title/meta, liens cassés, contenu dupliqué', url:a.url||'' });
-    });
     window.FP_DATA.revenueLeak = {
       _fromRealData: true,
-      leaks: _rlLeaks,
-      summary: _rlLeaks.length > 0
-        ? { totalMonthly:`${_rlLeaks.length} fuite${_rlLeaks.length>1?'s':''} détectée${_rlLeaks.length>1?'s':''}`, topIssue: _rlLeaks[0]?.type||'performance' }
-        : null,
+      leaks: [],
+      opportunities: [],
+      summary: null,
+      financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+      noData: true,
     };
   }
 
@@ -8805,7 +8808,7 @@ function _fpSafeColor(v) {
     const aiInsights = _aiInsRaw
       ? _aiInsRaw.map(i=>({ pri:i.priority||i.pri||'high', icon:i.icon||'💡', cat:i.category||i.cat||'IA', title:i.title||'Insight IA', body:i.body||i.description||'', action:i.action||'Analyser' }))
       : (PREVIEW_MODE ? [
-          { pri: 'critical', icon: '🚨', cat: 'Conversion',  title: 'Perte revenue weekend confirmee',        body: 'Samedi et dimanche representent 0% de conversion malgre 22% du trafic mensuel. Impact estime : -800€/weekend. Cause probable : formulaire de contact ferme ou non visible en mobile.', action: 'Corriger le formulaire' },
+          { pri: 'high', icon: '⚠️', cat: 'Conversion', title: 'Exemple — friction de conversion', body: 'Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.', action: 'Corriger le formulaire' },
           { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
           { pri: 'high',     icon: '📍', cat: 'Local SEO',   title: 'Opportunite Maps non capturee',          body: 'Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.',              action: 'Renforcer GBP'           },
           { pri: 'high',     icon: '🔗', cat: 'Trafic',      title: 'Declin referents accelere',              body: 'Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.',             action: 'Analyser les referents'  },
@@ -56917,6 +56920,7 @@ function renderConversion() {
     const _rlData = window.FP_DATA && window.FP_DATA.revenueLeak;
     const leaks = (_rlData?.opportunities || []).map(l => ({
       page: l.page || 'Page',
+      siteUrl: l.siteUrl || '',
       issue: `${l.recommendation || ''} ${l.observedEvents || 0} événements sur ${l.affectedSessions || 0} sessions.`,
       events: Number(l.observedEvents || 0),
       sessions: Number(l.affectedSessions || 0),
@@ -56952,7 +56956,7 @@ function renderConversion() {
             return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border-left:3px solid ${sc};background:${sc}08">
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${sc}20;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:${sc}">${i + 1}</div>
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(l.page)}</div>
+                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${l.siteUrl ? `${escHtml(l.siteUrl)} · ` : ''}${escHtml(l.page)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.issue)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${l.events} événements · ${l.sessions} sessions · confiance ${escHtml(l.confidence)} · source behavior_events</div>
               </div>
@@ -57265,36 +57269,20 @@ function renderConversion() {
         </div>
         ${(function() {
           const _realLeaks = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.leaks;
-          const _icons = { slow_page:'⏱️', dead_cta:'📢', abandoned_cart:'🛒', friction:'📱', no_cta:'📝' };
           if (_realLeaks && _realLeaks.length > 0) {
             return _realLeaks.slice(0, 4).map(l => {
-              const lc = (l.impactScore||0) >= 75 ? '#ef4444' : '#f59e0b';
-              const lossStr = l.monthlyLoss ? l.monthlyLoss.toLocaleString(getLocale()) + '€/mois' : '—';
+              const lc = '#f59e0b';
               return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                 <div style="display:flex;align-items:center;gap:8px">
                   <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
                   <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||'Fuite détectée')}</span>
                 </div>
-                <span style="font-size:12px;font-weight:800;color:${lc}">-${lossStr}</span>
+                <span style="font-size:11px;color:var(--fp-text-muted)">Revenu non mesuré</span>
               </div>`;
             }).join('');
           }
           if (PREVIEW_MODE) {
-            return [
-              { page: "Formulaire (8 champs)",  loss: "1 890€/mois", urg: "critical" },
-              { page: "CTA tarifs invisible",   loss: "1 240€/mois", urg: "critical" },
-              { page: "Vitesse mobile 3.2s",    loss: "820€/mois",   urg: "high"     },
-              { page: "Pas de preuves sociales",loss: "630€/mois",   urg: "high"     },
-            ].map(l => {
-              const lc = l.urg === "critical" ? "#ef4444" : "#f59e0b";
-              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
-                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.page)}</span>
-                </div>
-                <span style="font-size:12px;font-weight:800;color:${lc}">-${escHtml(l.loss)}</span>
-              </div>`;
-            }).join('');
+            return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.</div>`;
           }
           return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
         })()}
@@ -70530,20 +70518,30 @@ window.FP_REVENUE_LEAK_API = {
   async load(siteUrl) {
     try {
       const url = siteUrl ? `/api/revenue-leak?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/revenue-leak';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const data = await apiFetch(url);
+      if (!data || data.ok === false) throw new Error('Les événements comportementaux sont indisponibles.');
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.revenueLeak = {
+        _fromRealData: true,
         leaks:          data.opportunities || [],
         opportunities:  data.opportunities || [],
         summary:        data.summary       || null,
-        trafficLosses:  data.trafficLosses || data.failures || [],
-        conversionFails:data.conversionFailures || [],
+        financial:      data.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        windowDays:     data.windowDays || 30,
         isEmpty:        data.noData        ?? (!(data.opportunities && data.opportunities.length)),
+        noData:         data.noData        ?? (!(data.opportunities && data.opportunities.length)),
         emptyReason:    data.error         || null,
         error:          data.error         || null,
       };
-    } catch(e) { console.warn('[FP_REVENUE_LEAK_API] load error:', e); }
+    } catch(e) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.revenueLeak = {
+        _fromRealData: true, leaks: [], opportunities: [], summary: null,
+        financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
+      };
+      console.warn('[FP_REVENUE_LEAK_API] load error:', e);
+    }
   },
 
   async detect(siteUrl) {
@@ -70553,7 +70551,11 @@ window.FP_REVENUE_LEAK_API = {
       const r = await apiFetch('/api/revenue-leak/detect', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.revenueLeak = { leaks: r.opportunities || [], opportunities: r.opportunities || [], error: r.error || null };
+        window.FP_DATA.revenueLeak = {
+          _fromRealData: true, leaks: r.opportunities || [], opportunities: r.opportunities || [],
+          financial: r.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+          noData: r.noData ?? !(r.opportunities || []).length, error: r.error || null,
+        };
         render();
         showToast('success', `${(r.opportunities||[]).length} opportunités observées`);
       } else showToast('error', r?.error || 'Erreur');
