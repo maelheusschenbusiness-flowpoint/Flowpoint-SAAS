@@ -100,4 +100,14 @@ describe("GBP post studio API", () => {
     expect(response.status).toBe(422);
     expect(response.body.error).toBe("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
   });
+
+  it("sanitizes unexpected publish failures", async () => {
+    vi.mocked(publishPost).mockRejectedValue(new Error("private provider response"));
+
+    const response = await request(app).post("/gbp-posts/post-1/publish").send({});
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe("Internal server error");
+    expect(JSON.stringify(response.body)).not.toContain("private provider response");
+  });
 });
