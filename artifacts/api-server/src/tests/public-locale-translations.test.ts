@@ -12,14 +12,29 @@ const publicDashboardHtml = readFileSync(
   "utf8",
 );
 
-function loadLocale(initialLanguage = "en") {
+function loadLocale(
+  initialLanguage = "en",
+  options: { readyState?: string; title?: string; metadata?: any[] } = {},
+) {
   let storedLanguage = initialLanguage;
   const window = { location: { pathname: "/pricing.html" } };
+  const emptyRoot = {
+    nodeType: 1,
+    matches: () => false,
+    querySelectorAll: () => [],
+  };
   const document = {
-    readyState: "loading",
-    title: "",
+    readyState: options.readyState ?? "loading",
+    title: options.title ?? "",
     documentElement: { lang: "" },
+    head: {
+      nodeType: 1,
+      matches: () => false,
+      querySelectorAll: () => options.metadata ?? [],
+    },
+    body: emptyRoot,
     addEventListener: () => undefined,
+    querySelector: () => null,
     createTreeWalker: () => ({ nextNode: () => null }),
   };
   const localStorage = {
@@ -36,6 +51,7 @@ function loadLocale(initialLanguage = "en") {
 
   return {
     window: window as typeof window & Record<string, any>,
+    document,
     readLanguage: () => storedLanguage,
   };
 }
@@ -47,6 +63,20 @@ describe("public English localization", () => {
     expect(window.fpPublicText("Local SEO basique")).toBe("Basic Local SEO");
     expect(window.fpPublicText("Achat unique")).toBe("One-time purchase");
     expect(window.fpPublicText("Suivant")).toBe("Next");
+    expect(window.fpPublicText("IA & Copilot")).toBe("AI & Copilot");
+    expect(window.fpPublicText("Review Intelligence IA")).toBe("Review Intelligence AI");
+    expect(window.fpPublicText("Monitors d'uptime")).toBe("Uptime monitors");
+    expect(window.fpPublicText("Copilot IA")).toBe("AI Copilot");
+    expect(window.fpPublicText("Complet")).toBe("Full");
+    expect(window.fpPublicText("Basiques")).toBe("Basic");
+    expect(window.fpPublicText("Inclus")).toBe("Included");
+    expect(window.fpPublicText("∞ (Inclus)")).toBe("∞ (Included)");
+    expect(window.fpPublicText("Agency Lab complet")).toBe("Full Agency Lab");
+    expect(window.fpPublicText("100 000")).toBe("100,000");
+    expect(window.fpPublicText("500 000")).toBe("500,000");
+    expect(window.fpPublicText("4€")).toBe("€4");
+    expect(window.fpPublicText("9€")).toBe("€9");
+    expect(window.fpPublicText("19€")).toBe("€19");
     expect(window.fpPublicText("Facturation client")).toBe("Client billing");
     expect(window.fpPublicText("Analytics concurrents")).toBe("Competitor analytics");
     expect(window.fpPublicText("Support dédié <1h")).toBe("Dedicated support <1 hour");
@@ -75,6 +105,50 @@ describe("public English localization", () => {
     const frenchButton = makeButton();
     french.fpTranslatePublicSubtree(frenchButton);
     expect(frenchButton.readAttribute("aria-label")).toBe("Suivant");
+  });
+
+  it("translates public pricing metadata in English while preserving non-language URLs", () => {
+    const makeMeta = (attributes: Record<string, string>) => {
+      const values = new Map(Object.entries(attributes));
+      return {
+        tagName: "META",
+        getAttribute: (name: string) => values.get(name) ?? null,
+        setAttribute: (name: string, value: string) => values.set(name, value),
+        readAttribute: (name: string) => values.get(name),
+      };
+    };
+    const description = makeMeta({
+      name: "description",
+      content: "Plans FlowPoint : Standard 29€ (30 audits, 10 monitors), Pro 79€ (300 audits, 50 monitors), Ultra 149€ (1000 audits, 300 monitors). Essai 14 jours.",
+    });
+    const openGraphTitle = makeMeta({
+      property: "og:title",
+      content: "Tarifs FlowPoint — SEO, monitoring & IA",
+    });
+    const openGraphDescription = makeMeta({
+      property: "og:description",
+      content: "Plans flexibles pour indépendants, équipes et agences. 14 jours d'essai inclus.",
+    });
+    const openGraphUrl = makeMeta({
+      property: "og:url",
+      content: "https://app.flowpoint.pro/pricing.html",
+    });
+
+    const { document } = loadLocale("en", {
+      readyState: "complete",
+      title: "Tarifs FlowPoint — SEO, monitoring & IA pour votre croissance",
+      metadata: [description, openGraphTitle, openGraphDescription, openGraphUrl],
+    });
+
+    expect(description.readAttribute("content")).toBe(
+      "FlowPoint plans: Standard €29 (30 audits, 10 monitors), Pro €79 (300 audits, 50 monitors), and Ultra €149 (1,000 audits, 300 monitors). Includes a 14-day trial.",
+    );
+    expect(openGraphTitle.readAttribute("content")).toBe("FlowPoint pricing — SEO, monitoring & AI");
+    expect(openGraphDescription.readAttribute("content")).toBe(
+      "Flexible plans for freelancers, teams, and agencies. Includes a 14-day trial.",
+    );
+    expect(openGraphUrl.readAttribute("content")).toBe("https://app.flowpoint.pro/pricing.html");
+    expect(document.title).toBe("FlowPoint pricing — SEO, monitoring & AI for your growth");
   });
 
   it("formats dates and numbers in English without changing the saved language", () => {
@@ -110,6 +184,9 @@ describe("public English localization", () => {
       expect(window.fpResolveLocale(language)).toBe(locale);
     }
     expect(window.fpPublicText("Achat unique", "One-time purchase")).toBe("Achat unique");
+    expect(window.fpPublicText("Monitors d'uptime")).toBe("Monitors d'uptime");
+    expect(window.fpPublicText("Agency Lab complet")).toBe("Agency Lab complet");
+    expect(window.fpPublicText("4€")).toBe("4€");
     expect(readLanguage()).toBe("fr");
   });
 
