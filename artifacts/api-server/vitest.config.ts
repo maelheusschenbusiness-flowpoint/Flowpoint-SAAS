@@ -87,6 +87,7 @@ export default defineConfig({
       "src/routes/ab-testing-suggest.test.ts",
       "src/routes/ab-testing-lifecycle.test.ts",
       "src/tests/dashboard-render-regressions.test.ts",
+      "src/tests/public-locale-translations.test.ts",
       // Conversion A — funnel fixes
       "src/routes/seo-quota-gate.test.ts",
       "src/services/dataforseo-quota-db.test.ts",

@@ -11,6 +11,7 @@
   <meta id="fp-meta-tc" name="theme-color" content="#050810">
   <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/fp-locale.js?v=20261025"></script>
   <title>FlowPoint — Créer votre compte</title>
   <meta name="robots" content="noindex, nofollow" />
   <style>
@@ -625,7 +626,11 @@
       google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer."
     };
     var msgEl = document.getElementById('signup-msg');
-    if (msgEl) showMsg(msgEl, 'error', escHtml(ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ')));
+    var oauthError = ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ');
+    if (window.fpResolveLanguage() === 'en' && !ERROR_MAP[errorParam]) {
+      oauthError = 'Sign-up could not be started. Please try again.';
+    }
+    if (msgEl) showMsg(msgEl, 'error', escHtml(oauthError));
     history.replaceState({}, '', '/signin.html');
   }
 
@@ -877,7 +882,12 @@
     .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
-        var errTxt = escHtml(res.data.error || 'Une erreur est survenue.');
+        var rawError = res.data.error || 'Une erreur est survenue.';
+        if (window.fpResolveLanguage() === 'en') {
+          var translatedError = window.fpPublicTranslateText(rawError);
+          rawError = translatedError !== rawError ? translatedError : 'An error occurred. Please try again.';
+        }
+        var errTxt = escHtml(rawError);
         var redir  = res.data.redirectTo || '';
         if (redir === '/login.html') {
           showMsg(signupMsg, 'error',
@@ -891,7 +901,7 @@
           var _iv = setInterval(function() {
             _secs--;
             var lk = document.getElementById('signin-redir-link');
-            if (lk) lk.textContent = '→ Me connecter (' + _secs + 's)';
+            if (lk) lk.textContent = window.fpPublicText('→ Me connecter (' + _secs + 's)', '→ Sign in (' + _secs + 's)');
             if (_secs <= 0) { clearInterval(_iv); window.location.href = '/login.html'; }
           }, 1000);
         } else if (redir) {

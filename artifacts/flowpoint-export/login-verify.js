@@ -19,7 +19,8 @@
       var keysToRemove = [];
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (k && (k.startsWith('fp-') || k.startsWith('fp_') || k.startsWith('fp:'))) {
+        if (k && k !== 'fp:language' &&
+            (k.startsWith('fp-') || k.startsWith('fp_') || k.startsWith('fp:'))) {
           keysToRemove.push(k);
         }
       }
@@ -45,7 +46,8 @@
   var token = getParam('token');
 
   if (!token) {
-    document.getElementById('fp-error-msg').textContent = 'Aucun token trouvé dans l\'URL.';
+    document.getElementById('fp-error-msg').textContent =
+      window.fpPublicText('Aucun token trouvé dans l\'URL.', 'No sign-in token was found in the URL.');
     show('fp-error');
     return;
   }
@@ -113,7 +115,11 @@
     } else {
       // Show the server's error message (French prose).
       // Fall back to a generic message only when the server returned no body.
-      var serverMsg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';
+      var rawServerMsg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';
+      var serverMsg = window.fpPublicTranslateText(rawServerMsg);
+      if (window.fpResolveLanguage && window.fpResolveLanguage() === 'en' && serverMsg === rawServerMsg) {
+        serverMsg = 'This sign-in link is invalid or has expired.';
+      }
       var canRetry  = !!(r.data && r.data.canRetry);
       document.getElementById('fp-error-msg').textContent = serverMsg;
 
@@ -133,7 +139,8 @@
     }
   })
   .catch(function () {
-    document.getElementById('fp-error-msg').textContent = 'Impossible de contacter le serveur. Réessayez.';
+    document.getElementById('fp-error-msg').textContent =
+      window.fpPublicText('Impossible de contacter le serveur. Réessayez.', 'We could not reach the server. Please try again.');
     show('fp-error');
   });
 })();

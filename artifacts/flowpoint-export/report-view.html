@@ -10,6 +10,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#2563EB">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
   <title>Rapport — FlowPoint</title>
   <script>
@@ -130,8 +131,8 @@
     <div id="fp-report-content">
       <div class="fp-report-header">
         <button class="fp-print-btn" onclick="window.print()">🖨️ Imprimer</button>
-        <div class="fp-report-title" id="fp-report-title">Rapport d'analyse</div>
-        <div class="fp-report-meta" id="fp-report-meta"></div>
+        <div class="fp-report-title" id="fp-report-title" data-fp-user-content>Rapport d'analyse</div>
+        <div class="fp-report-meta" id="fp-report-meta" data-fp-user-content></div>
       </div>
       <div id="fp-report-body"></div>
     </div>
@@ -149,11 +150,12 @@
       }
 
       function renderReport(data) {
-        document.getElementById('fp-report-title').textContent = data.title || 'Rapport d\'analyse';
+        document.getElementById('fp-report-title').textContent = data.title ||
+          window.fpPublicText('Rapport d\'analyse', 'Analysis report');
         var meta = document.getElementById('fp-report-meta');
         var parts = [];
         if (data.url) parts.push(data.url);
-        if (data.createdAt) parts.push(new Date(data.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }));
+        if (data.createdAt) parts.push(window.fpFormatDate(data.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }));
         if (data.orgName) parts.push(data.orgName);
         meta.innerHTML = parts.map(function (p) { return '<span>' + p + '</span>'; }).join('');
 
@@ -163,7 +165,7 @@
         if (data.summary) {
           var card = document.createElement('div');
           card.className = 'fp-card';
-          card.innerHTML = '<h2>Résumé</h2><p style="font-size:14px;line-height:1.7;color:var(--fp-text-muted)">' + data.summary + '</p>';
+          card.innerHTML = '<h2>Résumé</h2><p data-fp-user-content style="font-size:14px;line-height:1.7;color:var(--fp-text-muted)">' + data.summary + '</p>';
           body.appendChild(card);
         }
 
@@ -172,7 +174,7 @@
           kpiCard.className = 'fp-card';
           var grid = '<h2>Indicateurs clés</h2><div class="fp-kpi-grid">';
           Object.entries(data.kpis).forEach(function (e) {
-            grid += '<div class="fp-kpi"><div class="fp-kpi-val">' + e[1] + '</div><div class="fp-kpi-label">' + e[0] + '</div></div>';
+            grid += '<div class="fp-kpi"><div class="fp-kpi-val" data-fp-user-content>' + e[1] + '</div><div class="fp-kpi-label" data-fp-user-content>' + e[0] + '</div></div>';
           });
           grid += '</div>';
           kpiCard.innerHTML = grid;
@@ -183,12 +185,12 @@
           data.sections.forEach(function (sec) {
             var c = document.createElement('div');
             c.className = 'fp-card';
-            var html = '<h2>' + (sec.title || 'Section') + '</h2>';
-            if (sec.content) html += '<p style="font-size:14px;line-height:1.7;color:var(--fp-text-muted)">' + sec.content + '</p>';
+            var html = '<h2' + (sec.title ? ' data-fp-user-content' : '') + '>' + (sec.title || 'Section') + '</h2>';
+            if (sec.content) html += '<p data-fp-user-content style="font-size:14px;line-height:1.7;color:var(--fp-text-muted)">' + sec.content + '</p>';
             if (sec.items && sec.items.length) {
               html += '<ul style="list-style:none;margin-top:12px">';
               sec.items.forEach(function (item) {
-                html += '<li style="font-size:13px;padding:5px 0;border-bottom:1px solid var(--fp-border);color:var(--fp-text-muted)">• ' + item + '</li>';
+                 html += '<li data-fp-user-content style="font-size:13px;padding:5px 0;border-bottom:1px solid var(--fp-border);color:var(--fp-text-muted)">• ' + item + '</li>';
               });
               html += '</ul>';
             }
@@ -200,7 +202,7 @@
         if (body.children.length === 0) {
           var raw = document.createElement('div');
           raw.className = 'fp-card';
-          raw.innerHTML = '<h2>Données</h2><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+          raw.innerHTML = '<h2>Données</h2><pre data-fp-user-content>' + JSON.stringify(data, null, 2) + '</pre>';
           body.appendChild(raw);
         }
 
@@ -222,7 +224,12 @@
           if (r.ok && r.data) {
             renderReport(r.data);
           } else {
-            document.getElementById('fp-error-msg').textContent = (r.data && r.data.error) || 'Rapport introuvable ou expiré.';
+            var error = (r.data && r.data.error) || 'Rapport introuvable ou expiré.';
+            if (window.fpResolveLanguage() === 'en') {
+              var translated = window.fpPublicTranslateText(error);
+              error = translated !== error ? translated : 'This report could not be found or has expired.';
+            }
+            document.getElementById('fp-error-msg').textContent = error;
             show('fp-error');
           }
         })
