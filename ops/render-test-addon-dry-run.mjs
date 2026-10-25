@@ -233,9 +233,6 @@ function publicCandidate(candidate) {
 }
 
 async function main() {
-  if (env.NODE_ENV === "production") {
-    return emit({ mode: "DRY_RUN", status: "refused", reason: "NODE_ENV_is_production" });
-  }
   if (env.STRIPE_TEST_MODE !== "true") {
     return emit({ mode: "DRY_RUN", status: "refused", reason: "STRIPE_TEST_MODE_is_not_true" });
   }
