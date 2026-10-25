@@ -16,7 +16,10 @@ import { safeErrMsg } from "../lib/safe-error.js";
 
 const router = Router();
 
-router.use(requireAddon("gbpPerformanceLeads", "GBP Performance & Leads"));
+// Scope the gate to this router's own endpoint. A bare router.use() here also
+// intercepts later root-mounted routers (for example Conversion Opportunity
+// Engine) before Express gets a chance to reach their own authorization gate.
+router.use("/gbp-performance", requireAddon("gbpPerformanceLeads", "GBP Performance & Leads"));
 
 async function readSettings(tenantId: string) {
   const result = await pool.query(

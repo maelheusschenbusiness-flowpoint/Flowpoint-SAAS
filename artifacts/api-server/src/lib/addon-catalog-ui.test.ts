@@ -285,12 +285,21 @@ describe("add-on catalogue UI commercial gates", () => {
     for (const [key] of replacements) expect(publicBillingIds.has(key)).toBe(true);
   });
 
-  it("keeps the marketplace at the pre-refonte card count and syncs the static export", () => {
+  it("matches the marketplace cards to the purchasable monthly backend catalogue", () => {
     const match = dashboard.match(/const allAddons = \[([\s\S]*?)\n\s*\];/);
     expect(match, "add-on card definitions should be present").not.toBeNull();
     const keys = [...(match?.[1] ?? "").matchAll(/key:\s*'([^']+)'/g)].map(item => item[1]);
-    expect(keys).toHaveLength(32);
+    expect(keys).toHaveLength(36);
+    expect(new Set(keys).size).toBe(keys.length);
     expect(exportedDashboard).toBe(dashboard);
+    const monthlyCatalogKeys = Object.entries(ADDON_DEFINITIONS)
+      .filter(([key, def]) => !def.oneTime && !REMOVED_ADDONS.has(key) && !RETIRED_ADDONS.has(key))
+      .map(([key]) => key)
+      .sort();
+    expect([...keys].sort()).toEqual(monthlyCatalogKeys);
+    for (const key of ["auditsPack200", "auditsPack1000", "pdfPack200", "exportsPack1000"]) {
+      expect(keys, `${key} is present in the backend catalogue`).toContain(key);
+    }
     for (const key of [
       "gbpSlots10",
       "reviewIntelligence",
@@ -315,6 +324,15 @@ describe("add-on catalogue UI commercial gates", () => {
     ]) {
       expect(keys, `${key} replaces an old card`).toContain(key);
     }
+  });
+
+  it("renders the pricing cards from the canonical API catalogue, not retired static offers", () => {
+    const pricingPath = fileURLToPath(new URL("../../../flowpoint-export/pricing.html", import.meta.url));
+    const pricing = readFileSync(pricingPath, "utf8");
+    expect(pricing).toContain("_fpRenderAddonCards(cat)");
+    expect(pricing).toContain("cat.addons.filter(function (addon) { return !addon.oneTime; })");
+    expect(pricing).toContain("data-addon-key");
+    expect(pricing).toContain("role=\"alert\"");
   });
 
   it("does not let a retired add-on bypass the server-side quote guard", () => {
