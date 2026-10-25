@@ -170,6 +170,68 @@ function priceAmountCents(price) {
   return null;
 }
 
+async function scanCandidate(item, spec) {
+  const product = item.product;
+  const [activePrices, inactivePrices] = await Promise.all([
+    listAll("/v1/prices", { product: product.id, active: "true" }, `active_prices_${spec.addon}`),
+    listAll("/v1/prices", { product: product.id, active: "false" }, `inactive_prices_${spec.addon}`)
+  ]);
+
+  const monthlyEur = [...activePrices, ...inactivePrices].filter(price =>
+    price.currency?.toLowerCase() === "eur" &&
+    price.recurring?.interval === "month" &&
+    (price.recurring?.interval_count ?? 1) === 1
+  );
+  const equivalents = monthlyEur.filter(price =>
+    priceAmountCents(price) === spec.amountEur * 100
+  );
+
+  return {
+    product,
+    matchType: item.matchType,
+    matchSignals: item.signals,
+    name: product.name || null,
+    active: product.active === true,
+    metadataKeys: Object.keys(product.metadata || {}),
+    activeMonthlyEurPrices: monthlyEur
+      .filter(price => price.active === true)
+      .map(price => ({
+        amountCents: priceAmountCents(price),
+        livemode: typeof price.livemode === "boolean" ? price.livemode : null
+      })),
+    inactiveMonthlyEurPrices: monthlyEur
+      .filter(price => price.active !== true)
+      .map(price => ({
+        amountCents: priceAmountCents(price),
+        livemode: typeof price.livemode === "boolean" ? price.livemode : null
+      })),
+    equivalentCount: equivalents.length,
+    activeEquivalentCount: equivalents.filter(
+      price => price.active === true && price.livemode === false
+    ).length,
+    inactiveEquivalentCount: equivalents.filter(price => price.active !== true).length,
+    nonTestEquivalentCount: equivalents.filter(
+      price => price.active === true && price.livemode !== false
+    ).length
+  };
+}
+
+function publicCandidate(candidate) {
+  return {
+    name: candidate.name,
+    active: candidate.active,
+    matchType: candidate.matchType,
+    matchSignals: candidate.matchSignals,
+    metadataKeys: candidate.metadataKeys,
+    activeMonthlyEurPrices: candidate.activeMonthlyEurPrices,
+    inactiveMonthlyEurPrices: candidate.inactiveMonthlyEurPrices,
+    equivalentTargetPriceCount: candidate.equivalentCount,
+    equivalentTargetActivePriceCount: candidate.activeEquivalentCount,
+    equivalentTargetInactivePriceCount: candidate.inactiveEquivalentCount,
+    equivalentTargetNonTestPriceCount: candidate.nonTestEquivalentCount
+  };
+}
+
 async function main() {
   if (env.NODE_ENV === "production") {
     return emit({ mode: "DRY_RUN", status: "refused", reason: "NODE_ENV_is_production" });
@@ -224,24 +286,32 @@ async function main() {
       .filter(item => item.matchType !== "none");
     const strong = candidates.filter(item => item.matchType === "strong");
     const possible = candidates.filter(item => item.matchType === "possible");
-    const safeCandidates = candidates.map(item => ({
-      name: item.product.name || null,
-      active: item.product.active === true,
-      matchType: item.matchType,
-      matchSignals: item.signals,
-      metadataKeys: Object.keys(item.product.metadata || {})
-    }));
+    const candidateScanLimit = 20;
+    const candidateScans = candidates.length <= candidateScanLimit
+      ? await Promise.all(candidates.map(item => scanCandidate(item, spec)))
+      : [];
+    const safeCandidates = candidateScans.map(publicCandidate);
 
-    if (possible.length || strong.length > 1 || (strong.length && possible.length)) {
+    if (
+      possible.length ||
+      strong.length > 1 ||
+      (strong.length && possible.length) ||
+      candidates.length > candidateScanLimit
+    ) {
       addons.push({
         addon: spec.addon,
         targetAmountEurMonthly: spec.amountEur,
         productExists: true,
         productCandidates: safeCandidates,
-        activeMonthlyEurPrices: [],
-        inactiveMonthlyEurPrices: [],
         decision: "BLOCKED_REVIEW",
-        blockers: ["possible_or_ambiguous_equivalent_product"]
+        blockers: [
+          possible.length || strong.length > 1
+            ? "possible_or_ambiguous_equivalent_product"
+            : null,
+          candidates.length > candidateScanLimit ? "candidate_scan_limit_exceeded" : null
+        ].filter(Boolean),
+        candidateCount: candidates.length,
+        candidatePriceScansSkipped: candidates.length > candidateScanLimit
       });
       continue;
     }
@@ -260,37 +330,24 @@ async function main() {
       continue;
     }
 
-    const product = strong[0].product;
-    const [activePrices, inactivePrices] = await Promise.all([
-      listAll("/v1/prices", { product: product.id, active: "true" }, `active_prices_${spec.addon}`),
-      listAll("/v1/prices", { product: product.id, active: "false" }, `inactive_prices_${spec.addon}`)
-    ]);
-
-    const monthlyEur = [...activePrices, ...inactivePrices].filter(price =>
-      price.currency?.toLowerCase() === "eur" &&
-      price.recurring?.interval === "month" &&
-      (price.recurring?.interval_count ?? 1) === 1
-    );
-    const equivalent = monthlyEur.filter(price =>
-      priceAmountCents(price) === spec.amountEur * 100
-    );
-    const activeEquivalent = equivalent.filter(price =>
-      price.active === true && price.livemode === false
-    );
-    const inactiveEquivalent = equivalent.filter(price => price.active !== true);
+    const candidate = candidateScans[0];
+    const product = candidate.product;
     const blockers = [];
     let decision;
 
     if (product.active !== true) {
       blockers.push("matching_product_is_inactive");
       decision = "BLOCKED";
-    } else if (equivalent.length > 1) {
+    } else if (candidate.equivalentCount > 1) {
       blockers.push("multiple_equivalent_prices_exist");
       decision = "BLOCKED";
-    } else if (inactiveEquivalent.length === 1) {
+    } else if (candidate.inactiveEquivalentCount === 1) {
       blockers.push("equivalent_price_exists_but_is_inactive");
       decision = "BLOCKED";
-    } else if (equivalent.length === 1 && activeEquivalent.length === 1) {
+    } else if (candidate.nonTestEquivalentCount === 1) {
+      blockers.push("equivalent_price_is_not_test_mode");
+      decision = "BLOCKED";
+    } else if (candidate.equivalentCount === 1 && candidate.activeEquivalentCount === 1) {
       decision = "REUSE";
     } else if (spec.reuseOnly) {
       blockers.push("GBP_must_be_reused_not_created");
@@ -305,19 +362,9 @@ async function main() {
       productExists: true,
       productActive: product.active === true,
       productCandidates: safeCandidates,
-      activeMonthlyEurPrices: monthlyEur
-        .filter(price => price.active === true)
-        .map(price => ({
-          amountCents: priceAmountCents(price),
-          livemode: typeof price.livemode === "boolean" ? price.livemode : null
-        })),
-      inactiveMonthlyEurPrices: monthlyEur
-        .filter(price => price.active !== true)
-        .map(price => ({
-          amountCents: priceAmountCents(price),
-          livemode: typeof price.livemode === "boolean" ? price.livemode : null
-        })),
-      equivalentTargetPriceCount: equivalent.length,
+      activeMonthlyEurPrices: candidate.activeMonthlyEurPrices,
+      inactiveMonthlyEurPrices: candidate.inactiveMonthlyEurPrices,
+      equivalentTargetPriceCount: candidate.equivalentCount,
       decision,
       blockers
     });
