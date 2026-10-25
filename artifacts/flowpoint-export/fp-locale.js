@@ -258,6 +258,7 @@
     "Indicateurs clés": "Key metrics",
     "Données": "Data",
     "Précédent": "Previous",
+    "Suivant": "Next",
     "Sélectionner": "Select",
     "Commencer": "Get started",
     "Voir plus ▾": "See more ▾",
