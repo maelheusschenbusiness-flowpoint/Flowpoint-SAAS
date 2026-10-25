@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
 
   <title>Tarifs FlowPoint — SEO, monitoring &amp; IA pour votre croissance</title>
@@ -1070,8 +1071,8 @@
 
   function _fmtNum(n) {
     if (n >= 1000000) return (n/1000000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' M';
-    if (n >= 1000) return Math.round(n/1000).toLocaleString('fr-FR').replace(/,/g,' ')+' k';
-    return n.toLocaleString('fr-FR');
+    if (n >= 1000) return Math.round(n/1000).toLocaleString(window.fpResolveLocale()).replace(/,/g,' ')+' k';
+    return n.toLocaleString(window.fpResolveLocale());
   }
 
   function applyDefs(defs) {
@@ -1085,10 +1086,15 @@
         var priceWrap = card.querySelector('.fp-card-price');
         if (priceWrap) {
           var priceSpan = priceWrap.querySelector('span');
-          if (priceSpan) priceSpan.textContent = d.priceEur + '€';
+          if (priceSpan) priceSpan.textContent = new Intl.NumberFormat(
+            window.fpResolveLocale ? window.fpResolveLocale() : 'fr-FR',
+            { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }
+          ).format(d.priceEur);
         }
         var trial = card.querySelector('.fp-card-trial');
-        if (trial) trial.textContent = '✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois';
+        if (trial) trial.textContent = window.fpPublicText
+          ? window.fpPublicText('✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois', '✓ 14 days free · then €' + d.priceEur + '/month')
+          : '✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois';
       }
 
       // ── Update feature list ──
@@ -1109,6 +1115,7 @@
           });
         }
         featList.innerHTML = html;
+        if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(featList);
       }
     });
 
@@ -1150,6 +1157,7 @@
           cells[3].textContent = _fmtNum(defs.ultra.aiCredits);
         }
       });
+      if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(cmpWrap);
     }
   }
 
@@ -1228,6 +1236,11 @@
 
   function _fpEur(minor) {
     var v = (Number(minor) || 0) / 100;
+    if (typeof window.fpResolveLocale === 'function') {
+      return new Intl.NumberFormat(window.fpResolveLocale(), {
+        style: 'currency', currency: 'EUR', maximumFractionDigits: 2
+      }).format(v);
+    }
     return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20AC';
   }
 
@@ -1314,6 +1327,7 @@
     }).join("");
 
     grid.innerHTML = html;
+    if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(grid);
     grid.dataset.catalogState = "ready";
     grid.style.display = "";
     grid.hidden = false;
@@ -1322,7 +1336,9 @@
     var label = document.getElementById("fp-addon-label");
     var toggle = document.getElementById("fp-addon-toggle");
     var hiddenCount = Math.max(0, monthly.length - 8);
-    if (label) label.textContent = hiddenCount ? "Voir tous les add-ons (" + hiddenCount + " de plus)" : "Tous les add-ons";
+    if (label) label.textContent = hiddenCount
+      ? (window.fpPublicText ? window.fpPublicText("Voir tous les add-ons (" + hiddenCount + " de plus)", "View all add-ons (" + hiddenCount + " more)") : "Voir tous les add-ons (" + hiddenCount + " de plus)")
+      : (window.fpPublicText ? window.fpPublicText("Tous les add-ons", "All add-ons") : "Tous les add-ons");
     if (toggle) toggle.hidden = hiddenCount === 0;
 
     if (!grid.dataset.catalogClickBound) {
@@ -1941,7 +1957,7 @@
       status:     raw.status || raw.subscriptionStatus || null,
       addons:     raw.addons || {},
       nextDate:   raw.nextDate || raw.currentPeriodEnd
-                    ? (raw.nextDate || new Date(raw.currentPeriodEnd).toLocaleDateString('fr-FR')) : null,
+                    ? (raw.nextDate || window.fpFormatDate(raw.currentPeriodEnd)) : null,
       trialEndsAt: raw.trialEndsAt || null,
     };
   }
@@ -1965,7 +1981,7 @@
       banner.innerHTML = '<span style="font-size:16px">📊</span>'
         + '<span>Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName + '</strong>'
         + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
-        + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '')
+        + (data.trialEndsAt ? ' · <span style="color:var(--blue)">' + window.fpPublicText('Essai jusqu\'au ', 'Trial ends ') + window.fpFormatDate(data.trialEndsAt) + '</span>' : '')
         + '</span>'
         + (_isFromDashboard ? '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>' : '');
       navEl.insertAdjacentElement('afterend', banner);
@@ -1978,7 +1994,7 @@
         if (span) {
           span.innerHTML = 'Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName2 + '</strong>'
             + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
-            + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '');
+            + (data.trialEndsAt ? ' · <span style="color:var(--blue)">' + window.fpPublicText('Essai jusqu\'au ', 'Trial ends ') + window.fpFormatDate(data.trialEndsAt) + '</span>' : '');
         }
       }
     }

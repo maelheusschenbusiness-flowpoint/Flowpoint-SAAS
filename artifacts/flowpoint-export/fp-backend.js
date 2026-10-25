@@ -22,6 +22,28 @@ window.__fpPageLoadTs = Date.now();
 (function () {
   'use strict';
 
+  function _fpBackendLocale() {
+    var language = window.STATE && window.STATE.settings && window.STATE.settings.language;
+    if (!language) {
+      try { language = localStorage.getItem('fp:language') || 'en'; } catch (_) { language = 'en'; }
+    }
+    if (typeof window.fpResolveLocale === 'function') return window.fpResolveLocale(language);
+    return ({ en:'en-US', fr:'fr-FR', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ', 'pt-br':'pt-BR' })[String(language).toLowerCase()] || 'en-US';
+  }
+
+  function _fpBackendText(french, english) {
+    var language = window.STATE && window.STATE.settings && window.STATE.settings.language;
+    if (!language) {
+      try { language = localStorage.getItem('fp:language') || 'en'; } catch (_) { language = 'en'; }
+    }
+    if (String(language).toLowerCase().split(/[-_]/)[0] === 'fr') return french;
+    if (typeof window.fpT === 'function') {
+      var translated = window.fpT(french);
+      if (translated && translated !== french) return translated;
+    }
+    return english || french;
+  }
+
   // ─── UTILITAIRES PARTAGÉS ────────────────────────────────────────────────────
 
   // Dashboard sessions are isolated per browser tab. Never fall back to
@@ -1034,9 +1056,9 @@ window.__fpPageLoadTs = Date.now();
       });
       var normalizedMessage = {
         id: serverId,
-        from: msgData.from || 'Équipe',
+        from: msgData.from || _fpBackendText('Équipe', 'Team'),
         text: msgData.text || '',
-        time: msgData.createdAt ? new Date(msgData.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
+        time: msgData.createdAt ? new Date(msgData.createdAt).toLocaleTimeString(_fpBackendLocale(), {hour:'2-digit', minute:'2-digit'}) : _fpBackendText('À l\'instant', 'Just now'),
         createdAt: msgData.createdAt || null,
         senderId: msgData.senderId || null,
         attachmentUrl: msgData.attachmentUrl || null,
@@ -1195,7 +1217,9 @@ window.__fpPageLoadTs = Date.now();
         window.STATE.me.addons[key] = !isCurrentlyActive;
       }
       if (typeof window.showToast === 'function') {
-        window.showToast(isCurrentlyActive ? 'info' : 'success', isCurrentlyActive ? 'Add-on désactivé' : 'Add-on activé ✓');
+        window.showToast(isCurrentlyActive ? 'info' : 'success', isCurrentlyActive
+          ? _fpBackendText('Add-on désactivé', 'Add-on disabled')
+          : _fpBackendText('Add-on activé ✓', 'Add-on enabled ✓'));
       }
       if (typeof window.render === 'function') window.render();
     } catch (e) {
@@ -1226,7 +1250,7 @@ window.__fpPageLoadTs = Date.now();
         return data;
       } catch (e) {
         console.warn('[FP] addon activate error:', e.message);
-        if (typeof window.showToast === 'function') window.showToast('error', 'Erreur activation');
+        if (typeof window.showToast === 'function') window.showToast('error', _fpBackendText('Erreur activation', 'Activation failed'));
         return null;
       }
     },
@@ -1234,14 +1258,16 @@ window.__fpPageLoadTs = Date.now();
       try {
         await apiAction('POST', '/api/addons/' + key + '/deactivate', {});
         if (window.STATE && window.STATE.me && window.STATE.me.addons) window.STATE.me.addons[key] = false;
-        if (typeof window.showToast === 'function') window.showToast('info', 'Add-on désactivé');
+        if (typeof window.showToast === 'function') window.showToast('info', _fpBackendText('Add-on désactivé', 'Add-on disabled'));
         if (typeof window.render === 'function') window.render();
       } catch (e) { console.warn('[FP] addon deactivate error:', e.message); }
     },
     buyAICredits: async function (pack) {
       try {
         var data = await apiAction('POST', '/api/addons/ai-credits/buy', { pack: pack });
-        if (typeof window.showToast === 'function') window.showToast('success', '+' + (data.creditsAdded || 0).toLocaleString('fr-FR') + ' AI Credits ajoutés');
+        if (typeof window.showToast === 'function') window.showToast('success', '+' + (typeof window.fpFormatNumber === 'function'
+          ? window.fpFormatNumber(data.creditsAdded || 0)
+          : (data.creditsAdded || 0).toLocaleString(_fpBackendLocale())) + ' ' + _fpBackendText('crédits IA ajoutés', 'AI credits added'));
         window.FP_AI_CREDITS_API.load();
         return data;
       } catch (e) { console.warn('[FP] buy credits error:', e.message); return null; }
@@ -1837,7 +1863,7 @@ window.__fpPageLoadTs = Date.now();
               var countEl = document.getElementById('fp-live-count');
               if (countEl) countEl.textContent = window.FP_DATA.ga4.realtime.activeUsers;
               var lastEl = document.getElementById('fp-live-last-update');
-              if (lastEl) lastEl.textContent = 'Dernière MAJ : ' + new Date().toLocaleTimeString('fr-FR');
+              if (lastEl) lastEl.textContent = _fpBackendText('Dernière MAJ :', 'Last updated:') + ' ' + new Date().toLocaleTimeString(_fpBackendLocale());
             }
           } catch (e) {}
         }

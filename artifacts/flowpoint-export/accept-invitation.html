@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <title>Rejoindre l'équipe — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -334,17 +335,17 @@
       document.getElementById('inviteInfo').innerHTML = `
         <div class="invite-row">
           <span class="invite-label">Organisation</span>
-          <span class="invite-value">${esc(inv.orgName || inv.orgId || 'FlowPoint')}</span>
+          <span class="invite-value" data-fp-user-content>${esc(inv.orgName || inv.orgId || 'FlowPoint')}</span>
         </div>
         <div class="invite-row">
           <span class="invite-label">Email</span>
-          <span class="invite-value">${esc(inv.email || email)}</span>
+          <span class="invite-value" data-fp-user-content>${esc(inv.email || email)}</span>
         </div>
         <div class="invite-row">
           <span class="invite-label">Rôle</span>
           <span class="role-badge" style="background:${col}22;color:${col}">${esc(inv.role || 'viewer')}</span>
         </div>
-        ${inv.expiresAt ? `<div class="invite-row"><span class="invite-label">Expire le</span><span class="invite-value" style="color:var(--text-muted)">${new Date(inv.expiresAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}</span></div>` : ''}
+        ${inv.expiresAt ? `<div class="invite-row"><span class="invite-label">${window.fpPublicText('Expire le', 'Expires')}</span><span class="invite-value" style="color:var(--text-muted)">${window.fpFormatDate(inv.expiresAt,{day:'2-digit',month:'long',year:'numeric'})}</span></div>` : ''}
       `;
 
       setState('valid');
@@ -378,7 +379,8 @@
       if (r.ok && d.ok && d.sessionToken) {
         sessionStorage.setItem('fp_session_token', d.sessionToken);
         document.getElementById('successSub').textContent =
-          'Bienvenue ' + (d.email || acceptEmail) + ' ! Redirection en cours…';
+          window.fpPublicText('Bienvenue ' + (d.email || acceptEmail) + ' ! Redirection en cours…',
+            'Welcome ' + (d.email || acceptEmail) + '! Redirecting…');
         setState('success');
         setTimeout(() => { window.location.href = '/dashboard.html'; }, 2000);
         return;
@@ -389,7 +391,12 @@
       } else if (r.status === 404) {
         alertArea.innerHTML = '<div class="alert alert-error">Email incorrect — assurez-vous d\'utiliser l\'adresse à laquelle l\'invitation a été envoyée.</div>';
       } else {
-        alertArea.innerHTML = `<div class="alert alert-error">${esc(d.error || 'Une erreur est survenue. Réessayez.')}</div>`;
+        let message = d.error || 'Une erreur est survenue. Réessayez.';
+        if (window.fpResolveLanguage() === 'en') {
+          const translated = window.fpPublicTranslateText(message);
+          message = translated !== message ? translated : 'We could not accept this invitation. Please try again.';
+        }
+        alertArea.innerHTML = `<div class="alert alert-error">${esc(message)}</div>`;
       }
     } catch (err) {
       alertArea.innerHTML = '<div class="alert alert-error">Erreur réseau — vérifiez votre connexion.</div>';
@@ -400,6 +407,14 @@
   }
 
   function showError(title, sub, icon = '❌') {
+    if (window.fpResolveLanguage() === 'en') {
+      const originalSub = sub;
+      title = window.fpPublicTranslateText(title);
+      sub = window.fpPublicTranslateText(sub);
+      if (sub === originalSub) {
+        sub = 'We could not verify this invitation. Please check the link and try again.';
+      }
+    }
     document.getElementById('errorTitle').textContent = title;
     document.getElementById('errorSub').textContent   = sub;
     document.getElementById('errorIcon').textContent  = icon;

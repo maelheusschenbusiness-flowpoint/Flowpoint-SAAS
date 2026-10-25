@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <title>Paiement confirmé — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -176,9 +177,16 @@
 
     if (cart.plan && PLAN_INFO[cart.plan]) {
       var p = PLAN_INFO[cart.plan];
+      var afterTrial = window.fpPublicText
+        ? window.fpPublicText(' après essai', ' after trial')
+        : ' après essai';
+      var planPrice = new Intl.NumberFormat(
+        window.fpResolveLocale ? window.fpResolveLocale() : 'fr-FR',
+        { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }
+      ).format(p.price);
       html += '<div class="fp-purchase-item">' +
-        '<span class="fp-purchase-item-name">' + p.name + ' — ' + p.price + '€/mois après essai</span>' +
-        '<span class="fp-badge fp-badge-trial">Essai 14j</span></div>';
+        '<span class="fp-purchase-item-name">' + p.name + ' — ' + planPrice + window.fpPublicText(' par mois', ' per month') + afterTrial + '</span>' +
+        '<span class="fp-badge fp-badge-trial">' + window.fpPublicText('Essai 14j', '14-day trial') + '</span></div>';
     }
     Object.keys(cart.addons || {}).forEach(function (id) {
       var name = ADDON_NAMES[id] || id;
@@ -207,7 +215,10 @@
         var countEl    = document.getElementById('fp-count');
         var subtitleEl = document.getElementById('fp-subtitle');
         var firstName  = res.data.firstName || res.data.first_name || '';
-        subtitleEl.textContent = 'Votre espace FlowPoint est prêt' + (firstName ? ', ' + firstName : '') + ' ! Vous allez être redirigé.';
+        subtitleEl.textContent = window.fpPublicText(
+          'Votre espace FlowPoint est prêt' + (firstName ? ', ' + firstName : '') + ' ! Vous allez être redirigé.',
+          'Your FlowPoint workspace is ready' + (firstName ? ', ' + firstName : '') + '! You will be redirected.'
+        );
         counter.style.display = 'block';
         var n = 8;
         var t = setInterval(function () {

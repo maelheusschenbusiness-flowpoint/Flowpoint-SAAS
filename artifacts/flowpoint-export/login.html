@@ -11,6 +11,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <meta id="fp-meta-tc" name="theme-color" content="#050810">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <title>Connexion — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -348,8 +349,13 @@
     var errorEl   = document.getElementById('fp-error');
     var oauthDiv  = document.getElementById('fp-oauth-divider');
 
+    function localizeError(msg) {
+      if (!window.fpResolveLanguage || window.fpResolveLanguage() !== 'en') return msg;
+      var translated = window.fpPublicTranslateText(msg);
+      return translated !== msg ? translated : 'We could not complete this request. Please try again.';
+    }
     function showError(msg) {
-      errorEl.textContent = msg;
+      errorEl.textContent = localizeError(msg);
       errorEl.style.display = 'block';
       successEl.style.display = 'none';
     }
@@ -418,7 +424,7 @@
         } else if (r.status === 503) {
           showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {
-          var errMsg = r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.';
+          var errMsg = localizeError(r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.');
           var dest   = r.data.redirectTo || '';
           if (dest === '/signin.html') {
             errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
@@ -429,7 +435,9 @@
               ' <a href="' + dest.replace(/"/g,'') + '" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Continuer</a>';
             errorEl.style.display = 'block';
           } else {
-            showError(errMsg);
+            errorEl.textContent = errMsg;
+            errorEl.style.display = 'block';
+            successEl.style.display = 'none';
           }
         }
       })

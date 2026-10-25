@@ -10,6 +10,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="robots" content="noindex, nofollow"/>
   <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <title>Vérification du paiement — FlowPoint</title>
   <script>(function(){try{var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';}catch(e){}})();</script>
   <style>
@@ -198,7 +199,14 @@
               '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
           } else {
             document.getElementById('fp-title').textContent = 'Erreur de finalisation';
-            document.getElementById('fp-sub').textContent = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
+            var finalizationError = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
+            if (window.fpResolveLanguage() === 'en') {
+              var translatedError = window.fpPublicTranslateText(finalizationError);
+              finalizationError = translatedError !== finalizationError
+                ? translatedError
+                : 'An error occurred while creating your subscription.';
+            }
+            document.getElementById('fp-sub').textContent = finalizationError;
             document.getElementById('fp-sub').innerHTML += isAlreadyLoggedIn
               ? '<br><br><a href="/dashboard.html#billing/plans" class="fp-btn">Retour aux abonnements</a>'
               : '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
@@ -333,8 +341,15 @@
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-title').textContent = 'Erreur de finalisation';
+          var activationError = res.data.error || 'Une erreur inattendue est survenue.';
+          if (window.fpResolveLanguage() === 'en') {
+            var translatedActivationError = window.fpPublicTranslateText(activationError);
+            activationError = translatedActivationError !== activationError
+              ? translatedActivationError
+              : 'An unexpected error occurred while activating your account.';
+          }
           document.getElementById('fp-sub').innerHTML =
-            (res.data.error || 'Une erreur inattendue est survenue.') +
+            activationError +
             '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
         }
       })

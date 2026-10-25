@@ -39,11 +39,11 @@
 // re-evaluated at render time via getCurMonth()/getPrevMonth() below.
 // ─────────────────────────────────────────────────────────────────
 function _initLocale() {
-  return ({'pt-br':'pt-BR',fr:'fr-FR',en:'en-US',es:'es-ES',de:'de-DE',it:'it-IT',pt:'pt-PT',nl:'nl-NL',pl:'pl-PL',sv:'sv-SE',ro:'ro-RO',cs:'cs-CZ'})[
-    // NOTE: never reference STATE here — this runs before `const STATE` (TDZ ReferenceError
-    // even under typeof) and crashes the whole IIFE, leaving the skeleton frozen.
-    String(localStorage.getItem('fp:language') || 'en').toLowerCase()
-  ] || 'en-US';
+  // NOTE: never reference STATE here — this runs before `const STATE` (TDZ ReferenceError).
+  var language = localStorage.getItem('fp:language') || 'en';
+  return typeof window.fpResolveLocale === 'function'
+    ? window.fpResolveLocale(language)
+    : ({'pt-br':'pt-BR',fr:'fr-FR',en:'en-US',es:'es-ES',de:'de-DE',it:'it-IT',pt:'pt-PT',nl:'nl-NL',pl:'pl-PL',sv:'sv-SE',ro:'ro-RO',cs:'cs-CZ'})[String(language).toLowerCase()] || 'en-US';
 }
 const CUR_MONTH = new Date().toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear();
 const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear();}());
@@ -2601,9 +2601,10 @@ function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LE
 // ── getLocale: central BCP-47 locale resolver for all toLocaleDateString / toLocaleString calls ──
 // Always reads from the live setting so locale changes propagate without reload.
 function getLocale() {
-  return ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[
-    String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase()
-  ] || 'en-US';
+  var language = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en';
+  return typeof window.fpResolveLocale === 'function'
+    ? window.fpResolveLocale(language)
+    : ({ 'pt-br':'pt-BR', fr:'fr-FR', en:'en-US', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ' })[String(language).toLowerCase()] || 'en-US';
 }
 
 // ── fpT: lightweight lookup for programmatic (non-DOM) string translation ──
@@ -14177,7 +14178,7 @@ function renderAI() {
           </div>
           <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:10px;color:var(--fp-text-faint)">Rechargement des AI Credits</span>
-            <span style="font-size:11px;font-weight:700;color:#2563EB">${(function(){var d=new Date();d.setDate(1);d.setMonth(d.getMonth()+1);var m=d.toLocaleDateString('fr-FR',{month:'long'});var y=d.getFullYear();return '1er '+m.charAt(0).toUpperCase()+m.slice(1)+' '+y;})()}</span>
+            <span style="font-size:11px;font-weight:700;color:#2563EB">${(function(){var d=new Date();d.setDate(1);d.setMonth(d.getMonth()+1);return d.toLocaleDateString(getLocale(),{day:'numeric',month:'long',year:'numeric'});})()}</span>
           </div>
         </div>
 
@@ -48309,6 +48310,7 @@ function bindGlobalEvents() {
   window.fpApplyTranslations = function() {
     try {
       var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase();
+      document.documentElement.lang = typeof window.fpResolveLocale === 'function' ? window.fpResolveLocale(lang) : lang;
       var catalog = FP_I18N[lang] || null; // null/empty ⇒ French ⇒ restore pass
       var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'),
                    document.querySelector('.fp-topbar'), document.getElementById('fp-header'),
@@ -48750,7 +48752,7 @@ async function init() {
               }
             // ── AI credits purchase confirmed ──────────────────────────────────────
             } else if (msg.type === 'ai:credits_added') {
-              showToast('success', `Crédits IA ajoutés : +${Number(msg.credits || 0).toLocaleString()} ✓`);
+              showToast('success', window.fpPublicText('Crédits IA ajoutés : +', 'AI credits added: +') + Number(msg.credits || 0).toLocaleString(getLocale()) + ' ✓');
               try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
               _apiFetchCache && _apiFetchCache.clear();
               // Reload AI credits from server then re-render the credits gauge
@@ -52707,7 +52709,7 @@ function renderMonitorsConfig() {
     var diff = (dow - now.getDay() + 7) % 7;
     if (diff === 0 && now.getHours() >= hour) diff = 7;
     var d = new Date(now); d.setDate(d.getDate() + diff); d.setHours(hour, 0, 0, 0);
-    var lbl = d.toLocaleDateString('fr-FR', {day:'numeric', month:'short'}).replace('.','');
+    var lbl = d.toLocaleDateString(getLocale(), {day:'numeric', month:'short'}).replace('.','');
     return lbl + ' ' + String(hour).padStart(2,'0') + ':00';
   };
   const windows = [
@@ -61112,7 +61114,7 @@ function renderMonitorsSLA() {
   const _realMonths = Object.keys(_monthMap).sort().filter(k => _monthMap[k].total > 0);
   const hasRealMonthData = _realMonths.length > 0;
   const months = hasRealMonthData
-    ? _realMonths.map(k => { const [y, mo] = k.split('-'); return new Date(+y, +mo - 1).toLocaleString('fr-FR', { month: 'short' }); })
+    ? _realMonths.map(k => { const [y, mo] = k.split('-'); return new Date(+y, +mo - 1).toLocaleString(getLocale(), { month: 'short' }); })
     : [];
   const uptimes = hasRealMonthData
     ? _realMonths.map(k => Math.round(_monthMap[k].ok / _monthMap[k].total * 1000) / 10)
@@ -66072,7 +66074,7 @@ function fpGetExportBranding() {
 
 function fpBuildExportHtml(docOpts) {
   const b = fpGetExportBranding();
-  const dateStr = new Date().toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const dateStr = new Date().toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   const esc = escHtml;
   const kpis = (docOpts.kpis || []).map(k => `
     <div style="flex:1;min-width:120px;background:${esc(k.color || b.primary)}0d;border:1px solid ${esc(k.color || b.primary)}26;border-radius:12px;padding:14px 16px">
@@ -66200,7 +66202,7 @@ window.fpExportAuditsDoc = function(audits) {
           a.speed != null ? a.speed + '/100' : '—',
           String(a.issues ?? 0),
           a.origin === 'scheduled' ? { t: 'Planifié', c: '#7c3aed' } : { t: 'Manuel', c: '#2563EB' },
-          a.date ? new Date(a.date).toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'fr-FR') : '—',
+          a.date ? new Date(a.date).toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'en-US') : '—',
         ]),
       },
     }],
@@ -66213,10 +66215,10 @@ window.fpExportAuditDetailDoc = function(audit) {
   const infoRows = [
     ['URL analysée', a.url || '—'],
     ['Statut', a.status === 'ok' ? { t: 'OK', c: '#16a34a' } : a.status === 'warn' ? { t: 'À surveiller', c: '#d97706' } : a.status === 'processing' ? { t: 'En cours', c: '#2563EB' } : { t: 'Critique', c: '#dc2626' }],
-    ['Date de l\'audit', a.date ? new Date(a.date).toLocaleString(typeof getLocale === 'function' ? getLocale() : 'fr-FR') : '—'],
+    ['Date de l\'audit', a.date ? new Date(a.date).toLocaleString(typeof getLocale === 'function' ? getLocale() : 'en-US') : '—'],
     ['Origine', a.origin === 'scheduled' ? 'Audit planifié automatique' : 'Audit manuel'],
   ];
-  if (sched) infoRows.push(['Planification', `Fréquence ${sched.frequency === 'daily' ? 'quotidienne' : sched.frequency === 'monthly' ? 'mensuelle' : 'hebdomadaire'}${sched.nextRun ? ' — prochain passage le ' + new Date(typeof sched.nextRun === 'string' && /^\d+$/.test(sched.nextRun) ? Number(sched.nextRun) : sched.nextRun).toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'fr-FR') : ''}`]);
+  if (sched) infoRows.push(['Planification', `Fréquence ${sched.frequency === 'daily' ? 'quotidienne' : sched.frequency === 'monthly' ? 'mensuelle' : 'hebdomadaire'}${sched.nextRun ? ' — prochain passage le ' + new Date(typeof sched.nextRun === 'string' && /^\d+$/.test(sched.nextRun) ? Number(sched.nextRun) : sched.nextRun).toLocaleDateString(typeof getLocale === 'function' ? getLocale() : 'en-US') : ''}`]);
   return {
     title: `Audit SEO — ${(a.url || '').replace(/^https?:\/\//, '')}`, docKind: 'Audit de site', subtitle: 'Synthèse des mesures PageSpeed Insights (mobile + desktop)',
     kpis: [
@@ -70294,7 +70296,7 @@ window.FP_V1_ADDON_PANELS = {
         const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
           ? 'score indisponible'
           : `score ${audit.score}`;
-        const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString() : '';
+        const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString(getLocale()) : '';
         option.textContent = [audit.url || 'Site', measuredScore, measuredDate].filter(Boolean).join(' · ');
         auditSelect.appendChild(option);
       }
@@ -72354,7 +72356,7 @@ window._fpRenderGBPPostsPanel = function() {
         <article style="padding:11px 12px;border:1px solid var(--fp-border);border-radius:9px;display:flex;gap:10px;align-items:flex-start">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
-            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString())}` : ''}</div>
+            <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString(getLocale()))}` : ''}</div>
           </div>
           ${['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
           ${String(post.post_type || '').toLowerCase() === 'product' ? `<span title="Format non pris en charge par l’API Google connectée" style="font-size:10px;color:var(--fp-text-muted)">Brouillon seulement</span>` : ''}
@@ -72382,7 +72384,7 @@ window._fpRenderLocalMapsStoredPanel = function() {
         <td>${row.rating != null ? `${escHtml(String(row.rating))}★` : '—'}</td>
         <td>${row.review_count != null ? escHtml(String(row.review_count)) : '—'}</td>
         <td>${row.rank != null ? `#${escHtml(String(row.rank))}` : '—'}</td>
-        <td>${row.fetched_at ? escHtml(new Date(row.fetched_at).toLocaleDateString()) : '—'}</td>
+        <td>${row.fetched_at ? escHtml(new Date(row.fetched_at).toLocaleDateString(getLocale())) : '—'}</td>
       </tr>`).join('')}</tbody>
     </table></div>` : heatmaps.length ? `<div style="display:flex;flex-direction:column;gap:7px">${heatmaps.slice(0,10).map(map => `
       <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--fp-border);font-size:11px">
