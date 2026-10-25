@@ -489,21 +489,25 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
 // every unmatched route that reaches this router (26+ route files mounted after it in index.ts).
 router.use("/behavioral", requireAddon("behavioralAI", "Behavioral AI"));
 
+async function siteBelongsToOrg(req: Request, orgId: string, siteUrl: string): Promise<boolean> {
+  const { rows } = await (req as OrgReq).orgDb(
+    `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
+    [orgId, siteUrl]
+  );
+  return rows.length > 0;
+}
+
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
     const reqOrgId = (req as OrgReq).orgId ?? "default";
-    if (siteUrl) {
-      const { rows } = await (req as OrgReq).orgDb(
-        `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
-        [reqOrgId, siteUrl]
-      );
-      if (rows.length === 0) { res.status(404).json({ error: "Site not found" }); return; }
+    if (siteUrl && !(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
+      res.status(404).json({ error: "Site not found" }); return;
     }
     const data = await getBehaviorInsights(reqOrgId, siteUrl);
     res.json(data);
   } catch {
-    res.json({ insights: [], sessions: 0, events: 0, count: 0 });
+    res.status(500).json({ error: "Failed to load behavioral insights" });
   }
 });
 
@@ -512,6 +516,9 @@ router.post("/behavioral/generate-insights", async (req: Request, res: Response)
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
   const reqOrgId = (req as OrgReq).orgId ?? "default";
   try {
+    if (!(await siteBelongsToOrg(req, reqOrgId, siteUrl))) {
+      res.status(404).json({ error: "Site not found" }); return;
+    }
     await generateBehaviorInsights(reqOrgId, siteUrl);
     res.json({ ok: true });
   } catch {
