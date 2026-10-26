@@ -5734,15 +5734,15 @@ function renderSidebarStatus() {
         </div>
       </div>
       <div style="display:flex;gap:12px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.05)">
-        <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${sitesCount} URLs gérées">
+        <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${fpT('{count} URLs gérées',{count:sitesCount})}">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           ${sitesCount} URLs
         </span>
-        <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${missionsActive} missions actives">
+        <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:3px" title="${fpT('{count} missions actives',{count:missionsActive})}">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           ${missionsActive} missions
         </span>
-        ${streak > 0 ? `<span style="font-size:10px;color:#f59e0b;display:flex;align-items:center;gap:3px;font-weight:600" title="${streak} jours de suite"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${streak}j</span>` : ''}
+        ${streak > 0 ? `<span style="font-size:10px;color:#f59e0b;display:flex;align-items:center;gap:3px;font-weight:600" title="${fpT('{count} jours de suite',{count:streak})}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${fpT('{count}j',{count:streak})}</span>` : ''}
       </div>
     `;
     // Keep the dedicated streak footer element in sync
@@ -6345,7 +6345,7 @@ function renderOverview() {
           }
         </div>
         ${opportunities.length > 0 ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:11px;color:var(--fp-text-muted)">${opportunities.length} opportunité${opportunities.length > 1 ? 's' : ''} identifiée${opportunities.length > 1 ? 's' : ''}</span>
+           <span style="font-size:11px;color:var(--fp-text-muted)">${opportunities.length === 1 ? fpT('1 opportunité identifiée') : fpT('{count} opportunités identifiées',{count:opportunities.length})}</span>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')" style="font-size:11px">${fpT('Voir tout →')}</button>
         </div>` : ''}
       </div>
@@ -9018,39 +9018,41 @@ function renderLocalPresenceOptimizer() {
       if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
     });
   }
-  if (!data) return `<section class="fp-card"><div class="fp-card-title">Local Presence Optimizer</div><p style="color:var(--fp-text-muted)">${escHtml(window._fpLocalPresenceError || 'Analyse des fiches GBP…')}</p>${window._fpLocalPresenceError ? '<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-billing>Gérer les add-ons</button>' : ''}</section>`;
+  if (!data) return `<section class="fp-card"><div class="fp-card-title">Local Presence Optimizer</div><p style="color:var(--fp-text-muted)">${escHtml(window._fpLocalPresenceError || fpT('Analyse des fiches GBP…'))}</p>${window._fpLocalPresenceError ? `<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-billing>${fpT('Gérer les add-ons')}</button>` : ''}</section>`;
   const settings = data.settings || {};
   const selected = new Set(settings.trackedFields || []);
   const fields = data.analysis?.fields || [];
   const opportunities = data.analysis?.opportunities || [];
+  const completedFields = Number(data.analysis?.completedFields ?? 0);
+  const totalFields = Number(data.analysis?.totalFields ?? 0);
   const locationOptions = (data.locations || []).map(location =>
     `<option value="${escHtml(location.id)}" ${location.id === settings.locationId ? 'selected' : ''}>${escHtml(location.name)}</option>`
   ).join('');
   return `<section class="fp-card fp-mb-20" aria-labelledby="fp-local-presence-title">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
       <div><div class="fp-card-title" id="fp-local-presence-title">Local Presence Optimizer</div>
-      <p style="font-size:12px;color:var(--fp-text-muted)">Priorités calculées à partir des champs présents dans votre fiche GBP synchronisée.</p></div>
-      <button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-refresh>Actualiser</button>
+      <p style="font-size:12px;color:var(--fp-text-muted)">${fpT('Priorités calculées à partir des champs présents dans votre fiche GBP synchronisée.')}</p></div>
+      <button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-refresh>${fpT('Actualiser')}</button>
     </div>
-    ${!data.connected ? `<p role="status">Aucune fiche GBP synchronisée. Connectez Google Business Profile puis synchronisez vos fiches.</p>` : `
+    ${!data.connected ? `<p role="status">${fpT('Aucune fiche GBP synchronisée. Connectez Google Business Profile puis synchronisez vos fiches.')}</p>` : `
       <div style="display:flex;gap:14px;align-items:center;margin:12px 0">
         <strong style="font-size:28px">${Number(data.analysis?.score ?? 0)}%</strong>
-        <span style="font-size:12px;color:var(--fp-text-muted)">${Number(data.analysis?.completedFields ?? 0)} critères renseignés sur ${Number(data.analysis?.totalFields ?? 0)}</span>
+        <span style="font-size:12px;color:var(--fp-text-muted)">${fpT('{completed} critères renseignés sur {total}',{completed:completedFields,total:totalFields})}</span>
       </div>
       <form data-fp-local-presence-settings>
-        <label style="display:block;font-size:12px;margin-bottom:10px">Établissement
+        <label style="display:block;font-size:12px;margin-bottom:10px">${fpT('Établissement')}
           <select name="locationId" class="fp-input" style="margin-top:5px">${locationOptions}</select>
         </label>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
-          ${fields.map(field => `<label style="padding:10px;border:1px solid var(--fp-border);border-radius:8px;font-size:12px"><input type="checkbox" name="trackedFields" value="${escHtml(field.key)}" ${selected.has(field.key) ? 'checked' : ''}/> ${escHtml(field.label)} <span style="float:right">${field.complete ? 'Complet' : 'À compléter'}</span></label>`).join('')}
+          ${fields.map(field => `<label style="padding:10px;border:1px solid var(--fp-border);border-radius:8px;font-size:12px"><input type="checkbox" name="trackedFields" value="${escHtml(field.key)}" ${selected.has(field.key) ? 'checked' : ''}/> ${escHtml(field.label)} <span style="float:right">${fpT(field.complete ? 'Complet' : 'À compléter')}</span></label>`).join('')}
         </div>
-        <button type="submit" class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px">Enregistrer mes critères</button>
+        <button type="submit" class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px">${fpT('Enregistrer mes critères')}</button>
       </form>
-      <div style="margin-top:16px"><strong>Prochaines actions</strong>
-        ${opportunities.length ? `<ul>${opportunities.map(item => `<li style="margin:8px 0">${escHtml(item.title)} <span style="color:var(--fp-text-muted)">— ${escHtml(item.evidence)}</span></li>`).join('')}</ul>` : `<p style="color:var(--fp-text-muted)">Tous les critères suivis sont présents dans les dernières données synchronisées.</p>`}
+      <div style="margin-top:16px"><strong>${fpT('Prochaines actions')}</strong>
+        ${opportunities.length ? `<ul>${opportunities.map(item => `<li style="margin:8px 0">${escHtml(item.title)} <span style="color:var(--fp-text-muted)">— ${escHtml(item.evidence)}</span></li>`).join('')}</ul>` : `<p style="color:var(--fp-text-muted)">${fpT('Tous les critères suivis sont présents dans les dernières données synchronisées.')}</p>`}
       </div>
     `}
-    <small style="color:var(--fp-text-faint)">Dernière synchronisation : ${data.profile?.lastSyncAt ? escHtml(new Date(data.profile.lastSyncAt).toLocaleString(getLocale())) : 'aucune'}</small>
+    <small style="color:var(--fp-text-faint)">${fpT('Dernière synchronisation :')} ${data.profile?.lastSyncAt ? escHtml(new Date(data.profile.lastSyncAt).toLocaleString(getLocale())) : fpT('Aucune synchronisation')}</small>
   </section>`;
 }
 
@@ -22371,6 +22373,25 @@ function bindGlobalEvents() {
     "Mots": "Words",
     "Titres": "Headings",
     "conversions": "conversions",
+    "{count} URLs gérées": "{count} managed URLs",
+    "{count} missions actives": "{count} active missions",
+    "{count} jours de suite": "{count}-day streak",
+    "{count}j": "{count}d",
+    "1 opportunité identifiée": "1 opportunity identified",
+    "{count} opportunités identifiées": "{count} opportunities identified",
+    "Analyse des fiches GBP…": "Analyzing GBP listings…",
+    "Gérer les add-ons": "Manage add-ons",
+    "Priorités calculées à partir des champs présents dans votre fiche GBP synchronisée.": "Priorities based on the fields in your synced GBP profile.",
+    "Aucune fiche GBP synchronisée. Connectez Google Business Profile puis synchronisez vos fiches.": "No Google Business Profile is synced. Connect Google Business Profile, then sync your listings.",
+    "{completed} critères renseignés sur {total}": "{completed} of {total} criteria completed",
+    "Établissement": "Business location",
+    "Complet": "Complete",
+    "À compléter": "Needs completion",
+    "Enregistrer mes critères": "Save my criteria",
+    "Prochaines actions": "Next actions",
+    "Tous les critères suivis sont présents dans les dernières données synchronisées.": "All tracked criteria are present in the latest synced data.",
+    "Dernière synchronisation :": "Last synced:",
+    "Aucune synchronisation": "Not synced",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
