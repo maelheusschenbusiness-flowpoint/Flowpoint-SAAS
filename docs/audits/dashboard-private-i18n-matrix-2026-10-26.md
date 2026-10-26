@@ -13,6 +13,12 @@
 - La vérification navigateur des routes privées est **BLOCKED** : aucune session authentifiée n’est utilisée et aucun contournement d’authentification n’est autorisé.
 - Cette matrice suit le statut de l’audit de l’interface en anglais. Elle ne certifie pas le rendu navigateur ni les autres langues.
 
+## Bilan confirmé à cette étape
+
+- **31 textes d’interface français confirmés traduits** dans les zones revues : les add-ons contrôlés, les compteurs de la carte utilisateur et l’état Local Presence. Un 32e ajout au catalogue est le libellé déjà anglais `conversions`, conservé comme clé d’identité.
+- Les tests ciblés rapportent **11 réussites** et aucun manque de clé statique dans le périmètre contrôlé. Le contrôle des templates et affectations DOM des sept scripts d’add-on ne relève plus de texte français non enveloppé.
+- Le décompte global des anomalies restantes et des faux positifs est **non établi** : le balayage des templates du dashboard principal n’est pas encore exhaustif et ses candidats restent à classifier.
+
 ## Inventaire des pages et sous-routes
 
 `(racine)` désigne la vue principale de la page; les identifiants qui suivent correspondent aux sous-routes.
