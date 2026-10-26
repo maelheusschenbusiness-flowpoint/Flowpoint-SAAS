@@ -66,6 +66,7 @@ function callName(expression: ts.Expression): string {
 }
 
 const englishKeys = new Set<string>();
+const englishTranslations = new Map<string, string>();
 walk(sourceFiles[0].source, (node) => {
   if (
     !ts.isVariableDeclaration(node) ||
@@ -86,6 +87,13 @@ walk(sourceFiles[0].source, (node) => {
       continue;
     }
     englishKeys.add(property.name.text);
+    if (
+      (ts.isStringLiteral(property.initializer) ||
+        ts.isNoSubstitutionTemplateLiteral(property.initializer)) &&
+      !englishTranslations.has(property.name.text)
+    ) {
+      englishTranslations.set(property.name.text, property.initializer.text);
+    }
   }
 });
 
@@ -140,6 +148,26 @@ function staticTemplateText(node: ts.Expression): string | null {
 }
 
 describe("private dashboard static English localization", () => {
+  it("uses English translations for dynamic shell and opportunity counts", () => {
+    const expected = new Map([
+      ["{count} URLs gérées", "{count} managed URLs"],
+      ["{count} missions actives", "{count} active missions"],
+      ["{count} jours de suite", "{count}-day streak"],
+      ["{count}j", "{count}d"],
+      ["1 opportunité identifiée", "1 opportunity identified"],
+      ["{count} opportunités identifiées", "{count} opportunities identified"],
+      [
+        "{completed} critères renseignés sur {total}",
+        "{completed} of {total} criteria completed",
+      ],
+    ]);
+
+    for (const [key, translation] of expected) {
+      expect(dashboardSource).toContain(`fpT('${key}'`);
+      expect(englishTranslations.get(key)).toBe(translation);
+    }
+  });
+
   it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
     const missing: Array<{ file: string; line: number; key: string }> = [];
 
