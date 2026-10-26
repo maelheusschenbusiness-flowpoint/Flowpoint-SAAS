@@ -7742,7 +7742,7 @@ function renderMissionCalendar(missions) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const prevMonthDays = new Date(year, month, 0).getDate();
   const monthName = new Date(year, month, 1).toLocaleDateString(getLocale(), { month: 'long' });
-  const dayNames = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const dayNames = [fpT('Lun'),fpT('Mar'),fpT('Mer'),fpT('Jeu'),fpT('Ven'),fpT('Sam'),fpT('Dim')];
   const missionsByDate = {};
   missions.forEach(m => { if (m.date) { if (!missionsByDate[m.date]) missionsByDate[m.date] = []; missionsByDate[m.date].push(m); } });
   const calEventsByDate = {};
@@ -7779,7 +7779,7 @@ function renderMissionCalendar(missions) {
       const safeRange = escHtml(timeRange);
       const pillLabel = safeRange ? `${safeRange} ${escHtml(ce.title)}` : escHtml(ce.title);
       const tipTitle = safeRange ? `${safeRange} — ${escHtml(ce.title)}` : escHtml(ce.title);
-      const notesDot = ce.notes ? '<span class="fp-cal-rdv-notes-dot" title="Notes disponibles" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:0.6;margin-left:4px;vertical-align:middle;flex-shrink:0"></span>' : '';
+      const notesDot = ce.notes ? `<span class="fp-cal-rdv-notes-dot" title="${fpT('Notes disponibles')}" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:0.6;margin-left:4px;vertical-align:middle;flex-shrink:0"></span>` : '';
       return `<div class="fp-apple-cal-event fp-cal-rdv" data-cal-event-id="${ce.id}" draggable="true" title="${tipTitle}"><span class="fp-cal-rdv-title">${pillLabel}</span>${notesDot}<button class="fp-cal-event-del" data-cal-event-id="${ce.id}" title="${fpT('Supprimer ce RDV')}">×</button></div>`;
     }).join('');
     cells += `<div class="fp-apple-cal-cell${isToday?' today':''}${isWeekend?' weekend':''}${isSelected?' fp-cal-selected':''} fp-cal-droptarget" data-date="${dateStr}">
@@ -7787,7 +7787,7 @@ function renderMissionCalendar(missions) {
       <div class="fp-apple-cal-events">
         ${missionEls}
         ${calEvEls}
-        ${extra > 0 && !isFiltering ? `<div class="fp-apple-cal-event-more">+${extra} autres</div>` : ''}
+        ${extra > 0 && !isFiltering ? `<div class="fp-apple-cal-event-more">${extra === 1 ? fpT('+1 autre') : fpT('+{count} autres', { count:extra })}</div>` : ''}
       </div>
       <button class="fp-cal-add-btn" data-date="${dateStr}" title="${fpT('Ajouter un RDV')}">+</button>
     </div>`;
@@ -7803,17 +7803,23 @@ function renderMissionCalendar(missions) {
   const monthMissions = missions.filter(m => m.date && m.date.startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
   const monthCalEvents = (STATE.calendarEvents||[]).filter(e => e.date && e.date.startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
   const agendaPanel = STATE.calendarSelectedDate ? renderDailyAgenda(STATE.calendarSelectedDate, missions) : '';
+  const missionCountLabel = monthMissions.length === 1
+    ? fpT('1 mission')
+    : fpT('{count} missions', { count:monthMissions.length });
+  const appointmentCountLabel = monthCalEvents.length === 1
+    ? fpT('1 rendez-vous')
+    : fpT('{count} rendez-vous', { count:monthCalEvents.length });
   return `
     <div class="fp-cal-outer-wrap" style="display:flex;gap:0;align-items:stretch;overflow:hidden;border-radius:inherit;width:100%;max-width:960px;margin:0 auto">
       <div class="fp-apple-cal" style="flex:1;min-width:0;max-width:100%;border:none;border-radius:0">
         <div class="fp-apple-cal-header">
           <div style="display:flex;align-items:center;gap:14px">
             <div class="fp-apple-cal-title">${monthName} <span style="color:var(--fp-text-muted);font-weight:400;font-size:15px">${year}</span></div>
-            <div style="font-size:11px;color:var(--fp-text-muted)">${monthMissions.length} mission${monthMissions.length!==1?'s':''} · ${monthCalEvents.length} RDV</div>
+            <div style="font-size:11px;color:var(--fp-text-muted)">${missionCountLabel} · ${appointmentCountLabel}</div>
           </div>
           <div class="fp-apple-cal-nav">
             <button class="fp-apple-cal-nav-btn" id="cal-prev" title="${fpT('Mois précédent')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
-            <button class="fp-apple-cal-nav-btn" id="cal-today" title="Aujourd\'hui">Auj.</button>
+            <button class="fp-apple-cal-nav-btn" id="cal-today" title="${fpT("Aujourd'hui")}">${fpT('Auj.')}</button>
             <button class="fp-apple-cal-nav-btn" id="cal-next" title="${fpT('Mois suivant')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
         </div>
@@ -7824,9 +7830,9 @@ function renderMissionCalendar(missions) {
           </div>
           <select id="cal-type-filter" class="fp-select" style="height:30px;font-size:12px;min-width:140px;padding:0 8px">
             <option value="">${fpT('Tous les types')}</option>
-            ${CAL_RDV_TYPES.map(t=>`<option value="${escHtml(t)}"${STATE.calendarTypeFilter===t?' selected':''}>${escHtml(t)}</option>`).join('')}
+            ${CAL_RDV_TYPES.map(t=>`<option value="${escHtml(t)}"${STATE.calendarTypeFilter===t?' selected':''}>${escHtml(fpT(t))}</option>`).join('')}
           </select>
-          ${(STATE.calendarSearch || STATE.calendarTypeFilter) ? `<button id="cal-search-clear" class="fp-btn fp-btn-ghost fp-btn-sm" style="height:30px;font-size:12px;white-space:nowrap" title="Effacer le filtre">✕ Effacer</button>` : ''}
+          ${(STATE.calendarSearch || STATE.calendarTypeFilter) ? `<button id="cal-search-clear" class="fp-btn fp-btn-ghost fp-btn-sm" style="height:30px;font-size:12px;white-space:nowrap" title="${fpT('Effacer le filtre')}">${fpT('✕ Effacer')}</button>` : ''}
         </div>
         <div class="fp-apple-cal-days-header">
           ${dayNames.map((d,i)=>`<div class="fp-apple-cal-day-name${i>=5?' weekend':''}">${d}</div>`).join('')}
@@ -7834,10 +7840,10 @@ function renderMissionCalendar(missions) {
         <div class="fp-apple-cal-grid">${cells}</div>
         <div class="fp-apple-cal-footer">
           <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#2563EB"></div>${fpT('À faire')}</div>
-          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#f59e0b"></div> En cours</div>
+          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#f59e0b"></div>${fpT('En cours')}</div>
           <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#22c55e"></div>${fpT('Terminé')}</div>
-          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#8b5cf6"></div> RDV</div>
-          <div style="margin-left:auto">${missions.length} missions · ${(STATE.calendarEvents||[]).length} RDV</div>
+          <div class="fp-apple-cal-legend"><div class="fp-apple-cal-dot" style="background:#8b5cf6"></div>${fpT('RDV')}</div>
+          <div style="margin-left:auto">${missions.length === 1 ? fpT('1 mission') : fpT('{count} missions', { count:missions.length })} · ${(STATE.calendarEvents||[]).length === 1 ? fpT('1 rendez-vous') : fpT('{count} rendez-vous', { count:(STATE.calendarEvents||[]).length })}</div>
         </div>
       </div>
       ${agendaPanel}
@@ -7861,6 +7867,12 @@ function renderDailyAgenda(dateStr, missions) {
     'Appel téléphonique': '#22c55e',
     'Autre': '#94a3b8'
   };
+  const appointmentCountLabel = dayCes.length === 1
+    ? fpT('1 rendez-vous')
+    : fpT('{count} rendez-vous', { count:dayCes.length });
+  const missionCountLabel = dayMissions.length === 1
+    ? fpT('1 mission')
+    : fpT('{count} missions', { count:dayMissions.length });
   const rdvItems = dayCes.map(ce => {
     const timeRange = (ce.startTime && ce.duration) ? formatTimeRange(ce.startTime, ce.duration) : (ce.startTime || '');
     const color = typeColors[ce.type] || '#8b5cf6';
@@ -7871,7 +7883,7 @@ function renderDailyAgenda(dateStr, missions) {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(ce.title)}</span>
-          <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:${color}22;color:${color};font-weight:500;white-space:nowrap">${escHtml(ce.type)}</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:${color}22;color:${color};font-weight:500;white-space:nowrap">${escHtml(fpT(ce.type))}</span>
         </div>
         ${timeRange ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${escHtml(timeRange)}</div>` : ''}
         ${siteTag}
@@ -7882,7 +7894,7 @@ function renderDailyAgenda(dateStr, missions) {
   }).join('');
   const missionItems = dayMissions.map(m => {
     const statusColor = (m.status === 'done' || m.status === 'completed') ? '#22c55e' : (m.status === 'inprogress' || m.status === 'in_progress') ? '#f59e0b' : '#2563EB';
-    const statusLabel = (m.status === 'done' || m.status === 'completed') ? 'Terminé' : (m.status === 'inprogress' || m.status === 'in_progress') ? 'En cours' : 'À faire';
+    const statusLabel = (m.status === 'done' || m.status === 'completed') ? fpT('Terminé') : (m.status === 'inprogress' || m.status === 'in_progress') ? fpT('En cours') : fpT('À faire');
     return `<div class="fp-agenda-mission-item" data-mission-id="${m.id}" style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--fp-border);cursor:pointer;transition:background .15s" onmouseover="this.style.background='var(--fp-surface-hover,rgba(0,0,0,0.03))'" onmouseout="this.style.background=''">
       <div style="flex-shrink:0;width:3px;border-radius:3px;background:${statusColor};align-self:stretch;margin:2px 0"></div>
       <div style="flex:1;min-width:0">
@@ -7898,26 +7910,26 @@ function renderDailyAgenda(dateStr, missions) {
   const emptyState = !hasItems ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:var(--fp-text-muted);min-height:180px">
     <div style="font-size:32px;margin-bottom:10px;opacity:.4">📭</div>
     <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:4px">${fpT('Aucun événement')}</div>
-    <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;line-height:1.5">Aucun RDV ni mission<br>${fpT('planifiée pour cette journée.')}</div>
-    <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:12px">+ Nouveau RDV</button>
+    <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;line-height:1.5">${fpT('Aucun RDV ni mission')}<br>${fpT('planifiée pour cette journée.')}</div>
+    <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:12px">${fpT('+ Nouveau RDV')}</button>
   </div>` : '';
   const sectionRdv = dayCes.length > 0 ? `<div>
-    <div style="padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fp-text-muted);border-bottom:1px solid var(--fp-border)">RDV · ${dayCes.length}</div>
+    <div style="padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fp-text-muted);border-bottom:1px solid var(--fp-border)">${fpT('Rendez-vous · {count}', { count:dayCes.length })}</div>
     ${rdvItems}
   </div>` : '';
   const sectionMissions = dayMissions.length > 0 ? `<div>
-    <div style="padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fp-text-muted);border-bottom:1px solid var(--fp-border)">Missions · ${dayMissions.length}</div>
+    <div style="padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fp-text-muted);border-bottom:1px solid var(--fp-border)">${fpT('Missions · {count}', { count:dayMissions.length })}</div>
     ${missionItems}
   </div>` : '';
   return `<div class="fp-daily-agenda" style="width:250px;min-width:220px;flex-shrink:0;border-left:1px solid var(--fp-border);display:flex;flex-direction:column;overflow:hidden;background:var(--fp-surface)">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--fp-border);background:var(--fp-surface)">
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--fp-text);line-height:1.2">${escHtml(label)}</div>
-        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${dayCes.length} RDV · ${dayMissions.length} mission${dayMissions.length !== 1 ? 's' : ''}</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${appointmentCountLabel} · ${missionCountLabel}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:11px;height:26px;padding:0 8px" title="${fpT('Ajouter un RDV')}">+ RDV</button>
-        <button id="cal-agenda-close" class="fp-apple-cal-nav-btn" title="Fermer l\'agenda" style="font-size:16px;line-height:1;padding:2px 6px">×</button>
+        <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:11px;height:26px;padding:0 8px" title="${fpT('Ajouter un RDV')}">${fpT('+ RDV')}</button>
+        <button id="cal-agenda-close" class="fp-apple-cal-nav-btn" title="${fpT("Fermer l'agenda")}" style="font-size:16px;line-height:1;padding:2px 6px">×</button>
       </div>
     </div>
     <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
@@ -7928,24 +7940,35 @@ function renderDailyAgenda(dateStr, missions) {
   </div>`;
 }
 
+function getCalendarDurationOptions() {
+  return [
+    { value:30, label:'30 min' },
+    { value:60, label:fpT('1 h') },
+    { value:90, label:fpT('1 h 30 min') },
+    { value:120, label:fpT('2 h') },
+    { value:180, label:fpT('3 h') },
+  ];
+}
+
 function renderNewCalEventPanel(dateStr) {
-  const types = ['Réunion client','Audit SEO','Revue de rapport','Formation','Appel téléphonique','Autre'];
+  const types = CAL_RDV_TYPES;
+  const durationOptions = getCalendarDurationOptions();
   return `
     <div class="fp-form-group">
-      <label class="fp-form-label">Titre du RDV</label>
+      <label class="fp-form-label">${fpT('Titre du RDV')}</label>
       <input class="fp-input" id="ce-title" placeholder="${fpT('Réunion mensuelle client…')}" autofocus/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Site / Client</label>
       <select class="fp-select" style="width:100%" id="ce-site">
-        <option value="">— Aucun —</option>
+        <option value="">${fpT('— Aucun —')}</option>
         ${STATE.audits.map(a=>`<option value="${escHtml(a.url)}">${escHtml(a.url)}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Type</label>
       <select class="fp-select" style="width:100%" id="ce-type">
-        ${types.map(t=>`<option>${t}</option>`).join('')}
+        ${types.map(t=>`<option value="${escHtml(t)}">${escHtml(fpT(t))}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
@@ -7962,18 +7985,14 @@ function renderNewCalEventPanel(dateStr) {
         <span id="ce-end-time-display" style="font-weight:500;color:var(--fp-accent);font-size:11px">09:00 – 10:00</span>
       </label>
       <select class="fp-select" style="width:100%" id="ce-duration">
-        <option value="30">30 min</option>
-        <option value="60" selected>1h</option>
-        <option value="90">1h30</option>
-        <option value="120">2h</option>
-        <option value="180">3h</option>
+        ${durationOptions.map(option=>`<option value="${option.value}"${option.value===60?' selected':''}>${option.label}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Notes</label>
       <textarea class="fp-input" id="ce-notes" rows="3" placeholder="${fpT('Ordre du jour, participants, points à aborder…')}" style="resize:vertical;min-height:72px;font-family:inherit"></textarea>
     </div>
-    ${btn('Créer le RDV','fp-btn fp-btn-primary','plus','id="ce-create"')}
+    ${btn(fpT('Créer le RDV'),'fp-btn fp-btn-primary','plus','id="ce-create"')}
   `;
 }
 
@@ -8017,24 +8036,24 @@ function setupNewCalEventPanel(dateStr) {
 }
 
 function renderEditCalEventPanel(ev) {
-  const types = ['Réunion client','Audit SEO','Revue de rapport','Formation','Appel téléphonique','Autre'];
-  const durOpts = [30,60,90,120,180];
+  const types = CAL_RDV_TYPES;
+  const durationOptions = getCalendarDurationOptions();
   return `
     <div class="fp-form-group">
-      <label class="fp-form-label">Titre du RDV</label>
+      <label class="fp-form-label">${fpT('Titre du RDV')}</label>
       <input class="fp-input" id="ce-title" value="${escHtml(ev.title)}" autofocus/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Site / Client</label>
       <select class="fp-select" style="width:100%" id="ce-site">
-        <option value="">— Aucun —</option>
+        <option value="">${fpT('— Aucun —')}</option>
         ${STATE.audits.map(a=>`<option value="${escHtml(a.url)}"${ev.site===a.url?' selected':''}>${escHtml(a.url)}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">Type</label>
       <select class="fp-select" style="width:100%" id="ce-type">
-        ${types.map(t=>`<option${ev.type===t?' selected':''}>${t}</option>`).join('')}
+        ${types.map(t=>`<option value="${escHtml(t)}"${ev.type===t?' selected':''}>${escHtml(fpT(t))}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
@@ -8051,7 +8070,7 @@ function renderEditCalEventPanel(ev) {
         <span id="ce-end-time-display" style="font-weight:500;color:var(--fp-accent);font-size:11px">${formatTimeRange(ev.startTime||'09:00', ev.duration||60)}</span>
       </label>
       <select class="fp-select" style="width:100%" id="ce-duration">
-        ${durOpts.map(d=>`<option value="${d}"${ev.duration===d?' selected':''}>${d<60?d+' min':Math.floor(d/60)+'h'+(d%60?d%60+'min':'')}</option>`).join('')}
+        ${durationOptions.map(option=>`<option value="${option.value}"${ev.duration===option.value?' selected':''}>${option.label}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
@@ -8059,8 +8078,8 @@ function renderEditCalEventPanel(ev) {
       <textarea class="fp-input" id="ce-notes" rows="3" placeholder="${fpT('Ordre du jour, participants, points à aborder…')}" style="resize:vertical;min-height:72px;font-family:inherit">${escHtml(ev.notes||'')}</textarea>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
-      ${btn('Enregistrer','fp-btn fp-btn-primary fp-btn-sm','check','id="ce-save"')}
-      ${btn('Supprimer','fp-btn fp-btn-ghost fp-btn-sm','trash','id="ce-delete" style="color:var(--fp-danger);margin-left:auto"')}
+      ${btn(fpT('Enregistrer'),'fp-btn fp-btn-primary fp-btn-sm','check','id="ce-save"')}
+      ${btn(fpT('Supprimer'),'fp-btn fp-btn-ghost fp-btn-sm','trash','id="ce-delete" style="color:var(--fp-danger);margin-left:auto"')}
     </div>
   `;
 }
@@ -22479,6 +22498,35 @@ function bindGlobalEvents() {
     "Tout ajouter (recommandés)": "Add all (recommended)",
     "SEO Technique": "Technical SEO",
     "Rapports & Clients": "Reports & Clients",
+    "Lun": "Mon",
+    "Mar": "Tue",
+    "Mer": "Wed",
+    "Jeu": "Thu",
+    "Ven": "Fri",
+    "Sam": "Sat",
+    "Dim": "Sun",
+    "Notes disponibles": "Notes available",
+    "+1 autre": "+1 more",
+    "+{count} autres": "+{count} more",
+    "1 rendez-vous": "1 appointment",
+    "{count} rendez-vous": "{count} appointments",
+    "Auj.": "Today",
+    "✕ Effacer": "✕ Clear",
+    "RDV": "Appointments",
+    "Rendez-vous · {count}": "Appointments · {count}",
+    "Missions · {count}": "Missions · {count}",
+    "+ RDV": "+ Appointment",
+    "Créer le RDV": "Create appointment",
+    "Réunion client": "Client meeting",
+    "Audit SEO": "SEO audit",
+    "Revue de rapport": "Report review",
+    "Formation": "Training",
+    "Appel téléphonique": "Phone call",
+    "Autre": "Other",
+    "1 h": "1 hr",
+    "1 h 30 min": "1 hr 30 min",
+    "2 h": "2 hr",
+    "3 h": "3 hr",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {

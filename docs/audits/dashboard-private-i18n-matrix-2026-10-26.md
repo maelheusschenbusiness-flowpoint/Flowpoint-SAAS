@@ -15,9 +15,9 @@
 
 ## Bilan confirmé à cette étape
 
-- **67 textes d’interface français confirmés traduits** : six dans les add-ons contrôlés, 25 dans la carte utilisateur et Local Presence, et 36 dans les contrôles Missions et l’en-tête de sa bibliothèque. Huit autres entrées du catalogue sont des clés d’identité déjà identiques en anglais.
-- Les tests ciblés rapportent **15 réussites** et aucun manque de clé statique dans le périmètre contrôlé. Le contrôle des templates et affectations DOM des sept scripts d’add-on ne relève plus de texte français non enveloppé.
-- La vue Missions vérifiée couvre les contrôles de liste/kanban, le formulaire d’ajout, les filtres, les statuts, les compteurs, les priorités et l’en-tête/actions/catégories de la bibliothèque. Les titres, étapes et gains des modèles, ainsi que le calendrier et les détails, restent à auditer; la route demeure donc **EN COURS**.
+- **67 textes d’interface français restent recensés dans les surfaces déjà comptabilisées** : six dans les add-ons contrôlés, 25 dans la carte utilisateur et Local Presence, et 36 dans les contrôles Missions et l’en-tête de sa bibliothèque. L’audit du calendrier ajoute 28 nouvelles traductions au catalogue et une clé identique en anglais; il réutilise aussi des clés déjà présentes. Le catalogue comporte maintenant neuf clés d’identité.
+- Les tests ciblés rapportent **16 réussites** et aucun manque de clé statique dans le périmètre contrôlé. Le test calendrier vérifie les libellés, les types d’événement traduits et la conservation de leurs valeurs, titres, notes et contenus de mission. Le contrôle des templates et affectations DOM des sept scripts d’add-on ne relève plus de texte français non enveloppé.
+- La vue Missions vérifiée couvre les contrôles de liste/kanban, le formulaire d’ajout, les filtres, les statuts, les compteurs, les priorités, l’en-tête/actions/catégories de la bibliothèque, ainsi que le calendrier, l’agenda et les formulaires de rendez-vous. Les titres, étapes et gains des modèles ainsi que le panneau de détail d’une mission restent à auditer; la route demeure donc **EN COURS**.
 - Le décompte global des anomalies restantes et des faux positifs est **non établi** : le balayage des templates du dashboard principal n’est pas encore exhaustif et ses candidats restent à classifier.
 
 ## Inventaire des pages et sous-routes

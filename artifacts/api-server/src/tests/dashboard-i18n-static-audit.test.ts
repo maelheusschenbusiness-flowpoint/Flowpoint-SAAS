@@ -126,6 +126,27 @@ function objectKeysInVariable(variableName: string): string[] {
   return keys;
 }
 
+function arrayStringValuesInVariable(variableName: string): string[] {
+  const values: string[] = [];
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      node.name.text !== variableName ||
+      !node.initializer ||
+      !ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      return;
+    }
+    for (const element of node.initializer.elements) {
+      if (ts.isStringLiteral(element) || ts.isNoSubstitutionTemplateLiteral(element)) {
+        values.push(element.text);
+      }
+    }
+  });
+  return values;
+}
+
 const englishKeys = new Set<string>();
 const englishTranslations = new Map<string, string>();
 walk(sourceFiles[0].source, (node) => {
@@ -290,6 +311,64 @@ describe("private dashboard static English localization", () => {
     }
     expect(dashboardSource).toContain("escHtml(fpT(cat))");
     expect(dashboardSource).toContain("renderLibCard({ ...t, category: cat })");
+  });
+
+  it("translates calendar chrome while preserving mission and appointment data", () => {
+    const expectedKeysByFunction: Record<string, string[]> = {
+      renderMissionCalendar: [
+        "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim",
+        "Notes disponibles", "+1 autre", "+{count} autres",
+        "1 mission", "{count} missions", "1 rendez-vous", "{count} rendez-vous",
+        "Aujourd'hui", "Auj.", "Mois précédent", "Mois suivant",
+        "Rechercher un RDV…", "Tous les types", "Effacer le filtre", "✕ Effacer",
+        "À faire", "En cours", "Terminé", "RDV",
+      ],
+      renderDailyAgenda: [
+        "1 rendez-vous", "{count} rendez-vous", "1 mission", "{count} missions",
+        "Supprimer", "Terminé", "En cours", "À faire", "Aucun événement",
+        "Aucun RDV ni mission", "planifiée pour cette journée.", "+ Nouveau RDV",
+        "Rendez-vous · {count}", "Missions · {count}", "Ajouter un RDV",
+        "+ RDV", "Fermer l'agenda",
+      ],
+      renderNewCalEventPanel: [
+        "Titre du RDV", "Réunion mensuelle client…", "— Aucun —", "Créer le RDV",
+      ],
+      renderEditCalEventPanel: [
+        "Titre du RDV", "— Aucun —", "Ordre du jour, participants, points à aborder…",
+        "Enregistrer", "Supprimer",
+      ],
+      getCalendarDurationOptions: ["1 h", "1 h 30 min", "2 h", "3 h"],
+    };
+
+    for (const [functionName, expectedKeys] of Object.entries(expectedKeysByFunction)) {
+      const referencedKeys = translationKeysInFunction(functionName);
+      for (const key of expectedKeys) {
+        expect(referencedKeys.has(key), `${functionName} should translate "${key}"`).toBe(true);
+        expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+      }
+    }
+
+    const typeTranslations = new Map([
+      ["Réunion client", "Client meeting"],
+      ["Audit SEO", "SEO audit"],
+      ["Revue de rapport", "Report review"],
+      ["Formation", "Training"],
+      ["Appel téléphonique", "Phone call"],
+      ["Autre", "Other"],
+    ]);
+    expect(arrayStringValuesInVariable("CAL_RDV_TYPES")).toEqual([...typeTranslations.keys()]);
+    for (const [key, translation] of typeTranslations) {
+      expect(englishTranslations.get(key)).toBe(translation);
+    }
+
+    expect(dashboardSource).toContain('value="${escHtml(t)}"');
+    expect(dashboardSource).toContain("escHtml(fpT(ce.type))");
+    expect(dashboardSource).toContain("escHtml(ce.title)");
+    expect(dashboardSource).toContain("escHtml(ce.notes)");
+    expect(dashboardSource).toContain("escHtml(m.title)");
+    expect(dashboardSource).toContain("escHtml(m.category)");
+    expect(dashboardSource).toContain("escHtml(ev.title)");
+    expect(dashboardSource).toContain("escHtml(ev.notes||'')");
   });
 
   it("uses English translations for dynamic shell and opportunity counts", () => {
