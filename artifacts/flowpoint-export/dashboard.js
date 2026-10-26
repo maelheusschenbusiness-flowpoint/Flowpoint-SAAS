@@ -1384,7 +1384,7 @@ async function bindAuditPanelBtns(audit) {
           STATE.audits.unshift(res);
           if (typeof startAuditPolling === 'function') startAuditPolling(res.id);
         }
-        showToast('success', `Audit relancé pour ${escHtml(audit.url)}`);
+        showToast('success', fpT("Audit relancé pour ") + escHtml(audit.url));
         closeFloatPanel();
         render();
       } catch(e) {
@@ -1758,7 +1758,7 @@ function openFileImport() {
         } else { showToast('error', fpT('Erreur import') + ' ' + file.name); }
       } catch(e) { showToast('error', fpT('Erreur import') + ' ' + file.name); }
     }
-    showToast('success', `${files.length} fichier${files.length > 1 ? 's' : ''} importé${files.length > 1 ? 's' : ''}`);
+    showToast('success', files.length + fpT(" fichier") + (files.length > 1 ? 's' : '') + fpT(" importé") + (files.length > 1 ? 's' : ''));
     if (STATE.subRoute === 'files') render();
   });
   inp.click();
@@ -1769,7 +1769,7 @@ function downloadFileAsset(name, content) {
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
-  showToast('success', `${name} téléchargé`);
+  showToast('success', name + fpT(" téléchargé"));
 }
 
 function openQuickReport(auditId) {
@@ -2807,7 +2807,7 @@ window._fpExportCampaigns = function() {
   a.download = 'campagnes-' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
   try { if (typeof window.fpTrackUsage === 'function') window.fpTrackUsage('export'); } catch(_) {}
-  showToast && showToast('success', 'CSV exporté — ' + rows.length + ' campagne' + (rows.length > 1 ? 's' : ''));
+  showToast && showToast('success', fpT('CSV exporté — ') + rows.length + fpT(' campagne') + (rows.length > 1 ? 's' : ''));
 };
 
 window._fpSlaViewPage = function() {
@@ -2871,7 +2871,7 @@ window._fpSlaViewPage = function() {
           statusPageUrl: newUrl,
           settings: { statusPage: STATE.settings.statusPage }
         });
-        showToast('success', newUrl ? 'Page statut enregistr\u00e9e' : 'Configuration sauvegard\u00e9e');
+        showToast('success', newUrl ? fpT('Page statut enregistr\u00e9e') : fpT('Configuration sauvegard\u00e9e'));
       } catch(_) { showToast('warning', fpT('Sauvegard\u00e9 localement — synchronisation \u00e9chou\u00e9e (r\u00e9essayez en ligne)')); }
       closeFloatPanel();
       render();
@@ -2932,7 +2932,7 @@ window._fpMQ = async function(title, category, priority, navAfter) {
     }
   } catch(e) {}
   saveMissions();
-  showToast('success', 'Mission créée · ' + title.slice(0, 40));
+  showToast('success', fpT('Mission créée · ') + title.slice(0, 40));
   addLocalNotification('mission', fpT('🚀 Mission créée'), title.slice(0, 55));
   logActivityEvent('success', 'Mission créée : ' + title.slice(0, 60));
   if (navAfter) setTimeout(function() { navigate('missions'); }, 600);
@@ -3971,7 +3971,7 @@ function openFloatPanel(title, content) {
           const data = await resp.json().catch(() => ({}));
           if (resp.status === 201 && data.ok) {
             closeFloatPanel && closeFloatPanel();
-            showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
+            showToast('success', fpT('Invitation envoy\u00e9e \u00e0 ') + escHtml(email) + ' !');
             const t = await fetch('/api/team', _fpSessionFetchOptions()).then(r => r.ok ? r.json() : null).catch(() => null);
             if (t) { STATE.team = normArr(t,'members') || []; STATE.pendingInvitations = t.pendingInvitations||[]; STATE.seatUsage = t.seatUsage||null; render(); }
           } else if (resp.status === 409) {
@@ -4027,7 +4027,7 @@ function openNewChannelPanel() {
       try {
         const r = await apiAction('POST', '/api/team/channels', { name, type }).catch(() => null);
         if (r && (r.ok || r.id || r.name)) {
-          showToast('success', 'Canal #' + name + ' créé !');
+          showToast('success', fpT('Canal #') + name + fpT(' créé !'));
           // Ensure channelMessages has an entry for the new channel
           if (!STATE.channelMessages) STATE.channelMessages = {general:[],seo:[],rapports:[],support:[]};
           if (!STATE.channelMessages[name]) STATE.channelMessages[name] = [];
@@ -4055,7 +4055,7 @@ function openNewChannelPanel() {
           if (!STATE.channels) STATE.channels = ['general','seo','rapports','support'];
           if (!STATE.channels.includes(name)) STATE.channels.push(name);
           STATE.msgChannel = name;
-          showToast('success', 'Canal #' + name + ' créé !');
+          showToast('success', fpT('Canal #') + name + fpT(' créé !'));
           closeFloatPanel();
           render();
         }
@@ -4173,9 +4173,9 @@ async function _sendTeamChatPending(typedText, channel) {
           });
         } catch(_) {}
       } else {
-        showToast('error', `Échec de l'envoi de ${pf.name}`);
+        showToast('error', fpT("Échec de l'envoi de ") + pf.name);
       }
-    } catch(e) { showToast('error', `Erreur envoi ${pf.name}`); }
+    } catch(e) { showToast('error', fpT("Erreur envoi ") + pf.name); }
   }
   STATE.teamChatPendingFiles = [];
 }
@@ -10071,7 +10071,7 @@ function renderBilling() {
         }
         setTimeout(()=>navigateSub('plans'), 700);
       } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
-    } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
+    } catch(e) { showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('annulation impossible'))); }
   };
   window.fpReactivateSubscription = async function() {
     showToast('info', fpT('Réactivation en cours…'));
@@ -10087,7 +10087,7 @@ function renderBilling() {
         navigate('billing');
         navigateSub('plans');
       } else { showToast('error', (r && r.error) || 'Erreur lors de la réactivation'); }
-    } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'réactivation impossible')); }
+    } catch(e) { showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('réactivation impossible'))); }
   };
   window.fpCancelTrialModal = function() {
     if (document.getElementById('fp-cancel-trial-modal')) return;
@@ -10122,7 +10122,7 @@ function renderBilling() {
         showToast('info', fpT('Votre essai est déjà converti en abonnement actif'));
         setTimeout(()=>navigateSub('manage'), 800);
       } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
-    } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
+    } catch(e) { showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('annulation impossible'))); }
   };
 
   // ── Hoist upgrade helpers so Plans tab buttons work even when Addons tab has never rendered.
@@ -10194,7 +10194,7 @@ function renderBilling() {
       <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);margin-bottom:16px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <div style="font-size:13px;color:var(--fp-text-soft);line-height:1.4">
-          Votre abonnement passera au plan <strong style="color:var(--fp-text);text-transform:capitalize">${escHtml(_pendingPlan)}</strong> le <strong style="color:var(--fp-text)">${escHtml(_pendingPlanDate)}</strong>. Votre plan actuel reste actif jusqu\'à cette date.
+          ${fpT('Votre abonnement passera au plan ')}<strong style="color:var(--fp-text);text-transform:capitalize">${escHtml(_pendingPlan)}</strong> ${fpT('le ')}<strong style="color:var(--fp-text)">${escHtml(_pendingPlanDate)}</strong>${fpT(". Votre plan actuel reste actif jusqu'à cette date.")}
         </div>
       </div>` : '';
     return `
@@ -10509,7 +10509,7 @@ function renderBilling() {
       const _hasActiveSubUp = _subStatUp === 'active' || _subStatUp === 'trialing';
       const _renewalCanceledUp = !!STATE.billing?.cancelAtPeriodEnd;
       if (_hasActiveSubUp && !_renewalCanceledUp && _curPlan && _curPlan === _targetPlan) {
-        showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
+        showToast('info', fpT('Vous êtes déjà sur le plan ') + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
         return;
       }
       // Always try the upgrade API first — _fpDoUpgrade handles the noSubscription
@@ -10675,7 +10675,7 @@ function renderBilling() {
         // Go via Pricing so the user sees the price before checkout.
         // Pricing.html is fixed to preserve fromDashboard through _cart internals.
         window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
-      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
+      } catch(e) { showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('activation impossible'))); }
     };
     // Désactivation in-dashboard : retire l'item Stripe puis met à jour la carte.
     window.fpDeactivateAddonByName = function(addonName) {
@@ -14923,7 +14923,7 @@ window.loadMissions = async function loadMissions() {
 /** Delete a growth objective by ID — called from data-goal-id button onclick */
 window._fpDelGoal = async function(gid) {
   if (!gid) return;
-  if (!confirm('Supprimer cet objectif ?')) return;
+  if (!confirm(fpT('Supprimer cet objectif ?'))) return;
   try {
     await apiFetch('/api/growth/objectives/' + gid, { method: 'DELETE' });
     if (STATE.growthObjectives) STATE.growthObjectives = STATE.growthObjectives.filter(function(x) { return String(x.id) !== String(gid); });
@@ -15196,10 +15196,10 @@ function openMonitorPanel(monitor) {
         if (r && r.ok) {
           const idx = STATE.monitors.findIndex(x => x.id === monitor.id);
           if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
-          showToast('success', `Ping OK — ${r.responseTime}ms · Statut : ${r.status}`);
+          showToast('success', "Ping OK — " + r.responseTime + fpT("ms · Statut : ") + r.status);
           render();
         } else { showToast('error', fpT('Ping échoué — site inaccessible')); }
-      } catch(e) { showToast('error', 'Ping échoué — ' + (e?.message || 'Erreur réseau')); }
+      } catch(e) { showToast('error', fpT('Ping échoué — ') + (e?.message || fpT('Erreur réseau'))); }
     });
     $('#monitor-panel-delete')?.addEventListener('click', async () => {
       try {
@@ -15263,7 +15263,7 @@ function setupNewAuditPanel() {
         const a = res || { id:'a'+Date.now(), url, score: null, status:'pending', speed: null, date: new Date().toISOString(), issues: 0 };
         STATE.audits.unshift(a);
         if (typeof startAuditPolling === 'function') startAuditPolling(a.id);
-        showToast('success', `Audit lancé pour ${escHtml(url)}`);
+        showToast('success', fpT("Audit lancé pour ") + escHtml(url));
         addLocalNotification('audit', fpT('🔍 Audit lancé'), 'Analyse de ' + url + ' en cours…');
         closeFloatPanel();
         if (STATE.route === 'audits') render(); else navigate('audits');
@@ -15403,7 +15403,7 @@ function setupExportPanel() {
             `"${(m.name||'').replace(/"/g,'""')}","${(m.url||'').replace(/"/g,'""')}","${m.status||''}","${m.uptime||0}%","${m.latency||0}ms"`
           );
           exportCsv('Nom,URL,Statut,Uptime,Latence', rows, `monitors-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
-          showToast('success', `CSV exporté — ${rows.length} monitor${rows.length>1?'s':''}`);
+          showToast('success', fpT("CSV exporté — ") + rows.length + fpT(" monitor") + (rows.length>1?'s':''));
           break;
         }
         case 'missions': {
@@ -15411,7 +15411,7 @@ function setupExportPanel() {
             `"${(m.title||'').replace(/"/g,'""')}","${m.category||''}","${m.status||''}","${m.impact||''}","${m.date||''}"`
           );
           exportCsv('Titre,Catégorie,Statut,Impact,Échéance', rows, `missions-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
-          showToast('success', `CSV exporté — ${rows.length} mission${rows.length>1?'s':''}`);
+          showToast('success', fpT("CSV exporté — ") + rows.length + fpT(" mission") + (rows.length>1?'s':''));
           break;
         }
         case 'all': {
@@ -15514,10 +15514,10 @@ function setupNewEndpointPanel() {
         const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nep-email')?.value, type: 'api', method: $('#nep-method')?.value });
         const m = res || { id: 'm'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null, type:'api' };
         STATE.monitors.push(m);
-        showToast('success', `Endpoint ajouté : ${escHtml(name)}`);
+        showToast('success', fpT("Endpoint ajouté : ") + escHtml(name));
         closeFloatPanel();
         if (STATE.route === 'monitors') render();
-      } catch(e) { showToast('error', 'Erreur lors de l\'ajout — ' + (e?.message || '')); }
+      } catch(e) { showToast('error', fpT('Erreur lors de l\'ajout — ') + (e?.message || '')); }
     });
   }, 50);
 }
@@ -15550,7 +15550,7 @@ function setupNewMonitorPanel() {
         const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nm-email')?.value, frequency: $('#nm-freq')?.value });
         const m = res || { id:'m'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null };
         STATE.monitors.push(m);
-        showToast('success', `Monitor créé pour ${escHtml(url)}`);
+        showToast('success', fpT("Monitor créé pour ") + escHtml(url));
         addLocalNotification('monitor', fpT('📡 Monitor créé'), url + ' est maintenant surveillé');
         closeFloatPanel();
         navigate('monitors');
@@ -15729,12 +15729,12 @@ function setupNewReportPanel() {
         refreshMeUsage();
 
         if (format === 'PDF' && r.id) {
-          showToast('success', `Téléchargement du rapport PDF « ${escHtml(name)} »…`);
+          showToast('success', fpT("Téléchargement du rapport PDF « ") + escHtml(name) + " »…");
           addLocalNotification('report', fpT('📄 Rapport PDF prêt'), name.slice(0, 50));
           downloadReportPdf(r.id, name);
         } else {
           const notesSuffix = meetingNotes.length ? ` · ${meetingNotes.length} note${meetingNotes.length>1?'s':''} de réunion incluse${meetingNotes.length>1?'s':''}` : '';
-          showToast('success', `Rapport ${format} « ${escHtml(name)} » généré${notesSuffix}.`);
+          showToast('success', fpT("Rapport ") + format + " « " + escHtml(name) + fpT(" » généré") + notesSuffix + ".");
           addLocalNotification('report', `📄 Rapport ${format} généré`, name.slice(0, 50));
         }
 
@@ -16054,12 +16054,13 @@ function fpPlanLabel(plan) {
 function fpPlanChangeSuccessMessage(plan, reactivated) {
   const label = fpPlanLabel(plan);
   return reactivated
-    ? `Votre abonnement est maintenant sur le plan ${label}.`
-    : `Vous êtes passé au plan ${label}.`;
+    ? fpT('Votre abonnement est maintenant sur le plan ') + label + '.'
+    : fpT('Vous êtes passé au plan ') + label + '.';
 }
 
 function fpPlanChangeScheduledMessage(plan, when, effectiveDate) {
-  return `Votre abonnement passera au plan ${fpPlanLabel(plan)} ${when} (${effectiveDate}).`;
+  return fpT('Votre abonnement passera au plan ') + fpPlanLabel(plan) + ' ' +
+    fpT(when) + ' (' + fpT(effectiveDate) + ').';
 }
 
 function fpMarkPlanChangeAction(plan) {
@@ -16575,9 +16576,9 @@ function bindBulkBarEvents() {
     if (fail === 0) {
       showToast('success', `${ok} ${unit}${ok>1?'s':''} ${verb}${ok>1?'s':''}`);
     } else if (ok === 0) {
-      showToast('error', `Échec pour ${fail} ${unit}${fail>1?'s':''}`);
+      showToast('error', fpT("Échec pour ") + fail + " " + unit + (fail>1?'s':''));
     } else {
-      showToast('warning', `${ok} réussi${ok>1?'s':''}, ${fail} échoué${fail>1?'s':''}`);
+      showToast('warning', ok + fpT(" réussi") + (ok>1?'s':'') + ", " + fail + fpT(" échoué") + (fail>1?'s':''));
     }
   };
 
@@ -16604,7 +16605,7 @@ function bindBulkBarEvents() {
     a.download = `audits-flowpoint-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('success', `CSV exporté — ${audits.length} audit${audits.length>1?'s':''}`);
+    showToast('success', fpT("CSV exporté — ") + audits.length + fpT(" audit") + (audits.length>1?'s':''));
   });
 
   document.getElementById('bulk-rerun')?.addEventListener('click', async () => {
@@ -16612,7 +16613,7 @@ function bindBulkBarEvents() {
     const audits = STATE.audits.filter(a => ids.includes(a.id));
     if (!audits.length) return;
     showProgress(0, audits.length);
-    showToast('info', `Relance de ${audits.length} audit${audits.length>1?'s':''} en cours…`);
+    showToast('info', fpT("Relance de ") + audits.length + fpT(" audit") + (audits.length>1?'s':'') + fpT(" en cours…"));
     let done = 0, ok = 0, fail = 0;
     await Promise.allSettled(audits.map(async a => {
       try {
@@ -16640,7 +16641,7 @@ function bindBulkBarEvents() {
     });
     STATE.selectedAudits.clear();
     STATE.auditShowArchived = false;
-    showToast('info', `${ids.length} audit${ids.length>1?'s':''} archivé${ids.length>1?'s':''} — masqué${ids.length>1?'s':''} de la vue principale`);
+    showToast('info', ids.length + fpT(" audit") + (ids.length>1?'s':'') + fpT(" archivé") + (ids.length>1?'s':'') + fpT(" — masqué") + (ids.length>1?'s':'') + fpT(" de la vue principale"));
     render();
   });
 
@@ -16673,7 +16674,7 @@ function bindBulkBarEvents() {
     const monitors = STATE.monitors.filter(m => ids.includes(m.id));
     if (!monitors.length) return;
     showProgress(0, monitors.length);
-    showToast('info', `Test de ${monitors.length} monitor${monitors.length>1?'s':''} en cours…`);
+    showToast('info', fpT("Test de ") + monitors.length + fpT(" monitor") + (monitors.length>1?'s':'') + fpT(" en cours…"));
     let done = 0, ok = 0, fail = 0;
     await Promise.allSettled(monitors.map(async m => {
       try { await apiAction('POST', `/api/monitors/${m.id}/check`); ok++; }
@@ -16799,7 +16800,7 @@ function bindSectionEvents() {
       const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
       const urgent = STATE.missions.find(m => m.status === 'todo' && m.impact === 'Élevé');
       const target = urgent || STATE.missions.find(m => m.status === 'todo');
-      if (target) { target.date = tomorrow; saveMissions(); showToast('success', `Mission reportée à demain (${tomorrow})`); render(); }
+      if (target) { target.date = tomorrow; saveMissions(); showToast('success', fpT("Mission reportée à demain (") + tomorrow + ")"); render(); }
       else showToast('warning', fpT('Aucune mission à reporter'));
     });
     var _overviewFetchCtrl = null;
@@ -16917,7 +16918,7 @@ function bindSectionEvents() {
             : { id:'a'+Date.now(), url:_normUrl, score:null, status:'pending', speed:null, date:new Date().toISOString(), issues:0 };
           STATE.audits.unshift(_launchedAudit);
           if (typeof startAuditPolling === 'function') startAuditPolling(_launchedAudit.id);
-          showToast('success', `Audit lancé pour ${escHtml(_normUrl)}`);
+          showToast('success', fpT("Audit lancé pour ") + escHtml(_normUrl));
           if (_input) _input.value = '';
           render();
         } catch(e) {
@@ -16943,11 +16944,11 @@ function bindSectionEvents() {
           try {
             const sched = await apiAction('POST', '/api/audits/schedule', { url, frequency: freq });
             if (sched && !STATE.auditSchedules.find(s => s.url === url)) STATE.auditSchedules.push(sched);
-            showToast('success', `Audit ${freq === 'daily' ? 'quotidien' : freq === 'weekly' ? 'hebdo' : 'mensuel'} activé`);
+          showToast('success', fpT("Audit ") + fpT(freq === 'daily' ? 'quotidien' : freq === 'weekly' ? 'hebdo' : 'mensuel') + fpT(" activé"));
           } catch(_) {
             const mock = { id:'sched_'+Date.now(), url, frequency: freq, nextRun:Date.now()+7*86400000, createdAt:Date.now() };
             STATE.auditSchedules.push(mock);
-            showToast('success', `Audit ${freq === 'daily' ? 'quotidien' : freq === 'weekly' ? 'hebdo' : 'mensuel'} activé`);
+            showToast('success', fpT("Audit ") + fpT(freq === 'daily' ? 'quotidien' : freq === 'weekly' ? 'hebdo' : 'mensuel') + fpT(" activé"));
           }
           render();
         } else {
@@ -16971,10 +16972,10 @@ function bindSectionEvents() {
         try {
           const updated = await apiAction('PATCH', `/api/audits/schedule/${existing.id}`, { frequency: sel.value });
           Object.assign(existing, updated || { frequency: sel.value });
-          showToast('success', `Fréquence mise à jour : ${sel.options[sel.selectedIndex].text}`);
+          showToast('success', fpT("Fréquence mise à jour : ") + sel.options[sel.selectedIndex].text);
         } catch(_) {
           existing.frequency = sel.value;
-          showToast('success', `Fréquence mise à jour : ${sel.options[sel.selectedIndex].text}`);
+          showToast('success', fpT("Fréquence mise à jour : ") + sel.options[sel.selectedIndex].text);
         }
       });
     });
@@ -17021,10 +17022,10 @@ function bindSectionEvents() {
           try {
             const updated = await apiAction('PATCH', `/api/audits/schedule/${existing.id}`, { frequency: this.value });
             Object.assign(existing, updated || { frequency: this.value });
-            showToast('success', `Fréquence mise à jour : ${this.options[this.selectedIndex].text}`);
+          showToast('success', fpT("Fréquence mise à jour : ") + this.options[this.selectedIndex].text);
           } catch(_) {
             existing.frequency = this.value;
-            showToast('success', `Fréquence mise à jour : ${this.options[this.selectedIndex].text}`);
+          showToast('success', fpT("Fréquence mise à jour : ") + this.options[this.selectedIndex].text);
           }
         });
       }, 50);
@@ -17147,7 +17148,7 @@ function bindSectionEvents() {
     $('#monitor-check-all')?.addEventListener('click', async () => {
       const mons = (STATE.monitors || []).filter(m => m.id);
       if (!mons.length) { showToast('info', fpT('Aucun monitor à vérifier')); return; }
-      showToast('info', `Vérification de ${mons.length} monitor${mons.length > 1 ? 's' : ''}…`);
+        showToast('info', fpT("Vérification de ") + mons.length + fpT(" monitor") + (mons.length > 1 ? 's' : '') + "…");
       let ok = 0, fail = 0;
       for (const m of mons) {
         try {
@@ -17160,7 +17161,7 @@ function bindSectionEvents() {
         } catch(e) { fail++; }
       }
       showToast(fail === 0 ? 'success' : ok > 0 ? 'warning' : 'error',
-        `Vérification terminée — ${ok} OK${fail > 0 ? ', ' + fail + ' échoué(s)' : ''}`);
+        fpT("Vérification terminée — ") + ok + " OK" + (fail > 0 ? ', ' + fail + fpT(" échoué(s)") : ''));
       render();
     });
     $('#monitor-add-endpoint-btn')?.addEventListener('click', () => { openFloatPanel('Ajouter un endpoint API', renderNewEndpointPanel()); setupNewEndpointPanel(); });
@@ -17202,7 +17203,7 @@ function bindSectionEvents() {
                 showToast('error', fpT('Ping échoué — site inaccessible'));
               }
             } catch(err) {
-              showToast('error', 'Ping échoué — ' + (err?.message || 'Erreur réseau'));
+              showToast('error', fpT('Ping échoué — ') + (err?.message || fpT('Erreur réseau')));
             }
           })();
           return;
@@ -17252,7 +17253,7 @@ function bindSectionEvents() {
                   showToast('success', `Ping OK — ${r.responseTime}ms`);
                   render();
                 } else { showToast('error', fpT('Ping échoué')); }
-              } catch(e) { showToast('error', 'Ping échoué — ' + (e?.message || 'Erreur réseau')); }
+              } catch(e) { showToast('error', fpT('Ping échoué — ') + (e?.message || fpT('Erreur réseau'))); }
             })();
           } },
           { key:'copy', icon:'copy',    label:'Copier l\'URL',     action:()=>{ navigator.clipboard?.writeText(monitor.url); showToast('success', fpT('URL copiée')); } },
@@ -17287,7 +17288,7 @@ function bindSectionEvents() {
           const nm = document.getElementById('mw-name')?.value?.trim();
           const sc = document.getElementById('mw-sched')?.value?.trim();
           if (!nm || !sc) { showToast('warning', fpT('Remplissez tous les champs')); return; }
-          showToast('success', `Fenêtre «${nm}» créée`);
+          showToast('success', fpT("Fenêtre «") + nm + fpT("» créée"));
           closeFloatPanel();
         });
       }, 50);
@@ -17364,7 +17365,7 @@ function bindSectionEvents() {
               const _src = _mode === 'generic_templates'
                 ? 'des missions de base ont été créées (IA temporairement indisponible).'
                 : `${inserted} mission${inserted > 1 ? 's' : ''} créée${inserted > 1 ? 's' : ''} depuis vos données d'audit (IA temporairement indisponible).`;
-              showToast('warning', _mode === 'generic_templates' ? `${inserted} mission${inserted > 1 ? 's' : ''} de base créée${inserted > 1 ? 's' : ''} (IA temporairement indisponible).` : _src);
+              showToast('warning', _mode === 'generic_templates' ? inserted + fpT(" mission") + (inserted > 1 ? 's' : '') + fpT(" de base créée") + (inserted > 1 ? 's' : '') + fpT(" (IA temporairement indisponible).") : _src);
             } else {
               showToast('warning', fpT('Service IA temporairement indisponible — réessayez dans quelques instants.'));
             }
@@ -17373,14 +17374,14 @@ function bindSectionEvents() {
             showToast('info', fpT('Aucune nouvelle mission — vous avez déjà 8 missions actives ou plus.'));
           } else if (_mode === 'generic_templates') {
             // No audit data available — static templates used, AI was never invoked.
-            showToast('info', `${inserted} mission${inserted > 1 ? 's' : ''} de base créée${inserted > 1 ? 's' : ''} — lancez un audit pour des missions personnalisées.`);
+            showToast('info', inserted + fpT(" mission") + (inserted > 1 ? 's' : '') + fpT(" de base créée") + (inserted > 1 ? 's' : '') + fpT(" — lancez un audit pour des missions personnalisées."));
           } else if (_mode === 'data_derived') {
             // Audit data was available but AI provider failed/was unavailable for setup reasons;
             // fallback templates were built from real audit data — do not claim AI generation.
-            showToast('success', `${inserted} mission${inserted > 1 ? 's' : ''} créée${inserted > 1 ? 's' : ''} depuis vos données d'audit.`);
+            showToast('success', inserted + fpT(" mission") + (inserted > 1 ? 's' : '') + fpT(" créée") + (inserted > 1 ? 's' : '') + fpT(" depuis vos données d'audit."));
           } else {
             // generationMode === 'ai' → LLM provider was called and returned valid missions
-            showToast('success', `${inserted} nouvelle${inserted > 1 ? 's' : ''} mission${inserted > 1 ? 's' : ''} générée${inserted > 1 ? 's' : ''} par l\'IA`);
+            showToast('success', inserted + fpT(" nouvelle") + (inserted > 1 ? 's' : '') + fpT(" mission") + (inserted > 1 ? 's' : '') + fpT(" générée") + (inserted > 1 ? 's' : '') + fpT(" par l'IA"));
           }
         } else {
           showToast('error', fpT('Erreur lors du scan IA — réessayez dans quelques instants.'));
@@ -17408,7 +17409,7 @@ function bindSectionEvents() {
       let created = 0;
       (function next() {
         if (!toCreate.length) {
-          if (created > 0) { showToast('success', created + ' mission' + (created>1?'s':'') + ' créée' + (created>1?'s':'') + ' !'); navigate('missions'); }
+          if (created > 0) { showToast('success', created + fpT(' mission') + (created>1?'s':'') + fpT(' créée') + (created>1?'s':'') + ' !'); navigate('missions'); }
           else showToast('warning', fpT('Toutes les missions sont déjà créées.'));
           return;
         }
@@ -17494,7 +17495,7 @@ function bindSectionEvents() {
             const libMs = { id:'ms'+Date.now(), title, category:card.dataset.libCat||'SEO Technique', impact:card.dataset.libImpact||'Élevé', status:'todo', date:new Date(Date.now()+7*86400000).toISOString().slice(0,10), steps };
             STATE.missions.push(libMs);
             saveMissions();
-            showToast('success', 'Mission ajoutée : ' + title.slice(0,40));
+            showToast('success', fpT('Mission ajoutée : ') + title.slice(0,40));
             card.style.opacity = '0.4';
             card.style.pointerEvents = 'none';
             if (typeof window.FP_MISSIONS_API !== 'undefined') window.FP_MISSIONS_API.create(libMs).catch(() => {});
@@ -17721,7 +17722,7 @@ function bindSectionEvents() {
           if (ev && ev.date !== newDate) {
             ev.date = newDate;
             saveCalendarEvents();
-            showToast('success',`"${escHtml(ev.title)}" déplacé au ${newDate}`);
+            showToast('success','"' + escHtml(ev.title) + fpT('" déplacé au ') + newDate);
             render();
           }
           dragCalId = null;
@@ -17903,7 +17904,7 @@ function bindSectionEvents() {
               render();
             } catch(e) {
               window._fpPlanUpgradeRecord = null;
-              showToast('error', 'Changement de plan impossible : ' + (e && e.message ? e.message : 'réessayez'));
+              showToast('error', fpT('Changement de plan impossible : ') + (e && e.message ? e.message : fpT('réessayez')));
               checkBtn.disabled = false;
               checkBtn.textContent = 'Choisir';
             }
@@ -18059,7 +18060,7 @@ function bindSectionEvents() {
           const rule = await apiAction('POST', '/api/alert-rules', payload);
           if (rule) {
             STATE.alertRules.push(rule);
-            showToast('success', `Règle "${name}" créée !`);
+            showToast('success', fpT('Règle "') + name + fpT('" créée !'));
             navigateSub('alerts');
           }
         } catch(e) { showToast('error', fpT('Erreur lors de la création de la règle')); }
@@ -18087,7 +18088,7 @@ function bindSectionEvents() {
                 ? 'font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)'
                 : 'font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)';
             }
-            showToast('success', `Règle ${newEnabled ? 'activée' : 'désactivée'}`);
+            showToast('success', fpT("Règle ") + fpT(newEnabled ? 'activée' : 'désactivée'));
           } catch(e) {
             btn.dataset.pending = '0';
             showToast('error', fpT('Erreur lors de la mise à jour'));
@@ -18103,7 +18104,7 @@ function bindSectionEvents() {
           try {
             await apiAction('DELETE', `/api/alert-rules/${ruleId}`, null);
             STATE.alertRules = STATE.alertRules.filter(r => r.id !== ruleId);
-            showToast('success', `Règle "${rule.name}" supprimée`);
+            showToast('success', fpT('Règle "') + rule.name + fpT('" supprimée'));
             navigateSub('alerts');
           } catch(e) { showToast('error', fpT('Erreur lors de la suppression')); }
         });
@@ -18157,7 +18158,7 @@ function bindSectionEvents() {
             const updated = await apiAction('PATCH', `/api/alert-rules/${ruleId}`, patchPayload);
             if (updated) {
               Object.assign(rule, updated);
-              showToast('success', `Règle "${name}" mise à jour`);
+              showToast('success', fpT('Règle "') + name + fpT('" mise à jour'));
               navigateSub('alerts');
             }
           } catch(e) { showToast('error', fpT('Erreur lors de la mise à jour')); }
@@ -18497,7 +18498,7 @@ function toggleTheme() {
     applyTheme();
     saveSettings();
     render();
-    showToast('info', `Thème ${STATE.theme === 'dark' ? 'sombre' : 'clair'} activé`);
+    showToast('info', fpT("Thème ") + fpT(STATE.theme === 'dark' ? 'sombre' : 'clair') + fpT(" activé"));
   }, 250);
 }
 
@@ -21873,6 +21874,496 @@ function bindGlobalEvents() {
     'Paramètres enregistrés.': 'Settings saved.',
     'Impossible d’enregistrer les priorités.': 'Unable to save priorities.',
     'Impossible de charger le portefeuille.': 'Unable to load the portfolio.',
+    "Erreur lors du changement de rôle": "Error changing role",
+    "Email invalide": "Invalid email",
+    "Erreur lors de l'envoi": "Error sending",
+    "Impossible de résoudre l'incident": "Unable to resolve incident",
+    "URL invalide — format attendu : https://status.monsite.fr": "Invalid URL — expected format: https://status.monsite.fr",
+    "URL invalide": "Invalid URL",
+    "Supprimée localement — synchronisation échouée (réessayez en ligne)": "Deleted locally — sync failed (retry when online)",
+    "🚀 Mission créée": "🚀 Mission created",
+    "Paramètres enregistrés localement — synchronisation serveur échouée": "Settings saved locally — server sync failed",
+    "Rapport": "Report",
+    "Alerte": "Alert",
+    "Réglages": "Settings",
+    "Mission supprimée :": "Mission deleted:",
+    "Audit lancé :": "Audit started:",
+    "Keyword ajouté :": "Keyword added:",
+    "Keyword retiré :": "Keyword removed:",
+    "Monitor créé :": "Monitor created:",
+    "Connecteur connecté :": "Connector connected:",
+    "Connecteur déconnecté :": "Connector disconnected:",
+    "Répondre aux avis Google en attente": "Reply to pending Google reviews",
+    "Créer des pages locales ciblées": "Create targeted local pages",
+    "Lancer un nouvel audit SEO": "Run a new SEO audit",
+    "Fiche Google Business Profile incomplète — optimiser pour le Local Pack": "Incomplete Google Business Profile — optimize for the Local Pack",
+    "Génération de la synthèse exécutive…": "Generating executive summary...",
+    "La synthèse n’a pas pu être générée.": "The summary could not be generated.",
+    "Synthèse créée dans vos rapports.": "Summary created in your reports.",
+    "Synthèse exécutive IA": "AI executive summary",
+    "Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.": "Generated from actual recorded audits and monitors. Metrics remain calculated from verified data.",
+    "Générer la synthèse": "Generate summary",
+    "Add-on non disponible à l’achat": "Add-on not available for purchase",
+    ". Tous les sites respectent leur SLA. Latence moyenne :": ". All sites are meeting their SLA. Average latency:",
+    "Impossible de charger vos clients — réessayez.": "Unable to load your clients — retry.",
+    "Aucun client configuré. Ajoutez votre premier client pour activer le reporting.": "No clients configured. Add your first client to enable reporting.",
+    "rapport(s) généré(s)": "report(s) generated",
+    "Créez et partagez vos rapports PDF en un clic": "Create and share your PDF reports in one click",
+    "Données GBP et résultats locaux enregistrés — sans estimation de classement": "GBP data and local results recorded — without ranking estimate",
+    "Classement pour": "Ranking for",
+    "Carte de présence locale": "Local presence map",
+    "Annulation en cours…": "Canceling...",
+    "Essai annulé — redirection…": "Trial canceled — redirecting...",
+    "Ton abonnement a expiré. Tes données sont conservées.": "Your subscription has expired. Your data will be retained.",
+    "Choisis un plan ci-dessous pour reprendre ton accès Premium — tes projets, audits et données restent intacts.": "Choose a plan below to restore your Premium access — your projects, audits, and data remain intact.",
+    "IA Billing Insights — Pro requis": "AI Billing Insights — Pro required",
+    "Aucun membre dans l'équipe. Invitez des collaborateurs pour partager l'accès au tableau de bord et gérer les permissions.": "No team members. Invite collaborators to share Dashboard access and manage permissions.",
+    "Activez le workflow avant de l'exécuter": "Enable the workflow before running it",
+    "IA Config Lab complet — Ultra requis": "Full AI Config Lab — Ultra required",
+    "Quota mensuel — Crédits IA inclus": "Monthly quota — AI credits included",
+    "Analyse en cours…": "Analysis in progress…",
+    "Analyse IA indisponible": "AI analysis unavailable",
+    "Ping en cours…": "Pinging…",
+    "Erreur lors de la suppression — réessayez": "Error during deletion — try again",
+    "🔍 Audit lancé": "🔍 Audit started",
+    "📡 Monitor créé": "📡 Monitor created",
+    "📄 Rapport PDF prêt": "📄 PDF report ready",
+    "Abonnement expiré": "Subscription expired",
+    "Votre abonnement a expiré. Vos données sont conservées — projets, audits et paramètres restent intacts.": "Your subscription has expired. Your data will be retained — your projects, audits, and settings remain intact.",
+    "Choisissez un plan pour retrouver un accès complet à toutes les fonctionnalités.": "Choose a plan to regain full access to all features.",
+    "Voir ma facturation": "View my billing",
+    "Erreur d'actualisation": "Refresh error",
+    "Épingle enregistrée localement — synchronisation serveur échouée": "Pin saved locally — server synchronization failed",
+    "API non disponible": "API unavailable",
+    "Scan IA en cours…": "AI scan in progress…",
+    "Service IA temporairement indisponible — réessayez dans quelques instants.": "AI service temporarily unavailable — try again in a few moments.",
+    "Aucune nouvelle mission — vous avez déjà 8 missions actives ou plus.": "No new missions — you already have 8 or more active missions.",
+    "Erreur lors du scan IA — réessayez dans quelques instants.": "Error during AI scan — try again in a few moments.",
+    "Email introuvable — reconnectez-vous": "Email not found — please sign in again",
+    "Abonnement résilié. Contactez le support pour finaliser la suppression.": "Subscription canceled. Contact support to finalize deletion.",
+    "La clé secrète n’est affichée qu’une fois, à sa création. Régénérez-la pour en obtenir une nouvelle.": "The secret key is only displayed once, upon creation. Regenerate it to get a new one.",
+    "Nom, établissement et mot-clé requis": "Name, location, and keyword required",
+    "Analyse locale lancée. Les résultats apparaîtront après les mesures.": "Local analysis started. Results will appear after measurements.",
+    "Cet avis a déjà été analysé": "This review has already been analyzed",
+    "📊 Analyse IA — résultat": "📊 AI analysis — result",
+    "URL webhook requise": "Webhook URL required",
+    "Connexion en cours…": "Connecting…",
+    "Concurrent ajouté. Les données sont en cours de récupération.": "Competitor added. Data is being retrieved.",
+    "Concurrent supprimé": "Competitor deleted",
+    "Impossible de récupérer les données du concurrent. Réessayez plus tard.": "Unable to retrieve competitor data. Try again later.",
+    "Données du concurrent actualisées.": "Competitor data refreshed.",
+    "Concurrent conservé, mais les données restent indisponibles.": "Competitor saved, but its data is still unavailable.",
+    "Analyse IA terminée — ": "AI analysis complete — ",
+    "Erreur analyse IA": "AI analysis error",
+    "Session expirée — rechargez la page": "Session expired — please reload the page",
+    "Accès refusé": "Access denied",
+    "Erreur suppression": "Deletion error",
+    "Récupération en cours": "Retrieval in progress",
+    "Données disponibles": "Data available",
+    "Données indisponibles": "Data unavailable",
+    "Données de domaine vérifiées par fournisseur externe, jamais estimées par FlowPoint.": "Domain data verified by third-party provider, never estimated by FlowPoint.",
+    "Présence locale": "Local presence",
+    "Les données de profil de liens entrants seront disponibles une fois la récupération fournisseur terminée pour vos concurrents.": "Backlink profile data will be available once provider retrieval for your competitors is finished.",
+    "La comparaison de présence locale sera disponible après configuration de votre zone Local SEO.": "Local presence comparison will be available after configuring your Local SEO zone.",
+    "Configurez des règles d'alerte depuis Centre d'alertes → Concurrents pour être notifié automatiquement des mouvements.": "Configure alert rules from Alert Center → Competitors to be notified automatically of changes.",
+    "Aucun concurrent suivi": "No competitors tracked",
+    "concurrents utilisés": "competitors used",
+    "Ajoutez un domaine public pour lancer une récupération réelle de ses métriques.": "Add a public domain to start retrieving its metrics.",
+    "Concurrent": "Competitor",
+    "État": "Status",
+    "Concurrent sans nom": "Unnamed competitor",
+    "Erreur fournisseur": "Provider error",
+    "Relancer la récupération des métriques fournisseur": "Retry provider metrics retrieval",
+    "Réessayer métriques": "Retry metrics",
+    "Analyse enregistrée indisponible": "Saved analysis unavailable",
+    "Aucune contribution individuelle enregistrée.": "No individual contribution recorded.",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Select a saved site to isolate Behavioral AI data.",
+    "jours": "days",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Results calculated on a capped sample of recent events.",
+    "sessions avec page vue sur cette période": "sessions with page views in this period",
+    "Aucune soumission de formulaire mesurable.": "No measurable form submission.",
+    "des sessions observées ont soumis un formulaire": "of observed sessions submitted a form",
+    "Taux d’abandon formulaire le plus élevé": "Highest form abandonment rate",
+    "Recommandations fondées sur les événements": "Event-based recommendations",
+    "Chargement des données comportementales…": "Loading behavioral data...",
+    "Pages concernées": "Pages involved",
+    "Preuve observée": "Observed evidence",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "No signal currently exceeds detection thresholds.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Select a site and wait for the first snippet events.",
+    "Sessions avec page vue": "Sessions with page views",
+    "Pages visitées": "Pages visited",
+    "Événements page_view observés": "page_view events observed",
+    "Événements form_abandon observés": "form_abandon events observed",
+    "Comparaison avec la période précédente": "Comparison with the previous period",
+    "Sessions avec formulaire envoyé": "Sessions with a form submission",
+    "Valeurs précédentes · variation par rapport à la période courante": "Previous values · variation from current period",
+    "Comparaison limitée par le plafond de données.": "Comparison limited by data cap.",
+    "Comparaison indisponible sans site sélectionné.": "Comparison unavailable without a selected site.",
+    "Référents observés": "Referrers observed",
+    "Aucun référent externe mesurable dans les événements reçus.": "No measurable external referrers in received events.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "UTM campaigns and new/returning visitor distinction are not collected.",
+    "Parcours mesuré — page vue vers formulaire": "Measured journey — page view to form",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "No measurable journey for this period. The snippet must collect page_view and form_submit.",
+    "de perte mesurée à l’étape": "drop-off measured at step",
+    "Parcours les plus fréquents": "Most frequent journeys",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Transitions will appear after multiple page views are collected in a session.",
+    "Pages d’entrée": "Landing pages",
+    "Frottements observés": "Friction observed",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "No friction clicks or form abandons observed for the period.",
+    "Non mesuré avec les événements actuels": "Not measured with current events",
+    "Créer et analyser un funnel comportemental": "Create and analyze a behavioral funnel",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Enter 2 to 6 events in order. Optional: add :/path to limit a step to a specific page.",
+    "depuis l’étape précédente": "from previous step",
+    "Période précédente": "Previous period",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Result limited to the most recent events (safety cap reached).",
+    "Aucune donnée de page disponible": "No page data available",
+    "Fonctionnalité Premium": "Premium Feature",
+    "La Conversion GA4 est réservée aux abonnés actifs. Reprenez un abonnement pour accéder à vos données.": "GA4 Conversion is reserved for active subscribers. Renew your subscription to access your data.",
+    "Choisir un abonnement": "Choose a subscription",
+    "Ajout en cours…": "Adding...",
+    "Erreur": "Error",
+    "Destination non disponible": "Destination unavailable",
+    "Analyse PageSpeed en cours…": "Running PageSpeed analysis...",
+    "Export GA4 en cours…": "Exporting GA4...",
+    "Synchronisation GSC en cours…": "Synchronizing GSC...",
+    "sessions observées": "sessions observed",
+    "Un funnel doit contenir de 2 à 6 étapes.": "A funnel must contain 2 to 6 steps.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Select a site before analyzing a funnel.",
+    "siteUrl requis": "siteUrl required",
+    "Insights IA générés à partir des événements observés": "AI insights generated from observed events",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Measured signals generated; AI recommendations unavailable",
+    "Échec de mise à jour": "Update failed",
+    "Add-on Enterprise Permissions requis": "Enterprise Permissions Add-on required",
+    "Les rôles personnalisés et leurs permissions sont disponibles lorsque l’add-on est actif.": "Custom roles and their permissions are available when the Add-on is active.",
+    "Template de rapport indisponible": "Report template unavailable",
+    "Lien de partage copié": "Share link copied",
+    "Lien de partage généré": "Share link generated",
+    "Erreur partage": "Sharing error",
+    "Critères de présence enregistrés.": "Presence criteria saved.",
+    "Catalogue des add-ons indisponible.": "Add-on catalog unavailable.",
+    "Objectif supprimé": "Goal deleted",
+    "Erreur : suppression incomplète — réessayez.": "Error: incomplete deletion — please retry.",
+    "Module Review Intelligence requis — activez-le depuis la page Facturation.": "Review Intelligence module required — activate it from the Billing page.",
+    "Dashboard créé !": "Dashboard created!",
+    "Dashboard supprimé.": "Dashboard deleted.",
+    "Impossible de supprimer ce dashboard.": "Unable to delete this dashboard.",
+    "Adresse email invalide.": "Invalid email address.",
+    "Le classement est enregistré, mais l’historique n’a pas pu être rechargé.": "Ranking saved, but history could not be reloaded.",
+    "Maximum 10 étapes": "Maximum 10 steps",
+    "Minimum 2 étapes": "Minimum 2 steps",
+    "Le nom est requis": "Name is required",
+    "Le site URL est requis": "Website URL is required",
+    "Funnel supprimé": "Funnel deleted",
+    "Rapport GA4 chargé": "GA4 report loaded",
+    "Propriété GA4 sélectionnée": "GA4 property selected",
+    "Saisissez le nom du client": "Enter client name",
+    "Le pack complet n’a pas pu être créé": "The full pack could not be created",
+    "Impossible de créer le rapport": "Unable to create report",
+    "Sélectionnez un site avec le snippet comportemental installé.": "Select a site with the behavioral snippet installed.",
+    "Brouillon créé. Réinstallez le nouveau snippet, puis démarrez le test.": "Draft created. Reinstall the new snippet, then start the test.",
+    "Expérience démarrée : les variantes seront servies par le snippet.": "Experience started: variations will be served by the snippet.",
+    "Expérience arrêtée.": "Experience stopped.",
+    "Expérience supprimée.": "Experience deleted.",
+    "Objectifs GBP enregistrés.": "GBP goals saved.",
+    "Sélectionnez au moins un membre": "Select at least one member",
+    "Entrez au moins un prénom, nom ou société": "Enter at least one first name, last name, or company",
+    "Client enregistré localement": "Client saved locally",
+    "Sélectionnez un établissement Google connecté.": "Select a connected Google business location.",
+    "Choisissez un établissement et ajoutez le contenu du post.": "Choose a location and add the post content.",
+    "Renseignez le titre et une plage horaire valide pour l’événement.": "Enter the event title and a valid time range.",
+    "Ajoutez une URL HTTPS valide pour ce bouton d’action.": "Add a valid HTTPS URL for this action button.",
+    "Publication Google terminée.": "Google publishing complete.",
+    "Test en cours…": "Testing in progress…",
+    "Portail billing indisponible": "Billing portal unavailable",
+    "Analyse CRO en cours…": "CRO analysis in progress…",
+    "Erreur sync GBP": "GBP sync error",
+    "Erreur chargement GA4": "GA4 loading error",
+    "Erreur Realtime API": "Realtime API error",
+    "Export Analytics en cours…": "Analytics export in progress…",
+    "Adresse introuvable": "Address not found",
+    "Erreur Distance Matrix": "Distance Matrix error",
+    "Supprimer cet objectif ?": "Delete this goal?",
+    "Adresse email du destinataire :": "Recipient email address:",
+    "Saisissez le nom de votre entreprise.": "Enter your company name.",
+    "Chemin de page à tester (ex. /tarifs):": "Page path to test (e.g., /pricing):",
+    "Nom de l’expérience:": "Experiment name:",
+    "Sélecteur CSS de l’élément à modifier (ex. #cta-principal):": "CSS selector for the element to modify (e.g., #main-cta):",
+    "Sélecteur CSS de conversion (ex. form#contact button[type=submit]):": "Conversion CSS selector (e.g., form#contact button[type=submit]):",
+    "Texte témoin affiché avant toute modification du site:": "Control text displayed before any site changes:",
+    "Hypothèse à valider:": "Hypothesis to validate:",
+    "Supprimer définitivement ce brouillon ou ce test arrêté ?": "Permanently delete this draft or stopped test?",
+    "Déconnecter Google Business Profile ? Vos données locales seront supprimées.": "Disconnect Google Business Profile? Your local data will be deleted.",
+    "Impossible de retrouver l’URL de cet audit.": "Unable to find the URL for this audit.",
+    "Analyse indisponible": "Analysis unavailable",
+    "Aucun domaine disponible pour générer les missions.": "No domain available to generate missions.",
+    "Génération des missions SEO…": "Generating SEO missions…",
+    "Génération indisponible": "Generation unavailable",
+    "Créer du contenu optimisé pour": "Create optimized content for",
+    "Aucune nouvelle mission SEO à créer.": "No new SEO missions to create.",
+    "missions SEO créées.": "SEO missions created.",
+    "Réduire/Agrandir la sidebar": "Collapse/expand the sidebar",
+    "Supprimer le dashboard « {name} » ?": "Delete dashboard “{name}”?",
+    "Supprimer {label} ? Cette action est irréversible.": "Delete {label}? This action cannot be undone.",
+    "ce concurrent": "this competitor",
+    "Déconnecter {service} ? Cette action révoque l'accès OAuth pour ce service.": "Disconnect {service}? This revokes OAuth access for the service.",
+    "Déconnecter {service}": "Disconnect {service}",
+    "Déconnecter GBP": "Disconnect GBP",
+    "Saisissez une URL de site valide en http ou https.": "Enter a valid website URL using HTTP or HTTPS.",
+    "URL du webhook (https://…)": "Webhook URL (https://…)",
+    "Continuer sans suggestion IA et saisir les textes manuellement ?": "Continue without AI suggestions and enter the text manually?",
+    "Texte de la variante B:": "Variant B text:",
+    "Audit relancé pour ": "Audit restarted for ",
+    " importé": " imported",
+    " téléchargé": " downloaded",
+    "CSV exporté — ": "CSV exported — ",
+    " campagne": " campaign",
+    "Mission créée · ": "Mission created · ",
+    "Invitation envoyée à ": "Invitation sent to ",
+    " créé !": " created!",
+    "Échec de l'envoi de ": "Failed to send ",
+    "Erreur envoi ": "Error sending ",
+    "Erreur : ": "Error: ",
+    "annulation impossible": "cannot cancel",
+    "réactivation impossible": "cannot reactivate",
+    "Vous êtes déjà sur le plan ": "You are already on the plan ",
+    "activation impossible": "cannot activate",
+    "ms · Statut : ": "ms · Status: ",
+    "Ping échoué — ": "Ping failed — ",
+    "Erreur réseau": "Network error",
+    "Audit lancé pour ": "Audit started for ",
+    " monitor": " monitor",
+    " mission": " mission",
+    "Endpoint ajouté : ": "Endpoint added: ",
+    "Erreur lors de l'ajout — ": "Error while adding — ",
+    "Monitor créé pour ": "Monitor created for ",
+    "Téléchargement du rapport PDF « ": "Downloading PDF report “",
+    "Rapport ": "Report ",
+    " » généré": "” generated",
+    "Échec pour ": "Failed for ",
+    " réussi": " succeeded",
+    " échoué": " failed",
+    " audit": " audit",
+    "Relance de ": "Restarting ",
+    " en cours…": " in progress…",
+    " archivé": " archived",
+    " — masqué": " — hidden",
+    " de la vue principale": " from main view",
+    "Test de ": "Testing ",
+    "Mission reportée à demain (": "Mission postponed until tomorrow (",
+    "Audit ": "Audit ",
+    " activé": " enabled",
+    "Fréquence mise à jour : ": "Update frequency: ",
+    "Vérification de ": "Checking ",
+    "Vérification terminée — ": "Verification complete — ",
+    " échoué(s)": " failed",
+    "Fenêtre «": "Window “",
+    "» créée": "” created",
+    " de base créée": " base created",
+    " (IA temporairement indisponible).": " (AI temporarily unavailable).",
+    " — lancez un audit pour des missions personnalisées.": " — run an audit for custom missions.",
+    " créée": " created",
+    " depuis vos données d'audit.": " from your audit data.",
+    " générée": " generated",
+    "Mission ajoutée : ": "Mission added: ",
+    "\" déplacé au ": "\" moved to ",
+    "Changement de plan impossible : ": "Unable to change plan: ",
+    "réessayez": "try again",
+    "Règle \"": "Rule \"",
+    "\" créée !": "\" created!",
+    "Règle ": "Rule ",
+    "\" supprimée": "\" deleted",
+    "\" mise à jour": "\" updated",
+    "Thème ": "Theme ",
+    "Crédits IA ajoutés : +": "AI credits added: +",
+    "Audit terminé — ": "Audit complete — ",
+    "\" activé !": "\" enabled!",
+    "suppression impossible": "unable to delete",
+    "Erreur lors de l'analyse : ": "Error during analysis: ",
+    "Test de \"": "Testing \"",
+    "\" en cours…": "\" in progress…",
+    "✗ Test échoué : ": "✗ Test failed: ",
+    "Rapport « ": "Report “",
+    " » envoyé à ": "” sent to ",
+    "Chargement des rankings pour « ": "Loading rankings for “",
+    " » à ": "” in ",
+    " missions locales créées !": " local missions created!",
+    " changement(s) détecté(s) depuis la dernière analyse": " change(s) detected since the last analysis",
+    "Assigné à ": "Assigned to ",
+    "Mission créée : ": "Mission created: ",
+    "Erreur création mission : ": "Error creating mission: ",
+    "\" ajouté au suivi !": "\" added to tracking!",
+    "-clé(s) synchronisé(s) en ": " keyword(s) synced in ",
+    "Erreur de synchronisation : ": "Sync error: ",
+    "Chargement de l'historique de \"": "Loading history for \"",
+    " points d'historique chargés": " history points loaded",
+    " opportunités générées !": " opportunities generated!",
+    " clusters générés !": " clusters generated!",
+    "✓ Coordonnées : ": "✓ Coordinates: ",
+    " déconnecté": " disconnected",
+    "Erreur déconnexion ": "Disconnect error for ",
+    "Connexion GitHub impossible : ": "Unable to connect to GitHub: ",
+    "Synchronisation terminée — ": "Sync complete — ",
+    " établissement": " location",
+    " avis": " reviews",
+    "GSC synchronisé — ": "GSC synced — ",
+    " mots-clés, ": " keywords, ",
+    "Site GSC sélectionné : ": "GSC site selected: ",
+    "Pack créé : 3 rapports vérifiés pour ": "Pack created: 3 reports verified for ",
+    " observations CRO analysées": " CRO observations analyzed",
+    "Proposition fondée sur les signaux observés. Raison : ": "Suggestion based on observed signals. Reason: ",
+    " Mesure : ": " Metric: ",
+    " opportunités observées": " opportunities observed",
+    "Activation de ": "Enabling ",
+    " désactivé": " disabled",
+    " membre(s) assigné(s) avec succès": " member(s) successfully assigned",
+    " assignation(s) échouée(s)": " assignment(s) failed",
+    "Client ": "Client ",
+    " ajouté !": " added!",
+    " enregistré": " saved",
+    " concurrent(s) local(aux) trouvé(s).": " local competitor(s) found.",
+    "Export ": "Export ",
+    "Ping échoué : ": "Ping failed: ",
+    "Monitor DOWN : ": "Monitor DOWN: ",
+    "Monitor UP : ": "Monitor UP: ",
+    "Plan mis à jour : ": "Plan updated: ",
+    "Audit terminé : ": "Audit finished: ",
+    "Rapport PDF prêt : ": "PDF report ready: ",
+    " synchronisé": " synced",
+    "Workflow exécuté en ": "Workflow executed in ",
+    "Sync GBP lancé — ": "GBP sync started — ",
+    " établissement(s)": " location(s)",
+    "Erreur publication : ": "Publication error: ",
+    "Erreur réponse : ": "Response error: ",
+    "Analyse contenu terminée — score : ": "Content analysis complete — score: ",
+    "Missions SEO générées pour ": "SEO missions generated for ",
+    "Add-on activé : ": "Add-on enabled: ",
+    "Workflow terminé en ": "Workflow finished in ",
+    "Propriété GA4 configurée : ": "GA4 property configured: ",
+    "Carte centrée sur ": "Map centered on ",
+    "Audit": "Audit",
+    "Monitor": "Monitor",
+    "Mission": "Mission",
+    "Export": "Export",
+    "Mission accomplie :": "Mission completed:",
+    "Score SEO&nbsp;": "SEO score&nbsp;",
+    "Corriger CLS mobile": "Fix mobile CLS",
+    "Corriger balises meta manquantes": "Fix missing meta tags",
+    "Urgente": "Urgent",
+    "Prochain envoi auto": "Next automatic send",
+    "Envois automatiques": "Automatic sends",
+    "Prochain": "Next",
+    "En pause": "Paused",
+    "Recharger": "Refresh",
+    "Choisir un plan et reprendre →": "Choose a plan and resume →",
+    "Add-on inconnu": "Unknown add-on",
+    "Ajouter +1": "Add +1",
+    "Ajouter un workspace": "Add a workspace",
+    "sur": "on",
+    "disponibles": "available",
+    "Choisir un plan →": "Choose a plan →",
+    "Manager": "Manager",
+    "Envoyer message": "Send message",
+    "Analyse IA en cours…": "AI analysis in progress…",
+    "Backlinks": "Backlinks",
+    "Alertes concurrents": "Competitor alerts",
+    "Trafic organique": "Organic traffic",
+    "Analyse…": "Analyzing…",
+    "Action": "Action",
+    "Soumissions de formulaire": "Form submissions",
+    "des sessions": "of sessions",
+    "Abandons de formulaire": "Form abandonment",
+    "sessions": "sessions",
+    "Pages de sortie": "Exit pages",
+    "abandons": "abandonments",
+    "formulaires": "forms",
+    "Demande d'autorisation GPS…": "Requesting GPS permission…",
+    "URL OAuth GitHub introuvable": "GitHub OAuth URL not found",
+    "Redirection vers Google OAuth…": "Redirecting to Google OAuth…",
+    "Appareil inconnu": "Unknown device",
+    "Voir les add-ons": "View add-ons",
+    "Validez manuellement le contenu avant de le programmer.": "Review the content manually before scheduling it.",
+    "Copiez ce lien de partage": "Copy this share link",
+    "À l'instant": "Just now",
+    "Erreur activation": "Activation error",
+    "crédits IA ajoutés": "AI credits added",
+    "Dernière MAJ :": "Last updated:",
+    " fichier": " file",
+    " nouvelle": " new",
+    " par l'IA": " by AI",
+    " · Score : ": " · Score: ",
+    ") en ": ") in ",
+    "quotidien": "daily",
+    "hebdo": "weekly",
+    "mensuel": "monthly",
+    "activée": "enabled",
+    "désactivée": "disabled",
+    "sombre": "dark",
+    "clair": "light",
+    "échoué(s)": "failed",
+    " mot-clé(s) synchronisé(s) en ": " keywords synced in ",
+    "{count} mot-clé(s) synchronisé(s) en {duration}s": "{count} keywords synced in {duration}s",
+    "Assignation retirée": "Assignment removed",
+    "Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.": "No measurable opportunities found. Tracked keywords need search volume and rankings between positions 4 and 20.",
+    "Ajoutez au moins deux mots-clés suivis pour créer des clusters.": "Add at least two tracked keywords to create clusters.",
+    "Aucun concurrent local trouvé pour ce mot-clé et cette zone.": "No local competitors found for this keyword and area.",
+    " pages": " pages",
+    "Impossible de préparer l’export": "Unable to prepare the export",
+    "Page statut enregistrée": "Status page saved",
+    "Configuration sauvegardée": "Settings saved",
+    "Limite de sièges atteinte pour ce plan.": "Seat limit reached for this plan.",
+    "Erreur lors de l'invitation": "Error sending the invitation",
+    "Canal #": "Channel #",
+    "Erreur lors de l'annulation": "Cancellation error",
+    "Erreur lors de la réactivation": "Reactivation error",
+    "Issue marquée résolue ✓": "Issue marked as resolved ✓",
+    "Issue réouverte": "Issue reopened",
+    "Épinglé !": "Pinned!",
+    "Épingle retiré": "Pin removed",
+    "Surveillance reprise": "Monitoring resumed",
+    "Monitor mis en pause": "Monitor paused",
+    "à la prochaine échéance": "at the next renewal date",
+    "date à confirmer": "date to be confirmed",
+    "Erreur lors de l'activation": "Activation failed",
+    "Erreur lors de la suppression du compte": "Error deleting the account",
+    "Aucune clé secrète — cliquez Régénérer": "No secret key — click Regenerate",
+    "Aucune clé publique — cliquez Régénérer": "No public key — click Regenerate",
+    "Webhook activé": "Webhook enabled",
+    "Webhook désactivé": "Webhook disabled",
+    "Erreur lors de l'envoi. Vérifiez la configuration email.": "Error sending. Check your email configuration.",
+    "Erreur lors de l'envoi du rapport.": "Error sending the report.",
+    "Funnel mis à jour": "Funnel updated",
+    "Funnel créé": "Funnel created",
+    "Propriété GA4 non configurée — configurez Analytics d'abord": "GA4 property not configured — set up Analytics first",
+    "Synchronisation des positions indisponible — vérifiez votre configuration.": "Rankings sync unavailable — check your configuration.",
+    "Aucune opportunité n’a pu être générée.": "No opportunities could be generated.",
+    "Les clusters n’ont pas pu être générés.": "Could not generate clusters.",
+    "Erreur GPS": "GPS error",
+    "Déconnexion impossible": "Unable to disconnect",
+    "Sync GBP échouée": "GBP sync failed",
+    "Erreur de publication": "Publishing error",
+    "Erreur lors de la sélection de propriété": "Error selecting property",
+    "Sync GSC échouée": "GSC sync failed",
+    "Workflow activé": "Workflow enabled",
+    "Workflow désactivé": "Workflow disabled",
+    "Erreur d'exécution": "Execution error",
+    "Désactivation impossible": "Unable to deactivate",
+    "Activation impossible": "Unable to activate",
+    "Post planifié.": "Post scheduled.",
+    "Brouillon enregistré.": "Draft saved.",
+    "Les données de classement ne sont pas disponibles pour cette organisation.": "Ranking data is unavailable for this organization.",
+    "La recherche locale a échoué.": "Local search failed.",
+    "Le changement de plan a échoué.": "The plan change failed.",
+    "Connecteur ": "Connector ",
+    "Désactivation…": "Deactivating…",
+    "Add-on en cours d'activation…": "Activating add-on…",
+    "inconnue": "unknown",
+    "Votre abonnement est maintenant sur le plan ": "Your subscription is now on the ",
+    "Vous êtes passé au plan ": "You have switched to the ",
+    "Votre abonnement passera au plan ": "Your subscription will change to the ",
+    "à la fin de votre essai": "at the end of your trial",
+    "la prochaine échéance": "the next billing date",
+    "le ": "on ",
+    ". Votre plan actuel reste actif jusqu'à cette date.": ". Your current plan remains active until this date.",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -48812,7 +49303,7 @@ async function init() {
               const a = msg.audit;
               if (!STATE.audits.find(x => x.id === a.id)) {
                 STATE.audits.unshift({ ...a, date: new Date().toISOString(), issues: 0, speed: 0, pinned: false });
-                showToast('success', `Audit terminé — ${escHtml(a.url)} · Score : ${a.score}/100`);
+                showToast('success', fpT("Audit terminé — ") + escHtml(a.url) + fpT(" · Score : ") + a.score + "/100");
               }
             // ── Activity feed push ─────────────────────────────────────────────────
             } else if (msg.type === 'activity:new' && msg.event) {
@@ -49051,7 +49542,7 @@ async function init() {
         STATE.alertRules.push(rule);
         // Do NOT set the hide key — other templates must remain visible (they show ✓ Activée).
         // Only the "Masquer" button dismisses the template panel.
-        showToast('success', 'Template "' + t.name + '" activé !');
+        showToast('success', 'Template "' + t.name + fpT('" activé !'));
         render(); // Re-render in place — activated template shows ✓, others stay visible
       } else {
         if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
@@ -49243,7 +49734,7 @@ async function init() {
             showToast('error', 'Erreur : suppression incomplète — réessayez.');
           }
         } else {
-          showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible'));
+          showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('suppression impossible')));
         }
       }
   };
@@ -49377,7 +49868,7 @@ async function init() {
         window._mapsTab = 'grid';
         render(STATE.currentSection);
       } else showToast('error', r?.error || 'Erreur lors de la création');
-    } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
+    } catch(e) { showToast('error', fpT('Erreur : ') + String(e)); }
   };
   // Review analyze modal — extracted from innerHTML <script>
   window._showAnalyzeReviewModal = function() {
@@ -49470,7 +49961,7 @@ async function init() {
       if (_remsg.includes('403') || _remsg.includes('ADDON')) {
         showToast('info', "Module Review Intelligence requis — activez-le depuis la page Facturation.");
       } else {
-        showToast('error', "Erreur lors de l\'analyse : " + _remsg);
+        showToast('error', fpT("Erreur lors de l'analyse : ") + _remsg);
       }
     }
   };
@@ -49569,11 +50060,11 @@ async function init() {
 
   window._testWebhook = async function(id, name) {
     var _shortName = name && name.length > 40 ? name.slice(0, 40) + '…' : (name || id);
-    showToast('info', 'Test de "' + _shortName + '" en cours…');
+    showToast('info', fpT('Test de "') + _shortName + fpT('" en cours…'));
     try {
       const r = await window.FP_INTEGRATIONS_API.test(id);
-      if (r?.success) showToast('success', '✅ Test réussi (' + r.statusCode + ') en ' + r.durationMs + 'ms');
-      else showToast('error', '✗ Test échoué : ' + (r?.error || r?.statusCode || 'timeout'));
+      if (r?.success) showToast('success', fpT('✅ Test réussi (') + r.statusCode + fpT(') en ') + r.durationMs + 'ms');
+      else showToast('error', fpT('✗ Test échoué : ') + (r?.error || r?.statusCode || 'timeout'));
       await window._reloadIntgData();
       render(STATE.currentSection);
     } catch(e) { showToast('error', String(e)); }
@@ -49779,7 +50270,7 @@ async function init() {
 
   window._fpDeleteDashboard = async function(id, name) {
     if (!id) return;
-    if (!confirm('Supprimer le dashboard « ' + (name||id) + ' » ?')) return;
+    if (!confirm(fpT('Supprimer le dashboard « {name} » ?', { name: name || id }))) return;
     try {
       await apiAction('DELETE', '/api/data-explorer/dashboards/' + encodeURIComponent(id), {});
       STATE.customDashboards = (STATE.customDashboards||[]).filter(d => d.id !== id);
@@ -49793,7 +50284,7 @@ async function init() {
   // ── Envoyer rapport client (client-mode → Reporting) ────────────────────────
   window._fpSendClientReport = function(reportId, reportName, clientName) {
     // Prompt for the recipient email then call the real API
-    const email = window.prompt('Adresse email du destinataire :', '');
+    const email = window.prompt(fpT('Adresse email du destinataire :'), '');
     if (!email || !email.includes('@')) {
       if (email !== null) showToast('warning', 'Adresse email invalide.');
       return;
@@ -49806,7 +50297,7 @@ async function init() {
       clientName: clientName || undefined,
     }).then(r => {
       if (r && r.ok && r.sent) {
-        showToast('success', 'Rapport « ' + (reportName||'Rapport') + ' » envoyé à ' + email.trim() + ' !');
+        showToast('success', fpT('Rapport « ') + (reportName||fpT('Rapport')) + fpT(' » envoyé à ') + email.trim() + ' !');
       } else {
         showToast('error', r && r.error ? r.error : 'Erreur lors de l\'envoi. Vérifiez la configuration email.');
       }
@@ -49846,7 +50337,7 @@ async function init() {
     if (!kw || !city) { showToast('error', fpT('Mot-clé et ville requis')); return; }
     const modal = document.getElementById('fp-rankings-modal');
     if (modal) modal.style.display = 'none';
-    showToast('info','Chargement des rankings pour « ' + kw + ' » à ' + city + '…');
+    showToast('info',fpT('Chargement des rankings pour « ') + kw + fpT(' » à ') + city + '…');
     try {
       const r = await apiAction('POST', '/api/local-seo/rankings', { keyword: kw, location: city });
       if (r?.ok || r?.rankings) {
@@ -49942,7 +50433,7 @@ async function init() {
       } catch(e) {}
     }
     if (created > 0) {
-      showToast('success', created + ' missions locales créées !');
+      showToast('success', created + fpT(' missions locales créées !'));
       setTimeout(() => navigate('missions'), 900);
     } else showToast('warning', fpT('Toutes les missions existent déjà'));
   };
@@ -50004,8 +50495,8 @@ async function init() {
   };
   window.fpDeleteCompetitor = async function(id, name) {
     if (!id) return;
-    const label = name ? `"${name}"` : 'ce concurrent';
-    if (!window.confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
+    const label = name ? `"${name}"` : fpT('ce concurrent');
+    if (!window.confirm(fpT('Supprimer {label} ? Cette action est irréversible.', { label }))) return;
     try {
       const r = await apiFetch(`/api/competitors/${id}`, { method: 'DELETE' });
       if (r?.ok) {
@@ -50052,7 +50543,7 @@ async function init() {
         STATE.competitorAnalyses[id] = r.analysis;
         showToast('success', fpT('Analyse IA terminée — ') + escHtml(name || ''));
         if (r.analysis.changes_detected && r.analysis.changes_detected.length > 0) {
-          showToast('info', '🔄 ' + r.analysis.changes_detected.length + ' changement(s) détecté(s) depuis la dernière analyse');
+          showToast('info', '🔄 ' + r.analysis.changes_detected.length + fpT(' changement(s) détecté(s) depuis la dernière analyse'));
         }
       } else {
         showToast('error', (r && r.error) ? r.error : fpT('Erreur analyse IA'));
@@ -51358,7 +51849,7 @@ function bindMissionDetailHandlers(missionId) {
     saveMissions();
     if (typeof window.FP_MISSIONS_API !== 'undefined') window.FP_MISSIONS_API.update(m.id, { assignedTo }).catch(() => {});
     const assignee = (STATE.team || []).find(t => t.id === assignedTo);
-    showToast('success', assignedTo ? `Assigné à ${assignee?.name || assignee?.email || assignedTo}` : 'Assignation retirée');
+    showToast('success', assignedTo ? fpT("Assigné à ") + (assignee?.name || assignee?.email || assignedTo) : fpT('Assignation retirée'));
   });
 
   panel.querySelector('.mission-delete-detail')?.addEventListener('click', () => {
@@ -53776,7 +54267,7 @@ async function downloadFileAssetById(id) {
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: fn });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
-    showToast('success', `${fn} téléchargé`);
+      showToast('success', fn + fpT(" téléchargé"));
   } catch(e) { showToast('error', fpT('Erreur téléchargement')); }
 }
 
@@ -54571,13 +55062,13 @@ function renderGrowthCommandCenter() {
       };
       STATE.missions = (STATE.missions || []).concat([ms]);
       saveMissions && saveMissions();
-      showToast('success', 'Mission créée : ' + title.substring(0,40));
+      showToast('success', fpT('Mission créée : ') + title.substring(0,40));
       if (typeof window.FP_MISSIONS_API !== 'undefined') {
         window.FP_MISSIONS_API.create(ms).catch(function(e){ console.warn('FP_MISSIONS_API.create:', e); });
       }
       navigate('missions');
     } catch(e) {
-      showToast('error', 'Erreur création mission : ' + e.message);
+      showToast('error', fpT('Erreur création mission : ') + e.message);
     }
   };
 
@@ -63162,7 +63653,7 @@ function renderSettingsAPI() {
             </div>
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var u=prompt('URL du webhook (https://…)');if(!u||!u.trim())return;apiAction('POST','/api/integrations/webhooks',{url:u.trim()}).then(r=>{if(r&&r.id){showToast('success', fpT('Webhook ajouté !'));render(STATE.currentSection)}else{showToast('error', fpT('Erreur lors de la création'))}}).catch(()=>showToast('error', fpT('Erreur lors de la création')))})()">+ Ajouter un webhook</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var u=prompt(fpT('URL du webhook (https://…)'));if(!u||!u.trim())return;apiAction('POST','/api/integrations/webhooks',{url:u.trim()}).then(r=>{if(r&&r.id){showToast('success', fpT('Webhook ajouté !'));render(STATE.currentSection)}else{showToast('error', fpT('Erreur lors de la création'))}}).catch(()=>showToast('error', fpT('Erreur lors de la création')))})()">+ Ajouter un webhook</button>
       </div>
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">Authentification à deux facteurs (2FA)</div>
@@ -63489,13 +63980,13 @@ function awlGo(step) {
     let parsedUrl;
     try { parsedUrl = new URL(url); } catch (_) {}
     if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol)) {
-      if (typeof showToast === 'function') showToast('Saisissez une URL de site valide en http ou https.', 'error');
-      else window.alert('Saisissez une URL de site valide en http ou https.');
+      if (typeof showToast === 'function') showToast('error', fpT('Saisissez une URL de site valide en http ou https.'));
+      else window.alert(fpT('Saisissez une URL de site valide en http ou https.'));
       return;
     }
     if (!businessName) {
-      if (typeof showToast === 'function') showToast('Saisissez le nom de votre entreprise.', 'error');
-      else window.alert('Saisissez le nom de votre entreprise.');
+      if (typeof showToast === 'function') showToast('error', fpT('Saisissez le nom de votre entreprise.'));
+      else window.alert(fpT('Saisissez le nom de votre entreprise.'));
       return;
     }
   }
@@ -65926,13 +66417,13 @@ window._submitAddKeyword = async function() {
     await apiFetch('/api/keywords/track', { method:'POST', body:JSON.stringify({ keyword, url, device, location, tag }) });
     const m = document.getElementById('fp-kw-modal');
     if (m) m.style.display = 'none';
-    showToast('success','"' + keyword + '" ajouté au suivi !');
+    showToast('success', '"' + keyword + fpT('" ajouté au suivi !'));
     await window._reloadKeywords();
     render(STATE.currentSection);
   } catch(e) {
     const msg = e?.message || String(e);
     if (e?.status === 429 || msg.includes('Plan limit')) showToast('error', fpT('Limite du plan atteinte. Passez à un plan supérieur.'));
-    else showToast('error', 'Erreur : ' + msg);
+    else showToast('error', fpT('Erreur : ') + msg);
   }
 };
 
@@ -65945,12 +66436,12 @@ window._syncKeywords = async function() {
     if (r && r.configured === false) {
       showToast('warning', r.error || 'Synchronisation des positions indisponible — vérifiez votre configuration.');
     } else {
-      showToast('success', (r?.synced ?? 0) + ' mot' + ((r?.synced ?? 0) > 1 ? 's' : '') + '-clé(s) synchronisé(s) en ' + Math.round((r?.durationMs || 0) / 1000) + 's');
+      showToast('success', fpT('{count} mot-clé(s) synchronisé(s) en {duration}s', { count: r?.synced ?? 0, duration: Math.round((r?.durationMs || 0) / 1000) }));
       await window._reloadKeywords();
       render(STATE.currentSection);
       return;
     }
-  } catch(e) { showToast('error','Erreur de synchronisation : ' + (e?.message || e)); }
+  } catch(e) { showToast('error', fpT('Erreur de synchronisation : ') + (e?.message || e)); }
   btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.prevLabel || '⟳ Synchroniser'; });
 };
 
@@ -65967,12 +66458,12 @@ window._kwDelete = function(id) {
 };
 
 window._kwHistory = async function(id, kw) {
-  showToast('info','Chargement de l\'historique de "' + kw + '"…');
+  showToast('info',fpT('Chargement de l\'historique de "') + kw + '"…');
   try {
     const r = await apiFetch('/api/keywords/' + id + '/history?days=30');
     const hist = r?.history || [];
     if (!hist.length) { showToast('info', fpT('Pas encore d\'historique pour ce mot-clé.')); return; }
-    showToast('success', hist.length + ' points d\'historique chargés');
+    showToast('success', hist.length + fpT(' points d\'historique chargés'));
   } catch(e) { showToast('error', fpT('Erreur')); }
 };
 
@@ -65981,10 +66472,10 @@ window._genOpportunities = async function() {
   try {
     const r = await apiFetch('/api/keywords/opportunities/generate', { method:'POST', body:JSON.stringify({}) });
     if (!r?.ok) { showToast('error', r?.error || 'Aucune opportunité n’a pu être générée.'); return; }
-    showToast(r.count ? 'success' : 'info', r.count ? r.count + ' opportunités générées !' : 'Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.');
+    showToast(r.count ? 'success' : 'info', r.count ? r.count + fpT(' opportunités générées !') : fpT('Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.'));
     await window._reloadKeywords();
     render(STATE.currentSection);
-  } catch(e) { showToast('error','Erreur : ' + (e?.message || e)); }
+  } catch(e) { showToast('error', fpT('Erreur : ') + (e?.message || e)); }
 };
 
 window._genClusters = async function() {
@@ -65992,16 +66483,16 @@ window._genClusters = async function() {
   try {
     const r = await apiFetch('/api/keywords/cluster', { method:'POST' });
     if (!r?.ok) { showToast('error', r?.error || 'Les clusters n’ont pas pu être générés.'); return; }
-    showToast(r.count ? 'success' : 'info', r.count ? r.count + ' clusters générés !' : 'Ajoutez au moins deux mots-clés suivis pour créer des clusters.');
+    showToast(r.count ? 'success' : 'info', r.count ? r.count + fpT(' clusters générés !') : fpT('Ajoutez au moins deux mots-clés suivis pour créer des clusters.'));
     await window._reloadKeywords();
     render(STATE.currentSection);
-  } catch(e) { showToast('error','Erreur : ' + (e?.message || e)); }
+  } catch(e) { showToast('error', fpT('Erreur : ') + (e?.message || e)); }
 };
 
 window._trackFromOpp = async function(kw) {
   try {
     await apiFetch('/api/keywords/track', { method:'POST', body:JSON.stringify({ keyword: kw }) });
-    showToast('success','"' + kw + '" ajouté au suivi !');
+    showToast('success','"' + kw + fpT('" ajouté au suivi !'));
     await window._reloadKeywords();
     render(STATE.currentSection);
   } catch(e) { showToast('error', fpT('Erreur')); }
@@ -66608,7 +67099,7 @@ window._fpGeocodeAddr = async function() {
       if(r.country&&document.getElementById('fp-loc-country'))document.getElementById('fp-loc-country').value=r.country;
       if(r.latitude!=null&&document.getElementById('fp-loc-lat'))document.getElementById('fp-loc-lat').value=r.latitude.toFixed(6);
       if(r.longitude!=null&&document.getElementById('fp-loc-lng'))document.getElementById('fp-loc-lng').value=r.longitude.toFixed(6);
-      showToast('success','✓ Coordonnées : '+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4));
+      showToast('success',fpT('✓ Coordonnées : ')+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4));
     }else{showToast('error',(r&&r.error)||'Adresse introuvable');}
   }catch(e){showToast('error', fpT('Erreur de géocodage — vérifiez votre adresse'));}
 };
@@ -68022,18 +68513,20 @@ document.addEventListener('click', function _nativeDisconnectDelegation(e) {
           return c;
         });
       }
-      showToast('success', name + ' déconnecté');
+      showToast('success', name + fpT(' déconnecté'));
       render();
     })
     .catch(function(err) {
-      showToast('error', 'Erreur déconnexion ' + name + ' : ' + ((err && err.message) || 'réessayez'));
+      showToast('error', fpT('Erreur déconnexion ') + name + ' : ' + ((err && err.message) || fpT('réessayez')));
       btn.disabled = false;
       btn.textContent = 'Déconnecter';
     });
   };
+  const disconnectMessage = fpT('Déconnecter {service} ? Cette action révoque l\'accès OAuth pour ce service.', { service: name });
+  const disconnectTitle = fpT('Déconnecter {service}', { service: name });
   if (window.fpDarkConfirm) {
-    window.fpDarkConfirm('Déconnecter ' + name + ' ? Cette action révoque l\'accès OAuth pour ce service.', _doDisconnect, 'Déconnecter ' + name);
-  } else if (confirm('Déconnecter ' + name + ' ? Cette action révoque l\'accès OAuth pour ce service.')) {
+    window.fpDarkConfirm(disconnectMessage, _doDisconnect, disconnectTitle);
+  } else if (confirm(disconnectMessage)) {
     _doDisconnect();
   }
 });
@@ -68474,7 +68967,7 @@ window.FP_GITHUB_API = (() => {
         const { url } = await _fetch('/github/auth');
         if (url) window.location.href = url;
         else showToast('error', fpT('URL OAuth GitHub introuvable'));
-      } catch(e) { showToast('error', 'Connexion GitHub impossible : ' + e.message); }
+      } catch(e) { showToast('error', fpT('Connexion GitHub impossible : ') + e.message); }
     },
   };
 })();
@@ -69448,7 +69941,7 @@ window.FP_GBP_API = {
         if (!locations && !reviews) {
           showToast('warning', fpT('Synchronisation terminée, mais aucune donnée Google n’a été reçue. Vérifiez la connexion Google.'));
         } else {
-          showToast('success', `Synchronisation terminée — ${locations} établissement${locations > 1 ? 's' : ''}, ${reviews} avis`);
+          showToast('success', fpT("Synchronisation terminée — ") + locations + fpT(" établissement") + (locations > 1 ? 's' : '') + ", " + reviews + fpT(" avis"));
         }
         await this.load();
         render();
@@ -69938,7 +70431,7 @@ window.FP_GSC_API = {
     try {
       const r = await apiFetch('/api/gsc/sync', { method: 'POST' });
       if (r?.ok) {
-        showToast('success', `GSC synchronisé — ${r.keywordsCount||0} mots-clés, ${r.pagesCount||0} pages`);
+        showToast('success', fpT("GSC synchronisé — ") + (r.keywordsCount || 0) + fpT(" mots-clés, ") + (r.pagesCount || 0) + fpT(" pages"));
         await this.load();
         render();
       } else {
@@ -69954,7 +70447,7 @@ window.FP_GSC_API = {
         body: JSON.stringify({ siteUrl, displayName }),
       });
       if (r?.ok) {
-        showToast('success', `Site GSC sélectionné : ${siteUrl}`);
+        showToast('success', fpT("Site GSC sélectionné : ") + siteUrl);
         STATE._gscLoaded = false;
         await this.load();
         render();
@@ -70322,7 +70815,7 @@ window.FP_V1_ADDON_PANELS = {
           await window._fpReportsAPI.load({ force: true });
           const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
           if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
-          showToast('success', 'Pack créé : 3 rapports vérifiés pour ' + clientName);
+          showToast('success', fpT('Pack créé : 3 rapports vérifiés pour ') + clientName);
           render();
         } catch { showToast('error', 'Le pack complet n’a pas pu être créé'); bundleButton.disabled = false; }
       });
@@ -70617,7 +71110,7 @@ window.FP_CRO_API = {
         window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [] };
         if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
-        showToast('success', `${(r.observations||[]).length} observations CRO analysées`);
+        showToast('success', (r.observations || []).length + fpT(" observations CRO analysées"));
       } else showToast('error', r?.error || 'Erreur');
     } catch(e) { showToast('error', String(e)); }
   },
@@ -70647,13 +71140,13 @@ window.FP_AB_TEST_API = {
   async create() {
     const siteUrl = window.FP_DATA?.activeSite;
     if (!siteUrl) { showToast('error', 'Sélectionnez un site avec le snippet comportemental installé.'); return; }
-    const page = prompt('Chemin de page à tester (ex. /tarifs):', location.pathname);
+    const page = prompt(fpT('Chemin de page à tester (ex. /tarifs):'), location.pathname);
     if (!page) return;
-    const name = prompt('Nom de l’expérience:');
+    const name = prompt(fpT('Nom de l’expérience:'));
     if (!name) return;
-    const selector = prompt('Sélecteur CSS de l’élément à modifier (ex. #cta-principal):');
-    const goalSelector = prompt('Sélecteur CSS de conversion (ex. form#contact button[type=submit]):');
-    const variantAText = prompt('Texte témoin affiché avant toute modification du site:');
+    const selector = prompt(fpT('Sélecteur CSS de l’élément à modifier (ex. #cta-principal):'));
+    const goalSelector = prompt(fpT('Sélecteur CSS de conversion (ex. form#contact button[type=submit]):'));
+    const variantAText = prompt(fpT('Texte témoin affiché avant toute modification du site:'));
     if (!selector || !goalSelector || !variantAText) return;
     let suggestion = null;
     try {
@@ -70662,13 +71155,13 @@ window.FP_AB_TEST_API = {
         body: JSON.stringify({ siteUrl, page, selector, goalSelector, variantAText }),
       });
       suggestion = generated?.suggestion || null;
-      if (suggestion) showToast('success', `Proposition fondée sur les signaux observés. Raison : ${suggestion.rationale} Mesure : ${suggestion.successMetric}`);
+      if (suggestion) showToast('success', fpT("Proposition fondée sur les signaux observés. Raison : ") + suggestion.rationale + fpT(" Mesure : ") + suggestion.successMetric);
     } catch (e) {
       showToast('error', String(e));
-      if (!confirm('Continuer sans suggestion IA et saisir les textes manuellement ?')) return;
+      if (!confirm(fpT('Continuer sans suggestion IA et saisir les textes manuellement ?'))) return;
     }
-    const hypothesis = prompt('Hypothèse à valider:', suggestion?.hypothesis || '');
-    const variantBText = prompt('Texte de la variante B:', suggestion?.variantBText || '');
+    const hypothesis = prompt(fpT('Hypothèse à valider:'), suggestion?.hypothesis || '');
+    const variantBText = prompt(fpT('Texte de la variante B:'), suggestion?.variantBText || '');
     if (!variantBText) return;
     try {
       await apiFetch('/api/ab-testing/experiments', { method: 'POST', body: JSON.stringify({ siteUrl, page, name, selector, goalSelector, hypothesis, variantAText, variantBText }) });
@@ -70691,7 +71184,7 @@ window.FP_AB_TEST_API = {
     } catch (e) { showToast('error', String(e)); }
   },
   async remove(id) {
-    if (!window.confirm('Supprimer définitivement ce brouillon ou ce test arrêté ?')) return;
+    if (!window.confirm(fpT('Supprimer définitivement ce brouillon ou ce test arrêté ?'))) return;
     try {
       await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}`, { method: 'DELETE' });
       showToast('success', 'Expérience supprimée.');
@@ -70757,7 +71250,7 @@ window.FP_REVENUE_LEAK_API = {
           noData: r.noData ?? !(r.opportunities || []).length, error: r.error || null,
         };
         render();
-        showToast('success', `${(r.opportunities||[]).length} opportunités observées`);
+        showToast('success', (r.opportunities || []).length + fpT(" opportunités observées"));
       } else showToast('error', r?.error || 'Erreur');
     } catch(e) { showToast('error', String(e)); }
   },
@@ -71070,7 +71563,7 @@ window.FP_ADDONS_API = {
   },
 
   async activate(addonKey, quantity) {
-    showToast('info', `Activation de ${addonKey}…`);
+    showToast('info', fpT("Activation de ") + addonKey + "…");
     try {
       // quantity is only meaningful for quantity add-ons (packs); server clamps 1..20
       // and ignores it for flag add-ons. Body is always sent for consistency.
@@ -71080,7 +71573,7 @@ window.FP_ADDONS_API = {
         if (window.FP_DATA?.addons) window.FP_DATA.addons.active = r.addons || window.FP_DATA.addons.active;
         await this.load().catch(() => {});
         render();
-        showToast('success', `Add-on ${addonKey} activé`);
+        showToast('success', "Add-on " + addonKey + fpT(" activé"));
       } else showToast('error', r?.error || 'Activation impossible');
       return r;
     } catch(e) {
@@ -71097,7 +71590,7 @@ window.FP_ADDONS_API = {
         if (window.FP_DATA?.addons?.active) window.FP_DATA.addons.active[addonKey] = false;
         await this.load().catch(() => {});
         render();
-        showToast('success', `Add-on ${addonKey} désactivé`);
+        showToast('success', "Add-on " + addonKey + fpT(" désactivé"));
       } else {
         showToast('error', r?.error || 'Désactivation impossible');
       }
@@ -72223,8 +72716,8 @@ window._submitAssignRole = async function(roleId) {
   }
   const modal = document.getElementById('fp-assign-role-modal');
   if (modal) modal.remove();
-  if (ok > 0) showToast && showToast('success', ok + ' membre(s) assigné(s) avec succès');
-  if (fail > 0) showToast && showToast('error', fail + ' assignation(s) échouée(s)');
+  if (ok > 0) showToast && showToast('success', ok + fpT(' membre(s) assigné(s) avec succès'));
+  if (fail > 0) showToast && showToast('error', fail + fpT(' assignation(s) échouée(s)'));
   if (ok > 0) { await window.FP_PERMISSIONS_API.load(); render(STATE.currentSection); }
 };
 
@@ -72254,12 +72747,12 @@ window._fpSubmitAddClient = async function() {
   try {
     const r = await apiFetch('/api/reports/clients', { method: 'POST', body: JSON.stringify({ name, email: email||undefined, company: societe||undefined, phone: tel||undefined }) });
     if (r && r.id) {
-      showToast && showToast('success', 'Client ' + escHtml(name) + ' ajouté !');
+      showToast && showToast('success', fpT('Client ') + escHtml(name) + fpT(' ajouté !'));
       closeFloatPanel && closeFloatPanel();
       if (window.STATE && window.STATE.clients) window.STATE.clients.push({ id: r.id, name, email, reports: 0, active: true, score: 0, trend: 0, lastSent: '—', nextSend: '—' });
       render(STATE.currentSection);
     } else { showToast && showToast('success', 'Client enregistré localement'); closeFloatPanel && closeFloatPanel(); }
-  } catch(e) { showToast && showToast('info', name + ' enregistré'); closeFloatPanel && closeFloatPanel(); }
+  } catch(e) { showToast && showToast('info', name + fpT(' enregistré')); closeFloatPanel && closeFloatPanel(); }
 };
 
 
@@ -72662,7 +73155,7 @@ window._discoverLocalCompetitors = async function() {
     if (!data?.ok) { showToast('error', data?.error || 'La recherche locale a échoué.'); return; }
     await window.FP_LOCAL_MAPS_API.load();
     render(STATE.currentSection);
-    showToast(data.count ? 'success' : 'info', data.count ? `${data.count} concurrent(s) local(aux) trouvé(s).` : 'Aucun concurrent local trouvé pour ce mot-clé et cette zone.');
+    showToast(data.count ? 'success' : 'info', data.count ? data.count + fpT(" concurrent(s) local(aux) trouvé(s).") : fpT('Aucun concurrent local trouvé pour ce mot-clé et cette zone.'));
   } catch (_) { showToast('error', fpT('La recherche locale est indisponible. Réessayez dans un instant.')); }
 };
 window._addLocalCompetitor = async function(id) {
@@ -73758,7 +74251,7 @@ window._fpDataExplorerAPI = {
     a.download = 'data-explorer-' + st.source + '.' + (format || 'csv');
     if (token) a.href += '&__token=' + encodeURIComponent(token);
     a.click();
-    showToast('info', 'Export ' + (format || 'csv').toUpperCase() + ' en cours…');
+    showToast('info', fpT('Export ') + (format || 'csv').toUpperCase() + fpT(' en cours…'));
   },
   refresh() { this.query(); },
 };
