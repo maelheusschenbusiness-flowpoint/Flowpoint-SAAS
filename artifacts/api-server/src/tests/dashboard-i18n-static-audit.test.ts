@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { runInNewContext } from "node:vm";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +10,10 @@ const dashboardSource = readFileSync(
 );
 const backendSource = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/fp-backend.js"),
+  "utf8",
+);
+const missionRouteSource = readFileSync(
+  resolve(process.cwd(), "src/routes/missions.ts"),
   "utf8",
 );
 const addonSourceNames = [
@@ -124,6 +129,94 @@ function objectKeysInVariable(variableName: string): string[] {
     }
   });
   return keys;
+}
+
+function objectArrayElementCount(variableName: string): number {
+  let count = 0;
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      node.name.text !== variableName ||
+      !node.initializer ||
+      !ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      return;
+    }
+    for (const property of node.initializer.properties) {
+      if (ts.isPropertyAssignment(property) && ts.isArrayLiteralExpression(property.initializer)) {
+        count += property.initializer.elements.length;
+      }
+    }
+  });
+  return count;
+}
+
+function arrayElementCountInFunctionVariable(functionName: string, variableName: string): number {
+  let count = 0;
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isFunctionDeclaration(node) ||
+      node.name?.text !== functionName ||
+      !node.body
+    ) {
+      return;
+    }
+    walk(node.body, (part) => {
+      if (
+        !ts.isVariableDeclaration(part) ||
+        !ts.isIdentifier(part.name) ||
+        part.name.text !== variableName ||
+        !part.initializer
+      ) {
+        return;
+      }
+      const array = ts.isArrayLiteralExpression(part.initializer)
+        ? part.initializer
+        : ts.isCallExpression(part.initializer) &&
+            ts.isPropertyAccessExpression(part.initializer.expression) &&
+            ts.isArrayLiteralExpression(part.initializer.expression.expression)
+          ? part.initializer.expression.expression
+          : null;
+      if (array) count = array.elements.length;
+    });
+  });
+  return count;
+}
+
+function stringValuesInObjectFields(variableName: string, fieldNames: string[]): Set<string> {
+  const values = new Set<string>();
+  const fields = new Set(fieldNames);
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      node.name.text !== variableName ||
+      !node.initializer
+    ) {
+      return;
+    }
+    walk(node.initializer, (part) => {
+      if (
+        !ts.isPropertyAssignment(part) ||
+        (!ts.isStringLiteral(part.name) && !ts.isIdentifier(part.name)) ||
+        !fields.has(part.name.text)
+      ) {
+        return;
+      }
+      const add = (value: ts.Expression) => {
+        if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+          values.add(value.text);
+        }
+      };
+      if (ts.isArrayLiteralExpression(part.initializer)) {
+        for (const item of part.initializer.elements) add(item);
+      } else {
+        add(part.initializer);
+      }
+    });
+  });
+  return values;
 }
 
 function arrayStringValuesInVariable(variableName: string): string[] {
@@ -257,6 +350,7 @@ describe("private dashboard static English localization", () => {
       "{count} actions rapides à fort impact",
       "+{count} visites",
       "Kanban",
+      "Bibliothèque",
       "1 mission",
       "{count} missions",
       "SEO",
@@ -309,8 +403,84 @@ describe("private dashboard static English localization", () => {
     for (const category of objectKeysInVariable("MISSION_LIBRARY")) {
       expect(englishKeys.has(category), `English catalogue should contain category "${category}"`).toBe(true);
     }
+    expect(objectKeysInVariable("MISSION_LIBRARY")).toHaveLength(8);
+    expect(objectArrayElementCount("MISSION_LIBRARY")).toBe(73);
     expect(dashboardSource).toContain("escHtml(fpT(cat))");
     expect(dashboardSource).toContain("renderLibCard({ ...t, category: cat })");
+  });
+
+  it("covers every mission-library field and translates only template-sourced mission content", () => {
+    const libraryValues = stringValuesInObjectFields(
+      "MISSION_LIBRARY",
+      ["title", "impact", "effort", "gain", "steps"],
+    );
+    expect(libraryValues.size).toBe(301);
+    expect([...libraryValues].filter((key) => !englishKeys.has(key))).toEqual([]);
+
+    expect(dashboardSource).toContain("escHtml(fpT(t.title))");
+    expect(dashboardSource).toContain("escHtml(fpT(t.impact))");
+    expect(dashboardSource).toContain("escHtml(fpT(t.effort||'—'))");
+    expect(dashboardSource).toContain("escHtml(fpT(t.gain))");
+    expect(dashboardSource).toContain('data-lib-title="${escHtml(t.title)}"');
+    expect(dashboardSource).toContain('data-lib-cat="${escHtml(t.category)}"');
+    expect(dashboardSource).toContain('data-lib-impact="${escHtml(t.impact)}"');
+    expect(dashboardSource).toContain('data-lib-steps="${escHtml(JSON.stringify(t.steps||[]))}"');
+    expect(dashboardSource).toContain("return missionTemplateDisplayTitle(raw)");
+    expect(dashboardSource).toContain("if (!mission || (mission.sourceType || mission.source_type) !== 'template') return raw");
+    expect(dashboardSource).toContain("sourceType:'template'");
+    expect(dashboardSource).toContain("escHtml(missionDisplayText(m, s.text))");
+    expect(dashboardSource).toContain("missionDisplayStepTag(m, s.tag)");
+
+    expect(backendSource).toContain("'/api/missions/from-template'");
+    expect(backendSource).toContain("templateTitle: mission.title");
+    expect(backendSource).toContain("steps: templateSteps");
+    expect(backendSource).toContain("mission.steps.map(function (step) { return typeof step === 'string' ? step : (step && step.text) || ''; })");
+    expect(missionRouteSource).toContain("'template',$10,NOW(),NOW(),NOW()");
+  });
+
+  it("translates known template copy at display time and preserves edited or manual text", () => {
+    const displayKeys = new Set([
+      "Corriger les balises title manquantes",
+      "Créer des pages locales géociblées",
+      "Répondre aux {count} avis Google sans réponse",
+    ]);
+    const translations: Record<string, string> = {
+      "Corriger les balises title manquantes": "Fix missing title tags",
+      "Créer des pages locales géociblées": "Create geo-targeted local pages",
+      "Répondre aux {count} avis Google sans réponse": "Reply to {count} unanswered Google reviews",
+      "Étape {count}": "Step {count}",
+    };
+    const fpT = (key: string, vars: Record<string, unknown> = {}) =>
+      Object.entries(vars).reduce(
+        (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+        translations[key] || key,
+      );
+    const start = dashboardSource.indexOf("function missionTemplateDisplayTitle(raw)");
+    const end = dashboardSource.indexOf("\nfunction missionPanelTitle(", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const helperSource = dashboardSource.slice(start, end);
+    const helpers = runInNewContext(
+      `${helperSource}; ({ missionDisplayText, missionDisplayStepTag })`,
+      { MISSION_LIBRARY_DISPLAY_KEYS: displayKeys, fpT },
+    ) as {
+      missionDisplayText: (mission: Record<string, unknown>, value: string) => string;
+      missionDisplayStepTag: (mission: Record<string, unknown>, tag: string) => string;
+    };
+    const templateMission = { sourceType: "template" };
+    const rawWithDomain = "Corriger les balises title manquantes — example.com";
+    const rawWithCity = "Créer des pages locales géociblées à Bruxelles";
+    expect(helpers.missionDisplayText(templateMission, rawWithDomain))
+      .toBe("Fix missing title tags — example.com");
+    expect(helpers.missionDisplayText(templateMission, rawWithCity))
+      .toBe("Create geo-targeted local pages in Bruxelles");
+    expect(helpers.missionDisplayText(templateMission, "Répondre aux 3 avis Google sans réponse"))
+      .toBe("Reply to 3 unanswered Google reviews");
+    expect(helpers.missionDisplayText({ sourceType: "manual" }, rawWithDomain)).toBe(rawWithDomain);
+    expect(helpers.missionDisplayText(templateMission, "Customer-edited mission title"))
+      .toBe("Customer-edited mission title");
+    expect(helpers.missionDisplayStepTag(templateMission, "Étape 2")).toBe("Step 2");
+    expect(helpers.missionDisplayStepTag({ sourceType: "manual" }, "Étape 2")).toBe("Étape 2");
   });
 
   it("translates mission-detail controls without changing mission content or status IDs", () => {
@@ -334,20 +504,145 @@ describe("private dashboard static English localization", () => {
       expect(referencedKeys.has(key), `mission detail should translate "${key}"`).toBe(true);
       expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
     }
+    const stepTagKeys = translationKeysInFunction("missionDisplayStepTag");
+    expect(stepTagKeys.has("Étape {count}")).toBe(true);
+    expect(englishKeys.has("Étape {count}")).toBe(true);
 
     for (const status of ["todo", "inprogress", "done"]) {
       expect(dashboardSource).toContain(`value="${status}"`);
     }
     for (const contentBinding of [
-      "escHtml(m.title)",
-      "badge(m.category,'#2563EB')",
-      "badge(m.impact, impactColor(m.impact))",
-      "escHtml(s.text)",
-      "escHtml(s.tag)",
+      "escHtml(missionDisplayText(m, m.title))",
+      "badge(missionDisplayText(m, m.category),'#2563EB')",
+      "badge(missionDisplayText(m, m.impact), impactColor(m.impact))",
+      "escHtml(missionDisplayText(m, s.text))",
+      "escHtml(missionDisplayStepTag(m, s.tag))",
       "escHtml(tm.name || tm.email || tm.id)",
     ]) {
       expect(dashboardSource).toContain(contentBinding);
     }
+  });
+
+  it("translates mission context-menu controls and the panel title", () => {
+    const expectedKeys = [
+      "Mission — {title}",
+      "Voir les étapes",
+      "Remettre à faire",
+      "Marquer terminé",
+    ];
+    for (const key of expectedKeys) {
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+    expect(dashboardSource).toContain("openFloatPanel(missionPanelTitle(m), renderMissionDetail(m))");
+    expect(dashboardSource).toContain("label:fpT('Voir les étapes')");
+    expect(dashboardSource).toContain("fpT('Remettre à faire')");
+    expect(dashboardSource).toContain("fpT('Marquer terminé')");
+  });
+
+  it("localizes AI mission suggestions while keeping saved template values raw", () => {
+    const expectedKeys = [
+      "Corriger les balises title manquantes",
+      "Ajouter schema markup FAQ sur vos sites prioritaires",
+      "Créer des pages locales géociblées",
+      "Auditer et corriger les citations NAP incohérentes",
+      "Configurer Google Posts hebdomadaires automatisés",
+      "Répondre aux {count} avis Google sans réponse",
+      "Audit et optimisation des photos Google Business",
+      "Optimiser la vitesse mobile — site le plus lent (score <65)",
+      "Corriger les images non optimisées (WebP) sur vos sites",
+      "Configurer des alertes de temps de réponse avancées",
+      "Mettre en place un programme de collecte d'avis automatisé",
+      "Créer des backlinks locaux via annuaires sectoriels",
+      "Optimiser le suivi de positions — {count} mot(s)-clé(s)",
+      "Analyser et contrer les {count} concurrent(s) détectés",
+      "Audit SEO · Score actuel : {score}/100",
+      "Audit SEO · {count} site(s) analysé(s)",
+      "Audit · {count} site(s)",
+      "GBP · {count} avis en attente",
+      "{count} monitor(s) actif(s)",
+      "{count} mot(s)-clé(s) suivi(s)",
+      "Analyse concurrentielle · {count} concurrent(s)",
+      "+{count} pts (estimé)",
+      "<strong>{count} recommandation{plural}</strong> générées depuis vos données réelles",
+      " · <strong>{count} déjà créées</strong>",
+      "Lancez un audit SEO ou connectez Google Business Profile pour des recommandations personnalisées.",
+      "Tout créer en missions",
+      "Voir les missions existantes",
+      "Aucune suggestion disponible",
+      "Lancez un audit SEO ou connectez Google Business Profile pour recevoir des missions IA personnalisées.",
+      "Aucune mission pour cette catégorie.",
+      "Résumé de vos missions",
+      "Calculé depuis vos données réelles",
+      "Impact non estimé",
+      "MTTR réduit",
+      "1h",
+      "1h30",
+      "2h",
+      "3h",
+    ];
+    expect(expectedKeys).toHaveLength(38);
+    expect(arrayElementCountInFunctionVariable("renderMissionsAI", "allSuggestions")).toBe(14);
+    for (const key of expectedKeys) {
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    expect(dashboardSource).toContain("m.displayTitle = missionTemplateDisplayTitle(m.title)");
+    expect(dashboardSource).toContain("m.displayCat = fpT(m.cat)");
+    expect(dashboardSource).toContain("m.displaySource = missionAIDisplaySource(m.source)");
+    expect(dashboardSource).toContain("m.displayGain = missionAIDisplayGain(m.gain)");
+    expect(dashboardSource).toContain("data-mission-title=\"' + escHtml(m.title) + '\"");
+    expect(dashboardSource).toContain("apiAction('POST', '/api/missions/from-template', { templateTitle: m.title, priority: 'high', category: m.cat, steps: [] })");
+    expect(dashboardSource).toContain("/api/missions/from-template");
+    expect(dashboardSource).toContain("templateTitle:title,category:cat");
+    expect(dashboardSource).toContain("steps:[]");
+    expect(dashboardSource).toContain("r.sourceType = 'template'");
+  });
+
+  it("translates status-filter view controls and empty-state copy", () => {
+    const expectedKeys = [
+      "À démarrer",
+      "En cours",
+      "Complétées",
+      "1 mission",
+      "{count} missions",
+      "Liste",
+      "Kanban",
+      "Calendrier",
+      "Bibliothèque",
+      "Aucune mission \"{status}\"",
+      "Créez une nouvelle mission via le bouton + en bas à droite.",
+    ];
+    const referencedKeys = translationKeysInFunction("renderMissionsFiltered");
+    for (const key of expectedKeys) {
+      expect(referencedKeys.has(key), `filtered missions should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+  });
+
+  it("localizes the manual mission form while preserving internal select values", () => {
+    const expectedKeys = [
+      "Titre",
+      "Optimiser les balises title…",
+      "Catégorie",
+      "Impact",
+      "Échéance",
+      "Créer la mission",
+      "Création…",
+    ];
+    const panelKeys = translationKeysInFunction("renderNewMissionPanel");
+    for (const key of expectedKeys.slice(0, -1)) {
+      expect(panelKeys.has(key), `new mission form should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+    expect(translationKeysInFunction("setupNewMissionPanel").has("Création…")).toBe(true);
+    expect(englishKeys.has("Création…")).toBe(true);
+
+    for (const category of ["Audits", "Local SEO", "Monitoring", "Rapports", "Équipe"]) {
+      expect(englishKeys.has(category), `English catalogue should contain category "${category}"`).toBe(true);
+    }
+    expect(dashboardSource).toContain('value="${escHtml(c)}">${escHtml(fpT(c))}</option>');
+    expect(dashboardSource).toContain('value="${escHtml(i)}">${escHtml(fpT(i))}</option>');
+    expect(dashboardSource).toContain("openFloatPanel(fpT('Nouvelle mission'), renderNewMissionPanel())");
   });
 
   it("translates calendar chrome while preserving mission and appointment data", () => {

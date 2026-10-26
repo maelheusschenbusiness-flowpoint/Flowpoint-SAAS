@@ -569,6 +569,17 @@ window.__fpPageLoadTs = Date.now();
 
     create: async function (mission) {
       try {
+        if (mission && (mission.sourceType === 'template' || mission.source_type === 'template')) {
+          var templateSteps = Array.isArray(mission.steps)
+            ? mission.steps.map(function (step) { return typeof step === 'string' ? step : (step && step.text) || ''; })
+            : [];
+          return normalizeDoc(await apiAction('POST', '/api/missions/from-template', {
+            templateTitle: mission.title,
+            category: mission.category,
+            impact: mission.impact,
+            steps: templateSteps
+          }));
+        }
         return normalizeDoc(await apiAction('POST', '/api/missions', mission));
       } catch (e) {
         console.warn('[FP] mission create error:', e.message);

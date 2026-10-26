@@ -542,6 +542,109 @@ const MISSION_LIBRARY = {
   ],
 };
 
+const MISSION_LIBRARY_DISPLAY_KEYS = new Set([
+  ...Object.keys(MISSION_LIBRARY),
+  ...Object.values(MISSION_LIBRARY).flatMap(items =>
+    items.flatMap(item => [
+      item.title, item.impact, item.effort, item.gain, ...(item.steps || []),
+    ].filter(Boolean))
+  ),
+]);
+
+const MISSION_AI_TEMPLATE_TEXT_KEYS = [
+  'Technique', 'GBP', 'Backlinks', 'Performance',
+  'Corriger les balises title manquantes',
+  'Ajouter schema markup FAQ sur vos sites prioritaires',
+  'Créer des pages locales géociblées',
+  'Auditer et corriger les citations NAP incohérentes',
+  'Configurer Google Posts hebdomadaires automatisés',
+  'Répondre aux {count} avis Google sans réponse',
+  'Audit et optimisation des photos Google Business',
+  'Optimiser la vitesse mobile — site le plus lent (score <65)',
+  'Corriger les images non optimisées (WebP) sur vos sites',
+  'Configurer des alertes de temps de réponse avancées',
+  "Mettre en place un programme de collecte d'avis automatisé",
+  'Créer des backlinks locaux via annuaires sectoriels',
+  'Optimiser le suivi de positions — {count} mot(s)-clé(s)',
+  'Analyser et contrer les {count} concurrent(s) détectés',
+];
+MISSION_AI_TEMPLATE_TEXT_KEYS.forEach(key => MISSION_LIBRARY_DISPLAY_KEYS.add(key));
+
+function missionTemplateDisplayTitle(raw) {
+  const exact = MISSION_LIBRARY_DISPLAY_KEYS.has(raw);
+  if (exact && !raw.includes('{count}')) return fpT(raw);
+
+  let match = raw.match(/^Répondre aux (\d+) avis Google sans réponse$/);
+  if (match) return fpT('Répondre aux {count} avis Google sans réponse', { count:match[1] });
+  match = raw.match(/^Optimiser le suivi de positions — (\d+) mot\(s\)-clé\(s\)$/);
+  if (match) return fpT('Optimiser le suivi de positions — {count} mot(s)-clé(s)', { count:match[1] });
+  match = raw.match(/^Analyser et contrer les (\d+) concurrent\(s\) détectés$/);
+  if (match) return fpT('Analyser et contrer les {count} concurrent(s) détectés', { count:match[1] });
+
+  const titleWithDomain = 'Corriger les balises title manquantes';
+  if (raw.startsWith(titleWithDomain + ' — ')) {
+    return fpT(titleWithDomain) + raw.slice(titleWithDomain.length);
+  }
+  const localPages = 'Créer des pages locales géociblées';
+  if (raw.startsWith(localPages + ' — ')) {
+    return fpT(localPages) + raw.slice(localPages.length);
+  }
+  if (raw.startsWith(localPages + ' à ')) {
+    return fpT(localPages) + ' in ' + raw.slice(localPages.length + 3);
+  }
+  const backlinks = 'Créer des backlinks locaux via annuaires sectoriels';
+  if (raw.startsWith(backlinks + ' (')) {
+    return fpT(backlinks) + raw.slice(backlinks.length);
+  }
+  return exact ? fpT(raw) : raw;
+}
+
+function missionAIDisplaySource(value) {
+  const raw = String(value == null ? '' : value);
+  let match = raw.match(/^Audit SEO · Score actuel : (.+)\/100$/);
+  if (match) return fpT('Audit SEO · Score actuel : {score}/100', { score:match[1] });
+  match = raw.match(/^Audit SEO · (\d+) site\(s\) analysé\(s\)$/);
+  if (match) return fpT('Audit SEO · {count} site(s) analysé(s)', { count:match[1] });
+  match = raw.match(/^Audit · (\d+) site\(s\)$/);
+  if (match) return fpT('Audit · {count} site(s)', { count:match[1] });
+  match = raw.match(/^GBP · (\d+) avis en attente$/);
+  if (match) return fpT('GBP · {count} avis en attente', { count:match[1] });
+  match = raw.match(/^(\d+) monitor\(s\) actif\(s\)$/);
+  if (match) return fpT('{count} monitor(s) actif(s)', { count:match[1] });
+  match = raw.match(/^(\d+) mot\(s\)-clé\(s\) suivi\(s\)$/);
+  if (match) return fpT('{count} mot(s)-clé(s) suivi(s)', { count:match[1] });
+  match = raw.match(/^Analyse concurrentielle · (\d+) concurrent\(s\)$/);
+  if (match) return fpT('Analyse concurrentielle · {count} concurrent(s)', { count:match[1] });
+  return fpT(raw);
+}
+
+function missionAIDisplayGain(value) {
+  const raw = String(value == null ? '' : value);
+  const match = raw.match(/^\+(\d+) pts \(estimé\)$/);
+  return match ? fpT('+{count} pts (estimé)', { count:match[1] }) : fpT(raw);
+}
+
+function missionDisplayText(mission, value) {
+  const raw = value == null ? '' : String(value);
+  if (!mission || (mission.sourceType || mission.source_type) !== 'template') return raw;
+  return missionTemplateDisplayTitle(raw);
+}
+
+function missionDisplayStepTag(mission, tag) {
+  const raw = tag == null ? '' : String(tag);
+  if (!mission || (mission.sourceType || mission.source_type) !== 'template') return raw;
+  const match = raw.match(/^Étape\s+(\d+)$/);
+  return match ? fpT('Étape {count}', { count:match[1] }) : raw;
+}
+
+function missionPanelTitle(mission, limit) {
+  const title = missionDisplayText(mission, mission && mission.title);
+  const maxLength = Number.isFinite(limit) ? limit : 32;
+  return fpT('Mission — {title}', {
+    title: title.slice(0, maxLength) + (title.length > maxLength ? '…' : ''),
+  });
+}
+
 function getMissionLibrarySuggested() {
   const all = Object.entries(MISSION_LIBRARY).flatMap(([cat, items]) =>
     items.map(t => ({ ...t, category: cat }))
@@ -7197,10 +7300,10 @@ function renderMissionDetail(m) {
     <div class="fp-mission-detail-header">
       <div class="fp-mission-detail-icon">${svgIcon('target').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
       <div style="flex:1;min-width:0">
-        <div class="fp-mission-detail-title">${escHtml(m.title)}</div>
+        <div class="fp-mission-detail-title">${escHtml(missionDisplayText(m, m.title))}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-          ${badge(m.category,'#2563EB')}
-          ${badge(m.impact, impactColor(m.impact))}
+          ${badge(missionDisplayText(m, m.category),'#2563EB')}
+          ${badge(missionDisplayText(m, m.impact), impactColor(m.impact))}
           ${badge(statusLabels[effectiveStatus], statusColors[effectiveStatus])}
         </div>
       </div>
@@ -7239,8 +7342,8 @@ function renderMissionDetail(m) {
         ${steps.map(s => `
           <div class="fp-mission-step" data-step-id="${s.id}" data-mission-id="${m.id}">
             <input type="checkbox" class="fp-mission-step-check fp-step-toggle" data-mission-id="${m.id}" data-step-id="${s.id}" ${s.done?'checked':''} />
-            <span class="fp-mission-step-text${s.done?' done':''}">${escHtml(s.text)}</span>
-            <span class="fp-mission-step-tag">${escHtml(s.tag)}</span>
+            <span class="fp-mission-step-text${s.done?' done':''}">${escHtml(missionDisplayText(m, s.text))}</span>
+            <span class="fp-mission-step-tag">${escHtml(missionDisplayStepTag(m, s.tag))}</span>
           </div>
         `).join('')}
       </div>
@@ -7438,10 +7541,10 @@ function renderMissions() {
             <div style="display:flex;align-items:flex-start;gap:8px">
               <span style="font-size:16px;flex-shrink:0">${_missionCatIcon(m.category)}</span>
               <div style="min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text);line-height:1.3;margin-bottom:4px">${escHtml(m.title)}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text);line-height:1.3;margin-bottom:4px">${escHtml(missionDisplayText(m, m.title))}</div>
                 <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
                   <span style="font-size:10px;font-weight:600;color:${pm.color};background:${pm.bg};padding:2px 6px;border-radius:4px">${pm.label}</span>
-                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.impact||'')}</span>
+                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(missionDisplayText(m, m.impact||''))}</span>
                   ${m.estimatedTrafficImpact > 0 ? `<span style="font-size:10px;color:#22c55e;font-weight:600">${fpT('+{count} visites', { count:m.estimatedTrafficImpact })}</span>` : ''}
                 </div>
               </div>
@@ -7457,7 +7560,7 @@ function renderMissions() {
         <button class="fp-view-toggle-btn${STATE.missionView==='list'?' active':''}" data-view="list">${fpT('Liste')}</button>
         <button class="fp-view-toggle-btn${STATE.missionView==='kanban'?' active':''}" data-view="kanban">${fpT('Kanban')}</button>
         <button class="fp-view-toggle-btn${STATE.missionView==='calendar'?' active':''}" data-view="calendar">${fpT('Calendrier')}</button>
-        <button class="fp-view-toggle-btn${STATE.missionView==='library'?' active':''}" data-view="library" style="display:flex;align-items:center;gap:5px">${svgIcon('zap')} Bibliothèque</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='library'?' active':''}" data-view="library" style="display:flex;align-items:center;gap:5px">${svgIcon('zap')} ${fpT('Bibliothèque')}</button>
       </div>
       <span style="font-size:11px;color:var(--fp-text-faint);margin-left:4px">${filtered.length === 1 ? fpT('1 mission') : fpT('{count} missions', { count:filtered.length })}</span>
     </div>
@@ -7509,13 +7612,13 @@ function renderMissions() {
             <span style="font-size:16px;flex-shrink:0;margin-top:1px">${_missionCatIcon(m.category)}</span>
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
-                <span style="font-size:13px;color:${m.status==='done'?'var(--fp-text-faint)':'var(--fp-text)'};text-decoration:${m.status==='done'?'line-through':'none'};font-weight:600">${escHtml(m.title)}</span>
+                <span style="font-size:13px;color:${m.status==='done'?'var(--fp-text-faint)':'var(--fp-text)'};text-decoration:${m.status==='done'?'line-through':'none'};font-weight:600">${escHtml(missionDisplayText(m, m.title))}</span>
                 ${m.aiQuickWin?`<span style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.12);padding:1px 6px;border-radius:4px">⚡ Quick Win</span>`:''}
               </div>
               <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center;flex-wrap:wrap">
                 <span style="font-size:10px;font-weight:600;color:${pm.color};background:${pm.bg};padding:2px 6px;border-radius:4px">${pm.label}</span>
-                ${badge(m.impact||'',impactColor(m.impact))}
-                ${badge(m.effort||'','#6366f1')}
+                ${badge(missionDisplayText(m, m.impact||''),impactColor(m.impact))}
+                ${badge(missionDisplayText(m, m.effort||''),'#6366f1')}
                     ${stepsTotal>0?`<span style="font-size:10px;color:var(--fp-text-faint)">${fpT('{done}/{total} étapes', { done:stepsDone, total:stepsTotal })}</span>`:''}
                 ${dueStr?`<span style="font-size:10px;color:var(--fp-text-faint)">📅 ${escHtml(dueStr)}</span>`:''}
                 ${m.estimatedTrafficImpact>0?`<span style="font-size:10px;color:#22c55e;font-weight:600">${fpT('+{count} visites', { count:m.estimatedTrafficImpact })}</span>`:''}
@@ -7558,11 +7661,11 @@ function renderMissions() {
                 <div class="fp-kanban-card mission-view" draggable="true" data-id="${m.id}" data-mission-id="${m.id}" style="cursor:pointer">
                   <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px">
                     <span style="font-size:14px;flex-shrink:0">${_missionCatIcon(m.category)}</span>
-                    <div class="fp-kanban-card-title" style="flex:1">${escHtml(m.title)}</div>
+                    <div class="fp-kanban-card-title" style="flex:1">${escHtml(missionDisplayText(m, m.title))}</div>
                   </div>
                   <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
                     <span style="font-size:10px;font-weight:600;color:${pm2.color};background:${pm2.bg};padding:2px 5px;border-radius:4px">${pm2.label}</span>
-                    ${badge(m.impact||'',impactColor(m.impact))}
+                    ${badge(missionDisplayText(m, m.impact||''),impactColor(m.impact))}
                     ${m.aiQuickWin?`<span style="font-size:10px;color:#22c55e;font-weight:700">⚡</span>`:''}
                   </div>
                   ${m.aiExplanation?`<div style="font-size:10px;color:var(--fp-text-faint);margin-top:5px;line-height:1.35">${escHtml(m.aiExplanation.slice(0,80))}${m.aiExplanation.length>80?'…':''}</div>`:''}
@@ -7635,7 +7738,7 @@ function renderLibCard(t) {
     return `
       <div class="fp-lib-card" style="opacity:0.5;cursor:default">
         <button class="fp-lib-add-btn" disabled style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default">✓</button>
-        <div class="fp-lib-card-title" style="text-decoration:line-through;opacity:0.7">${escHtml(t.title)}</div>
+        <div class="fp-lib-card-title" style="text-decoration:line-through;opacity:0.7">${escHtml(fpT(t.title))}</div>
         <div class="fp-lib-card-meta">
           <span style="font-size:11px;color:#22c55e;font-weight:600">${fpT('Déjà ajoutée')}</span>
         </div>
@@ -7647,11 +7750,11 @@ function renderLibCard(t) {
       <button class="fp-lib-add-btn" title="${fpT('Ajouter')}">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
-      <div class="fp-lib-card-title">${escHtml(t.title)}</div>
+      <div class="fp-lib-card-title">${escHtml(fpT(t.title))}</div>
       <div class="fp-lib-card-meta">
-        <span class="fp-lib-impact ${impactCls}">${escHtml(t.impact)}</span>
-        <span class="fp-lib-effort">${svgIcon('clock').replace('width="14"','width="11"').replace('height="14"','height="11"')} ${escHtml(t.effort||'—')}</span>
-        ${t.gain?`<span style="font-size:11px;color:#22c55e;font-weight:600">${escHtml(t.gain)}</span>`:''}
+        <span class="fp-lib-impact ${impactCls}">${escHtml(fpT(t.impact))}</span>
+        <span class="fp-lib-effort">${svgIcon('clock').replace('width="14"','width="11"').replace('height="14"','height="11"')} ${escHtml(fpT(t.effort||'—'))}</span>
+        ${t.gain?`<span style="font-size:11px;color:#22c55e;font-weight:600">${escHtml(fpT(t.gain))}</span>`:''}
       </div>
     </div>
   `;
@@ -7773,7 +7876,7 @@ function renderMissionCalendar(missions) {
     const visibleMs = isFiltering ? [] : ms.slice(0, Math.min(ms.length, Math.max(0, MAX_CAL_VISIBLE - Math.min(ces.length, MAX_CAL_VISIBLE - 1))));
     const visibleCes = ces.slice(0, Math.max(0, MAX_CAL_VISIBLE - visibleMs.length));
     const extra = (ms.length - visibleMs.length) + (ces.length - visibleCes.length);
-    const missionEls = visibleMs.map(m=>`<div class="fp-apple-cal-event ${m.status}" title="${escHtml(m.title)}">${escHtml(m.title)}</div>`).join('');
+    const missionEls = visibleMs.map(m=>`<div class="fp-apple-cal-event ${m.status}" title="${escHtml(missionDisplayText(m, m.title))}">${escHtml(missionDisplayText(m, m.title))}</div>`).join('');
     const calEvEls = visibleCes.map(ce => {
       const timeRange = (ce.startTime && ce.duration) ? formatTimeRange(ce.startTime, ce.duration) : (ce.startTime || '');
       const safeRange = escHtml(timeRange);
@@ -7899,10 +8002,10 @@ function renderDailyAgenda(dateStr, missions) {
       <div style="flex-shrink:0;width:3px;border-radius:3px;background:${statusColor};align-self:stretch;margin:2px 0"></div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(m.title)}</span>
+          <span style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(missionDisplayText(m, m.title))}</span>
           <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:${statusColor}22;color:${statusColor};font-weight:500;white-space:nowrap">${statusLabel}</span>
         </div>
-        ${m.category ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${escHtml(m.category)}</div>` : ''}
+        ${m.category ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${escHtml(missionDisplayText(m, m.category))}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -15345,26 +15448,26 @@ function renderNewMissionPanel() {
   const cats = ['Audits','Local SEO','Monitoring','Rapports','Équipe'];
   return `
     <div class="fp-form-group">
-      <label class="fp-form-label">Titre</label>
+      <label class="fp-form-label">${fpT('Titre')}</label>
       <input class="fp-input" id="nm2-title" placeholder="${fpT('Optimiser les balises title…')}"/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Catégorie')}</label>
       <select class="fp-select" style="width:100%" id="nm2-cat">
-        ${cats.map(c=>`<option>${c}</option>`).join('')}
+        ${cats.map(c=>`<option value="${escHtml(c)}">${escHtml(fpT(c))}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Impact</label>
+      <label class="fp-form-label">${fpT('Impact')}</label>
       <select class="fp-select" style="width:100%" id="nm2-impact">
-        ${['Très élevé','Élevé','Moyen'].map(i=>`<option>${i}</option>`).join('')}
+        ${['Très élevé','Élevé','Moyen'].map(i=>`<option value="${escHtml(i)}">${escHtml(fpT(i))}</option>`).join('')}
       </select>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Échéance')}</label>
       <input class="fp-input" id="nm2-date" type="date" value="${new Date().toISOString().slice(0,10)}"/>
     </div>
-    ${btn('Créer la mission','fp-btn fp-btn-primary','plus','id="nm2-create"')}
+    ${btn(fpT('Créer la mission'),'fp-btn fp-btn-primary','plus','id="nm2-create"')}
   `;
 }
 function setupNewMissionPanel() {
@@ -15386,7 +15489,7 @@ function setupNewMissionPanel() {
       // P0.4: No optimistic insert — wait for backend confirmation before updating STATE
       STATE._missionCreating = true;
       _createBtn.disabled = true;
-      _createBtn.textContent = 'Création…';
+      _createBtn.textContent = fpT('Création…');
       try {
         const payload = {
           title,
@@ -17481,10 +17584,12 @@ function bindSectionEvents() {
         const m = toCreate.shift();
         const isDup = STATE.missions.find(function(x){ return x.title.toLowerCase().trim() === m.title.toLowerCase().trim() && x.status !== 'done'; });
         if (isDup) { next(); return; }
-        apiAction('POST', '/api/missions', { title: m.title, source: 'ai', status: 'todo', priority: 'high', category: m.cat })
+        apiAction('POST', '/api/missions/from-template', { templateTitle: m.title, priority: 'high', category: m.cat, steps: [] })
           .then(function(r) {
-            if (r && r.id) STATE.missions.unshift(r);
-            else STATE.missions.unshift({ id: 'ms'+Date.now(), title: m.title, source: 'ai', status: 'todo', category: m.cat });
+            if (r && r.id) {
+              r.sourceType = 'template';
+              STATE.missions.unshift(r);
+            } else STATE.missions.unshift({ id: 'ms'+Date.now(), title: m.title, source: 'ai', sourceType:'template', status: 'todo', category: m.cat });
             created++;
             next();
           }).catch(function() { created++; next(); });
@@ -17537,7 +17642,7 @@ function bindSectionEvents() {
       e.stopPropagation();
       const m = STATE.missions.find(x => x.id === (btn.dataset.id || btn.dataset.missionId));
       if (!m) return;
-      openFloatPanel('Mission — ' + m.title.slice(0, 32) + (m.title.length > 32 ? '…' : ''), renderMissionDetail(m));
+      openFloatPanel(missionPanelTitle(m), renderMissionDetail(m));
       bindMissionDetailHandlers(m.id);
     }));
     $$('.mission-delete').forEach(btn => btn.addEventListener('click', e => {
@@ -17557,10 +17662,10 @@ function bindSectionEvents() {
             const title = card.dataset.libTitle;
             const stepsRaw = JSON.parse(card.dataset.libSteps || '[]');
             const steps = stepsRaw.map((t, i) => ({ id:'s'+Date.now()+i, text:t, done:false, tag:'Étape '+(i+1) }));
-            const libMs = { id:'ms'+Date.now(), title, category:card.dataset.libCat||'SEO Technique', impact:card.dataset.libImpact||'Élevé', status:'todo', date:new Date(Date.now()+7*86400000).toISOString().slice(0,10), steps };
+            const libMs = { id:'ms'+Date.now(), title, category:card.dataset.libCat||'SEO Technique', impact:card.dataset.libImpact||'Élevé', status:'todo', sourceType:'template', date:new Date(Date.now()+7*86400000).toISOString().slice(0,10), steps };
             STATE.missions.push(libMs);
             saveMissions();
-            showToast('success', fpT('Mission ajoutée : ') + title.slice(0,40));
+            showToast('success', fpT('Mission ajoutée : ') + missionDisplayText(libMs, title).slice(0,40));
             card.style.opacity = '0.4';
             card.style.pointerEvents = 'none';
             if (typeof window.FP_MISSIONS_API !== 'undefined') window.FP_MISSIONS_API.create(libMs).catch(() => {});
@@ -17573,14 +17678,14 @@ function bindSectionEvents() {
       const m = STATE.missions.find(x => x.id === row.dataset.missionId);
       if (!m) return;
       row.addEventListener('click', () => {
-        openFloatPanel('Mission — ' + m.title.slice(0, 32) + (m.title.length > 32 ? '…' : ''), renderMissionDetail(m));
+        openFloatPanel(missionPanelTitle(m), renderMissionDetail(m));
         bindMissionDetailHandlers(m.id);
       });
       row.addEventListener('contextmenu', e => {
         e.preventDefault();
         showCtxMenu(e, [
-          { key:'view',  icon:'eye',    label:'Voir les étapes', action:()=>{ openFloatPanel('Mission — ' + m.title.slice(0,32), renderMissionDetail(m)); bindMissionDetailHandlers(m.id); } },
-          { key:'done',  icon:'check',  label: m.status==='done'?'Remettre à faire':'Marquer terminé', action:()=>{ const wasDone=m.status==='done'; m.status=wasDone?'todo':'done'; saveMissions(); if(!wasDone) logActivityEvent('team',`Mission terminée : ${m.title}`,{missionId:m.id}); render(); if(typeof window.FP_MISSIONS_API!=='undefined') window.FP_MISSIONS_API.update(m.id,{status:m.status}).catch(()=>{}); } },
+          { key:'view',  icon:'eye',    label:fpT('Voir les étapes'), action:()=>{ openFloatPanel(missionPanelTitle(m, 32), renderMissionDetail(m)); bindMissionDetailHandlers(m.id); } },
+          { key:'done',  icon:'check',  label: m.status==='done'?fpT('Remettre à faire'):fpT('Marquer terminé'), action:()=>{ const wasDone=m.status==='done'; m.status=wasDone?'todo':'done'; saveMissions(); if(!wasDone) logActivityEvent('team',`Mission terminée : ${m.title}`,{missionId:m.id}); render(); if(typeof window.FP_MISSIONS_API!=='undefined') window.FP_MISSIONS_API.update(m.id,{status:m.status}).catch(()=>{}); } },
           { divider:true, key:'div' },
           { key:'del',   icon:'trash',  label:'Supprimer', action:()=>{ const dId=m.id; STATE.missions=STATE.missions.filter(x=>x.id!==dId); saveMissions(); showToast('error', fpT('Mission supprimée')); render(); if(typeof window.FP_MISSIONS_API!=='undefined') window.FP_MISSIONS_API.delete(dId).catch(()=>{}); }, danger:true },
         ]);
@@ -17724,7 +17829,7 @@ function bindSectionEvents() {
         item.addEventListener('click', () => {
           const m = STATE.missions.find(x => x.id === item.dataset.missionId);
           if (!m) return;
-          openFloatPanel('Mission — ' + m.title.slice(0, 32) + (m.title.length > 32 ? '…' : ''), renderMissionDetail(m));
+          openFloatPanel(missionPanelTitle(m), renderMissionDetail(m));
           bindMissionDetailHandlers(m.id);
         });
       });
@@ -22529,6 +22634,358 @@ function bindGlobalEvents() {
     "3 h": "3 hr",
     "Étapes · {done}/{total}": "Steps · {done}/{total}",
     "Échéance :": "Due date:",
+    "Ajouter une balise title sur chaque page": "Add a title tag to every page",
+    "20 min": "20 min",
+    "+8% CTR": "+8% CTR",
+    "Ouvrir l'éditeur de votre CMS et lister les pages sans title": "Open your CMS editor and list pages missing a title",
+    "Rédiger un titre de 50-60 caractères avec le mot-clé principal": "Write a 50-60 character title that includes the main keyword",
+    "Corriger les liens 404 internes": "Fix internal 404 links",
+    "30 min": "30 min",
+    "+5 pts SEO": "+5 SEO points",
+    "Copier l'URL de votre site dans le champ ci-dessous et lancer l'audit": "Enter your site URL in the field below and run the audit",
+    "Corriger ou rediriger les 5 premiers liens cassés trouvés": "Fix or redirect the first 5 broken links found",
+    "Soumettre votre sitemap dans Google Search Console": "Submit your sitemap in Google Search Console",
+    "15 min": "15 min",
+    "Indexation +30%": "Indexing +30%",
+    "Ouvrir Search Console → Sitemaps": "Open Search Console → Sitemaps",
+    "Coller l'URL de votre sitemap.xml et cliquer Soumettre": "Paste your sitemap.xml URL and click Submit",
+    "Ajouter les balises méta description manquantes": "Add missing meta descriptions",
+    "+5% CTR": "+5% CTR",
+    "Identifier les 5 pages les plus visitées sans meta description": "Identify the 5 most visited pages without a meta description",
+    "Écrire 1-2 phrases de 150 caractères max avec un verbe d'action": "Write 1-2 sentences (max 150 characters) with an action verb",
+    "Vérifier que le SSL est actif et valide": "Verify that SSL is active and valid",
+    "10 min": "10 min",
+    "Confiance utilisateur ↑": "User trust ↑",
+    "Taper votre URL dans un navigateur et vérifier le cadenas vert": "Type your URL in a browser and verify the green padlock",
+    "Si absent, contacter votre hébergeur pour activer Let's Encrypt gratuitement": "If missing, contact your host to activate Let's Encrypt for free",
+    "Ajouter une balise H1 sur toutes vos pages": "Add an H1 tag to all your pages",
+    "+4 pts SEO": "+4 SEO points",
+    "Ouvrir chaque page clé et vérifier qu'une seule balise H1 existe": "Open each key page and verify that only one H1 tag exists",
+    "Reformuler le H1 pour inclure le mot-clé de la page": "Rewrite the H1 to include the page keyword",
+    "Compresser les images lourdes du site": "Compress heavy site images",
+    "25 min": "25 min",
+    "+15 pts PageSpeed": "+15 PageSpeed points",
+    "Identifier les images > 200 Ko dans les médias du CMS": "Find images larger than 200 KB in your CMS media library",
+    "Utiliser squoosh.app pour les recompresser avant ré-upload": "Use squoosh.app to recompress them before re-uploading",
+    "Activer la mise en cache du navigateur": "Enable browser caching",
+    "Vitesse +20%": "Speed +20%",
+    "Demander à votre hébergeur d'activer le cache HTTP": "Ask your host to enable HTTP caching",
+    "Ou installer un plugin cache (WP Super Cache, W3 Total Cache)": "Or install a cache plugin (WP Super Cache, W3 Total Cache)",
+    "Vérifier que le site est indexable": "Verify that the site is indexable",
+    "Visibilité Google ↑": "Google visibility ↑",
+    "Taper site:votredomaine.com dans Google et noter le nombre de pages": "Search Google for site:votredomaine.com and note the number of pages",
+    "Si moins de 5 résultats, vérifier que robots.txt n'interdit pas l'indexation": "If there are fewer than 5 results, check that robots.txt does not block indexing",
+    "Ajouter un lien vers le sitemap dans robots.txt": "Add a link to the sitemap in robots.txt",
+    "Crawl amélioré": "Improved crawling",
+    "Ouvrir votresite.com/robots.txt": "Open votresite.com/robots.txt",
+    "Ajouter la ligne : Sitemap: https://votresite.com/sitemap.xml": "Add this line: Sitemap: https://votresite.com/sitemap.xml",
+    "Vérifier la compatibilité mobile de votre site": "Check your site's mobile compatibility",
+    "+ranking mobile": "+mobile ranking",
+    "Taper l'URL dans search.google.com/test/mobile-friendly": "Enter the URL in search.google.com/test/mobile-friendly",
+    "Corriger les erreurs listées (taille de texte, zone tactile)": "Fix listed errors (text size, touch targets)",
+    "Corriger les pages en erreur 404": "Fix 404 error pages",
+    "Expérience utilisateur ↑": "User experience ↑",
+    "Aller dans Search Console → Couverture → Erreurs": "Go to Search Console → Coverage → Errors",
+    "Créer une redirection 301 depuis les pages supprimées vers une page existante": "Create a 301 redirect from deleted pages to an existing page",
+    "Mettre à jour les horaires sur Google Business": "Update hours on Google Business",
+    "+15% appels": "+15% calls",
+    "Ouvrir business.google.com et sélectionner votre fiche": "Open business.google.com and select your listing",
+    "Mettre à jour les horaires d'ouverture et cocher les jours fériés": "Update your opening hours and mark public holidays",
+    "Ajouter 5 nouvelles photos sur votre fiche Google": "Add 5 new photos to your Google profile",
+    "+25% clics": "+25% clicks",
+    "Prendre 5 photos actuelles de votre commerce ou service": "Take 5 current photos of your business or service",
+    "Les uploader dans business.google.com → Photos": "Upload them to business.google.com → Photos",
+    "Répondre aux 5 derniers avis Google": "Reply to the 5 most recent Google reviews",
+    "Réputation +10%": "Reputation +10%",
+    "Ouvrir la section Avis de votre fiche Google Business": "Open the Reviews section of your Google Business profile",
+    "Rédiger une réponse personnalisée à chacun (merci, prénom, sujet)": "Write a personalized reply to each (thanks, first name, topic)",
+    "Demander un avis à 3 clients satisfaits": "Request a review from 3 satisfied customers",
+    "+3 avis/sem": "+3 reviews/week",
+    "Copier votre lien d'avis Google (Format : g.page/votre-fiche/review)": "Copy your Google review link (Format: g.page/votre-fiche/review)",
+    "Envoyer par SMS ou WhatsApp à 3 clients récents avec une phrase simple": "Send via SMS or WhatsApp to 3 recent customers with a simple message",
+    "Rédiger une description complète de votre fiche GBP": "Write a complete description for your GBP profile",
+    "+12% conversions": "+12% conversions",
+    "Ouvrir l'édition de votre fiche Google Business": "Open your Google Business profile editor",
+    "Écrire 2-3 phrases sur vos services, votre zone, et ce qui vous différencie": "Write 2-3 sentences about your services, service area, and what sets you apart",
+    "Vérifier la cohérence NAP sur votre site": "Verify NAP consistency on your site",
+    "+8 pts local": "+8 local points",
+    "Comparer le nom, adresse, téléphone sur votre site vs Google Business": "Compare your business name, address, and phone number on your site with Google Business",
+    "Corriger toute différence dans le footer ou la page Contact": "Fix any discrepancies in the footer or contact page",
+    "Créer un post Google Business cette semaine": "Create a Google Business post this week",
+    "+8% engagement": "+8% engagement",
+    "Ouvrir business.google.com → Posts": "Open business.google.com → Posts",
+    "Publier une offre, actualité ou événement avec une photo et un bouton CTA": "Post an offer, update, or event with a photo and a CTA button",
+    "Ajouter vos services sur Google Business": "Add your services on Google Business",
+    "+20% apparitions": "+20% search appearances",
+    "Ouvrir votre fiche → modifier → Services": "Open your profile → edit → Services",
+    "Ajouter chaque prestation avec un titre et une description courte": "Add each service with a title and a short description",
+    "Corriger votre inscription sur Pages Jaunes": "Update your Pages Jaunes listing",
+    "+5 pts citations": "+5 citation points",
+    "Chercher votre entreprise sur pagesjaunes.fr": "Search for your business on pagesjaunes.fr",
+    "Mettre à jour l'adresse et le téléphone si différents de Google": "Update the address and phone number if they differ from Google",
+    "Inscrire votre entreprise sur Yelp": "Register your business on Yelp",
+    "+citations locales": "+local citations",
+    "Créer ou revendiquer votre fiche sur biz.yelp.fr": "Create or claim your listing on biz.yelp.fr",
+    "Renseigner les informations NAP identiques à Google Business": "Fill in NAP information to match Google Business",
+    "Ajouter des attributs à votre fiche Google": "Add attributes to your Google profile",
+    "+visibilité filtres": "+visibility in filters",
+    "Ouvrir votre fiche → Modifier → Plus d'informations": "Open your profile → Edit → More information",
+    "Cocher les attributs applicables : WiFi, parking, accessibilité...": "Check applicable attributes: WiFi, parking, accessibility...",
+    "Créer une page de localisation sur votre site": "Create a location page on your site",
+    "+20 recherches locales": "+20 local searches",
+    "Créer une page \"Nous trouver\" avec votre adresse, carte Google Maps et horaires": "Create a \"Find Us\" page with your address, Google Maps, and opening hours",
+    "Ajouter le schema markup LocalBusiness pour cette page": "Add LocalBusiness schema markup to this page",
+    "Rédiger une FAQ sur votre page d'accueil": "Write an FAQ on your homepage",
+    "+6% CTR": "+6% CTR",
+    "Lister les 5 questions les plus posées par vos clients": "List the 5 most common customer questions",
+    "Répondre en 2-3 phrases claires sur la page d'accueil ou d'une section dédiée": "Answer on the homepage or in a dedicated section using 2-3 clear sentences",
+    "Ajouter un témoignage client récent": "Add a recent customer testimonial",
+    "+8% conversions": "+8% conversions",
+    "Contacter un client satisfait par SMS pour demander 2 lignes de témoignage": "Contact a satisfied client via SMS to request a 2-line testimonial",
+    "L'ajouter avec son prénom et activité sur la page d'accueil": "Add it to the homepage with the customer's first name and business",
+    "Mettre à jour la page \"À propos\"": "Update the \"About\" page",
+    "Confiance +15%": "Trust +15%",
+    "Ouvrir votre page À propos et vérifier si les infos sont à jour": "Open your About page and verify that information is current",
+    "Ajouter une photo récente, les dernières réalisations ou la date de création": "Add a recent photo, latest projects, or founding date",
+    "Créer une page de service manquante": "Create a missing service page",
+    "45 min": "45 min",
+    "+visibilité Google": "+ visibility on Google",
+    "Identifier un service proposé mais non listé sur votre site": "Identify a service offered that isn't listed on your site",
+    "Créer une page avec titre H1, 200 mots de description et un CTA": "Create a page with an H1 heading, 200 words of descriptive copy, and a CTA",
+    "Ajouter un appel à l'action (CTA) visible": "Add a visible call to action (CTA)",
+    "+10% conversions": "+10% conversions",
+    "Identifier la page la plus visitée sans bouton CTA clair": "Identify your most visited page without a clear CTA button",
+    "Ajouter un bouton \"Nous contacter\" ou \"Demander un devis\" bien visible": "Add a prominent \"Contact us\" or \"Request a quote\" button",
+    "Publier un article de blog court": "Publish a short blog post",
+    "+visite organique": "+organic traffic",
+    "Choisir une question que posent vos clients": "Choose a question your customers are asking",
+    "Rédiger 300-500 mots de réponse claire avec un titre H1 accrocheur": "Write a clear 300-500-word response with an engaging H1 title",
+    "Optimiser votre page Contact": "Optimize your contact page",
+    "+12% formulaires": "+12% form submissions",
+    "Vérifier que le formulaire fonctionne en envoyant un test": "Verify the form works by sending a test",
+    "Ajouter votre numéro de téléphone en gros et un lien WhatsApp si applicable": "Add your phone number in large text and a WhatsApp link if applicable",
+    "Ajouter des images alt sur vos photos": "Add alt tags to your photos",
+    "Ouvrir la bibliothèque de médias de votre CMS": "Open your CMS media library",
+    "Ajouter un texte alt descriptif sur les 10 images sans description": "Add descriptive alt text to the 10 images missing descriptions",
+    "Créer une page de tarifs lisible": "Create a readable pricing page",
+    "+20% leads qualifiés": "+20% qualified leads",
+    "Créer ou améliorer une page Tarifs avec vos offres et prix publics": "Create or improve a Pricing page with your offers and public prices",
+    "Ajouter un bouton de contact ou de devis sous chaque offre": "Add a contact or quote button under each offer",
+    "Vérifier l'orthographe des 3 pages principales": "Check spelling on your 3 main pages",
+    "Crédibilité +10%": "Credibility +10%",
+    "Copier le texte de chaque page dans languagetool.org": "Copy the text from each page into languagetool.org",
+    "Corriger les fautes identifiées directement dans votre CMS": "Fix identified errors directly in your CMS",
+    "Activer un monitor sur votre site principal": "Activate a monitor on your main site",
+    "5 min": "5 min",
+    "Alertes panne instantanées": "Instant downtime alerts",
+    "Copier l'URL de votre site dans le champ Nouveau Monitor": "Copy your site URL into the New Monitor field",
+    "Configurer l'alerte email avec votre adresse professionnelle": "Set up email alerts to your work email address",
+    "Tester le monitor après configuration": "Test the monitor after configuration",
+    "Fiabilité alerte ↑": "More reliable alerts ↑",
+    "Vérifier dans FlowPoint que le monitor affiche Statut : UP": "Check in FlowPoint that the monitor shows Status: UP",
+    "Cliquer \"Forcer un check\" pour confirmer que l'alerte email arrive bien": "Click \"Force a check\" to confirm the email alert arrives",
+    "Monitorer la page de contact ou de devis": "Monitor your contact or quote page",
+    "Zéro formulaire cassé": "Zero broken forms",
+    "Ajouter l'URL de votre page Contact dans un nouveau monitor": "Add your Contact page URL to a new monitor",
+    "Définir une alerte si le temps de réponse dépasse 3 secondes": "Set an alert if the response time exceeds 3 seconds",
+    "Configurer une alerte de latence": "Configure a latency alert",
+    "Performance surveillée": "Performance monitored",
+    "Ouvrir les paramètres du monitor → Seuil alerte latence": "Open monitor settings → Latency alert threshold",
+    "Régler à 1 500 ms pour être alerté avant que les visiteurs remarquent": "Set the threshold to 1,500 ms to alert you before visitors notice",
+    "Ajouter un second email d'alerte": "Add a second alert email",
+    "Redondance alertes": "Alert redundancy",
+    "Ouvrir Configuration Monitors → Email alerte": "Open Monitor settings → Alert email",
+    "Ajouter l'email d'un collègue ou d'une boîte partagée en backup": "Add a colleague's email or a shared inbox as a backup",
+    "Vérifier l'historique d'uptime de ce mois": "Check this month's uptime history",
+    "Rapport client prêt": "Client report ready",
+    "Ouvrir FlowPoint → Monitors → Incidents": "Open FlowPoint → Monitors → Incidents",
+    "Noter le pourcentage d'uptime pour le mentionner dans votre prochain rapport client": "Note the uptime percentage to mention in your next client report",
+    "Créer une fenêtre de maintenance pour les mises à jour": "Create a maintenance window for updates",
+    "Zéro fausse alerte": "Zero false alarms",
+    "Ouvrir Monitors → Configuration → Fenêtres de maintenance": "Open Monitors → Configuration → Maintenance windows",
+    "Ajouter le créneau habituel de mise à jour (ex: dimanche 2h-4h)": "Add your regular update window (e.g., Sunday 2-4 a.m.)",
+    "Monitorer la page de paiement ou de réservation": "Monitor the payment or booking page",
+    "Zéro vente perdue": "Zero lost sales",
+    "Ajouter l'URL de votre page de paiement ou panier dans un monitor": "Add your payment page or cart URL to a monitor",
+    "Configurer une alerte immédiate (< 1 min) si elle devient inaccessible": "Configure an immediate alert (< 1 min) if it becomes inaccessible",
+    "Générer un rapport PDF ce mois-ci": "Generate a PDF report this month",
+    "Client informé": "Client informed",
+    "Ouvrir FlowPoint → Rapports → Nouveau rapport": "Open FlowPoint → Reports → New report",
+    "Sélectionner la période, le site et cliquer Générer PDF": "Select the period and site, then click Generate PDF",
+    "Envoyer le rapport mensuel à votre client": "Send the monthly report to your client",
+    "Fidélisation +20%": "Retention +20%",
+    "Générer le rapport PDF dans FlowPoint": "Generate the PDF report in FlowPoint",
+    "L'envoyer par email avec 2-3 points clés résumés en texte": "Email it with 2-3 key points summarized in the message",
+    "Activer le branding White Label sur un rapport": "Enable White Label branding on a report",
+    "Image professionnelle ↑": "Professional appearance ↑",
+    "Aller dans Paramètres → White Label": "Go to Settings → White Label",
+    "Uploader votre logo et configurer votre couleur principale": "Upload your logo and configure your primary color",
+    "Créer un modèle de rapport réutilisable": "Create a reusable report template",
+    "2h gagnées/mois": "2 hours saved per month",
+    "Dans FlowPoint → Rapports, configurer les sections à inclure": "In FlowPoint → Reports, configure the sections to include",
+    "Sauvegarder comme modèle et l'utiliser pour tous vos clients": "Save as a template and use it for all your clients",
+    "Partager un rapport en lien public": "Share a report as a public link",
+    "Transparence client ↑": "Client transparency ↑",
+    "Générer le rapport, puis cliquer \"Partager le lien\"": "Generate the report, then click \"Share link\"",
+    "Copier l'URL et l'envoyer à votre client (pas besoin de PDF)": "Copy the URL and send it to your client (no need for PDF)",
+    "Planifier l'envoi automatique du rapport": "Schedule automatic report delivery",
+    "8h/mois économisées": "8 hours/month saved",
+    "Dans les paramètres du rapport, activer \"Envoi automatique\"": "In the report settings, enable \"Automatic delivery\"",
+    "Choisir le 1er du mois et l'email de votre client": "Choose the first day of the month and your client's email",
+    "Ajouter une note personnalisée dans le rapport": "Add a personalized note to the report",
+    "Relation client ↑": "Client relationship ↑",
+    "Avant de générer le rapport, ouvrir la section \"Note personnalisée\"": "Before generating the report, open the \"Custom note\" section",
+    "Écrire 3-4 lignes sur les actions prévues le mois suivant": "Write 3-4 lines about planned actions for the following month",
+    "Identifier votre mot-clé principal": "Identify your main keyword",
+    "Ciblage SEO amélioré": "Improved SEO targeting",
+    "Réfléchir à ce que vos clients cherchent dans Google pour vous trouver": "Think about what your customers search for on Google to find you",
+    "Taper ce mot-clé dans Google et noter les concurrents présents": "Search Google for this keyword and note the competitors shown",
+    "Ajouter ce mot-clé dans le titre de votre page d'accueil": "Add this keyword to your homepage title",
+    "+10% visibilité": "+10% visibility",
+    "Ouvrir l'éditeur de votre page d'accueil": "Open your homepage editor",
+    "Modifier le titre (H1) pour inclure naturellement votre mot-clé principal": "Edit the title (H1) to naturally include your main keyword",
+    "Lancer votre premier audit SEO": "Run your first SEO audit",
+    "Score SEO mesuré": "SEO score measured",
+    "Copier l'URL de votre site dans le champ Audit SEO de FlowPoint": "Copy your site URL into the FlowPoint SEO Audit field",
+    "Cliquer Lancer pour obtenir votre score et les premières recommandations": "Click Run to see your score and initial recommendations",
+    "Analyser votre concurrent principal": "Analyze your main competitor",
+    "Avantage concurrentiel ↑": "Competitive advantage ↑",
+    "Ouvrir FlowPoint → Concurrents et ajouter l'URL de votre concurrent n°1": "Open FlowPoint → Competitors and add your top competitor's URL",
+    "Comparer son score SEO avec le vôtre et noter 2 points où il vous dépasse": "Compare their SEO score with yours and note 2 areas where they outperform you",
+    "Ajouter votre site dans Google Search Console": "Add your site to Google Search Console",
+    "Données trafic réelles": "Real traffic data",
+    "Ouvrir search.google.com/search-console et cliquer \"Commencer\"": "Open search.google.com/search-console and click \"Get started\"",
+    "Vérifier la propriété via l'ajout d'une balise HTML ou un fichier TXT": "Verify ownership by adding an HTML tag or TXT file",
+    "Créer un lien interne depuis un article vers la page clé": "Create an internal link from an article to the key page",
+    "+autorité interne": "+internal link authority",
+    "Identifier votre page la plus importante (ex: page de service)": "Identify your most important page (e.g., service page)",
+    "Dans un article récent, ajouter naturellement un lien hypertexte vers elle": "Add a natural hyperlink to it from a recent article",
+    "Mettre à jour votre ancienne page la plus visitée": "Update your most-visited old page",
+    "+trafic organique": "+organic traffic",
+    "Voir dans Google Analytics ou Search Console la page la plus visitée": "Use Google Analytics or Search Console to find the most-visited page",
+    "Actualiser les informations datées et ajouter 100 mots de contenu frais": "Update dated information and add 100 words of fresh content",
+    "Déposer un backlink sur un annuaire local gratuit": "Get a backlink from a free local directory",
+    "+1 lien entrant": "+1 inbound link",
+    "Chercher \"annuaire [votre ville/secteur] gratuit\" dans Google": "Search Google for \"free [your city/area] directory\"",
+    "Créer une fiche avec votre URL, NAP et description en 5 minutes": "Create a listing with your URL, NAP, and description in 5 minutes",
+    "Connecter Google Analytics à votre site": "Connect Google Analytics to your site",
+    "Mesure du trafic activée": "Traffic measurement enabled",
+    "Créer une propriété GA4 sur analytics.google.com": "Create a GA4 property on analytics.google.com",
+    "Copier le code de suivi et l'installer via votre CMS ou GTM": "Copy the tracking code and install it through your CMS or GTM",
+    "Répondre aux avis négatifs avec empathie": "Respond to negative reviews with empathy",
+    "Image récupérée": "Reputation restored",
+    "Ouvrir les avis Google de votre fiche Business": "Open the reviews on your Google Business profile",
+    "Répondre à chaque avis négatif : \"Merci pour votre retour, nous vous contactons\"": "Reply to each negative review: \"Thanks for your feedback. We'll contact you.\"",
+    "Envoyer une demande d'avis après chaque vente": "Send a review request after every sale",
+    "+5 avis/mois": "+5 reviews/month",
+    "Créer un message type WhatsApp ou SMS de 3 lignes": "Create a 3-line WhatsApp or SMS template",
+    "Copier votre lien d'avis Google et l'intégrer dans le message": "Copy your Google review link and add it to the message",
+    "Signaler un avis abusif ou faux à Google": "Report abusive or fake reviews to Google",
+    "Réputation protégée": "Reputation protected",
+    "Trouver l'avis suspect sur votre fiche Google Business": "Find the suspicious review on your Google Business profile",
+    "Cliquer les 3 points → \"Signaler un avis\" et sélectionner la raison appropriée": "Click the 3 dots → \"Report review\" and select the appropriate reason",
+    "Partager vos avis 5 étoiles sur les réseaux": "Share your 5-star reviews on social media",
+    "Preuve sociale +20%": "Social proof +20%",
+    "Copier un avis 5 étoiles récent (avec accord implicite si c'est un avis Google public)": "Copy a recent 5-star review (with implied consent if it is a public Google review)",
+    "Le publier sur votre page Facebook ou Instagram avec une belle mise en page": "Post it on your Facebook or Instagram page with a polished layout",
+    "Créer un template de réponse aux avis positifs": "Create a response template for positive reviews",
+    "Temps réponse -50%": "Response time -50%",
+    "Rédiger 3 variantes de réponse chaleureuse pour les avis 5 étoiles": "Draft 3 warm replies to 5-star reviews",
+    "Les sauvegarder dans un fichier texte pour les réutiliser et personnaliser": "Save them in a text file so you can reuse and personalize them",
+    "Ajouter un badge \"Note Google\" sur votre site": "Add a \"Google Rating\" badge to your site",
+    "+confiance visiteurs": "+visitor trust",
+    "Trouver votre note moyenne dans Google Business": "Find your average rating in Google Business",
+    "L'afficher visuellement sur votre site dans la section En-tête ou footer": "Display it on your site in the header or footer",
+    "Vérifier votre e-réputation sur la première page Google": "Check your online reputation on the first page of Google",
+    "Risques identifiés": "Risks identified",
+    "Chercher votre nom d'entreprise dans Google en mode navigation privée": "Search for your business name on Google in a private browsing window",
+    "Si un avis négatif apparaît en première page, créer du contenu positif pour le repousser": "If a negative review appears on the first page, publish positive content to push it down",
+    "Tester la vitesse de votre site": "Test your site speed",
+    "Score mesuré": "Measured score",
+    "Ouvrir pagespeed.web.dev et entrer l'URL de votre site": "Open pagespeed.web.dev and enter your site's URL",
+    "Lire le rapport Mobile — noter les 2 premières recommandations": "Read the mobile report and note the top 2 recommendations",
+    "Passer toutes les images en format WebP": "Convert all images to WebP format",
+    "Exporter vos images clés et les convertir sur squoosh.app": "Export your key images and convert them on squoosh.app",
+    "Les ré-uploader dans votre CMS à la place des originaux": "Upload them to your CMS in place of the originals",
+    "Activer le lazy loading sur les images": "Enable lazy loading for images",
+    "Chargement initial -30%": "Initial load -30%",
+    "Installer un plugin de lazy loading (Lazy Load de a3rev sur WordPress)": "Install a lazy-loading plugin (such as a3rev's Lazy Load for WordPress)",
+    "Ou ajouter l'attribut loading=\"lazy\" sur les balises <img> de vos pages": "Or add the loading=\"lazy\" attribute to your page <img> tags",
+    "Réduire le nombre de plugins actifs": "Reduce the number of active plugins",
+    "Performance +10%": "Performance +10%",
+    "Lister tous les plugins ou scripts actifs sur votre site": "List all active plugins or scripts on your site",
+    "Désactiver ceux non utilisés depuis > 6 mois": "Disable plugins or scripts that haven't been used for more than 6 months",
+    "Activer la compression GZIP ou Brotli": "Enable GZIP or Brotli compression",
+    "Taille pages -70%": "Page size -70%",
+    "Demander à votre hébergeur si la compression est activée": "Ask your host if compression is enabled",
+    "Sinon, installer W3 Total Cache ou Cloudflare (gratuit)": "Otherwise, install W3 Total Cache or use Cloudflare for free",
+    "Minifier les fichiers CSS et JavaScript": "Minify CSS and JavaScript files",
+    "Vitesse +8%": "Speed +8%",
+    "Sur WordPress, activer la minification dans WP Rocket ou LiteSpeed Cache": "On WordPress, enable minification in WP Rocket or LiteSpeed Cache",
+    "Ou utiliser le service gratuit Cloudflare qui minifie automatiquement": "Or use Cloudflare's free service, which minifies automatically",
+    "Réduire les redirections inutiles": "Reduce unnecessary redirects",
+    "Temps de chargement -0.5s": "Load time -0.5s",
+    "Utiliser l'outil Redirect Checker pour analyser vos URLs principales": "Use the Redirect Checker tool to analyze your main URLs",
+    "Corriger les chaînes de redirections (A→B→C) en lien direct (A→C)": "Fix redirect chains (A→B→C) with direct links (A→C)",
+    "Utiliser un CDN pour servir les fichiers statiques": "Use a CDN to serve static files",
+    "Vitesse mondiale +40%": "Global speed +40%",
+    "Activer Cloudflare gratuit sur votre domaine (cloudflare.com)": "Enable Cloudflare for free on your domain (cloudflare.com)",
+    "Activer le mode proxy (nuage orange) sur vos enregistrements DNS": "Enable proxy mode (orange cloud) for your DNS records",
+    "Étape {count}": "Step {count}",
+    "Mission — {title}": "Mission — {title}",
+    "Voir les étapes": "View steps",
+    "Remettre à faire": "Mark as to do",
+    "Marquer terminé": "Mark as complete",
+    "1h": "1 hr",
+    "2h": "2 hr",
+    "3h": "3 hr",
+    "1h30": "1 hr 30 min",
+    "Impact non estimé": "Impact not estimated",
+    "MTTR réduit": "Reduced MTTR",
+    "Impact": "Impact",
+    "Corriger les balises title manquantes": "Fix missing title tags",
+    "Ajouter schema markup FAQ sur vos sites prioritaires": "Add FAQ schema markup to your priority sites",
+    "Créer des pages locales géociblées": "Create geo-targeted local pages",
+    "Auditer et corriger les citations NAP incohérentes": "Audit and fix inconsistent NAP citations",
+    "Configurer Google Posts hebdomadaires automatisés": "Set up automated weekly Google Posts",
+    "Répondre aux {count} avis Google sans réponse": "Reply to {count} unanswered Google reviews",
+    "Audit et optimisation des photos Google Business": "Audit and optimize Google Business photos",
+    "Optimiser la vitesse mobile — site le plus lent (score <65)": "Improve mobile speed on your slowest site (score <65)",
+    "Corriger les images non optimisées (WebP) sur vos sites": "Fix unoptimized images (WebP) across your sites",
+    "Configurer des alertes de temps de réponse avancées": "Set up advanced response-time alerts",
+    "Mettre en place un programme de collecte d'avis automatisé": "Set up an automated review collection program",
+    "Créer des backlinks locaux via annuaires sectoriels": "Build local backlinks through industry directories",
+    "Optimiser le suivi de positions — {count} mot(s)-clé(s)": "Optimize rank tracking — {count} keyword(s)",
+    "Analyser et contrer les {count} concurrent(s) détectés": "Analyze and outperform {count} detected competitor(s)",
+    "Audit SEO · Score actuel : {score}/100": "SEO audit · Current score: {score}/100",
+    "Audit SEO · {count} site(s) analysé(s)": "SEO audit · {count} site(s) analyzed",
+    "Audit · {count} site(s)": "Audit · {count} site(s)",
+    "Profil compte": "Account profile",
+    "Audit SEO — référencement local": "SEO audit — local search visibility",
+    "GBP · {count} avis en attente": "GBP · {count} unanswered reviews",
+    "Audit performance · score faible détecté": "Performance audit · low score detected",
+    "{count} monitor(s) actif(s)": "{count} active monitor(s)",
+    "Stratégie réputation": "Reputation strategy",
+    "Stratégie netlinking": "Link-building strategy",
+    "{count} mot(s)-clé(s) suivi(s)": "{count} tracked keyword(s)",
+    "Analyse concurrentielle · {count} concurrent(s)": "Competitor analysis · {count} competitor(s)",
+    "+{count} pts (estimé)": "+{count} points (estimated)",
+    "<strong>{count} recommandation{plural}</strong> générées depuis vos données réelles": "<strong>{count} recommendation{plural}</strong> generated from your real data",
+    " · {count} audit(s)": " · {count} audit(s)",
+    " · {count} concurrent(s)": " · {count} competitor(s)",
+    " · GBP connecté": " · GBP connected",
+    " · <strong>{count} déjà créées</strong>": " · <strong>{count} already created</strong>",
+    "Lancez un audit SEO ou connectez Google Business Profile pour des recommandations personnalisées.": "Run an SEO audit or connect Google Business Profile for personalized recommendations.",
+    "Tout créer en missions": "Create all as missions",
+    "Voir les missions existantes": "View existing missions",
+    "Tout créer": "Create all",
+    "Créée →": "Created →",
+    "+Créer": "+Create",
+    "Déjà créées": "Already created",
+    "Score moyen": "Average score",
+    "Aucune mission \"{status}\"": "No missions \"{status}\"",
+    "Titre": "Title",
+    "Créer la mission": "Create mission",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -52031,19 +52488,22 @@ function bindMissionDetailHandlers(missionId) {
 // ── MISSIONS SUB-PAGES ──
 function renderMissionsFiltered(status) {
   const filtered = STATE.missions.filter(m => m.status === status);
-  const labels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées' };
+  const labels = { todo:fpT('À démarrer'), inprogress:fpT('En cours'), done:fpT('Complétées') };
+  const countLabel = filtered.length === 1
+    ? fpT('1 mission')
+    : fpT('{count} missions', { count:filtered.length });
   const missionViewToggle = `
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
       <div class="fp-view-toggle" id="mission-view-toggle">
-        <button class="fp-view-toggle-btn${STATE.missionView==='list'?' active':''}" data-view="list">Liste</button>
-        <button class="fp-view-toggle-btn${STATE.missionView==='kanban'?' active':''}" data-view="kanban">Kanban</button>
-        <button class="fp-view-toggle-btn${STATE.missionView==='calendar'?' active':''}" data-view="calendar">Calendrier</button>
-        <button class="fp-view-toggle-btn${STATE.missionView==='library'?' active':''}" data-view="library">${svgIcon('zap')} Bibliothèque</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='list'?' active':''}" data-view="list">${fpT('Liste')}</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='kanban'?' active':''}" data-view="kanban">${fpT('Kanban')}</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='calendar'?' active':''}" data-view="calendar">${fpT('Calendrier')}</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='library'?' active':''}" data-view="library">${svgIcon('zap')} ${fpT('Bibliothèque')}</button>
       </div>
-      <span style="font-size:11px;color:var(--fp-text-faint);margin-left:8px">${filtered.length} mission${filtered.length!==1?'s':''} · ${labels[status]}</span>
+      <span style="font-size:11px;color:var(--fp-text-faint);margin-left:8px">${countLabel} · ${labels[status]}</span>
     </div>`;
   if (filtered.length === 0) {
-    return missionViewToggle + `<div class="fp-empty-state"><div class="fp-empty-state-icon">📋</div><h3>Aucune mission "${labels[status]}"</h3><p>Créez une nouvelle mission via le bouton + en bas à droite.</p></div>`;
+    return missionViewToggle + `<div class="fp-empty-state"><div class="fp-empty-state-icon">📋</div><h3>${fpT('Aucune mission "{status}"', { status:labels[status] })}</h3><p>${fpT('Créez une nouvelle mission via le bouton + en bas à droite.')}</p></div>`;
   }
   return missionViewToggle + `
     <div style="display:flex;flex-direction:column;gap:8px">
@@ -52051,10 +52511,10 @@ function renderMissionsFiltered(status) {
         <div class="fp-mission-row fp-card" style="display:flex;align-items:center;gap:14px;padding:14px 18px">
           <div style="width:10px;height:10px;border-radius:50%;background:${m.status==='done'?'var(--fp-success)':m.status==='inprogress'?'var(--fp-warning)':'var(--fp-text-faint)'};flex-shrink:0"></div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(m.title)}</div>
-            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${escHtml(m.category)} · Impact ${escHtml(m.impact)} · ${fmtDate(m.date)}</div>
+            <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(missionDisplayText(m, m.title))}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${escHtml(missionDisplayText(m, m.category))} · ${fpT('Impact')} ${escHtml(missionDisplayText(m, m.impact))} · ${fmtDate(m.date)}</div>
           </div>
-          ${badge(m.impact, m.impact==='Très élevé'?'danger':m.impact==='Élevé'?'warning':'neutral')}
+          ${badge(missionDisplayText(m, m.impact), m.impact==='Très élevé'?'danger':m.impact==='Élevé'?'warning':'neutral')}
         </div>
       `).join('')}
     </div>
@@ -52090,6 +52550,15 @@ function renderMissionsAI() {
     hasCompetitors && { title: 'Analyser et contrer les ' + STATE.competitors.length + ' concurrent(s) détectés', impact:'Élevé', effort:'2h', gain:'Impact non estimé', cat:'Technique', color:'#f59e0b', source:'Analyse concurrentielle · ' + STATE.competitors.length + ' concurrent(s)' },
   ].filter(Boolean);
 
+  allSuggestions.forEach(function(m) {
+    m.displayTitle = missionTemplateDisplayTitle(m.title);
+    m.displayCat = fpT(m.cat);
+    m.displayImpact = fpT(m.impact);
+    m.displayEffort = fpT(m.effort);
+    m.displayGain = missionAIDisplayGain(m.gain);
+    m.displaySource = missionAIDisplaySource(m.source);
+  });
+
   const cats = ['Tous', ...new Set(allSuggestions.map(function(m){ return m.cat; }))];
   const _catF = STATE.aiMissionsFilter || 'Tous';
   const visibleMissions = _catF === 'Tous' ? allSuggestions : allSuggestions.filter(function(m){ return m.cat === _catF; });
@@ -52098,55 +52567,63 @@ function renderMissionsAI() {
   const nAudits = STATE.audits ? STATE.audits.length : 0;
   const nComp = STATE.competitors ? STATE.competitors.length : 0;
   const nCreated = allSuggestions.filter(function(m){ return STATE.missions.some(function(x){ return x.title.toLowerCase().trim() === m.title.toLowerCase().trim() && x.status !== 'done'; }); }).length;
+  const missionAISummary = (() => {
+    if (!(nAudits > 0 || nComp > 0 || hasGbp)) {
+      return fpT('Lancez un audit SEO ou connectez Google Business Profile pour des recommandations personnalisées.');
+    }
+    let summary = fpT(
+      '<strong>{count} recommandation{plural}</strong> générées depuis vos données réelles',
+      { count:allSuggestions.length, plural:allSuggestions.length > 1 ? 's' : '' },
+    );
+    if (nAudits > 0) summary += fpT(' · {count} audit(s)', { count:nAudits });
+    if (nComp > 0) summary += fpT(' · {count} concurrent(s)', { count:nComp });
+    if (hasGbp) summary += fpT(' · GBP connecté');
+    if (nCreated > 0) summary += fpT(' · <strong>{count} déjà créées</strong>', { count:nCreated });
+    return summary + '.';
+  })();
 
   return `
     ${aiBlock(
-      (nAudits > 0 || nComp > 0 || hasGbp)
-        ? '<strong>' + allSuggestions.length + ' recommandation' + (allSuggestions.length > 1 ? 's' : '') + '</strong> générées depuis vos données réelles' +
-          (nAudits > 0 ? ' · ' + nAudits + ' audit(s)' : '') +
-          (nComp > 0 ? ' · ' + nComp + ' concurrent(s)' : '') +
-          (hasGbp ? ' · GBP connecté' : '') +
-          (nCreated > 0 ? ' · <strong>' + nCreated + ' déjà créées</strong>' : '') + '.'
-        : 'Lancez un audit SEO ou connectez Google Business Profile pour des recommandations personnalisées.',
-      ['Tout créer en missions', 'Voir les missions existantes']
+      missionAISummary,
+      [fpT('Tout créer en missions'), fpT('Voir les missions existantes')]
     )}
 
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      ${cats.map(function(c){ return '<button class="fp-filter-tab' + ((STATE.aiMissionsFilter||'Tous')===c?' active':'') + '" onclick="STATE.aiMissionsFilter=\'' + escHtml(c) + '\';render()">' + escHtml(c) + '</button>'; }).join('')}
+      ${cats.map(function(c){ return '<button class="fp-filter-tab' + ((STATE.aiMissionsFilter||'Tous')===c?' active':'') + '" onclick="STATE.aiMissionsFilter=\'' + escHtml(c) + '\';render()">' + escHtml(fpT(c)) + '</button>'; }).join('')}
       <div style="margin-left:auto;display:flex;gap:8px">
-        ${btn('Tout créer','fp-btn fp-btn-primary fp-btn-sm','zap','id="ai-bulk-create-btn"')}
-        ${btn('Régénérer','fp-btn fp-btn-ghost fp-btn-sm','refresh-cw','id="mission-regen-btn"')}
+        ${btn(fpT('Tout créer'),'fp-btn fp-btn-primary fp-btn-sm','zap','id="ai-bulk-create-btn"')}
+        ${btn(fpT('Régénérer'),'fp-btn fp-btn-ghost fp-btn-sm','refresh-cw','id="mission-regen-btn"')}
       </div>
     </div>
 
     ${allSuggestions.length === 0
       ? `<div class="fp-empty-state" style="padding:40px 20px;text-align:center">
           <div style="font-size:40px;margin-bottom:12px">🤖</div>
-          <h3 style="margin:0 0 8px">Aucune suggestion disponible</h3>
-          <p style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Lancez un audit SEO ou connectez Google Business Profile pour recevoir des missions IA personnalisées.</p>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('audits')">Lancer un audit</button>
+          <h3 style="margin:0 0 8px">${fpT('Aucune suggestion disponible')}</h3>
+          <p style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${fpT('Lancez un audit SEO ou connectez Google Business Profile pour recevoir des missions IA personnalisées.')}</p>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('audits')">${fpT('Lancer un audit')}</button>
         </div>`
       : visibleMissions.length === 0
-        ? '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune mission pour cette catégorie.</div>'
+        ? '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">' + fpT('Aucune mission pour cette catégorie.') + '</div>'
         : '<div style="display:flex;flex-direction:column;gap:10px">' +
           visibleMissions.map(function(m, i) {
             const alreadyCreated = STATE.missions.some(function(x){ return x.title.toLowerCase().trim() === m.title.toLowerCase().trim() && x.status !== 'done'; });
             return '<div class="fp-opp-card" data-mission-title="' + escHtml(m.title) + '" data-mission-cat="' + escHtml(m.cat) + '">' +
               '<div class="fp-opp-icon" style="background:' + m.color + '18;border:1px solid ' + m.color + '28"><span style="font-size:13px;font-weight:800;color:' + m.color + '">' + (i+1) + '</span></div>' +
               '<div class="fp-opp-body">' +
-                '<div class="fp-opp-title" style="margin-bottom:4px">' + escHtml(m.title) + '</div>' +
+                '<div class="fp-opp-title" style="margin-bottom:4px">' + escHtml(m.displayTitle) + '</div>' +
                 '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">' +
-                  badge(m.cat, m.color) +
-                  badge(m.impact, impactColor(m.impact)) +
-                  '<span style="font-size:10px;color:var(--fp-text-faint)">⏱ ' + escHtml(m.effort) + '</span>' +
+                  badge(m.displayCat, m.color) +
+                  badge(m.displayImpact, impactColor(m.impact)) +
+                  '<span style="font-size:10px;color:var(--fp-text-faint)">⏱ ' + escHtml(m.displayEffort) + '</span>' +
                 '</div>' +
-                '<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">📊 ' + escHtml(m.source) + '</div>' +
+                '<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">📊 ' + escHtml(m.displaySource) + '</div>' +
               '</div>' +
               '<div style="text-align:right;flex-shrink:0">' +
-                '<div style="font-size:11px;color:var(--fp-text-muted);white-space:nowrap">' + escHtml(m.gain) + '</div>' +
+                '<div style="font-size:11px;color:var(--fp-text-muted);white-space:nowrap">' + escHtml(m.displayGain) + '</div>' +
                 (alreadyCreated
-                  ? '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="navigate(\'missions\')">✓ Créée →</button>'
-                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=\'Création…\';b.disabled=true;apiAction(\'POST\',\'/api/missions\',{title:title,source:\'ai\',status:\'todo\',priority:\'high\',category:cat}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);_fpDeleteApiCachePath(\'/api/missions\');b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',\'Mission créée !\');}else{b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');}}).catch(function(){b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');});})(this)">+ Créer</button>'
+                  ? '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="navigate(\'missions\')">✓ ' + fpT('Créée →') + '</button>'
+                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ \'+window.fpT(\'Créée →\');b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=window.fpT(\'Création…\');b.disabled=true;apiAction(\'POST\',\'/api/missions/from-template\',{templateTitle:title,category:cat,priority:\'high\',steps:[]}).then(function(r){if(r&&r.id){r.sourceType=\'template\';STATE.missions.unshift(r);_fpDeleteApiCachePath(\'/api/missions\');b.textContent=\'✓ \'+window.fpT(\'Créée →\');b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',window.fpT(\'Mission créée !\'));}else{b.textContent=window.fpT(\'+Créer\');b.disabled=false;showToast(\'error\',window.fpT(\'Erreur\'));}}).catch(function(){b.textContent=window.fpT(\'+Créer\');b.disabled=false;showToast(\'error\',window.fpT(\'Erreur\'));});})(this)">' + fpT('+Créer') + '</button>'
                 ) +
               '</div>' +
             '</div>';
@@ -52157,15 +52634,15 @@ function renderMissionsAI() {
     <div class="fp-card" style="margin-top:16px;background:rgba(37,99,235,0.04);border-color:rgba(37,99,235,0.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:13px;font-weight:700;color:var(--fp-text)">Résumé de vos missions</div>
-          <div style="font-size:11px;color:var(--fp-text-muted)">Calculé depuis vos données réelles</div>
+          <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('Résumé de vos missions')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Calculé depuis vos données réelles')}</div>
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap">
           ${[
-            { l:'Suggestions IA', v:String(allSuggestions.length) },
-            { l:'Déjà créées', v:String(nCreated) },
-            { l:'Score moyen', v:(STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce(function(s,a){return s+(a.score||0);},0)/STATE.audits.length)+'/100' : '—') },
-            { l:'Complétées', v:String(STATE.missions ? STATE.missions.filter(function(m){return m.status==='done';}).length : 0) },
+            { l:fpT('Suggestions IA'), v:String(allSuggestions.length) },
+            { l:fpT('Déjà créées'), v:String(nCreated) },
+            { l:fpT('Score moyen'), v:(STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce(function(s,a){return s+(a.score||0);},0)/STATE.audits.length)+'/100' : '—') },
+            { l:fpT('Complétées'), v:String(STATE.missions ? STATE.missions.filter(function(m){return m.status==='done';}).length : 0) },
           ].map(function(s){ return '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">' + s.v + '</div><div style="font-size:10px;color:var(--fp-text-faint)">' + s.l + '</div></div>'; }).join('')}
         </div>
       </div>
