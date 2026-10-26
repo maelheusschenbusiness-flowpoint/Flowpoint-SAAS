@@ -7589,22 +7589,24 @@ function renderMissions_Library() {
     <div class="fp-section-header">
       <div>
         <h1>${fpT('Bibliothèque de missions')}</h1>
-        <div class="fp-section-sub">${Object.values(MISSION_LIBRARY).flat().length}+ templates • Cliquez pour ajouter à vos missions</div>
+        <div class="fp-section-sub">${fpT('{count}+ templates • Cliquez pour ajouter à vos missions', { count:Object.values(MISSION_LIBRARY).flat().length })}</div>
       </div>
       <div class="fp-section-actions">
         <div class="fp-view-toggle" id="mission-view-toggle">
-          <button class="fp-view-toggle-btn" data-view="list">← Mes missions</button>
+          <button class="fp-view-toggle-btn" data-view="list">${fpT('← Mes missions')}</button>
           <button class="fp-view-toggle-btn active" data-view="library">${fpT('Bibliothèque')}</button>
         </div>
       </div>
     </div>
 
-    ${aiBlock('Ces templates sont <strong>' + fpT('personnalisés pour votre profil') + '</strong> SEO local. Chaque mission inclut des étapes détaillées et actionnables directement dans le dashboard.',
-      ['Tout ajouter (recommandés)'])}
+    ${aiBlock(
+      fpT('Ces templates sont <strong>personnalisés pour votre profil</strong> SEO local. Chaque mission inclut des étapes détaillées et actionnables directement dans le dashboard.'),
+      [fpT('Tout ajouter (recommandés)')]
+    )}
 
     <div class="fp-lib-section-header">
       <span class="fp-lib-section-title">${fpT('Recommandés pour vous')}</span>
-      <span class="fp-lib-section-count">${suggested.length} missions</span>
+      <span class="fp-lib-section-count">${suggested.length === 1 ? fpT('1 mission') : fpT('{count} missions', { count:suggested.length })}</span>
     </div>
     <div class="fp-lib-grid">
       ${suggested.map(t => renderLibCard(t)).join('')}
@@ -7614,8 +7616,8 @@ function renderMissions_Library() {
       const trimmed = items.slice(0, Math.floor(items.length / 3) * 3 || 3);
       return `
       <div class="fp-lib-section-header">
-        <span class="fp-lib-section-title">${escHtml(cat)}</span>
-        <span class="fp-lib-section-count">${trimmed.length} missions</span>
+        <span class="fp-lib-section-title">${escHtml(fpT(cat))}</span>
+        <span class="fp-lib-section-count">${trimmed.length === 1 ? fpT('1 mission') : fpT('{count} missions', { count:trimmed.length })}</span>
       </div>
       <div class="fp-lib-grid">
         ${trimmed.map(t => renderLibCard({ ...t, category: cat })).join('')}
@@ -22471,6 +22473,12 @@ function bindGlobalEvents() {
     "1 mission": "1 mission",
     "Tout": "All",
     "{done}/{total} étapes": "{done}/{total} steps",
+    "{count}+ templates • Cliquez pour ajouter à vos missions": "{count}+ templates • Click to add them to your missions",
+    "← Mes missions": "← My missions",
+    "Ces templates sont <strong>personnalisés pour votre profil</strong> SEO local. Chaque mission inclut des étapes détaillées et actionnables directement dans le dashboard.": "These templates are <strong>tailored to your profile</strong> for local SEO. Each mission includes detailed, actionable steps you can use directly in the dashboard.",
+    "Tout ajouter (recommandés)": "Add all (recommended)",
+    "SEO Technique": "Technical SEO",
+    "Rapports & Clients": "Reports & Clients",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {

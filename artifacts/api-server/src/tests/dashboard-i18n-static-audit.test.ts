@@ -102,6 +102,30 @@ function translationKeysInFunction(functionName: string): Set<string> {
   return keys;
 }
 
+function objectKeysInVariable(variableName: string): string[] {
+  const keys: string[] = [];
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      node.name.text !== variableName ||
+      !node.initializer ||
+      !ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      return;
+    }
+    for (const property of node.initializer.properties) {
+      if (
+        ts.isPropertyAssignment(property) &&
+        (ts.isStringLiteral(property.name) || ts.isIdentifier(property.name))
+      ) {
+        keys.push(property.name.text);
+      }
+    }
+  });
+  return keys;
+}
+
 const englishKeys = new Set<string>();
 const englishTranslations = new Map<string, string>();
 walk(sourceFiles[0].source, (node) => {
@@ -240,6 +264,32 @@ describe("private dashboard static English localization", () => {
 
     expect(dashboardSource).toContain('<option value="${escHtml(c.value)}">${c.label}</option>');
     expect(dashboardSource).toContain('data-mission-cat="${escHtml(cat.value)}"');
+  });
+
+  it("translates mission-library chrome and its app-authored category labels", () => {
+    const expectedKeys = [
+      "Bibliothèque de missions",
+      "{count}+ templates • Cliquez pour ajouter à vos missions",
+      "← Mes missions",
+      "Ces templates sont <strong>personnalisés pour votre profil</strong> SEO local. Chaque mission inclut des étapes détaillées et actionnables directement dans le dashboard.",
+      "Tout ajouter (recommandés)",
+      "Bibliothèque",
+      "Recommandés pour vous",
+      "1 mission",
+      "{count} missions",
+    ];
+    const referencedKeys = translationKeysInFunction("renderMissions_Library");
+
+    for (const key of expectedKeys) {
+      expect(referencedKeys.has(key), `mission library should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    for (const category of objectKeysInVariable("MISSION_LIBRARY")) {
+      expect(englishKeys.has(category), `English catalogue should contain category "${category}"`).toBe(true);
+    }
+    expect(dashboardSource).toContain("escHtml(fpT(cat))");
+    expect(dashboardSource).toContain("renderLibCard({ ...t, category: cat })");
   });
 
   it("uses English translations for dynamic shell and opportunity counts", () => {
