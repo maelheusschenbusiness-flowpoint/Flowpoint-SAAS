@@ -65,6 +65,43 @@ function callName(expression: ts.Expression): string {
   return "";
 }
 
+function staticStringKeys(expression?: ts.Expression): string[] {
+  if (!expression) return [];
+  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+    return [expression.text];
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return [
+      ...staticStringKeys(expression.whenTrue),
+      ...staticStringKeys(expression.whenFalse),
+    ];
+  }
+  return [];
+}
+
+function translationKeysInFunction(functionName: string): Set<string> {
+  const keys = new Set<string>();
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isFunctionDeclaration(node) ||
+      node.name?.text !== functionName ||
+      !node.body
+    ) {
+      return;
+    }
+    walk(node.body, (part) => {
+      if (
+        !ts.isCallExpression(part) ||
+        callName(part.expression) !== "fpT"
+      ) {
+        return;
+      }
+      for (const key of staticStringKeys(part.arguments[0])) keys.add(key);
+    });
+  });
+  return keys;
+}
+
 const englishKeys = new Set<string>();
 const englishTranslations = new Map<string, string>();
 walk(sourceFiles[0].source, (node) => {
@@ -148,6 +185,63 @@ function staticTemplateText(node: ts.Expression): string | null {
 }
 
 describe("private dashboard static English localization", () => {
+  it("translates Missions UI labels while keeping their exact catalog keys", () => {
+    const expectedKeys = [
+      "Missions IA",
+      "Moteur IA",
+      "1 mission active",
+      "{count} missions actives",
+      "1 mission complétée",
+      "{count} missions complétées",
+      "Scanner maintenant",
+      "+ Mission",
+      "1 mission IA",
+      "{count} missions IA",
+      "À démarrer : {todo} · En cours : {wip} · Complétées : {done}",
+      "1 mission critique — action prioritaire requise.",
+      "{count} missions critiques — action prioritaire requise.",
+      "Continuez votre progression SEO en exécutant les missions planifiées.",
+      "Générez vos premières missions IA pour obtenir un plan d'action personnalisé basé sur vos audits.",
+      "Voir les Quick Wins",
+      "Créer une mission",
+      "Générer des missions IA",
+      "Total actives",
+      "Critiques",
+      "Hautes",
+      "Quick Wins IA",
+      "{count} actions rapides à fort impact",
+      "+{count} visites",
+      "Kanban",
+      "1 mission",
+      "{count} missions",
+      "SEO",
+      "Conversion",
+      "Toutes catégories",
+      "Technique",
+      "GBP",
+      "Réputation",
+      "Contenu",
+      "À démarrer",
+      "Bloqué",
+      "{done}/{total} étapes",
+    ];
+    const referencedKeys = translationKeysInFunction("renderMissions");
+
+    for (const key of expectedKeys) {
+      expect(referencedKeys.has(key), `renderMissions should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    const priorityKeys = translationKeysInFunction("_missionPriorityMeta");
+    for (const key of ["Critique", "Haute", "Moyenne", "Basse"]) {
+      expect(priorityKeys.has(key), `mission priority should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    expect(dashboardSource).toContain('<option value="${escHtml(c.value)}">${c.label}</option>');
+    expect(dashboardSource).toContain('data-mission-cat="${escHtml(cat.value)}"');
+  });
+
   it("uses English translations for dynamic shell and opportunity counts", () => {
     const expected = new Map([
       ["{count} URLs gérées", "{count} managed URLs"],
@@ -166,6 +260,35 @@ describe("private dashboard static English localization", () => {
       expect(dashboardSource).toContain(`fpT('${key}'`);
       expect(englishTranslations.get(key)).toBe(translation);
     }
+  });
+
+  it("translates Local Presence controls while preserving synchronized profile text", () => {
+    const expectedKeys = [
+      "Analyse des fiches GBP…",
+      "Gérer les add-ons",
+      "Priorités calculées à partir des champs présents dans votre fiche GBP synchronisée.",
+      "Actualiser",
+      "Aucune fiche GBP synchronisée. Connectez Google Business Profile puis synchronisez vos fiches.",
+      "{completed} critères renseignés sur {total}",
+      "Établissement",
+      "Complet",
+      "À compléter",
+      "Enregistrer mes critères",
+      "Prochaines actions",
+      "Tous les critères suivis sont présents dans les dernières données synchronisées.",
+      "Dernière synchronisation :",
+      "Aucune synchronisation",
+    ];
+    const referencedKeys = translationKeysInFunction("renderLocalPresenceOptimizer");
+
+    for (const key of expectedKeys) {
+      expect(referencedKeys.has(key), `Local Presence should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    expect(dashboardSource).toContain("escHtml(field.label)");
+    expect(dashboardSource).toContain("escHtml(item.title)");
+    expect(dashboardSource).toContain("escHtml(item.evidence)");
   });
 
   it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
@@ -206,17 +329,14 @@ describe("private dashboard static English localization", () => {
           name === "fpT" ||
           (fileName.endsWith("-addon.js") && name === "t")
         ) {
-          const key = node.arguments[0];
-          if (
-            key &&
-            (ts.isStringLiteral(key) || ts.isNoSubstitutionTemplateLiteral(key)) &&
-            !englishKeys.has(key.text)
-          ) {
-            missing.push({
-              file: fileName,
-              line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
-              key: key.text,
-            });
+          for (const key of staticStringKeys(node.arguments[0])) {
+            if (!englishKeys.has(key)) {
+              missing.push({
+                file: fileName,
+                line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+                key,
+              });
+            }
           }
         }
 

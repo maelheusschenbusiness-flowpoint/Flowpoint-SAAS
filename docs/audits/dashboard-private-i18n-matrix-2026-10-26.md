@@ -15,8 +15,9 @@
 
 ## Bilan confirmé à cette étape
 
-- **31 textes d’interface français confirmés traduits** dans les zones revues : les add-ons contrôlés, les compteurs de la carte utilisateur et l’état Local Presence. Un 32e ajout au catalogue est le libellé déjà anglais `conversions`, conservé comme clé d’identité.
-- Les tests ciblés rapportent **11 réussites** et aucun manque de clé statique dans le périmètre contrôlé. Le contrôle des templates et affectations DOM des sept scripts d’add-on ne relève plus de texte français non enveloppé.
+- **61 textes d’interface français confirmés traduits** : six dans les add-ons contrôlés, 25 dans la carte utilisateur et Local Presence, et 30 dans les contrôles de la vue Missions. Huit autres entrées du catalogue sont des clés d’identité déjà identiques en anglais.
+- Les tests ciblés rapportent **14 réussites** et aucun manque de clé statique dans le périmètre contrôlé. Le contrôle des templates et affectations DOM des sept scripts d’add-on ne relève plus de texte français non enveloppé.
+- La vue Missions vérifiée couvre ses contrôles de liste/kanban, le formulaire d’ajout, les filtres, les statuts, les compteurs et les priorités. Le calendrier, la bibliothèque et les détails restent à auditer; la route demeure donc **EN COURS**.
 - Le décompte global des anomalies restantes et des faux positifs est **non établi** : le balayage des templates du dashboard principal n’est pas encore exhaustif et ses candidats restent à classifier.
 
 ## Inventaire des pages et sous-routes

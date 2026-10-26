@@ -7258,11 +7258,11 @@ function renderMissionDetail(m) {
 /* ── MISSIONS ── */
 function _missionPriorityMeta(p) {
   switch(p) {
-    case 'critical': return { label:'Critique', color:'#ef4444', bg:'rgba(239,68,68,0.12)' };
-    case 'high':     return { label:'Haute',    color:'#f97316', bg:'rgba(249,115,22,0.12)' };
-    case 'medium':   return { label:'Moyenne',  color:'#eab308', bg:'rgba(234,179,8,0.12)' };
-    case 'low':      return { label:'Basse',    color:'#94a3b8', bg:'rgba(148,163,184,0.1)' };
-    default:         return { label:'Moyenne',  color:'#eab308', bg:'rgba(234,179,8,0.12)' };
+    case 'critical': return { label:fpT('Critique'), color:'#ef4444', bg:'rgba(239,68,68,0.12)' };
+    case 'high':     return { label:fpT('Haute'),    color:'#f97316', bg:'rgba(249,115,22,0.12)' };
+    case 'medium':   return { label:fpT('Moyenne'),  color:'#eab308', bg:'rgba(234,179,8,0.12)' };
+    case 'low':      return { label:fpT('Basse'),    color:'#94a3b8', bg:'rgba(148,163,184,0.1)' };
+    default:         return { label:fpT('Moyenne'),  color:'#eab308', bg:'rgba(234,179,8,0.12)' };
   }
 }
 
@@ -7323,26 +7323,55 @@ function renderMissions() {
       } catch(_e) { return 0; }
     });
 
-  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', in_progress:'En cours', completed:'Terminée', open:'À démarrer', blocked:'Bloqué' };
+  const statusLabels = { todo:fpT('À démarrer'), inprogress:fpT('En cours'), done:fpT('Complétées'), in_progress:fpT('En cours'), completed:fpT('Terminée'), open:fpT('À démarrer'), blocked:fpT('Bloqué') };
   const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', in_progress:'#2563EB', completed:'#22c55e' };
-  const cats = ['SEO','Performance','Conversion','Local SEO','Concurrent'];
+  const cats = [
+    { value:'SEO', label:fpT('SEO') },
+    { value:'Performance', label:fpT('Performance') },
+    { value:'Conversion', label:fpT('Conversion') },
+    { value:'Local SEO', label:fpT('Local SEO') },
+    { value:'Concurrent', label:fpT('Concurrent') },
+  ];
+  const impactOptions = [
+    { value:'Très élevé', label:fpT('Très élevé') },
+    { value:'Élevé', label:fpT('Élevé') },
+    { value:'Moyen', label:fpT('Moyen') },
+  ];
+  const categoryFilters = [
+    { value:'', label:fpT('Toutes catégories') },
+    { value:'Local SEO', label:fpT('Local SEO') },
+    { value:'Technique', label:fpT('Technique') },
+    { value:'GBP', label:fpT('GBP') },
+    { value:'Réputation', label:fpT('Réputation') },
+    { value:'Performance', label:fpT('Performance') },
+    { value:'Backlinks', label:fpT('Backlinks') },
+    { value:'Monitoring', label:fpT('Monitoring') },
+    { value:'Contenu', label:fpT('Contenu') },
+  ];
 
   const quickWins = STATE.missions.filter(m => m.aiQuickWin && m.status === 'todo').slice(0, 4);
   const critCount = STATE.missions.filter(m => m.priority === 'critical' && m.status !== 'done').length;
   const highCount = STATE.missions.filter(m => m.priority === 'high'     && m.status !== 'done').length;
   const doneCount = STATE.missions.filter(m => m.status === 'done').length;
+  const activeCount = STATE.missions.filter(m => m.status !== 'done').length;
+  const activeMissionsLabel = activeCount === 1
+    ? fpT('1 mission active')
+    : fpT('{count} missions actives', { count:activeCount });
+  const doneMissionsLabel = doneCount === 1
+    ? fpT('1 mission complétée')
+    : fpT('{count} missions complétées', { count:doneCount });
 
   return `
     <div class="fp-section-header" data-fp-anchor="missions-list">
       <div>
-        <h1>Missions IA</h1>
-        <div class="fp-section-sub">Moteur IA · ${STATE.missions.filter(m=>m.status!=='done').length} actives · ${doneCount} complétées</div>
+        <h1>${fpT('Missions IA')}</h1>
+        <div class="fp-section-sub">${fpT('Moteur IA')} · ${activeMissionsLabel} · ${doneMissionsLabel}</div>
       </div>
       <div class="fp-section-actions">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" id="mission-ai-scan" style="gap:6px">
-          ${svgIcon('zap')} Scanner maintenant
+          ${svgIcon('zap')} ${fpT('Scanner maintenant')}
         </button>
-        ${btn('+ Mission','fp-btn fp-btn-primary fp-btn-sm','','id="mission-quick-add-btn"')}
+        ${btn(fpT('+ Mission'),'fp-btn fp-btn-primary fp-btn-sm','','id="mission-quick-add-btn"')}
       </div>
     </div>
 
@@ -7353,21 +7382,34 @@ function renderMissions() {
             const _wip  = STATE.missions.filter(m=>m.status==='inprogress').length;
             const _done = STATE.missions.filter(m=>m.status==='done').length;
             const _crit = STATE.missions.filter(m=>m.priority==='critical'&&m.status!=='done').length;
-            return `<strong>${STATE.missions.length} mission${STATE.missions.length>1?'s':''} IA</strong> : ${_todo} à démarrer · ${_wip} en cours · ${_done} complétées.${_crit>0?' 🚨 '+_crit+' mission(s) critique(s) — action prioritaire requise.':' Continuez votre progression SEO en exécutant les missions planifiées.'}`;
+            const missionCountLabel = STATE.missions.length === 1
+              ? fpT('1 mission IA')
+              : fpT('{count} missions IA', { count:STATE.missions.length });
+            const progressLabel = fpT('À démarrer : {todo} · En cours : {wip} · Complétées : {done}', {
+              todo:_todo,
+              wip:_wip,
+              done:_done,
+            });
+            const priorityNotice = _crit === 1
+              ? fpT('1 mission critique — action prioritaire requise.')
+              : _crit > 1
+                ? fpT('{count} missions critiques — action prioritaire requise.', { count:_crit })
+                : fpT('Continuez votre progression SEO en exécutant les missions planifiées.');
+            return `<strong>${missionCountLabel}</strong> : ${progressLabel}. ${_crit > 0 ? '🚨 ' : ''}${priorityNotice}`;
           })()
-        : "Générez vos premières missions IA pour obtenir un plan d\'action personnalisé basé sur vos audits.",
+        : fpT("Générez vos premières missions IA pour obtenir un plan d\'action personnalisé basé sur vos audits."),
       STATE.missions && STATE.missions.length > 0
-        ? ['Voir les Quick Wins', 'Missions IA', 'Créer une mission']
-        : ['Générer des missions IA', 'Voir la bibliothèque']
+        ? [fpT('Voir les Quick Wins'), fpT('Missions IA'), fpT('Créer une mission')]
+        : [fpT('Générer des missions IA'), fpT('Voir la bibliothèque')]
     )}
 
     <!-- KPIs -->
     <div class="fp-mission-kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
       ${[
-        { label:'Total actives', value: STATE.missions.filter(m=>m.status!=='done').length, color:'#2563EB', icon:'activity' },
-        { label:'Critiques', value: critCount, color:'#ef4444', icon:'alert-triangle' },
-        { label:'Hautes', value: highCount, color:'#f97316', icon:'trending-up' },
-        { label:'Complétées', value: doneCount, color:'#22c55e', icon:'check' },
+        { label:fpT('Total actives'), value:activeCount, color:'#2563EB', icon:'activity' },
+        { label:fpT('Critiques'), value:critCount, color:'#ef4444', icon:'alert-triangle' },
+        { label:fpT('Hautes'), value:highCount, color:'#f97316', icon:'trending-up' },
+        { label:fpT('Complétées'), value:doneCount, color:'#22c55e', icon:'check' },
       ].map(k=>`
         <div class="fp-card" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
           <div style="width:32px;height:32px;border-radius:8px;background:${k.color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -7385,8 +7427,8 @@ function renderMissions() {
     <!-- Quick Wins -->
     <div class="fp-card fp-mb-16" style="padding:14px 16px;border-left:3px solid #22c55e">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <span style="font-size:13px;font-weight:700;color:var(--fp-text)">⚡ Quick Wins IA</span>
-        <span style="font-size:11px;color:var(--fp-text-faint)">${quickWins.length} actions rapides à fort impact</span>
+        <span style="font-size:13px;font-weight:700;color:var(--fp-text)">⚡ ${fpT('Quick Wins IA')}</span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">${fpT('{count} actions rapides à fort impact', { count:quickWins.length })}</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
         ${quickWins.map(m => {
@@ -7400,7 +7442,7 @@ function renderMissions() {
                 <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
                   <span style="font-size:10px;font-weight:600;color:${pm.color};background:${pm.bg};padding:2px 6px;border-radius:4px">${pm.label}</span>
                   <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.impact||'')}</span>
-                  ${m.estimatedTrafficImpact > 0 ? `<span style="font-size:10px;color:#22c55e;font-weight:600">+${m.estimatedTrafficImpact} visites</span>` : ''}
+                  ${m.estimatedTrafficImpact > 0 ? `<span style="font-size:10px;color:#22c55e;font-weight:600">${fpT('+{count} visites', { count:m.estimatedTrafficImpact })}</span>` : ''}
                 </div>
               </div>
             </div>
@@ -7413,33 +7455,33 @@ function renderMissions() {
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <div class="fp-view-toggle" id="mission-view-toggle">
         <button class="fp-view-toggle-btn${STATE.missionView==='list'?' active':''}" data-view="list">${fpT('Liste')}</button>
-        <button class="fp-view-toggle-btn${STATE.missionView==='kanban'?' active':''}" data-view="kanban">Kanban</button>
+        <button class="fp-view-toggle-btn${STATE.missionView==='kanban'?' active':''}" data-view="kanban">${fpT('Kanban')}</button>
         <button class="fp-view-toggle-btn${STATE.missionView==='calendar'?' active':''}" data-view="calendar">${fpT('Calendrier')}</button>
         <button class="fp-view-toggle-btn${STATE.missionView==='library'?' active':''}" data-view="library" style="display:flex;align-items:center;gap:5px">${svgIcon('zap')} Bibliothèque</button>
       </div>
-      <span style="font-size:11px;color:var(--fp-text-faint);margin-left:4px">${filtered.length} missions</span>
+      <span style="font-size:11px;color:var(--fp-text-faint);margin-left:4px">${filtered.length === 1 ? fpT('1 mission') : fpT('{count} missions', { count:filtered.length })}</span>
     </div>
 
     <div class="fp-quick-add fp-mb-16">
       <div class="fp-quick-add-row">
-        <input id="mission-title-input" class="fp-input" placeholder="Titre de la mission…" style="flex:2;min-width:180px"/>
+        <input id="mission-title-input" class="fp-input" placeholder="${fpT('Titre de la mission…')}" style="flex:2;min-width:180px"/>
         <select class="fp-select" id="mission-cat-input">
-          ${cats.map(c=>`<option>${c}</option>`).join('')}
+          ${cats.map(c=>`<option value="${escHtml(c.value)}">${c.label}</option>`).join('')}
         </select>
         <select class="fp-select" id="mission-impact-input">
-          ${['Très élevé','Élevé','Moyen'].map(i=>`<option>${i}</option>`).join('')}
+          ${impactOptions.map(i=>`<option value="${escHtml(i.value)}">${i.label}</option>`).join('')}
         </select>
-        ${btn('Ajouter','fp-btn fp-btn-primary','plus','id="mission-add-btn"')}
+        ${btn(fpT('Ajouter'),'fp-btn fp-btn-primary','plus','id="mission-add-btn"')}
       </div>
     </div>
 
     <div class="fp-filter-bar fp-mb-8" style="gap:8px;flex-wrap:wrap">
       ${['all','todo','inprogress','done'].map(s=>`
-        <button class="fp-filter-tab${STATE.missionFilter===s?' active':''}" data-mission-filter="${s}">${s==='all'?'Tout':statusLabels[s]}</button>
+        <button class="fp-filter-tab${STATE.missionFilter===s?' active':''}" data-mission-filter="${s}">${s==='all'?fpT('Tout'):statusLabels[s]}</button>
       `).join('')}
       <div class="fp-search-input-wrap" style="margin-left:auto">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="fp-search-input" id="mission-search" placeholder="Rechercher…" value="${escHtml(STATE.missionSearch)}" autocomplete="off"/>
+        <input class="fp-search-input" id="mission-search" placeholder="${fpT('Rechercher…')}" value="${escHtml(STATE.missionSearch)}" autocomplete="off"/>
       </div>
       <select class="fp-select" id="mission-sort" style="min-width:140px">
         <option value="date" ${STATE.missionSort==='date'?'selected':''}>${fpT('Trier : Échéance')}</option>
@@ -7448,8 +7490,8 @@ function renderMissions() {
       </select>
     </div>
     <div class="fp-filter-bar fp-mb-12" style="gap:5px;flex-wrap:wrap">
-      ${['','Local SEO','Technique','GBP','Réputation','Performance','Backlinks','Monitoring','Contenu'].map(cat=>`
-        <button class="fp-filter-tab${(STATE.missionCatFilter||'')===(cat)?' active':''}" data-mission-cat="${escHtml(cat)}" style="font-size:11px">${cat||'Toutes catégories'}</button>
+      ${categoryFilters.map(cat=>`
+        <button class="fp-filter-tab${(STATE.missionCatFilter||'')===(cat.value)?' active':''}" data-mission-cat="${escHtml(cat.value)}" style="font-size:11px">${cat.label}</button>
       `).join('')}
     </div>
 
@@ -7474,15 +7516,15 @@ function renderMissions() {
                 <span style="font-size:10px;font-weight:600;color:${pm.color};background:${pm.bg};padding:2px 6px;border-radius:4px">${pm.label}</span>
                 ${badge(m.impact||'',impactColor(m.impact))}
                 ${badge(m.effort||'','#6366f1')}
-                ${stepsTotal>0?`<span style="font-size:10px;color:var(--fp-text-faint)">${stepsDone}/${stepsTotal} étapes</span>`:''}
+                    ${stepsTotal>0?`<span style="font-size:10px;color:var(--fp-text-faint)">${fpT('{done}/{total} étapes', { done:stepsDone, total:stepsTotal })}</span>`:''}
                 ${dueStr?`<span style="font-size:10px;color:var(--fp-text-faint)">📅 ${escHtml(dueStr)}</span>`:''}
-                ${m.estimatedTrafficImpact>0?`<span style="font-size:10px;color:#22c55e;font-weight:600">+${m.estimatedTrafficImpact} visites</span>`:''}
+                ${m.estimatedTrafficImpact>0?`<span style="font-size:10px;color:#22c55e;font-weight:600">${fpT('+{count} visites', { count:m.estimatedTrafficImpact })}</span>`:''}
               </div>
               ${m.aiExplanation?`<div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4;max-width:600px;padding:6px 8px;background:rgba(37,99,235,0.06);border-radius:6px;border-left:2px solid #2563EB22">${escHtml(m.aiExplanation)}</div>`:''}
               ${stepsTotal>0?`<div class="fp-mission-progress" style="margin:6px 0 0;height:3px"><div class="fp-mission-progress-bar" style="width:${pct}%"></div></div>`:''}
             </div>
             <div style="flex-shrink:0;text-align:right">
-              <span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;background:${statusColors[m.status]||'#94a3b8'}22;color:${statusColors[m.status]||'#94a3b8'}">${statusLabels[m.status]||'À faire'}</span>
+              <span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:5px;background:${statusColors[m.status]||'#94a3b8'}22;color:${statusColors[m.status]||'#94a3b8'}">${statusLabels[m.status]||fpT('À faire')}</span>
             </div>
             <div class="fp-hover-toolbar" style="top:50%;transform:translateY(-50%)">
               <button class="fp-hover-toolbar-btn mission-view" data-id="${m.id}" title="${fpT('Détails & étapes')}">${svgIcon('eye')}</button>
@@ -7495,7 +7537,7 @@ function renderMissions() {
             <div style="font-size:40px;margin-bottom:12px;opacity:.5">🤖</div>
             <h3 style="font-size:15px;font-weight:700;color:var(--fp-text);margin:0 0 6px">${fpT('Aucune mission trouvée')}</h3>
             <p style="font-size:12px;color:var(--fp-text-muted);margin:0 0 14px">${fpT('Lancez le scanner IA pour générer des missions automatiquement depuis vos données SEO.')}</p>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="mission-ai-scan-empty" style="gap:6px">${svgIcon('zap')} Scanner maintenant</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="mission-ai-scan-empty" style="gap:6px">${svgIcon('zap')} ${fpT('Scanner maintenant')}</button>
           </div>`:''}
       </div>
     ` : STATE.missionView === 'kanban' ? `
@@ -22392,6 +22434,43 @@ function bindGlobalEvents() {
     "Tous les critères suivis sont présents dans les dernières données synchronisées.": "All tracked criteria are present in the latest synced data.",
     "Dernière synchronisation :": "Last synced:",
     "Aucune synchronisation": "Not synced",
+    "Conversion": "Conversion",
+    "SEO": "SEO",
+    "Technique": "Technical",
+    "GBP": "GBP",
+    "Réputation": "Reputation",
+    "Monitoring": "Monitoring",
+    "Toutes catégories": "All categories",
+    "À démarrer": "To start",
+    "Bloqué": "Blocked",
+    "Missions IA": "AI missions",
+    "Moteur IA": "AI engine",
+    "1 mission active": "1 active mission",
+    "1 mission complétée": "1 mission completed",
+    "{count} missions complétées": "{count} missions completed",
+    "Scanner maintenant": "Scan now",
+    "+ Mission": "+ Mission",
+    "1 mission IA": "1 AI mission",
+    "{count} missions IA": "{count} AI missions",
+    "À démarrer : {todo} · En cours : {wip} · Complétées : {done}": "To do: {todo} · In progress: {wip} · Completed: {done}",
+    "1 mission critique — action prioritaire requise.": "1 critical mission needs priority attention.",
+    "{count} missions critiques — action prioritaire requise.": "{count} critical missions need priority attention.",
+    "Continuez votre progression SEO en exécutant les missions planifiées.": "Keep improving your SEO by completing your planned missions.",
+    "Générez vos premières missions IA pour obtenir un plan d'action personnalisé basé sur vos audits.": "Generate your first AI missions to get a personalized action plan based on your audits.",
+    "Voir les Quick Wins": "View Quick Wins",
+    "Créer une mission": "Create a mission",
+    "Générer des missions IA": "Generate AI missions",
+    "Total actives": "Active missions",
+    "Critiques": "Critical",
+    "Hautes": "High",
+    "Quick Wins IA": "AI Quick Wins",
+    "{count} actions rapides à fort impact": "{count} high-impact quick wins",
+    "+{count} visites": "+{count} visits",
+    "Kanban": "Kanban",
+    "{count} missions": "{count} missions",
+    "1 mission": "1 mission",
+    "Tout": "All",
+    "{done}/{total} étapes": "{done}/{total} steps",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
