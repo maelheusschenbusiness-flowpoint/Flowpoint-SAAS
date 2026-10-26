@@ -7186,7 +7186,7 @@ function renderMissionDetail(m) {
   const done = steps.filter(s => s.done).length;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
   const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e' };
-  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé' };
+  const statusLabels = { todo:fpT('À faire'), inprogress:fpT('En cours'), done:fpT('Terminé') };
   // Normalize legacy status variants (open → todo, in_progress → inprogress, completed → done)
   const effectiveStatus = m.status === 'in_progress' ? 'inprogress' : m.status === 'completed' ? 'done' : (m.status === 'open' || !statusLabels[m.status]) ? 'todo' : m.status;
   const teamMembers = (STATE.team || []);
@@ -7211,7 +7211,7 @@ function renderMissionDetail(m) {
         <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Statut')}</label>
         <select class="fp-input mission-status-select" data-id="${m.id}" style="font-size:12px;padding:5px 8px;height:auto">
           <option value="todo"${effectiveStatus==='todo'?' selected':''}>${fpT('À faire')}</option>
-          <option value="inprogress"${effectiveStatus==='inprogress'?' selected':''}>En cours</option>
+           <option value="inprogress"${effectiveStatus==='inprogress'?' selected':''}>${fpT('En cours')}</option>
           <option value="done"${effectiveStatus==='done'?' selected':''}>${fpT('Terminé')}</option>
         </select>
       </div>
@@ -7222,16 +7222,16 @@ function renderMissionDetail(m) {
                <option value="">${fpT('— Non assigné —')}</option>
                ${assigneeOptions}
              </select>`
-          : `<div style="font-size:11px;color:var(--fp-text-faint);padding:6px 0">Aucun siège d'équipe — <a href="#" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)" style="color:var(--fp-accent)">${fpT('ajouter des membres')}</a></div>`
+           : `<div style="font-size:11px;color:var(--fp-text-faint);padding:6px 0">${fpT("Aucun siège d'équipe —")} <a href="#" onclick="closeFloatPanel();navigate('billing');setTimeout(function(){navigateSub('plans')},80)" style="color:var(--fp-accent)">${fpT('ajouter des membres')}</a></div>`
         }
       </div>
     </div>
 
     ${steps.length > 0 ? `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted)">Étapes · ${done}/${steps.length}</div>
+         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--fp-text-muted)">${fpT('Étapes · {done}/{total}', { done, total:steps.length })}</div>
         <div style="font-size:11px;color:${pct===100?'#22c55e':'var(--fp-accent)'}">
-          ${pct===100?'✓ Terminé':pct+'%'}
+           ${pct===100?`✓ ${fpT('Terminé')}`:pct+'%'}
         </div>
       </div>
       <div class="fp-mission-progress"><div class="fp-mission-progress-bar" style="width:${pct}%"></div></div>
@@ -7248,10 +7248,10 @@ function renderMissionDetail(m) {
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
       <button class="fp-btn fp-btn-ghost fp-btn-sm mission-delete-detail" data-id="${m.id}">
-        ${svgIcon('trash')} Supprimer
+        ${svgIcon('trash')} ${fpT('Supprimer')}
       </button>
     </div>
-    <div style="font-size:11px;color:var(--fp-text-faint);margin-top:14px">Échéance : ${fmtDate(m.date)}</div>
+    <div style="font-size:11px;color:var(--fp-text-faint);margin-top:14px">${fpT('Échéance :')} ${fmtDate(m.date)}</div>
   `;
 }
 
@@ -22527,6 +22527,8 @@ function bindGlobalEvents() {
     "1 h 30 min": "1 hr 30 min",
     "2 h": "2 hr",
     "3 h": "3 hr",
+    "Étapes · {done}/{total}": "Steps · {done}/{total}",
+    "Échéance :": "Due date:",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {

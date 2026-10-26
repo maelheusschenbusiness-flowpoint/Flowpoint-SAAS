@@ -313,6 +313,43 @@ describe("private dashboard static English localization", () => {
     expect(dashboardSource).toContain("renderLibCard({ ...t, category: cat })");
   });
 
+  it("translates mission-detail controls without changing mission content or status IDs", () => {
+    const expectedKeys = [
+      "À faire",
+      "En cours",
+      "Terminé",
+      "Statut",
+      "Assigné à",
+      "— Non assigné —",
+      "Aucun siège d'équipe —",
+      "ajouter des membres",
+      "Étapes · {done}/{total}",
+      "Aucune étape définie pour cette mission.",
+      "Supprimer",
+      "Échéance :",
+    ];
+    const referencedKeys = translationKeysInFunction("renderMissionDetail");
+
+    for (const key of expectedKeys) {
+      expect(referencedKeys.has(key), `mission detail should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    for (const status of ["todo", "inprogress", "done"]) {
+      expect(dashboardSource).toContain(`value="${status}"`);
+    }
+    for (const contentBinding of [
+      "escHtml(m.title)",
+      "badge(m.category,'#2563EB')",
+      "badge(m.impact, impactColor(m.impact))",
+      "escHtml(s.text)",
+      "escHtml(s.tag)",
+      "escHtml(tm.name || tm.email || tm.id)",
+    ]) {
+      expect(dashboardSource).toContain(contentBinding);
+    }
+  });
+
   it("translates calendar chrome while preserving mission and appointment data", () => {
     const expectedKeysByFunction: Record<string, string[]> = {
       renderMissionCalendar: [
