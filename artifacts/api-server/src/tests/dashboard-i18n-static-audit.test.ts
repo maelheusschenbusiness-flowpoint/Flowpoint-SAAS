@@ -723,6 +723,152 @@ describe("private dashboard static English localization", () => {
     }
   });
 
+  it("audits Overview root and sub-pages while keeping dynamic values raw", () => {
+    const overviewFunctions = [
+      "renderOverview",
+      "renderOverviewInsights",
+      "renderOverviewQuickWins",
+      "renderOverviewChecklist",
+    ];
+    const directKeys = new Set(
+      overviewFunctions.flatMap((name) => [...translationKeysInFunction(name)]),
+    );
+    expect(directKeys.size).toBeGreaterThan(0);
+    for (const key of directKeys) {
+      expect(englishKeys.has(key), `Overview should translate "${key}"`).toBe(true);
+    }
+
+    const dynamicDisplayKeys = [
+      "Santé Workspace",
+      "Trafic GSC",
+      "Taux conv.",
+      "Audits SEO",
+      "Concurrents",
+      "Rapports",
+      "Alertes",
+      "IA Copilot",
+      "IA Scoring",
+      "IA Powered",
+      "Silencieux",
+      "Audit SEO",
+      "Rapport Exécutif",
+      "Analyser Concurrents",
+      "Nouveau Monitor",
+      "Créer Mission",
+      "Conversion IA",
+      "Local SEO",
+      "Voir les Alertes",
+      "Excellent",
+      "Moyen",
+      "À améliorer",
+      "Clics GSC",
+      "Impressions",
+      "Sessions GA4",
+      "Conversions",
+      "30 derniers jours",
+      "{count} pts",
+      "Lun",
+      "Mar",
+      "Mer",
+      "Jeu",
+      "Ven",
+      "Sam",
+      "Dim",
+      "Technique",
+      "Performance",
+      "CRO",
+      "GBP",
+      "Réputation",
+      "Analytics",
+      "Monitor",
+      "Conversion",
+      "Contenu",
+      "Urgent",
+      "Haute",
+      "Normale",
+      "Critique",
+      "Élevé",
+      "Moyen",
+      "Tous",
+      "Critiques",
+      "Opportunités",
+      "Premier audit",
+      "5 audits réalisés",
+      "10 audits réalisés",
+      "Score moyen ≥ 80",
+      "Premier moniteur configuré",
+      "5 moniteurs actifs",
+      "Première mission complétée",
+      "10 missions complétées",
+      "Premier rapport généré",
+      "Premier mot-clé suivi",
+      "10 mots-clés suivis",
+      "Premier concurrent ajouté",
+      "3 jours consécutifs",
+      "7 jours consécutifs",
+      "30 jours consécutifs",
+      "Performance technique",
+      "Présence locale",
+      "Réputation & avis",
+      "Contenus & engagement",
+      "Score PageSpeed Mobile > 80 sur tous les sites",
+      "Images converties en WebP",
+      "Balise title unique sur chaque page",
+      "Sitemap XML soumis à Google Search Console",
+      "Schema markup LocalBusiness en place",
+      "Fiche GBP complète à 100% (photos, horaires, description)",
+      "Citations NAP cohérentes sur les 20 principaux annuaires",
+      "Pages locales créées pour chaque zone géographique",
+      "Mots-clés géolocalisés dans les balises h1",
+      "Zone de chalandise définie sur GBP",
+      "Note Google moyenne > 4.5 étoiles",
+      "Réponse à tous les avis < 48h",
+      "Processus de collecte d'avis en place",
+      "Présence sur Trustpilot / PagesJaunes",
+      "Alertes Google My Business configurées",
+      "Google Posts publiés chaque semaine",
+      "FAQ schema markup sur les pages clés",
+      "Blog avec articles locaux (1/mois minimum)",
+      'Page "Témoignages clients" à jour',
+      "Voir les détails",
+      "Voir les audits",
+      "Corriger maintenant",
+      "Voir Local SEO",
+      "Voir le rapport SLA",
+      "Partager les rapports",
+      "Analyser le concurrent",
+      "Voir mes missions",
+      "Voir les mots-clés",
+      "Renouveler maintenant",
+      "Voir les alertes",
+      "Optimiser les audits",
+      "Répondre aux avis",
+      "Créer pages locales",
+      "Plan d'action complet",
+      "Me guider sur la première",
+      "Créer toutes les missions",
+      "Trier par gain",
+      "Qu'est-ce qui manque ?",
+      "Plan d'action priorisé",
+      "Corriger {site}",
+    ];
+    for (const key of dynamicDisplayKeys) {
+      expect(englishKeys.has(key), `Overview dynamic label should translate "${key}"`).toBe(true);
+    }
+
+    expect(dashboardSource).toContain(
+      "return OVERVIEW_DEFAULT_CHECKLIST_LABELS[item && item.id] === raw ? fpT(raw) : raw;",
+    );
+    expect(dashboardSource).toContain("data-qw-title=\"${escHtml(q.title||'Mission Quick Win')}\"");
+    expect(dashboardSource).toContain('data-q="${escHtml(_chipQuery(c))}"');
+    expect(dashboardSource).toContain("escHtml(fpT(_chipLabel(c)))");
+    expect(dashboardSource).toContain("escHtml(fpT(m.name))");
+    expect(dashboardSource).toContain("escHtml(quickWinDisplayGain(q.gain))");
+    expect(dashboardSource).toContain("msg: STATE.activityEvents[0].label");
+    expect(dashboardSource).toContain("competitor: STATE.competitors[0].name");
+    expect(dashboardSource).toContain("STATE.overviewInsightFilter='${f}'");
+  });
+
   it("translates Local Presence controls while preserving synchronized profile text", () => {
     const expectedKeys = [
       "Analyse des fiches GBP…",

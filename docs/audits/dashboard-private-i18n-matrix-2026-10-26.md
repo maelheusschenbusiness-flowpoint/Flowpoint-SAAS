@@ -9,15 +9,16 @@
 
 - L’inventaire ci-dessous provient de `PAGE_NAMES`, `SUB_NAVS` et du dispatch de `_doRender` dans le dashboard servi.
 - Il recense 36 pages nommées, 34 structures de sous-navigation et 167 sous-routes (201 entrées de navigation en comptant les 34 entrées racines). Le dispatch comporte 47 cas : les pages nommées, trois routes d’add-on autonomes et huit alias/redirections.
-- Les contrôles statiques ciblés vérifient les clés `fpT`/`t`, les libellés de statut, les toasts/dialogues natifs et le texte des templates HTML ainsi que les affectations DOM des sept scripts d’add-on suivis. L’audit statique de Missions est terminé pour les surfaces recensées ci-dessous; l’inventaire exhaustif des autres pages du dashboard principal reste **EN COURS**. Les balayages heuristiques ne sont pas comptés comme des anomalies confirmées.
+- Les contrôles statiques ciblés vérifient les clés `fpT`/`t`, les libellés de statut, les toasts/dialogues natifs et le texte des templates HTML ainsi que les affectations DOM des sept scripts d’add-on suivis. Les audits statiques de Missions et d’Overview sont terminés pour les surfaces recensées ci-dessous; l’inventaire exhaustif des autres pages du dashboard principal reste **EN COURS**. Les balayages heuristiques ne sont pas comptés comme des anomalies confirmées.
 - La vérification navigateur des routes privées est **BLOCKED** : aucune session authentifiée n’est utilisée et aucun contournement d’authentification n’est autorisé.
 - Cette matrice suit le statut de l’audit de l’interface en anglais. Elle ne certifie pas le rendu navigateur ni les autres langues.
 
 ## Bilan confirmé à cette étape
 
 - Le décompte Missions est maintenant confirmé : **8 catégories, 73 cartes et 301 chaînes de champs distinctes** (titres, impacts, efforts, gains et étapes). **297** n’avaient pas encore de clé anglaise et sont maintenant couvertes; **4** étaient déjà dans le catalogue. La sous-page de recommandations IA contient **14 modèles** et son test vérifie **38 clés** de texte et de données dynamiques.
-- Les tests ciblés rapportent **15 réussites sur 15**, dont **10 tests consacrés à Missions**, sans clé anglaise manquante dans les surfaces contrôlées. Les tests vérifient aussi que les valeurs de missions, les catégories internes, les identifiants de statut et les événements restent inchangés.
+- Les tests ciblés rapportent **16 réussites sur 16**, dont **10 tests consacrés à Missions** et un test couvrant Overview. Aucune clé anglaise manquante dans les surfaces contrôlées. Les tests vérifient aussi que les valeurs de missions, les catégories internes, les identifiants de statut et les événements restent inchangés.
 - L’audit statique de Missions couvre maintenant la liste, le kanban, le calendrier, l’agenda, les vues filtrées, la bibliothèque, ses 301 valeurs, les recommandations IA, le formulaire manuel et le panneau de détail. Les contenus de bibliothèque et recommandations créés par l’application sont signalés comme templates; seuls les textes exacts reconnus sont traduits à l’affichage. Les données transmises et stockées restent brutes. Les missions manuelles ou anciennes sans provenance restent inchangées.
+- Overview est audité sur la racine, Insights, Quick Wins et Checklist. Les libellés dynamiques des modules, filtres, catégories, gains, accomplissements, puces IA et éléments par défaut de checklist ont une couverture anglaise. Les assertions statiques confirment que les prompts IA, réponses IA, valeurs enregistrées des missions/checklists, messages d’activité et données client restent bruts; les navigateurs ne sont pas certifiés.
 - Le décompte global des anomalies restantes et des faux positifs est **non établi** : le balayage des templates du dashboard principal n’est pas encore exhaustif et ses candidats restent à classifier.
 
 ## Décomptes exacts par page à ce jalon
@@ -25,7 +26,8 @@
 | Page | Comptage confirmé | Audit statique | Navigateur authentifié |
 | --- | --- | --- | --- |
 | `missions` | 8 catégories de bibliothèque · 73 cartes · 301 chaînes de champs distinctes (297 nouvelles clés anglaises, 4 déjà couvertes) · 14 modèles IA · 38 clés vérifiées sur la sous-page IA · 10 tests Missions | PASS — 0 clé manquante dans les surfaces contrôlées | BLOCKED |
-| Toutes les autres pages recensées | Non comptées à ce jalon; « non compté » ne signifie pas zéro anomalie. | EN COURS | BLOCKED |
+| `overview` | Racine · `insights` · `quick-wins` · `checklist` · libellés statiques et dynamiques vérifiés | PASS — 0 clé manquante dans les surfaces contrôlées | BLOCKED |
+| Toutes les autres pages recensées hors `overview` et `missions` | Non comptées à ce jalon; « non compté » ne signifie pas zéro anomalie. | EN COURS | BLOCKED |
 
 ## Inventaire des pages et sous-routes
 
@@ -33,7 +35,7 @@
 
 | Page / route | Sous-routes recensées | Audit statique des templates | Navigateur authentifié |
 | --- | --- | --- | --- |
-| `overview` | (racine), `insights`, `quick-wins`, `checklist` | EN COURS | BLOCKED |
+| `overview` | (racine), `insights`, `quick-wins`, `checklist` | PASS — détail ci-dessus | BLOCKED |
 | `missions` | (racine), `todo`, `inprogress`, `done`, `ai` | PASS — comptage exact ci-dessus | BLOCKED |
 | `audits` | (racine), `analysis`, `compare`, `history`, `opportunites` | EN COURS | BLOCKED |
 | `monitors` | (racine), `performance`, `incidents`, `config`, `sla` | EN COURS | BLOCKED |

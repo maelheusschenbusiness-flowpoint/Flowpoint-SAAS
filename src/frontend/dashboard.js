@@ -5979,11 +5979,11 @@ function renderOverview() {
     : null;
 
   const _previewPriorities = [
-    { title:fpT('Répondre aux avis Google en attente'), impact:fpT('Élevé'), roi:'+12% visibilité locale', time:'30 min', urgency:fpT('Urgent'), color:'#ef4444', icon:'⭐', route:'local-seo' },
-    { title:fpT('Corriger CLS mobile'), impact:fpT('Élevé'), roi:'+8 pts Core Web Vitals', time:'2h', urgency:fpT('Haute'), color:'#f59e0b', icon:'📱', route:'audits' },
-    { title:fpT('Créer des pages locales ciblées'), impact:fpT('Très élevé'), roi:'+40% trafic local estimé', time:'3h', urgency:fpT('Haute'), color:'#2563EB', icon:'📍', route:'local-seo' },
-    { title:fpT('Corriger balises meta manquantes'), impact:fpT('Moyen'), roi:'+6 pts SEO moyen', time:'45 min', urgency:fpT('Normale'), color:'#8b5cf6', icon:'🏷️', route:'audits' },
-    { title:fpT('Lancer un nouvel audit SEO'), impact:fpT('Élevé'), roi:'Gain estimé ~15 pts', time:'5 min', urgency:fpT('Urgente'), color:'#ef4444', icon:'🔍', route:'audits' },
+    { title:fpT('Répondre aux avis Google en attente'), impact:fpT('Élevé'), roi:fpT('+12% visibilité locale'), time:'30 min', urgency:fpT('Urgent'), color:'#ef4444', icon:'⭐', route:'local-seo' },
+    { title:fpT('Corriger CLS mobile'), impact:fpT('Élevé'), roi:fpT('+8 pts Core Web Vitals'), time:'2h', urgency:fpT('Haute'), color:'#f59e0b', icon:'📱', route:'audits' },
+    { title:fpT('Créer des pages locales ciblées'), impact:fpT('Très élevé'), roi:fpT('+40% trafic local estimé'), time:'3h', urgency:fpT('Haute'), color:'#2563EB', icon:'📍', route:'local-seo' },
+    { title:fpT('Corriger balises meta manquantes'), impact:fpT('Moyen'), roi:fpT('+6 pts SEO moyen'), time:'45 min', urgency:fpT('Normale'), color:'#8b5cf6', icon:'🏷️', route:'audits' },
+    { title:fpT('Lancer un nouvel audit SEO'), impact:fpT('Élevé'), roi:fpT('Gain estimé ~15 pts'), time:'5 min', urgency:fpT('Urgente'), color:'#ef4444', icon:'🔍', route:'audits' },
   ];
   const priorities = _liveMissions
     ? _liveMissions
@@ -5995,6 +5995,8 @@ function renderOverview() {
           roi:     m.estimated_traffic_impact ? `+${m.estimated_traffic_impact} visites/mois` : (m.description || '').slice(0, 55) + '…',
           time:    m.effort || '—',
           urgency: m.priority === 'critical' ? 'Urgent' : m.priority === 'high' ? 'Haute' : 'Normale',
+          mission: m,
+          trafficImpact: m.estimated_traffic_impact || null,
           color:   _priColor(m.priority),
           icon:    _catIcon(m.category),
           route:   'missions',
@@ -6013,28 +6015,29 @@ function renderOverview() {
     const _hasKeywords = (STATE.keywords || []).length > 0;
     if (_hasMonitorsDown) {
       const _downList = (STATE.monitors || []).filter(m => m.status === 'down');
-      recs.push({ title: `${_downList.length} monitor${_downList.length > 1 ? 's' : ''} en alerte — site${_downList.length > 1 ? 's' : ''} inaccessible${_downList.length > 1 ? 's' : ''}`, impact: fpT('Critique'), roi: 'Indisponibilité détectée', time: '5 min', urgency: fpT('Urgent'), color: '#ef4444', icon: '🚨', route: 'monitors' });
+      recs.push({ title: fpT('Monitors en alerte : {count} site(s) inaccessible(s)', { count: _downList.length }), impact: fpT('Critique'), roi: fpT('Indisponibilité détectée'), time: '5 min', urgency: fpT('Urgent'), color: '#ef4444', icon: '🚨', route: 'monitors' });
     }
     if (avg > 0 && avg < 50) {
-      recs.push({ title: `Score SEO critique (${avg}/100) — corriger les erreurs prioritaires`, impact: fpT('Élevé'), roi: `+${Math.round((70 - avg) * 0.4)} pts estimés`, time: '2h', urgency: fpT('Haute'), color: '#f59e0b', icon: '🔍', route: 'audits' });
+      recs.push({ title: fpT('Score SEO critique ({score}/100) — corriger les erreurs prioritaires', { score: avg }), impact: fpT('Élevé'), roi: fpT('+{count} pts estimés', { count: Math.round((70 - avg) * 0.4) }), time: '2h', urgency: fpT('Haute'), color: '#f59e0b', icon: '🔍', route: 'audits' });
     } else if (avg >= 50 && avg < 70 && _critIssues > 0) {
-      recs.push({ title: `${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''} — amélioration rapide possible`, impact: fpT('Élevé'), roi: `+${Math.round(_critIssues * 1.5)} pts SEO estimés`, time: '1h', urgency: fpT('Haute'), color: '#f59e0b', icon: '⚠️', route: 'audits' });
+      const _criticalCopy = _critIssues === 1 ? fpT('1 erreur critique — amélioration rapide possible') : fpT('{count} erreurs critiques — amélioration rapide possible', { count: _critIssues });
+      recs.push({ title: _criticalCopy, impact: fpT('Élevé'), roi: fpT('+{count} pts SEO estimés', { count: Math.round(_critIssues * 1.5) }), time: '1h', urgency: fpT('Haute'), color: '#f59e0b', icon: '⚠️', route: 'audits' });
     }
     if (!_gscConnected) {
-      recs.push({ title: fpT('Connecter Google Search Console pour débloquer vos données de trafic'), impact: fpT('Élevé'), roi: 'Données SEO réelles + keywords', time: '3 min', urgency: fpT('Haute'), color: '#2563EB', icon: '🔗', route: 'settings' });
+      recs.push({ title: fpT('Connecter Google Search Console pour débloquer vos données de trafic'), impact: fpT('Élevé'), roi: fpT('Données SEO réelles + keywords'), time: '3 min', urgency: fpT('Haute'), color: '#2563EB', icon: '🔗', route: 'settings' });
     }
     if (!_ga4Connected) {
-      recs.push({ title: fpT('Connecter Google Analytics 4 pour suivre vos conversions'), impact: fpT('Moyen'), roi: 'Entonnoir + taux de conv. réels', time: '3 min', urgency: fpT('Normale'), color: '#2563EB', icon: '📊', route: 'settings' });
+      recs.push({ title: fpT('Connecter Google Analytics 4 pour suivre vos conversions'), impact: fpT('Moyen'), roi: fpT('Entonnoir + taux de conv. réels'), time: '3 min', urgency: fpT('Normale'), color: '#2563EB', icon: '📊', route: 'settings' });
     }
     if (!_hasGbp && localScore > 0 && localScore < 60) {
-      recs.push({ title: fpT('Fiche Google Business Profile incomplète — optimiser pour le Local Pack'), impact: fpT('Élevé'), roi: '+trafic local estimé', time: '20 min', urgency: fpT('Haute'), color: '#22c55e', icon: '📍', route: 'local-seo' });
+      recs.push({ title: fpT('Fiche Google Business Profile incomplète — optimiser pour le Local Pack'), impact: fpT('Élevé'), roi: fpT('+trafic local estimé'), time: '20 min', urgency: fpT('Haute'), color: '#22c55e', icon: '📍', route: 'local-seo' });
     }
     if (_hasKeywords) {
       const _lowKw = (STATE.keywords || []).filter(k => k.position > 10).length;
-      if (_lowKw > 0) recs.push({ title: `${_lowKw} mot${_lowKw > 1 ? 's' : ''}-clé${_lowKw > 1 ? 's' : ''} en page 2+ — potentiel de remontée`, impact: fpT('Moyen'), roi: `+${Math.min(999, _lowKw * 12)} visites/mois estimées`, time: '1h', urgency: fpT('Normale'), color: '#8b5cf6', icon: '🔑', route: 'audits' });
+      if (_lowKw > 0) recs.push({ title: fpT('{count} mot(s)-clé(s) en page 2+ — potentiel de remontée', { count: _lowKw }), impact: fpT('Moyen'), roi: fpT('+{count} visites/mois estimées', { count: Math.min(999, _lowKw * 12) }), time: '1h', urgency: fpT('Normale'), color: '#8b5cf6', icon: '🔑', route: 'audits' });
     }
     if (recs.length === 0 && _auditUrl) {
-      recs.push({ title: `Relancer un audit complet de ${_auditUrl}`, impact: fpT('Moyen'), roi: 'Vérifier les évolutions récentes', time: '5 min', urgency: fpT('Normale'), color: '#2563EB', icon: '🔍', route: 'audits' });
+      recs.push({ title: fpT('Relancer un audit complet de {url}', { url: _auditUrl }), impact: fpT('Moyen'), roi: fpT('Vérifier les évolutions récentes'), time: '5 min', urgency: fpT('Normale'), color: '#2563EB', icon: '🔍', route: 'audits' });
     }
     return recs.slice(0, 5);
   }
@@ -6048,34 +6051,34 @@ function renderOverview() {
     const _hasCompetitors = (STATE.competitors || []).length > 0;
     if (avg > 0 && avg < 70) {
       const gain = Math.max(5, Math.round((70 - avg) * 0.5));
-      opps.push({ title: `Améliorer le score SEO de ${_auditDomain || 'votre site'}`, score: avg, roi: `+${gain} pts estimés`, type: 'SEO', color: '#2563EB', icon: '🔍', desc: `Score actuel : ${avg}/100 — des corrections techniques rapides peuvent générer un gain significatif` });
+      opps.push({ title: `Améliorer le score SEO de ${_auditDomain || 'votre site'}`, displayTitle: fpT('Améliorer le score SEO de {domain}', { domain: _auditDomain || fpT('votre site') }), score: avg, roi: `+${gain} pts estimés`, displayRoi: fpT('+{count} pts estimés', { count: gain }), type: 'SEO', color: '#2563EB', icon: '🔍', desc: `Score actuel : ${avg}/100 — des corrections techniques rapides peuvent générer un gain significatif`, displayDesc: fpT('Score actuel : {score}/100 — des corrections techniques rapides peuvent générer un gain significatif', { score: avg }) });
     }
     if (_critIssues > 0) {
-      opps.push({ title: `Corriger ${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''}`, score: Math.max(10, 80 - _critIssues * 3), roi: 'Impact SEO direct', type: 'Technique', color: '#ef4444', icon: '⚠️', desc: `${_critIssues} problème${_critIssues > 1 ? 's' : ''} bloquant${_critIssues > 1 ? 's' : ''} l'indexation — correctifs prioritaires` });
+      opps.push({ title: `Corriger ${_critIssues} erreur${_critIssues > 1 ? 's' : ''} critique${_critIssues > 1 ? 's' : ''}`, displayTitle: fpT(_critIssues === 1 ? 'Corriger 1 erreur critique' : 'Corriger {count} erreurs critiques', { count: _critIssues }), score: Math.max(10, 80 - _critIssues * 3), roi: 'Impact SEO direct', displayRoi: fpT('Impact SEO direct'), type: 'Technique', color: '#ef4444', icon: '⚠️', desc: `${_critIssues} problème${_critIssues > 1 ? 's' : ''} bloquant${_critIssues > 1 ? 's' : ''} l'indexation — correctifs prioritaires`, displayDesc: fpT(_critIssues === 1 ? '1 problème bloque l’indexation — correctif prioritaire' : '{count} problèmes bloquent l’indexation — correctifs prioritaires', { count: _critIssues }) });
     }
     if (!_gscConnected) {
-      opps.push({ title: 'Débloquer vos positions réelles sur Google', score: 90, roi: fpT('Données SEO complètes'), type: 'SEO', color: '#22c55e', icon: '🔗', desc: 'Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels' });
+      opps.push({ title: 'Débloquer vos positions réelles sur Google', displayTitle: fpT('Débloquer vos positions réelles sur Google'), score: 90, roi: fpT('Données SEO complètes'), displayRoi: fpT('Données SEO complètes'), type: 'SEO', color: '#22c55e', icon: '🔗', desc: 'Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels', displayDesc: fpT('Connectez Google Search Console pour voir vos mots-clés, impressions et clics réels') });
     }
     if (_hasKeywords) {
       const _page2 = (STATE.keywords || []).filter(k => k.position > 10 && k.position <= 20);
-      if (_page2.length > 0) opps.push({ title: `${_page2.length} mot${_page2.length > 1 ? 's' : ''}-clé${_page2.length > 1 ? 's' : ''} proche${_page2.length > 1 ? 's' : ''} de la page 1`, score: 85, roi: `+${Math.min(999, _page2.length * 15)} visites/mois`, type: 'SEO', color: '#2563EB', icon: '🔑', desc: 'Positions 11-20 — contenu ciblé ou netlinking pour décrocher la page 1' });
+      if (_page2.length > 0) opps.push({ title: `${_page2.length} mot${_page2.length > 1 ? 's' : ''}-clé${_page2.length > 1 ? 's' : ''} proche${_page2.length > 1 ? 's' : ''} de la page 1`, displayTitle: fpT(_page2.length === 1 ? '1 mot-clé proche de la page 1' : '{count} mots-clés proches de la page 1', { count: _page2.length }), score: 85, roi: `+${Math.min(999, _page2.length * 15)} visites/mois`, displayRoi: fpT('+{count} visites/mois', { count: Math.min(999, _page2.length * 15) }), type: 'SEO', color: '#2563EB', icon: '🔑', desc: 'Positions 11-20 — contenu ciblé ou netlinking pour décrocher la page 1', displayDesc: fpT('Positions 11–20 — contenu ciblé ou netlinking pour décrocher la page 1') });
     }
     if (_hasCompetitors) {
       const _topComp = (STATE.competitors || []).sort((a, b) => (b.domain_rating || 0) - (a.domain_rating || 0))[0];
-      if (_topComp) opps.push({ title: `Analyser les forces de ${_topComp.domain || _topComp.name || 'votre concurrent'}`, score: 78, roi: 'Opportunités de différenciation', type: 'Concurrence', color: '#f59e0b', icon: '⚔️', desc: 'Identifier les mots-clés gagnés par vos concurrents que vous n\'avez pas encore' });
+      if (_topComp) opps.push({ title: `Analyser les forces de ${_topComp.domain || _topComp.name || 'votre concurrent'}`, displayTitle: fpT('Analyser les forces de {competitor}', { competitor: _topComp.domain || _topComp.name || fpT('votre concurrent') }), score: 78, roi: 'Opportunités de différenciation', displayRoi: fpT('Opportunités de différenciation'), type: 'Concurrence', color: '#f59e0b', icon: '⚔️', desc: 'Identifier les mots-clés gagnés par vos concurrents que vous n\'avez pas encore', displayDesc: fpT('Repérer les mots-clés où vos concurrents vous devancent') });
     }
     if (opps.length < 2) {
-      opps.push({ title: 'Générer des missions IA personnalisées', score: 95, roi: 'Plan d\'action sur mesure', type: 'IA', color: '#8b5cf6', icon: '🧠', desc: 'L\'IA analyse vos audits, keywords et monitors pour créer un plan de croissance adapté à votre situation' });
+      opps.push({ title: 'Générer des missions IA personnalisées', displayTitle: fpT('Générer des missions IA personnalisées'), score: 95, roi: 'Plan d\'action sur mesure', displayRoi: fpT('Plan d’action sur mesure'), type: 'IA', color: '#8b5cf6', icon: '🧠', desc: 'L\'IA analyse vos audits, keywords et monitors pour créer un plan de croissance adapté à votre situation', displayDesc: fpT('L’IA analyse vos audits, mots-clés et monitors pour créer un plan de croissance adapté à votre situation') });
     }
     return opps.slice(0, 5);
   }
 
   const _previewOpps = [
-    { title:'Optimiser les pages locales', score:94, roi:'Fort potentiel local détecté', type:'Local SEO', color:'#22c55e', icon:'📍', desc:'Pages locales manquantes sur vos zones cibles — opportunité de capture' },
-    { title:'Mots-clés à fort potentiel', score:87, roi:'Trafic organique additionnel', type:'SEO', color:'#2563EB', icon:'🔑', desc:'Requêtes à volume moyen · faible difficulté · positionnement possible' },
-    { title:'CTA mobile à optimiser', score:82, roi:'+18% taux conversion estimé', type:'CRO', color:'#8b5cf6', icon:'📱', desc:'Trafic mobile dominant — visibilité du bouton principal à améliorer' },
-    { title:'Avis Google sans réponse', score:79, roi:'+0.4 note Google estimée', type:'Réputation', color:'#f59e0b', icon:'⭐', desc:'Impact direct Local Pack · Répondre sous 24h recommandé' },
-    { title:'Duplicate content détecté', score:71, roi:'Potentiel SEO technique', type:'Technique', color:'#06b6d4', icon:'🔄', desc:'Canonicals manquants — pages dupliquées pénalisent l\'indexation' },
+    { title:'Optimiser les pages locales', displayTitle:fpT('Optimiser les pages locales'), score:94, roi:'Fort potentiel local détecté', displayRoi:fpT('Fort potentiel local détecté'), type:'Local SEO', color:'#22c55e', icon:'📍', desc:'Pages locales manquantes sur vos zones cibles — opportunité de capture', displayDesc:fpT('Pages locales manquantes sur vos zones cibles — opportunité de capture') },
+    { title:'Mots-clés à fort potentiel', displayTitle:fpT('Mots-clés à fort potentiel'), score:87, roi:'Trafic organique additionnel', displayRoi:fpT('Trafic organique additionnel'), type:'SEO', color:'#2563EB', icon:'🔑', desc:'Requêtes à volume moyen · faible difficulté · positionnement possible', displayDesc:fpT('Requêtes à volume moyen · faible difficulté · positionnement possible') },
+    { title:'CTA mobile à optimiser', displayTitle:fpT('CTA mobile à optimiser'), score:82, roi:'+18% taux conversion estimé', displayRoi:fpT('+18% taux conversion estimé'), type:'CRO', color:'#8b5cf6', icon:'📱', desc:'Trafic mobile dominant — visibilité du bouton principal à améliorer', displayDesc:fpT('Trafic mobile dominant — visibilité du bouton principal à améliorer') },
+    { title:'Avis Google sans réponse', displayTitle:fpT('Avis Google sans réponse'), score:79, roi:'+0.4 note Google estimée', displayRoi:fpT('+0.4 note Google estimée'), type:'Réputation', color:'#f59e0b', icon:'⭐', desc:'Impact direct Local Pack · Répondre sous 24h recommandé', displayDesc:fpT('Impact direct Local Pack · Répondre sous 24h recommandé') },
+    { title:'Duplicate content détecté', displayTitle:fpT('Duplicate content détecté'), score:71, roi:'Potentiel SEO technique', displayRoi:fpT('Potentiel SEO technique'), type:'Technique', color:'#06b6d4', icon:'🔄', desc:'Canonicals manquants — pages dupliquées pénalisent l\'indexation', displayDesc:fpT('Canonicals manquants — pages dupliquées pénalisent l’indexation') },
   ];
   const _quickWinMissions = _liveMissions ? _liveMissions.filter(m => m.ai_quick_win || m.aiQuickWin) : [];
   const _oppSource = _quickWinMissions.length > 0 ? _quickWinMissions : (_liveMissions || []);
@@ -6090,6 +6093,8 @@ function renderOverview() {
           color: '#22c55e',
           icon:  _catIcon(m.category),
           desc:  (m.description || m.title).slice(0, 80),
+          mission: m,
+          trafficImpact: m.estimated_traffic_impact || null,
         }))
     : (PREVIEW_MODE ? _previewOpps : _genSmartOpps());
 
@@ -6113,7 +6118,7 @@ function renderOverview() {
         .slice(0, 4).map(function(e) {
           var _ts = e.createdAt || e.created_at;
           var mins = Math.round((Date.now() - new Date(_ts).getTime()) / 60000);
-          var time = mins < 1 ? 'À l\'instant' : mins < 60 ? 'Il y a ' + mins + ' min' : mins < 1440 ? 'Il y a ' + Math.round(mins/60) + 'h' : 'Il y a ' + Math.round(mins/1440) + 'j';
+          var time = mins < 1 ? fpT('À l\'instant') : mins < 60 ? fpT('Il y a {count} min', { count: mins }) : mins < 1440 ? fpT('Il y a {count} h', { count: Math.round(mins/60) }) : fpT('Il y a {count} j', { count: Math.round(mins/1440) });
           var typeMap = { audit:'info', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'info' };
           var iconMap = { audit:'🔍', monitor:'📡', alert:'⚠️', report:'📄', team:'👥' };
           return { time: time, type: typeMap[e.type] || 'info', msg: e.label || '', icon: iconMap[e.type] || '📌' };
@@ -6126,7 +6131,7 @@ function renderOverview() {
   var _gscPrev    = STATE.overview?.organicGrowthPct ?? null;
   var _convCurr   = conversionRate != null ? conversionRate.toFixed(2) + '%' : '—';
   var _localCurr  = localScore > 0 ? localScore + '%' : '—';
-  var _traficCurr = _gscClicks != null ? _gscClicks.toLocaleString(getLocale()) + ' clics' : '—';
+   var _traficCurr = _gscClicks != null ? fpT('{count} clics', { count: _gscClicks.toLocaleString(getLocale()) }) : '—';
   // Forecast labels: real data only — never synthetic extrapolation
   var _seoFcast   = _ah.length >= 1 ? (Math.min(100, _ah[_ah.length-1] + (_ah.length >= 2 ? Math.round((_ah[_ah.length-1] - _ah[0]) / Math.max(_ah.length-1,1)) : 0)) + '/100') : (avg > 0 ? avg + '/100' : '—');
   var _traficFcast = _gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : '—';
@@ -6153,26 +6158,35 @@ function renderOverview() {
   // Fix 4: use real progression achievements if available
   const _ovProgData = STATE.progression || null;
   const _ovProgAch  = _ovProgData && Array.isArray(_ovProgData.achievements) ? _ovProgData.achievements : null;
+  const _achievementLabels = {
+    first_audit:'Premier audit', five_audits:'5 audits réalisés', ten_audits:'10 audits réalisés',
+    audit_score_80:'Score moyen ≥ 80', first_monitor:'Premier moniteur configuré',
+    five_monitors:'5 moniteurs actifs', mission_first:'Première mission complétée',
+    mission_10:'10 missions complétées', first_report:'Premier rapport généré',
+    first_keyword:'Premier mot-clé suivi', keywords_10:'10 mots-clés suivis',
+    first_competitor:'Premier concurrent ajouté', streak_3:'3 jours consécutifs',
+    streak_7:'7 jours consécutifs', streak_30:'30 jours consécutifs',
+  };
   // Fix 5: always use server streak
   const achievements = _ovProgAch
     ? _ovProgAch.map(a => ({
         icon: a.key === 'first_audit' ? '🏆' : a.key === 'streak_7' ? '🔥' : a.key === 'score_70' ? '⭐' : a.key === 'elite' ? '🚀' : a.key === 'uptime' ? '💎' : '🎖️',
-        title: a.label,
-        desc: a.achieved ? 'Débloqué !' : (a.progress != null && a.target != null ? a.progress + '/' + a.target : 'En cours'),
+        title: _achievementLabels[a.key] === a.label ? fpT(a.label) : a.label,
+        desc: a.achieved ? fpT('Débloqué !') : (a.progress != null && a.target != null ? a.progress + '/' + a.target : fpT('En cours')),
         color: a.achieved ? '#22c55e' : '#64748b',
         unlocked: !!a.achieved,
       }))
     : [
-      { icon:'🏆', title: missionsCompleted > 0 ? missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') : 'Aucune mission complétée', desc: missionsCompleted > 0 ? 'Continuez sur votre lancée !' : 'Créez votre première mission', color:'#f59e0b', unlocked: missionsCompleted > 0 },
-      { icon:'🔥', title: realStreak > 0 ? 'Streak ' + realStreak + ' jour' + (realStreak > 1 ? 's' : '') : 'Streak à démarrer', desc: realStreak > 0 ? 'Optimisation quotidienne active' : 'Connectez-vous chaque jour pour cumuler', color:'#ef4444', unlocked: realStreak > 0 },
-      { icon:'⭐', title:'Score 70+ atteint',       desc:'Benchmark professionnel franchi', color:'#22c55e', unlocked: avg >= 70 },
-      { icon:'🚀', title: isUltra ? 'Plan Ultra actif' : 'Passer en Ultra', desc: isUltra ? 'Accès complet à toutes les fonctionnalités avancées' : 'Prochain objectif : plan Ultra', color:'#8b5cf6', unlocked: isUltra },
-      { icon:'💎', title:'100% Uptime — 30 jours', desc:'Stabilité monitoring exemplaire', color:'#06b6d4', unlocked: down === 0 && totalMonitors > 0 },
+      { icon:'🏆', title: missionsCompleted === 1 ? fpT('1 mission complétée') : missionsCompleted > 1 ? fpT('{count} missions complétées', { count: missionsCompleted }) : fpT('Aucune mission complétée'), desc: missionsCompleted > 0 ? fpT('Continuez sur votre lancée !') : fpT('Créez votre première mission'), color:'#f59e0b', unlocked: missionsCompleted > 0 },
+      { icon:'🔥', title: realStreak > 0 ? (realStreak === 1 ? fpT('Streak 1 jour') : fpT('Streak {count} jours', { count: realStreak })) : fpT('Streak à démarrer'), desc: realStreak > 0 ? fpT('Optimisation quotidienne active') : fpT('Connectez-vous chaque jour pour cumuler'), color:'#ef4444', unlocked: realStreak > 0 },
+      { icon:'⭐', title:fpT('Score 70+ atteint'), desc:fpT('Benchmark professionnel franchi'), color:'#22c55e', unlocked: avg >= 70 },
+      { icon:'🚀', title: isUltra ? fpT('Plan {plan} actif', { plan: 'Ultra' }) : fpT('Passer au plan {plan}', { plan: 'Ultra' }), desc: isUltra ? fpT('Accès complet à toutes les fonctionnalités avancées') : fpT('Prochain objectif : plan {plan}', { plan: 'Ultra' }), color:'#8b5cf6', unlocked: isUltra },
+      { icon:'💎', title:fpT('100% Uptime — 30 jours'), desc:fpT('Stabilité monitoring exemplaire'), color:'#06b6d4', unlocked: down === 0 && totalMonitors > 0 },
     ];
 
   const quickActions = [
     { label:'Audit SEO',         icon:'🔍', color:'#2563EB', action:"navigate('audits')" },
-    { label:'Rapport Exécutif',  icon:'📄', color:'#22c55e', action:"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()" },
+    { label:'Rapport Exécutif',  icon:'📄', color:'#22c55e', panelTitle:'Nouveau rapport', action:"openFloatPanel(this.dataset.panelTitle,renderNewReportPanel());setupNewReportPanel()" },
     { label:'Analyser Concurrents', icon:'⚔️', color:'#ef4444', action:"navigate('competitor')" },
     { label:'Nouveau Monitor',   icon:'📡', color:'#f59e0b', action:"window._openNewMonitor()" },
     { label:'Créer Mission',     icon:'🎯', color:'#8b5cf6', action:"navigate('missions')" },
@@ -6183,14 +6197,14 @@ function renderOverview() {
 
   const digestItems = (function() {
     const items = [];
-    if (avg > 0) items.push({ type: avg >= 70 ? 'success' : avg >= 50 ? 'warning' : 'error', msg: 'Score SEO moyen : ' + avg + '/100 — ' + (avg >= 70 ? 'excellent niveau' : avg >= 50 ? 'améliorations possibles' : 'action requise') });
-    if (down > 0) items.push({ type: 'error',   msg: down + ' monitor' + (down > 1 ? 's' : '') + ' DOWN — vérification requise' });
-    if (missionsCompleted > 0) items.push({ type: 'success', msg: missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') + ' dans votre portefeuille' });
-    if (missionsActive > 0) items.push({ type: 'info',    msg: missionsActive + ' mission' + (missionsActive > 1 ? 's' : '') + ' active' + (missionsActive > 1 ? 's' : '') + ' en cours — continuez !' });
+    if (avg > 0) items.push({ type: avg >= 70 ? 'success' : avg >= 50 ? 'warning' : 'error', msg: fpT('Score SEO moyen : {score}/100 — {status}', { score: avg, status: avg >= 70 ? fpT('excellent niveau') : avg >= 50 ? fpT('améliorations possibles') : fpT('action requise') }) });
+    if (down > 0) items.push({ type: 'error',   msg: fpT('{count} monitor(s) DOWN — vérification requise', { count: down }) });
+    if (missionsCompleted > 0) items.push({ type: 'success', msg: fpT(missionsCompleted === 1 ? '1 mission complétée dans votre portefeuille' : '{count} missions complétées dans votre portefeuille', { count: missionsCompleted }) });
+    if (missionsActive > 0) items.push({ type: 'info',    msg: fpT(missionsActive === 1 ? '1 mission active en cours — continuez !' : '{count} missions actives en cours — continuez !', { count: missionsActive }) });
     if (STATE.activityEvents && STATE.activityEvents.length > 0 && STATE.activityEvents[0].label) {
       items.push({ type: 'info', msg: STATE.activityEvents[0].label });
     }
-    if (items.length === 0) items.push({ type: 'info', msg: 'Connectez vos premiers sites pour voir les insights IA ici.' });
+    if (items.length === 0) items.push({ type: 'info', msg: fpT('Connectez vos premiers sites pour voir les insights IA ici.') });
     return items;
   })();
 
@@ -6213,18 +6227,18 @@ function renderOverview() {
             <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px rgba(34,197,94,0.6);animation:fp-pulse-dot 2s ease-in-out infinite"></div>
             <span style="font-size:11px;font-weight:700;color:#22c55e;letter-spacing:0.1em;text-transform:uppercase">${fpT("LIVE · Vue d'ensemble")}</span>
           </div>
-          <h1 style="font-size:26px;font-weight:900;color:var(--fp-text);margin:0 0 4px;font-family:var(--fp-font-head);line-height:1.1">Bonjour, ${escHtml(me.firstName)} 👋</h1>
-          <div style="font-size:13px;color:var(--fp-text-muted)">Plateforme IA · Plan <strong style="color:#2563EB">${escHtml(me.plan)}</strong> · Score global <strong style="color:${globalScore != null ? scoreColor(globalScore) : 'var(--fp-text-muted)'}">${globalScore != null ? globalScore + '/100' : '—'}</strong></div>
+          <h1 style="font-size:26px;font-weight:900;color:var(--fp-text);margin:0 0 4px;font-family:var(--fp-font-head);line-height:1.1">${fpT('Bonjour, {name} 👋', { name: escHtml(me.firstName) })}</h1>
+          <div style="font-size:13px;color:var(--fp-text-muted)">${fpT('Plateforme IA')} · ${fpT('Plan')} <strong style="color:#2563EB">${escHtml(me.plan)}</strong> · ${fpT('Score global')} <strong style="color:${globalScore != null ? scoreColor(globalScore) : 'var(--fp-text-muted)'}">${globalScore != null ? globalScore + '/100' : '—'}</strong></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="fp-view-toggle" id="chart-range-toggle">
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='1d'?' active':''}" data-range="1d">1j</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='7d'?' active':''}" data-range="7d">7j</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='30d'?' active':''}" data-range="30d">30j</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='90d'?' active':''}" data-range="90d">90j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='1d'?' active':''}" data-range="1d">${fpT('1j')}</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='7d'?' active':''}" data-range="7d">${fpT('7j')}</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='30d'?' active':''}" data-range="30d">${fpT('30j')}</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='90d'?' active':''}" data-range="90d">${fpT('90j')}</button>
           </div>
-          ${btn('Actualiser','fp-btn fp-btn-ghost fp-btn-sm','refresh','id="refresh-btn"')}
-          ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','id="export-btn"')}
+          ${btn(fpT('Actualiser'),'fp-btn fp-btn-ghost fp-btn-sm','refresh','id="refresh-btn"')}
+          ${btn(fpT('Exporter'),'fp-btn fp-btn-ghost fp-btn-sm','download','id="export-btn"')}
         </div>
       </div>
 
@@ -6239,14 +6253,14 @@ function renderOverview() {
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
               <div>
                 <div style="font-size:14px;margin-bottom:2px">${h.icon}</div>
-                <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:0.06em;line-height:1.2">${h.label}</div>
+            <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:0.06em;line-height:1.2">${escHtml(fpT(h.label))}</div>
               </div>
-              <div style="font-size:10px;font-weight:700;color:${isNeg?'#ef4444':isUp?'#22c55e':'#94a3b8'};flex-shrink:0">${h.trend}</div>
+              <div style="font-size:10px;font-weight:700;color:${isNeg?'#ef4444':isUp?'#22c55e':'#94a3b8'};flex-shrink:0">${escHtml(fpT(h.trend))}</div>
             </div>
             ${scoreGauge(h.val, h.max, h.color, 62, 24)}
             <div style="margin-top:6px;text-align:center">
               ${_hv
-                ? `<div style="font-size:11px;font-weight:700;color:${col};display:inline-block;padding:2px 8px;border-radius:99px;background:${col}18">${h.val >= 70 ? 'Bon' : h.val >= 50 ? 'Attention' : 'Faible'}</div>`
+                ? `<div style="font-size:11px;font-weight:700;color:${col};display:inline-block;padding:2px 8px;border-radius:99px;background:${col}18">${fpT(h.val >= 70 ? 'Bon' : h.val >= 50 ? 'Attention' : 'Faible')}</div>`
                 : `<div style="font-size:11px;color:var(--fp-text-faint);font-style:italic">${fpT('Pas de données')}</div>`}
             </div>
             <div style="margin-top:4px">
@@ -6262,18 +6276,18 @@ function renderOverview() {
     <!-- ═══════════════════════════════════════════════════════ -->
     ${isPro
       ? aiBlock(
-          'Votre portefeuille affiche un score global de <strong>' + globalScore + '/100</strong>. ' +
-          (down > 0 ? '<span style="color:#ef4444">⚠ ' + down + ' monitor(s) DOWN — intervention requise.</span> ' : (totalMonitors > 0 ? 'Monitoring optimal. ' : '')) +
-          (avg > 0 && avg < 70 ? 'Priorité : corriger les sites sous 65/100 pour améliorer le score moyen. ' : (avg >= 70 ? 'Score portfolio en bonne santé. ' : '')) +
-          (STATE.competitors && STATE.competitors.length > 0 ? 'Analyse concurrentielle disponible pour ' + STATE.competitors.length + ' concurrent(s). ' : '') +
+          fpT('Votre portefeuille affiche un score global de <strong>{score}/100</strong>.', { score: globalScore }) + ' ' +
+          (down > 0 ? '<span style="color:#ef4444">' + fpT('⚠ {count} monitor(s) DOWN — intervention requise.', { count: down }) + '</span> ' : (totalMonitors > 0 ? fpT('Monitoring optimal.') + ' ' : '')) +
+          (avg > 0 && avg < 70 ? fpT('Priorité : corriger les sites sous 65/100 pour améliorer le score moyen.') + ' ' : (avg >= 70 ? fpT('Score portfolio en bonne santé.') + ' ' : '')) +
+          (STATE.competitors && STATE.competitors.length > 0 ? fpT('Analyse concurrentielle disponible pour {count} concurrent(s).', { count: STATE.competitors.length }) + ' ' : '') +
           (STATE.keywords && STATE.keywords.length > 0 ? STATE.keywords.length + ' ' + fpT('mots-clés suivis — consultez les opportunités de croissance.') : fpT('Ajoutez des mots-clés pour activer le suivi de positionnement.')),
           [(STATE.competitors&&STATE.competitors.length>0?"Analyser les concurrents":"Ajouter des concurrents"), "Créer les missions", "Générer rapport exécutif", "Voir les alertes"]
         )
       : `<div style="padding:18px 20px;background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.05));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;gap:14px;align-items:center">
           <div style="font-size:28px">🧠</div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:700;margin-bottom:3px">IA Executive Summary — Pro requis</div>
-            <div style="font-size:12px;color:var(--fp-text-muted)">Obtenez des analyses stratégiques IA, des prévisions d\'usage et des recommandations personnalisées.</div>
+            <div style="font-size:13px;font-weight:700;margin-bottom:3px">${fpT('IA Executive Summary — Pro requis')}</div>
+            <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Obtenez des analyses stratégiques IA, des prévisions d’usage et des recommandations personnalisées.')}</div>
           </div>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">${fpT("Passer Pro")}</button>
         </div>`
@@ -6294,12 +6308,12 @@ function renderOverview() {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         <div onclick="navigate('audits');$('#audit-new-btn').click()" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">🔍</div>
-          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">1. Lancer un audit SEO</div>
+          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('1. Lancer un audit SEO')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Analysez votre premier site et obtenez un score instantané')}</div>
         </div>
-        <div onclick="navigate('monitors');setTimeout(function(){var b=$('#monitor-new-btn');if(b)b.click();else{openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel();}},350)" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
+        <div data-monitor-title="${escHtml(fpT('Nouveau monitor'))}" onclick="navigate('monitors');var monitorTitle=this.dataset.monitorTitle;setTimeout(function(){var b=$('#monitor-new-btn');if(b)b.click();else{openFloatPanel(monitorTitle,renderNewMonitorPanel());setupNewMonitorPanel();}},350)" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">📡</div>
-          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">2. Ajouter un monitor</div>
+          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('2. Ajouter un monitor')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Surveillez la disponibilité de vos sites 24/7')}</div>
         </div>
         <div onclick="navigate('missions')" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
@@ -6314,10 +6328,10 @@ function renderOverview() {
     <!-- KPI STAT ROW -->
     <!-- ═══════════════════════════════════════════════════════ -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Score SEO', avg + '/100', avg > 0 ? (avg >= 70 ? 'Excellent' : avg >= 50 ? 'À améliorer' : 'Critique') : '—', avg >= 70 ? 'up' : 'down')}
-      ${statCard('Monitors actifs', totalMonitors > 0 ? activeMonitors + '/' + totalMonitors : '—', down > 0 ? down + ' DOWN' : totalMonitors > 0 ? 'Tous UP' : 'Aucun monitor', down > 0 ? 'down' : 'up')}
-      ${statCard('Missions actives', missionsActive > 0 ? String(missionsActive) : '—', missionsCompleted > 0 ? missionsCompleted + ' complétée' + (missionsCompleted > 1 ? 's' : '') : 'Aucune complétée', 'neutral')}
-      ${statCard('Missions complétées', missionsCompleted > 0 ? String(missionsCompleted) : '—', missionsCompleted > 0 ? 'dans votre portefeuille' : 'Créez votre première mission', missionsCompleted > 0 ? 'up' : 'neutral')}
+      ${statCard(fpT('Score SEO'), avg + '/100', avg > 0 ? fpT(avg >= 70 ? 'Excellent' : avg >= 50 ? 'À améliorer' : 'Critique') : '—', avg >= 70 ? 'up' : 'down')}
+      ${statCard(fpT('Monitors actifs'), totalMonitors > 0 ? activeMonitors + '/' + totalMonitors : '—', fpT(down > 0 ? down + ' DOWN' : totalMonitors > 0 ? 'Tous UP' : 'Aucun monitor'), down > 0 ? 'down' : 'up')}
+      ${statCard(fpT('Missions actives'), missionsActive > 0 ? String(missionsActive) : '—', missionsCompleted === 1 ? fpT('1 mission complétée') : missionsCompleted > 1 ? fpT('{count} missions complétées', { count: missionsCompleted }) : fpT('Aucune complétée'), 'neutral')}
+      ${statCard(fpT('Missions complétées'), missionsCompleted > 0 ? String(missionsCompleted) : '—', fpT(missionsCompleted > 0 ? 'dans votre portefeuille' : 'Créez votre première mission'), missionsCompleted > 0 ? 'up' : 'neutral')}
     </div>
 
     ${(() => {
@@ -6336,10 +6350,10 @@ function renderOverview() {
       return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px">
         ${kpis.map(k=>`<div class="fp-card fp-card-sm" style="padding:12px 14px">
           <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px;display:flex;align-items:center;gap:4px">
-            <span>${k.icon}</span><span style="text-transform:uppercase;letter-spacing:0.08em">${k.label}</span>
+            <span>${k.icon}</span><span style="text-transform:uppercase;letter-spacing:0.08em">${escHtml(fpT(k.label))}</span>
           </div>
           <div style="font-size:18px;font-weight:800;color:${k.color};font-family:var(--fp-font-head)">${k.val}</div>
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${k.sub}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${escHtml(fpT(k.sub))}</div>
         </div>`).join('')}
       </div>`;
     })()}
@@ -6352,7 +6366,7 @@ function renderOverview() {
           <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Connectez Google Analytics 4 pour voir trafic, conversions et revenus réels')}</div>
         </div>
       </div>
-      <button class="fp-btn fp-btn-sm" style="flex-shrink:0;background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.3)" onclick="navigate('analytics')">Connecter GA4 →</button>
+      <button class="fp-btn fp-btn-sm" style="flex-shrink:0;background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.3)" onclick="navigate('analytics')">${fpT('Connecter GA4 →')}</button>
     </div>` : ''}
 
     <!-- ═══════════════════════════════════════════════════════ -->
@@ -6365,7 +6379,7 @@ function renderOverview() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div style="display:flex;align-items:center;gap:8px">
             <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
-            <span class="fp-card-title" style="margin-bottom:0">Flux en direct</span>
+            <span class="fp-card-title" style="margin-bottom:0">${fpT('Flux en direct')}</span>
           </div>
           <span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Mise à jour en temps réel')}</span>
         </div>
@@ -6381,13 +6395,13 @@ function renderOverview() {
               <div style="font-size:14px;flex-shrink:0;margin-top:1px">${ev.icon}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:11px;color:var(--fp-text);line-height:1.4">${escHtml(ev.msg || '')}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${ev.time || ''}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${escHtml(ev.time || '')}</div>
               </div>
               <div style="width:6px;height:6px;border-radius:50%;background:${c};flex-shrink:0;margin-top:4px"></div>
             </div>`;
           }).join('')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px;font-size:11px" onclick="navigate('activity-feed')">Voir toute l\'activité →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px;font-size:11px" onclick="navigate('activity-feed')">${fpT('Voir toute l\'activité →')}</button>
       </div>
 
       <!-- WORKSPACE MAP -->
@@ -6400,12 +6414,12 @@ function renderOverview() {
             const br = m.status === 'ok' ? 'rgba(34,197,94,0.15)' : m.status === 'down' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.15)';
             return `<div class="fp-ws-module-card${_wsi >= 6 ? ' fp-ws-extra' : ''}" style="padding:10px;border-radius:10px;background:${bg};border:1px solid ${br};cursor:pointer;transition:all 0.15s" onclick="navigate('${m.route}')">
               <div style="font-size:16px;margin-bottom:4px">${m.icon}</div>
-              <div style="font-size:10px;font-weight:700;color:var(--fp-text);margin-bottom:4px;line-height:1.2">${m.name}</div>
+              <div style="font-size:10px;font-weight:700;color:var(--fp-text);margin-bottom:4px;line-height:1.2">${escHtml(fpT(m.name))}</div>
               <div style="font-size:12px;font-weight:800;color:${sc}">${m.score ?? '—'}</div>
-              ${m.issues > 0 ? `<div style="font-size:9px;color:#ef4444;margin-top:2px">${m.issues} issue${m.issues>1?'s':''}</div>` : `<div style="font-size:9px;color:#22c55e;margin-top:2px">✓ OK</div>`}
+              ${m.issues > 0 ? `<div style="font-size:9px;color:#ef4444;margin-top:2px">${fpT(m.issues === 1 ? '1 problème' : '{count} problèmes', { count: m.issues })}</div>` : `<div style="font-size:9px;color:#22c55e;margin-top:2px">✓ OK</div>`}
             </div>`;
           }).join('')}
-          ${wsModules.length > 6 ? `<button class="fp-ws-see-more fp-btn fp-btn-ghost fp-btn-sm" style="grid-column:1/-1;width:100%;font-size:11px" onclick="(function(btn){var extras=document.querySelectorAll('.fp-ws-extra');var hidden=extras[0]&&getComputedStyle(extras[0]).display==='none';extras.forEach(function(e){e.style.display=hidden?'block':'none'});btn.textContent=hidden?'Voir moins ↑':'Voir ${wsModules.length - 6} de plus →'})(this)">Voir ${wsModules.length - 6} de plus →</button>` : ''}
+          ${wsModules.length > 6 ? `<button class="fp-ws-see-more fp-btn fp-btn-ghost fp-btn-sm" style="grid-column:1/-1;width:100%;font-size:11px" onclick="(function(btn){var extras=document.querySelectorAll('.fp-ws-extra');var hidden=extras[0]&&getComputedStyle(extras[0]).display==='none';extras.forEach(function(e){e.style.display=hidden?'block':'none'});btn.textContent=hidden?'${fpT('Voir moins ↑')}':'${fpT('Voir {count} de plus →', { count: wsModules.length - 6 })}'})(this)">${fpT('Voir {count} de plus →', { count: wsModules.length - 6 })}</button>` : ''}
         </div>
       </div>
     </div>
@@ -6419,26 +6433,34 @@ function renderOverview() {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">💎 Business Opportunities</div>
-          <span style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.1);padding:2px 8px;border-radius:20px">IA Scoring</span>
+          <span style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.1);padding:2px 8px;border-radius:20px">${fpT('IA Scoring')}</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${opportunities.length > 0
-            ? opportunities.map(o => `
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s" onclick="navigate('missions')" title="${o.title}">
+            ? opportunities.map(o => {
+              const _title = o.mission
+                ? missionDisplayText(o.mission, o.title)
+                : (o.displayTitle || o.title);
+              const _desc = o.mission ? o.desc : (o.displayDesc || o.desc);
+              const _roi = o.mission && o.trafficImpact != null
+                ? fpT('+{count} visites/mois', { count: o.trafficImpact })
+                : (o.displayRoi || o.roi);
+              return `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s" onclick="navigate('missions')" title="${escHtml(_title)}">
               <div style="font-size:18px;flex-shrink:0">${o.icon}</div>
               <div style="flex:1;min-width:0;overflow:hidden">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(o.title)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(o.desc)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(_title)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(_desc)}</div>
               </div>
               <div style="text-align:right;flex-shrink:0;max-width:80px;min-width:0;overflow:hidden">
                 <div style="font-size:11px;font-weight:800;color:${o.color}">${o.score != null ? o.score : '—'}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.roi.slice(0,18)}</div>
+                <div style="font-size:9px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(String(_roi || '').slice(0,18))}</div>
               </div>
               <div style="width:28px;flex-shrink:0">
                 ${o.score != null ? `<div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${o.score}%;background:${o.color}"></div></div>` : ''}
               </div>
             </div>
-          `).join('')
+          `}).join('')
             : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint)">
                 <div style="font-size:28px;margin-bottom:8px">💎</div>
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Aucune opportunité détectée')}</div>
@@ -6457,24 +6479,33 @@ function renderOverview() {
       <div class="fp-card" style="background:linear-gradient(135deg,rgba(139,92,246,0.05),var(--fp-bg-card, rgba(5,8,16,0.8)));border:1px solid rgba(139,92,246,0.15)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🧠 AI Priority Engine</div>
-          ${badge('IA Powered','#8b5cf6')}
+          ${badge(fpT('IA Powered'),'#8b5cf6')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${priorities.length > 0
-            ? priorities.map((p,i) => `
+             ? priorities.map((p,i) => {
+            const _title = p.mission ? missionDisplayText(p.mission, p.title) : p.title;
+            const _impact = p.mission
+              ? (p.mission.impact ? missionDisplayText(p.mission, p.impact) : fpT('Élevé'))
+              : p.impact;
+            const _roi = p.mission && p.trafficImpact != null
+              ? fpT('+{count} visites/mois', { count: p.trafficImpact })
+              : p.roi;
+            const _time = p.mission ? (p.mission.effort ? missionDisplayText(p.mission, p.time) : p.time) : p.time;
+            return `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid ${p.color}22;background:${p.color}06;cursor:pointer" onclick="navigate('${p.route}')">
               <div style="width:28px;height:28px;border-radius:7px;background:${p.color}20;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;overflow:hidden">${typeof p.icon==='string'&&p.icon.startsWith('<')? p.icon : '<span>'+escHtml(p.icon)+'</span>'}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(p.title)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(_title)}</div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
-                  ${badge(p.urgency,p.color)}
-                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.roi)}</span>
-                  <span style="font-size:10px;color:var(--fp-text-faint)">· ${escHtml(p.time)}</span>
+                  ${badge(fpT(p.urgency),p.color)}
+                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(_roi)}</span>
+                  <span style="font-size:10px;color:var(--fp-text-faint)">· ${escHtml(_time)}</span>
                 </div>
               </div>
               <div style="font-size:18px;font-weight:900;color:${p.color};opacity:0.3;font-family:var(--fp-font-head);flex-shrink:0">${i+1}</div>
             </div>
-          `).join('')
+          `}).join('')
             : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint)">
                 <div style="font-size:28px;margin-bottom:8px">🧠</div>
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">${fpT('Priorités IA non encore calculées')}</div>
@@ -6494,14 +6525,14 @@ function renderOverview() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:8px">
           <div style="font-size:18px">🔮</div>
-          <div class="fp-card-title" style="margin-bottom:0">Executive Forecasting — 30 jours</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('Executive Forecasting — 30 jours')}</div>
         </div>
-        ${badge('IA Prédictif','#06b6d4')}
+        ${badge(fpT('IA Prédictif'),'#06b6d4')}
       </div>
       <div class="fp-forecast-grid" style="gap:12px">
         ${forecasts.map(f => `
           <div style="padding:14px;border-radius:12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
-            <div style="font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:8px">${f.label}</div>
+            <div style="font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(fpT(f.label))}</div>
             ${f.loading
               ? `<div style="height:36px;display:flex;align-items:center;justify-content:center;gap:6px;opacity:0.45"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Chargement des prévisions…')}</span></div>`
               : f.noData
@@ -6513,8 +6544,8 @@ function renderOverview() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.current}</div>
               </div>
               <div style="text-align:right;min-width:0;overflow:hidden">
-                <div style="font-size:10px;color:var(--fp-text-faint)">J+30</div>
-                <div style="font-size:12px;font-weight:700;color:${f.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.forecast === f.current + ' estim.' ? f.current : f.forecast}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('À +30 jours')}</div>
+                <div style="font-size:12px;font-weight:700;color:${f.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(f.forecast === f.current + ' estim.' ? f.current : f.forecast.replace(/ estim\.$/, ' ' + fpT('estim.')))}</div>
               </div>
             </div>
           </div>
@@ -6525,7 +6556,7 @@ function renderOverview() {
     <div style="padding:16px 20px;background:rgba(6,182,212,0.05);border:1px solid rgba(6,182,212,0.15);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;gap:14px;align-items:center">
       <div style="font-size:26px">🔮</div>
       <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;margin-bottom:3px">Executive Forecasting — Pro requis</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:3px">${fpT('Executive Forecasting — Pro requis')}</div>
         <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Prévisions IA trafic, conversion, Local SEO et revenus sur 30 jours.')}</div>
       </div>
       <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('billing')">${fpT('Activer →')}</button>
@@ -6545,8 +6576,8 @@ function renderOverview() {
         <div style="padding:12px 14px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(245,158,11,0.05));border:1px solid rgba(239,68,68,0.15);display:flex;align-items:center;gap:12px;margin-bottom:12px">
           <div style="font-size:28px">🔥</div>
           <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">${realStreak > 0 ? 'Streak ' + realStreak + ' jour' + (realStreak > 1 ? 's' : '') : 'Streak à démarrer'}</div>
-            <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${realStreak > 0 ? 'Optimisation quotidienne active' : 'Connectez-vous chaque jour pour cumuler'}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">${realStreak > 0 ? (realStreak === 1 ? fpT('Streak 1 jour') : fpT('Streak {count} jours', { count: realStreak })) : fpT('Streak à démarrer')}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${realStreak > 0 ? fpT('Optimisation quotidienne active') : fpT('Connectez-vous chaque jour pour cumuler')}</div>
             <div class="fp-streak-dots" style="display:flex;gap:3px;flex-wrap:wrap">
               ${Array.from({length:Math.max(7, realStreak + 3)}).map((_,i) => `<div style="width:9px;height:9px;border-radius:3px;background:${i<realStreak?'#ef4444':'rgba(255,255,255,0.07)'}"></div>`).join('')}
             </div>
@@ -6562,7 +6593,7 @@ function renderOverview() {
           <div class="fp-progress-track" style="height:6px;border-radius:99px">
             <div class="fp-progress-fill" style="width:${Math.round(avg/80*100)}%;background:linear-gradient(90deg,#2563EB,#8b5cf6);border-radius:99px"></div>
           </div>
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">Encore ${80-avg} pts pour atteindre l\'objectif Elite</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fpT('Encore {count} pts pour atteindre l’objectif Elite', { count: 80-avg })}</div>
         </div>
 
         <!-- Achievements -->
@@ -6580,7 +6611,7 @@ function renderOverview() {
           return `<div style="display:flex;flex-direction:column;gap:6px">
             ${achievements.slice(0, _LIMIT).map(_achTpl).join('')}
             ${_rest.length > 0 ? `<div id="fp-badges-more" style="display:none;flex-direction:column;gap:6px">${_rest.map(_achTpl).join('')}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px;font-size:11px" onclick="(function(btn){var el=document.getElementById('fp-badges-more');if(!el)return;var show=el.style.display==='none';el.style.display=show?'flex':'none';if(show)el.style.flexDirection='column';el.style.gap='6px';btn.textContent=show?'Voir moins ↑':'Voir plus (${_rest.length}) ↓';})(this)">Voir plus (${_rest.length}) ↓</button>` : ''}
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px;font-size:11px" onclick="(function(btn){var el=document.getElementById('fp-badges-more');if(!el)return;var show=el.style.display==='none';el.style.display=show?'flex':'none';if(show)el.style.flexDirection='column';el.style.gap='6px';btn.textContent=show?'${fpT('Voir moins ↑')}':'${fpT('Voir plus ({count}) ↓', { count: _rest.length })}';})(this)">${fpT('Voir plus ({count}) ↓', { count: _rest.length })}</button>` : ''}
           </div>`;
         })()}
       </div>
@@ -6596,7 +6627,7 @@ function renderOverview() {
           ${digestItems.map(d => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border-radius:9px;background:${typeColor[d.type]}08;border-left:3px solid ${typeColor[d.type]}">
               <span style="font-size:13px;flex-shrink:0">${typeIcon[d.type]}</span>
-              <span style="font-size:11px;color:var(--fp-text);line-height:1.45">${d.msg}</span>
+              <span style="font-size:11px;color:var(--fp-text);line-height:1.45">${escHtml(d.msg)}</span>
             </div>
           `).join('')}
         </div>
@@ -6609,7 +6640,7 @@ function renderOverview() {
             { label:'Alertes actives',  val: String(STATE.alertEvents.filter(e => !e.resolvedAt).length || 0), color:'#f59e0b' },
           ].map(s => `<div style="text-align:center">
             <div style="font-size:20px;font-weight:800;color:${s.color};font-family:var(--fp-font-head)">${s.val}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.label)}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(fpT(s.label))}</div>
           </div>`).join('')}
         </div>
       </div>
@@ -6625,9 +6656,9 @@ function renderOverview() {
       </div>
       <div class="fp-quick-actions-grid" style="gap:10px">
         ${quickActions.map(q => `
-          <button style="padding:14px 10px;border-radius:12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07);cursor:pointer;transition:all 0.18s;display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;outline:none" onclick="${q.action}" onmouseover="this.style.background='${q.color}12';this.style.borderColor='${q.color}30'" onmouseout="this.style.background='var(--fp-inner-card)';this.style.borderColor='rgba(255,255,255,0.07)'">
+          <button data-panel-title="${escHtml(q.panelTitle ? fpT(q.panelTitle) : '')}" style="padding:14px 10px;border-radius:12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07);cursor:pointer;transition:all 0.18s;display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;outline:none" onclick="${q.action}" onmouseover="this.style.background='${q.color}12';this.style.borderColor='${q.color}30'" onmouseout="this.style.background='var(--fp-inner-card)';this.style.borderColor='rgba(255,255,255,0.07)'">
             <div style="font-size:22px">${q.icon}</div>
-            <div style="font-size:11px;font-weight:700;color:var(--fp-text);text-align:center;line-height:1.2">${escHtml(q.label)}</div>
+            <div style="font-size:11px;font-weight:700;color:var(--fp-text);text-align:center;line-height:1.2">${escHtml(fpT(q.label))}</div>
           </button>
         `).join('')}
       </div>
@@ -6649,8 +6680,8 @@ function renderOverview() {
                 const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
                 const _ts4 = e.createdAt || e.created_at;
                 const _mins = _ts4 ? Math.round((Date.now() - new Date(_ts4).getTime()) / 60000) : 0;
-                const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
-                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: e.label || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
+                const _t = _mins < 1 ? fpT('À l\'instant') : _mins < 60 ? fpT('Il y a {count} min', { count: _mins }) : _mins < 1440 ? fpT('Il y a {count} h', { count: Math.round(_mins/60) }) : fpT('Il y a {count} j', { count: Math.round(_mins/1440) });
+                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: e.label || fpT('Événement'), desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', timeText: _t };
               })
             : (PREVIEW_MODE ? ACTIVITY_FEED : [])
           ).slice(0,6).map(item => {
@@ -6661,7 +6692,7 @@ function renderOverview() {
               <div style="flex:1;min-width:0">
                 <div class="fp-activity-title">${escHtml(item.title)}</div>
                 <div class="fp-activity-desc">${escHtml(item.desc)}</div>
-                <div class="fp-activity-time">Il y a ${item.time}</div>
+                <div class="fp-activity-time">${escHtml(item.timeText || (item.time ? fpT('Il y a {time}', { time: item.time }) : fpT('En cours')))}</div>
               </div>
             </div>`;
           }).join('')}
@@ -16154,14 +16185,16 @@ function aiBlock(text, chips = []) {
   const _iaSug = (STATE.settings && STATE.settings.iaSuggestions) || 'normal';
   const _chipMax = _iaSug === 'low' ? 1 : _iaSug === 'proactive' ? chips.length : 3;
   const _chips = chips.slice(0, _chipMax);
+  const _chipQuery = c => typeof c === 'string' ? c : String(c && (c.query || c.label) || '');
+  const _chipLabel = c => typeof c === 'string' ? c : String(c && (c.label || c.query) || '');
   return `<div class="fp-ai-block">
     <div class="fp-ai-block-icon">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
     </div>
     <div class="fp-ai-block-content">
-      <div class="fp-ai-block-label">Analyse IA · FlowPoint${_iaSug === 'proactive' ? ' <span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:5px;margin-left:4px">Proactive</span>' : _iaSug === 'low' ? ' <span style="font-size:9px;color:var(--fp-text-faint);margin-left:4px">· Silencieux</span>' : ''}</div>
+      <div class="fp-ai-block-label">${fpT('Analyse IA · FlowPoint')}${_iaSug === 'proactive' ? ' <span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:5px;margin-left:4px">Proactive</span>' : _iaSug === 'low' ? ' <span style="font-size:9px;color:var(--fp-text-faint);margin-left:4px">· ' + fpT('Silencieux') + '</span>' : ''}</div>
       <div class="fp-ai-block-text">${text}</div>
-      ${_chips.length ? `<div class="fp-ai-block-actions">${_chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(fpT(c))}</button>`).join('')}</div>` : ''}
+      ${_chips.length ? `<div class="fp-ai-block-actions">${_chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(_chipQuery(c))}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(fpT(_chipLabel(c)))}</button>`).join('')}</div>` : ''}
     </div>
   </div>`;
 }
@@ -22986,6 +23019,223 @@ function bindGlobalEvents() {
     "Aucune mission \"{status}\"": "No missions \"{status}\"",
     "Titre": "Title",
     "Créer la mission": "Create mission",
+    // Overview root and sub-page static copy
+    "+trafic local estimé": "+estimated local traffic",
+    "+0.4 note Google estimée": "+0.4 estimated Google rating",
+    "+12% visibilité locale": "+12% local visibility",
+    "+18% taux conversion estimé": "+18% estimated conversion rate",
+    "+40% trafic local estimé": "+40% estimated local traffic",
+    "+6 pts SEO moyen": "+6 average SEO points",
+    "+8 pts Core Web Vitals": "+8 Core Web Vitals points",
+    "+{count} pt(s) ce mois. Continuez sur cette lancée !": "+{count} point(s) this month. Keep it up!",
+    "+{count} pts SEO estimés": "+{count} estimated SEO points",
+    "+{count} pts estimés": "+{count} estimated points",
+    "+{count} visites/mois": "+{count} visits/month",
+    "+{count} visites/mois estimées": "+{count} estimated visits/month",
+    "1 erreur critique — amélioration rapide possible": "1 critical issue — quick improvement possible",
+    "1 mission active en cours — continuez !": "1 active mission in progress — keep it up!",
+    "1 mission complétée dans votre portefeuille": "1 mission completed in your portfolio",
+    "1 mot-clé proche de la page 1": "1 keyword close to page 1",
+    "1 problème": "1 issue",
+    "1 problème bloque l’indexation — correctif prioritaire": "1 issue is blocking indexing — priority fix",
+    "100% Uptime — 30 jours": "100% uptime — 30 days",
+    "1j": "1d",
+    "7j": "7d",
+    "30j": "30d",
+    "90j": "90d",
+    "Accompli": "Done",
+    "Accompli — Défaire": "Done — undo",
+    "Accès complet à toutes les fonctionnalités avancées": "Full access to all advanced features",
+    "Activer les Google Posts hebdomadaires": "Enable weekly Google Posts",
+    "Ajouter balise title manquante sur 3 pages": "Add missing title tags to 3 pages",
+    "Ajouter des photos récentes sur GBP": "Add recent photos to GBP",
+    "Ajouter le balisage Schema LocalBusiness": "Add LocalBusiness schema markup",
+    "Améliorer le score SEO de {domain}": "Improve the SEO score for {domain}",
+    "Analyse concurrentielle disponible pour {count} concurrent(s).": "Competitive analysis available for {count} competitor(s).",
+    "Analyser les forces de {competitor}": "Analyze {competitor}'s strengths",
+    "Attention": "Warning",
+    "Aucune complétée": "None completed",
+    "Aucune mission complétée": "No missions completed",
+    "Avis Google sans réponse": "Google review without a reply",
+    "Benchmark professionnel franchi": "Professional benchmark reached",
+    "Bonjour, {name} 👋": "Hello, {name} 👋",
+    "CTA mobile à optimiser": "Mobile CTA to optimize",
+    "Canonicals manquants — pages dupliquées pénalisent l’indexation": "Missing canonical tags — duplicate pages harm indexing",
+    "Ces <strong>{count} actions rapides</strong> peuvent vous faire gagner <strong>+{gain} points</strong> de score moyen collectif.": "These <strong>{count} quick wins</strong> can add <strong>+{gain} points</strong> to your average overall score.",
+    "Compresser les images JPEG au format WebP": "Compress JPEG images to WebP",
+    "Concurrent suivi": "Tracked competitor",
+    "Connecter Google Analytics pour mesurer le trafic réel": "Connect Google Analytics to measure actual traffic",
+    "Connectez vos sources de données pour des insights personnalisés.": "Connect your data sources for personalized insights.",
+    "Consultez votre tableau de missions pour voir votre progression et vos records.": "Check your missions dashboard to see your progress and milestones.",
+    "Continuez sur votre lancée !": "Keep it up!",
+    "Corriger 1 erreur critique": "Fix 1 critical error",
+    "Corriger les liens internes cassés": "Fix broken internal links",
+    "Corriger les problèmes SEO — {site}": "Fix SEO issues on {site}",
+    "Corriger {count} erreurs critiques": "Fix {count} critical errors",
+    "Corriger {count} fuite(s) de revenus détectée(s)": "Fix {count} detected revenue leak(s)",
+    "Créer une page FAQ avec le balisage Schema": "Create an FAQ page with schema markup",
+    "Créer une page locale à fort potentiel SEO": "Create a local page with strong SEO potential",
+    "Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.": "Create location-specific pages in your target areas to attract more traffic. See the Local SEO section for details.",
+    "Créez votre première mission": "Create your first mission",
+    "Duplicate content détecté": "Duplicate content detected",
+    "Durée totale estimée : <strong>{duration}</strong> — commencez par les plus rapides.": "Estimated total time: <strong>{duration}</strong> — start with the quickest wins.",
+    "Débloqué !": "Unlocked!",
+    "Encore {count} pts pour atteindre l’objectif Elite": "{count} more points to reach the Elite target",
+    "Executive Forecasting — Pro requis": "Executive forecasting — Pro required",
+    "Flux en direct": "Live feed",
+    "Fort potentiel local détecté": "Strong local potential detected",
+    "Gain estimé ~15 pts": "Estimated gain: ~15 points",
+    "IA Executive Summary — Pro requis": "AI executive summary — Pro required",
+    "Il y a {count} h": "{count} hr ago",
+    "Il y a {count} j": "{count} days ago",
+    "Il y a {count} min": "{count} min ago",
+    "Il y a {time}": "{time} ago",
+    "Impact SEO direct": "Direct SEO impact",
+    "Impact direct Local Pack · Répondre sous 24h recommandé": "Direct Local Pack impact · reply within 24 hours",
+    "Indisponibilité détectée": "Downtime detected",
+    "Investiguer {count} monitor(s) DOWN": "Investigate {count} DOWN monitor(s)",
+    "Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.": "Run an audit to get personalized recommendations based on your real data.",
+    "Le certificat SSL de {site} expire bientôt. Renouvelez-le pour éviter une interruption de service.": "The SSL certificate for {site} expires soon. Renew it to avoid a service interruption.",
+    "Les tendances s’afficheront après votre prochain audit.": "Trends will appear after your next audit.",
+    "L’IA analyse vos audits, mots-clés et monitors pour créer un plan de croissance adapté à votre situation": "AI analyzes your audits, keywords, and monitors to create a growth plan tailored to your situation",
+    "Missions du mois": "Missions this month",
+    "Monitoring optimal.": "Monitoring is optimal.",
+    "Monitors actifs": "Active monitors",
+    "Monitors en alerte : {count} site(s) inaccessible(s)": "Monitors alert: {count} site(s) unreachable",
+    "Monitors uptime > 99%": "Monitors with uptime > 99%",
+    "Mots-clés à fort potentiel": "High-potential keywords",
+    "Obtenez des analyses stratégiques IA, des prévisions d’usage et des recommandations personnalisées.": "Get strategic AI insights, usage forecasts, and personalized recommendations.",
+    "Opportunités de différenciation": "Opportunities to stand out",
+    "Opportunités locales détectées": "Local opportunities detected",
+    "Optimiser les méta-descriptions": "Optimize meta descriptions",
+    "Optimiser les pages locales": "Optimize local pages",
+    "Optimiser les performances — {site}": "Optimize performance on {site}",
+    "Pages locales manquantes sur vos zones cibles — opportunité de capture": "Missing local pages in your target areas — an opportunity to capture traffic",
+    "Pas encore d’historique disponible": "No history available yet",
+    "Passer au plan {plan}": "Upgrade to the {plan} plan",
+    "Plan": "Plan",
+    "Plan d’action sur mesure": "Tailored action plan",
+    "Plan {plan} actif": "{plan} plan active",
+    "Plateforme IA": "AI platform",
+    "Positions 11–20 — contenu ciblé ou netlinking pour décrocher la page 1": "Positions 11–20 — targeted content or link building to reach page 1",
+    "Potentiel SEO technique": "Technical SEO potential",
+    "Priorité : corriger les sites sous 65/100 pour améliorer le score moyen.": "Priority: fix sites below 65/100 to improve the average score.",
+    "Prochain objectif : plan {plan}": "Next goal: {plan} plan",
+    "Progression globale": "Overall progress",
+    "Relancer un audit complet de {url}": "Run a full audit of {url}",
+    "Renouvellement en début de mois.": "Credits reset at the start of the month.",
+    "Repérer les mots-clés où vos concurrents vous devancent": "Find keywords where your competitors outrank you",
+    "Requêtes à volume moyen · faible difficulté · positionnement possible": "Medium-volume queries · low difficulty · ranking opportunity",
+    "Répondre aux avis Google récents": "Reply to recent Google reviews",
+    "SSL expire dans {count} jours": "SSL expires in {count} days",
+    "Score 70+ atteint": "Score 70+ reached",
+    "Score SEO critique ({score}/100) — corriger les erreurs prioritaires": "Critical SEO score ({score}/100) — fix priority issues",
+    "Score SEO moyen : {score}/100 — {status}": "Average SEO score: {score}/100 — {status}",
+    "Score actuel : {score}/100 — des corrections techniques rapides peuvent générer un gain significatif": "Current score: {score}/100 — quick technical fixes could deliver a significant improvement",
+    "Score global": "Overall score",
+    "Score moyen en baisse": "Average score is down",
+    "Score moyen en hausse": "Average score is up",
+    "Score portfolio en bonne santé.": "Portfolio score is healthy.",
+    "Stabilité monitoring exemplaire": "Excellent monitoring stability",
+    "Streak {count} jours": "{count}-day streak",
+    "Trafic mobile dominant — visibilité du bouton principal à améliorer": "Mobile traffic dominates — improve the visibility of the primary button",
+    "Trafic organique additionnel": "Additional organic traffic",
+    "Voir moins ↑": "Show less ↑",
+    "Voir plus ({count}) ↓": "Show {count} more ↓",
+    "Voir {count} de plus →": "View {count} more →",
+    "Votre checklist SEO globale est complétée à <strong>{percent}%</strong> ({done}/{total} points). {remaining} actions restantes pour atteindre une présence locale optimale. Focus prioritaire : réponses aux avis et posts hebdomadaires GBP.": "Your overall SEO checklist is <strong>{percent}%</strong> complete ({done}/{total} items). {remaining} actions remain to reach an optimal local presence. Focus first on review replies and weekly GBP posts.",
+    "Votre concurrent principal": "Your main competitor",
+    "Votre portefeuille affiche un score global de <strong>{score}/100</strong>.": "Your portfolio has an overall score of <strong>{score}/100</strong>.",
+    "Vous avez {count} rapport(s) ce mois qui n’ont pas encore été envoyé(s) à vos clients. Partagez-les pour montrer votre valeur.": "You have {count} report(s) this month that have not yet been sent to clients. Share them to demonstrate your value.",
+    "Vérifier les évolutions récentes": "Check recent changes",
+    "actions restantes": "actions remaining",
+    "améliorations possibles": "possible improvements",
+    "dans votre portefeuille": "in your portfolio",
+    "estim.": "est.",
+    "excellent niveau": "excellent",
+    "site": "site",
+    "votre concurrent": "your competitor",
+    "votre site": "your site",
+    "{competitor} est dans votre liste de veille. Consultez son évolution pour anticiper ses actions.": "{competitor} is on your watchlist. Track its progress to anticipate its next moves.",
+    "{count} clics": "{count} clicks",
+    "{count} erreurs critiques — amélioration rapide possible": "{count} critical errors — quick improvement possible",
+    "{count} insights détectés ce mois": "{count} insights detected this month",
+    "{count} missions actives en cours — continuez !": "{count} active missions in progress — keep it up!",
+    "{count} missions complétées dans votre portefeuille": "{count} missions completed in your portfolio",
+    "{count} monitor(s) DOWN — vérification requise": "{count} DOWN monitor(s) — check required",
+    "{count} mot(s)-clé(s) en page 2+ — potentiel de remontée": "{count} keyword(s) on page 2+ — room to improve rankings",
+    "{count} mots-clés actifs dans votre portefeuille. Consultez la section Croissance pour les opportunités de contenu.": "{count} active keywords in your portfolio. See Growth for content opportunities.",
+    "{count} mots-clés proches de la page 1": "{count} keywords close to page 1",
+    "{count} mots-clés suivis": "{count} tracked keywords",
+    "{count} problèmes": "{count} issues",
+    "{count} pts": "{count} points",
+    "{count} problèmes bloquent l’indexation — correctifs prioritaires": "{count} issues are blocking indexing — priority fixes",
+    "{count} pt(s) ce mois — vérifiez les audits récents.": "{count} point(s) this month — check recent audits.",
+    "{count} rapport(s) non partagé(s)": "{count} unshared report(s)",
+    "{count} site(s) sous-performant(s)": "{count} underperforming site(s)",
+    "{done}/{total} points de contrôle": "{done}/{total} checklist items",
+    "{sites} ont besoin d’actions urgentes pour éviter une pénalité.": "{sites} need urgent action to avoid a penalty.",
+    "{up} monitor(s) sur {total} ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.": "{up} of {total} monitor(s) had uptime above 99% this month. Your sites are highly stable.",
+    "À +30 jours": "In 30 days",
+    "⏱️ Trop de générations IA demandées. Réessayez dans {count} secondes.": "⏱️ Too many AI generations requested. Try again in {count} seconds.",
+    "⏳ Génération des insights IA en cours…": "⏳ Generating AI insights…",
+    "⏳ Insights temporairement indisponibles. Réessayez dans quelques instants.": "⏳ Insights are temporarily unavailable. Try again shortly.",
+    "⚙️ Configuration IA incomplète. Vérifiez vos paramètres dans Réglages → IA.": "⚙️ AI setup is incomplete. Check your settings under Settings → AI.",
+    "⚠ {count} monitor(s) DOWN — intervention requise.": "⚠ {count} DOWN monitor(s) — action required.",
+    "⚠️ Quota IA atteint ce mois-ci. {resetHint}": "⚠️ AI quota reached for this month. {resetHint}",
+    // Overview values passed through dynamic display lookups
+    "Trafic GSC": "GSC traffic",
+    "Taux conv.": "Conversion rate",
+    "IA Copilot": "AI Copilot",
+    "Conversion IA": "AI conversion",
+    "IA Scoring": "AI scoring",
+    "IA Powered": "AI-powered",
+    "Silencieux": "Quiet",
+    "CRO": "CRO",
+    "Performance technique": "Technical performance",
+    "Réputation & avis": "Reputation & reviews",
+    "Contenus & engagement": "Content & engagement",
+    "Score PageSpeed Mobile > 80 sur tous les sites": "Mobile PageSpeed score above 80 on all sites",
+    "Images converties en WebP": "Images converted to WebP",
+    "Balise title unique sur chaque page": "Unique title tag on every page",
+    "Sitemap XML soumis à Google Search Console": "XML sitemap submitted to Google Search Console",
+    "Schema markup LocalBusiness en place": "LocalBusiness schema markup in place",
+    "Fiche GBP complète à 100% (photos, horaires, description)": "GBP profile 100% complete (photos, hours, description)",
+    "Citations NAP cohérentes sur les 20 principaux annuaires": "Consistent NAP citations across the top 20 directories",
+    "Pages locales créées pour chaque zone géographique": "Local pages created for every target area",
+    "Mots-clés géolocalisés dans les balises h1": "Location-based keywords in H1 tags",
+    "Zone de chalandise définie sur GBP": "Service area set in GBP",
+    "Note Google moyenne > 4.5 étoiles": "Average Google rating > 4.5 stars",
+    "Réponse à tous les avis < 48h": "Reply to every review within 48 hours",
+    "Processus de collecte d'avis en place": "Review collection process in place",
+    "Présence sur Trustpilot / PagesJaunes": "Presence on Trustpilot / PagesJaunes",
+    "Alertes Google My Business configurées": "Google My Business alerts configured",
+    "Google Posts publiés chaque semaine": "Google Posts published every week",
+    "FAQ schema markup sur les pages clés": "FAQ schema markup on key pages",
+    "Blog avec articles locaux (1/mois minimum)": "Blog with local articles (at least 1/month)",
+    "Page \"Témoignages clients\" à jour": "Up-to-date \"Customer Testimonials\" page",
+    "Premier audit": "First audit",
+    "Score moyen ≥ 80": "Average score ≥ 80",
+    "5 moniteurs actifs": "5 active monitors",
+    "Voir les audits": "View audits",
+    "Corriger maintenant": "Fix now",
+    "Voir Local SEO": "View Local SEO",
+    "Voir le rapport SLA": "View SLA report",
+    "Partager les rapports": "Share reports",
+    "Analyser le concurrent": "Analyze competitor",
+    "Voir mes missions": "View my missions",
+    "Voir les mots-clés": "View keywords",
+    "Renouveler maintenant": "Renew now",
+    "Voir les alertes": "View alerts",
+    "Optimiser les audits": "Optimize audits",
+    "Créer pages locales": "Create local pages",
+    "Plan d'action complet": "Complete action plan",
+    "Me guider sur la première": "Guide me through the first one",
+    "Créer toutes les missions": "Create all missions",
+    "Trier par gain": "Sort by potential gain",
+    "Qu'est-ce qui manque ?": "What's missing?",
+    "Plan d'action priorisé": "Prioritized action plan",
+    "Corriger {site}": "Fix {site}",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -51972,17 +52222,17 @@ function renderOverviewInsights() {
     return `<div style="width:28px;height:28px;border-radius:8px;background:rgba(37,99,235,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon('zap').replace('stroke="currentColor"','stroke="#2563EB"')}</div>`;
   };
   const insights = [
-    ...(()=>{ const _d = STATE.overview?.seoTrendDelta; if (_d != null && _d > 0) return [{ type:'success', title:'Score moyen en hausse', desc:'+'+_d+' pt'+(Math.abs(_d)>1?'s':'')+' ce mois. Continuez sur cette lancée !', impact:'Élevé', action:'Voir les détails' }]; if (_d != null && _d < 0) return [{ type:'warning', title:'Score moyen en baisse', desc:_d+' pt'+(Math.abs(_d)>1?'s':'')+' ce mois — vérifiez les audits récents.', impact:'Critique', action:'Voir les audits' }]; return []; })(),
-    ...(()=>{const _wA=(STATE.audits||[]).filter(a=>a.score!=null&&a.score<65).sort((a,b)=>a.score-b.score).slice(0,2);if(!_wA.length)return[];const _wd=_wA.map(a=>((a.url||a.name||'').replace(/^https?:\/\//,'')||'Un site')+'\u00a0('+a.score+'/100)').join(' et ');return[{type:'warning',title:_wA.length+' site(s) sous-performant(s)',desc:_wd+' ont besoin d\'actions urgentes pour éviter une pénalité.',impact:'Critique',action:'Corriger maintenant'}];})(),
-    { type:'info', title:'Opportunités locales détectées', desc:'Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.', impact:'Élevé', action:'Voir Local SEO' },
-    ...(()=>{ const _upMons=(STATE.monitors||[]).filter(m=>m.uptime>=99).length; const _total=(STATE.monitors||[]).length; return _total>0?[{type:'success',title:'Monitors uptime > 99%',desc:_upMons+' monitor'+((_upMons>1)?'s':'')+' sur '+_total+' ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.',impact:'Moyen',action:'Voir le rapport SLA'}]:[];})(),
-    ...(()=>{ const _noShare=(STATE.reports||[]).filter(r=>!r.shared).length; return _noShare>0?[{type:'info',title:_noShare+' rapport'+((_noShare>1)?'s':'')+' non partagé'+(_noShare>1?'s':''),desc:'Vous avez '+_noShare+' rapport'+(_noShare>1?'s':'')+' ce mois qui n\'ont pas encore été envoyé'+(_noShare>1?'s':'')+" à vos clients. Partagez-les pour montrer votre valeur.",impact:'Moyen',action:'Partager les rapports'}]:[];})(),
+     ...(()=>{ const _d = STATE.overview?.seoTrendDelta; if (_d != null && _d > 0) return [{ type:'success', title:fpT('Score moyen en hausse'), desc:fpT('+{count} pt(s) ce mois. Continuez sur cette lancée !',{count:_d}), impact:'Élevé', action:'Voir les détails' }]; if (_d != null && _d < 0) return [{ type:'warning', title:fpT('Score moyen en baisse'), desc:fpT('{count} pt(s) ce mois — vérifiez les audits récents.',{count:Math.abs(_d)}), impact:'Critique', action:'Voir les audits' }]; return []; })(),
+     ...(()=>{const _wA=(STATE.audits||[]).filter(a=>a.score!=null&&a.score<65).sort((a,b)=>a.score-b.score).slice(0,2);if(!_wA.length)return[];const _wd=_wA.map(a=>((a.url||a.name||'').replace(/^https?:\/\//,'')||'Un site')+'\u00a0('+a.score+'/100)').join(' '+fpT('et')+' ');return[{type:'warning',title:fpT('{count} site(s) sous-performant(s)',{count:_wA.length}),desc:fpT('{sites} ont besoin d’actions urgentes pour éviter une pénalité.',{sites:_wd}),impact:'Critique',action:'Corriger maintenant'}];})(),
+     { type:'info', title:fpT('Opportunités locales détectées'), desc:fpT('Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.'), impact:'Élevé', action:'Voir Local SEO' },
+     ...(()=>{ const _upMons=(STATE.monitors||[]).filter(m=>m.uptime>=99).length; const _total=(STATE.monitors||[]).length; return _total>0?[{type:'success',title:fpT('Monitors uptime > 99%'),desc:fpT('{up} monitor(s) sur {total} ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.',{up:_upMons,total:_total}),impact:'Moyen',action:'Voir le rapport SLA'}]:[];})(),
+     ...(()=>{ const _noShare=(STATE.reports||[]).filter(r=>!r.shared).length; return _noShare>0?[{type:'info',title:fpT('{count} rapport(s) non partagé(s)',{count:_noShare}),desc:fpT('Vous avez {count} rapport(s) ce mois qui n’ont pas encore été envoyé(s) à vos clients. Partagez-les pour montrer votre valeur.',{count:_noShare}),impact:'Moyen',action:'Partager les rapports'}]:[];})(),
     // Gate: only if real competitors exist
-    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ type:'purple', title:'Concurrent suivi', desc:escHtml(STATE.competitors[0].name||STATE.competitors[0].domain||'Votre concurrent principal') + ' est dans votre liste de veille. Consultez son évolution pour anticiper ses actions.', impact:'Élevé', action:'Analyser le concurrent' }] : []),
-    { type:'success', title:'Missions du mois', desc:'Consultez votre tableau de missions pour voir votre progression et vos records.', impact:'Moyen', action:'Voir mes missions' },
+     ...(STATE.competitors && STATE.competitors.length > 0 ? [{ type:'purple', title:fpT('Concurrent suivi'), desc:fpT('{competitor} est dans votre liste de veille. Consultez son évolution pour anticiper ses actions.', { competitor: STATE.competitors[0].name||STATE.competitors[0].domain||fpT('Votre concurrent principal') }), impact:'Élevé', action:'Analyser le concurrent' }] : []),
+     { type:'success', title:fpT('Missions du mois'), desc:fpT('Consultez votre tableau de missions pour voir votre progression et vos records.'), impact:'Moyen', action:'Voir mes missions' },
     // Gate: only if real keywords are tracked
-    ...(STATE.keywords && STATE.keywords.length > 0 ? [{ type:'info', title:STATE.keywords.length + ' mots-clés suivis', desc:STATE.keywords.length + ' mots-clés actifs dans votre portefeuille. Consultez la section Croissance pour les opportunités de contenu.', impact:'Élevé', action:'Voir les mots-clés' }] : []),
-    ...(()=>{ const _sslM=(STATE.monitors||[]).find(m=>m.sslDaysLeft!=null&&m.sslDaysLeft<30); return _sslM?[{ type:'warning', title:'SSL expire dans '+_sslM.sslDaysLeft+' jours', desc:'Le certificat SSL de ' + ((_sslM.url||_sslM.name||'').replace(/^https?:\/\//,'')||'votre site') + ' expire bientôt. Renouvelez-le pour éviter une interruption de service.', impact:'Critique', action:'Renouveler maintenant' }]:[]; })(),
+     ...(STATE.keywords && STATE.keywords.length > 0 ? [{ type:'info', title:fpT('{count} mots-clés suivis',{count:STATE.keywords.length}), desc:fpT('{count} mots-clés actifs dans votre portefeuille. Consultez la section Croissance pour les opportunités de contenu.',{count:STATE.keywords.length}), impact:'Élevé', action:'Voir les mots-clés' }] : []),
+     ...(()=>{ const _sslM=(STATE.monitors||[]).find(m=>m.sslDaysLeft!=null&&m.sslDaysLeft<30); return _sslM?[{ type:'warning', title:fpT('SSL expire dans {count} jours',{count:_sslM.sslDaysLeft}), desc:fpT('Le certificat SSL de {site} expire bientôt. Renouvelez-le pour éviter une interruption de service.',{site:(_sslM.url||_sslM.name||'').replace(/^https?:\/\//,'')||fpT('votre site')}), impact:'Critique', action:'Renouveler maintenant' }]:[]; })(),
   ];
 
   const _wDays=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -52010,43 +52260,43 @@ function renderOverviewInsights() {
   }
   const _ins = STATE.overviewInsights;
   const _aiInsightsText = (function() {
-    if (!_ins || STATE._insightsFetchInProgress) return '⏳ Génération des insights IA en cours…';
+    if (!_ins || STATE._insightsFetchInProgress) return fpT('⏳ Génération des insights IA en cours…');
     if (_ins.status === 'ready')                  return _ins.text;
-    if (_ins.status === 'no_data')                return 'Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.';
-    if (_ins.status === 'quota_exhausted')        return '⚠️ Quota IA atteint ce mois-ci. ' + (_ins.resetHint || 'Renouvellement en début de mois.');
-    if (_ins.status === 'temporarily_unavailable') return '⏳ Insights temporairement indisponibles. Réessayez dans quelques instants.';
-    if (_ins.status === 'rate_limited')           return '⏱️ Trop de générations IA demandées. Réessayez dans ' + Math.ceil(_ins.retryAfterSeconds || 120) + ' secondes.';
-    if (_ins.status === 'configuration_error')    return '⚙️ Configuration IA incomplète. Vérifiez vos paramètres dans Réglages → IA.';
-    return 'Connectez vos sources de données pour des insights personnalisés.';
+    if (_ins.status === 'no_data')                return fpT('Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.');
+    if (_ins.status === 'quota_exhausted')        return fpT('⚠️ Quota IA atteint ce mois-ci. {resetHint}', { resetHint: _ins.resetHint || fpT('Renouvellement en début de mois.') });
+    if (_ins.status === 'temporarily_unavailable') return fpT('⏳ Insights temporairement indisponibles. Réessayez dans quelques instants.');
+    if (_ins.status === 'rate_limited')           return fpT('⏱️ Trop de générations IA demandées. Réessayez dans {count} secondes.', { count: Math.ceil(_ins.retryAfterSeconds || 120) });
+    if (_ins.status === 'configuration_error')    return fpT('⚙️ Configuration IA incomplète. Vérifiez vos paramètres dans Réglages → IA.');
+    return fpT('Connectez vos sources de données pour des insights personnalisés.');
   })();
 
   return `
     ${aiBlock(_aiInsightsText,
-      [(()=>{const _w=(STATE.audits||[]).sort((a,b)=>(a.score||99)-(b.score||99))[0];return _w?'Corriger '+(((_w.url||_w.name||'').replace(/^https?:\/\//,'')).split('/')[0]||'le site'):'Optimiser les audits';})(), 'Répondre aux avis', 'Créer pages locales', 'Plan d\'action complet'])}
+      [(()=>{const _w=(STATE.audits||[]).sort((a,b)=>(a.score||99)-(b.score||99))[0];const site=_w?(((_w.url||_w.name||'').replace(/^https?:\/\//,'')).split('/')[0]||'le site'):'';return _w?{label:'Corriger {site}',query:'Corriger '+site}:'Optimiser les audits';})(), 'Répondre aux avis', 'Créer pages locales', 'Plan d\'action complet'])}
 
     <!-- TENDANCES SEMAINE -->
     <div class="fp-card fp-mb-20">
       <div class="fp-flex-between" style="margin-bottom:14px">
-        <div class="fp-card-title" style="margin-bottom:0">Tendances de la semaine</div>
-        <div style="font-size:11px;color:var(--fp-text-faint)">7 derniers jours</div>
+        <div class="fp-card-title" style="margin-bottom:0">${fpT('Tendances de la semaine')}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint)">${fpT('7 derniers jours')}</div>
       </div>
       ${weeklyData.length === 0
         ? `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:24px;margin-bottom:8px">📊</div>
-            <div style="font-weight:600;margin-bottom:4px">Pas encore d'historique disponible</div>
-            <div style="font-size:11px">Les tendances s'afficheront après votre prochain audit.</div>
+            <div style="font-weight:600;margin-bottom:4px">${fpT('Pas encore d’historique disponible')}</div>
+            <div style="font-size:11px">${fpT('Les tendances s’afficheront après votre prochain audit.')}</div>
           </div>`
         : `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--fp-radius-md);border:1px solid var(--fp-border)">
         <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:400px">
           <thead>
             <tr>
-              ${['Jour','Score','Issues','Visiteurs','Évolution'].map((h,i)=>`<th style="text-align:${i===0?'left':'center'};color:var(--fp-text-faint);font-weight:600;padding:4px 8px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em">${h}</th>`).join('')}
+              ${['Jour','Score','Issues','Visiteurs','Évolution'].map((h,i)=>`<th style="text-align:${i===0?'left':'center'};color:var(--fp-text-faint);font-weight:600;padding:4px 8px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em">${fpT(h)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
             ${weeklyData.map((d,i) => `
               <tr style="border-top:1px solid var(--fp-border)">
-                <td style="padding:8px;font-weight:600;color:var(--fp-text)">${d.day}</td>
+                <td style="padding:8px;font-weight:600;color:var(--fp-text)">${fpT(d.day)}</td>
                 <td style="padding:8px;text-align:center"><span style="font-weight:700;color:${scoreColor(d.score)}">${d.score}</span><span style="color:var(--fp-text-faint)">/100</span></td>
                 <td style="padding:8px;text-align:center"><span style="color:${d.issues>6?'#ef4444':'#22c55e'}">${d.issues}</span></td>
                 <td style="padding:8px;text-align:center;color:var(--fp-text-soft)">${d.visitors != null ? d.visitors : '—'}</td>
@@ -52062,9 +52312,9 @@ function renderOverviewInsights() {
 
     <!-- INSIGHTS GRID -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${insights.length} insights détectés ce mois</div>
+      <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('{count} insights détectés ce mois', { count: insights.length })}</div>
       <div style="display:flex;gap:6px">
-        ${['Tous','Critiques','Opportunités'].map(f => `<button class="fp-filter-tab${(STATE.overviewInsightFilter||'Tous')===f?' active':''}" onclick="STATE.overviewInsightFilter='${f}';render()">${f}</button>`).join('')}
+        ${[['Tous','Tous'],['Critiques','Critiques'],['Opportunités','Opportunités']].map(([f,label]) => `<button class="fp-filter-tab${(STATE.overviewInsightFilter||'Tous')===f?' active':''}" onclick="STATE.overviewInsightFilter='${f}';render()">${fpT(label)}</button>`).join('')}
       </div>
     </div>
     <div class="fp-grid-2">
@@ -52073,18 +52323,18 @@ function renderOverviewInsights() {
         const filtered = f === 'Critiques'    ? insights.filter(i => i.type === 'warning' || i.impact === 'Critique')
                         : f === 'Opportunités' ? insights.filter(i => i.type !== 'warning' && i.impact !== 'Critique')
                         : insights;
-        if (!filtered.length) return `<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucun insight dans cette catégorie.</div>`;
+        if (!filtered.length) return `<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">${fpT('Aucun insight dans cette catégorie.')}</div>`;
         return filtered.map(i => {
           const typeColor = i.type==='success'?'var(--fp-success)':i.type==='warning'?'var(--fp-danger)':i.type==='purple'?'#8b5cf6':'var(--fp-accent)';
           const typeBg = i.type==='success'?'rgba(34,197,94,0.1)':i.type==='warning'?'rgba(239,68,68,0.08)':i.type==='purple'?'rgba(139,92,246,0.08)':'rgba(37,99,235,0.08)';
           return `<div class="fp-insight-card">
             <div class="fp-insight-card-head">
               ${insightIcon(i.type)}
-              <span style="color:${typeColor};background:${typeBg};padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700">${i.impact}</span>
+              <span style="color:${typeColor};background:${typeBg};padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700">${fpT(i.impact)}</span>
             </div>
-            <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${i.title}</div>
-            <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px">${i.desc}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpInsightAction('${escHtml(i.action)}')" style="font-size:11px">${i.action} →</button>
+            <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${escHtml(fpT(i.title))}</div>
+            <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px">${escHtml(fpT(i.desc))}</div>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpInsightAction('${escHtml(i.action)}')" style="font-size:11px">${escHtml(fpT(i.action))} →</button>
           </div>`;
         }).join('');
       })()}
@@ -52112,32 +52362,32 @@ function renderOverviewQuickWins() {
     STATE.audits.filter(a => a.score != null && a.score < 70).slice(0, 4).forEach(a => {
       const site = (a.url||'').replace(/^https?:\/\//,'');
       const gain = Math.max(3, Math.round((70 - a.score) * 0.35));
-      const title = 'Corriger les problèmes SEO — ' + (site || 'site');
-      if (!_isDup(title)) _auditQW.push({ effort: '30-60 min', gain: '+' + gain + ' pts', title, site, done: false, cat: 'Technique', color: '#2563EB' });
+       const title = 'Corriger les problèmes SEO — ' + (site || 'site');
+       if (!_isDup(title)) _auditQW.push({ effort: '30-60 min', gain: '+' + gain + ' pts', title, displayTitle: fpT('Corriger les problèmes SEO — {site}', { site: site || fpT('site') }), site, done: false, cat: 'Technique', color: '#2563EB' });
     });
     STATE.audits.filter(a => a.score != null && a.score >= 70 && a.score < 85).slice(0, 3).forEach(a => {
       const site = (a.url||'').replace(/^https?:\/\//,'');
-      const title = 'Optimiser les performances — ' + (site || 'site');
-      if (!_isDup(title)) _auditQW.push({ effort: '20 min', gain: '+' + Math.max(2, Math.round((85 - a.score) * 0.2)) + ' pts', title, site, done: false, cat: 'Performance', color: '#f59e0b' });
+       const title = 'Optimiser les performances — ' + (site || 'site');
+       if (!_isDup(title)) _auditQW.push({ effort: '20 min', gain: '+' + Math.max(2, Math.round((85 - a.score) * 0.2)) + ' pts', title, displayTitle: fpT('Optimiser les performances — {site}', { site: site || fpT('site') }), site, done: false, cat: 'Performance', color: '#f59e0b' });
     });
   }
   // Add contextual suggestions based on connected data
   const _ov = STATE.overview || {};
   if (_ov.gbpConnected && _ov.gbpUnansweredCount > 0) {
     const title = 'Répondre aux ' + _ov.gbpUnansweredCount + ' avis Google sans réponse';
-    if (!_isDup(title)) _auditQW.push({ effort: '10 min', gain: '+5 pts', title, site: _qs(0), done: false, cat: 'Réputation', color: '#22c55e' });
+     if (!_isDup(title)) _auditQW.push({ effort: '10 min', gain: '+5 pts', title, displayTitle: fpT('Répondre aux {count} avis Google sans réponse', { count: _ov.gbpUnansweredCount }), site: _qs(0), done: false, cat: 'Réputation', color: '#22c55e' });
   }
   if (!_ov.analyticsConnected) {
     const title = 'Connecter Google Analytics pour mesurer le trafic réel';
-    if (!_isDup(title)) _auditQW.push({ effort: '5 min', gain: '+GA4', title, site: _qs(0), done: false, cat: 'Analytics', color: '#8b5cf6' });
+     if (!_isDup(title)) _auditQW.push({ effort: '5 min', gain: '+GA4', title, displayTitle: fpT('Connecter Google Analytics pour mesurer le trafic réel'), site: _qs(0), done: false, cat: 'Analytics', color: '#8b5cf6' });
   }
   if (_ov.monitorsDown > 0) {
     const title = 'Investiguer ' + _ov.monitorsDown + ' monitor(s) DOWN';
-    if (!_isDup(title)) _auditQW.unshift({ effort: 'Urgent', gain: 'Uptime', title, site: _qs(0), done: false, cat: 'Monitor', color: '#ef4444' });
+     if (!_isDup(title)) _auditQW.unshift({ effort: 'Urgent', gain: 'Uptime', title, displayTitle: fpT('Investiguer {count} monitor(s) DOWN', { count: _ov.monitorsDown }), site: _qs(0), done: false, cat: 'Monitor', color: '#ef4444' });
   }
   if (_ov.revenueLeaks > 0) {
     const title = 'Corriger ' + _ov.revenueLeaks + ' fuite(s) de revenus détectée(s)';
-    if (!_isDup(title)) _auditQW.unshift({ effort: '1-2h', gain: '+€€', title, site: _qs(0), done: false, cat: 'Conversion', color: '#ef4444' });
+     if (!_isDup(title)) _auditQW.unshift({ effort: '1-2h', gain: '+€€', title, displayTitle: fpT('Corriger {count} fuite(s) de revenus détectée(s)', { count: _ov.revenueLeaks }), site: _qs(0), done: false, cat: 'Conversion', color: '#ef4444' });
   }
 
   // Deduplicate Quick Wins by normalised title (prevents doubles when same URL
@@ -52151,16 +52401,16 @@ function renderOverviewQuickWins() {
   const _liveMissionsQW = _auditQWDeduped.length > 0 ? _auditQWDeduped.slice(0, 10) : null;
 
   const _previewQW = [
-    { effort:'5 min',  gain:'+8 pts',  title:'Ajouter balise title manquante sur 3 pages', site:_qs(0)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
-    { effort:'15 min', gain:'+5 pts',  title:'Compresser images JPEG → WebP', site:_qs(1)||'votre-site.fr', done:false, cat:'Performance', color:'#22c55e' },
-    { effort:'2 min',  gain:'+3 pts',  title:'Répondre aux avis Google récents', site:_qs(2)||'votre-site.fr', done:false, cat:'Réputation', color:'#f59e0b' },
-    { effort:'30 min', gain:'+12 pts', title:'Créer une page locale à fort potentiel SEO', site:_qs(2)||'votre-site.fr', done:false, cat:'Local SEO', color:'#ef4444' },
-    { effort:'10 min', gain:'+4 pts',  title:'Ajouter schema markup LocalBusiness', site:_qs(3)||'votre-site.fr', done:false, cat:'Technique', color:'#8b5cf6' },
-    { effort:'20 min', gain:'+7 pts',  title:'Optimiser meta descriptions', site:_qs(4)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
-    { effort:'5 min',  gain:'+6 pts',  title:'Activer Google Posts hebdomadaires', site:_qs(0)||'votre-site.fr', done:false, cat:'GBP', color:'#06b6d4' },
-    { effort:'45 min', gain:'+9 pts',  title:'Créer page FAQ avec schema markup', site:_qs(2)||'votre-site.fr', done:false, cat:'Contenu', color:'#8b5cf6' },
-    { effort:'10 min', gain:'+4 pts',  title:'Ajouter photos récentes sur GBP', site:_qs(1)||'votre-site.fr', done:false, cat:'GBP', color:'#22c55e' },
-    { effort:'20 min', gain:'+5 pts',  title:'Corriger les liens internes cassés', site:_qs(3)||'votre-site.fr', done:false, cat:'Technique', color:'#f59e0b' },
+     { effort:'5 min',  gain:'+8 pts',  title:'Ajouter balise title manquante sur 3 pages', displayTitle:fpT('Ajouter balise title manquante sur 3 pages'), site:_qs(0)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
+     { effort:'15 min', gain:'+5 pts',  title:'Compresser images JPEG → WebP', displayTitle:fpT('Compresser les images JPEG au format WebP'), site:_qs(1)||'votre-site.fr', done:false, cat:'Performance', color:'#22c55e' },
+     { effort:'2 min',  gain:'+3 pts',  title:'Répondre aux avis Google récents', displayTitle:fpT('Répondre aux avis Google récents'), site:_qs(2)||'votre-site.fr', done:false, cat:'Réputation', color:'#f59e0b' },
+     { effort:'30 min', gain:'+12 pts', title:'Créer une page locale à fort potentiel SEO', displayTitle:fpT('Créer une page locale à fort potentiel SEO'), site:_qs(2)||'votre-site.fr', done:false, cat:'Local SEO', color:'#ef4444' },
+     { effort:'10 min', gain:'+4 pts',  title:'Ajouter schema markup LocalBusiness', displayTitle:fpT('Ajouter le balisage Schema LocalBusiness'), site:_qs(3)||'votre-site.fr', done:false, cat:'Technique', color:'#8b5cf6' },
+     { effort:'20 min', gain:'+7 pts',  title:'Optimiser meta descriptions', displayTitle:fpT('Optimiser les méta-descriptions'), site:_qs(4)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
+     { effort:'5 min',  gain:'+6 pts',  title:'Activer Google Posts hebdomadaires', displayTitle:fpT('Activer les Google Posts hebdomadaires'), site:_qs(0)||'votre-site.fr', done:false, cat:'GBP', color:'#06b6d4' },
+     { effort:'45 min', gain:'+9 pts',  title:'Créer page FAQ avec schema markup', displayTitle:fpT('Créer une page FAQ avec le balisage Schema'), site:_qs(2)||'votre-site.fr', done:false, cat:'Contenu', color:'#8b5cf6' },
+     { effort:'10 min', gain:'+4 pts',  title:'Ajouter photos récentes sur GBP', displayTitle:fpT('Ajouter des photos récentes sur GBP'), site:_qs(1)||'votre-site.fr', done:false, cat:'GBP', color:'#22c55e' },
+     { effort:'20 min', gain:'+5 pts',  title:'Corriger les liens internes cassés', displayTitle:fpT('Corriger les liens internes cassés'), site:_qs(3)||'votre-site.fr', done:false, cat:'Technique', color:'#f59e0b' },
   ];
   const qw = _liveMissionsQW && _liveMissionsQW.length > 0
     ? _liveMissionsQW
@@ -52174,6 +52424,10 @@ function renderOverviewQuickWins() {
   });
   const totalGain = qw.filter(q=>!q.done).reduce((s,q)=>s+(parseInt(q.gain)||0),0);
   const totalTime = qw.filter(q=>!q.done).length;
+  const quickWinDisplayGain = gain => {
+    const match = String(gain || '').match(/^([+-]?\d+)\s*pts$/i);
+    return match ? fpT('{count} pts', { count: match[1] }) : String(gain || '');
+  };
   // Durée totale estimée : somme réelle des fourchettes d'effort des actions
   // affichées (ex. "5 min", "1-2h", "45 min") — jamais une constante.
   const _effRange = (s) => {
@@ -52189,14 +52443,14 @@ function renderOverviewQuickWins() {
   const totalDuration = _effTot[1] <= 0 ? '—'
     : (_effTot[0] === _effTot[1] ? '~'+_fmtMin(_effTot[0]) : '~'+_fmtMin(_effTot[0])+'-'+_fmtMin(_effTot[1]));
   return `
-    ${aiBlock(`Ces <strong>${qw.length} actions rapides</strong> peuvent vous faire gagner <strong>+${totalGain} points</strong> de score moyen collectif.${_effTot[1]>0?` Durée totale estimée : <strong>${totalDuration}</strong> — commencez par les plus rapides.`:''}`,
+    ${aiBlock(fpT('Ces <strong>{count} actions rapides</strong> peuvent vous faire gagner <strong>+{gain} points</strong> de score moyen collectif.', { count: qw.length, gain: totalGain }) + (_effTot[1] > 0 ? ' ' + fpT('Durée totale estimée : <strong>{duration}</strong> — commencez par les plus rapides.', { duration: totalDuration }) : ''),
       ['Me guider sur la première', 'Créer toutes les missions', 'Trier par gain'])}
 
     <div class="fp-card fp-mb-16" style="padding:14px 18px">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center">
-        <div><div style="font-size:22px;font-weight:800;color:#22c55e;font-family:var(--fp-font-head)">+${totalGain}</div><div style="font-size:11px;color:var(--fp-text-faint)">points de score potentiels</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">${qw.filter(q=>!q.done).length}</div><div style="font-size:11px;color:var(--fp-text-faint)">actions restantes</div></div>
-        <div><div style="font-size:22px;font-weight:800;color:#8b5cf6;font-family:var(--fp-font-head)">${totalDuration}</div><div style="font-size:11px;color:var(--fp-text-faint)">durée totale estimée</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:#22c55e;font-family:var(--fp-font-head)">+${totalGain}</div><div style="font-size:11px;color:var(--fp-text-faint)">${fpT('points de score potentiels')}</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">${qw.filter(q=>!q.done).length}</div><div style="font-size:11px;color:var(--fp-text-faint)">${fpT('actions restantes')}</div></div>
+        <div><div style="font-size:22px;font-weight:800;color:#8b5cf6;font-family:var(--fp-font-head)">${totalDuration}</div><div style="font-size:11px;color:var(--fp-text-faint)">${fpT('durée totale estimée')}</div></div>
       </div>
     </div>
 
@@ -52210,25 +52464,39 @@ function renderOverviewQuickWins() {
           </div>
           <div class="fp-opp-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
-              <div class="fp-opp-title" style="${q.done ? 'text-decoration:line-through;color:var(--fp-text-muted)' : ''}">${escHtml(q.title)}</div>
-              ${badge(q.cat, q.color)}
+              <div class="fp-opp-title" style="${q.done ? 'text-decoration:line-through;color:var(--fp-text-muted)' : ''}">${escHtml(q.displayTitle || q.title)}</div>
+              ${badge(fpT(q.cat), q.color)}
             </div>
             <div class="fp-opp-desc">${escHtml(q.site)}</div>
           </div>
           <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:13px;font-weight:700;color:var(--fp-success)">${q.gain}</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(q.effort)}</div>
+            <div style="font-size:13px;font-weight:700;color:var(--fp-success)">${escHtml(quickWinDisplayGain(q.gain))}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(fpT(q.effort))}</div>
           </div>
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             ${!q.done
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm qw-mission-btn" data-qw-title="${escHtml(q.title||'Mission Quick Win')}" data-qw-cat="Optimisation" data-qw-priority="medium" style="flex:1">+ Mission</button>
-                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=true;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}apiAction('PUT','/api/overview/checklist',{items:STATE.checklist||[],extra:STATE.checklistExtra}).catch(function(){});render();})()">✓ Accompli</button>`
-              : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=false;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}apiAction('PUT','/api/overview/checklist',{items:STATE.checklist||[],extra:STATE.checklistExtra}).catch(function(){});render();})()">✓ Accompli — Défaire</button>`}
+                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=true;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}apiAction('PUT','/api/overview/checklist',{items:STATE.checklist||[],extra:STATE.checklistExtra}).catch(function(){});render();})()">✓ ${fpT('Accompli')}</button>`
+              : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default" onclick="(function(){if(!STATE.checklistExtra)STATE.checklistExtra={};STATE.checklistExtra[${JSON.stringify(q.id||q.title||'')}]=false;try{localStorage.setItem('fp:cl-extra',JSON.stringify(STATE.checklistExtra));}catch(_){}apiAction('PUT','/api/overview/checklist',{items:STATE.checklist||[],extra:STATE.checklistExtra}).catch(function(){});render();})()">✓ ${fpT('Accompli — Défaire')}</button>`}
           </div>
         </div>
       `).join('')}
     </div>
   `;
+}
+
+const OVERVIEW_DEFAULT_CHECKLIST_LABELS = Object.freeze({
+  c1: 'Fiche Google Business Profile complète',
+  c2: 'Photos récentes ajoutées (< 3 mois)',
+  c3: 'Réponses aux avis Google',
+  c4: 'Posts hebdomadaires sur GBP',
+  c5: 'Catégories secondaires configurées',
+  c6: 'NAP cohérent sur tous les annuaires',
+});
+
+function overviewChecklistDisplayLabel(item) {
+  const raw = item && typeof item.label === 'string' ? item.label : '';
+  return OVERVIEW_DEFAULT_CHECKLIST_LABELS[item && item.id] === raw ? fpT(raw) : raw;
 }
 
 function renderOverviewChecklist() {
@@ -52322,19 +52590,19 @@ function renderOverviewChecklist() {
   const allPct = Math.round(allDone / allTotal * 100);
 
   return `
-    ${aiBlock(`Votre checklist SEO globale est complétée à <strong>${allPct}%</strong> (${allDone}/${allTotal} points). ${allTotal - allDone} actions restantes pour atteindre une présence locale optimale. Focus prioritaire : réponses aux avis et posts hebdomadaires GBP.`,
+    ${aiBlock(fpT('Votre checklist SEO globale est complétée à <strong>{percent}%</strong> ({done}/{total} points). {remaining} actions restantes pour atteindre une présence locale optimale. Focus prioritaire : réponses aux avis et posts hebdomadaires GBP.', { percent: allPct, done: allDone, total: allTotal, remaining: allTotal - allDone }),
       ['Qu\'est-ce qui manque ?', 'Créer toutes les missions', 'Plan d\'action priorisé'])}
 
     <!-- GLOBAL PROGRESS -->
     <div class="fp-card fp-mb-20" style="padding:16px 20px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:11px;color:var(--fp-success)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        <span>Votre checklist est automatiquement sauvegardée.</span>
+        <span>${fpT('Votre checklist est automatiquement sauvegardée.')}</span>
       </div>
       <div class="fp-flex-between" style="margin-bottom:10px">
         <div>
-          <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Progression globale</div>
-          <div style="font-size:11px;color:var(--fp-text-faint)">${allDone}/${allTotal} points de contrôle</div>
+          <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Progression globale')}</div>
+          <div style="font-size:11px;color:var(--fp-text-faint)">${fpT('{done}/{total} points de contrôle', { done: allDone, total: allTotal })}</div>
         </div>
         <div style="font-size:28px;font-weight:800;color:${allPct>=80?'var(--fp-success)':allPct>=50?'var(--fp-warning)':'var(--fp-danger)'};font-family:var(--fp-font-head)">${allPct}%</div>
       </div>
@@ -52347,7 +52615,7 @@ function renderOverviewChecklist() {
           const catPct = Math.round(catDone/c.items.length*100);
           return `<div style="display:flex;align-items:center;gap:6px">
             <div style="width:8px;height:8px;border-radius:50%;background:${c.color}"></div>
-            <span style="font-size:11px;color:var(--fp-text-muted)">${c.cat}</span>
+            <span style="font-size:11px;color:var(--fp-text-muted)">${fpT(c.cat)}</span>
             <span style="font-size:11px;font-weight:700;color:${c.color}">${catPct}%</span>
           </div>`;
         }).join('')}
@@ -52370,11 +52638,11 @@ function renderOverviewChecklist() {
           const _locked = _mAuto !== null;
           const _done = _locked ? _mAuto : c.done;
           return `
-          <div class="fp-check-item" ${_locked?'':`data-check-id="${c.id}"`} style="display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;${_locked?'':'cursor:pointer;'}transition:background 0.12s;border:1px solid ${_done?'rgba(34,197,94,0.2)':'var(--fp-border)'}" ${_locked?'title="Vérifié automatiquement à partir de vos données réelles"':''}>
+          <div class="fp-check-item" ${_locked?'':`data-check-id="${c.id}"`} style="display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;${_locked?'':'cursor:pointer;'}transition:background 0.12s;border:1px solid ${_done?'rgba(34,197,94,0.2)':'var(--fp-border)'}" ${_locked?`title="${fpT('Vérifié automatiquement à partir de vos données réelles')}"`:''}>
             <div style="width:18px;height:18px;border-radius:5px;border:2px solid ${_done?'var(--fp-success)':'var(--fp-border)'};background:${_done?'rgba(34,197,94,0.15)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
               ${_done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--fp-success)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':''}
             </div>
-            <span style="font-size:12px;color:${_done?'var(--fp-text-muted)':'var(--fp-text)'};${_done?'text-decoration:line-through':''};flex:1">${escHtml(c.label)}</span>
+          <span style="font-size:12px;color:${_done?'var(--fp-text-muted)':'var(--fp-text)'};${_done?'text-decoration:line-through':''};flex:1">${escHtml(overviewChecklistDisplayLabel(c))}</span>
             ${_locked?'<span style="font-size:8px;font-weight:700;letter-spacing:0.4px;padding:2px 5px;border-radius:4px;background:rgba(34,197,94,0.12);color:var(--fp-success);flex-shrink:0;text-transform:uppercase">auto</span>':''}
           </div>
         `;}).join('')}
@@ -52384,7 +52652,7 @@ function renderOverviewChecklist() {
     <!-- ADDITIONAL CHECKLISTS -->
     <div style="display:flex;align-items:center;gap:6px;margin:20px 0 10px;font-size:11px;color:var(--fp-text-faint)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 16v-4M12 8h.01"/></svg>
-      <span>Vos checklists sont automatiquement sauvegardées.</span>
+      <span>${fpT('Vos checklists sont automatiquement sauvegardées.')}</span>
     </div>
     <div class="fp-grid-2">
       ${extraCategories.map(cat => {
@@ -52395,18 +52663,18 @@ function renderOverviewChecklist() {
             <div style="width:28px;height:28px;border-radius:8px;background:${cat.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
               ${svgIcon(cat.icon).replace('stroke="currentColor"',`stroke="${cat.color}"`)}
             </div>
-            <div class="fp-card-title" style="margin-bottom:0;flex:1">${cat.cat}</div>
+            <div class="fp-card-title" style="margin-bottom:0;flex:1">${fpT(cat.cat)}</div>
             <span style="font-size:12px;font-weight:700;color:${cat.color}">${catDone}/${cat.items.length}</span>
           </div>
           <div class="fp-progress-track" style="height:3px;margin-bottom:12px"><div class="fp-progress-fill" style="width:${catPct}%;background:${cat.color}"></div></div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${cat.items.map(item => `
-              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;${item.locked?'':'cursor:pointer;'}border-radius:6px;transition:background 0.1s" ${item.locked?'':`onclick="window._fpToggleChecklistExtra && window._fpToggleChecklistExtra(${JSON.stringify(item.id)},${item.done})"`} title="${item.locked?'Vérifié automatiquement à partir de vos données réelles':(item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher')}">
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;${item.locked?'':'cursor:pointer;'}border-radius:6px;transition:background 0.1s" ${item.locked?'':`onclick="window._fpToggleChecklistExtra && window._fpToggleChecklistExtra(${JSON.stringify(item.id)},${item.done})"`} title="${fpT(item.locked?'Vérifié automatiquement à partir de vos données réelles':(item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher'))}">
                 <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${item.done?cat.color:'var(--fp-border)'};background:${item.done?cat.color+'20':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   ${item.done?`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${cat.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`:''}
                 </div>
-                <span style="font-size:11px;color:${item.done?'var(--fp-text-muted)':'var(--fp-text)'};${item.done?'text-decoration:line-through':''};line-height:1.4;flex:1">${escHtml(item.label)}</span>
-                ${item.locked?`<span style="font-size:8px;font-weight:700;letter-spacing:0.4px;padding:2px 5px;border-radius:4px;background:${cat.color}15;color:${cat.color};flex-shrink:0;text-transform:uppercase" title="État calculé automatiquement">auto</span>`:''}
+                <span style="font-size:11px;color:${item.done?'var(--fp-text-muted)':'var(--fp-text)'};${item.done?'text-decoration:line-through':''};line-height:1.4;flex:1">${escHtml(fpT(item.label))}</span>
+                ${item.locked?`<span style="font-size:8px;font-weight:700;letter-spacing:0.4px;padding:2px 5px;border-radius:4px;background:${cat.color}15;color:${cat.color};flex-shrink:0;text-transform:uppercase" title="${fpT('État calculé automatiquement')}">auto</span>`:''}
               </div>
             `).join('')}
           </div>
