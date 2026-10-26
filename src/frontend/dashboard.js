@@ -22364,6 +22364,13 @@ function bindGlobalEvents() {
     "la prochaine échéance": "the next billing date",
     "le ": "on ",
     ". Votre plan actuel reste actif jusqu'à cette date.": ". Your current plan remains active until this date.",
+    "Cette action utilise le quota DataForSEO. Continuer ?": "This action uses your DataForSEO quota. Continue?",
+    "Optimisation de contenu SEO": "SEO content optimization",
+    "Cette analyse utilise le quota DataForSEO. Continuer ?": "This analysis uses your DataForSEO quota. Continue?",
+    "Score contenu": "Content score",
+    "Mots": "Words",
+    "Titres": "Headings",
+    "conversions": "conversions",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {

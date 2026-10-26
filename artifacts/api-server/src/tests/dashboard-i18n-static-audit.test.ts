@@ -11,6 +11,15 @@ const backendSource = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/fp-backend.js"),
   "utf8",
 );
+const addonSourceNames = [
+  "agency-portfolio-priorities-addon.js",
+  "content-optimization-addon.js",
+  "conversion-opportunity-engine-addon.js",
+  "organic-campaign-tracker-addon.js",
+  "seo-change-impact-addon.js",
+  "seo-missions-addon.js",
+  "technical-seo-fix-verification-addon.js",
+];
 
 const sourceFiles = [
   {
@@ -33,6 +42,16 @@ const sourceFiles = [
       ts.ScriptKind.JS,
     ),
   },
+  ...addonSourceNames.map((fileName) => ({
+    fileName,
+    source: ts.createSourceFile(
+      fileName,
+      readFileSync(resolve(process.cwd(), `../flowpoint-export/${fileName}`), "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    ),
+  })),
 ];
 
 function walk(node: ts.Node, visit: (node: ts.Node) => void) {
@@ -73,17 +92,22 @@ walk(sourceFiles[0].source, (node) => {
 const frenchUiText =
   /(?:[àâäçéèêëîïôöùûüÿœæ]|\b(?:supprimer|fichier|envoyer|envoyée|créé|créée|erreur|désactivé|activé|activation|en cours|canal|connecteur|surveillance|vérification|ajouter|ajouté|saisissez|adresse|données|réessayez|fréquence|quotidien|hebdo|mensuel|connexion|établissement|avis|coordonnées|opportunité|règle|assignation|rapport|mission|concurrent|sélectionné|sélectionnée|généré|générée|téléchargé|importé|chargement|inconnu|pause|prochain|formulaire|abandons|sessions|sortie|autorisation|dernière|instant|crédits|déconnecter|statut|thème|sombre|clair|manuellement|irréversible)\b)/i;
 
-function isTranslationCall(node: ts.Node): boolean {
+function isTranslationCall(node: ts.Node, fileName: string): boolean {
   return (
     ts.isCallExpression(node) &&
-    ["fpT", "_fpBackendText", "fpPublicText"].includes(callName(node.expression))
+    (["fpT", "_fpBackendText", "fpPublicText"].includes(callName(node.expression)) ||
+      (fileName.endsWith("-addon.js") && callName(node.expression) === "t"))
   );
 }
 
-function isTranslatedWithin(node: ts.Node, boundary: ts.Node): boolean {
+function isTranslatedWithin(
+  node: ts.Node,
+  boundary: ts.Node,
+  fileName: string,
+): boolean {
   let current: ts.Node | undefined = node;
   while (current) {
-    if (isTranslationCall(current)) return true;
+    if (isTranslationCall(current, fileName)) return true;
     if (current === boundary) break;
     current = current.parent;
   }
@@ -106,16 +130,54 @@ function hasCompositionAncestor(node: ts.Node, boundary: ts.Node): boolean {
   return false;
 }
 
+function staticTemplateText(node: ts.Expression): string | null {
+  if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (!ts.isTemplateExpression(node)) return null;
+  return [
+    node.head,
+    ...node.templateSpans.map((span) => span.literal),
+  ].map((part) => part.text).join(" __FP_DYNAMIC__ ");
+}
+
 describe("private dashboard static English localization", () => {
-  it("keeps every statically referenced fpT key in the English catalogue", () => {
+  it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
     const missing: Array<{ file: string; line: number; key: string }> = [];
 
     for (const { fileName, source } of sourceFiles) {
       walk(source, (node) => {
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          ["statusLabels", "priorities"].includes(node.name.text) &&
+          node.initializer &&
+          ts.isObjectLiteralExpression(node.initializer)
+        ) {
+          for (const entry of node.initializer.properties) {
+            if (!ts.isPropertyAssignment(entry) || !ts.isArrayLiteralExpression(entry.initializer)) {
+              continue;
+            }
+            const label = entry.initializer.elements[1];
+            if (
+              label &&
+              (ts.isStringLiteral(label) || ts.isNoSubstitutionTemplateLiteral(label)) &&
+              !englishKeys.has(label.text)
+            ) {
+              missing.push({
+                file: fileName,
+                line: source.getLineAndCharacterOfPosition(label.getStart(source)).line + 1,
+                key: label.text,
+              });
+            }
+          }
+        }
+
         if (!ts.isCallExpression(node)) return;
         const name = callName(node.expression);
 
-        if (name === "fpT") {
+        if (
+          name === "fpT" ||
+          (fileName.endsWith("-addon.js") && name === "t")
+        ) {
           const key = node.arguments[0];
           if (
             key &&
@@ -137,7 +199,7 @@ describe("private dashboard static English localization", () => {
             if (
               (ts.isStringLiteral(part) || ts.isNoSubstitutionTemplateLiteral(part)) &&
               frenchUiText.test(part.text) &&
-              !isTranslatedWithin(part, message) &&
+              !isTranslatedWithin(part, message, fileName) &&
               !englishKeys.has(part.text)
             ) {
               missing.push({
@@ -175,7 +237,7 @@ describe("private dashboard static English localization", () => {
             if (
               (ts.isStringLiteral(part) || ts.isNoSubstitutionTemplateLiteral(part)) &&
               frenchUiText.test(part.text) &&
-              !isTranslatedWithin(part, node)
+              !isTranslatedWithin(part, node, fileName)
             ) {
               unlocalized.push({
                 file: fileName,
@@ -184,7 +246,10 @@ describe("private dashboard static English localization", () => {
                 context: "plan-change helper",
               });
             }
-            if (ts.isTemplateExpression(part) && !isTranslatedWithin(part, node)) {
+            if (
+              ts.isTemplateExpression(part) &&
+              !isTranslatedWithin(part, node, fileName)
+            ) {
               for (const quasi of [
                 part.head,
                 ...part.templateSpans.map((span) => span.literal),
@@ -214,7 +279,7 @@ describe("private dashboard static English localization", () => {
               (ts.isStringLiteral(part) || ts.isNoSubstitutionTemplateLiteral(part)) &&
               frenchUiText.test(part.text) &&
               hasCompositionAncestor(part, message) &&
-              !isTranslatedWithin(part, message)
+              !isTranslatedWithin(part, message, fileName)
             ) {
               unlocalized.push({
                 file: fileName,
@@ -225,7 +290,7 @@ describe("private dashboard static English localization", () => {
             }
 
             if (ts.isTemplateExpression(part)) {
-              if (isTranslatedWithin(part, message)) return;
+              if (isTranslatedWithin(part, message, fileName)) return;
               for (const quasi of [
                 part.head,
                 ...part.templateSpans.map((span) => span.literal),
@@ -250,7 +315,7 @@ describe("private dashboard static English localization", () => {
             if (
               (ts.isStringLiteral(part) || ts.isNoSubstitutionTemplateLiteral(part)) &&
               frenchUiText.test(part.text) &&
-              !isTranslatedWithin(part, message)
+              !isTranslatedWithin(part, message, fileName)
             ) {
               unlocalized.push({
                 file: fileName,
@@ -261,7 +326,7 @@ describe("private dashboard static English localization", () => {
             }
 
             if (ts.isTemplateExpression(part)) {
-              if (isTranslatedWithin(part, message)) return;
+              if (isTranslatedWithin(part, message, fileName)) return;
               for (const quasi of [
                 part.head,
                 ...part.templateSpans.map((span) => span.literal),
@@ -277,6 +342,92 @@ describe("private dashboard static English localization", () => {
               }
             }
           });
+        }
+      });
+    }
+
+    expect(unlocalized).toEqual([]);
+  });
+
+  it("does not leave unwrapped French text in add-on HTML or DOM text assignments", () => {
+    const unlocalized: Array<{ file: string; line: number; text: string }> = [];
+
+    for (const { fileName, source } of sourceFiles) {
+      if (!fileName.endsWith("-addon.js")) continue;
+      walk(source, (node) => {
+        if (
+          ts.isBinaryExpression(node) &&
+          node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          ts.isPropertyAccessExpression(node.left) &&
+          node.left.name.text === "innerHTML"
+        ) {
+          const html = staticTemplateText(node.right);
+          if (html !== null) {
+            const withoutNonVisibleMarkup = html
+              .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+              .replace(/<!--[\s\S]*?-->/g, " ")
+              .replace(/<[^>]*>/g, "\n");
+            for (const candidate of withoutNonVisibleMarkup.split("\n")) {
+              const text = candidate.replace(/__FP_DYNAMIC__/g, " ").trim();
+              if (
+                text &&
+                frenchUiText.test(text) &&
+                !englishKeys.has(text)
+              ) {
+                unlocalized.push({
+                  file: fileName,
+                  line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+                  text,
+                });
+              }
+            }
+
+            for (const attribute of html.matchAll(
+              /\b(?:placeholder|title|aria-label|alt)\s*=\s*(["'])(.*?)\1/gi,
+            )) {
+              const text = attribute[2].replace(/__FP_DYNAMIC__/g, " ").trim();
+              if (
+                text &&
+                frenchUiText.test(text) &&
+                !englishKeys.has(text)
+              ) {
+                unlocalized.push({
+                  file: fileName,
+                  line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+                  text,
+                });
+              }
+            }
+          }
+        }
+
+        if (
+          !ts.isBinaryExpression(node) ||
+          node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+          !ts.isPropertyAccessExpression(node.left) ||
+          !["textContent", "innerText"].includes(node.left.name.text) ||
+          isTranslatedWithin(node.right, node, fileName)
+        ) {
+          return;
+        }
+
+        const parts: string[] = [];
+        if (ts.isStringLiteral(node.right) || ts.isNoSubstitutionTemplateLiteral(node.right)) {
+          parts.push(node.right.text);
+        } else if (ts.isTemplateExpression(node.right)) {
+          parts.push(
+            node.right.head.text,
+            ...node.right.templateSpans.map((span) => span.literal.text),
+          );
+        }
+        for (const text of parts) {
+          if (frenchUiText.test(text) && !englishKeys.has(text.trim())) {
+            unlocalized.push({
+              file: fileName,
+              line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+              text,
+            });
+          }
         }
       });
     }
