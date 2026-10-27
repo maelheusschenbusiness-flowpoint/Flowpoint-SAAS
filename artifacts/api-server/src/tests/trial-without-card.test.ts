@@ -29,7 +29,10 @@ const OTHER = "ZzYyXxWwVvUuTtSsRr0123";
 type Org = { id: string; owner_email: string; plan: string; subscription_status: string;
              stripe_customer_id: string | null; stripe_subscription_id: string | null;
              trial_consumed: boolean; fp_lid: string | null; seller_id: string | null;
-             trial_started_days_ago?: number; expired?: boolean };
+             trial_started_days_ago?: number; expired?: boolean; cardless?: boolean };
+type Exc = { domain: string; extra: number; active: boolean };
+let exceptions: Exc[] = [];
+const sqlLog: string[] = [];
 let users: Map<string, { id: string; status: string }>;
 let orgs: Org[];
 let pending: { token: string; email: string; fp_lid: string | null; consumed: boolean; stripe_customer_id: string | null }[];
@@ -68,7 +71,27 @@ function answer(sql: string, v: unknown[] = []) {
       && o.trial_started_days_ago !== undefined && o.trial_started_days_ago < windowDays).length;
     return { rows: [{ n }], rowCount: 1 };
   }
-  if (/FROM organizations WHERE id::text = ANY/i.test(s) || /FROM organizations WHERE id = \$1 AND subscription_status = 'trialing'/i.test(s)) {
+  sqlLog.push(s);
+  if (/SELECT EXISTS \(SELECT 1 FROM organizations WHERE trial_origin = 'cardless'\)/i.test(s)) {
+    if (failOrgLookup) throw new Error("db down");
+    return { rows: [{ any: orgs.some(o => o.cardless !== false && o.expired !== undefined) }], rowCount: 1 };
+  }
+  if (/FROM trial_domain_exceptions WHERE lower\(domain\) = lower\(\$1\) AND revoked_at IS NULL/i.test(s)) {
+    const n = exceptions.filter(e => e.active && e.domain === String(v[0]).toLowerCase()).reduce((a, e) => a + e.extra, 0);
+    return { rows: [{ n }], rowCount: 1 };
+  }
+  if (/^CREATE (TABLE|INDEX)/i.test(s)) return { rows: [], rowCount: 0 };
+  if (/^INSERT INTO trial_domain_exceptions/i.test(s)) {
+    writes.push("insert_exception");
+    return { rows: [{ id: v[0], domain: String(v[1]).toLowerCase(), extra_trials: v[2], created_by: v[5] }], rowCount: 1 };
+  }
+  if (/^INSERT INTO trial_domain_exception_audit/i.test(s)) { writes.push(`audit_${/'create'/.test(s) ? "create" : "revoke"}`); return { rows: [], rowCount: 1 }; }
+  if (/^UPDATE trial_domain_exceptions SET revoked_at/i.test(s)) { writes.push("revoke_exception"); return { rows: v[0] === "tde_known" ? [{ id: v[0] }] : [], rowCount: v[0] === "tde_known" ? 1 : 0 }; }
+  if (/WITH candidates AS \( SELECT id FROM organizations WHERE trial_origin = 'cardless'/i.test(s)) {
+    const due = orgs.filter(o => o.expired && o.cardless !== false);
+    return { rows: due.map(o => ({ org_id: o.id, email: o.owner_email, first_name: "X", plan: o.plan })), rowCount: due.length };
+  }
+  if (/FROM organizations WHERE id::text = ANY/i.test(s) || /FROM organizations WHERE id = \$1 AND trial_origin = 'cardless'/i.test(s)) {
     if (failOrgLookup) throw new Error("db down");
     const ids = Array.isArray(v[0]) ? (v[0] as string[]) : [String(v[0])];
     const hit = orgs.filter(o => ids.includes(o.id) && o.expired);
@@ -130,7 +153,8 @@ vi.mock("../services/seller-attribution.js", () => ({
 const createStripeClient = vi.fn(async () => ({ customers: { del: vi.fn(async () => ({})) } }));
 vi.mock("../services/stripe-factory.js", () => ({ getStripeKey: vi.fn(() => "sk_test_x"), createStripeClient }));
 const sendActivationMagicLink = vi.fn(async (_o: Record<string, unknown>) => ({ ok: true, id: "em_1" }));
-vi.mock("../services/mailer.js", () => ({ mailer: new Proxy({ sendActivationMagicLink }, {
+const sendTrialExpired = vi.fn(async (_o: Record<string, unknown>) => ({ ok: true, id: "em_2" }));
+vi.mock("../services/mailer.js", () => ({ mailer: new Proxy({ sendActivationMagicLink, sendTrialExpired }, {
   get: (t, k) => (k in t ? (t as Record<string | symbol, unknown>)[k] : vi.fn(async () => ({ ok: true }))) }) }));
 vi.mock("../services/store.js", () => ({ store: { broadcast: vi.fn(), broadcastPlanUpdate: vi.fn() } }));
 const queueConversionEvent = vi.fn(async (_e: Record<string, unknown>) => "sent");
@@ -162,6 +186,8 @@ const trialBody = (extra: Record<string, unknown> = {}) => ({ firstName: "Marie"
 beforeEach(() => {
   users = new Map(); orgs = []; pending = []; members = []; magicTokens = []; writes = []; locks = [];
   failOrgLookup = false;
+  exceptions = [];
+  sqlLog.length = 0;
   vi.clearAllMocks();
   gate.clearTrialGateCache();
   delete process.env["TRIAL_WITHOUT_CARD"];
@@ -483,11 +509,25 @@ describe("H — controle d'acces serveur apres expiration", () => {
   const expiredOrg = (): Org => ({ id: ORG, owner_email: "x@agence-test.fr", plan: "standard", subscription_status: "trialing",
     stripe_customer_id: null, stripe_subscription_id: null, trial_consumed: true, fp_lid: null, seller_id: null, expired: true });
 
-  it("drapeau eteint : tout passe, aucune requete", async () => {
+  it("DRAPEAU ETEINT + essai sans carte expire existant → route couteuse 402 (la protection ne depend pas du drapeau)", async () => {
     orgs.push(expiredOrg());
     const r = await request(gatedApp()).post("/ai/chat").send({});
+    expect(r.status).toBe(402);
+    expect(r.body.code).toBe("TRIAL_EXPIRED");
+  });
+  it("DRAPEAU ETEINT + essai expire : paiement toujours ouvert", async () => {
+    orgs.push(expiredOrg());
+    expect((await request(gatedApp()).post("/billing/upgrade").send({ plan: "pro" })).body.reached).toBe(true);
+  });
+  it("aucune org d'essai sans carte en base : une seule requete d'existence, pas de requete par org", async () => {
+    const r = await request(gatedApp()).post("/ai/chat").send({});
     expect(r.body.reached).toBe(true);
-    expect(fakePool.query).not.toHaveBeenCalled();
+    expect(sqlLog.filter(q => /trial_origin/.test(q))).toHaveLength(1);
+    expect(sqlLog.some(q => /WHERE id = \$1/.test(q))).toBe(false);
+  });
+  it("une org expiree SANS marque cardless (essai Stripe classique) n'est jamais bloquee", async () => {
+    orgs.push({ ...expiredOrg(), cardless: false, expired: false });
+    expect((await request(gatedApp()).post("/ai/chat").send({})).body.reached).toBe(true);
   });
   it("essai expire : route couteuse → 402 TRIAL_EXPIRED", async () => {
     process.env["TRIAL_WITHOUT_CARD"] = "true";
@@ -521,13 +561,24 @@ describe("H — controle d'acces serveur apres expiration", () => {
 
 describe("I — taches planifiees", () => {
   const ORG = "33333333-3333-4333-8333-333333333333";
-  it("drapeau eteint : expiredCardlessTrialOrgIds ne requete pas", async () => {
-    const db = { query: vi.fn() };
-    expect((await tw.expiredCardlessTrialOrgIds(db as never, [ORG])).size).toBe(0);
-    expect(db.query).not.toHaveBeenCalled();
+  it("DRAPEAU ETEINT : les orgs d'essai sans carte expirees sont quand meme sautees", async () => {
+    const db = { query: vi.fn(async (_s: string, _v?: unknown[]) => ({ rows: [{ id: ORG }] })) };
+    expect([...(await tw.expiredCardlessTrialOrgIds(db as never, [ORG]))]).toEqual([ORG]);
+    expect(String((db.query.mock.calls[0] as unknown[])[0])).toMatch(/trial_origin = 'cardless'/);
   });
-  it("drapeau allume : rend les orgs expirees ; erreur → ensemble vide", async () => {
-    process.env["TRIAL_WITHOUT_CARD"] = "true";
+  it("DRAPEAU ETEINT : la passe d'expiration envoie l'email et le jalon trial_expired", async () => {
+    orgs.push({ id: ORG, owner_email: "fin@agence-test.fr", plan: "standard", subscription_status: "trialing",
+      stripe_customer_id: null, stripe_subscription_id: null, trial_consumed: true, fp_lid: null, seller_id: null, expired: true });
+    const { checkCardlessTrialExpirations } = await import("../services/monitor-cron.js");
+    expect(await checkCardlessTrialExpirations()).toBe(1);
+    expect(sendTrialExpired).toHaveBeenCalledWith(expect.objectContaining({ to: "fin@agence-test.fr" }));
+    await vi.waitFor(() => expect(enregistrerEtape).toHaveBeenCalledWith(expect.objectContaining({
+      etape: "trial_expired", orgId: ORG, cleIdempotence: `trial_expired:cardless:${ORG}` })));
+  });
+  it("le predicat d'expiration exige la marque d'origine cardless", () => {
+    expect(tw.CARDLESS_TRIAL_EXPIRED_WHERE).toMatch(/^trial_origin = 'cardless'/);
+  });
+  it("rend les orgs expirees ; erreur → ensemble vide", async () => {
     const db = { query: vi.fn(async () => ({ rows: [{ id: ORG }] })) };
     expect([...(await tw.expiredCardlessTrialOrgIds(db as never, [ORG, "default", ORG]))]).toEqual([ORG]);
     const bad = { query: vi.fn(async () => { throw new Error("x"); }) };
@@ -577,5 +628,103 @@ describe("J — Google OAuth (drapeau allume)", () => {
     // le coeur de l'essai sans carte (verrou + transaction) n'a pas tourne
     expect(locks).toEqual([]);
     expect(orgs.some(o => o.subscription_status === "trialing")).toBe(false);
+  });
+});
+
+
+describe("K — drapeau eteint : aucune nouvelle inscription sans carte", () => {
+  it("POST /auth/trial-signup → 404 + redirection vers le parcours carte, rien n'est ecrit", async () => {
+    const r = await request(app()).post("/api/auth/trial-signup").send(trialBody({ fp_lid: VALID }));
+    expect(r.status).toBe(404);
+    expect(r.body).toMatchObject({ code: "TRIAL_WITHOUT_CARD_DISABLED", redirectTo: "/signin.html" });
+    expect(writes).toEqual([]);
+  });
+  it("Google OAuth drapeau eteint : parcours historique (carte), pas d'essai sans carte", async () => {
+    process.env["GOOGLE_CLIENT_ID"] = "cid"; process.env["GOOGLE_CLIENT_SECRET"] = "secret";
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+      json: async () => (String(url).includes("token") ? { access_token: "at" } : { email: "new@agence-g.fr", email_verified: true, given_name: "N" }),
+    })));
+    const r = await request(app()).get(`/api/auth/google/callback?code=c&state=${Buffer.from(JSON.stringify({ ts: 1 })).toString("base64")}`);
+    vi.unstubAllGlobals();
+    expect(r.status).toBe(302);
+    expect(locks).toEqual([]);
+    expect(orgs.some(o => o.subscription_status === "trialing")).toBe(false);
+  });
+  it("signin.html garde le parcours carte tant que /auth/providers ne renvoie pas trialWithoutCard:true", () => {
+    const html = read("../../../flowpoint-export/signin.html");
+    expect(html).toMatch(/var _cardlessTrial = false;/);
+  });
+});
+
+describe("L — exceptions administrateur au seuil de domaine", () => {
+  beforeEach(() => { process.env["TRIAL_WITHOUT_CARD"] = "true"; });
+  const col = (email: string): Org => ({ id: `o-${email}`, owner_email: email, plan: "standard", subscription_status: "trialing",
+    stripe_customer_id: null, stripe_subscription_id: null, trial_consumed: true, fp_lid: null, seller_id: null, trial_started_days_ago: 1 });
+
+  it("validation : domaine, messagerie publique refusee, quota, date future <= 1 an, motif, auteur", () => {
+    const now = new Date("2026-10-27T00:00:00Z");
+    const ok = { domain: "agence.fr", extraTrials: 5, expiresAt: "2026-12-01T00:00:00Z", reason: "salon pro", actor: "mael" };
+    expect(tw.validateDomainException(ok, now)).toBeNull();
+    expect(tw.validateDomainException({ ...ok, domain: "gmail.com" }, now)).toMatch(/grand public/);
+    expect(tw.validateDomainException({ ...ok, domain: "pas un domaine" }, now)).toMatch(/domain/);
+    expect(tw.validateDomainException({ ...ok, extraTrials: 0 }, now)).toMatch(/extraTrials/);
+    expect(tw.validateDomainException({ ...ok, expiresAt: "2026-01-01T00:00:00Z" }, now)).toMatch(/future/);
+    expect(tw.validateDomainException({ ...ok, expiresAt: "2028-01-01T00:00:00Z" }, now)).toMatch(/1 an/);
+    expect(tw.validateDomainException({ ...ok, reason: "x" }, now)).toMatch(/reason/);
+    expect(tw.validateDomainException({ ...ok, actor: "" }, now)).toMatch(/actor/);
+  });
+  it("exception active : le 4e essai du domaine passe", async () => {
+    orgs.push(col("a@agence-test.fr"), col("b@agence-test.fr"), col("c@agence-test.fr"));
+    exceptions.push({ domain: "agence-test.fr", extra: 2, active: true });
+    expect((await request(app()).post("/api/auth/trial-signup").send(trialBody())).status).toBe(200);
+  });
+  it("exception expiree ou revoquee : ignoree, seuil de base", async () => {
+    orgs.push(col("a@agence-test.fr"), col("b@agence-test.fr"), col("c@agence-test.fr"));
+    exceptions.push({ domain: "agence-test.fr", extra: 5, active: false });
+    expect((await request(app()).post("/api/auth/trial-signup").send(trialBody())).body.code).toBe("TRIAL_DOMAIN_LIMIT");
+  });
+  it("une exception ne permet JAMAIS un second essai pour la meme boite canonique", async () => {
+    orgs.push(col("marie@agence-test.fr"));
+    exceptions.push({ domain: "agence-test.fr", extra: 100, active: true });
+    const r = await request(app()).post("/api/auth/trial-signup").send(trialBody({ email: "marie+2@agence-test.fr" }));
+    expect(r.body.code).toBe("TRIAL_ALREADY_USED_EMAIL");
+  });
+
+  describe("routes admin", () => {
+    let adminApp: express.Express;
+    const KEY = "k".repeat(40);
+    beforeEach(async () => {
+      process.env["ADMIN_KEY"] = KEY;
+      const { default: adminRouter } = await import("../routes/admin.js");
+      adminApp = express(); adminApp.use(express.json()); adminApp.use("/api", adminRouter);
+    });
+    afterEach(() => { delete process.env["ADMIN_KEY"]; });
+    const body = { domain: "Agence-Test.fr", extraTrials: 3, expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
+                   reason: "salon professionnel", actor: "mael" };
+    it("sans x-admin-key → 403, rien n'est ecrit", async () => {
+      const r = await request(adminApp).post("/api/admin/trial-domain-exceptions").send(body);
+      expect(r.status).toBe(403);
+      expect(writes).not.toContain("insert_exception");
+    });
+    it("creation : 201 + ligne d'audit dans la meme transaction", async () => {
+      const r = await request(adminApp).post("/api/admin/trial-domain-exceptions").set("x-admin-key", KEY).send(body);
+      expect(r.status).toBe(201);
+      expect(r.body.exception).toMatchObject({ domain: "agence-test.fr", extra_trials: 3, created_by: "mael" });
+      expect(writes).toEqual(["insert_exception", "audit_create"]);
+    });
+    it("entree invalide (messagerie publique) → 400", async () => {
+      const r = await request(adminApp).post("/api/admin/trial-domain-exceptions").set("x-admin-key", KEY).send({ ...body, domain: "gmail.com" });
+      expect(r.status).toBe(400);
+    });
+    it("revocation : motif + auteur requis, audit ecrit ; id inconnu → 404", async () => {
+      expect((await request(adminApp).post("/api/admin/trial-domain-exceptions/tde_known/revoke").set("x-admin-key", KEY).send({ actor: "mael" })).status).toBe(400);
+      const ok = await request(adminApp).post("/api/admin/trial-domain-exceptions/tde_known/revoke").set("x-admin-key", KEY)
+        .send({ actor: "mael", reason: "fin du salon" });
+      expect(ok.status).toBe(200);
+      expect(writes).toContain("audit_revoke");
+      const ko = await request(adminApp).post("/api/admin/trial-domain-exceptions/tde_x/revoke").set("x-admin-key", KEY)
+        .send({ actor: "mael", reason: "fin du salon" });
+      expect(ko.status).toBe(404);
+    });
   });
 });

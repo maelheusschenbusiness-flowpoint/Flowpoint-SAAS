@@ -3399,4 +3399,60 @@ router.get("/admin/account-state", async (req: Request, res: Response): Promise<
   }
 });
 
+// ── Essai sans carte : exceptions au seuil d'essais par domaine ──────────────
+// Protegees par ADMIN_KEY (x-admin-key), comme toutes les routes admin.
+// Une exception ajoute N essais au seuil d'un domaine d'entreprise jusqu'a une
+// date ; elle ne permet JAMAIS un second essai pour une meme boite canonique.
+// Auteur obligatoire (champ `actor`), motif obligatoire, piste d'audit en base.
+router.get("/admin/trial-domain-exceptions", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  try {
+    const { listDomainExceptions } = await import("../services/trial-without-card.js");
+    const domain = typeof req.query["domain"] === "string" ? req.query["domain"] : undefined;
+    res.json({ ok: true, ...(await listDomainExceptions(pool as never, domain)) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+router.post("/admin/trial-domain-exceptions", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const { validateDomainException, createDomainException } = await import("../services/trial-without-card.js");
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const input = {
+    domain: String(body["domain"] ?? ""), extraTrials: Number(body["extraTrials"]),
+    expiresAt: String(body["expiresAt"] ?? ""), reason: String(body["reason"] ?? ""), actor: String(body["actor"] ?? ""),
+  };
+  const invalid = validateDomainException(input);
+  if (invalid) { res.status(400).json({ ok: false, error: invalid }); return; }
+  const client = await pool.connect();
+  try {
+    const { randomUUID } = await import("node:crypto");
+    const row = await createDomainException(client, input, `tde_${randomUUID()}`);
+    res.status(201).json({ ok: true, exception: row });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+router.post("/admin/trial-domain-exceptions/:id/revoke", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const actor = String((req.body as Record<string, unknown> | undefined)?.["actor"] ?? "").trim();
+  const reason = String((req.body as Record<string, unknown> | undefined)?.["reason"] ?? "").trim();
+  if (actor.length < 2 || reason.length < 5) { res.status(400).json({ ok: false, error: "actor et reason requis" }); return; }
+  const client = await pool.connect();
+  try {
+    const { revokeDomainException } = await import("../services/trial-without-card.js");
+    const done = await revokeDomainException(client, String(req.params["id"]), actor, reason);
+    if (!done) { res.status(404).json({ ok: false, error: "exception introuvable ou deja revoquee" }); return; }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 export default router;

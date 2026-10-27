@@ -346,8 +346,8 @@ export async function checkCalendarReminders(): Promise<void> {
 // envoie une fois l'email « essai termine » et le jalon funnel trial_expired.
 // Meme schema de reservation atomique que le rappel J-3.
 export async function checkCardlessTrialExpirations(): Promise<number> {
-  const { isTrialWithoutCardEnabled, CARDLESS_TRIAL_EXPIRED_WHERE } = await import("./trial-without-card.js");
-  if (!isTrialWithoutCardEnabled()) return 0;
+  // Quel que soit TRIAL_WITHOUT_CARD : le predicat cible trial_origin='cardless'.
+  const { CARDLESS_TRIAL_EXPIRED_WHERE } = await import("./trial-without-card.js");
   const client = await pool.connect();
   let sent = 0;
   try {
@@ -412,7 +412,7 @@ export function startMonitorCron(): void {
   setInterval(() => void checkTrialEndingReminders(), TRIAL_CRON_INTERVAL_MS);
   void retryLifecycleEmails();
   setInterval(() => void retryLifecycleEmails(), TRIAL_CRON_INTERVAL_MS);
-  // Essai sans carte expire : toutes les heures (no-op drapeau eteint).
+  // Essai sans carte expire : toutes les heures, drapeau allume ou non.
   void checkCardlessTrialExpirations();
   setInterval(() => void checkCardlessTrialExpirations(), 60 * 60 * 1000);
 

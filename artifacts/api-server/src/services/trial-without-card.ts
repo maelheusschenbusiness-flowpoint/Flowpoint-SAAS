@@ -1,9 +1,15 @@
 /**
  * trial-without-card.ts — essai gratuit de 14 jours SANS carte bancaire.
  *
- * DERRIERE UN DRAPEAU. `TRIAL_WITHOUT_CARD=true` l'active ; toute autre valeur
- * (absente comprise) le laisse eteint, et le parcours existant (pre-register →
- * plan → carte → finalize-checkout) reste le seul chemin d'inscription.
+ * DERRIERE UN DRAPEAU. `TRIAL_WITHOUT_CARD=true` autorise la CREATION de
+ * nouveaux essais sans carte (formulaire et Google). Toute autre valeur
+ * (absente comprise) l'interdit : le parcours carte (pre-register → plan →
+ * carte → finalize-checkout) reste le seul chemin d'inscription.
+ *
+ * Le drapeau ne pilote QUE la creation. Les protections des essais deja crees
+ * (garde serveur 402, filtres des taches planifiees, passe d'expiration) se
+ * fondent sur `organizations.trial_origin = 'cardless'`, pose a la creation, et
+ * s'appliquent quel que soit l'etat du drapeau.
  *
  * MODELE CHOISI : essai porte par la base, pas par Stripe.
  *   organizations.subscription_status = 'trialing'
@@ -62,8 +68,12 @@ export function trialDomainLimit(env: NodeJS.ProcessEnv = process.env): { max: n
  * `trialing`, aucun abonnement Stripe, essai consomme, echeance passee. C'est
  * exactement l'etat que normalizeSubscriptionStatus ramene a `none`/`incomplete`.
  */
+/** Valeur de `organizations.trial_origin` posee a la creation d'un essai sans carte. */
+export const CARDLESS_TRIAL_ORIGIN = "cardless";
+
 export const CARDLESS_TRIAL_EXPIRED_WHERE =
-  `subscription_status = 'trialing'
+  `trial_origin = 'cardless'
+   AND subscription_status = 'trialing'
    AND COALESCE(stripe_subscription_id, '') = ''
    AND trial_consumed_at IS NOT NULL
    AND trial_ends_at IS NOT NULL
@@ -71,15 +81,13 @@ export const CARDLESS_TRIAL_EXPIRED_WHERE =
 
 /**
  * Parmi `orgIds`, celles dont l'essai sans carte a expire — pour que les taches
- * planifiees les sautent (no-op drapeau eteint). Ne leve jamais : en cas d'erreur, ensemble vide
+ * planifiees les sautent, QUEL QUE SOIT le drapeau. Ne leve jamais : en cas d'erreur, ensemble vide
  * (comportement d'avant : la tache tourne) et l'appelant journalise.
  */
 export async function expiredCardlessTrialOrgIds(
   db: { query: (sql: string, values?: unknown[]) => Promise<{ rows: Array<{ id: string }> }> },
   orgIds: Iterable<string>,
 ): Promise<Set<string>> {
-  // Drapeau eteint : aucune requete, aucun changement pour les taches planifiees.
-  if (!isTrialWithoutCardEnabled()) return new Set();
   const ids = [...new Set([...orgIds].filter(id => /^[0-9a-f-]{36}$/i.test(String(id ?? ""))))];
   if (ids.length === 0) return new Set();
   try {
@@ -211,6 +219,7 @@ export async function checkTrialAbuse(
 
   const domain = trialGuardDomain(email);
   if (domain) {
+    const extra = await activeDomainExtraTrials(db, domain);
     const recent = await db.query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM organizations
         WHERE lower(split_part(owner_email, '@', 2)) = $1
@@ -218,7 +227,7 @@ export async function checkTrialAbuse(
           AND trial_started_at > NOW() - ($2::int * INTERVAL '1 day')`,
       [domain, limit.windowDays],
     );
-    if (Number(recent.rows?.[0]?.n ?? 0) >= limit.max) return { ok: false, code: "TRIAL_DOMAIN_LIMIT", domain };
+    if (Number(recent.rows?.[0]?.n ?? 0) >= limit.max + extra) return { ok: false, code: "TRIAL_DOMAIN_LIMIT", domain };
   }
   return { ok: true };
 }
@@ -320,10 +329,10 @@ export async function activateCardlessTrial(client: PoolClient, input: CardlessT
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status, owner_email, owner_first_name,
           stripe_customer_id, stripe_subscription_id, trial_started_at, trial_consumed_at, trial_ends_at,
-          seller_id, fp_lid, trial_started_email_sent_at)
+          seller_id, fp_lid, trial_started_email_sent_at, trial_origin)
        VALUES ($1, $2, $3, $4, 'active', $5, 'trialing', $6, $7,
                NULL, NULL, NOW(), NOW(), NOW() + ($8::int * INTERVAL '1 day'),
-               $9, $10, NOW())
+               $9, $10, NOW(), 'cardless')
        RETURNING trial_ends_at, trial_started_at`,
       [input.orgId, input.companyName,
        input.orgId.replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60),
@@ -353,4 +362,122 @@ export async function activateCardlessTrial(client: PoolClient, input: CardlessT
     await client.query("ROLLBACK").catch(() => {});
     throw err;
   }
+}
+
+
+// ── Exceptions par domaine (deblocage administrateur du seuil) ──────────────
+//
+// Une exception AJOUTE `extra_trials` essais au seuil d'un domaine
+// d'entreprise, jusqu'a `expires_at`. Elle ne touche JAMAIS le garde par boite
+// canonique : checkTrialAbuse le verifie AVANT le domaine et n'y consulte
+// aucune exception. Chaque creation / revocation ecrit une ligne d'audit dans
+// la meme transaction.
+
+export const DOMAIN_EXCEPTION_DDL = [
+  `CREATE TABLE IF NOT EXISTS trial_domain_exceptions (
+     id            TEXT        PRIMARY KEY,
+     domain        TEXT        NOT NULL,
+     extra_trials  INTEGER     NOT NULL CHECK (extra_trials BETWEEN 1 AND 1000),
+     expires_at    TIMESTAMPTZ NOT NULL,
+     reason        TEXT        NOT NULL,
+     created_by    TEXT        NOT NULL,
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     revoked_at    TIMESTAMPTZ,
+     revoked_by    TEXT,
+     revoke_reason TEXT
+   )`,
+  `CREATE INDEX IF NOT EXISTS trial_domain_exceptions_domain_idx ON trial_domain_exceptions (lower(domain))`,
+  `CREATE TABLE IF NOT EXISTS trial_domain_exception_audit (
+     id           BIGSERIAL   PRIMARY KEY,
+     exception_id TEXT        NOT NULL,
+     action       TEXT        NOT NULL,
+     actor        TEXT        NOT NULL,
+     details      JSONB       NOT NULL DEFAULT '{}'::jsonb,
+     at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+];
+
+type DbLike = { query: (sql: string, values?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>>; rowCount?: number | null }> };
+
+export async function ensureDomainExceptionTables(db: DbLike): Promise<void> {
+  for (const ddl of DOMAIN_EXCEPTION_DDL) await db.query(ddl);
+}
+
+/** Essais supplementaires actifs pour un domaine (0 si aucune exception ou table absente). */
+export async function activeDomainExtraTrials(db: Queryable, domain: string): Promise<number> {
+  try {
+    const r = await (db as unknown as DbLike).query(
+      `SELECT COALESCE(SUM(extra_trials), 0)::int AS n FROM trial_domain_exceptions
+        WHERE lower(domain) = lower($1) AND revoked_at IS NULL AND expires_at > NOW()`,
+      [domain],
+    );
+    return Number(r.rows?.[0]?.["n"] ?? 0);
+  } catch {
+    return 0; // table absente / base indisponible : seuil de base, jamais plus permissif
+  }
+}
+
+export type DomainExceptionInput = { domain: string; extraTrials: number; expiresAt: string; reason: string; actor: string };
+
+/** Validation stricte ; renvoie un message d'erreur ou null. */
+export function validateDomainException(input: Partial<DomainExceptionInput>, now: Date = new Date()): string | null {
+  const domain = String(input.domain ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) return "domain invalide";
+  if (FREE_MAIL_DOMAINS.has(domain) || GMAIL_DOMAINS.has(domain)) return "messagerie grand public : aucune regle de domaine ne s'y applique";
+  const extra = Number(input.extraTrials);
+  if (!Number.isInteger(extra) || extra < 1 || extra > 1000) return "extraTrials doit etre un entier entre 1 et 1000";
+  const exp = new Date(String(input.expiresAt ?? ""));
+  if (!Number.isFinite(exp.getTime()) || exp <= now) return "expiresAt doit etre une date future";
+  if (exp.getTime() - now.getTime() > 366 * 86400_000) return "expiresAt ne peut depasser 1 an";
+  if (String(input.reason ?? "").trim().length < 5) return "reason requis (5 caracteres minimum)";
+  if (String(input.actor ?? "").trim().length < 2) return "actor (auteur) requis";
+  return null;
+}
+
+async function inTx<T>(client: PoolClient, fn: () => Promise<T>): Promise<T> {
+  await client.query("BEGIN");
+  try { const out = await fn(); await client.query("COMMIT"); return out; }
+  catch (e) { await client.query("ROLLBACK").catch(() => {}); throw e; }
+}
+
+export async function createDomainException(client: PoolClient, input: DomainExceptionInput, id: string): Promise<Record<string, unknown>> {
+  await ensureDomainExceptionTables(client as unknown as DbLike);
+  return inTx(client, async () => {
+    const r = await client.query(
+      `INSERT INTO trial_domain_exceptions (id, domain, extra_trials, expires_at, reason, created_by)
+       VALUES ($1, lower($2), $3, $4::timestamptz, $5, $6) RETURNING *`,
+      [id, input.domain.trim(), input.extraTrials, input.expiresAt, input.reason.trim(), input.actor.trim()],
+    );
+    await client.query(
+      `INSERT INTO trial_domain_exception_audit (exception_id, action, actor, details) VALUES ($1, 'create', $2, $3::jsonb)`,
+      [id, input.actor.trim(), JSON.stringify({ domain: input.domain.trim().toLowerCase(), extraTrials: input.extraTrials,
+        expiresAt: input.expiresAt, reason: input.reason.trim() })],
+    );
+    return r.rows[0] as Record<string, unknown>;
+  });
+}
+
+export async function revokeDomainException(client: PoolClient, id: string, actor: string, reason: string): Promise<boolean> {
+  await ensureDomainExceptionTables(client as unknown as DbLike);
+  return inTx(client, async () => {
+    const r = await client.query(
+      `UPDATE trial_domain_exceptions SET revoked_at = NOW(), revoked_by = $2, revoke_reason = $3
+        WHERE id = $1 AND revoked_at IS NULL RETURNING id`, [id, actor.trim(), reason.trim()]);
+    if (!r.rowCount) return false;
+    await client.query(
+      `INSERT INTO trial_domain_exception_audit (exception_id, action, actor, details) VALUES ($1, 'revoke', $2, $3::jsonb)`,
+      [id, actor.trim(), JSON.stringify({ reason: reason.trim() })]);
+    return true;
+  });
+}
+
+export async function listDomainExceptions(db: DbLike, domain?: string): Promise<{ exceptions: unknown[]; audit: unknown[] }> {
+  await ensureDomainExceptionTables(db);
+  const ex = await db.query(
+    `SELECT *, (revoked_at IS NULL AND expires_at > NOW()) AS active FROM trial_domain_exceptions
+      WHERE ($1::text IS NULL OR lower(domain) = lower($1)) ORDER BY created_at DESC LIMIT 200`, [domain ?? null]);
+  const au = await db.query(
+    `SELECT a.* FROM trial_domain_exception_audit a JOIN trial_domain_exceptions e ON e.id = a.exception_id
+      WHERE ($1::text IS NULL OR lower(e.domain) = lower($1)) ORDER BY a.at DESC LIMIT 500`, [domain ?? null]);
+  return { exceptions: ex.rows, audit: au.rows };
 }

@@ -163,6 +163,8 @@ export default defineConfig({
       "src/tests/stripe-webhook-delivery.test.ts",
       // Essai 14 jours sans carte (TRIAL_WITHOUT_CARD, eteint par defaut)
       "src/tests/trial-without-card.test.ts",
+      "src/tests/trial-without-card-emails.test.ts",
+      "src/tests/dashboard-trial-expired.test.ts",
     ],
     environment: "node",
     globals:     false,

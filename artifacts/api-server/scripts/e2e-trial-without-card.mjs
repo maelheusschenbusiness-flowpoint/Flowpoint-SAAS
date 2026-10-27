@@ -68,6 +68,46 @@ async function sendEvent(event) {
 }
 const orgOf = async email => (await q(`SELECT * FROM organizations WHERE owner_email=$1`, [email]))[0];
 
+const PHASE = process.env.E2E_PHASE ?? "flag-on";
+const STATE_FILE = process.env.E2E_STATE_FILE ?? "";
+const MAIL_DIR = process.env.TEST_MAIL_DIR ?? "";
+const ADMIN_KEY = process.env.ADMIN_KEY ?? "";
+const { readFileSync, writeFileSync, readdirSync } = await import("node:fs");
+const mails = () => MAIL_DIR ? readdirSync(MAIL_DIR).filter(f => f.endsWith(".json"))
+  .map(f => JSON.parse(readFileSync(`${MAIL_DIR}/${f}`, "utf8"))) : [];
+
+if (PHASE === "flag-off") {
+  // Serveur relance SANS TRIAL_WITHOUT_CARD : plus de creation, protections intactes.
+  const st = JSON.parse(readFileSync(STATE_FILE, "utf8"));
+  let rr = await api("POST", "/api/auth/trial-signup", { body: { firstName: "Z", email: `off.${RUN}@off-${RUN}.fr` } });
+  check("drapeau OFF : nouvelle inscription sans carte → 404 + redirection parcours carte",
+    rr.status === 404 && rr.body?.redirectTo === "/signin.html", JSON.stringify(rr.body));
+  const [{ n: nOff }] = await q(`SELECT COUNT(*)::int AS n FROM organizations WHERE owner_email=$1`, [`off.${RUN}@off-${RUN}.fr`]);
+  check("drapeau OFF : aucune organisation creee", nOff === 0);
+  rr = await api("GET", "/api/auth/providers");
+  check("drapeau OFF : /auth/providers → trialWithoutCard=false (signin.html reste sur le parcours carte)", rr.body?.trialWithoutCard === false);
+  rr = await api("POST", "/api/ai/chat", { token: st.tokenA, body: { message: "x" } });
+  check("drapeau OFF : essai sans carte expire existant → POST /api/ai/chat 402 TRIAL_EXPIRED", rr.status === 402 && rr.body?.code === "TRIAL_EXPIRED", `status ${rr.status}`);
+  rr = await api("POST", "/api/billing/upgrade", { token: st.tokenA, body: { plan: "pro" } });
+  check("drapeau OFF : paiement toujours ouvert", rr.body?.code !== "TRIAL_EXPIRED", `status ${rr.status}`);
+  const [mon] = await q(`SELECT last_check FROM monitors WHERE id=$1`, [st.monitor]);
+  check("drapeau OFF : moniteur de l'org expiree non verifie par le cron", String(mon?.last_check) === String(st.monitorLastCheck), String(mon?.last_check));
+  const [ctl] = await q(`SELECT last_check FROM monitors WHERE id=$1`, [st.ctrlMonitor]);
+  check("drapeau OFF : moniteur de l'org temoin verifie", String(ctl?.last_check) !== String(st.ctrlLastCheck));
+  const [aud] = await q(`SELECT last_run FROM audit_schedules WHERE id=$1`, [st.auditExp]);
+  check("drapeau OFF : audit planifie de l'org expiree non lance", aud?.last_run === null);
+  const [org] = await q(`SELECT trial_expired_notified_at FROM organizations WHERE id=$1`, [st.orgExpired]);
+  check("drapeau OFF : passe d'expiration traitee (trial_expired_notified_at pose)", !!org?.trial_expired_notified_at);
+  const m = mails().filter(x => x.tag === "trial_expired" && x.to === st.emailA);
+  check("drapeau OFF : email « essai termine » capture (transport de test) pour le bon destinataire", m.length === 1, JSON.stringify(m[0] ?? {}));
+  const [{ n: nFunnel }] = await q(`SELECT COUNT(*)::int AS n FROM funnel_events WHERE etape='trial_expired' AND cle_idempotence=$1`, [`trial_expired:cardless:${st.orgExpired}`]);
+  check("drapeau OFF : jalon funnel trial_expired enregistre une fois", nFunnel === 1);
+  console.log(results.join("\n"));
+  console.log(`\nE2E HTTP (drapeau OFF) : ${pass} PASS / ${fail} FAIL`);
+  await db.end();
+  process.exit(fail ? 1 : 0);
+}
+
 // ── 1. Inscription sans carte ────────────────────────────────────────────────
 const A = `lead.${RUN}@agence-${RUN}.fr`;
 let r = await api("POST", "/api/auth/trial-signup", { body: { firstName: "Léa", email: A, fp_lid: FP_LID } });
@@ -100,10 +140,31 @@ for (const who of ["b", "c"]) {
 }
 r = await api("POST", "/api/auth/trial-signup", { body: { firstName: "d", email: `d.${RUN}@agence-${RUN}.fr` } });
 check("4e essai du domaine en 30 j → 409 TRIAL_DOMAIN_LIMIT", r.body?.code === "TRIAL_DOMAIN_LIMIT");
+// Deblocage administrateur : +1 essai pour ce domaine, avec auteur, motif, echeance
+r = await api("POST", "/api/admin/trial-domain-exceptions", { body: { domain: `agence-${RUN}.fr`, extraTrials: 1,
+  expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), reason: "salon e2e", actor: "e2e-admin" } });
+check("exception admin sans x-admin-key → 403", r.status === 403);
+r = await api("POST", "/api/admin/trial-domain-exceptions", { headers: { "x-admin-key": ADMIN_KEY }, body: { domain: `agence-${RUN}.fr`, extraTrials: 1,
+  expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), reason: "salon e2e", actor: "e2e-admin" } });
+check("exception admin creee (201)", r.status === 201, JSON.stringify(r.body?.error ?? ""));
+const excId = r.body?.exception?.id;
+r = await api("POST", "/api/auth/trial-signup", { body: { firstName: "d", email: `d.${RUN}@agence-${RUN}.fr` } });
+check("avec exception active : 4e essai du domaine accepte", r.status === 200, r.body?.code);
+r = await api("POST", "/api/auth/trial-signup", { body: { firstName: "e", email: `e.${RUN}@agence-${RUN}.fr` } });
+check("quota de l'exception epuise : 5e essai refuse", r.body?.code === "TRIAL_DOMAIN_LIMIT");
+r = await api("POST", "/api/auth/trial-signup", { body: { firstName: "d", email: `d+2.${RUN}@agence-${RUN}.fr`.replace(`d+2.${RUN}`, `d.${RUN}+2`) } });
+check("exception active : jamais de second essai pour la meme boite (+tag)", r.body?.code === "TRIAL_ALREADY_USED_EMAIL", r.body?.code);
+const audit = await q(`SELECT action, actor FROM trial_domain_exception_audit WHERE exception_id=$1`, [excId]);
+check("piste d'audit : creation par e2e-admin", audit.length === 1 && audit[0].action === "create" && audit[0].actor === "e2e-admin");
+r = await api("POST", `/api/admin/trial-domain-exceptions/${excId}/revoke`, { headers: { "x-admin-key": ADMIN_KEY }, body: { actor: "e2e-admin", reason: "fin du salon" } });
+check("revocation admin + audit", r.status === 200 && (await q(`SELECT 1 FROM trial_domain_exception_audit WHERE exception_id=$1 AND action='revoke'`, [excId])).length === 1);
 
 // ── 3. Connexion et acces pendant l'essai ───────────────────────────────────
 const tokenA = await login(A);
 check("connexion par lien magique", !!tokenA);
+const actMail = mails().filter(x => x.tag === "activation_magic_link" && x.to === A);
+check("email d'activation capture (transport de test) : bon destinataire, sujet « essai … prêt », jeton present",
+  actMail.length === 1 && /essai FlowPoint Standard est prêt/.test(actMail[0].subject) && /^[a-f0-9]{64}$/.test(actMail[0].token ?? ""));
 r = await api("GET", "/api/me", { token: tokenA });
 check("/api/me pendant l'essai : trialing + acces premium", r.body?.subscriptionStatus === "trialing" && r.body?.hasPremiumAccess === true);
 r = await api("POST", "/api/ai/chat", { token: tokenA, body: { message: "bonjour" } });
@@ -188,6 +249,18 @@ for (let i = 0; i < 7; i++) {
   if (rr.status === 429) { got429 = true; break; }
 }
 check("rafale depuis une meme IP → 429", got429);
+
+// Etat pour la phase « drapeau OFF » (le serveur sera relance sans le drapeau).
+if (STATE_FILE) {
+  await q(`INSERT INTO monitors (id, org_id, name, url, status, frequency, last_check, enabled)
+           VALUES ($1,$2,'ctrl',$3,'up','5',(NOW() - INTERVAL '2 hours')::text, TRUE)`, [`mon_ctrl_${RUN}`, orgB.id, `${BASE}/api/health`]);
+  await q(`UPDATE organizations SET subscription_status='active', stripe_subscription_id='sub_ctrl' WHERE id=$1`, [orgB.id]);
+  await q(`INSERT INTO audit_schedules (id,url,frequency,next_run,enabled,org_id) VALUES ($1,'https://example.invalid','weekly',NOW() - INTERVAL '1 hour',TRUE,$2)`, [`as_exp_${RUN}`, orgA.id]);
+  const [m1] = await q(`SELECT last_check FROM monitors WHERE id=$1`, [`mon_e2e_${RUN}`]);
+  const [m2] = await q(`SELECT last_check FROM monitors WHERE id=$1`, [`mon_ctrl_${RUN}`]);
+  writeFileSync(STATE_FILE, JSON.stringify({ tokenA, emailA: A, orgExpired: orgA.id, monitor: `mon_e2e_${RUN}`, monitorLastCheck: m1?.last_check,
+    ctrlMonitor: `mon_ctrl_${RUN}`, ctrlLastCheck: m2?.last_check, auditExp: `as_exp_${RUN}` }));
+}
 
 console.log(results.join("\n"));
 console.log(`\nE2E HTTP : ${pass} PASS / ${fail} FAIL`);
