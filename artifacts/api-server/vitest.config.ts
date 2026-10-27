@@ -319,6 +319,8 @@ export default defineConfig({
       "src/services/automation-service-awl-report-postgres.test.ts",
       // Essai 14 jours sans carte (TRIAL_WITHOUT_CARD, eteint par defaut)
       "src/tests/trial-without-card.test.ts",
+      "src/tests/trial-without-card-emails.test.ts",
+      "src/tests/dashboard-trial-expired.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.
