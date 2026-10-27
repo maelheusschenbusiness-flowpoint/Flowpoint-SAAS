@@ -75,14 +75,25 @@
       url.searchParams.set("fp_vid", id);
       const attributionSource = source();
       if (attributionSource) url.searchParams.set("fp_source", attributionSource);
+      // Le jeton opaque du lien d'outreach suit le prospect vers l'application.
+      const lid = fpLid();
+      if (lid && !url.searchParams.has("fp_lid")) url.searchParams.set("fp_lid", lid);
       anchor.href = url.toString();
     } catch {}
   }
 
+  // Premier contact gagnant : la valeur deja rangee, sinon celle de l'URL
+  // (lien `GET /go` ou lien direct d'un email), validee puis rangee.
   function fpLid() {
     try {
-      const value = sessionStorage.getItem("fp_lid");
-      return value && FP_LID_RE.test(value) ? value : undefined;
+      const stored = sessionStorage.getItem("fp_lid");
+      if (stored && FP_LID_RE.test(stored)) return stored;
+      const param = new URLSearchParams(location.search).get("fp_lid");
+      if (param && FP_LID_RE.test(param)) {
+        sessionStorage.setItem("fp_lid", param);
+        return param;
+      }
+      return undefined;
     } catch {
       return undefined;
     }

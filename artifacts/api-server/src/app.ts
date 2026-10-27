@@ -16,6 +16,7 @@ import { orgContext }    from "./middlewares/orgContext.js";
 import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
 import { withCarriedParams } from "./lib/carry-params.js";
+import emailClickRouter from "./routes/email-click.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -331,6 +332,11 @@ app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
     "Preferred-Languages: fr, en\n"
   );
 });
+
+// ── Smartlead : clic serveur premiere partie (`GET /go`) ─────────────────────
+// Redirige toujours vers une destination fixe ; ne compte le clic que si
+// FP_EMAIL_CLICK_TRACKING=on. Aucun cookie, ni IP ni user-agent stockes.
+app.use(emailClickRouter);
 
 // ── Frontend page routes ──────────────────────────────────────────────────────
 // Landing / Signup page — public marketing & auth entry point

@@ -22,6 +22,10 @@ export default defineConfig({
       "src/lib/conversion-outbox-db.test.ts",
       "src/routes/conversion-b-funnel-route-db.test.ts",
       "src/tests/funnel-tracking-inscription.test.ts",
+      // Attribution Smartlead : clic serveur GET /go, puis signup vers la file AI Lab (27/10/2026).
+      "src/tests/email-click-attribution.test.ts",
+      "src/tests/preregister-signup-conversion.test.ts",
+      "src/routes/email-click-db.test.ts",
       // Croissance — faits commerciaux par jour ouvre (clients, essais, MRR).
       "src/tests/growth-facts.test.ts",
       // Conversion A — funnel fixes

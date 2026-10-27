@@ -108,6 +108,13 @@ async function migrate() {
     );
     await pool.query(sql);
     console.log("  ✓ funnel_events migration applied");
+    // 020 : etape serveur `email_clic` (clic Smartlead), apres 019 qui cree la table.
+    const sqlClic = await readFile(
+      new URL("../migrations/020_funnel_email_click.sql", import.meta.url),
+      "utf8",
+    );
+    await pool.query(sqlClic);
+    console.log("  ✓ funnel_events email_clic migration applied");
   } catch (err: any) {
     console.error(`  ✗ funnel_events migration failed: ${err.message}`);
     process.exit(1);
