@@ -75,14 +75,25 @@
       url.searchParams.set("fp_vid", id);
       const attributionSource = source();
       if (attributionSource) url.searchParams.set("fp_source", attributionSource);
+      // Le jeton opaque du lien d'outreach suit le prospect vers l'application.
+      const lid = fpLid();
+      if (lid && !url.searchParams.has("fp_lid")) url.searchParams.set("fp_lid", lid);
       anchor.href = url.toString();
     } catch {}
   }
 
+  // Premier contact gagnant : la valeur deja rangee, sinon celle de l'URL
+  // (lien `GET /go` ou lien direct d'un email), validee puis rangee.
   function fpLid() {
     try {
-      const value = sessionStorage.getItem("fp_lid");
-      return value && FP_LID_RE.test(value) ? value : undefined;
+      const stored = sessionStorage.getItem("fp_lid");
+      if (stored && FP_LID_RE.test(stored)) return stored;
+      const param = new URLSearchParams(location.search).get("fp_lid");
+      if (param && FP_LID_RE.test(param)) {
+        sessionStorage.setItem("fp_lid", param);
+        return param;
+      }
+      return undefined;
     } catch {
       return undefined;
     }
@@ -103,7 +114,36 @@
     }).catch(() => {});
   }
 
+  // Attribution Smartlead — second signal, independant du consentement
+  // marketing : la page d'arrivee confirme qu'un script s'est execute pour le
+  // lead d'un clic `GET /go`. Seulement si le serveur l'a demande (`fp_v=1`,
+  // pose uniquement quand FP_EMAIL_VISIT_BEACON est actif), seulement avec un
+  // fp_lid valide lu dans l'URL (rien n'est lu dans un stockage du terminal),
+  // apres le chargement de la page visible, sans cookie, une fois.
+  function emailVisitBeacon() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const lid = params.get("fp_lid");
+      if (params.get("fp_v") !== "1" || params.get("utm_source") !== "smartlead" || !lid || !FP_LID_RE.test(lid)) return;
+      let envoye = false;
+      const envoyer = () => {
+        if (envoye || (document.visibilityState && document.visibilityState !== "visible")) return;
+        envoye = true;
+        void window.fetch("/api/public/email-visit", {
+          method: "POST",
+          credentials: "omit",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fp_lid: lid }),
+        }).catch(() => {});
+      };
+      if (document.readyState === "complete") envoyer();
+      else window.addEventListener("load", envoyer, { once: true });
+    } catch {}
+  }
+
   const pathname = location.pathname.toLowerCase();
+  if (pathname.endsWith("/signin.html") || pathname.endsWith("/pricing.html")) emailVisitBeacon();
   if (pathname === "/") send("landing_vue");
   if (pathname.endsWith("/pricing.html")) send("tarifs_vus");
   if (pathname.endsWith("/checkout.html")) send("signup_started");
