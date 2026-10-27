@@ -77,6 +77,15 @@ export const TRIAL_EXPIRED_COSTLY_PREFIXES = [
   "/review-intelligence", "/local-maps", "/maps", "/gsc", "/ga4", "/llm-visibility", "/forecast",
 ];
 
+/**
+ * Lectures de statut/historique sous un prefixe couteux, sans appel externe :
+ * le dashboard les charge a chaque affichage (constate en navigateur reel).
+ * Ouvertes en GET uniquement.
+ */
+export const TRIAL_EXPIRED_OPEN_READS = [
+  "/ai/history", "/ai-credits", "/ga4/status", "/gsc/status", "/maps/config", "/seo/status",
+];
+
 function matches(path: string, prefixes: string[]): boolean {
   return prefixes.some(p => path === p || path.startsWith(p + "/") || path.startsWith(p + "?"));
 }
@@ -86,6 +95,7 @@ export type TrialGateDecision = "open" | "blocked" | "read";
 /** Decision pure pour une org EXPIREE — testable sans base. */
 export function decideExpiredTrialAccess(method: string, path: string): TrialGateDecision {
   if (matches(path, TRIAL_EXPIRED_OPEN_PREFIXES)) return "open";
+  if ((method.toUpperCase() === "GET" || method.toUpperCase() === "HEAD") && TRIAL_EXPIRED_OPEN_READS.includes(path)) return "read";
   if (matches(path, TRIAL_EXPIRED_COSTLY_PREFIXES)) return "blocked";
   const m = method.toUpperCase();
   return m === "GET" || m === "HEAD" || m === "OPTIONS" ? "read" : "blocked";
