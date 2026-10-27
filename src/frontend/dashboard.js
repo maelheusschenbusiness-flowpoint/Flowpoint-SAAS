@@ -15234,8 +15234,8 @@ window._fpDelGoal = async function(gid) {
     await apiFetch('/api/growth/objectives/' + gid, { method: 'DELETE' });
     if (STATE.growthObjectives) STATE.growthObjectives = STATE.growthObjectives.filter(function(x) { return String(x.id) !== String(gid); });
     render(STATE.currentSection);
-    showToast('success', 'Objectif supprimé');
-  } catch(_) { showToast('error', 'Erreur'); }
+    showToast('success', fpT('Objectif supprimé'));
+  } catch(_) { showToast('error', fpT('Erreur')); }
 };
 
 window.fpAiStop = function fpAiStop() {
@@ -15743,7 +15743,7 @@ function renderNewObjectivePanel() {
       <input class="fp-input" id="nobj-label" placeholder="${fpT('Ex : Score moyen ≥ 85/100')}" required/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Valeur cible</label>
+      <label class="fp-form-label">${fpT('Valeur cible')}</label>
       <div style="display:flex;gap:8px">
         <input class="fp-input" id="nobj-target" type="number" placeholder="80" style="flex:1"/>
         <input class="fp-input" id="nobj-unit" placeholder="pts / % / sites…" style="flex:1"/>
@@ -15754,10 +15754,10 @@ function renderNewObjectivePanel() {
       <input class="fp-input" id="nobj-deadline" type="date" style="color-scheme:dark"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Prochaine action</label>
+      <label class="fp-form-label">${fpT('Prochaine action')}</label>
       <input class="fp-input" id="nobj-next" placeholder="${fpT('Ex : Optimiser 3 pages à fort potentiel')}"/>
     </div>
-    ${btn('Enregistrer l\'objectif','fp-btn fp-btn-primary','check','id="nobj-save"')}
+    ${btn(fpT('Enregistrer l\'objectif'),'fp-btn fp-btn-primary','check','id="nobj-save"')}
   `;
 }
 function setupNewObjectivePanel() {
@@ -24338,6 +24338,198 @@ function bindGlobalEvents() {
     "Vous dominez {score}% des recherches locales cibles": "You dominate {score}% of target local searches",
     "Connectez GBP pour mesurer votre domination locale": "Connect GBP to measure your local dominance",
     "Couverture locale": "Local coverage",
+    "positive": "positive",
+    "négative": "negative",
+    "Tendance mesurée {trend} : {points} pts estimés sur 30 jours. Score projeté : {score}/100 sur 60 jours, selon la tendance observée": "Measured {trend} trend: an estimated {points} points over 30 days. Projected score: {score}/100 in 60 days, based on the observed trend",
+    "Objectifs T{quarter} {year}": "Q{quarter} {year} objectives",
+    "{count} objectifs · {days} jours restants": "{count} objectives · {days} days remaining",
+    "Sites suivis — quota plan ({count})": "Tracked sites — plan quota ({count})",
+    "Santé globale Q2 — {percent}%": "Overall Q2 health — {percent}%",
+    "{count}/{total} objectifs sur la bonne trajectoire": "{count}/{total} objectives on track",
+    "{percent}% atteint": "{percent}% achieved",
+    "Votre trimestre est globalement positif : {onTrack} objectifs sur {total} sont en bonne voie. Attention aux {atRisk} objectifs à risque : monitors DOWN et avis Google nécessitent une action immédiate.": "Your quarter is broadly positive: {onTrack} of {total} objectives are on track. Attention needed for {atRisk} at-risk objectives: DOWN monitors and Google reviews require immediate action.",
+    "{score}/100 — {status}": "{score}/100 — {status}",
+    "{count} site(s) — {status}": "{count} site(s) — {status}",
+    "{count} monitor(s) DOWN — Non atteint": "{count} monitor(s) DOWN — Not achieved",
+    "Score SEO moyen : {score}/100. {monitorMessage} Exploitez les projections IA pour planifier votre croissance des 90 prochains jours.": "Average SEO score: {score}/100. {monitorMessage} Use AI projections to plan your growth over the next 90 days.",
+    "{count} monitor(s) DOWN — résolvez les incidents avant d’analyser la croissance.": "{count} monitor(s) DOWN — resolve incidents before analyzing growth.",
+    "{count} monitor(s) actifs.": "{count} active monitor(s).",
+    "{count} pts ce mois": "{count} points this month",
+    "{factor}× secteur": "{factor}× sector",
+    "IA : {score}/100 en 30j": "AI: {score}/100 in 30 days",
+    "Taux conv. : {percent}%": "Conversion rate: {percent}%",
+    "<strong>{count} monitor(s) DOWN</strong> — site(s) inaccessibles. Chaque minute de panne = perte de positionnement Google.": "<strong>{count} monitor(s) DOWN</strong> — site(s) inaccessible. Every minute of downtime can hurt Google rankings.",
+    "<strong>{count} site(s)</strong> avec performance mobile < 60/100. Corriger = +{percent}% taux de contact estimé.": "<strong>{count} site(s)</strong> with mobile performance below 60/100. Fixing this may improve the estimated contact rate by {percent}%.",
+    "<strong>{count} mot(s)-clé(s)</strong> en positions 4–10 — proches du top 3. Un effort ciblé peut doubler leur trafic.": "<strong>{count} keyword(s)</strong> in positions 4–10 — close to the top 3. Focused work could double their traffic.",
+    "<strong>{count} site(s)</strong> avec score SEO < 70/100. Corriger les erreurs techniques = +{percent}% de trafic estimé.": "<strong>{count} site(s)</strong> with an SEO score below 70/100. Fixing technical issues may increase estimated traffic by {percent}%.",
+    "Score local : <strong>{score}/100</strong>. Améliorer la couverture locale booste les recherches géolocalisées à fort intent.": "Local score: <strong>{score}/100</strong>. Improving local coverage can help high-intent location-based searches.",
+    "Taux de conversion : <strong>{rate}%</strong> — sous la moyenne. Optimisez vos CTAs pour +{leads}% de leads/mois.": "Conversion rate: <strong>{rate}%</strong> — below average. Optimize your CTAs for {leads}% more leads per month.",
+    "<strong>Aucun concurrent ajouté.</strong> Ajoutez vos concurrents directs pour activer l’analyse de part de marché.": "<strong>No competitors added.</strong> Add direct competitors to enable market-share analysis.",
+    "<strong>Aucun audit configuré.</strong> Lancez votre 1er audit pour découvrir vos opportunités de croissance personnalisées.": "<strong>No audits configured.</strong> Run your first audit to discover personalized growth opportunities.",
+    "Vos indicateurs sont dans la norme. Continuez à exécuter vos Quick Wins pour progresser vers le niveau suivant.": "Your metrics are within the normal range. Keep completing Quick Wins to progress to the next level.",
+    "Génération IA…": "Generating with AI…",
+    "Pages en recul": "Declining pages",
+    "Pages à faible CTR": "Low-CTR pages",
+    "À vérifier : {validation}": "Check: {validation}",
+    "Données Search Console indisponibles ou accès à cette fonction non activé.": "Search Console data is unavailable or access to this feature is not enabled.",
+    "Réponse IA invalide.": "Invalid AI response.",
+    "{count} opportunités générées !": "{count} opportunities generated!",
+    "⟳ Synchroniser": "⟳ Sync",
+    "Répondre aux {count} avis en attente": "Reply to {count} pending reviews",
+    "Résoudre le monitor DOWN : {site}": "Resolve the DOWN monitor: {site}",
+    "Monitor indisponible": "Monitor unavailable",
+    "Améliorer le score SEO de {site}": "Improve the SEO score for {site}",
+    "Score actuel : {score}/100": "Current score: {score}/100",
+    "Optimiser la performance mobile de {site}": "Improve mobile performance for {site}",
+    "Score mobile actuel : {score}/100": "Current mobile score: {score}/100",
+    "Connecter Google Business Profile": "Connect Google Business Profile",
+    "Connexion GBP absente": "Google Business Profile is not connected",
+    "Votre score actuel est {score}/100. De nombreuses optimisations techniques sont disponibles — commencez par les Quick Wins pour progresser rapidement.": "Your current score is {score}/100. Many technical improvements are available — start with Quick Wins to make progress quickly.",
+    "Votre score est {score}/100. Vous êtes en phase de croissance active. Exécutez les Quick Wins identifiés pour atteindre le niveau Expert (70+).": "Your score is {score}/100. You are in an active growth phase. Complete the identified Quick Wins to reach Expert level (70+).",
+    "Excellent score : {score}/100. Vous êtes au niveau {level}.": "Excellent score: {score}/100. You are at level {level}.",
+    "⚠️ <strong>Alerte critique :</strong> {count} monitor(s) sont actuellement indisponibles.": "⚠️ <strong>Critical alert:</strong> {count} monitor(s) are currently unavailable.",
+    "<strong>Performance mobile :</strong> {count} audit(s) rapportent un score inférieur à 60/100.": "<strong>Mobile performance:</strong> {count} audit(s) report a score below 60/100.",
+    "<strong>{count} audit(s)</strong> rapportent un score SEO inférieur à 70/100.": "<strong>{count} audit(s)</strong> report an SEO score below 70/100.",
+    "Vos <strong>{count} monitor(s)</strong> ne signalent actuellement aucune panne.": "Your <strong>{count} monitor(s)</strong> are not reporting any outages.",
+    "<strong>SEO Local :</strong> Score local de {score}/100. Optimiser votre Google Business Profile et créer des pages locales peut significativement booster votre visibilité géolocalisée.": "<strong>Local SEO:</strong> Local score of {score}/100. Improving your Google Business Profile and creating local pages can increase your visibility in location-based searches.",
+    "<strong>{count} mot(s)-clé(s)</strong> sont observés en positions 4–10.": "<strong>{count} keyword(s)</strong> are ranking in positions 4–10.",
+    "<strong>{count} Quick Win(s)</strong> sont affichées à partir des signaux disponibles; aucun gain futur n’est estimé ici.": "<strong>{count} Quick Win(s)</strong> are shown based on available signals; no future gains are estimated here.",
+    "Aucune opportunité n’a pu être générée.": "No opportunities could be generated.",
+    "Les clusters n’ont pas pu être générés.": "The clusters could not be generated.",
+    "La recommandation IA est indisponible. Réessayez.": "The AI recommendation is unavailable. Try again.",
+    "vs {name}": "vs. {name}",
+    "{count} pts/mois": "{count} points/month",
+    "{percent}% complété": "{percent}% complete",
+    "Bilan Q{quarter} {year}": "Q{quarter} {year} summary",
+    "{count} pts estimés": "{count} estimated points",
+    "Dans {period}": "In {period}",
+    "{count} avis sans réponse": "{count} unanswered reviews",
+    "Photos < 10 — profil incomplet": "Fewer than 10 photos — incomplete profile",
+    "Posts GBP inactifs depuis {count} semaines": "No GBP posts for {count} weeks",
+    "Posts GBP inactifs depuis {count} jours": "No GBP posts for {count} days",
+    "Google Business Profile non connecté": "Google Business Profile is not connected",
+    "Profil GBP à jour ✓": "GBP profile is up to date ✓",
+    "{count} rech./mois": "{count} searches/month",
+    "+{percent}% CTR estimé": "+{percent}% estimated CTR",
+    "Aucune fuite détectée": "No leaks detected",
+    "Aucune baisse significative détectée sur les pages analysées. Une synchronisation GSC récente est nécessaire pour comparer les deux périodes de 28 jours.": "No significant decline detected on the analyzed pages. A recent GSC sync is required to compare the two 28-day periods.",
+    "Clics :": "Clicks:",
+    "Impressions :": "Impressions:",
+    "CTR :": "CTR:",
+    "Position :": "Position:",
+    "Médiane des pages comparables :": "Comparable-page median:",
+    "Position moyenne :": "Average position:",
+    "impressions": "impressions",
+    "Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.": "No measurable opportunities: tracked keywords need search volume and rankings between positions 4 and 20.",
+    "Aucune opportunité disponible": "No opportunities available",
+    "Ajoutez des mots-clés suivis pour découvrir vos opportunités de contenu personnalisées.": "Add tracked keywords to discover personalized content opportunities.",
+    "Aucune fuite détectée": "No leaks detected",
+    "Configurez des audits et connectez analytics pour activer la détection automatique.": "Set up audits and connect analytics to enable automatic detection.",
+    "Keyword Domination Engine": "Keyword Domination Engine",
+    "Sync": "Sync",
+    "Aucune alerte": "No alerts",
+    "Les variations de positions importantes apparaîtront ici.": "Significant ranking changes will appear here.",
+    "Analysez vos mots-clés suivis pour trouver les meilleures positions à conquérir.": "Analyze tracked keywords to find the best positions to target.",
+    "Aucun cluster créé": "No clusters created",
+    "Générez un clustering sémantique IA de vos mots-clés.": "Generate AI semantic clustering for your keywords.",
+    "Analyse des données Google Search Console…": "Analyzing Google Search Console data…",
+    "Réponse IA invalide.": "Invalid AI response.",
+    "{count} opportunités générées !": "{count} opportunities generated!",
+    "⟳ Synchroniser": "⟳ Sync",
+    "Répondre aux {count} avis en attente": "Reply to {count} pending reviews",
+    "Résoudre le monitor DOWN : {site}": "Resolve the DOWN monitor: {site}",
+    "Monitor indisponible": "Monitor unavailable",
+    "Améliorer le score SEO de {site}": "Improve the SEO score for {site}",
+    "Score actuel : {score}/100": "Current score: {score}/100",
+    "Optimiser la performance mobile de {site}": "Improve mobile performance for {site}",
+    "Score mobile actuel : {score}/100": "Current mobile score: {score}/100",
+    "Connecter Google Business Profile": "Connect Google Business Profile",
+    "Connexion GBP absente": "Google Business Profile is not connected",
+    "Votre score actuel est {score}/100. De nombreuses optimisations techniques sont disponibles — commencez par les Quick Wins pour progresser rapidement.": "Your current score is {score}/100. Many technical improvements are available — start with Quick Wins to make progress quickly.",
+    "Votre score est {score}/100. Vous êtes en phase de croissance active. Exécutez les Quick Wins identifiés pour atteindre le niveau Expert (70+).": "Your score is {score}/100. You are in an active growth phase. Complete the identified Quick Wins to reach Expert level (70+).",
+    "Excellent score : {score}/100. Vous êtes au niveau {level}.": "Excellent score: {score}/100. You are at level {level}.",
+    "⚠️ <strong>Alerte critique :</strong> {count} monitor(s) sont actuellement indisponibles.": "⚠️ <strong>Critical alert:</strong> {count} monitor(s) are currently unavailable.",
+    "<strong>Performance mobile :</strong> {count} audit(s) rapportent un score inférieur à 60/100.": "<strong>Mobile performance:</strong> {count} audit(s) report a score below 60/100.",
+    "<strong>{count} audit(s)</strong> rapportent un score SEO inférieur à 70/100.": "<strong>{count} audit(s)</strong> report an SEO score below 70/100.",
+    "Vos <strong>{count} monitor(s)</strong> ne signalent actuellement aucune panne.": "Your <strong>{count} monitor(s)</strong> are not reporting any outages.",
+    "<strong>SEO Local :</strong> Score local de {score}/100. Optimiser votre Google Business Profile et créer des pages locales peut significativement booster votre visibilité géolocalisée.": "<strong>Local SEO:</strong> Local score of {score}/100. Improving your Google Business Profile and creating local pages can increase your visibility in location-based searches.",
+    "<strong>{count} mot(s)-clé(s)</strong> sont observés en positions 4–10.": "<strong>{count} keyword(s)</strong> are ranking in positions 4–10.",
+    "<strong>{count} Quick Win(s)</strong> sont affichées à partir des signaux disponibles; aucun gain futur n’est estimé ici.": "<strong>{count} Quick Win(s)</strong> are shown based on available signals; no future gains are estimated here.",
+    "Aucune opportunité n’a pu être générée.": "No opportunities could be generated.",
+    "Les clusters n’ont pas pu être générés.": "The clusters could not be generated.",
+    "La recommandation IA est indisponible. Réessayez.": "The AI recommendation is unavailable. Try again.",
+    "<strong>{top3}</strong> mots-clés en Top 3, <strong>{top10}</strong> en Top 10. {gaining}{losing}": "<strong>{top3}</strong> keywords in the top 3, <strong>{top10}</strong> in the top 10. {gaining}{losing}",
+    "<strong>{count}</strong> en hausse ce cycle.": "<strong>{count}</strong> up this cycle.",
+    "⚠️ <strong>{count}</strong> en baisse — vérifiez le contenu concerné.": "⚠️ <strong>{count}</strong> down — review the affected content.",
+    "Alertes ({count})": "Alerts ({count})",
+    "{count} alerte(s)": "{count} alert(s)",
+    "Valeur cible": "Target value",
+    "Prochaine action": "Next action",
+    "Enregistrer l'objectif": "Save objective",
+    "Aucune Quick Win active issue des données disponibles.": "No active Quick Wins based on the available data.",
+    "Score moyen ≥ 80/100": "Average score ≥ 80/100",
+    "Optimiser 3 pages à fort potentiel": "Optimize 3 high-potential pages",
+    "Score actuel portefeuille": "Current portfolio score",
+    "Monitors UP ≥ 99.5%": "Monitors UP ≥ 99.5%",
+    "Investiguer les monitors DOWN": "Investigate DOWN monitors",
+    "Disponibilité moyenne portefeuille": "Average portfolio uptime",
+    "Sites actifs en portefeuille": "Active sites in portfolio",
+    "Ajouter un nouveau site à suivre": "Add a new site to track",
+    "Ajouter votre premier site": "Add your first site",
+    "Sites actifs sous gestion": "Active sites managed",
+    "Note Google ≥ 4.5★": "Google rating ≥ 4.5★",
+    "Répondre aux avis en attente": "Reply to pending reviews",
+    "Moyenne avis Google portefeuille": "Average Google rating across portfolio",
+    "Core Web Vitals ≥ 85/100": "Core Web Vitals ≥ 85/100",
+    "Optimiser CLS sur les sites prioritaires": "Optimize CLS on priority sites",
+    "Score CWV mobile moyen": "Average mobile CWV score",
+    "Atteint": "Achieved",
+    "En bonne voie": "On track",
+    "Atteints": "Achieved",
+    "Action :": "Action:",
+    "Non atteint": "Not achieved",
+    "Aucun audit effectué": "No audits completed",
+    "Aucun monitor actif": "No active monitors",
+    "Facile": "Easy",
+    "Difficile": "Hard",
+    "1er Audit": "First audit",
+    "7j consécutifs": "7-day streak",
+    "Quick Win × 5": "5 Quick Wins",
+    "Score > 70": "Score > 70",
+    "Local Expert": "Local SEO expert",
+    "Niveau Élite": "Elite level",
+    "Configurez des audits et des monitors pour accéder aux projections de croissance personnalisées.": "Set up audits and monitors to access personalized growth projections.",
+    "Momentum SEO": "SEO momentum",
+    "Score PSI moyen": "Average PSI score",
+    "Connectez PSI": "Connect PageSpeed Insights",
+    "Connectez GA4": "Connect GA4",
+    "Avis GBP": "GBP reviews",
+    "Concurrence": "Competitors",
+    "Ajoutez concurrents": "Add competitors",
+    "Connectez LSEO": "Connect Local SEO",
+    "Alerte critique": "Critical alert",
+    "Démarrer": "Get started",
+    "Tout va bien": "Everything looks good",
+    "Générer les recommandations IA": "Generate AI recommendations",
+    "Suivez vos positions Google et détectez les opportunités de croissance avec l'IA.": "Track your Google rankings and discover growth opportunities with AI.",
+    "{count} clusters générés !": "{count} clusters generated!",
+    "+{count} visites/mois": "+{count} visits/month",
+    "{count} site inaccessible": "{count} inaccessible site",
+    "{count} sites inaccessibles": "{count} inaccessible sites",
+    "{sites} — en panne.": "{sites} — down.",
+    "Performance mobile insuffisante sur {count} site": "Poor mobile performance on {count} site",
+    "Performance mobile insuffisante sur {count} sites": "Poor mobile performance on {count} sites",
+    "Score < 60/100 — freine les conversions mobiles.": "Score below 60/100 — reduces mobile conversions.",
+    "Score SEO critique sur {count} site": "Critical SEO score on {count} site",
+    "Score SEO critique sur {count} sites": "Critical SEO score on {count} sites",
+    "Score SEO < 60/100 — impact direct sur le positionnement.": "SEO score below 60/100 — directly affects rankings.",
+    "Taux de conversion faible : {rate}%": "Low conversion rate: {rate}%",
+    "En dessous de la moyenne secteur (2%). Optimisez vos CTAs et pages de destination.": "Below the 2% industry average. Optimize your CTAs and landing pages.",
+    "Visibilité locale insuffisante : {score}/100": "Insufficient local visibility: {score}/100",
+    "Votre présence dans les résultats locaux est faible. Optimisez Google Business Profile.": "Your local search presence is weak. Optimize your Google Business Profile.",
+    "Auditer": "Audit",
+    "⟳ Synchroniser…": "⟳ Syncing…",
+    "Synchronisation des positions indisponible — vérifiez votre configuration.": "Position sync is unavailable — check your configuration.",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -56560,7 +56752,7 @@ function renderGrowthProjections() {
   const _p30 = Math.round(_stepP*4), _p60 = Math.round(_stepP*8), _p90 = Math.round(_stepP*12);
   const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.max(0, Math.min(99, avgSc + _stepP * i))); });
   const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString(getLocale(),{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
-  const _trendLabel = _stepRaw > 0 ? 'positive' : _stepRaw < 0 ? 'négative' : 'stable';
+  const _trendLabel = _stepRaw > 0 ? fpT('positive') : _stepRaw < 0 ? fpT('négative') : fpT('stable');
   const _p30Label = (_p30 > 0 ? '+' : '') + _p30;
   const scenarios = [
     { label:'🚀 Optimiste',  color:'#22c55e',          bg:'rgba(34,197,94,.07)',  border:'rgba(34,197,94,.2)',
@@ -56598,7 +56790,11 @@ function renderGrowthProjections() {
       <div class="fp-section-actions">${btn('Exporter PDF','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}</div>
     </div>
 
-      ${aiBlock(('Tendance mesurée ' + _trendLabel + ' : <strong>' + _p30Label + ' pts estimés sur 30 jours</strong>. Score projeté : <strong>' + Math.max(0, Math.min(99, avgSc+_p60)) + '/100</strong> sur 60 jours, selon la tendance observée.') ,['Voir Quick Wins','Définir objectifs'])}
+      ${aiBlock(fpT('Tendance mesurée {trend} : {points} pts estimés sur 30 jours. Score projeté : {score}/100 sur 60 jours, selon la tendance observée', {
+        trend: _trendLabel,
+        points: _p30Label,
+        score: Math.max(0, Math.min(99, avgSc+_p60)),
+      }),['Voir Quick Wins','Définir objectifs'])}
 
     <div class="fp-stat-row">
       ${statCard('Score dans 30j',  Math.max(0,Math.min(99,avgSc+_p30))+'/100',  _p30Label+' pts estimés',  _p30 >= 0 ? 'up' : 'down', 'Tendance mesurée')}
@@ -56701,14 +56897,14 @@ function renderGrowthProjections() {
           .map(function(m){ return { title: m.title || '', status: m.status }; })
           .filter(function(m){ return !!m.title; });
         if (_qwList.length === 0) {
-          return '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune Quick Win active issue des données disponibles.</div>';
+           return '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">'+fpT('Aucune Quick Win active issue des données disponibles.')+'</div>';
         }
         return _qwList.map(function(q, i){
           var _col = i % 2 === 0 ? '#22c55e' : 'var(--fp-accent)';
           return '<div class="fp-qw-item" style="display:flex;align-items:center;gap:12px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">'+
             '<div style="width:20px;height:20px;border-radius:50%;background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--fp-accent);flex-shrink:0">'+(i+1)+'</div>'+
             '<div style="flex:1;font-size:12px;font-weight:600">'+escHtml(q.title)+'</div>'+
-            '<span style="font-size:11px;color:'+_col+'">'+(q.status === 'in_progress' ? 'En cours' : 'À démarrer')+'</span>'+
+             '<span style="font-size:11px;color:'+_col+'">'+(q.status === 'in_progress' ? fpT('En cours') : fpT('À démarrer'))+'</span>'+
           '</div>';
         }).join('');
       })()}
@@ -56732,13 +56928,13 @@ function renderGrowthObjectives() {
   const _qEnd = _qEndD.toLocaleDateString(getLocale(), { day:'numeric', month:'short', year:'numeric' });
   const _daysLeft = Math.max(0, Math.ceil((_qEndD - new Date()) / 86400000));
   const objectives = [
-    { icon:'📊', label:'Score moyen ≥ 80/100',         progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:_qEnd,    trend:_scoreTrend,      next:'Optimiser 3 pages à fort potentiel',    detail:'Score actuel portefeuille', history:_scoreHist },
-    ...(()=>{ const _mu=(STATE.monitors&&STATE.monitors.length>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length):null); const _mp=_mu!=null?parseFloat(_mu.toFixed(1)):(PREVIEW_MODE?97.2:null); return _mp!=null?[{ icon:'✅', label:'Monitors UP ≥ 99.5%', progress:_mp, target:99.5, unit:'%', inverse:false, status:_mp>=99.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:'Investiguer les monitors DOWN', detail:'Disponibilité moyenne portefeuille', history:Array(7).fill(_mp) }]:[];})(),
-    ...(()=>{ const _cap = Number(STATE.me?.limits?.monitors) > 0 ? Number(STATE.me.limits.monitors) : null; const _tgt = _cap || Math.max(nbSites, 1); const _lbl = _cap ? 'Sites suivis — quota plan (' + _cap + ')' : 'Sites actifs en portefeuille'; return [{ icon:'🌐', label:_lbl, progress:nbSites, target:_tgt, unit:'sites', inverse:false, status:(_cap && nbSites>=_cap)?'done':'on-track', deadline:_qEnd, trend:'—', next: nbSites>0 ? 'Ajouter un nouveau site à suivre' : 'Ajouter votre premier site', detail:'Sites actifs sous gestion', history:Array(7).fill(nbSites) }]; })(),
-    ...(()=>{ const _gbpR=STATE.gbp?.averageRating; const _rp=_gbpR!=null?parseFloat(parseFloat(_gbpR).toFixed(1)):(PREVIEW_MODE?4.2:null); const _ua=STATE.gbp?.unansweredReviews; return _rp!=null?[{ icon:'⭐', label:'Note Google ≥ 4.5★', progress:_rp, target:4.5, unit:'★', inverse:false, status:_rp>=4.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:'Répondre aux '+(_ua!=null?_ua+' ':'')+'avis en attente', detail:'Moyenne avis Google portefeuille', history:Array(7).fill(_rp) }]:[];})(),
-    ...(()=>{ const _cwv=STATE.overview?.coreWebVitals||(PREVIEW_MODE?72:null); return _cwv!=null?[{ icon:'📱', label:'Core Web Vitals ≥ 85/100', progress:_cwv, target:85, unit:'/100', inverse:false, status:_cwv>=85?'done':'on-track', deadline:_qEnd, trend:'—', next:'Optimiser CLS sur les sites prioritaires', detail:'Score CWV mobile moyen', history:Array(7).fill(_cwv) }]:[];})(),
+     { icon:'📊', label:fpT('Score moyen ≥ 80/100'), progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:_qEnd,    trend:_scoreTrend,      next:fpT('Optimiser 3 pages à fort potentiel'),    detail:fpT('Score actuel portefeuille'), history:_scoreHist },
+     ...(()=>{ const _mu=(STATE.monitors&&STATE.monitors.length>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length):null); const _mp=_mu!=null?parseFloat(_mu.toFixed(1)):(PREVIEW_MODE?97.2:null); return _mp!=null?[{ icon:'✅', label:fpT('Monitors UP ≥ 99.5%'), progress:_mp, target:99.5, unit:'%', inverse:false, status:_mp>=99.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:fpT('Investiguer les monitors DOWN'), detail:fpT('Disponibilité moyenne portefeuille'), history:Array(7).fill(_mp) }]:[];})(),
+     ...(()=>{ const _cap = Number(STATE.me?.limits?.monitors) > 0 ? Number(STATE.me.limits.monitors) : null; const _tgt = _cap || Math.max(nbSites, 1); const _lbl = _cap ? fpT('Sites suivis — quota plan ({count})', { count: _cap }) : fpT('Sites actifs en portefeuille'); return [{ icon:'🌐', label:_lbl, progress:nbSites, target:_tgt, unit:'sites', inverse:false, status:(_cap && nbSites>=_cap)?'done':'on-track', deadline:_qEnd, trend:'—', next: nbSites>0 ? fpT('Ajouter un nouveau site à suivre') : fpT('Ajouter votre premier site'), detail:fpT('Sites actifs sous gestion'), history:Array(7).fill(nbSites) }]; })(),
+     ...(()=>{ const _gbpR=STATE.gbp?.averageRating; const _rp=_gbpR!=null?parseFloat(parseFloat(_gbpR).toFixed(1)):(PREVIEW_MODE?4.2:null); const _ua=STATE.gbp?.unansweredReviews; return _rp!=null?[{ icon:'⭐', label:fpT('Note Google ≥ 4.5★'), progress:_rp, target:4.5, unit:'★', inverse:false, status:_rp>=4.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:fpT('Répondre aux avis en attente'), detail:fpT('Moyenne avis Google portefeuille'), history:Array(7).fill(_rp) }]:[];})(),
+     ...(()=>{ const _cwv=STATE.overview?.coreWebVitals||(PREVIEW_MODE?72:null); return _cwv!=null?[{ icon:'📱', label:fpT('Core Web Vitals ≥ 85/100'), progress:_cwv, target:85, unit:'/100', inverse:false, status:_cwv>=85?'done':'on-track', deadline:_qEnd, trend:'—', next:fpT('Optimiser CLS sur les sites prioritaires'), detail:fpT('Score CWV mobile moyen'), history:Array(7).fill(_cwv) }]:[];})(),
   ];
-  const statusLabel = {done:'Atteint', 'on-track':'En bonne voie', 'at-risk':'À risque'};
+  const statusLabel = {done:fpT('Atteint'), 'on-track':fpT('En bonne voie'), 'at-risk':fpT('À risque')};
   const statusBdg   = {done:'success', 'on-track':'primary',       'at-risk':'warning'};
   const onTrack = objectives.filter(function(o){return o.status==='on-track'||o.status==='done';}).length;
   const atRisk  = objectives.filter(function(o){return o.status==='at-risk';}).length;
@@ -56746,7 +56942,7 @@ function renderGrowthObjectives() {
 
   return `
     <div class="fp-section-header">
-      <div><h1>Objectifs T${_qNum} ${new Date().getFullYear()}</h1><div class="fp-section-sub">${objectives.length} objectifs · ${_daysLeft} jours restants</div></div>
+      <div><h1>${fpT('Objectifs T{quarter} {year}', { quarter:_qNum, year:new Date().getFullYear() })}</h1><div class="fp-section-sub">${fpT('{count} objectifs · {days} jours restants', { count:objectives.length, days:_daysLeft })}</div></div>
       <div class="fp-section-actions">
         ${btn('Ajouter','fp-btn fp-btn-primary fp-btn-sm','plus','onclick="openFloatPanel(\'Nouvel objectif\',renderNewObjectivePanel());setupNewObjectivePanel()"')}
       </div>
@@ -56755,26 +56951,26 @@ function renderGrowthObjectives() {
     <div class="fp-growth-obj-summary">
       <div class="fp-growth-obj-sum-item">
         <div style="font-size:26px;font-weight:900;color:var(--fp-accent);font-family:var(--fp-font-head);line-height:1">${onTrack}<span style="font-size:14px;color:var(--fp-text-muted)">/${objectives.length}</span></div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">En bonne voie</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('En bonne voie')}</div>
       </div>
       <div class="fp-growth-obj-sum-item">
         <div style="font-size:26px;font-weight:900;color:var(--fp-warning);font-family:var(--fp-font-head);line-height:1">${atRisk}</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">À risque</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('À risque')}</div>
       </div>
       <div class="fp-growth-obj-sum-item">
         <div style="font-size:26px;font-weight:900;color:var(--fp-success);font-family:var(--fp-font-head);line-height:1">${done}</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Atteints</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('Atteints')}</div>
       </div>
       <div class="fp-growth-obj-sum-item" style="flex:2.5;min-width:200px">
-        <div style="font-size:11.5px;font-weight:600;color:var(--fp-text-soft);margin-bottom:7px">Santé globale Q2 — ${Math.round(onTrack/objectives.length*100)}%</div>
+        <div style="font-size:11.5px;font-weight:600;color:var(--fp-text-soft);margin-bottom:7px">${fpT('Santé globale Q2 — {percent}%', { percent:Math.round(onTrack/objectives.length*100) })}</div>
         <div class="fp-progress-bar" style="height:8px">
           <div class="fp-progress-fill" style="width:${Math.round(onTrack/objectives.length*100)}%;background:linear-gradient(90deg,var(--fp-accent),#22c55e)"></div>
         </div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:5px">${onTrack}/${objectives.length} objectifs sur la bonne trajectoire</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-top:5px">${fpT('{count}/{total} objectifs sur la bonne trajectoire', { count:onTrack, total:objectives.length })}</div>
       </div>
     </div>
 
-    ${aiBlock('Votre trimestre est <strong>globalement positif</strong> : '+onTrack+' objectifs sur '+objectives.length+' sont en bonne voie. Attention aux <strong>'+atRisk+' objectifs à risque</strong> : monitors DOWN et avis Google nécessitent une action immédiate.', [])}
+    ${aiBlock(fpT('Votre trimestre est globalement positif : {onTrack} objectifs sur {total} sont en bonne voie. Attention aux {atRisk} objectifs à risque : monitors DOWN et avis Google nécessitent une action immédiate.', { onTrack, total:objectives.length, atRisk }), [])}
 
     <div style="display:flex;flex-direction:column;gap:12px">
       ${objectives.map(function(o) {
@@ -56791,8 +56987,8 @@ function renderGrowthObjectives() {
             '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:180px">' +
               '<div style="font-size:22px;flex-shrink:0">'+o.icon+'</div>' +
               '<div>' +
-                '<div style="font-size:13px;font-weight:700">'+escHtml(o.label)+'</div>' +
-                '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:1px">'+o.detail+'</div>' +
+              '<div style="font-size:13px;font-weight:700">'+escHtml(fpT(o.label))+'</div>' +
+                '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:1px">'+escHtml(fpT(o.detail))+'</div>' +
               '</div>' +
             '</div>' +
             '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0">' +
@@ -56811,9 +57007,9 @@ function renderGrowthObjectives() {
             '<div style="display:flex;gap:14px;flex-wrap:wrap">' +
               '<span style="font-size:11px;color:var(--fp-text-faint)">📅 <strong>'+o.deadline+'</strong></span>' +
               '<span style="font-size:11px;color:var(--fp-text-faint)">📈 <strong style="color:'+col+'">'+o.trend+'</strong></span>' +
-              '<span style="font-size:11px;color:var(--fp-text-faint)">'+pct.toFixed(0)+'% atteint</span>' +
+              '<span style="font-size:11px;color:var(--fp-text-faint)">'+fpT('{percent}% atteint', { percent:pct.toFixed(0) })+'</span>' +
             '</div>' +
-            '<span style="font-size:11px;color:var(--fp-text-muted)">Action : <strong>'+escHtml(o.next)+'</strong></span>' +
+            '<span style="font-size:11px;color:var(--fp-text-muted)">'+fpT('Action :')+' <strong>'+escHtml(fpT(o.next))+'</strong></span>' +
           '</div>' +
         '</div>';
       }).join('')}
@@ -56829,17 +57025,17 @@ function renderGrowthObjectives() {
       const _monDn = STATE.monitors.filter(function(m){return m.status==='down';}).length;
       const _bilanItems = [
         { icon: _avgSc >= 65 ? '✅' : '⚠️', label:'Score moyen ≥ 65/100',
-          result: _avgSc > 0 ? _avgSc + '/100 — ' + (_avgSc >= 65 ? 'Atteint' : 'Non atteint') : 'Aucun audit effectué',
+      result: _avgSc > 0 ? fpT('{score}/100 — {status}', { score:_avgSc, status:fpT(_avgSc >= 65 ? 'Atteint' : 'Non atteint') }) : fpT('Aucun audit effectué'),
           col: _avgSc >= 65 ? 'var(--fp-success)' : 'var(--fp-warning)' },
         { icon: _nb >= 3 ? '✅' : '⚠️', label:'3 sites configurés',
-          result: _nb + ' site' + (_nb > 1 ? 's' : '') + ' — ' + (_nb >= 3 ? 'Objectif atteint' : 'En cours'),
+          result: fpT('{count} site(s) — {status}', { count:_nb, status:fpT(_nb >= 3 ? 'Objectif atteint' : 'En cours') }),
           col: _nb >= 3 ? 'var(--fp-success)' : 'var(--fp-warning)' },
         { icon: _monDn === 0 ? '✅' : '⚠️', label:'0 monitor DOWN sur 30j',
-          result: _monDn === 0 ? (STATE.monitors.length ? 'Aucun incident' : 'Aucun monitor actif') : _monDn + ' monitor' + (_monDn>1?'s':'') + ' DOWN — Non atteint',
+          result: _monDn === 0 ? fpT(STATE.monitors.length ? 'Aucun incident' : 'Aucun monitor actif') : fpT('{count} monitor(s) DOWN — Non atteint', { count:_monDn }),
           col: _monDn === 0 ? 'var(--fp-success)' : 'var(--fp-warning)' },
       ];
       return '<div class="fp-card" style="margin-top:14px">' +
-        '<div class="fp-card-title" style="margin-bottom:14px">🏅 Bilan Q' + _prevQ + ' ' + _prevQYear + '</div>' +
+        '<div class="fp-card-title" style="margin-bottom:14px">🏅 ' + fpT('Bilan Q{quarter} {year}', { quarter:_prevQ, year:_prevQYear }) + '</div>' +
         '<div style="display:flex;flex-direction:column;gap:8px">' +
         _bilanItems.map(function(h){ return '<div class="fp-bilan-item" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03)">' +
           '<span style="font-size:16px">'+h.icon+'</span>' +
@@ -56950,7 +57146,7 @@ function renderGrowthCommandCenter() {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
     const _trafficImpact = Number(r.estimated_traffic_impact);
     const _roiLbl = Number.isFinite(_trafficImpact) && _trafficImpact > 0
-      ? '+' + _trafficImpact + ' visites/mois'
+      ? fpT('+{count} visites/mois', { count:_trafficImpact })
       : '';
     return { title: r.title, impact: '', roi: _roiLbl, time: '', diff: diff, pct: _qwPct(r.title) };
   }) : (function() {
@@ -56961,27 +57157,27 @@ function renderGrowthCommandCenter() {
     const _low  = _aud.filter(function(a){ return Number.isFinite(a.score) && a.score < 70; });
     const _down = _mon.filter(function(m){ return m.status === 'down'; });
     if (_down.length > 0) {
-      var _dt = 'Résoudre le monitor DOWN : '+(_down[0].url||_down[0].name||'site').replace(/^https?:\/\//,'').split('/')[0];
-      _aw.push({title:_dt, impact:'Monitor indisponible', roi:'', time:'', diff:1, pct:_qwPct(_dt)});
+      var _dt = fpT('Résoudre le monitor DOWN : {site}', { site:(_down[0].url||_down[0].name||'site').replace(/^https?:\/\//,'').split('/')[0] });
+      _aw.push({title:_dt, impact:fpT('Monitor indisponible'), roi:'', time:'', diff:1, pct:_qwPct(_dt)});
     }
     if (_low.length > 0) {
       var _s = _low[0].url||''; var _u = _s.replace(/^https?:\/\//,'').split('/')[0] || 'site';
-      var _lt = 'Améliorer le score SEO de '+_u;
-      _aw.push({title:_lt, impact:'Score actuel : '+_low[0].score+'/100', roi:'', time:'', diff:2, pct:_qwPct(_lt)});
+      var _lt = fpT('Améliorer le score SEO de {site}', { site:_u });
+      _aw.push({title:_lt, impact:fpT('Score actuel : {score}/100', { score:_low[0].score }), roi:'', time:'', diff:2, pct:_qwPct(_lt)});
     }
     if (_slow.length > 0) {
       var _s2 = _slow[0].url||''; var _u2 = _s2.replace(/^https?:\/\//,'').split('/')[0] || 'site';
-      var _pt = 'Optimiser la performance mobile de '+_u2;
-      _aw.push({title:_pt, impact:'Score mobile actuel : '+_slow[0].speed+'/100', roi:'', time:'', diff:3, pct:_qwPct(_pt)});
+      var _pt = fpT('Optimiser la performance mobile de {site}', { site:_u2 });
+      _aw.push({title:_pt, impact:fpT('Score mobile actuel : {score}/100', { score:_slow[0].speed }), roi:'', time:'', diff:3, pct:_qwPct(_pt)});
     }
     if (_lseo.gbpConnected === false && _lseo.domScore == null) {
-      var _gt = 'Connecter Google Business Profile';
-      _aw.push({title:_gt, impact:'Connexion GBP absente', roi:'', time:'', diff:1, pct:_qwPct(_gt)});
+      var _gt = fpT('Connecter Google Business Profile');
+      _aw.push({title:_gt, impact:fpT('Connexion GBP absente'), roi:'', time:'', diff:1, pct:_qwPct(_gt)});
     }
     return _aw;
   })();
   const diffColors = ['','var(--fp-success)','var(--fp-warning)','var(--fp-danger)'];
-  const diffLabels = ['','Facile','Moyen','Difficile'];
+  const diffLabels = ['',fpT('Facile'),fpT('Moyen'),fpT('Difficile')];
 
   const _roadmapStatus = (function() {
     var _hasAudits  = (STATE.audits||[]).length > 0;
@@ -57018,8 +57214,8 @@ function renderGrowthCommandCenter() {
         return {
           type: o.type || 'Article',
           title: o.title || o.keyword || 'Opportunité de contenu',
-          kw: o.volume ? o.volume.toLocaleString(getLocale()) + ' rech./mois' : (o.estimatedCtrGain ? '+' + Math.round(o.estimatedCtrGain*100) + '% CTR estimé' : ''),
-          diff: (o.difficulty||50) < 35 ? 'Facile' : (o.difficulty||50) < 65 ? 'Moyen' : 'Difficile'
+            kw: o.volume ? fpT('{count} rech./mois', { count:o.volume.toLocaleString(getLocale()) }) : (o.estimatedCtrGain ? fpT('+{percent}% CTR estimé', { percent:Math.round(o.estimatedCtrGain*100) }) : ''),
+            diff: (o.difficulty||50) < 35 ? fpT('Facile') : (o.difficulty||50) < 65 ? fpT('Moyen') : fpT('Difficile')
         };
       })
     : [];
@@ -57037,11 +57233,14 @@ function renderGrowthCommandCenter() {
     var _lowAud  = _aud.filter(function(a){ return (a.score||100)  < 60; });
     var _downMon = _mon.filter(function(m){ return m.status === 'down'; });
     var _convR   = STATE.overview?.conversionRate ?? null;
-    if (_downMon.length > 0) _ll.push({sev:'high', icon:'📡', title:_downMon.length+' site(s) inaccessible(s)', desc:_downMon.map(function(m){ return (m.url||m.name||'').replace(/^https?:\/\//,'').split('/')[0]; }).slice(0,2).join(', ')+' — en panne.', action:'Corriger'});
-    if (_slowAud.length > 0) _ll.push({sev:'high', icon:'⏱️', title:'Performance mobile insuffisante ('+_slowAud.length+' site'+(+_slowAud.length>1?'s':'')+')', desc:'Score < 60/100 — freine les conversions mobiles.', action:'Auditer'});
-    if (_lowAud.length > 0)  _ll.push({sev:'high', icon:'🔍', title:'Score SEO critique ('+_lowAud.length+' site'+(+_lowAud.length>1?'s':'')+')', desc:'Score SEO < 60/100 — impact direct sur le positionnement.', action:'Optimiser'});
-    if (_convR != null && _convR < 0.02) _ll.push({sev:'med', icon:'💰', title:'Taux de conversion faible ('+(_convR*100).toFixed(2)+'%)', desc:'En dessous de la moyenne secteur (2%). Optimisez vos CTAs et pages de destination.', action:'Analyser'});
-    if (_lseo.domScore != null && _lseo.domScore < 60) _ll.push({sev:'med', icon:'📍', title:'Visibilité locale insuffisante ('+_lseo.domScore+'/100)', desc:'Votre présence dans les résultats locaux est faible. Optimisez Google Business Profile.', action:'Gérer'});
+    if (_downMon.length > 0) {
+      const _siteNames = _downMon.map(function(m){ return (m.url||m.name||'').replace(/^https?:\/\//,'').split('/')[0]; }).slice(0,2).join(', ');
+      _ll.push({sev:'high', icon:'📡', title:fpT(_downMon.length === 1 ? '{count} site inaccessible' : '{count} sites inaccessibles', { count:_downMon.length }), desc:fpT('{sites} — en panne.', { sites:_siteNames }), action:fpT('Corriger')});
+    }
+    if (_slowAud.length > 0) _ll.push({sev:'high', icon:'⏱️', title:fpT(_slowAud.length === 1 ? 'Performance mobile insuffisante sur {count} site' : 'Performance mobile insuffisante sur {count} sites', { count:_slowAud.length }), desc:fpT('Score < 60/100 — freine les conversions mobiles.'), action:fpT('Auditer')});
+    if (_lowAud.length > 0)  _ll.push({sev:'high', icon:'🔍', title:fpT(_lowAud.length === 1 ? 'Score SEO critique sur {count} site' : 'Score SEO critique sur {count} sites', { count:_lowAud.length }), desc:fpT('Score SEO < 60/100 — impact direct sur le positionnement.'), action:fpT('Optimiser')});
+    if (_convR != null && _convR < 0.02) _ll.push({sev:'med', icon:'💰', title:fpT('Taux de conversion faible : {rate}%', { rate:(_convR*100).toFixed(2) }), desc:fpT('En dessous de la moyenne secteur (2%). Optimisez vos CTAs et pages de destination.'), action:fpT('Analyser')});
+    if (_lseo.domScore != null && _lseo.domScore < 60) _ll.push({sev:'med', icon:'📍', title:fpT('Visibilité locale insuffisante : {score}/100', { score:_lseo.domScore }), desc:fpT('Votre présence dans les résultats locaux est faible. Optimisez Google Business Profile.'), action:fpT('Gérer')});
     return _ll;
   })();
   const sevCol = {high:'var(--fp-danger)',med:'var(--fp-warning)',low:'var(--fp-text-faint)'};
@@ -57054,12 +57253,12 @@ function renderGrowthCommandCenter() {
   const badges = _progAchievements
     ? _progAchievements.map(function(a) { return { icon: a.key === 'first_audit' ? '🏆' : a.key === 'streak_7' ? '🔥' : a.key === 'quickwin_5' ? '⚡' : a.key === 'score_70' ? '📈' : a.key === 'local_expert' ? '🌍' : a.key === 'elite' ? '💎' : '🎖️', label: a.label, earned: !!a.achieved, progress: a.progress, target: a.target }; })
     : [
-      {icon:'🏆', label:'1er Audit',      earned: (STATE.audits||[]).length > 0},
-      {icon:'🔥', label:'7j consécutifs', earned: _progStreak >= 7},
-      {icon:'⚡', label:'Quick Win × 5',  earned: _completedMissions >= 5},
-      {icon:'📈', label:'Score > 70',     earned: avgSc >= 70},
-      {icon:'🌍', label:'Local Expert',   earned: (_lseo.domScore||0) >= 80},
-      {icon:'💎', label:'Niveau Élite',   earned: level >= 5},
+       {icon:'🏆', label:fpT('1er Audit'),      earned: (STATE.audits||[]).length > 0},
+       {icon:'🔥', label:fpT('7j consécutifs'), earned: _progStreak >= 7},
+       {icon:'⚡', label:fpT('Quick Win × 5'),  earned: _completedMissions >= 5},
+       {icon:'📈', label:fpT('Score > 70'),     earned: avgSc >= 70},
+       {icon:'🌍', label:fpT('Local Expert'),   earned: (_lseo.domScore||0) >= 80},
+       {icon:'💎', label:fpT('Niveau Élite'),   earned: level >= 5},
     ];
 
   const typeCol = {Article:'var(--fp-accent)',  'Page locale':'#22c55e', FAQ:'#8b5cf6','Page service':'#f59e0b'};
@@ -57111,9 +57310,15 @@ function renderGrowthCommandCenter() {
             const _avgSc = Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length);
             const _nMon  = (STATE.monitors||[]).length;
             const _nDown = (STATE.monitors||[]).filter(m=>m.status==='down').length;
-            return `Score SEO moyen : <strong>${_avgSc}/100</strong>. ${_nDown > 0 ? _nDown+' monitor(s) DOWN — résolvez les incidents avant d\'analyser la croissance.' : _nMon > 0 ? _nMon+' monitor(s) actifs.' : ''} Exploitez les projections IA pour planifier votre croissance des 90 prochains jours.`;
+            const monitorMessage = _nDown > 0
+              ? fpT('{count} monitor(s) DOWN — résolvez les incidents avant d’analyser la croissance.', { count:_nDown })
+              : _nMon > 0 ? fpT('{count} monitor(s) actifs.', { count:_nMon }) : '';
+            return fpT('Score SEO moyen : {score}/100. {monitorMessage} Exploitez les projections IA pour planifier votre croissance des 90 prochains jours.', {
+              score:_avgSc,
+              monitorMessage,
+            });
           })()
-        : "Configurez des audits et des monitors pour accéder aux projections de croissance personnalisées.",
+        : fpT("Configurez des audits et des monitors pour accéder aux projections de croissance personnalisées."),
       ['Voir projections', 'Définir objectifs', 'Rapport croissance']
     )}
 
@@ -57126,9 +57331,9 @@ function renderGrowthCommandCenter() {
             <div class="fp-growth-hero-label">SEO Momentum Score</div>
             <div class="fp-growth-hero-score">${avgSc}<span>/100</span></div>
             <div class="fp-growth-hero-chips">
-              ${STATE.overview?.scoreChange30d != null ? `<span class="fp-growth-chip ${STATE.overview.scoreChange30d>=0?'up':'down'}">${STATE.overview.scoreChange30d>=0?'↑ +':'↓ '}${Math.abs(STATE.overview.scoreChange30d)} pts ce mois</span>` : ''}
-              ${STATE.overview?.sectorMultiplier != null ? `<span class="fp-growth-chip up">↑ ${STATE.overview.sectorMultiplier}× secteur</span>` : ''}
-              ${(_proj && avgSc > 0) ? `<span class="fp-growth-chip ai">IA : ${_proj.score30d}/100 en 30j</span>` : ''}
+              ${STATE.overview?.scoreChange30d != null ? `<span class="fp-growth-chip ${STATE.overview.scoreChange30d>=0?'up':'down'}">${STATE.overview.scoreChange30d>=0?'↑ ':'↓ '}${fpT('{count} pts ce mois', { count:(STATE.overview.scoreChange30d>=0?'+':'')+Math.abs(STATE.overview.scoreChange30d) })}</span>` : ''}
+              ${STATE.overview?.sectorMultiplier != null ? `<span class="fp-growth-chip up">↑ ${fpT('{factor}× secteur', { factor:STATE.overview.sectorMultiplier })}</span>` : ''}
+              ${(_proj && avgSc > 0) ? `<span class="fp-growth-chip ai">${fpT('IA : {score}/100 en 30j', { score:_proj.score30d })}</span>` : ''}
             </div>
           </div>
           <div class="fp-growth-comparison">
@@ -57146,12 +57351,12 @@ function renderGrowthCommandCenter() {
           </div>
         </div>
         <div class="fp-growth-rings">
-          ${growthRing(avgSc,'var(--fp-accent)',84,7,'Momentum SEO', STATE.overview?.scoreChange30d != null ? (STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d+' pts/mois' : 'Score moyen')}
-          ${growthRing(_mySpeed||0,'#22c55e',84,7,'Performance', _mySpeed != null ? 'Score PSI moyen' : 'Connectez PSI')}
-          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : 0,'#8b5cf6',84,7,'Conversion', STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : 'Connectez GA4')}
-          ${growthRing(_myAvis,'#f59e0b',84,7,'Avis GBP', _lseo.avgRating ? _lseo.avgRating+'/5' : '—')}
-          ${growthRing(_c1Score||0,'#06b6d4',84,7,'Concurrence', _c1Score ? 'vs '+escHtml(_comp1?.name||'Concurrent').substring(0,12) : 'Ajoutez concurrents')}
-          ${growthRing(_myLocal,'#f97316',84,7,'Local SEO', _lseo.domScore ? _lseo.domScore+'/100' : 'Connectez LSEO')}
+          ${growthRing(avgSc,'var(--fp-accent)',84,7,fpT('Momentum SEO'), STATE.overview?.scoreChange30d != null ? fpT('{count} pts/mois', { count:(STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d }) : fpT('Score moyen'))}
+          ${growthRing(_mySpeed||0,'#22c55e',84,7,fpT('Performance'), _mySpeed != null ? fpT('Score PSI moyen') : fpT('Connectez PSI'))}
+          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : 0,'#8b5cf6',84,7,fpT('Conversion'), STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : fpT('Connectez GA4'))}
+          ${growthRing(_myAvis,'#f59e0b',84,7,fpT('Avis GBP'), _lseo.avgRating ? _lseo.avgRating+'/5' : '—')}
+          ${growthRing(_c1Score||0,'#06b6d4',84,7,fpT('Concurrence'), _c1Score ? fpT('vs {name}', { name:escHtml(_comp1?.name||'Concurrent').substring(0,12) }) : fpT('Ajoutez concurrents'))}
+          ${growthRing(_myLocal,'#f97316',84,7,fpT('Local SEO'), _lseo.domScore ? _lseo.domScore+'/100' : fpT('Connectez LSEO'))}
         </div>
       </div>
     </div>
@@ -57167,7 +57372,7 @@ function renderGrowthCommandCenter() {
         var _proj60 = _proj ? _proj.score60d : null;
         var _items = [
           {label:'Trafic gagnable',    val:_trafficGain,  suffix:'/mois',  sub:_trafficGain != null ? 'Basé sur mots-clés suivis' : 'Connectez vos mots-clés',  color:'var(--fp-accent)', spark:null, na:_trafficGain==null},
-          {label:'Leads estimés',      val:_leadsEst,     suffix:'/mois',  sub:_leadsEst != null ? 'Taux conv. : '+((_convR||0)*100).toFixed(2)+'%' : 'Connectez analytics', color:'#22c55e', spark:null, na:_leadsEst==null},
+          {label:'Leads estimés',      val:_leadsEst,     suffix:'/mois',  sub:_leadsEst != null ? fpT('Taux conv. : {percent}%', { percent:((_convR||0)*100).toFixed(2) }) : 'Connectez analytics', color:'#22c55e', spark:null, na:_leadsEst==null},
           {label:'Revenu estimé',      val:_revMonth,     suffix:'€/mois', sub:_revMonth != null ? 'Depuis votre historique' : 'Connectez analytics',           color:'#8b5cf6', spark:null, na:_revMonth==null},
           {label:'Score IA prévu 60j', val:_proj60,       suffix:'/100',   sub:_proj ? 'Projection basée sur tendance réelle' : 'Lancez 2 audits pour une projection', color:'#f59e0b', spark:sparkS, na:_proj60==null},
         ];
@@ -57213,15 +57418,15 @@ function renderGrowthCommandCenter() {
           var _lowA   = _aud.filter(function(a){ return (a.score||100)<70; });
           var _closeK = _kws.filter(function(k){ return k.pos>3&&k.pos<=10; });
           var _convR  = STATE.overview?.conversionRate ?? null;
-          if (_downM.length>0) _ins.push({cat:'Alerte critique',icon:'📡',color:'var(--fp-danger)',text:'<strong>'+_downM.length+' monitor(s) DOWN</strong> — site(s) inaccessibles. Chaque minute de panne = perte de positionnement Google.',route:'monitors'});
-          if (_slowA.length>0) _ins.push({cat:'Performance',icon:'📱',color:'var(--fp-danger)',text:'<strong>'+_slowA.length+' site(s)</strong> avec performance mobile < 60/100. Corriger = +'+Math.round(_slowA.length*12)+'% taux de contact estimé.',route:'performance'});
-          if (_closeK.length>0) _ins.push({cat:'Mots-clés',icon:'🔑',color:'var(--fp-accent)',text:'<strong>'+_closeK.length+' mot(s)-clé(s)</strong> en positions 4–10 — proches du top 3. Un effort ciblé peut doubler leur trafic.',route:'growth/keywords'});
-          if (_lowA.length>0) _ins.push({cat:'SEO Technique',icon:'🔍',color:'#22c55e',text:'<strong>'+_lowA.length+' site(s)</strong> avec score SEO < 70/100. Corriger les erreurs techniques = +'+Math.round(_lowA.length*15)+'% de trafic estimé.',route:'audits'});
-          if (_lseo.domScore!=null&&_lseo.domScore<80) _ins.push({cat:'SEO Local',icon:'📍',color:'#f59e0b',text:'Score local : <strong>'+_lseo.domScore+'/100</strong>. Améliorer la couverture locale booste les recherches géolocalisées à fort intent.',route:'local-seo'});
-          if (_convR!=null&&_convR<0.03) _ins.push({cat:'Conversion',icon:'💰',color:'#8b5cf6',text:'Taux de conversion : <strong>'+(_convR*100).toFixed(2)+'%</strong> — sous la moyenne. Optimisez vos CTAs pour +'+Math.round((_convR*10000)*0.5)/100+'% de leads/mois.',route:'conversion'});
-          if ((STATE.competitors||[]).length===0) _ins.push({cat:'Concurrence',icon:'⚔️',color:'#06b6d4',text:'<strong>Aucun concurrent ajouté.</strong> Ajoutez vos concurrents directs pour activer l\'analyse de part de marché.',route:'competitor'});
-          if (_aud.length===0) _ins.push({cat:'Démarrer',icon:'🚀',color:'#22c55e',text:'<strong>Aucun audit configuré.</strong> Lancez votre 1er audit pour découvrir vos opportunités de croissance personnalisées.',route:'audits'});
-          if (_ins.length===0) _ins.push({cat:'Tout va bien',icon:'✅',color:'#22c55e',text:'Vos indicateurs sont dans la norme. Continuez à exécuter vos Quick Wins pour progresser vers le niveau suivant.',route:'audits'});
+           if (_downM.length>0) _ins.push({cat:fpT('Alerte critique'),icon:'📡',color:'var(--fp-danger)',text:fpT('<strong>{count} monitor(s) DOWN</strong> — site(s) inaccessibles. Chaque minute de panne = perte de positionnement Google.', { count:_downM.length }),route:'monitors'});
+           if (_slowA.length>0) _ins.push({cat:fpT('Performance'),icon:'📱',color:'var(--fp-danger)',text:fpT('<strong>{count} site(s)</strong> avec performance mobile < 60/100. Corriger = +{percent}% taux de contact estimé.', { count:_slowA.length, percent:Math.round(_slowA.length*12) }),route:'performance'});
+           if (_closeK.length>0) _ins.push({cat:fpT('Mots-clés'),icon:'🔑',color:'var(--fp-accent)',text:fpT('<strong>{count} mot(s)-clé(s)</strong> en positions 4–10 — proches du top 3. Un effort ciblé peut doubler leur trafic.', { count:_closeK.length }),route:'growth/keywords'});
+           if (_lowA.length>0) _ins.push({cat:fpT('SEO Technique'),icon:'🔍',color:'#22c55e',text:fpT('<strong>{count} site(s)</strong> avec score SEO < 70/100. Corriger les erreurs techniques = +{percent}% de trafic estimé.', { count:_lowA.length, percent:Math.round(_lowA.length*15) }),route:'audits'});
+           if (_lseo.domScore!=null&&_lseo.domScore<80) _ins.push({cat:fpT('SEO Local'),icon:'📍',color:'#f59e0b',text:fpT('Score local : <strong>{score}/100</strong>. Améliorer la couverture locale booste les recherches géolocalisées à fort intent.', { score:_lseo.domScore }),route:'local-seo'});
+           if (_convR!=null&&_convR<0.03) _ins.push({cat:fpT('Conversion'),icon:'💰',color:'#8b5cf6',text:fpT('Taux de conversion : <strong>{rate}%</strong> — sous la moyenne. Optimisez vos CTAs pour +{leads}% de leads/mois.', { rate:(_convR*100).toFixed(2), leads:Math.round((_convR*10000)*0.5)/100 }),route:'conversion'});
+           if ((STATE.competitors||[]).length===0) _ins.push({cat:fpT('Concurrence'),icon:'⚔️',color:'#06b6d4',text:fpT('<strong>Aucun concurrent ajouté.</strong> Ajoutez vos concurrents directs pour activer l’analyse de part de marché.'),route:'competitor'});
+           if (_aud.length===0) _ins.push({cat:fpT('Démarrer'),icon:'🚀',color:'#22c55e',text:fpT('<strong>Aucun audit configuré.</strong> Lancez votre 1er audit pour découvrir vos opportunités de croissance personnalisées.'),route:'audits'});
+           if (_ins.length===0) _ins.push({cat:fpT('Tout va bien'),icon:'✅',color:'#22c55e',text:fpT('Vos indicateurs sont dans la norme. Continuez à exécuter vos Quick Wins pour progresser vers le niveau suivant.'),route:'audits'});
           return _ins.slice(0,6).map(function(ins){
             return '<div class="fp-growth-insight">'+
               '<div class="fp-growth-insight-cat" style="color:'+ins.color+'">'+ins.icon+' '+ins.cat+'</div>'+
@@ -57254,7 +57459,7 @@ function renderGrowthCommandCenter() {
               ${w.roi?`<span>💰 ${w.roi}</span>`:''}
               <span>⏱ ${w.time}</span>
             </div>
-            ${w.pct>0?`<div class="fp-growth-win-prog"><div style="width:${w.pct}%;background:var(--fp-accent);height:100%;border-radius:2px;transition:width .8s ease"></div></div><div style="font-size:9.5px;color:var(--fp-text-faint);margin-bottom:6px">${w.pct}% complété</div>`:''}
+             ${w.pct>0?`<div class="fp-growth-win-prog"><div style="width:${w.pct}%;background:var(--fp-accent);height:100%;border-radius:2px;transition:width .8s ease"></div></div><div style="font-size:9.5px;color:var(--fp-text-faint);margin-bottom:6px">${fpT('{percent}% complété', { percent:w.pct })}</div>`:''}
             <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="window._launchQuickWin(${escHtml(JSON.stringify(w.title))},${w.diff},${escHtml(JSON.stringify(w.time))},${escHtml(JSON.stringify(w.roi||''))})">
               ${w.pct===100?'✓ Terminé':w.pct>0?'Continuer →':'Commencer →'}
             </button>
@@ -57404,12 +57609,12 @@ function renderGrowthCommandCenter() {
         <div style="font-size:11.5px;font-weight:600;color:var(--fp-text-soft);margin-bottom:7px">Google Business Profile</div>
         ${(function(){
           var _gi = [];
-          if ((_lseo.unrepliedReviews||0) > 0) _gi.push({t:_lseo.unrepliedReviews+' avis sans réponse', s:_lseo.unrepliedReviews>5?'high':'med'});
-          if ((_lseo.photoCount||99) < 10) _gi.push({t:'Photos < 10 — profil incomplet', s:'med'});
+          if ((_lseo.unrepliedReviews||0) > 0) _gi.push({t:fpT('{count} avis sans réponse', { count:_lseo.unrepliedReviews }), s:_lseo.unrepliedReviews>5?'high':'med'});
+          if ((_lseo.photoCount||99) < 10) _gi.push({t:fpT('Photos < 10 — profil incomplet'), s:'med'});
           var _dpd = _lseo.lastGbpPostDaysAgo ?? null;
-          if (_dpd !== null && _dpd > 14) _gi.push({t:'Posts GBP inactifs depuis '+(_dpd>21?Math.round(_dpd/7)+' semaines':_dpd+' jours'), s:'med'});
-          if (!STATE.gbp?.connected && !_lseo.gbpConnected && !_lseo.domScore) _gi.push({t:'Google Business Profile non connecté', s:'high'});
-          if (_gi.length===0 && (_lseo.domScore||0)>0) _gi.push({t:'Profil GBP à jour ✓', s:'ok'});
+          if (_dpd !== null && _dpd > 14) _gi.push({t:_dpd>21 ? fpT('Posts GBP inactifs depuis {count} semaines', { count:Math.round(_dpd/7) }) : fpT('Posts GBP inactifs depuis {count} jours', { count:_dpd }), s:'med'});
+          if (!STATE.gbp?.connected && !_lseo.gbpConnected && !_lseo.domScore) _gi.push({t:fpT('Google Business Profile non connecté'), s:'high'});
+          if (_gi.length===0 && (_lseo.domScore||0)>0) _gi.push({t:fpT('Profil GBP à jour ✓'), s:'ok'});
           var _sevCol = {high:'var(--fp-danger)',med:'var(--fp-warning)',ok:'#22c55e'};
           return _gi.map(function(g){ return '<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fp-text-muted);margin-bottom:5px"><span style="color:'+(_sevCol[g.s]||'var(--fp-warning)')+'">●</span>'+g.t+'</div>'; }).join('');
         })()}
@@ -57421,8 +57626,8 @@ function renderGrowthCommandCenter() {
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
           ${contentOpps.length > 0 ? contentOpps.map(function(co){ return '<div class="fp-growth-content-opp">'+
             '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'+
-              '<span style="font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;background:'+(typeBg[co.type]||'rgba(37,99,235,.14)')+';color:'+(typeCol[co.type]||'var(--fp-accent)')+'">'+co.type+'</span>'+
-              '<span style="font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:4px;background:'+(co.diff==='Facile'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)')+';color:'+(co.diff==='Facile'?'#22c55e':'#f59e0b')+'">'+co.diff+'</span>'+
+              '<span style="font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;background:'+(typeBg[co.type]||'rgba(37,99,235,.14)')+';color:'+(typeCol[co.type]||'var(--fp-accent)')+'">'+fpT(co.type)+'</span>'+
+              '<span style="font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:4px;background:'+(co.diff==='Facile'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)')+';color:'+(co.diff==='Facile'?'#22c55e':'#f59e0b')+'">'+fpT(co.diff)+'</span>'+
             '</div>'+
             '<div style="font-size:12px;font-weight:600">'+escHtml(co.title)+'</div>'+
             '<div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:2px">'+co.kw+'</div>'+
@@ -57465,7 +57670,7 @@ function renderGrowthCommandCenter() {
               <span style="font-size:20px;font-weight:900;color:#fff;font-family:var(--fp-font-head)">${level}</span>
             </div>
             <div>
-              <div style="font-size:14px;font-weight:700">${levelNames[level-1]}</div>
+               <div style="font-size:14px;font-weight:700">${fpT(levelNames[level-1])}</div>
               <div style="font-size:11px;color:var(--fp-text-faint)">Niveau ${level} · ${growthPts != null ? growthPts + ' pts de croissance' : 'Lancez un audit pour démarrer'}</div>
             </div>
           </div>
@@ -57533,30 +57738,30 @@ function renderGrowthCommandCenter() {
             var _convR = STATE.overview?.conversionRate ?? null;
             // Message 1 : résumé du score
             if (avgSc < 40) {
-              _msgs.push('Votre score actuel est <strong>'+avgSc+'/100</strong>. De nombreuses optimisations techniques sont disponibles — commencez par les Quick Wins pour progresser rapidement.');
+              _msgs.push(fpT('Votre score actuel est {score}/100. De nombreuses optimisations techniques sont disponibles — commencez par les Quick Wins pour progresser rapidement.', { score:avgSc }));
             } else if (avgSc < 70) {
-              _msgs.push('Votre score est <strong>'+avgSc+'/100</strong>. Vous êtes en phase de croissance active. Exécutez les Quick Wins identifiés pour atteindre le niveau Expert (70+).');
+              _msgs.push(fpT('Votre score est {score}/100. Vous êtes en phase de croissance active. Exécutez les Quick Wins identifiés pour atteindre le niveau Expert (70+).', { score:avgSc }));
             } else {
-              _msgs.push('Excellent score : <strong>'+avgSc+'/100</strong>. Vous êtes au niveau '+levelNames[level-1]+'.');
+              _msgs.push(fpT('Excellent score : {score}/100. Vous êtes au niveau {level}.', { score:avgSc, level:fpT(levelNames[level-1]) }));
             }
             // Message 2 : alerte critique ou performance
             if (_nDown>0) {
-              _msgs.push('⚠️ <strong>Alerte critique :</strong> '+_nDown+' monitor(s) sont actuellement indisponibles.');
+              _msgs.push(fpT('⚠️ <strong>Alerte critique :</strong> {count} monitor(s) sont actuellement indisponibles.', { count:_nDown }));
             } else if (_nSlow>0) {
-              _msgs.push('<strong>Performance mobile :</strong> '+_nSlow+' audit(s) rapportent un score inférieur à 60/100.');
+              _msgs.push(fpT('<strong>Performance mobile :</strong> {count} audit(s) rapportent un score inférieur à 60/100.', { count:_nSlow }));
             } else if (_nLow>0) {
-              _msgs.push('<strong>'+_nLow+' audit(s)</strong> rapportent un score SEO inférieur à 70/100.');
+              _msgs.push(fpT('<strong>{count} audit(s)</strong> rapportent un score SEO inférieur à 70/100.', { count:_nLow }));
             } else if (_mon.length>0) {
-              _msgs.push('Vos <strong>'+_mon.length+' monitor(s)</strong> ne signalent actuellement aucune panne.');
+              _msgs.push(fpT('Vos <strong>{count} monitor(s)</strong> ne signalent actuellement aucune panne.', { count:_mon.length }));
             }
             // Message 3 : priorité locale ou mots-clés
             if (_lseo.domScore && _lseo.domScore < 70) {
-              _msgs.push('<strong>SEO Local :</strong> Score local de '+_lseo.domScore+'/100. Optimiser votre Google Business Profile et créer des pages locales peut significativement booster votre visibilité géolocalisée.');
+              _msgs.push(fpT('<strong>SEO Local :</strong> Score local de {score}/100. Optimiser votre Google Business Profile et créer des pages locales peut significativement booster votre visibilité géolocalisée.', { score:_lseo.domScore }));
             } else if ((STATE.keywordData?.keywords||[]).filter(function(k){return k.pos>3&&k.pos<=10;}).length>0) {
               var _ck = (STATE.keywordData?.keywords||[]).filter(function(k){return k.pos>3&&k.pos<=10;}).length;
-              _msgs.push('<strong>'+_ck+' mot(s)-clé(s)</strong> sont observés en positions 4–10.');
+              _msgs.push(fpT('<strong>{count} mot(s)-clé(s)</strong> sont observés en positions 4–10.', { count:_ck }));
             }
-            if (wins.length > 0) _msgs.push('<strong>'+wins.length+' Quick Win(s)</strong> sont affichées à partir des signaux disponibles; aucun gain futur n’est estimé ici.');
+            if (wins.length > 0) _msgs.push(fpT('<strong>{count} Quick Win(s)</strong> sont affichées à partir des signaux disponibles; aucun gain futur n’est estimé ici.', { count:wins.length }));
             return _msgs.slice(0,4).map(function(msg,i){ return '<div class="fp-growth-strategy-msg" style="animation-delay:'+(i*0.12)+'s"><div style="font-size:12.5px;color:var(--fp-text-soft);line-height:1.6">'+msg+'</div></div>'; }).join('');
           })()}
         </div>
@@ -64403,66 +64608,66 @@ function renderGrowthKeywords() {
         const page = button.dataset.aiContentStrategyPage || '';
         const resultNode = button.parentElement?.querySelector('[data-ai-content-strategy-result]');
         button.disabled = true;
-        button.textContent = 'Génération IA…';
+          button.textContent = fpT('Génération IA…');
         try {
           const response = await apiFetch('/api/keywords/content-decay/strategy?simulateAddon=1', {
             method: 'POST',
             body: JSON.stringify({ page }),
           });
           const strategy = response?.strategy;
-          if (!strategy || !Array.isArray(strategy.actions)) throw new Error('Réponse IA invalide.');
+          if (!strategy || !Array.isArray(strategy.actions)) throw new Error(fpT('Réponse IA invalide.'));
           if (resultNode) {
             resultNode.innerHTML = `<div style="margin-top:10px;padding:10px;border-left:2px solid var(--fp-accent);background:var(--fp-card)">
               <div style="font-weight:700;margin-bottom:6px">${escHtml(strategy.summary)}</div>
               <ol style="margin:0;padding-left:20px">${strategy.actions.map(action => `<li style="margin:6px 0">
                 <strong>${escHtml(action.title)}</strong> — ${escHtml(action.reason)}
-                <div style="color:var(--fp-text-muted)">À vérifier : ${escHtml(action.validation)}</div>
+                <div style="color:var(--fp-text-muted)">${fpT('À vérifier : {validation}', { validation:escHtml(action.validation) })}</div>
               </li>`).join('')}</ol>
             </div>`;
           }
-          button.textContent = 'Recommandations générées';
+          button.textContent = fpT('Recommandations générées');
         } catch (err) {
           button.disabled = false;
-          button.textContent = 'Générer les recommandations IA';
-          if (resultNode) resultNode.textContent = err?.message || 'La recommandation IA est indisponible. Réessayez.';
+          button.textContent = fpT('Générer les recommandations IA');
+          if (resultNode) resultNode.textContent = err?.message || fpT('La recommandation IA est indisponible. Réessayez.');
         }
       });
     }
-    target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">Analyse des données Google Search Console…</div>';
+    target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">'+fpT('Analyse des données Google Search Console…')+'</div>';
     try {
       const result = await apiFetch('/api/keywords/content-decay?simulateAddon=1');
       const items = Array.isArray(result?.opportunities) ? result.opportunities : [];
       const ctrItems = Array.isArray(result?.ctrOpportunities) ? result.ctrOpportunities : [];
       if (!items.length && !ctrItems.length) {
-        target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">Aucune baisse significative détectée sur les pages analysées. Une synchronisation GSC récente est nécessaire pour comparer les deux périodes de 28 jours.</div>';
+        target.innerHTML = '<div style="padding:16px;color:var(--fp-text-muted)">'+fpT('Aucune baisse significative détectée sur les pages analysées. Une synchronisation GSC récente est nécessaire pour comparer les deux périodes de 28 jours.')+'</div>';
         return;
       }
-      const decayHtml = items.length ? `<div style="font-weight:700;font-size:12px;margin-bottom:8px">Pages en recul</div><div style="display:grid;gap:10px;margin-bottom:16px">${items.map(item => `
+      const decayHtml = items.length ? `<div style="font-weight:700;font-size:12px;margin-bottom:8px">${fpT('Pages en recul')}</div><div style="display:grid;gap:10px;margin-bottom:16px">${items.map(item => `
         <div style="padding:12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
           <a href="${escHtml(item.page)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:var(--fp-accent);font-size:12px;overflow-wrap:anywhere">${escHtml(item.page)}</a>
           <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:11px;color:var(--fp-text-muted)">
-            <span>Clics : ${Number(item.previous?.clicks).toLocaleString(getLocale())} → ${Number(item.current?.clicks).toLocaleString(getLocale())}${Number(item.lostClicks) > 0 ? ` (−${Number(item.lostClicks).toLocaleString(getLocale())})` : ''}</span>
-            <span>Impressions : ${Number(item.previous?.impressions).toLocaleString(getLocale())} → ${Number(item.current?.impressions).toLocaleString(getLocale())}${Number(item.lostImpressions) > 0 ? ` (−${Number(item.lostImpressions).toLocaleString(getLocale())})` : ''}</span>
-            <span>CTR : ${(Number(item.previous?.ctr) * 100).toLocaleString(getLocale(), { maximumFractionDigits: 2 })}% → ${(Number(item.current?.ctr) * 100).toLocaleString(getLocale(), { maximumFractionDigits: 2 })}%</span>
-            <span>Position : ${Number(item.previous?.position).toFixed(1)} → ${Number(item.current?.position).toFixed(1)}</span>
+            <span>${fpT('Clics :')} ${Number(item.previous?.clicks).toLocaleString(getLocale())} → ${Number(item.current?.clicks).toLocaleString(getLocale())}${Number(item.lostClicks) > 0 ? ` (−${Number(item.lostClicks).toLocaleString(getLocale())})` : ''}</span>
+            <span>${fpT('Impressions :')} ${Number(item.previous?.impressions).toLocaleString(getLocale())} → ${Number(item.current?.impressions).toLocaleString(getLocale())}${Number(item.lostImpressions) > 0 ? ` (−${Number(item.lostImpressions).toLocaleString(getLocale())})` : ''}</span>
+            <span>${fpT('CTR :')} ${(Number(item.previous?.ctr) * 100).toLocaleString(getLocale(), { maximumFractionDigits: 2 })}% → ${(Number(item.current?.ctr) * 100).toLocaleString(getLocale(), { maximumFractionDigits: 2 })}%</span>
+            <span>${fpT('Position :')} ${Number(item.previous?.position).toFixed(1)} → ${Number(item.current?.position).toFixed(1)}</span>
           </div>
           <div style="font-size:11px;color:var(--fp-text)">${escHtml(item.recommendedAction || '')}</div>
-          <div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" data-ai-content-strategy data-ai-content-strategy-page="${escHtml(item.page)}">Générer les recommandations IA</button><div data-ai-content-strategy-result></div></div>
+          <div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" data-ai-content-strategy data-ai-content-strategy-page="${escHtml(item.page)}">${fpT('Générer les recommandations IA')}</button><div data-ai-content-strategy-result></div></div>
         </div>`).join('')}</div>` : '';
-      const ctrHtml = ctrItems.length ? `<div style="font-weight:700;font-size:12px;margin:8px 0">Pages à faible CTR</div><div style="display:grid;gap:10px">${ctrItems.map(item => `
+      const ctrHtml = ctrItems.length ? `<div style="font-weight:700;font-size:12px;margin:8px 0">${fpT('Pages à faible CTR')}</div><div style="display:grid;gap:10px">${ctrItems.map(item => `
         <div style="padding:12px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
           <a href="${escHtml(item.page)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:var(--fp-accent);font-size:12px;overflow-wrap:anywhere">${escHtml(item.page)}</a>
           <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:11px;color:var(--fp-text-muted)">
-            <span>CTR : ${(Number(item.ctr) * 100).toFixed(2)} %</span>
-            <span>Médiane des pages comparables : ${(Number(item.comparisonCtr) * 100).toFixed(2)} %</span>
-            <span>Position moyenne : ${Number(item.position).toFixed(1)}</span>
-            <span>${Number(item.impressions).toLocaleString(getLocale())} impressions</span>
+            <span>${fpT('CTR :')} ${(Number(item.ctr) * 100).toFixed(2)} %</span>
+            <span>${fpT('Médiane des pages comparables :')} ${(Number(item.comparisonCtr) * 100).toFixed(2)} %</span>
+            <span>${fpT('Position moyenne :')} ${Number(item.position).toFixed(1)}</span>
+            <span>${Number(item.impressions).toLocaleString(getLocale())} ${fpT('impressions')}</span>
           </div>
           <div style="font-size:11px;color:var(--fp-text)">${escHtml(item.recommendedAction || '')}</div>
         </div>`).join('')}</div>` : '';
       target.innerHTML = decayHtml + ctrHtml;
     } catch (err) {
-      target.innerHTML = `<div style="padding:16px;color:var(--fp-warning)">${escHtml(err?.message || 'Données Search Console indisponibles ou accès à cette fonction non activé.')}</div>`;
+      target.innerHTML = `<div style="padding:16px;color:var(--fp-warning)">${escHtml(err?.message || fpT('Données Search Console indisponibles ou accès à cette fonction non activé.'))}</div>`;
     }
   };
 
@@ -64608,7 +64813,7 @@ function renderGrowthKeywords() {
                         ${o.opportunity_score}
                       </div>
                     </td>
-                    <td style="text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${typeColors[o.type]||'#6b7280'}22;color:${typeColors[o.type]||'#6b7280'}">${typeLabels[o.type]||o.type}</span></td>
+                    <td style="text-align:center"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${typeColors[o.type]||'#6b7280'}22;color:${typeColors[o.type]||'#6b7280'}">${fpT(typeLabels[o.type]||o.type)}</span></td>
                     <td style="text-align:center;font-size:12px">${(o.search_volume||0).toLocaleString(getLocale())}</td>
                     <td style="text-align:center">${diffBar(o.difficulty)}</td>
                     <td style="text-align:center;font-size:12px;color:var(--fp-warning)">${parseFloat(o.cpc||0).toFixed(2)} €</td>
@@ -64699,7 +64904,7 @@ function renderGrowthKeywords() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           🎯 Keyword Domination Engine
-          ${unread>0?`<span style="font-size:11px;font-weight:700;padding:3px 10px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:20px;color:var(--fp-danger)">${unread} alerte${unread>1?'s':''}</span>`:''}
+          ${unread>0?`<span style="font-size:11px;font-weight:700;padding:3px 10px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:20px;color:var(--fp-danger)">${fpT('{count} alerte(s)', { count:unread })}</span>`:''}
         </h1>
         <div class="fp-section-sub">Suivi de positions Google · Rankings temps réel · IA sémantique</div>
       </div>
@@ -64711,8 +64916,13 @@ function renderGrowthKeywords() {
 
     ${aiBlock(
       stats.top3 !== undefined
-        ? `<strong>${stats.top3}</strong>mots-clés en Top 3,<strong>${stats.top10}</strong> en Top 10. ${stats.gainingPositions>0?`<strong>${stats.gainingPositions}</strong> en hausse ce cycle.`:''} ${stats.losingPositions>0?`⚠️ <strong>${stats.losingPositions}</strong> en baisse — vérifiez le contenu concerné.`:''}`
-        : 'Suivez vos positions Google et détectez les opportunités de croissance avec l\'IA.',
+        ? fpT('<strong>{top3}</strong> mots-clés en Top 3, <strong>{top10}</strong> en Top 10. {gaining}{losing}', {
+            top3:stats.top3,
+            top10:stats.top10 ?? 0,
+            gaining:stats.gainingPositions>0 ? fpT('<strong>{count}</strong> en hausse ce cycle.', { count:stats.gainingPositions }) : '',
+            losing:stats.losingPositions>0 ? fpT('⚠️ <strong>{count}</strong> en baisse — vérifiez le contenu concerné.', { count:stats.losingPositions }) : '',
+          })
+        : fpT('Suivez vos positions Google et détectez les opportunités de croissance avec l\'IA.'),
       ['Analyser les baisses', 'Générer des opportunités']
     )}
 
@@ -64732,7 +64942,7 @@ function renderGrowthKeywords() {
         ['rankings', '📊 Positions', kws.length],
         ['opportunities', '💡 Opportunités', opps.length],
         ['clusters', '🗂 Clusters IA', clusters.length],
-        ['alerts', `🔔 Alertes${unread>0?' ('+unread+')':''}`, alerts.length],
+        ['alerts', unread>0 ? `🔔 ${fpT('Alertes ({count})', { count:unread })}` : '🔔 Alertes', alerts.length],
         ...(hasKeywordDomination ? [['domination', '🎯 Domination', STATE.keywordDominationReport?.summary?.tracked || 0]] : []),
       ].map(([id, label, cnt]) => `
         <button onclick="window._kwTab='${id}';STATE.keywordDominationError=null;if('${id}'==='domination')STATE.keywordDominationReport=null;render(STATE.currentSection);if('${id}'==='domination')window._fpLoadKeywordDomination()" style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
@@ -68451,12 +68661,12 @@ window._submitAddKeyword = async function() {
 
 window._syncKeywords = async function() {
   const btns = Array.prototype.slice.call(document.querySelectorAll('[data-kw-sync]'));
-  btns.forEach(b => { b.disabled = true; b.dataset.prevLabel = b.textContent; b.textContent = '⟳ Sync…'; });
+  btns.forEach(b => { b.disabled = true; b.dataset.prevLabel = b.textContent; b.textContent = fpT('⟳ Synchroniser…'); });
   showToast('info', fpT('Synchronisation des positions…'));
   try {
     const r = await apiFetch('/api/keywords/sync', { method:'POST' });
     if (r && r.configured === false) {
-      showToast('warning', r.error || 'Synchronisation des positions indisponible — vérifiez votre configuration.');
+      showToast('warning', r.error || fpT('Synchronisation des positions indisponible — vérifiez votre configuration.'));
     } else {
       showToast('success', fpT('{count} mot-clé(s) synchronisé(s) en {duration}s', { count: r?.synced ?? 0, duration: Math.round((r?.durationMs || 0) / 1000) }));
       await window._reloadKeywords();
@@ -68464,7 +68674,7 @@ window._syncKeywords = async function() {
       return;
     }
   } catch(e) { showToast('error', fpT('Erreur de synchronisation : ') + (e?.message || e)); }
-  btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.prevLabel || '⟳ Synchroniser'; });
+    btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.prevLabel || fpT('⟳ Synchroniser'); });
 };
 
 window._kwDelete = function(id) {
@@ -68493,8 +68703,8 @@ window._genOpportunities = async function() {
   showToast('info', fpT('Génération des opportunités…'));
   try {
     const r = await apiFetch('/api/keywords/opportunities/generate', { method:'POST', body:JSON.stringify({}) });
-    if (!r?.ok) { showToast('error', r?.error || 'Aucune opportunité n’a pu être générée.'); return; }
-    showToast(r.count ? 'success' : 'info', r.count ? r.count + fpT(' opportunités générées !') : fpT('Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.'));
+    if (!r?.ok) { showToast('error', r?.error || fpT('Aucune opportunité n’a pu être générée.')); return; }
+    showToast(r.count ? 'success' : 'info', r.count ? fpT('{count} opportunités générées !', { count:r.count }) : fpT('Aucune opportunité mesurable : il faut des mots-clés suivis positionnés entre la 4e et la 20e place avec du volume.'));
     await window._reloadKeywords();
     render(STATE.currentSection);
   } catch(e) { showToast('error', fpT('Erreur : ') + (e?.message || e)); }
@@ -68504,8 +68714,8 @@ window._genClusters = async function() {
   showToast('info', fpT('Clustering sémantique IA en cours…'));
   try {
     const r = await apiFetch('/api/keywords/cluster', { method:'POST' });
-    if (!r?.ok) { showToast('error', r?.error || 'Les clusters n’ont pas pu être générés.'); return; }
-    showToast(r.count ? 'success' : 'info', r.count ? r.count + fpT(' clusters générés !') : fpT('Ajoutez au moins deux mots-clés suivis pour créer des clusters.'));
+    if (!r?.ok) { showToast('error', r?.error || fpT('Les clusters n’ont pas pu être générés.')); return; }
+    showToast(r.count ? 'success' : 'info', r.count ? fpT('{count} clusters générés !', { count:r.count }) : fpT('Ajoutez au moins deux mots-clés suivis pour créer des clusters.'));
     await window._reloadKeywords();
     render(STATE.currentSection);
   } catch(e) { showToast('error', fpT('Erreur : ') + (e?.message || e)); }

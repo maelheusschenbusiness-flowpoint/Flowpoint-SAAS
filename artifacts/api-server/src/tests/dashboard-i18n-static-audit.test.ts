@@ -1561,6 +1561,100 @@ describe("private dashboard static English localization", () => {
     }
   });
 
+  it("audits Growth views, async copy, and customer or AI content boundaries", () => {
+    for (const route of ["keywords", "projections", "objectives"]) {
+      expect(dashboardSource).toContain(`if (sub === '${route}')`);
+    }
+    expect(dashboardSource).toContain("function renderGrowthCommandCenter()");
+    expect(dashboardSource).toContain("function renderNewObjectivePanel()");
+    expect(dashboardSource).toContain("function setupNewObjectivePanel()");
+
+    const expectedByFunction: Record<string, string[]> = {
+      renderGrowthProjections: [
+        "Tendance mesurée {trend} : {points} pts estimés sur 30 jours. Score projeté : {score}/100 sur 60 jours, selon la tendance observée",
+        "Aucune Quick Win active issue des données disponibles.",
+        "En cours",
+        "À démarrer",
+      ],
+      renderGrowthObjectives: [
+        "Objectifs T{quarter} {year}",
+        "{count} objectifs · {days} jours restants",
+        "Sites suivis — quota plan ({count})",
+        "Santé globale Q2 — {percent}%",
+        "{count}/{total} objectifs sur la bonne trajectoire",
+        "Votre trimestre est globalement positif : {onTrack} objectifs sur {total} sont en bonne voie. Attention aux {atRisk} objectifs à risque : monitors DOWN et avis Google nécessitent une action immédiate.",
+        "{percent}% atteint",
+        "Bilan Q{quarter} {year}",
+      ],
+      renderGrowthCommandCenter: [
+        "Score SEO moyen : {score}/100. {monitorMessage} Exploitez les projections IA pour planifier votre croissance des 90 prochains jours.",
+        "<strong>{count} monitor(s) DOWN</strong> — site(s) inaccessibles. Chaque minute de panne = perte de positionnement Google.",
+        "<strong>{count} site(s)</strong> avec performance mobile < 60/100. Corriger = +{percent}% taux de contact estimé.",
+        "Votre score actuel est {score}/100. De nombreuses optimisations techniques sont disponibles — commencez par les Quick Wins pour progresser rapidement.",
+        "+{count} visites/mois",
+        "{count} site inaccessible",
+        "{count} sites inaccessibles",
+        "{sites} — en panne.",
+        "Performance mobile insuffisante sur {count} site",
+        "Performance mobile insuffisante sur {count} sites",
+        "Score < 60/100 — freine les conversions mobiles.",
+        "Score SEO critique sur {count} site",
+        "Score SEO critique sur {count} sites",
+        "Score SEO < 60/100 — impact direct sur le positionnement.",
+        "Taux de conversion faible : {rate}%",
+        "En dessous de la moyenne secteur (2%). Optimisez vos CTAs et pages de destination.",
+        "Visibilité locale insuffisante : {score}/100",
+        "Votre présence dans les résultats locaux est faible. Optimisez Google Business Profile.",
+      ],
+      renderGrowthKeywords: [
+        "Pages en recul",
+        "Pages à faible CTR",
+        "À vérifier : {validation}",
+        "Aucune baisse significative détectée sur les pages analysées. Une synchronisation GSC récente est nécessaire pour comparer les deux périodes de 28 jours.",
+        "<strong>{top3}</strong> mots-clés en Top 3, <strong>{top10}</strong> en Top 10. {gaining}{losing}",
+      ],
+      renderNewObjectivePanel: [
+        "Valeur cible",
+        "Prochaine action",
+        "Enregistrer l'objectif",
+      ],
+      setupNewObjectivePanel: [
+        "Entrez un libellé",
+        "Objectif créé !",
+        "Échec de l'enregistrement de l'objectif — réessayez.",
+      ],
+    };
+
+    for (const [functionName, keys] of Object.entries(expectedByFunction)) {
+      const referenced = translationKeysInFunction(functionName);
+      for (const key of keys) {
+        expect(referenced.has(key), `${functionName} should translate "${key}"`).toBe(true);
+        expect(englishKeys.has(key), `Growth English catalogue should contain "${key}"`).toBe(true);
+      }
+    }
+
+    for (const binding of [
+      "escHtml(q.title)",
+      "escHtml(co.title)",
+      "escHtml(item.page)",
+      "escHtml(item.recommendedAction || '')",
+      "escHtml(strategy.summary)",
+      "escHtml(action.title)",
+      "escHtml(action.reason)",
+      "escHtml(action.validation)",
+      "escHtml(o.label||'Objectif')",
+      "escHtml(o.next)",
+      "escHtml(a.message||'')",
+      "const sub = STATE.subRoute;",
+    ]) {
+      expect(dashboardSource).toContain(binding);
+    }
+    expect(dashboardSource).toContain("target.innerHTML = decayHtml + ctrHtml;");
+    expect(dashboardSource).toContain("button.textContent = fpT('Recommandations générées')");
+    expect(dashboardSource).toContain("fpT('⟳ Synchroniser…')");
+    expect(dashboardSource).toContain("fpT('Objectif supprimé')");
+  });
+
   it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
     const missing: Array<{ file: string; line: number; key: string }> = [];
 
