@@ -28,8 +28,9 @@ const successMessageSource = extractFunction("fpPlanChangeSuccessMessage");
 const markActionSource = extractFunction("fpMarkPlanChangeAction");
 const recentActionSource = extractFunction("fpHasRecentPlanChangeAction");
 const getSuccessMessage = new Function(
+  "fpT",
   `${planLabelSource}\n${successMessageSource}\nreturn fpPlanChangeSuccessMessage;`,
-)() as (plan: string, reactivated?: boolean) => string;
+)((sourceText: string) => sourceText) as (plan: string, reactivated?: boolean) => string;
 
 function createActionHarness() {
   const fakeWindow: { _fpPlanUpgradeRecord?: unknown } = {};

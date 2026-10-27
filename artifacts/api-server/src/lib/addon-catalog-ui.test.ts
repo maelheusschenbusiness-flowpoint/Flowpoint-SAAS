@@ -35,8 +35,9 @@ function loadPolicy(source: string) {
   );
   if (!match) throw new Error("Add-on catalog policy block is missing");
   return new Function(
+    "fpT",
     `${match[1]}\nreturn { _fpAddonPurchaseState, _fpAddonAccessLabel };`,
-  )() as {
+  )((key: string) => key) as {
     _fpAddonPurchaseState: (
       addon: Record<string, unknown>,
       plan: string,

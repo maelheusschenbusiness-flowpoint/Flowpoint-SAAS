@@ -569,6 +569,17 @@ window.__fpPageLoadTs = Date.now();
 
     create: async function (mission) {
       try {
+        if (mission && (mission.sourceType === 'template' || mission.source_type === 'template')) {
+          var templateSteps = Array.isArray(mission.steps)
+            ? mission.steps.map(function (step) { return typeof step === 'string' ? step : (step && step.text) || ''; })
+            : [];
+          return normalizeDoc(await apiAction('POST', '/api/missions/from-template', {
+            templateTitle: mission.title,
+            category: mission.category,
+            impact: mission.impact,
+            steps: templateSteps
+          }));
+        }
         return normalizeDoc(await apiAction('POST', '/api/missions', mission));
       } catch (e) {
         console.warn('[FP] mission create error:', e.message);
@@ -845,7 +856,7 @@ window.__fpPageLoadTs = Date.now();
       } catch (e) {
         console.warn('[FP] monitor ping error:', e.message);
         if (typeof window.showToast === 'function') {
-          window.showToast('error', 'Ping échoué : ' + e.message);
+          window.showToast('error', window.fpT('Ping échoué : ') + e.message);
         }
         return null;
       }
@@ -980,7 +991,7 @@ window.__fpPageLoadTs = Date.now();
         }
       } catch (_) { /* non-fatal */ }
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Plan mis à jour : ' + (data.plan || data.subscriptionStatus || ''));
+        window.showToast('success', window.fpT('Plan mis à jour : ') + (data.plan || data.subscriptionStatus || ''));
       }
     });
 
@@ -1132,7 +1143,7 @@ window.__fpPageLoadTs = Date.now();
         }
       }
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Audit terminé : ' + ((data.audit && data.audit.url) || '') + ' — ' + ((data.audit && data.audit.score) || '') + '/100');
+        window.showToast('success', window.fpT('Audit terminé : ') + ((data.audit && data.audit.url) || '') + ' — ' + ((data.audit && data.audit.score) || '') + '/100');
       }
       if (window.STATE && window.STATE.route === 'audits' && typeof window.render === 'function') window.render();
     });
@@ -1142,7 +1153,7 @@ window.__fpPageLoadTs = Date.now();
       var data = e.detail;
       if (!data) return;
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Rapport PDF prêt : ' + (data.name || ''));
+        window.showToast('success', window.fpT('Rapport PDF prêt : ') + (data.name || ''));
       }
       if (window.STATE && window.STATE.route === 'reports' && typeof window.render === 'function') window.render();
     });
@@ -1156,7 +1167,7 @@ window.__fpPageLoadTs = Date.now();
         if (c) c.lastSync = data.lastSync;
       }
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Connecteur ' + (data.provider || '') + ' synchronisé');
+        window.showToast('success', window.fpT('Connecteur ') + (data.provider || '') + window.fpT(' synchronisé'));
       }
     });
   }
@@ -1224,7 +1235,7 @@ window.__fpPageLoadTs = Date.now();
       if (typeof window.render === 'function') window.render();
     } catch (e) {
       console.warn('[FP] addon toggle error:', e.message);
-      if (typeof window.showToast === 'function') window.showToast('error', 'Erreur : ' + e.message);
+      if (typeof window.showToast === 'function') window.showToast('error', window.fpT('Erreur : ') + e.message);
     }
   };
 
@@ -1408,7 +1419,7 @@ window.__fpPageLoadTs = Date.now();
         var data = await apiAction('POST', '/api/automation/workflows/' + id + '/run', {});
         if (data && data.success && typeof window.showToast === 'function') {
           var secs = Math.round((data.durationMs || 200) / 1000) || 1;
-          window.showToast('success', 'Workflow exécuté en ' + secs + 's ✓');
+          window.showToast('success', window.fpT('Workflow exécuté en ') + secs + 's ✓');
         } else if (data && !data.success && typeof window.showToast === 'function') {
           window.showToast('error', 'Workflow inactif ou introuvable — activez-le avant de lancer');
         }
@@ -1506,7 +1517,7 @@ window.__fpPageLoadTs = Date.now();
     sync: async function () {
       try {
         var data = await apiAction('POST', '/api/google/sync', {});
-        if (typeof window.showToast === 'function') window.showToast('success', 'Sync GBP lancé — ' + (data.locationsCount || 0) + ' établissement(s)');
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Sync GBP lancé — ') + (data.locationsCount || 0) + window.fpT(' établissement(s)'));
         await window.FP_GBP_API.load();
         if (typeof window.render === 'function') window.render();
         return data;
@@ -1543,7 +1554,7 @@ window.__fpPageLoadTs = Date.now();
         if (data && data.ok) {
           if (typeof window.showToast === 'function') window.showToast('success', 'Post GBP publié ✓');
         } else {
-          if (typeof window.showToast === 'function') window.showToast('error', 'Erreur publication : ' + (data && data.error || 'inconnue'));
+          if (typeof window.showToast === 'function') window.showToast('error', window.fpT('Erreur publication : ') + (data && data.error || window.fpT('inconnue')));
         }
         return data;
       } catch (e) { console.warn('[FP] GBP post error:', e.message); return null; }
@@ -1564,7 +1575,7 @@ window.__fpPageLoadTs = Date.now();
           await window.FP_GBP_API.load();
           if (typeof window.render === 'function') window.render();
         } else {
-          if (typeof window.showToast === 'function') window.showToast('error', 'Erreur réponse : ' + (data && data.error || 'inconnue'));
+          if (typeof window.showToast === 'function') window.showToast('error', window.fpT('Erreur réponse : ') + (data && data.error || window.fpT('inconnue')));
         }
         return data;
       } catch (e) { console.warn('[FP] GBP reply error:', e.message); return null; }
@@ -1579,8 +1590,12 @@ window.__fpPageLoadTs = Date.now();
         } catch (e) { console.warn('[FP] GBP disconnect error:', e.message); }
       };
       if (typeof window.fpDarkConfirm === 'function') {
-        window.fpDarkConfirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.', _doGbpDisconnect, 'Déconnecter GBP');
-      } else if (confirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.')) {
+        window.fpDarkConfirm(
+          window.fpT('Déconnecter Google Business Profile ? Vos données locales seront supprimées.'),
+          _doGbpDisconnect,
+          window.fpT('Déconnecter GBP'),
+        );
+      } else if (confirm(window.fpT('Déconnecter Google Business Profile ? Vos données locales seront supprimées.'))) {
         await _doGbpDisconnect();
       }
     },
@@ -1686,14 +1701,14 @@ window.__fpPageLoadTs = Date.now();
     analyzeContent: async function (url) {
       try {
         var data = await apiAction('POST', '/api/seo/content-optimization', { url: url });
-        if (typeof window.showToast === 'function') window.showToast('success', 'Analyse contenu terminée — score : ' + (data.score || 0) + '/100');
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Analyse contenu terminée — score : ') + (data.score || 0) + '/100');
         return data;
       } catch (e) { console.warn('[FP] DFS content opt:', e.message); return null; }
     },
     generateMissions: async function (domain) {
       try {
         var data = await apiAction('POST', '/api/seo/generate-missions', { domain: domain });
-        if (typeof window.showToast === 'function') window.showToast('success', 'Missions SEO générées pour ' + domain);
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Missions SEO générées pour ') + domain);
         return data;
       } catch (e) { console.warn('[FP] DFS missions:', e.message); return null; }
     },
@@ -1753,7 +1768,7 @@ window.__fpPageLoadTs = Date.now();
       var data = e.detail;
       if (!data || !window.STATE || !window.STATE.me) return;
       if (data.addonKey) (window.STATE.me.addons = window.STATE.me.addons || {})[data.addonKey] = true;
-      if (typeof window.showToast === 'function') window.showToast('success', 'Add-on activé : ' + (data.addonKey || ''));
+      if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Add-on activé : ') + (data.addonKey || ''));
       if (typeof window.render === 'function') window.render();
     });
     document.addEventListener('fp:addon:deactivated', function (e) {
@@ -1776,7 +1791,7 @@ window.__fpPageLoadTs = Date.now();
       var data = e.detail;
       if (!data) return;
       var secs = Math.round((data.durationMs || 200) / 1000) || 1;
-      if (typeof window.showToast === 'function') window.showToast('success', 'Workflow terminé en ' + secs + 's');
+      if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Workflow terminé en ') + secs + 's');
     });
   }
 
@@ -1972,7 +1987,7 @@ window.__fpPageLoadTs = Date.now();
         window.FP_DATA.ga4 = window.FP_DATA.ga4 || {};
         window.FP_DATA.ga4.propertyId   = fullId;
         window.FP_DATA.ga4.propertyName = name;
-        if (typeof window.showToast === 'function') window.showToast('success', 'Propriété GA4 configurée : ' + name);
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Propriété GA4 configurée : ') + name);
         this._loadAll();
         this._startRealtimePoller();
         if (typeof window.render === 'function') window.render();
@@ -2630,7 +2645,7 @@ window.__fpPageLoadTs = Date.now();
           this._loadCompetitorMarkers('fp-gmap', geo.lat, geo.lng, inst.radius, kw);
           this._loadHeatmapLayer('fp-gmap', geo.lat, geo.lng, inst.radius, kw);
         }
-        if (typeof window.showToast === 'function') window.showToast('success', 'Carte centrée sur ' + geo.formatted_address);
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Carte centrée sur ') + geo.formatted_address);
       } catch (e) { if (typeof window.showToast === 'function') window.showToast('error', 'Erreur de géocodage'); }
     },
 
