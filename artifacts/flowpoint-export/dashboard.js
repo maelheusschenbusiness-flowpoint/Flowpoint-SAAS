@@ -810,7 +810,8 @@ function fpShowTrialExpiredBanner(detail, doc) {
     bar = d.createElement('div');
     bar.id = 'fp-trial-expired-banner';
     bar.setAttribute('role', 'alert');
-    bar.style.cssText = 'position:sticky;top:0;z-index:9999;display:flex;gap:12px;align-items:center;justify-content:center;' +
+    // Fixe et au-dessus de tout (onboarding, modales) : le lien de paiement doit rester cliquable.
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;' +
       'padding:12px 16px;background:#fff7ed;color:#9a3412;border-bottom:1px solid #fdba74;font-size:14px;';
     const text = d.createElement('span');
     text.className = 'fp-trial-expired-text';

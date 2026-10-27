@@ -447,6 +447,17 @@ window.__fpPageLoadTs = Date.now();
           });
         }
         if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
+        if (res.status === 402) {
+          // Essai sans carte expire : bandeau + lien de paiement (dashboard.js).
+          // Meme message d'erreur qu'avant ; status/code ajoutes pour les appelants.
+          return res.json().catch(function () { return null; }).then(function (d) {
+            if (d && d.code === 'TRIAL_EXPIRED' && typeof window.fpShowTrialExpiredBanner === 'function') {
+              try { window.fpShowTrialExpiredBanner(d); } catch (_) {}
+            }
+            var _e402 = new Error('HTTP 402 ' + path); _e402.status = 402; _e402.code = d && d.code;
+            throw _e402;
+          });
+        }
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
         return res.json();
       })

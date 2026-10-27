@@ -491,6 +491,7 @@ describe("H — controle d'acces serveur apres expiration", () => {
     ["POST", "/missions/run", "blocked"], ["POST", "/automations", "blocked"], ["POST", "/reports/generate", "blocked"],
     ["POST", "/monitors", "blocked"],
     ["GET", "/audits", "read"], ["GET", "/overview", "read"],
+    ["GET", "/ai/history", "read"], ["GET", "/ai-credits", "read"], ["GET", "/gsc/status", "read"], ["POST", "/ai-credits", "blocked"],
     ["POST", "/billing/upgrade", "open"], ["POST", "/billing/checkout", "open"], ["POST", "/billing/portal", "open"],
     ["DELETE", "/billing/account", "open"], ["GET", "/me", "open"], ["PATCH", "/me/prefs", "open"],
     ["PUT", "/ai/preferences", "open"], ["GET", "/settings/data-export", "open"], ["POST", "/auth/logout", "open"],
