@@ -95,6 +95,11 @@ export async function runScheduledAuditsTick(): Promise<ScheduleTickResult> {
     });
     result.due = due.length;
     if (due.length === 0) return result;
+    // Essai sans carte expire : l'audit planifie est saute (non reclame, il
+    // repartira apres paiement).
+    const { expiredCardlessTrialOrgIds } = await import("./trial-without-card.js");
+    const expiredOrgs = await expiredCardlessTrialOrgIds(pool, due.map((row: Record<string, unknown>) => String(row["org_id"] ?? "")));
+    const runnable = due.filter((row: Record<string, unknown>) => !expiredOrgs.has(String(row["org_id"] ?? "")));
 
     // Multi-instance safety: the "next_run <= now" predicate on the UPDATE makes
     // the claim atomic — Postgres row-locks serialize concurrent instances, and
@@ -102,7 +107,7 @@ export async function runScheduledAuditsTick(): Promise<ScheduleTickResult> {
     // and matches 0 rows. Claim FIRST, launch only if the claim succeeded.
     const nowPredicate = numeric ? "next_run <= $2" : "next_run <= to_timestamp($2::double precision / 1000)";
 
-    for (const row of due.slice(0, MAX_LAUNCHES_PER_TICK)) {
+    for (const row of runnable.slice(0, MAX_LAUNCHES_PER_TICK)) {
       const scheduleId = String(row["id"]);
       const orgId = String(row["org_id"] ?? "");
       const freqRaw = String(row["frequency"] || "weekly");

@@ -373,6 +373,26 @@ async function sendTrialEnding(opts: {
   });
 }
 
+// ── 3b. Trial Expired (essai sans carte, TRIAL_WITHOUT_CARD) ─────────────────
+
+async function sendTrialExpired(opts: { to: string; name: string; plan: string }): Promise<MailResult> {
+  const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
+  return send({
+    to: opts.to,
+    subject: "Ton essai FlowPoint est terminé — tes données t'attendent",
+    tag: "trial_expired",
+    html: layout({
+      eyebrow: "Essai terminé",
+      accentColor: "#ea580c",
+      title: `Ton essai ${planLabel} est terminé`,
+      body: `<p style="margin:0 0 16px;">Bonjour ${opts.name}, tes 14 jours d'essai gratuit sont terminés. Aucun prélèvement n'a eu lieu.</p>
+             <p style="margin:0 0 16px;">Tes données sont conservées. Active ton abonnement pour retrouver l'IA, le SEO et toutes tes fonctionnalités.</p>`,
+      cta: { label: "Activer mon abonnement →", url: APP_LINKS.billing },
+      note: "Questions ? Réponds à cet e-mail, on te répond en quelques heures.",
+    }),
+  });
+}
+
 // ── 4. Payment Succeeded (renewal or add-on) ─────────────────────────────────
 
 async function sendPaymentSucceeded(opts: {
@@ -924,6 +944,7 @@ export const mailer = {
   sendWelcome,
   sendTrialStarted,
   sendTrialEnding,
+  sendTrialExpired,
   sendPaymentSucceeded,
   sendPlanChanged,
   sendPaymentFailed,

@@ -631,7 +631,10 @@
       google_auth_failed:    "Erreur d'authentification Google. Veuillez réessayer.",
       github_auth_failed:    "Erreur d'authentification GitHub. Veuillez réessayer.",
       missing_code:          "Code OAuth manquant. Veuillez réessayer.",
-      google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer."
+      google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer.",
+      trial_already_used:    "Un essai gratuit a déjà été utilisé avec cette adresse. Connectez-vous pour activer votre abonnement.",
+      trial_domain_limit:    "Trop d'essais gratuits ont été démarrés récemment pour votre entreprise. Demandez une invitation à un collègue ou contactez-nous.",
+      account_exists:        "Un compte existe déjà avec cette adresse email. Veuillez vous connecter."
     };
     var msgEl = document.getElementById('signup-msg');
     if (msgEl) showMsg(msgEl, 'error', escHtml(ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ')));
