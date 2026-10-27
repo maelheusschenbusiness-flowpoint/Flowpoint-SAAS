@@ -1200,7 +1200,7 @@ async function downloadReportPdf(reportId, name, triggerEl) {
 }
 
 // ── Action navigation helper — maps insight action text → correct page ────────
-window._openNewMonitor = function() { openFloatPanel('Nouveau monitor', renderNewMonitorPanel()); setupNewMonitorPanel(); };
+window._openNewMonitor = function() { openFloatPanel(fpT('Nouveau monitor'), renderNewMonitorPanel()); setupNewMonitorPanel(); };
 
 function fpInsightAction(action) {
   const a = (action || '').toLowerCase();
@@ -1425,7 +1425,7 @@ async function loadAuditHistory(audit) {
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Premier audit :')}<b style="color:var(--fp-text)">${first}/100</b></span>
         <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Dernier :')}<b style="color:${last>=70?'#22c55e':last>=45?'#f59e0b':'#ef4444'}">${last}/100</b></span>
-        <span style="font-size:11px;color:${trendColor};font-weight:700">${trendDir} ${totalDelta >= 0 ? '+' : ''}${totalDelta} pts sur 90j</span>
+        <span style="font-size:11px;color:${trendColor};font-weight:700">${trendDir} ${totalDelta >= 0 ? '+' : ''}${totalDelta} ${fpT('pts sur 90j')}</span>
       </div>
       <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">
         <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t + iH}" stroke="var(--fp-border)" stroke-width="1"/>
@@ -1450,7 +1450,7 @@ async function loadAuditHistory(audit) {
               <td style="padding:3px 0;color:var(--fp-text-muted)">${new Date(h.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'short',year:'2-digit'})}</td>
               <td style="text-align:center;font-weight:700;color:${scoreColor(h.score)}">${h.score}</td>
               <td style="text-align:center;color:${dc};font-weight:600">${delta === null ? '—' : (delta > 0 ? '+' : '') + delta + 'pt'}</td>
-              <td style="text-align:center"><span style="font-size:9px;padding:1px 5px;border-radius:3px;${(h.origin||'manual')==='auto'?'background:rgba(139,92,246,0.15);color:#8b5cf6':'background:var(--fp-track);color:var(--fp-text-faint)'}">${h.origin === 'auto' ? 'Auto' : 'Manuel'}</span></td>
+              <td style="text-align:center"><span style="font-size:9px;padding:1px 5px;border-radius:3px;${(h.origin||'manual')==='auto'?'background:rgba(139,92,246,0.15);color:#8b5cf6':'background:var(--fp-track);color:var(--fp-text-faint)'}">${fpT(h.origin === 'auto' ? 'Auto' : 'Manuel')}</span></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -1465,7 +1465,7 @@ async function loadAuditHistory(audit) {
         const delta = i > 0 ? h.score - sorted[i-1].score : '';
         return `${new Date(h.date).toLocaleDateString(getLocale())},${h.score},${delta},${h.origin||'manual'},${h.speed||''}`;
       });
-      exportCsv('Date,Score SEO,Delta,Origine,Vitesse', rows, `historique-${audit.url.replace(/[^a-z0-9]/gi,'_').slice(0,30)}.csv`);
+      exportCsv([fpT('Date'),fpT('Score SEO'),fpT('Delta'),fpT('Origine'),fpT('Vitesse')].join(','), rows, `seo-history-${audit.url.replace(/[^a-z0-9]/gi,'_').slice(0,30)}.csv`);
     };
   }
 }
@@ -1478,7 +1478,7 @@ async function bindAuditPanelBtns(audit) {
   if (rerunBtn) {
     rerunBtn.addEventListener('click', async () => {
       rerunBtn.disabled = true;
-      rerunBtn.textContent = 'Audit en cours…';
+      rerunBtn.textContent = fpT('Audit en cours…');
       try {
         const res = await apiAction('POST', '/api/audits', { url: audit.url, force: true });
         if (res) {
@@ -1487,20 +1487,20 @@ async function bindAuditPanelBtns(audit) {
           STATE.audits.unshift(res);
           if (typeof startAuditPolling === 'function') startAuditPolling(res.id);
         }
-        showToast('success', fpT("Audit relancé pour ") + escHtml(audit.url));
+        showToast('success', fpT('Audit relancé pour {url}', {url:escHtml(audit.url)}));
         closeFloatPanel();
         render();
       } catch(e) {
         showToast('error', fpT('Erreur lors du relancement'));
         rerunBtn.disabled = false;
-        rerunBtn.textContent = '🔄 Relancer l\'audit';
+        rerunBtn.textContent = '🔄 ' + fpT('Relancer l\'audit');
       }
     });
   }
   if (exportBtn) {
     exportBtn.addEventListener('click', async () => {
       exportBtn.disabled = true;
-      exportBtn.textContent = 'Génération…';
+      exportBtn.textContent = fpT('Génération…');
       try {
         const host = (audit.url || '').replace(/^https?:\/\//, '').split('/')[0];
         const name = `Audit ${host} — ${new Date().toLocaleDateString(getLocale())}`;
@@ -1514,7 +1514,7 @@ async function bindAuditPanelBtns(audit) {
         showToast('error', fpT('Erreur lors de la génération PDF'));
       }
       exportBtn.disabled = false;
-      exportBtn.textContent = '⬇ Exporter PDF';
+      exportBtn.textContent = '⬇ ' + fpT('Exporter PDF');
     });
   }
   const missionBtn = document.getElementById('audit-panel-mission');
@@ -1524,26 +1524,26 @@ async function bindAuditPanelBtns(audit) {
       const title = `Optimiser SEO — ${domain}`;
       const existing = STATE.missions.find(m => m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done');
       if (existing) {
-        missionBtn.textContent = 'Voir mission →';
+        missionBtn.textContent = fpT('Voir mission →');
         missionBtn.style.color = '#22c55e';
         missionBtn.onclick = () => { closeFloatPanel(); navigate('missions'); };
         showToast('info', fpT('Mission déjà créée pour cet audit'));
         return;
       }
-      missionBtn.textContent = 'Création…';
+      missionBtn.textContent = fpT('Création…');
       missionBtn.disabled = true;
       try {
         const m = await apiAction('POST', '/api/missions', { title, category: 'Audits', source: 'audit', auditId: audit.id, status: 'todo', priority: 'high', impact: 'Élevé' });
         const mission = m || { id: 'ms'+Date.now(), title, category: 'Audits', status: 'todo', priority: 'high' };
         STATE.missions.unshift(mission);
-        missionBtn.textContent = '✓ Mission créée →';
+        missionBtn.textContent = '✓ ' + fpT('Mission créée →');
         missionBtn.style.color = '#22c55e';
         missionBtn.style.borderColor = 'rgba(34,197,94,0.3)';
         missionBtn.disabled = false;
         missionBtn.onclick = () => { closeFloatPanel(); navigate('missions'); };
         showToast('success', fpT('Mission créée depuis l\'audit'));
       } catch(e) {
-        missionBtn.textContent = '+ Mission';
+        missionBtn.textContent = '+ ' + fpT('Mission');
         missionBtn.disabled = false;
         showToast('error', fpT('Erreur lors de la création de la mission'));
       }
@@ -2699,7 +2699,7 @@ function scoreColor(s) { return s >= 70 ? '#22c55e' : s >= 40 ? '#f59e0b' : '#ef
 function scoreLabel(s) { return s >= 70 ? fpT('Bon') : s >= 40 ? fpT('Moyen') : fpT('Critique'); }
 function impactColor(i) { return i === 'Très élevé' ? '#ef4444' : i === 'Élevé' ? '#f59e0b' : '#22c55e'; }
 function statusBadgeColor(s) { return s === 'up' ? '#22c55e' : s === 'down' ? '#ef4444' : '#f59e0b'; }
-function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LENT'; }
+function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? fpT('DOWN') : fpT('Lent'); }
 
 // ── getLocale: central BCP-47 locale resolver for all toLocaleDateString / toLocaleString calls ──
 // Always reads from the live setting so locale changes propagate without reload.
@@ -2792,18 +2792,18 @@ window._applyMonitorPreset = function(btn) {
   var mons = STATE.monitors || [];
   // Ask for URL before applying the preset so every created monitor has a real target.
   var defaultUrl = mons.length > 0 ? mons[0].url : '';
-  openFloatPanel('Appliquer le preset \u00ab' + pname + '\u00bb',
+  openFloatPanel(fpT('Appliquer le preset «{name}»', {name:fpT(pname)}),
     '<div style="padding:4px">' +
-    '<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:14px">Ce preset va cr\u00e9er <strong>' + pchecks.length + ' monitor(s)</strong> : ' + pchecks.join(', ') + '.</div>' +
-    '<div class="fp-form-group"><label class="fp-form-label">URL du site \u00e0 surveiller</label>' +
+    '<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:14px">' + fpT('Ce preset va créer {count} monitor(s) : {checks}.', {count:pchecks.length,checks:pchecks.map(function(check){ return fpT(check); }).join(', ')}) + '</div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('URL du site à surveiller') + '</label>' +
     '<input class="fp-input" id="preset-url-input" placeholder="https://monsite.fr" value="' + escHtml(defaultUrl) + '"/></div>' +
-    '<div class="fp-form-group"><label class="fp-form-label">Fr\u00e9quence de v\u00e9rification</label>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Fréquence de vérification') + '</label>' +
     '<select class="fp-select" id="preset-freq-select" style="width:100%">' +
     '<option value="Toutes les 5 min" selected>' + fpT('Toutes les 5 min') + '</option>' +
     '<option value="Toutes les 15 min">' + fpT('Toutes les 15 min') + '</option>' +
     '<option value="Toutes les heures">' + fpT('Toutes les heures') + '</option>' +
     '</select></div>' +
-    '<button class="fp-btn fp-btn-primary" id="preset-apply-btn" style="width:100%">Cr\u00e9er les monitors</button>' +
+    '<button class="fp-btn fp-btn-primary" id="preset-apply-btn" style="width:100%">' + fpT('Créer les monitors') + '</button>' +
     '</div>'
   );
   setTimeout(function() {
@@ -2813,7 +2813,7 @@ window._applyMonitorPreset = function(btn) {
       var url = (document.getElementById('preset-url-input') && document.getElementById('preset-url-input').value.trim()) || '';
       if (!url) { showToast('warning', fpT('Entrez l\u2019URL du site \u00e0 surveiller')); return; }
       var freq = (document.getElementById('preset-freq-select') && document.getElementById('preset-freq-select').value) || 'Toutes les 5 min';
-      applyBtn.disabled = true; applyBtn.textContent = 'Cr\u00e9ation\u2026';
+      applyBtn.disabled = true; applyBtn.textContent = fpT('Création…');
       if (!STATE.monitors) STATE.monitors = [];
       var created = 0, duplicates = 0, errors = 0;
       // The API enforces one monitor per URL per org. When a preset lists
@@ -2846,11 +2846,11 @@ window._applyMonitorPreset = function(btn) {
       }
       closeFloatPanel();
       var parts = [];
-      if (created)    parts.push(created    + ' cr\u00e9\u00e9' + (created > 1 ? 's' : ''));
-      if (duplicates) parts.push(duplicates + ' d\u00e9j\u00e0 configur\u00e9' + (duplicates > 1 ? 's' : '') + ' (URL existante)');
-      if (errors)     parts.push(errors     + ' \u00e9chec' + (errors > 1 ? 's' : ''));
+      if (created)    parts.push(fpT('{count} créé(s)', {count:created}));
+      if (duplicates) parts.push(fpT('{count} déjà configuré(s) (URL existante)', {count:duplicates}));
+      if (errors)     parts.push(fpT('{count} échec(s)', {count:errors}));
       if (parts.length) {
-        showToast(created ? 'success' : duplicates ? 'info' : 'warning', 'Preset \u00ab' + pname + '\u00bb — ' + parts.join(', ') + '.');
+        showToast(created ? 'success' : duplicates ? 'info' : 'warning', fpT('Preset «{name}» — {result}.', {name:fpT(pname),result:parts.join(', ')}));
         navigate('monitors');
       }
     });
@@ -2861,17 +2861,17 @@ window._applyMonitorPreset = function(btn) {
 window._editMaintWindow = function(btn) {
   var wn = btn.dataset.wname || '';
   var ws = btn.dataset.wsched || '';
-  openFloatPanel('Modifier la fen\u00eatre de maintenance',
+  openFloatPanel(fpT('Modifier la fenêtre de maintenance'),
     '<div style="padding:4px">' +
-    '<div class="fp-form-group"><label class="fp-form-label">Nom</label>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Nom') + '</label>' +
     '<input class="fp-input" id="mw-edit-name" value="' + escHtml(wn) + '"/></div>' +
-    '<div class="fp-form-group"><label class="fp-form-label">Planification (ex\u00a0: Dimanche 02:00\u201304:00)</label>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Planification (ex : Dimanche 02:00–04:00)') + '</label>' +
     '<input class="fp-input" id="mw-edit-sched" value="' + escHtml(ws) + '"/></div>' +
-    '<div class="fp-form-group"><label class="fp-form-label">Sites concern\u00e9s</label>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Sites concernés') + '</label>' +
     '<select class="fp-select" id="mw-edit-sites" style="width:100%"><option value="all" selected>' + fpT('Tous les sites') + '</option>' +
     (STATE.monitors || []).map(function(m){ return '<option value="' + escHtml(m.id) + '">' + escHtml(m.name || m.url || 'Monitor') + '</option>'; }).join('') +
     '</select></div>' +
-    '<button class="fp-btn fp-btn-primary" id="mw-edit-save" style="width:100%">Sauvegarder</button>' +
+    '<button class="fp-btn fp-btn-primary" id="mw-edit-save" style="width:100%">' + fpT('Sauvegarder') + '</button>' +
     '</div>'
   );
   setTimeout(function() {
@@ -2883,6 +2883,45 @@ window._editMaintWindow = function(btn) {
       if (!nm || !sc) { showToast('warning', fpT('Remplissez tous les champs')); return; }
       showToast('success', fpT('Fen\u00eatre de maintenance mise \u00e0 jour'));
       closeFloatPanel();
+    });
+  }, 50);
+};
+
+window._openMonitorEmailAlerts = function() {
+  var currentEmail = (STATE.me && STATE.me.email) || '';
+  var content = `
+    <div style="padding:4px">
+      <div class="fp-form-group">
+        <label class="fp-form-label">${fpT('Email de réception des alertes')}</label>
+        <input class="fp-input" id="ch-email-input" placeholder="${fpT('alerte@email.com')}" value="${escHtml(currentEmail)}"/>
+      </div>
+      <div class="fp-form-group">
+        <label class="fp-form-label">${fpT('Alertes à recevoir')}</label>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px"><input type="checkbox" checked/> ${fpT('Site DOWN')}</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px"><input type="checkbox" checked/> ${fpT('Latence élevée')}</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px"><input type="checkbox"/> ${fpT('Reprise (site UP)')}</label>
+        </div>
+      </div>
+      <button class="fp-btn fp-btn-primary" style="width:100%" id="ch-email-save">${fpT('Sauvegarder')}</button>
+    </div>`;
+  openFloatPanel(fpT('Configurer les alertes Email'), content);
+  setTimeout(function() {
+    var save = document.getElementById('ch-email-save');
+    if (!save) return;
+    save.addEventListener('click', async function() {
+      var value = document.getElementById('ch-email-input')?.value?.trim();
+      if (!value || !/^[^@]+@[^@]+\.[^@]+$/.test(value)) {
+        showToast('warning', fpT('Email invalide'));
+        return;
+      }
+      try {
+        await apiAction('PATCH', '/api/me/prefs', { settings: { alertEmail: value } });
+        showToast('success', fpT('Email d’alerte sauvegardé'));
+        closeFloatPanel();
+      } catch (error) {
+        showToast('error', fpT('Erreur lors de la sauvegarde'));
+      }
     });
   }, 50);
 };
@@ -2919,8 +2958,8 @@ window._fpSlaViewPage = function() {
   var spTitle = sp.title || '';
   var spDesc  = sp.description || '';
   var spMonIds = sp.monitorIds || [];
-  var panelTitle = u ? 'Modifier la page de statut' : 'Configurer la page de statut';
-  var btnLabel = u ? 'Enregistrer les modifications' : 'Activer la page statut';
+  var panelTitle = fpT(u ? 'Modifier la page de statut' : 'Configurer la page de statut');
+  var btnLabel = fpT(u ? 'Enregistrer les modifications' : 'Activer la page statut');
   var monOptions = (STATE.monitors || []).map(function(m) {
     var chk = spMonIds.length === 0 || spMonIds.indexOf(m.id) >= 0;
     return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;cursor:pointer">' +
@@ -2931,15 +2970,15 @@ window._fpSlaViewPage = function() {
     '<div style="padding:4px">' +
     '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Titre de la page statut') + '</label>' +
     '<input class="fp-input" id="sp-title-input" placeholder="' + fpT('Statut de nos services') + '" value="' + escHtml(spTitle) + '"/></div>' +
-    '<div class="fp-form-group"><label class="fp-form-label">Description</label>' +
-    '<input class="fp-input" id="sp-desc-input" placeholder="Disponibilit\u00e9 en temps r\u00e9el" value="' + escHtml(spDesc) + '"/></div>' +
+    '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Description') + '</label>' +
+    '<input class="fp-input" id="sp-desc-input" placeholder="' + fpT('Disponibilité en temps réel') + '" value="' + escHtml(spDesc) + '"/></div>' +
     '<div class="fp-form-group"><label class="fp-form-label">' + fpT('URL publique de la page statut') + '</label>' +
     '<input class="fp-input" id="status-page-url-input" placeholder="https://status.monsite.fr" value="' + escHtml(u || '') + '"/></div>' +
-    (monOptions ? '<div class="fp-form-group"><label class="fp-form-label">Monitors affich\u00e9s</label>' +
+    (monOptions ? '<div class="fp-form-group"><label class="fp-form-label">' + fpT('Monitors affichés') + '</label>' +
     '<div style="max-height:140px;overflow-y:auto;padding:4px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">' + monOptions + '</div></div>' : '') +
     '<button class="fp-btn fp-btn-primary" id="status-page-save-btn" style="width:100%;margin-top:10px">' + btnLabel + '</button>' +
     (u ? '<div style="display:flex;gap:8px;margin-top:8px">' +
-      '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-open-btn" style="flex:1">Ouvrir \u2197</button>' +
+      '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-open-btn" style="flex:1">' + fpT('Ouvrir ↗') + '</button>' +
       '<button class="fp-btn fp-btn-ghost fp-btn-sm" id="status-page-clear-btn" style="flex:1;color:#ef4444">' + fpT('Supprimer') + '</button>' +
     '</div>' : '') +
     '</div>'
@@ -4807,8 +4846,8 @@ function closeFAB() {
 }
 
 function handleFABAction(action) {
-  if (action === 'new-audit')   { openFloatPanel('Nouvel audit', renderNewAuditPanel()); setupNewAuditPanel(); }
-  if (action === 'new-monitor') { openFloatPanel('Nouveau monitor', renderNewMonitorPanel()); setupNewMonitorPanel(); }
+  if (action === 'new-audit')   { openFloatPanel(fpT('Nouvel audit'), renderNewAuditPanel()); setupNewAuditPanel(); }
+  if (action === 'new-monitor') { openFloatPanel(fpT('Nouveau monitor'), renderNewMonitorPanel()); setupNewMonitorPanel(); }
   if (action === 'new-mission') { openFloatPanel(fpT('Nouvelle mission'), renderNewMissionPanel()); setupNewMissionPanel(); }
   if (action === 'new-report')  { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); }
   if (action === 'export-data') { openFloatPanel(fpT('Exporter les données'), renderExportPanel()); setupExportPanel(); }
@@ -6797,13 +6836,13 @@ function renderAudits() {
     ${_auditErrBanner}
     <div class="fp-section-header" data-fp-anchor="audits-list">
       <div>
-        <h1>Audits SEO</h1>
+        <h1>${fpT('Audits SEO')}</h1>
         <div class="fp-section-sub">${fpT('Analysez et optimisez la visibilité de vos sites')}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('CSV','fp-btn fp-btn-ghost fp-btn-sm','download','id="audit-export-csv"')}
         ${btn('PDF','fp-btn fp-btn-ghost fp-btn-sm','download','id="audit-export-doc"')}
-        ${btn('Nouvel audit','fp-btn fp-btn-primary fp-btn-sm','plus','id="audit-new-btn"')}
+        ${btn(fpT('Nouvel audit'),'fp-btn fp-btn-primary fp-btn-sm','plus','id="audit-new-btn"')}
       </div>
     </div>
 
@@ -6812,16 +6851,16 @@ function renderAudits() {
         ? (() => {
             const _crit = sorted.filter(a=>a.score<45).length;
             const _good = sorted.filter(a=>a.score>=70).length;
-            return `<strong>${sorted.length} audit${sorted.length>1?'s':''}</strong> — score moyen <strong>${avg2}/100</strong>. ${_crit>0?_crit+' site(s) critique(s) (score < 45) — <strong>action prioritaire requise</strong>. ':''} ${_good>0?_good+' site(s) en bonne santé (≥ 70). ':''} Lancez un nouvel audit pour obtenir des recommandations IA actualisées.`;
+            return `<strong>${sorted.length} ${fpT(sorted.length === 1 ? 'audit' : 'audits')}</strong> — ${fpT('score moyen')} <strong>${avg2}/100</strong>. ${_crit>0?fpT(_crit === 1 ? '{count} site critique' : '{count} sites critiques',{count:_crit})+' (score < 45) — <strong>'+fpT('action prioritaire requise')+'</strong>. ':''} ${_good>0?fpT(_good === 1 ? '{count} site en bonne santé' : '{count} sites en bonne santé',{count:_good})+' (≥ 70). ':''} ${fpT('Lancez un nouvel audit pour obtenir des recommandations IA actualisées.')}`;
           })()
-        : "Aucun audit encore lancé. Démarrez votre premier audit SEO pour obtenir un score et des recommandations personnalisées.",
+        : fpT('Aucun audit encore lancé. Démarrez votre premier audit SEO pour obtenir un score et des recommandations personnalisées.'),
       sorted.length > 0 ? ['Voir les opportunités', 'Comparer les audits', 'Lancer un audit'] : ['Lancer mon premier audit', 'Voir la démo']
     )}
 
     <div class="fp-grid-3 fp-mb-20 fp-stat-trio">
-      ${[{l:'Score moyen',v:`${avg2}/100`,c:'#2563EB'},{l:'Meilleur score',v:`${best}/100`,c:'#22c55e'},{l:'Dernière analyse',v: (() => { const _lat = sorted.length > 0 ? sorted[0] : null; if (!_lat) return '—'; const _m = Math.round((Date.now() - new Date(_lat.date).getTime()) / 60000); return _m < 1 ? 'À l\'instant' : _m < 60 ? 'Il y a '+_m+'min' : _m < 1440 ? 'Il y a '+Math.round(_m/60)+'h' : 'Il y a '+Math.round(_m/1440)+'j'; })(),c:'#f59e0b'}].map(s=>`
+      ${[{l:'Score moyen',v:`${avg2}/100`,c:'#2563EB'},{l:'Meilleur score',v:`${best}/100`,c:'#22c55e'},{l:'Dernière analyse',v: (() => { const _lat = sorted.length > 0 ? sorted[0] : null; if (!_lat) return '—'; const _m = Math.round((Date.now() - new Date(_lat.date).getTime()) / 60000); return _m < 1 ? fpT('À l\'instant') : _m < 60 ? fpT('Il y a {count} min',{count:_m}) : _m < 1440 ? fpT('Il y a {count}h',{count:Math.round(_m/60)}) : fpT('Il y a {count}j',{count:Math.round(_m/1440)}); })(),c:'#f59e0b'}].map(s=>`
         <div class="fp-card fp-card-sm">
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em">${s.l}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em">${fpT(s.l)}</div>
           <div style="font-size:20px;font-weight:800;color:${s.c};font-family:var(--fp-font-head)">${s.v}</div>
         </div>
       `).join('')}
@@ -6840,23 +6879,23 @@ function renderAudits() {
       const isStarter = plan === 'Starter' || plan === 'Standard';
       return `<div class="fp-quota-bar">
         <div class="fp-quota-item">
-          <div class="fp-quota-label">Audits ce mois · ${escHtml(plan)}</div>
+          <div class="fp-quota-label">${fpT('Audits ce mois')} · ${escHtml(plan)}</div>
           <div class="fp-quota-track"><div class="fp-quota-fill" style="width:${aPct}%;background:${aColor}"></div></div>
           <div class="fp-quota-val">${aUsed} / ${aLimit===999?'∞':aLimit} <span style="color:${aColor}">(${aPct}%)</span></div>
         </div>
         <div class="fp-quota-item">
-          <div class="fp-quota-label">Monitors actifs</div>
+          <div class="fp-quota-label">${fpT('Monitors actifs')}</div>
           <div class="fp-quota-track"><div class="fp-quota-fill" style="width:${mPct}%;background:var(--fp-accent)"></div></div>
           <div class="fp-quota-val">${mUsed} / ${mLimit===999?'∞':mLimit}</div>
         </div>
-        ${isStarter?`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:6px 12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);border-radius:8px;font-size:11.5px;color:var(--fp-accent);cursor:pointer;white-space:nowrap" onclick="navigateSub('plans')">🚀 Passer Pro → +300 audits · IA Insights</div>`:''}
+        ${isStarter?`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:6px 12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);border-radius:8px;font-size:11.5px;color:var(--fp-accent);cursor:pointer;white-space:nowrap" onclick="navigateSub('plans')">🚀 ${fpT('Passer Pro → +300 audits · IA Insights')}</div>`:''}
       </div>`;
     })()}
 
     <div class="fp-card fp-card-sm fp-mb-20">
       <div style="display:flex;gap:10px">
         <input id="audit-url-input" class="fp-input" placeholder="${fpT('https://monsite.fr — Lancer un audit rapide')}" style="flex:1"/>
-        ${btn('Lancer','fp-btn fp-btn-primary','zap','id="audit-run-btn"')}
+        ${btn(fpT('Lancer'),'fp-btn fp-btn-primary','zap','id="audit-run-btn"')}
       </div>
     </div>
 
@@ -6872,7 +6911,7 @@ function renderAudits() {
           const freqLabel = { daily:'Quotidien', weekly:'Hebdo', monthly:'Mensuel' }[s.frequency] || s.frequency;
           return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--fp-border)">
             <span style="color:var(--fp-text-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.url)}">${escHtml(s.url)}</span>
-            <span style="background:rgba(37,99,235,0.1);color:#2563EB;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;flex-shrink:0">${freqLabel}</span>
+            <span style="background:rgba(37,99,235,0.1);color:#2563EB;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;flex-shrink:0">${fpT(freqLabel)}</span>
             <span style="color:var(--fp-text-muted);font-size:11px;flex-shrink:0">→ ${nextDate}</span>
           </div>`;
         }).join('')}
@@ -6891,9 +6930,9 @@ function renderAudits() {
     </div>
     <div class="fp-filter-bar fp-mb-16">
       ${[['all','Tout'],['good','Bon (≥70)'],['medium','Moyen (45-69)'],['bad','Mauvais (<45)']].map(([v,l])=>`
-        <button class="fp-filter-tab${STATE.auditStatusFilter===v?' active':''}" data-audit-status-filter="${v}">${l}</button>
+        <button class="fp-filter-tab${STATE.auditStatusFilter===v?' active':''}" data-audit-status-filter="${v}">${fpT(l)}</button>
       `).join('')}
-      ${STATE.audits.some(a=>a.archived) ? `<button class="fp-filter-tab${STATE.auditShowArchived?' active':''}" id="audit-show-archived" style="margin-left:auto;color:var(--fp-text-muted)">${svgIcon('archive')} ${STATE.auditShowArchived?'Actifs':'Archivés'} (${STATE.audits.filter(a=>a.archived).length})</button>` : ''}
+      ${STATE.audits.some(a=>a.archived) ? `<button class="fp-filter-tab${STATE.auditShowArchived?' active':''}" id="audit-show-archived" style="margin-left:auto;color:var(--fp-text-muted)">${svgIcon('archive')} ${fpT(STATE.auditShowArchived?'Actifs':'Archivés')} (${STATE.audits.filter(a=>a.archived).length})</button>` : ''}
     </div>
 
     <div class="fp-table-wrap">
@@ -6930,7 +6969,7 @@ function renderAudits() {
                   ${a.pinned ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>` : ''}
                   <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(a.url)}</span>
                   ${sched ? `<span style="background:rgba(37,99,235,0.15);color:#2563EB;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(37,99,235,0.3)">${fpT('⏰ Planifié')}</span>` : ''}
-                  ${a.origin === 'auto' ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">Auto</span>` : ''}
+                  ${a.origin === 'auto' ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">${fpT('Auto')}</span>` : ''}
                 </div>
               </td>
               <td>
@@ -6950,14 +6989,14 @@ function renderAudits() {
               <td style="color:var(--fp-text-muted);font-size:12px;text-align:center">${relDate(a.date)}</td>
               <td style="text-align:center">
                 <div class="fp-audit-sched-cell" data-url="${escHtml(a.url)}">
-                  <label class="fp-toggle-wrap" title="${sched ? 'Désactiver l\'audit planifié' : 'Activer l\'audit planifié'}">
+                  <label class="fp-toggle-wrap" title="${fpT(sched ? 'Désactiver l\'audit planifié' : 'Activer l\'audit planifié')}">
                     <input type="checkbox" class="fp-sched-toggle" data-url="${escHtml(a.url)}" ${sched ? 'checked' : ''}>
                     <span class="fp-toggle-track"><span class="fp-toggle-thumb"></span></span>
                   </label>
                   <select class="fp-sched-freq fp-select" data-url="${escHtml(a.url)}" style="padding:3px 6px;font-size:11px;height:auto" ${sched ? '' : 'disabled'}>
-                    <option value="daily" ${sched?.frequency==='daily'?'selected':''}>Quotidien</option>
-                    <option value="weekly" ${(sched?.frequency==='weekly'||!sched)?'selected':''}>Hebdo</option>
-                    <option value="monthly" ${sched?.frequency==='monthly'?'selected':''}>Mensuel</option>
+                    <option value="daily" ${sched?.frequency==='daily'?'selected':''}>${fpT('Quotidien')}</option>
+                    <option value="weekly" ${(sched?.frequency==='weekly'||!sched)?'selected':''}>${fpT('Hebdo')}</option>
+                    <option value="monthly" ${sched?.frequency==='monthly'?'selected':''}>${fpT('Mensuel')}</option>
                   </select>
                 </div>
               </td>
@@ -6994,7 +7033,7 @@ function renderMonitors() {
   const nUp   = monitors.filter(m => m.status === 'up').length;
   const nDown = monitors.filter(m => m.status === 'down').length;
   const nWarn = monitors.filter(m => m.status === 'warn').length;
-  const _upMonsLat = monitors.filter(m => m.status !== 'down' && m.latency != null);
+    const _upMonsLat = monitors.filter(m => m.status !== 'down' && m.latency != null);
   const avgLatency = _upMonsLat.length
     ? Math.round(_upMonsLat.reduce((s, m) => s + m.latency, 0) / _upMonsLat.length)
     : 0;
@@ -7017,7 +7056,7 @@ function renderMonitors() {
   const _monAiMsg = (() => {
     if (nDown > 0) return `🚨 <strong>${nDown} ${fpT('monitor(s) DOWN')}</strong> ${fpT('en ce moment — intervention immédiate requise. Latence moyenne :')} ${avgLatency}ms. ${fpT('Uptime global :')} ${avgUptime}%.`;
     if (nWarn > 0) return `⚠️ <strong>${nWarn} ${fpT('alerte(s) actives')}</strong>. ${fpT('Latence moyenne :')} ${avgLatency}ms. ${fpT('Vérifiez les performances avant que les incidents n\u2019impactent vos utilisateurs.')}`;
-    if (monitors.length === 0) return `${fpT('Aucun monitor configuré.')} <a class="fp-link-btn" onclick="openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel()">${fpT('Créer votre premier monitor →')}</a> ${fpT('pour surveiller la disponibilité 24/7 et être alerté instantanément.')}`;
+    if (monitors.length === 0) return `${fpT('Aucun monitor configuré.')} <a class="fp-link-btn" onclick="openFloatPanel(fpT('Nouveau monitor'),renderNewMonitorPanel());setupNewMonitorPanel()">${fpT('Créer votre premier monitor →')}</a> ${fpT('pour surveiller la disponibilité 24/7 et être alerté instantanément.')}`;
     return `✅ ${fpT('Tous les monitors opérationnels. Uptime global :')} <strong>${avgUptime}%</strong>${fpT(', latence moyenne :')} <strong>${avgLatency}ms</strong>. ${fpT('Infrastructure stable.')}`;
   })();
   const deps = (STATE.monitors||[]).slice(0,6).map(m => ({
@@ -7036,17 +7075,17 @@ function renderMonitors() {
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
-          Monitors
+          ${fpT('Monitors')}
           <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:#22c55e;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:20px;padding:3px 10px">
             <span style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite;display:inline-block"></span>
-            Live · Check toutes les 5 min
+            ${fpT('Live · Check toutes les 5 min')}
           </span>
         </h1>
         <div class="fp-section-sub">${fpT('Protection enterprise 24/7')} · ${monitors.length} ${fpT('sites surveillés')} · ${fpT('Alertes instantanées')}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Vérifier tout', 'fp-btn fp-btn-ghost fp-btn-sm', 'refresh', 'id="monitor-check-all"')}
-        ${btn('Nouveau', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', 'id="monitor-new-btn"')}
+        ${btn(fpT('Vérifier tout'), 'fp-btn fp-btn-ghost fp-btn-sm', 'refresh', 'id="monitor-check-all"')}
+        ${btn(fpT('Nouveau'), 'fp-btn fp-btn-primary fp-btn-sm', 'plus', 'id="monitor-new-btn"')}
       </div>
     </div>
 
@@ -7062,11 +7101,11 @@ function renderMonitors() {
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:20px">
       <div style="display:grid;grid-template-columns:repeat(5,minmax(90px,1fr));gap:12px;min-width:430px">
         ${[
-          { l: 'En ligne',       v: `${nUp}/${monitors.length}`, c: '#22c55e',                                        sub: nWarn + ' en alerte' },
-          { l: 'DOWN',           v: String(nDown),                  c: nDown > 0 ? '#ef4444' : '#22c55e',             sub: nDown > 0 ? 'Action requise' : 'Tout OK' },
-          { l: 'Latence moy.',   v: `${avgLatency}ms`,           c: avgLatency > 400 ? '#ef4444' : avgLatency > 200 ? '#f59e0b' : '#22c55e', sub: monitors.length > 0 ? 'latence moyenne actuelle' : '—' },
-          { l: 'Uptime global',  v: `${avgUptime}%`,             c: parseFloat(avgUptime) >= 99 ? '#22c55e' : '#f59e0b', sub: 'SLA 99.0% cible' },
-          { l: 'Incidents/mois', v: String(monitors.filter(m => m.status === 'down').length + monitors.filter(m => m.status === 'warn').length || (monitors.length > 0 ? 0 : 0)), c: monitors.filter(m=>m.status==='down').length > 0 ? '#ef4444' : '#22c55e', sub: monitors.length > 0 ? 'ce mois' : '—' },
+          { l: fpT('En ligne'),       v: `${nUp}/${monitors.length}`, c: '#22c55e',                                        sub: fpT('{count} en alerte', {count:nWarn}) },
+          { l: fpT('DOWN'),           v: String(nDown),                  c: nDown > 0 ? '#ef4444' : '#22c55e',             sub: fpT(nDown > 0 ? 'Action requise' : 'Tout OK') },
+          { l: fpT('Latence moy.'),   v: `${avgLatency}ms`,           c: avgLatency > 400 ? '#ef4444' : avgLatency > 200 ? '#f59e0b' : '#22c55e', sub: fpT(monitors.length > 0 ? 'latence moyenne actuelle' : '—') },
+          { l: fpT('Uptime global'),  v: `${avgUptime}%`,             c: parseFloat(avgUptime) >= 99 ? '#22c55e' : '#f59e0b', sub: fpT('SLA 99.0% cible') },
+          { l: fpT('Incidents/mois'), v: String(monitors.filter(m => m.status === 'down').length + monitors.filter(m => m.status === 'warn').length || (monitors.length > 0 ? 0 : 0)), c: monitors.filter(m=>m.status==='down').length > 0 ? '#ef4444' : '#22c55e', sub: fpT(monitors.length > 0 ? 'ce mois' : '—') },
         ].map(s => `
           <div class="fp-card fp-card-sm">
             <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${s.l}</div>
@@ -7088,18 +7127,18 @@ function renderMonitors() {
               <div class="fp-monitor-pulse ${m.enabled === false ? 'pause' : m.status}"></div>
               <span class="fp-monitor-name">${escHtml(m.name)}</span>
             </div>
-            ${m.enabled === false ? badge('En pause', '#64748b') : badge(statusLabel(m.status), statusBadgeColor(m.status))}
+            ${m.enabled === false ? badge(fpT('En pause'), '#64748b') : badge(statusLabel(m.status), statusBadgeColor(m.status))}
           </div>
           <div class="fp-monitor-url">${escHtml(m.url)}</div>
           <div class="fp-monitor-stats">
-            <div><div class="fp-monitor-stat-label">Uptime</div><div class="fp-monitor-stat-value" style="color:${m.uptime != null && parseFloat(String(m.uptime)) >= 99 ? '#22c55e' : m.uptime != null && parseFloat(String(m.uptime)) >= 90 ? '#f59e0b' : '#ef4444'}">${m.uptime != null ? parseFloat(String(m.uptime)).toFixed(1) : '—'}${m.uptime != null ? '%' : ''}</div></div>
-            <div><div class="fp-monitor-stat-label">Latence</div><div class="fp-monitor-stat-value" style="color:${m.latency != null && m.latency > 500 ? '#ef4444' : m.latency != null && m.latency > 200 ? '#f59e0b' : 'var(--fp-text)'}">${m.status === 'down' ? 'DOWN' : m.latency == null ? '—' : m.latency + 'ms'}</div></div>
-            <div><div class="fp-monitor-stat-label">Check</div><div style="font-size:11px;color:var(--fp-text-muted)">${fmtLastCheck(m.lastCheck) ? 'Il y a ' + fmtLastCheck(m.lastCheck) : 'Jamais vérifié'}</div></div>
+            <div><div class="fp-monitor-stat-label">${fpT('Uptime')}</div><div class="fp-monitor-stat-value" style="color:${m.uptime != null && parseFloat(String(m.uptime)) >= 99 ? '#22c55e' : m.uptime != null && parseFloat(String(m.uptime)) >= 90 ? '#f59e0b' : '#ef4444'}">${m.uptime != null ? parseFloat(String(m.uptime)).toFixed(1) : '—'}${m.uptime != null ? '%' : ''}</div></div>
+            <div><div class="fp-monitor-stat-label">${fpT('Latence')}</div><div class="fp-monitor-stat-value" style="color:${m.latency != null && m.latency > 500 ? '#ef4444' : m.latency != null && m.latency > 200 ? '#f59e0b' : 'var(--fp-text)'}">${m.status === 'down' ? 'DOWN' : m.latency == null ? '—' : m.latency + 'ms'}</div></div>
+            <div><div class="fp-monitor-stat-label">${fpT('Check')}</div><div style="font-size:11px;color:var(--fp-text-muted)">${fmtLastCheck(m.lastCheck) ? fpT('Il y a {value}', {value:fmtLastCheck(m.lastCheck)}) : fpT('Jamais vérifié')}</div></div>
           </div>
           <div class="fp-uptime-bars">${uptimeBars(m)}</div>
           <div class="fp-monitor-uptime30">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-              <span style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em">Uptime 30j</span>
+              <span style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em">${fpT('Uptime 30j')}</span>
               ${(() => {
                 const s = STATE.monitorsSummary[m.id];
                 if (!s || !s.length) return '';
@@ -7125,13 +7164,13 @@ function renderMonitors() {
             })()}
             <span style="font-size:9px;color:var(--fp-text-faint)">${(() => {
               const sum = STATE.monitorsSummary[m.id];
-              return sum && sum.some(d => d.total > 0) ? 'disponibilité 7j' : 'en attente de données';
+               return fpT(sum && sum.some(d => d.total > 0) ? 'disponibilité 7j' : 'en attente de données');
             })()}</span>
           </div>
           <div class="fp-hover-toolbar">
             <button class="fp-hover-toolbar-btn monitor-view"   data-id="${m.id}" title="${fpT('Voir détails')}">${svgIcon('eye')}</button>
-            <button class="fp-hover-toolbar-btn monitor-ping"   data-id="${m.id}" title="Tester">${svgIcon('refresh')}</button>
-            <button class="fp-hover-toolbar-btn monitor-toggle" data-id="${m.id}" data-enabled="${m.enabled !== false}" title="${m.enabled !== false ? 'Mettre en pause' : 'Reprendre'}">${svgIcon(m.enabled !== false ? 'pause-circle' : 'play-circle')}</button>
+            <button class="fp-hover-toolbar-btn monitor-ping"   data-id="${m.id}" title="${fpT('Tester')}">${svgIcon('refresh')}</button>
+            <button class="fp-hover-toolbar-btn monitor-toggle" data-id="${m.id}" data-enabled="${m.enabled !== false}" title="${fpT(m.enabled !== false ? 'Mettre en pause' : 'Reprendre')}">${svgIcon(m.enabled !== false ? 'pause-circle' : 'play-circle')}</button>
             <button class="fp-hover-toolbar-btn monitor-del"    data-id="${m.id}" title="${fpT('Supprimer')}">${svgIcon('trash')}</button>
           </div>
         </div>
@@ -7141,7 +7180,7 @@ function renderMonitors() {
     <div class="fp-grid-2 fp-mb-16">
       <!-- Activity Timeline -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">⏱ Timeline d\'activité</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('⏱ Timeline d’activité')}</div>
         <div style="display:flex;flex-direction:column;gap:0">
           ${timeline.map((ev, i) => `
             <div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;${i < timeline.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.04)' : ''}">
@@ -7175,9 +7214,9 @@ function renderMonitors() {
           `).join('')}
         </div>
         <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--fp-border);font-size:11px;color:var(--fp-text-faint)">
-          <span>${deps.filter(d => d.status === 'operational').length}/${deps.length} opérationnels</span>
+          <span>${fpT('{count} opérationnels', {count:`${deps.filter(d => d.status === 'operational').length}/${deps.length}`})}</span>
           ${deps.filter(d => d.status !== 'operational').length > 0
-            ? `<span style="color:#f59e0b">⚠ ${deps.filter(d => d.status !== 'operational').length} dégradé(s)</span>`
+             ? `<span style="color:#f59e0b">⚠ ${fpT('{count} dégradé(s)', {count:deps.filter(d => d.status !== 'operational').length})}</span>`
             : '<span style="color:#22c55e">'+fpT('✅ Tous opérationnels')+'</span>'}
         </div>
       </div>
@@ -7186,7 +7225,7 @@ function renderMonitors() {
     <div class="fp-grid-3 fp-mb-16">
       <!-- SSL -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:12px">🔒 Certificats SSL</div>
+         <div class="fp-card-title" style="margin-bottom:12px">${fpT('🔒 Certificats SSL')}</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${monitors.slice(0, 5).map((m, idx) => {
             const days = PREVIEW_MODE ? [312, 87, 42, 198, 156][idx % 5] : (m.sslDaysLeft ?? m.ssl?.daysRemaining ?? null);
@@ -7198,18 +7237,18 @@ function renderMonitors() {
             </div>`;
           }).join('')}
         </div>
-        <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">${PREVIEW_MODE ? 'Auto-renouvellement Let\'s Encrypt actif' : 'L\'expiration SSL sera affichée dès la prochaine vérification des monitors HTTPS'}</div>
+         <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">${fpT(PREVIEW_MODE ? 'Auto-renouvellement Let’s Encrypt actif' : 'L’expiration SSL sera affichée dès la prochaine vérification des monitors HTTPS')}</div>
       </div>
 
       <!-- Alert channels summary -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:12px">🔔 Canaux d\'alerte actifs</div>
+         <div class="fp-card-title" style="margin-bottom:12px">${fpT('🔔 Canaux d’alerte actifs')}</div>
         <div style="display:flex;flex-direction:column;gap:9px">
           ${[
             { icon: '📧', name: 'Email',   detail: `${monitors.filter(m => m.alertEmail).length} monitors`, color: '#22c55e',  active: true },
             { icon: '💬', name: 'Slack',   detail: isPro ? '#flowpoint-alerts' : 'Pro requis →',              color: isPro ? '#22c55e' : '#64748b', active: isPro },
-            { icon: '🎮', name: 'Discord', detail: isPro ? 'Webhook configuré' : 'Pro requis →',              color: isPro ? '#8b5cf6' : '#64748b', active: isPro },
-            { icon: '📱', name: 'SMS',     detail: '⏳ Bientôt disponible', color: '#94a3b8', active: false, disabled: true, bdv: true },
+            { icon: '🎮', name: 'Discord', detail: isPro ? fpT('Webhook configuré') : fpT('Pro requis →'), color: isPro ? '#8b5cf6' : '#64748b', active: isPro },
+            { icon: '📱', name: 'SMS',     detail: '⏳ ' + fpT('Bientôt disponible'), color: '#94a3b8', active: false, disabled: true, bdv: true },
           ].map(ch => `
             <div style="display:flex;align-items:center;gap:8px;${ch.disabled ? 'opacity:0.65' : ''}">
               <span style="font-size:16px;${ch.disabled ? 'filter:grayscale(1)' : ''}">${ch.icon}</span>
@@ -7226,8 +7265,8 @@ function renderMonitors() {
 
       <!-- Predictive monitoring -->
       <div class="fp-card" style="${isUltra ? '' : 'opacity:0.8'}">
-        <div class="fp-card-title" style="margin-bottom:4px">🤖 Monitoring Prédictif${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:12px">Détection d\'anomalies par IA avant incidents</div>
+        <div class="fp-card-title" style="margin-bottom:4px">${fpT('🤖 Surveillance prédictive')}${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:12px">${fpT('Détection d’anomalies par IA avant les incidents')}</div>
         ${isUltra ? `
           <div style="display:flex;flex-direction:column;gap:8px">
             ${(STATE.monitors && STATE.monitors.length > 0
@@ -7235,8 +7274,8 @@ function renderMonitors() {
                   icon: m.status === 'down' ? '🔴' : m.status === 'warn' ? '⚡' : '✅',
                   lvl: m.status === 'down' ? 'warning' : m.status === 'warn' ? 'info' : 'ok',
                   site: (m.url||m.name||'').replace(/^https?:\/\//,''),
-                  msg: m.status === 'down' ? 'Site DOWN — vérification requise'
-                     : m.status === 'warn' ? `Latence élevée : ${m.latency||'—'}ms — risque d'instabilité`
+                  msg: m.status === 'down' ? fpT('Site DOWN — vérification requise')
+                     : m.status === 'warn' ? fpT('Latence élevée : {latency}ms — risque d’instabilité', {latency:escHtml(m.latency||'—')})
                      : 'Performance stable · aucun risque',
                 }))
               : []
@@ -7291,7 +7330,7 @@ function renderMonitors() {
                 const sc = ep.status === 'UP' ? '#22c55e' : ep.status === 'SLOW' ? '#f59e0b' : '#ef4444';
                 const mc = ep.method === 'GET' ? '#2563EB' : '#8b5cf6';
                 const pingAction = ep.id
-                  ? `apiAction('POST','/api/monitors/${ep.id}/check').then(r=>showToast(r?.ok?'success':'error',r?.ok?'Ping OK — '+r.responseTime+'ms':'Ping échoué')).catch(()=>showToast('error', fpT('Ping échoué')))`
+                  ? `apiAction('POST','/api/monitors/${ep.id}/check').then(r=>showToast(r?.ok?'success':'error',r?.ok?fpT('Ping réussi — {time}ms',{time:r.responseTime}):fpT('Ping échoué'))).catch(()=>showToast('error', fpT('Ping échoué')))`
                   : `showToast('error', fpT('Monitor sans identifiant — test impossible'))`;
                 return `<tr>
                   <td>
@@ -8303,14 +8342,29 @@ function renderReports() {
       ] : []);
 
   // ─── AI Block (rapport page context) ───────────────────────
-  const _rpAiBlock = aiBlock(
+    const _rpAiBlock = aiBlock(
     allReports.length > 0
       ? (() => {
           const _shared = allReports.filter(r=>r.shared).length;
           const _latest = allReports[0];
-          return `<strong>${allReports.length} rapport${allReports.length>1?'s':''}</strong> générés — ${_shared} partagé${_shared>1?'s':''}. Dernier : <strong>${_latest.name}</strong> (${_latest.date}). ${scheduled.filter(s=>s.active).length > 0 ? scheduled.filter(s=>s.active).length+' envoi(s) automatique(s) actif(s).' : 'Configurez des rapports automatiques pour vos clients.'}`;
+          const _activeSchedules = scheduled.filter(s => s.active).length;
+          const plural = allReports.length === 1 ? '' : 's';
+          const sharedPlural = _shared === 1 ? '' : 's';
+          const schedulePlural = _activeSchedules === 1 ? '' : 's';
+          const scheduleSummary = _activeSchedules > 0
+            ? fpT('{count} envoi{plural} automatique{plural} actif{plural}.', { count: _activeSchedules, plural: schedulePlural })
+            : fpT('Configurez des rapports automatiques pour vos clients.');
+          return fpT('<strong>{count} rapport{plural} généré{plural}</strong> — {shared} rapport{sharedPlural} partagé{sharedPlural}. Dernier : <strong>{name}</strong> ({date}). {scheduleSummary}', {
+            count: allReports.length,
+            plural,
+            shared: _shared,
+            sharedPlural,
+            name: escHtml(_latest.name),
+            date: escHtml(_latest.date),
+            scheduleSummary,
+          });
         })()
-      : "Créez votre premier rapport PDF pour partager vos résultats SEO avec vos clients ou votre équipe.",
+      : fpT("Créez votre premier rapport PDF pour partager vos résultats SEO avec vos clients ou votre équipe."),
     allReports.length > 0 ? ['Rapport Executive', 'Planifier un envoi', 'Nouveau rapport'] : ['Créer un rapport', 'Voir les templates']
   );
 
@@ -8318,7 +8372,9 @@ function renderReports() {
   // SUB: EXECUTIVE REPORTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'exec') {
-    const _monthNames = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+    const _monthNames = Array.from({ length: 12 }, (_, month) =>
+      new Intl.DateTimeFormat(getLocale(), { month: 'short' }).format(new Date(2026, month, 1))
+    );
     const monthSlots = (() => {
       const now = new Date();
       return [-3,-2,-1,0].map(offset => {
@@ -8402,17 +8458,17 @@ function renderReports() {
         ? aiBlock(_execAvg !== null
             ? fpT("Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.", { score: _execAvg })
             : PREVIEW_MODE
-              ? "Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité."
-              : "Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé.",
+              ? fpT("Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité.")
+              : fpT("Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé."),
             ['Rapport complet PDF', 'Plan actions prioritaires', 'Partager au client'])
-        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Rapports Executive — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Synthèses business IA, recommandations stratégiques et analyse de performance executive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+        : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${fpT('Rapports Executive — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Synthèses business IA, recommandations stratégiques et analyse de performance executive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Score business global', displayStat(_execAvg !== null ? _execAvg + '/100' : null, '72/100'), _execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+14 pts en 4 mois' : 'Aucune donnée', _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard('Score SEO', displayStat(_execAvg !== null ? _execAvg + '/100' : null, '74/100'), _execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 4 mois' : 'Aucune donnée', _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard('Score conversion', displayStat(null, '48/100'), PREVIEW_MODE ? '+10 pts — encore critique' : 'Connectez une source de données', 'neutral')}
-        ${statCard('Score performance', displayStat(_execUp !== null ? _execUp + '/100' : null, '88/100'), _execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : PREVIEW_MODE ? 'Excellent — SLA tenu' : 'Aucun monitor', _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
+        ${statCard(fpT('Score business global'), displayStat(_execAvg !== null ? _execAvg + '/100' : null, '72/100'), fpT(_execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+14 pts en 4 mois' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
+        ${statCard(fpT('Score SEO'), displayStat(_execAvg !== null ? _execAvg + '/100' : null, '74/100'), fpT(_execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 4 mois' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
+        ${statCard(fpT('Score conversion'), displayStat(null, '48/100'), fpT(PREVIEW_MODE ? '+10 pts — encore critique' : 'Connectez une source de données'), 'neutral')}
+        ${statCard(fpT('Score performance'), displayStat(_execUp !== null ? _execUp + '/100' : null, '88/100'), fpT(_execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : PREVIEW_MODE ? 'Excellent — SLA tenu' : 'Aucun monitor'), _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
       </div>
 
       <!-- 4-MONTH PERFORMANCE CHART — measured audit history only -->
@@ -8420,7 +8476,7 @@ function renderReports() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('trending-up').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Evolution globale — 4 mois
+            ${fpT('Evolution globale — 4 mois')}
           </div>
           ${hasMeasuredSeoHistory ? '<span style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--fp-text-faint)"><span style="width:8px;height:3px;background:#2563EB;border-radius:2px;display:inline-block"></span>'+fpT('SEO mesuré')+'</span>' : ''}
         </div>
@@ -8459,12 +8515,12 @@ function renderReports() {
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:10px;border-left:3px solid ${r.color};background:${r.color}07">
               <span style="font-size:20px;flex-shrink:0">${r.icon}</span>
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(r.title)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(r.body)}</div>
+                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(r.title))}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(fpT(r.body))}</div>
               </div>
               <div style="text-align:center;flex-shrink:0">
-                <div style="font-size:13px;font-weight:800;color:${r.color}">${escHtml(r.gain)}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">potentiel</div>
+                <div style="font-size:13px;font-weight:800;color:${r.color}">${escHtml(fpT(r.gain))}</div>
+                <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('potentiel')}</div>
               </div>
             </div>
           `).join('')}
@@ -8485,7 +8541,9 @@ function renderReports() {
       const entries = Object.entries(monthly).slice(-5);
       return entries.length >= 2 ? entries : null;
     })();
-    const mths = _seoHistory ? _seoHistory.map(e => e[0]) : (PREVIEW_MODE ? ['Jan','Fev','Mar','Avr','Mai'] : ['—']);
+    const mths = _seoHistory ? _seoHistory.map(e => e[0]) : (PREVIEW_MODE
+      ? Array.from({ length: 5 }, (_, month) => new Intl.DateTimeFormat(getLocale(), { month: 'short' }).format(new Date(2026, month, 1)))
+      : ['—']);
     const seoM = _seoHistory
       ? _seoHistory.map(e => Math.round(e[1].reduce((s,v)=>s+v,0)/e[1].length))
       : (PREVIEW_MODE ? [58, 62, 66, 69, 74] : [(() => { const _a = STATE.audits||[]; return _a.length > 0 ? Math.round(_a.reduce((s,a)=>s+(a.score||0),0)/_a.length) : 0; })()]);
@@ -8503,18 +8561,18 @@ function renderReports() {
     const maxSeo = Math.max(...seoM);
     return `
       ${aiBlock((STATE.audits && STATE.audits.length > 0)
-        ? "Score SEO moyen de votre portfolio : <strong>" + Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) + "/100</strong>. Consultez les audits individuels pour les priorités d'optimisation par site."
+        ? fpT("Score SEO moyen de votre portfolio : <strong>{score}/100</strong>. Consultez les audits individuels pour les priorités d'optimisation par site.", { score: Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) })
         : PREVIEW_MODE
-          ? "Score SEO global : <strong>74/100 (+12 pts en 5 mois)</strong>. 3 mots-clés ont progressé significativement ce mois. Opportunité détectée : votre mot-clé principal peut atteindre la 1ère position avec 2 actions techniques."
-          : "Créez vos premiers audits SEO pour générer votre rapport de performance.",
+          ? fpT("Score SEO global : <strong>74/100 (+12 pts en 5 mois)</strong>. 3 mots-clés ont progressé significativement ce mois. Opportunité détectée : votre mot-clé principal peut atteindre la 1ère position avec 2 actions techniques.")
+          : fpT("Créez vos premiers audits SEO pour générer votre rapport de performance."),
         ['Générer rapport SEO PDF', 'Plan mots-clés', 'Optimiser les priorités'])}
 
       <div class="fp-stat-row fp-mb-20">
         ${(()=>{ const _seoAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return `
-        ${statCard('Score SEO moyen', displayStat(_seoAvg !== null ? _seoAvg + '/100' : null, '74/100'), _seoAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 5 mois' : 'Aucun audit', _seoAvg !== null ? (_seoAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard('Mots-clés Top 3', displayStat(null, '1'), PREVIEW_MODE ? '+1 vs M-1' : 'Données de classement indisponibles', 'neutral')}
-        ${statCard('Mots-clés Top 10', displayStat(null, '2'), PREVIEW_MODE ? '+1 vs M-1' : 'Données de classement indisponibles', 'neutral')}
-        ${statCard('Opportunités SEO', displayStat(STATE.audits&&STATE.audits.length>0?String(STATE.audits.filter(a=>(a.score||0)<70).length):null, '2'), STATE.audits&&STATE.audits.length>0?'sites à améliorer':'à impact élevé', 'neutral')}
+        ${statCard(fpT('Score SEO moyen'), displayStat(_seoAvg !== null ? _seoAvg + '/100' : null, '74/100'), fpT(_seoAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 5 mois' : 'Aucun audit'), _seoAvg !== null ? (_seoAvg >= 70 ? 'up' : 'down') : 'neutral')}
+        ${statCard(fpT('Mots-clés Top 3'), displayStat(null, '1'), fpT(PREVIEW_MODE ? '+1 vs M-1' : 'Données de classement indisponibles'), 'neutral')}
+        ${statCard(fpT('Mots-clés Top 10'), displayStat(null, '2'), fpT(PREVIEW_MODE ? '+1 vs M-1' : 'Données de classement indisponibles'), 'neutral')}
+        ${statCard(fpT('Opportunités SEO'), displayStat(STATE.audits&&STATE.audits.length>0?String(STATE.audits.filter(a=>(a.score||0)<70).length):null, '2'), fpT(STATE.audits&&STATE.audits.length>0?'sites à améliorer':'à impact élevé'), 'neutral')}
         `; })()}
       </div>
 
@@ -8523,9 +8581,9 @@ function renderReports() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('bar-chart-2').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Evolution du score SEO — 5 mois
+            ${fpT('Evolution du score SEO — 5 mois')}
           </div>
-          <span style="font-size:11px;color:var(--fp-text-faint)">+12 pts progression</span>
+           <span style="font-size:11px;color:var(--fp-text-faint)">${fpT('+12 pts progression')}</span>
         </div>
         <div style="display:flex;gap:8px;align-items:flex-end;height:110px;margin-bottom:10px">
           ${mths.map((m, i) => `
@@ -8542,18 +8600,18 @@ function renderReports() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('search').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          Positions mots-cles — ${CUR_MONTH}
+          ${fpT('Positions mots-clés')} — ${CUR_MONTH}
         </div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
-              <th>Mot-cle</th>
-              <th style="text-align:center">Position</th>
-              <th style="text-align:center">Prev.</th>
-              <th style="text-align:center">Volume</th>
-              <th>Difficulte</th>
+              <th>${fpT('Mot-clé')}</th>
+              <th style="text-align:center">${fpT('Position')}</th>
+              <th style="text-align:center">${fpT('Préc.')}</th>
+              <th style="text-align:center">${fpT('Volume')}</th>
+              <th>${fpT('Difficulté')}</th>
               <th style="text-align:center">${fpT('Tendance')}</th>
-              <th style="text-align:center">Opportunite</th>
+              <th style="text-align:center">${fpT('Opportunité')}</th>
             </tr></thead>
             <tbody>
               ${kwds.map(k => {
@@ -8572,7 +8630,7 @@ function renderReports() {
                     </div>
                   </td>
                   <td style="text-align:center;font-weight:700;color:${tc}">${k.trend > 0 ? '↑+' : k.trend < 0 ? '↓' : '→'}${Math.abs(k.trend)||''}</td>
-                  <td style="text-align:center">${badge(k.opp === 'high' ? 'Haute' : k.opp === 'medium' ? 'Moyenne' : 'Faible', oc)}</td>
+                  <td style="text-align:center">${badge(fpT(k.opp === 'high' ? 'Haute' : k.opp === 'medium' ? 'Moyenne' : 'Faible'), oc)}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -8600,7 +8658,9 @@ function renderReports() {
       date: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}) + ' · ' + new Date().toLocaleTimeString(getLocale(),{hour:'2-digit',minute:'2-digit'}),
       dur: fmtLastCheck(m.lastCheck) || '—',
       impact: m.status === 'down' ? 'Critique' : 'Moyen',
-      cause: m.status === 'down' ? 'Site inaccessible — vérification requise' : `Latence élevée : ${m.latency||'—'}ms`,
+      cause: m.status === 'down'
+        ? fpT('Site inaccessible — vérification requise')
+        : fpT('Latence élevée : {latency}ms', { latency: m.latency || '—' }),
       resolved: false,
     }));
     const _avgUp  = monSLA.length > 0 ? (monSLA.reduce((s,m) => s + m.uptime, 0) / monSLA.length).toFixed(1) : '—';
@@ -8612,18 +8672,18 @@ function renderReports() {
     return `
       ${aiBlock(
         monSLA.length === 0
-          ? "Aucun monitor configuré. Ajoutez vos sites dans la section Monitors pour suivre leur disponibilité et recevoir des alertes en temps réel."
+          ? fpT("Aucun monitor configuré. Ajoutez vos sites dans la section Monitors pour suivre leur disponibilité et recevoir des alertes en temps réel.")
           : _downMon.length === 0
-            ? `${fpT('Stabilité globale')} <strong>excellente</strong> ${fpT('ce mois : uptime moyen')} <strong>${_avgUp}%</strong>${fpT('. Tous les sites respectent leur SLA. Latence moyenne :')} <strong>${_avgLat}ms</strong>.`
+            ? `${fpT('Stabilité globale')} <strong>${fpT('excellente')}</strong> ${fpT('ce mois : uptime moyen')} <strong>${_avgUp}%</strong>${fpT('. Tous les sites respectent leur SLA. Latence moyenne :')} <strong>${_avgLat}ms</strong>.`
             : `<strong>${_downMon.length} ${fpT(_downMon.length > 1 ? 'monitors en alerte' : 'monitor en alerte')}</strong> ${fpT('· Uptime moyen')} <strong>${_avgUp}%</strong>. ${_critDown > 0 ? _critDown + ' ' + fpT('site(s) DOWN — action immédiate requise.') : fpT('Dégradation de performance détectée.')}`,
         [fpT('Rapport SLA complet'), fpT('Configurer alertes'), fpT('Generer rapport client')]
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Uptime moyen', _avgUp + '%', monSLA.length + ' ' + fpT(monSLA.length !== 1 ? 'monitors surveillés' : 'monitor surveillé'), Number(_avgUp) >= 99.5 ? 'up' : Number(_avgUp) >= 98 ? 'neutral' : 'down')}
-        ${statCard('Incidents actifs', String(_downMon.length), _critDown > 0 ? _critDown + ' DOWN' : 'Aucun DOWN', _downMon.length === 0 ? 'up' : 'down')}
-        ${statCard('Sites sous SLA', _slaVal, _slaSub, _underSLA.length === 0 ? 'up' : 'down')}
-        ${statCard('Latence moyenne', _avgLat + 'ms', Number(_avgLat) <= 300 ? 'Performance ok' : 'Latence élevée', Number(_avgLat) <= 300 ? 'up' : 'neutral')}
+        ${statCard(fpT('Uptime moyen'), _avgUp + '%', monSLA.length + ' ' + fpT(monSLA.length !== 1 ? 'monitors surveillés' : 'monitor surveillé'), Number(_avgUp) >= 99.5 ? 'up' : Number(_avgUp) >= 98 ? 'neutral' : 'down')}
+        ${statCard(fpT('Incidents actifs'), String(_downMon.length), _critDown > 0 ? _critDown + ' DOWN' : fpT('Aucun DOWN'), _downMon.length === 0 ? 'up' : 'down')}
+        ${statCard(fpT('Sites sous SLA'), _slaVal, _slaSub, _underSLA.length === 0 ? 'up' : 'down')}
+        ${statCard(fpT('Latence moyenne'), _avgLat + 'ms', fpT(Number(_avgLat) <= 300 ? 'Performance ok' : 'Latence élevée'), Number(_avgLat) <= 300 ? 'up' : 'neutral')}
       </div>
 
       <!-- SLA TABLE -->
@@ -8635,11 +8695,11 @@ function renderReports() {
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
-              <th>Site</th>
+              <th>${fpT('Site')}</th>
               <th style="text-align:center">${fpT('Uptime réel')}</th>
-              <th style="text-align:center">SLA cible</th>
-              <th style="text-align:center">Latence moy.</th>
-              <th style="text-align:center">Incidents</th>
+              <th style="text-align:center">${fpT('SLA cible')}</th>
+              <th style="text-align:center">${fpT('Latence moy.')}</th>
+              <th style="text-align:center">${fpT('Incidents')}</th>
               <th style="text-align:center">${fpT('Statut SLA')}</th>
             </tr></thead>
             <tbody>
@@ -8658,14 +8718,14 @@ function renderReports() {
 
       <!-- INCIDENT TIMELINE -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">⚡ Timeline des incidents — 30 jours</div>
+        <div class="fp-card-title" style="margin-bottom:14px">⚡ ${fpT('Timeline des incidents — 30 jours')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${incidents.map(inc => {
             const ic = inc.impact === 'Critique' ? '#ef4444' : inc.impact === 'Moyen' ? '#f59e0b' : '#2563EB';
             return `<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:10px;background:${ic}08;border-left:3px solid ${ic}">
               <div style="flex:1">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                  ${badge(inc.impact, ic)}
+                  ${badge(fpT(inc.impact), ic)}
                   <span style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(inc.site)}</span>
                 </div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(inc.cause)}</div>
@@ -8673,7 +8733,7 @@ function renderReports() {
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(inc.date)}</div>
                 <div style="font-size:11px;font-weight:700;color:${ic}">${escHtml(inc.dur)}</div>
-                <div style="font-size:10px;color:#22c55e">Resolu</div>
+                <div style="font-size:10px;color:#22c55e">${fpT('Résolu')}</div>
               </div>
             </div>`;
           }).join('')}
@@ -8693,7 +8753,9 @@ function renderReports() {
       { name: 'Montmartre',         vis: 44, prev: 38, kw: 6,  reviews: 4.6, comp: 'Tres fort',trend: +6, dominant: false },
       { name: 'Marais',             vis: 31, prev: 33, kw: 4,  reviews: 3.8, comp: 'Moyen',   trend: -2,  dominant: false },
     ] : []);
-    const gbpStats = (_lseo.gbpStats && _lseo.gbpStats.length > 0) ? _lseo.gbpStats : (PREVIEW_MODE ? [
+    const _gbpStatsRaw = _lseo.gbpStats && _lseo.gbpStats.length > 0 ? _lseo.gbpStats : null;
+    const _gbpStatsArePreview = !_gbpStatsRaw && PREVIEW_MODE;
+    const gbpStats = _gbpStatsRaw || (_gbpStatsArePreview ? [
       { label: 'Appels depuis GBP',   val: 47,  trend: +12, unit: '',   color: '#22c55e' },
       { label: 'Itineraires demandes',val: 134, trend: +28, unit: '',   color: '#2563EB' },
       { label: 'Visites fiche',       val: 2840,trend: +21, unit: '',   color: '#8b5cf6' },
@@ -8703,31 +8765,31 @@ function renderReports() {
     ] : []);
     return `
       ${aiBlock(PREVIEW_MODE
-        ? "Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>${fpT('Avis sans réponse')}</strong> peuvent menacer votre note moyenne."
-        : "Connectez Google Business Profile pour obtenir votre rapport de visibilité locale personnalisé.",
+        ? fpT("Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>{label}</strong> peuvent menacer votre note moyenne.", { label: fpT('Avis sans réponse') })
+        : fpT("Connectez Google Business Profile pour obtenir votre rapport de visibilité locale personnalisé."),
         ['Rapport local complet', 'Plan zones cibles', 'Répondre aux avis'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Zones analysées', String(zones.length), PREVIEW_MODE ? '1 dominée, 3 en progression' : 'données exemple', PREVIEW_MODE ? 'up' : 'neutral')}
-        ${statCard('Visibilité moy.', displayStat(null, '54%'), PREVIEW_MODE ? '+4% vs M-1' : 'Connectez GBP', 'neutral')}
-        ${statCard('Note GBP moy.', displayStat(null, '4.4 ★'), PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP', 'neutral')}
-        ${statCard('Avis sans réponse', displayStat(null, '14'), PREVIEW_MODE ? 'Action requise' : 'Connectez GBP', PREVIEW_MODE ? 'down' : 'neutral')}
+        ${statCard(fpT('Zones analysées'), String(zones.length), fpT(PREVIEW_MODE ? '1 dominée, 3 en progression' : 'données exemple'), PREVIEW_MODE ? 'up' : 'neutral')}
+        ${statCard(fpT('Visibilité moy.'), displayStat(null, '54%'), fpT(PREVIEW_MODE ? '+4% vs M-1' : 'Connectez GBP'), 'neutral')}
+        ${statCard(fpT('Note GBP moy.'), displayStat(null, '4.4 ★'), fpT(PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP'), 'neutral')}
+        ${statCard(fpT('Avis sans réponse'), displayStat(null, '14'), fpT(PREVIEW_MODE ? 'Action requise' : 'Connectez GBP'), PREVIEW_MODE ? 'down' : 'neutral')}
       </div>
 
       <!-- ZONES TABLE -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('map').replace('stroke="currentColor"','stroke="#f59e0b"')}
-          Visibilite locale par zone — ${CUR_MONTH}
+          ${fpT('Visibilité locale par zone')} — ${CUR_MONTH}
         </div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
-              <th>Zone</th>
+              <th>${fpT('Zone')}</th>
               <th style="text-align:center">${fpT('Visibilité')}</th>
-              <th style="text-align:center">Prev.</th>
+              <th style="text-align:center">${fpT('Préc.')}</th>
               <th style="text-align:center">${fpT('Mots-clés')}</th>
-              <th style="text-align:center">Note GBP</th>
+              <th style="text-align:center">${fpT('Note GBP')}</th>
               <th style="text-align:center">${fpT('Compétition')}</th>
               <th style="text-align:center">${fpT('Tendance')}</th>
             </tr></thead>
@@ -8746,7 +8808,7 @@ function renderReports() {
                   <td style="text-align:center;color:var(--fp-text-faint)">${z.prev}%</td>
                   <td style="text-align:center;font-weight:700">${z.kw}</td>
                   <td style="text-align:center;font-weight:700;color:#f59e0b">${z.reviews} ★</td>
-                  <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(z.comp)}</td>
+                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(PREVIEW_MODE && !(_lseo.zones && _lseo.zones.length > 0) ? fpT(z.comp) : z.comp)}</td>
                   <td style="text-align:center;font-weight:700;color:${tc}">${z.trend > 0 ? '↑+' : z.trend < 0 ? '↓' : '→'}${Math.abs(z.trend) || '0'}pts</td>
                 </tr>`;
               }).join('')}
@@ -8758,14 +8820,14 @@ function renderReports() {
       <!-- GBP PERFORMANCE -->
       ${renderGbpPerformanceAddon()}
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📍 Performance Google Business Profile — ${CUR_MONTH}</div>
+        <div class="fp-card-title" style="margin-bottom:14px">📍 ${fpT('Performance Google Business Profile')} — ${CUR_MONTH}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
           ${gbpStats.map(g => {
             const nt = g.trend > 0 ? '+' + g.trend : String(g.trend);
             const nc = g.color === '#ef4444' ? '#ef4444' : '#22c55e';
             return `<div style="padding:14px;border-radius:10px;border:1px solid ${g.color}28;background:${g.color}07;text-align:center">
               <div style="font-size:22px;font-weight:800;color:${g.color};margin-bottom:4px">${g.val}${g.unit}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(g.label)}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(_gbpStatsArePreview ? fpT(g.label) : g.label)}</div>
               <div style="font-size:11px;font-weight:700;color:${nc}">${nt} vs M-1</div>
             </div>`;
           }).join('')}
@@ -8783,22 +8845,22 @@ function renderReports() {
     const leaks = STATE.overview?.leaks || [];
     return `
       ${aiBlock(funnelSteps.length || ctaData.length || leaks.length
-        ? "Rapport fondé sur les données de conversion observées. Aucune perte financière n'est estimée sans revenus attribués aux événements."
-        : "Connectez votre analytics et le suivi comportemental pour obtenir un rapport fondé sur des observations réelles. Les pertes financières resteront non mesurées sans revenus attribués.",
+        ? fpT("Rapport fondé sur les données de conversion observées. Aucune perte financière n'est estimée sans revenus attribués aux événements.")
+        : fpT("Connectez votre analytics et le suivi comportemental pour obtenir un rapport fondé sur des observations réelles. Les pertes financières resteront non mesurées sans revenus attribués."),
         ['Rapport CRO complet', 'Plan conversion mobile', 'Générer rapport client'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Taux de conversion observé', STATE.overview?.conversionRate != null ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : '—', STATE.overview?.conversionRate != null ? 'Données connectées' : 'Connectez analytics', 'neutral')}
-        ${statCard('Clients convertis observés', STATE.overview?.clientsPerMonth != null ? String(STATE.overview.clientsPerMonth) : '—', STATE.overview?.clientsPerMonth != null ? 'Données connectées' : 'Connectez analytics', 'neutral')}
-        ${statCard('Revenu observé', STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + '€' : 'Non mesuré', STATE.overview?.revenue != null ? 'Données connectées' : 'Aucun revenu relié', 'neutral')}
-        ${statCard('Perte financière attribuée', 'Non mesurée', 'Aucun revenu attribué aux événements', 'neutral')}
+        ${statCard(fpT('Taux de conversion observé'), STATE.overview?.conversionRate != null ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : '—', fpT(STATE.overview?.conversionRate != null ? 'Données connectées' : 'Connectez analytics'), 'neutral')}
+        ${statCard(fpT('Clients convertis observés'), STATE.overview?.clientsPerMonth != null ? String(STATE.overview.clientsPerMonth) : '—', fpT(STATE.overview?.clientsPerMonth != null ? 'Données connectées' : 'Connectez analytics'), 'neutral')}
+        ${statCard(fpT('Revenu observé'), STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + '€' : fpT('Non mesuré'), fpT(STATE.overview?.revenue != null ? 'Données connectées' : 'Aucun revenu relié'), 'neutral')}
+        ${statCard(fpT('Perte financière attribuée'), fpT('Non mesurée'), fpT('Aucun revenu attribué aux événements'), 'neutral')}
       </div>
 
       <!-- FUNNEL -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('filter').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          Entonnoir de conversion — ${CUR_MONTH}
+          ${fpT('Entonnoir de conversion')} — ${CUR_MONTH}
         </div>
         ${(funnelSteps||[]).map((s, idx) => `
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
@@ -8819,13 +8881,13 @@ function renderReports() {
       <!-- CTA + REVENUE LEAKS -->
       <div class="fp-grid-2">
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🎯 Performance CTA</div>
+          <div class="fp-card-title" style="margin-bottom:14px">🎯 ${fpT('Performance CTA')}</div>
           <table class="fp-data-table">
             <thead><tr>
               <th>CTA</th>
               <th style="text-align:center">CTR</th>
-              <th style="text-align:center">Mobile</th>
-              <th style="text-align:center">Impact</th>
+              <th style="text-align:center">${fpT('Mobile')}</th>
+              <th style="text-align:center">${fpT('Impact')}</th>
             </tr></thead>
             <tbody>
               ${ctaData.map(c => {
@@ -8834,21 +8896,21 @@ function renderReports() {
                   <td style="font-size:11px;font-weight:600">${escHtml(c.cta)}</td>
                   <td style="text-align:center;font-weight:700;color:${c.ctr>3?'#22c55e':c.ctr>1.5?'#f59e0b':'#ef4444'}">${c.ctr}%</td>
                   <td style="text-align:center;font-weight:700;color:${c.mob>3?'#22c55e':c.mob>1?'#f59e0b':'#ef4444'}">${c.mob}%</td>
-                  <td style="text-align:center">${badge(c.impact, ic)}</td>
+                  <td style="text-align:center">${badge(fpT(c.impact), ic)}</td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
         </div>
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">💸 Revenue Leaks detectees</div>
+          <div class="fp-card-title" style="margin-bottom:14px">💸 ${fpT('Revenue leaks détectées')}</div>
           ${leaks.map(l => `
             <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="flex:1;font-size:11px;color:var(--fp-text-muted)">${escHtml(l.desc)}</div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:11px;color:var(--fp-text-faint)">Revenu non mesuré</div>
+                <div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Revenu non mesuré')}</div>
               </div>
-              ${badge(l.urgent ? 'Urgent' : 'Moyen', l.urgent ? '#ef4444' : '#f59e0b')}
+              ${badge(fpT(l.urgent ? 'Urgent' : 'Moyen'), l.urgent ? '#ef4444' : '#f59e0b')}
             </div>
           `).join('')}
         </div>
@@ -8863,7 +8925,7 @@ function renderReports() {
     // Reports client list from STATE.clients, fallback to PREVIEW_MODE only
     const _rClientsRaw = STATE.clients && Array.isArray(STATE.clients) && STATE.clients.length > 0 ? STATE.clients : null;
     const clients = _rClientsRaw
-      ? _rClientsRaw.map(c=>({ name:c.name||c.companyName||'Client', reports:c.reportsCount||0, lastSent:c.lastReport?new Date(c.lastReport).toLocaleDateString(getLocale()).slice(0,5):'—', nextSend:c.nextReport?new Date(c.nextReport).toLocaleDateString(getLocale()).slice(0,5):'Manuel', score:c.seoScore||c.score||null, trend:c.trend||0, logo:'🏢', active:c.active!==false }))
+      ? _rClientsRaw.map(c=>({ name:c.name||c.companyName||'Client', reports:c.reportsCount||0, lastSent:c.lastReport?new Date(c.lastReport).toLocaleDateString(getLocale()).slice(0,5):'—', nextSend:c.nextReport?new Date(c.nextReport).toLocaleDateString(getLocale()).slice(0,5):fpT('Manuel'), score:c.seoScore||c.score||null, trend:c.trend||0, logo:'🏢', active:c.active!==false }))
       : (PREVIEW_MODE ? [
           { name: 'Boulangerie Martin',   reports: 3, lastSent: '05/05', nextSend: '01/06', score: 74, trend: +5, logo: '🥐', active: true  },
           { name: 'Restaurant Le Soleil', reports: 2, lastSent: '01/05', nextSend: '01/06', score: 61, trend: +2, logo: '🍽️', active: true  },
@@ -8871,7 +8933,7 @@ function renderReports() {
           { name: 'Fleuriste Madeleine',  reports: 1, lastSent: '15/04', nextSend: 'Manuel', score: 48, trend: -3, logo: '🌹', active: false },
         ] : []);
     const _wl = STATE.settings?.wlBranding || STATE.whiteLabel || STATE.branding || null;
-    const _orgName = STATE.me?.orgName || STATE.me?.name || 'Mon Agence';
+    const _orgName = STATE.me?.orgName || STATE.me?.name || fpT('Mon Agence');
     const _orgUrl  = STATE.me?.website || STATE.me?.url  || 'https://mon-agence.fr';
 // Une couleur de marque vient des reglages du workspace : elle est ecrite par
 // l'utilisateur. Injectee telle quelle dans un attribut `style="…"` delimite par
@@ -8889,56 +8951,69 @@ function _fpSafeColor(v) {
       { label: 'Couleur secondaire',  type: 'color',  val: _wl.secondaryColor||'#22c55e',                                  locked: false },
       { label: 'Nom agence',          type: 'text',   val: _wl.agencyName||_orgName,                                       locked: false },
       { label: 'Site agence',         type: 'text',   val: _wl.agencyUrl||_orgUrl,                                         locked: false },
-      { label: 'Pied de page custom', type: 'text',   val: _wl.footerText||'Rapport préparé par '+_orgName,               locked: false },
-      { label: 'Signature email',     type: 'text',   val: _wl.emailSignature||'Envoyé par '+_orgName,                    locked: false },
+      { label: 'Pied de page custom', type: 'text',   val: _wl.footerText||fpT('Rapport préparé par {name}', { name: _orgName }), locked: false },
+      { label: 'Signature email',     type: 'text',   val: _wl.emailSignature||fpT('Envoyé par {name}', { name: _orgName }), locked: false },
       { label: 'Domaine portail',     type: 'text',   val: _wl.portalDomain||'—',                                          locked: false },
-      { label: 'Typographie',         type: 'text',   val: _wl.font||'Inter (défaut)',                                     locked: false },
-      { label: 'Export White-Label',  type: 'text',   val: _wl.exportType||'PDF co-marqué client',                        locked: false },
+      { label: 'Typographie',         type: 'text',   val: _wl.font||fpT('Inter (défaut)'),                               locked: false },
+      { label: 'Export White-Label',  type: 'text',   val: _wl.exportType||fpT('PDF co-marqué client'),                   locked: false },
     ] : (PREVIEW_MODE ? [
       { label: 'Logo agence',         type: 'upload', val: 'logo-agence.png',                       locked: false },
       { label: 'Couleur principale',  type: 'color',  val: '#2563EB',                               locked: false },
       { label: 'Couleur secondaire',  type: 'color',  val: '#22c55e',                               locked: false },
       { label: 'Nom agence',          type: 'text',   val: 'FlowPoint Agency',                      locked: false },
       { label: 'Site agence',         type: 'text',   val: 'https://agence.fr',                     locked: false },
-      { label: 'Pied de page custom', type: 'text',   val: 'Rapport prepare par FlowPoint Agency',  locked: false },
-      { label: 'Signature email',     type: 'text',   val: 'Envoyé par FlowPoint Agency',           locked: false },
+      { label: 'Pied de page custom', type: 'text',   val: fpT('Rapport préparé par {name}', { name: 'FlowPoint Agency' }), locked: false },
+      { label: 'Signature email',     type: 'text',   val: fpT('Envoyé par {name}', { name: 'FlowPoint Agency' }),          locked: false },
       { label: 'Domaine portail',     type: 'text',   val: 'rapports.agence.fr',                    locked: false },
-      { label: 'Typographie',         type: 'text',   val: 'Inter (défaut)',                        locked: false },
-      { label: 'Export White-Label',  type: 'text',   val: 'PDF co-marqué client',                  locked: false },
+      { label: 'Typographie',         type: 'text',   val: fpT('Inter (défaut)'),                  locked: false },
+      { label: 'Export White-Label',  type: 'text',   val: fpT('PDF co-marqué client'),             locked: false },
     ] : [
       { label: 'Couleur principale',  type: 'color',  val: '#2563EB',                               locked: false },
       { label: 'Couleur secondaire',  type: 'color',  val: '#22c55e',                               locked: false },
       { label: 'Nom agence',          type: 'text',   val: _orgName,                               locked: false },
       { label: 'Site agence',         type: 'text',   val: _orgUrl,                                locked: false },
-      { label: 'Pied de page custom', type: 'text',   val: 'Rapport préparé par '+_orgName,        locked: false },
-      { label: 'Signature email',     type: 'text',   val: 'Envoyé par '+_orgName,                 locked: false },
-      { label: 'Typographie',         type: 'text',   val: 'Inter (défaut)',                        locked: false },
+      { label: 'Pied de page custom', type: 'text',   val: fpT('Rapport préparé par {name}', { name: _orgName }), locked: false },
+      { label: 'Signature email',     type: 'text',   val: fpT('Envoyé par {name}', { name: _orgName }),          locked: false },
+      { label: 'Typographie',         type: 'text',   val: fpT('Inter (défaut)'),                              locked: false },
     ]);
     const _clientsErr = _sectionErrorBanner('clients');
     return `
       ${_clientsErr}
       ${isUltra
-        ? aiBlock((()=>{const _ac=clients.filter(c=>c.active);if(!_ac.length)return 'Aucun client configuré. Ajoutez vos premiers clients pour activer le reporting automatique.';const _top=_ac.sort((a,b)=>(b.reports||0)-(a.reports||0))[0];const _risk=_ac.find(c=>!c.active||c.score<50);return _ac.length+' client(s) configuré(s). <strong>'+_ac.filter(c=>c.active).length+' rapports actifs</strong> avec envoi automatique.'+(_top?' '+escHtml(_top.name)+' est le plus engagé ('+(_top.reports||0)+' rapport(s)).':'') +(_risk?' Attention : '+escHtml(_risk.name)+' — risque de désengagement.':'');})(),
+        ? aiBlock((()=>{
+            const _ac = clients.filter(c => c.active);
+            if (!_ac.length) return fpT('Aucun client configuré. Ajoutez vos premiers clients pour activer le reporting automatique.');
+            const _top = [..._ac].sort((a,b) => (b.reports||0) - (a.reports||0))[0];
+            const _risk = _ac.find(c => !c.active || c.score < 50);
+            const plural = _ac.length === 1 ? '' : 's';
+            const activeCount = _ac.filter(c => c.active).length;
+            const activePlural = activeCount === 1 ? '' : 's';
+            return fpT('{count} client{plural} configuré{plural}. <strong>{active} rapport{activePlural} actif{activePlural}</strong> avec envoi automatique.', {
+              count: _ac.length, plural, active: activeCount, activePlural,
+            })
+              + (_top ? fpT(' {name} est le plus engagé ({count} rapport(s)).', { name: escHtml(_top.name), count: _top.reports || 0 }) : '')
+              + (_risk ? fpT(' Attention : {name} — risque de désengagement.', { name: escHtml(_risk.name) }) : '');
+          })(),
             ['Générer rapport groupe', 'Config white-label', 'Ajouter un client'])
         : `<div style="background:linear-gradient(135deg,rgba(34,197,94,0.06),rgba(37,99,235,0.04));border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🎨</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT('Configuration White-Label — Inclus dans votre plan')}</div><div style="font-size:12px;color:var(--fp-text-muted)">Logo, couleurs, nom agence, domaine portail — tout est gratuit. L'export PDF co-marqué est disponible en supplément Ultra.</div></div>
-            ${badge('Inclus', '#22c55e')}
+            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT('Configuration White-Label — Inclus dans votre plan')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Logo, couleurs, nom agence, domaine portail — tout est gratuit. L'export PDF co-marqué est disponible en supplément Ultra.")}</div></div>
+            ${badge(fpT('Inclus'), '#22c55e')}
           </div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Clients actifs', String(clients.filter(c => c.active).length), 'avec rapports planifies', 'up')}
-        ${statCard('Rapports envoyes', String(clients.reduce((s,c)=>s+c.reports,0)), 'ce mois', 'up')}
-        ${statCard('Prochain envoi', displayStat(null, '01/06'), PREVIEW_MODE ? '3 clients' : 'Planifiez un envoi', 'neutral')}
-        ${statCard('White-label', 'Inclus', 'Branding custom actif', 'up')}
+        ${statCard(fpT('Clients actifs'), String(clients.filter(c => c.active).length), fpT('avec rapports planifiés'), 'up')}
+        ${statCard(fpT('Rapports envoyés'), String(clients.reduce((s,c)=>s+c.reports,0)), fpT('ce mois'), 'up')}
+        ${statCard(fpT('Prochain envoi'), displayStat(null, '01/06'), fpT(PREVIEW_MODE ? '3 clients' : 'Planifiez un envoi'), 'neutral')}
+        ${statCard(fpT('White-label'), fpT('Inclus'), fpT('Branding custom actif'), 'up')}
       </div>
 
       <!-- CLIENT LIST -->
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">👥 Gestion des clients</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenAddClientPanel&&window._fpOpenAddClientPanel()">+ Ajouter</button>
+          <div class="fp-card-title" style="margin-bottom:0">👥 ${fpT('Gestion des clients')}</div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenAddClientPanel&&window._fpOpenAddClientPanel()">+ ${fpT('Ajouter')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${clients.length === 0
@@ -8953,7 +9028,7 @@ function _fpSafeColor(v) {
               <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.name)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">Dernier envoi : ${escHtml(c.lastSent)} · Prochain : ${escHtml(c.nextSend)}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${fpT('Dernier envoi :')} ${escHtml(c.lastSent)} · ${fpT('Prochain :')} ${escHtml(c.nextSend)}</div>
                 </div>
                 <div style="text-align:center;flex-shrink:0">
                   <div style="font-size:16px;font-weight:800;color:${sc}">${c.score}</div>
@@ -8961,10 +9036,10 @@ function _fpSafeColor(v) {
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                ${badge(c.active ? 'Actif' : 'Pause', c.active ? '#22c55e' : '#64748b')}
-                <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} rapports</span>
+                ${badge(fpT(c.active ? 'Actif' : 'Pause'), c.active ? '#22c55e' : '#64748b')}
+                <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} ${fpT('rapports')}</span>
                 <div style="display:flex;gap:6px;margin-left:auto">
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Generer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel()">${fpT('Générer')}</button>
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-rclient="${escHtml(c.name)}" onclick="window._fpSendClientReport('', '', this.dataset.rclient)">${fpT('Envoyer')}</button>
                 </div>
               </div>
@@ -8976,14 +9051,14 @@ function _fpSafeColor(v) {
       <!-- WHITE-LABEL CONFIG -->
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">🎨 Configuration White-Label</div>
-          ${badge('Actif', '#22c55e')}
+          <div class="fp-card-title" style="margin-bottom:0">🎨 ${fpT('Configuration White-Label')}</div>
+          ${badge(fpT('Actif'), '#22c55e')}
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
           ${brandFields.map(f => `
             <div style="padding:12px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid ${f.locked ? 'var(--fp-border)' : 'rgba(139,92,246,0.2)'}">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase">${escHtml(f.label)}</div>
+                <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase">${escHtml(fpT(f.label))}</div>
                 ${f.locked ? '<span style="font-size:10px;color:#8b5cf6">🔒 Ultra</span>' : ''}
               </div>
               ${f.type === 'color'
@@ -9003,8 +9078,19 @@ function _fpSafeColor(v) {
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai') {
     const _aiInsRaw = window.FP_DATA?.dataExplorer?.insights || null;
+    const aiInsightsArePreview = !_aiInsRaw && PREVIEW_MODE;
     const aiInsights = _aiInsRaw
-      ? _aiInsRaw.map(i=>({ pri:i.priority||i.pri||'high', icon:i.icon||'💡', cat:i.category||i.cat||'IA', title:i.title||'Insight IA', body:i.body||i.description||'', action:i.action||'Analyser' }))
+      ? _aiInsRaw.map(i=>({
+          pri:i.priority||i.pri||'high',
+          icon:i.icon||'💡',
+          cat:i.category||i.cat||'IA',
+          catDefault:!i.category&&!i.cat,
+          title:i.title||'Insight IA',
+          titleDefault:!i.title,
+          body:i.body||i.description||'',
+          action:i.action||'Analyser',
+          actionDefault:!i.action,
+        }))
       : (PREVIEW_MODE ? [
           { pri: 'high', icon: '⚠️', cat: 'Conversion', title: 'Exemple — friction de conversion', body: 'Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.', action: 'Corriger le formulaire' },
           { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
@@ -9019,37 +9105,58 @@ function _fpSafeColor(v) {
       { metric: 'Local SEO M+3',  val: '+31%', conf: 82, color: '#f59e0b', note: 'Si renforcement GBP confirme en juin'      },
       { metric: 'Avis Google M+3', val: '+18',  conf: 74, color: '#06b6d4', note: 'Avec réponse systématique aux avis'         },
     ].filter(() => PREVIEW_MODE);
+    const insightDisplayText = (ins, field) => {
+      const defaults = { cat: ins.catDefault, title: ins.titleDefault, action: ins.actionDefault };
+      return aiInsightsArePreview || defaults[field] ? fpT(ins[field]) : ins[field];
+    };
     const priC = { critical: '#ef4444', high: '#f59e0b', medium: '#2563EB', positive: '#22c55e' };
-    const priL = { critical: 'Critique', high: 'Priorite haute', medium: 'Moyen', positive: 'Positif' };
+    const priL = { critical: 'Critique', high: 'Priorité haute', medium: 'Moyen', positive: 'Positif' };
     return `
       ${isUltra
         ? aiBlock((()=>{
             const critCount = aiInsights.filter(i => i.pri === 'critical').length;
             const avgScore = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-            if (PREVIEW_MODE) return "Rapport IA genere automatiquement — <strong>" + CUR_MONTH + "</strong>. 2 alertes critiques actives. Potentiel de revenue non capture : <strong>-3 800€/mois</strong>. Score de sante business : 72/100 (+14 pts en 4 mois). Trajectoire : <strong>${fpT('positive avec 2 risques a traiter en urgence')}</strong>.";
-            return "Rapport IA — <strong>" + CUR_MONTH + "</strong>. " + (critCount > 0 ? "<strong>" + critCount + " alerte" + (critCount>1?"s":"") + " critique" + (critCount>1?"s":"") + " active" + (critCount>1?"s":"") + "</strong>." : "Aucune alerte critique active.") + (avgScore !== null ? " Score de santé business : <strong>" + avgScore + "/100</strong>." : "") + " Connectez vos sources pour des prévisions de revenus personnalisées.";
+            if (PREVIEW_MODE) return fpT("Rapport IA généré automatiquement — <strong>{month}</strong>. {count} alertes critiques actives. Potentiel de revenus non capté : <strong>{amount}€/mois</strong>. Score de santé business : {score}/100 (+{delta} pts en 4 mois). Trajectoire : <strong>{trajectory}</strong>.", {
+              month: CUR_MONTH,
+              count: 2,
+              amount: '-3 800',
+              score: 72,
+              delta: 14,
+              trajectory: fpT('positive avec 2 risques à traiter en urgence'),
+            });
+            const alerts = critCount > 0
+              ? fpT('<strong>{count} alerte{plural} critique{plural} active{plural}</strong>.', { count: critCount, plural: critCount > 1 ? 's' : '' })
+              : fpT('Aucune alerte critique active.');
+            const score = avgScore !== null
+              ? fpT(' Score de santé business : <strong>{score}/100</strong>.', { score: avgScore })
+              : '';
+            return fpT('Rapport IA — <strong>{month}</strong>. {alerts}{score} Connectez vos sources pour des prévisions de revenus personnalisées.', {
+              month: CUR_MONTH,
+              alerts,
+              score,
+            });
           })(),
             ['Rapport narratif complet', 'Exporter en PDF', 'Programmer envoi auto'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🤖</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">IA Reporting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs IA, previsions avancees, detection d\'anomalies et recommandations strategiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
+            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT('IA Reporting Lab — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Rapports narratifs IA, prévisions avancées, détection d'anomalies et recommandations stratégiques.")}</div></div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button>
           </div>`
       }
 
       ${!isUltra ? '' : `
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Insights generes', String(aiInsights.length), 'cette semaine', 'neutral')}
-        ${statCard('Alertes critiques', String(aiInsights.filter(i => i.pri === 'critical').length), 'action immediate', 'down')}
-        ${statCard('Score business', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'72/100'); })(), PREVIEW_MODE ? '+14 pts — 4 mois' : 'score moyen portfolio', 'neutral')}
-        ${statCard('Prévisions actives', String(forecast.length), 'horizon M+3', 'neutral')}
+        ${statCard(fpT('Insights générés'), String(aiInsights.length), fpT('cette semaine'), 'neutral')}
+        ${statCard(fpT('Alertes critiques'), String(aiInsights.filter(i => i.pri === 'critical').length), fpT('action immédiate'), 'down')}
+        ${statCard(fpT('Score business'), (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'72/100'); })(), fpT(PREVIEW_MODE ? '+14 pts — 4 mois' : 'score moyen portfolio'), 'neutral')}
+        ${statCard(fpT('Prévisions actives'), String(forecast.length), fpT('horizon M+3'), 'neutral')}
       </div>
 
       <!-- AI INSIGHTS -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('cpu').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          Insights IA — Rapport mai 2026
+          ${fpT('Insights IA — Rapport mai 2026')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${aiInsights.map(ins => `
@@ -9057,13 +9164,13 @@ function _fpSafeColor(v) {
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                   <span style="font-size:18px;flex-shrink:0">${ins.icon}</span>
-                  ${badge(priL[ins.pri], priC[ins.pri])}
-                  ${badge(ins.cat, '#475569')}
+                   ${badge(fpT(priL[ins.pri]), priC[ins.pri])}
+                   ${badge(insightDisplayText(ins, 'cat'), '#475569')}
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(ins.action)}</button>
+                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(insightDisplayText(ins, 'action'))}</button>
               </div>
-              <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ins.title)}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(ins.body)}</div>
+              <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(insightDisplayText(ins, 'title'))}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(aiInsightsArePreview ? fpT(ins.body) : ins.body)}</div>
             </div>
           `).join('')}
         </div>
@@ -9071,14 +9178,14 @@ function _fpSafeColor(v) {
 
       <!-- FORECASTS -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🔮 Previsions IA — Horizon M+3 (Aout 2026)</div>
+        <div class="fp-card-title" style="margin-bottom:14px">🔮 ${fpT('Prévisions IA — Horizon M+3 (Août 2026)')}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
           ${forecast.map(f => `
             <div style="padding:16px;border-radius:12px;border:1px solid ${f.color}28;background:${f.color}08;text-align:center">
               <div style="font-size:26px;font-weight:900;color:${f.color};margin-bottom:4px">${f.val}</div>
-              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(f.metric)}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(f.note)}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">Confiance IA : <strong style="color:${f.color}">${f.conf}%</strong></div>
+              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(f.metric))}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(fpT(f.note))}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Confiance IA :')} <strong style="color:${f.color}">${f.conf}%</strong></div>
               <div class="fp-progress-track" style="height:4px;margin-top:6px"><div class="fp-progress-fill" style="width:${f.conf}%;background:${f.color}"></div></div>
             </div>
           `).join('')}
@@ -9100,8 +9207,8 @@ function _fpSafeColor(v) {
         <div class="fp-section-sub">${allReports.length > 0 ? allReports.length + ' ' + fpT('rapport(s) généré(s)') + (scheduled.filter(s=>s.active).length > 0 ? ' · ' + fpT('Prochain envoi auto') + ' : ' + (scheduled.find(s=>s.active)?.next || '—') : '') : fpT('Créez et partagez vos rapports PDF en un clic')}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Generer rapport', 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
-        ${btn('Exporter tout',   'fp-btn fp-btn-ghost fp-btn-sm',   'download',  "onclick=\"exportReportsCsv()\"" )}
+        ${btn(fpT('Générer rapport'), 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel()\"" )}
+        ${btn(fpT('Exporter tout'),   'fp-btn fp-btn-ghost fp-btn-sm',   'download',  "onclick=\"exportReportsCsv()\"" )}
       </div>
     </div>
 
@@ -9365,35 +9472,35 @@ function renderLocalSEO() {
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
-          Domination Locale
+          ${fpT('Domination Locale')}
         </h1>
         <div class="fp-section-sub">${fpT('Données GBP et résultats locaux enregistrés — sans estimation de classement')}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Rapport local', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
-        ${btn('Mission locale', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', "onclick=\"apiAction('POST','/api/missions',{title:'Mission SEO local',source:'local-seo',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success', fpT('Mission locale créée !'));navigate('missions');}else showToast('error', fpT('Erreur'))}).catch(()=>showToast('error', fpT('Erreur')))\"" )}
+        ${btn(fpT('Rapport local'), 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"openFloatPanel(fpT('Nouveau rapport'),renderNewReportPanel());setupNewReportPanel()\"" )}
+        ${btn(fpT('Mission locale'), 'fp-btn fp-btn-primary fp-btn-sm', 'plus', "onclick=\"apiAction('POST','/api/missions',{title:'Mission SEO local',source:'local-seo',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success', fpT('Mission locale créée !'));navigate('missions');}else showToast('error', fpT('Erreur'))}).catch(()=>showToast('error', fpT('Erreur')))\"" )}
       </div>
     </div>
 
     <!-- AI STRATEGIST -->
     ${isUltra
-      ? aiBlock('<strong>' + fpT('Score de domination :') + ' '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?'Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.':'Connectez Google Business Profile pour calculer votre score de domination locale.'), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
+      ? aiBlock('<strong>' + fpT('Score de domination :') + ' '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?fpT('Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.'):fpT('Connectez Google Business Profile pour calculer votre score de domination locale.')), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'].map(key => fpT(key)))
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px;flex-shrink:0">🤖</div>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('Stratège IA Local — Plan Ultra requis')}</div>
-            <div style="font-size:12px;color:var(--fp-text-muted)">Accédez aux recommandations IA personnalisées, aux prévisions de croissance et à la détection automatique des opportunités locales non exploitées.</div>
+            <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Accédez aux recommandations IA personnalisées, aux prévisions de croissance et à la détection automatique des opportunités locales non exploitées.')}</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button>
         </div>`
     }
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Cartes suivies', displayStat(PREVIEW_MODE ? '8' : trackedMaps == null ? null : String(trackedMaps)), PREVIEW_MODE ? 'données de démonstration' : mapsDataAvailable ? `${completedScans} analyse(s) terminée(s)` : 'Données indisponibles', 'neutral')}
-      ${statCard('Classements locaux', '—', 'Aucune grille de positions vérifiée', 'neutral')}
-      ${statCard('Couverture géographique', '—', 'Aucune mesure réelle disponible', 'neutral')}
-      ${statCard('Concurrents enregistrés', displayStat(PREVIEW_MODE ? '3' : competitorsStored == null ? null : String(competitorsStored)), PREVIEW_MODE ? 'données de démonstration' : 'résultats déjà stockés', 'neutral')}
+      ${statCard(fpT('Cartes suivies'), displayStat(PREVIEW_MODE ? '8' : trackedMaps == null ? null : String(trackedMaps)), PREVIEW_MODE ? fpT('données de démonstration') : mapsDataAvailable ? fpT('{count} analyse(s) terminée(s)', { count: completedScans }) : fpT('Données indisponibles'), 'neutral')}
+      ${statCard(fpT('Classements locaux'), '—', fpT('Aucune grille de positions vérifiée'), 'neutral')}
+      ${statCard(fpT('Couverture géographique'), '—', fpT('Aucune mesure réelle disponible'), 'neutral')}
+      ${statCard(fpT('Concurrents enregistrés'), displayStat(PREVIEW_MODE ? '3' : competitorsStored == null ? null : String(competitorsStored)), PREVIEW_MODE ? fpT('données de démonstration') : fpT('résultats déjà stockés'), 'neutral')}
     </div>
 
     ${window._fpRenderReviewThemesPanel ? window._fpRenderReviewThemesPanel() : ''}
@@ -9406,14 +9513,14 @@ function renderLocalSEO() {
       <div style="position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(10,14,27,0.55);backdrop-filter:blur(3px);border-radius:inherit">
         <div style="background:var(--fp-card-bg,#0d1525);border:1px solid var(--fp-border);border-radius:12px;padding:10px 20px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
           <span style="font-size:16px">🚧</span>
-          <span style="font-size:13px;font-weight:700;color:var(--fp-text)">Bientôt disponible</span>
+          <span style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('Bientôt disponible')}</span>
         </div>
       </div>
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--fp-border);background:linear-gradient(90deg,rgba(100,116,139,0.05),transparent)">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:16px">🔍</span>
           <span class="fp-card-title" style="margin-bottom:0">${fpT('Intelligence de visibilité locale')}</span>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(100,116,139,0.12);border:1px solid rgba(100,116,139,0.3);color:#64748b">Bientôt disponible</span>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(100,116,139,0.12);border:1px solid rgba(100,116,139,0.3);color:#64748b">${fpT('Bientôt disponible')}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||STATE.me?.dfsQuota?.limit||1000} req aujourd\'hui</span>` : ''}
@@ -9535,7 +9642,7 @@ function renderLocalSEO() {
             <span style="font-size:13px">${f.icon}</span>
             <div>
               <div style="font-size:11px;font-weight:600;color:#e2e8f0">${f.label}</div>
-              <div style="font-size:10px;color:#64748b">${f.desc}</div>
+              <div style="font-size:10px;color:#64748b">${fpT(f.desc)}</div>
             </div>
           </div>`).join('')}
           ${!STATE.dfsStatus?.configured ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">${fpT('Les données de classement sont temporairement indisponibles.')}</div>` : ''}
@@ -9553,13 +9660,13 @@ function renderLocalSEO() {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0">
           <div style="display:flex;align-items:center;gap:5px">
             <div style="width:6px;height:6px;border-radius:50%;background:${PREVIEW_MODE ? '#22c55e' : '#94a3b8'}"></div>
-            <span style="font-size:10px;color:${PREVIEW_MODE ? '#22c55e' : '#94a3b8'};font-weight:600">${PREVIEW_MODE ? 'Démonstration' : 'Aucune grille mesurée'}</span>
+            <span style="font-size:10px;color:${PREVIEW_MODE ? '#22c55e' : '#94a3b8'};font-weight:600">${PREVIEW_MODE ? fpT('Démonstration') : fpT('Aucune grille mesurée')}</span>
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">${fpT('Voir zones →')}</button>
         </div>
       </div>
       <div id="fp-gmap" style="width:100%;height:680px;background:linear-gradient(135deg,var(--fp-bg-page, #050810),var(--fp-bg-card, #0a1628));position:relative;overflow:hidden">
-        ${PREVIEW_MODE ? '' : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune carte de positions réelles n’est disponible. Les résultats géographiques ne seront affichés qu’après l’enregistrement de mesures vérifiées.</div>`}
+        ${PREVIEW_MODE ? '' : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">${fpT('Aucune carte de positions réelles n’est disponible. Les résultats géographiques ne seront affichés qu’après l’enregistrement de mesures vérifiées.')}</div>`}
         <svg width="100%" height="100%" viewBox="0 0 800 680" style="position:absolute;inset:0;display:${PREVIEW_MODE ? 'block' : 'none'}">
           <defs>
             <pattern id="mgrid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.8"/></pattern>
@@ -9625,12 +9732,12 @@ function renderLocalSEO() {
           </div>
         </div>` : ''}
         <div style="position:absolute;bottom:14px;right:14px;background:${STATE.theme==='light'?'rgba(255,255,255,0.95)':'rgba(0,0,0,0.72)'};border:1px solid ${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.1)'};border-radius:10px;padding:10px 14px;backdrop-filter:blur(10px)">
-          <div style="font-size:10px;color:${STATE.theme==='light'?'#475569':'rgba(255,255,255,0.4)'};margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em">L\u00e9gende</div>
+          <div style="font-size:10px;color:${STATE.theme==='light'?'#475569':'rgba(255,255,255,0.4)'};margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em">${fpT('Légende')}</div>
           <div style="display:flex;flex-direction:column;gap:5px">
-            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#2563EB;display:inline-block"></span>Vous</div>
-            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Menace \u00e9lev\u00e9e</div>
-            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Menace mod\u00e9r\u00e9e</div>
-            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>Faible</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#2563EB;display:inline-block"></span>${fpT('Vous')}</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>${fpT('Menace élevée')}</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>${fpT('Menace modérée')}</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>${fpT('Faible')}</div>
           </div>
         </div>
       </div>
@@ -9638,8 +9745,8 @@ function renderLocalSEO() {
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#2563EB;border:2px solid white"></div>${fpT('Votre établissement')}</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#ef4444;border:2px solid white"></div>${fpT('Concurrents — menace élevée')}</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;border:2px solid white"></div>${fpT('Concurrents — menace modérée')}</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid white"></div>Concurrents — faible</div>
-        <div style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">${(STATE.competitors&&STATE.competitors.length>0?STATE.competitors.length:PREVIEW_MODE?5:0)} concurrents · Rayon 1,2km · ${STATE.me&&STATE.me.location&&STATE.me.location.city?escHtml(STATE.me.location.city):'Votre ville'}</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid white"></div>${fpT('Concurrents — faible')}</div>
+        <div style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">${(STATE.competitors&&STATE.competitors.length>0?STATE.competitors.length:PREVIEW_MODE?5:0)} ${fpT('concurrents')} · ${fpT('Rayon')} 1,2km · ${STATE.me&&STATE.me.location&&STATE.me.location.city?escHtml(STATE.me.location.city):fpT('Votre ville')}</div>
       </div>
     </div>
 
@@ -9721,7 +9828,7 @@ function renderLocalSEO() {
           </svg>
         </div>
         <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${fpT('Territoire maîtrisé')}</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${domScore != null ? `Vous dominez <strong style="color:var(--fp-accent)">${domScore}%</strong> des recherches locales cibles` : 'Connectez GBP pour mesurer votre domination locale'}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${domScore != null ? fpT('Vous dominez {score}% des recherches locales cibles', { score: `<strong style="color:var(--fp-accent)">${domScore}</strong>` }) : fpT('Connectez GBP pour mesurer votre domination locale')}</div>
         <div style="border-top:1px solid var(--fp-border);padding-top:14px;display:flex;flex-direction:column;gap:8px">
           ${(function(){
             // Fix 3: use real data from STATE.localSeo; null → show '—' not fabricated values
@@ -15233,7 +15340,7 @@ function renderAuditDetailPanel(audit) {
       insight:'Le maillage interne distribue le PageRank entre vos pages. Des pages orphelines ne sont pas bien crawlées et perdent leur potentiel de ranking.',
       fix:'Créer au moins 3 liens internes contextuels vers chaque page stratégique depuis les pages à fort trafic.',
       impact:'Autorité Moyen', time:'1h', roi:'+5–10 pts', color:'#94a3b8' },
-    ...(audit.issues > 3 ? [{ sev:'Info', label:`${audit.issues - 3} autres problèmes détectés`,
+    ...(audit.issues > 3 ? [{ sev:'Info', count:audit.issues - 3, label:`${audit.issues - 3} autres problèmes détectés`,
       insight:'Ces problèmes ont un impact individuel limité mais s\'accumulent pour pénaliser le score global sur la durée.',
       fix:'Consulter le rapport complet pour la liste exhaustive et les corrections suggérées par l\'IA.',
       impact:'SEO Faible', time:'Variable', roi:'+2–5 pts', color:'#06b6d4' }] : []),
@@ -15245,7 +15352,7 @@ function renderAuditDetailPanel(audit) {
         <div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:5px">${fpT('Score SEO global')}</div>
           ${badge(scoreLabel(audit.score), scoreColor(audit.score))}
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:5px">Analysé ${relDate(audit.date)}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:5px">${fpT('Analysé')} ${relDate(audit.date)}</div>
         </div>
       </div>
       <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:16px;word-break:break-all;background:var(--fp-inner-card);padding:6px 8px;border-radius:6px;font-family:var(--fp-font-mono)">${escHtml(audit.url)}</div>
@@ -15259,7 +15366,7 @@ function renderAuditDetailPanel(audit) {
           ${categories.map(c=>`
             <div>
               <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-                <span style="font-size:11px;color:var(--fp-text-soft)">${c.icon} ${c.name}</span>
+                <span style="font-size:11px;color:var(--fp-text-soft)">${c.icon} ${fpT(c.name)}</span>
                 <span style="font-size:11px;font-weight:700;color:${c.color}">${c.score}/100</span>
               </div>
               <div style="height:4px;background:var(--fp-track);border-radius:2px;overflow:hidden">
@@ -15273,12 +15380,12 @@ function renderAuditDetailPanel(audit) {
       <div id="fp-audit-history-${escHtml(audit.id)}" style="margin-bottom:16px">
         <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:8px;display:flex;align-items:center;gap:5px">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Historique SEO · 90 jours
+          ${fpT('Historique SEO · 90 jours')}
           <span id="fp-audit-hist-csv-btn" data-url="${escHtml(audit.url)}" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--fp-accent);cursor:pointer;padding:2px 8px;border:1px solid rgba(37,99,235,0.3);border-radius:4px;display:none">⬇ CSV</span>
         </div>
         <div id="fp-audit-hist-content" style="min-height:60px;display:flex;align-items:center;justify-content:center;color:var(--fp-text-faint);font-size:12px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1.2s linear infinite;margin-right:6px"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-          Chargement…
+          ${fpT('Chargement…')}
         </div>
       </div>
 
@@ -15296,17 +15403,17 @@ function renderAuditDetailPanel(audit) {
               <input type="checkbox" ${resolved?'checked':''} onchange="fpToggleIssue('${rid}',this)" style="margin-top:2px;accent-color:${issue.color};flex-shrink:0;cursor:pointer;width:13px;height:13px"/>
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-                  <span style="font-size:10px;font-weight:700;color:${issue.color};background:${issue.color}18;padding:1px 6px;border-radius:4px">${issue.sev}</span>
-                  <span data-issue-label style="font-size:11.5px;color:var(--fp-text-soft);font-weight:600;${resolved?'text-decoration:line-through':''}">${issue.label}</span>
+                  <span style="font-size:10px;font-weight:700;color:${issue.color};background:${issue.color}18;padding:1px 6px;border-radius:4px">${fpT(issue.sev)}</span>
+                  <span data-issue-label style="font-size:11.5px;color:var(--fp-text-soft);font-weight:600;${resolved?'text-decoration:line-through':''}">${issue.count != null ? (issue.count === 1 ? fpT('1 autre problème détecté') : fpT('{count} autres problèmes détectés',{count:issue.count})) : fpT(issue.label)}</span>
                 </div>
-                <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:7px">${issue.insight}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:7px">${fpT(issue.insight)}</div>
                 ${isPro
-                  ? `<div class="fp-audit-fix-box" style="margin-bottom:7px"><div style="font-size:10px;font-weight:700;color:#2563EB;margin-bottom:2px">✦ Fix IA</div><div style="font-size:11px;color:var(--fp-text-soft)">${issue.fix}</div></div>`
-                  : `<div style="padding:6px 8px;background:rgba(139,92,246,0.08);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;font-size:10.5px;color:var(--fp-text-muted);margin-bottom:7px;cursor:pointer" onclick="navigateSub('plans')">🔒 Fix IA — plan Pro</div>`}
+                  ? `<div class="fp-audit-fix-box" style="margin-bottom:7px"><div style="font-size:10px;font-weight:700;color:#2563EB;margin-bottom:2px">✦ ${fpT('Fix IA')}</div><div style="font-size:11px;color:var(--fp-text-soft)">${fpT(issue.fix)}</div></div>`
+                  : `<div style="padding:6px 8px;background:rgba(139,92,246,0.08);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;font-size:10.5px;color:var(--fp-text-muted);margin-bottom:7px;cursor:pointer" onclick="navigateSub('plans')">🔒 ${fpT('Fix IA — plan Pro')}</div>`}
                 <div style="display:flex;gap:5px;flex-wrap:wrap">
-                  <span class="fp-audit-meta-chip">📊 ${issue.impact}</span>
-                  <span class="fp-audit-meta-chip">⏱ ${issue.time}</span>
-                  <span class="fp-audit-meta-chip" style="color:#22c55e;background:rgba(34,197,94,0.08)">📈 ${issue.roi}</span>
+                  <span class="fp-audit-meta-chip">📊 ${fpT(issue.impact)}</span>
+                  <span class="fp-audit-meta-chip">⏱ ${fpT(issue.time)}</span>
+                  <span class="fp-audit-meta-chip" style="color:#22c55e;background:rgba(34,197,94,0.08)">📈 ${fpT(issue.roi)}</span>
                 </div>
               </div>
             </div>
@@ -15315,16 +15422,16 @@ function renderAuditDetailPanel(audit) {
       </div>
 
       <div style="padding:11px 12px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:10px;margin-bottom:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:8px">⏰ Audit automatique</div>
+        <div style="font-size:11px;font-weight:700;color:var(--fp-text);margin-bottom:8px">⏰ ${fpT('Audit automatique')}</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <label class="fp-toggle-wrap">
             <input type="checkbox" class="fp-panel-sched-toggle" data-url="${escHtml(audit.url)}" ${sched ? 'checked' : ''}>
             <span class="fp-toggle-track"><span class="fp-toggle-thumb"></span></span>
           </label>
           <select class="fp-panel-sched-freq fp-select" data-url="${escHtml(audit.url)}" style="padding:3px 8px;font-size:12px;height:auto" ${sched ? '' : 'disabled'}>
-            <option value="daily" ${sched?.frequency==='daily'?'selected':''}>Quotidien</option>
-            <option value="weekly" ${(sched?.frequency==='weekly'||!sched)?'selected':''}>Hebdomadaire</option>
-            <option value="monthly" ${sched?.frequency==='monthly'?'selected':''}>Mensuel</option>
+            <option value="daily" ${sched?.frequency==='daily'?'selected':''}>${fpT('Quotidien')}</option>
+            <option value="weekly" ${(sched?.frequency==='weekly'||!sched)?'selected':''}>${fpT('Hebdomadaire')}</option>
+            <option value="monthly" ${sched?.frequency==='monthly'?'selected':''}>${fpT('Mensuel')}</option>
           </select>
           ${sched ? `<span style="font-size:11px;color:var(--fp-text-muted)">→ ${new Date(sched.nextRun).toLocaleDateString(getLocale(),{day:'2-digit',month:'short'})}</span>` : ''}
         </div>
@@ -15335,9 +15442,9 @@ function renderAuditDetailPanel(audit) {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           ${fpT('Analyse IA complète')}
         </button>
-        ${btn('🔄 Relancer l\'audit','fp-btn fp-btn-primary fp-btn-sm','','id="audit-panel-rerun" style="width:100%"')}
+        ${btn('🔄 ' + fpT('Relancer l\'audit'),'fp-btn fp-btn-primary fp-btn-sm','','id="audit-panel-rerun" style="width:100%"')}
         <div style="display:flex;gap:6px">
-          ${btn('+ Mission','fp-btn fp-btn-ghost fp-btn-sm','','id="audit-panel-mission" style="flex:1"')}
+          ${btn(fpT('+ Mission'),'fp-btn fp-btn-ghost fp-btn-sm','','id="audit-panel-mission" style="flex:1"')}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;${isPro?'':'opacity:0.55;cursor:not-allowed'}" onclick="${isPro?"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()":`fpGoToPricing()`}">
             📄 PDF${isPro?'':' 🔒'}
           </button>
@@ -15352,9 +15459,9 @@ function openMonitorPanel(monitor) {
     <div style="margin-bottom:16px">${badge(statusLabel(monitor.status), statusBadgeColor(monitor.status))}</div>
     <div class="fp-mono" style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;word-break:break-all">${escHtml(monitor.url)}</div>
     ${[
-      {l:'Uptime',   v: monitor.uptime + '%',                                        c:'#22c55e'},
-      {l:'Latence',  v: monitor.status==='down' ? 'Timeout' : monitor.latency == null ? '—' : monitor.latency + 'ms', c:'#f1f5ff'},
-      {l:'Dernier check', v: fmtLastCheck(monitor.lastCheck) ? 'Il y a ' + fmtLastCheck(monitor.lastCheck) : 'Jamais vérifié', c:'#94a3b8'},
+      {l:fpT('Uptime'),   v: monitor.uptime + '%',                                        c:'#22c55e'},
+      {l:fpT('Latence'),  v: monitor.status==='down' ? fpT('Timeout') : monitor.latency == null ? '—' : monitor.latency + 'ms', c:'#f1f5ff'},
+      {l:fpT('Dernier check'), v: fmtLastCheck(monitor.lastCheck) ? fpT('Il y a {value}', {value:fmtLastCheck(monitor.lastCheck)}) : fpT('Jamais vérifié'), c:'#94a3b8'},
     ].map(s=>`
       <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
         <span style="font-size:13px;color:var(--fp-text-muted)">${s.l}</span>
@@ -15364,29 +15471,29 @@ function openMonitorPanel(monitor) {
     ${monitorLatencyChartSVG(monitor)}
     <div style="margin-top:20px;display:flex;flex-direction:column;gap:14px">
       <div class="fp-form-group" style="margin-bottom:0">
-        <label class="fp-form-label">Email d\'alerte</label>
+        <label class="fp-form-label">${fpT('Email d’alerte')}</label>
         <div style="display:flex;gap:8px">
-          <input class="fp-input" id="monitor-panel-email" placeholder="alerte@email.com" value="${escHtml(monitor.alertEmail || '')}" style="flex:1"/>
-          ${btn('Sauver','fp-btn fp-btn-primary fp-btn-sm','','id="monitor-panel-save-email"')}
+          <input class="fp-input" id="monitor-panel-email" placeholder="${fpT('alerte@email.com')}" value="${escHtml(monitor.alertEmail || '')}" style="flex:1"/>
+          ${btn(fpT('Sauver'),'fp-btn fp-btn-primary fp-btn-sm','','id="monitor-panel-save-email"')}
         </div>
         <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">${fpT('Alertes DOWN/UP envoyées à cette adresse.')}</div>
       </div>
       <div class="fp-form-group" style="margin-bottom:0">
         <label class="fp-form-label" style="display:flex;align-items:center;gap:6px">
-          ${svgIcon('phone').replace('width="14" height="14"','width="12" height="12"')} SMS d\'alerte
+          ${svgIcon('phone').replace('width="14" height="14"','width="12" height="12"')} ${fpT('SMS d’alerte')}
           <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;border-radius:4px;padding:1px 5px;font-weight:700">${fpT('Bientôt disponible')}</span>
         </label>
         <div style="padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
-          Les alertes SMS par numéro de téléphone seront disponibles prochainement. Utilisez les alertes email en attendant.
+          ${fpT('Les alertes SMS par numéro de téléphone seront disponibles prochainement. Utilisez les alertes email en attendant.')}
         </div>
       </div>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px">
-      ${btn('Ping maintenant','fp-btn fp-btn-primary fp-btn-sm','refresh','id="monitor-panel-test"')}
-      ${btn('Supprimer','fp-btn fp-btn-danger fp-btn-sm','trash','id="monitor-panel-delete"')}
+      ${btn(fpT('Ping maintenant'),'fp-btn fp-btn-primary fp-btn-sm','refresh','id="monitor-panel-test"')}
+      ${btn(fpT('Supprimer'),'fp-btn fp-btn-danger fp-btn-sm','trash','id="monitor-panel-delete"')}
     </div>
   `;
-  openFloatPanel('Monitor : ' + escHtml(monitor.name), content);
+  openFloatPanel(fpT('Monitor : {name}', {name:escHtml(monitor.name)}), content);
   setTimeout(() => {
     $('#monitor-panel-test')?.addEventListener('click', async () => {
       showToast('info', fpT('Ping en cours…'));
@@ -15395,7 +15502,7 @@ function openMonitorPanel(monitor) {
         if (r && r.ok) {
           const idx = STATE.monitors.findIndex(x => x.id === monitor.id);
           if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
-          showToast('success', "Ping OK — " + r.responseTime + fpT("ms · Statut : ") + r.status);
+          showToast('success', fpT('Ping réussi — {time}ms · Statut : {status}', {time:r.responseTime, status:r.status}));
           render();
         } else { showToast('error', fpT('Ping échoué — site inaccessible')); }
       } catch(e) { showToast('error', fpT('Ping échoué — ') + (e?.message || fpT('Erreur réseau'))); }
@@ -15422,7 +15529,7 @@ function openMonitorPanel(monitor) {
         const updated = await apiAction('PATCH', `/api/monitors/${monitor.id}`, { alertEmail: emailVal });
         const m = STATE.monitors.find(x => x.id === monitor.id);
         if (m) m.alertEmail = updated?.alertEmail ?? emailVal;
-        showToast('success', fpT('Email d\'alerte enregistré'));
+        showToast('success', fpT('Email d’alerte enregistré'));
         if (STATE.route === 'monitors') render();
       } catch(e) { showToast('error', fpT('Erreur lors de la mise à jour')); }
     });
@@ -15435,15 +15542,15 @@ function renderNewAuditPanel() {
   return `
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('URL à auditer')}</label>
-      <input class="fp-input" id="na-url" placeholder="https://monsite.fr"/>
+      <input class="fp-input" id="na-url" placeholder="https://example.com"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Type d\'audit</label>
+      <label class="fp-form-label">${fpT('Type d\'audit')}</label>
       <select class="fp-select" style="width:100%" id="na-type">
-        ${['SEO complet','SEO local','Performance','Accessibilité'].map(o=>`<option>${o}</option>`).join('')}
+        ${['SEO complet','SEO local','Performance','Accessibilité'].map(o=>`<option value="${escHtml(o)}">${escHtml(fpT(o))}</option>`).join('')}
       </select>
     </div>
-    ${btn('Lancer l\'audit','fp-btn fp-btn-primary','zap','id="na-run"')}
+    ${btn(fpT('Lancer l\'audit'),'fp-btn fp-btn-primary','zap','id="na-run"')}
   `;
 }
 function setupNewAuditPanel() {
@@ -15456,20 +15563,20 @@ function setupNewAuditPanel() {
       const runBtn = $('#na-run');
       const originalLabel = runBtn?.textContent;
       STATE._auditRunning = true;
-      if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Lancement…'; }
+      if (runBtn) { runBtn.disabled = true; runBtn.textContent = fpT('Lancement…'); }
       try {
         const res = await apiAction('POST', '/api/audits', { url, type });
         const a = res || { id:'a'+Date.now(), url, score: null, status:'pending', speed: null, date: new Date().toISOString(), issues: 0 };
         STATE.audits.unshift(a);
         if (typeof startAuditPolling === 'function') startAuditPolling(a.id);
-        showToast('success', fpT("Audit lancé pour ") + escHtml(url));
-        addLocalNotification('audit', fpT('🔍 Audit lancé'), 'Analyse de ' + url + ' en cours…');
+        showToast('success', fpT('Audit lancé pour {url}', {url:escHtml(url)}));
+        addLocalNotification('audit', fpT('🔍 Audit lancé'), fpT('Analyse de {url} en cours…', {url:escHtml(url)}));
         closeFloatPanel();
         if (STATE.route === 'audits') render(); else navigate('audits');
       } catch(e) { showToast('error', auditErrorMessage(e)); }
       finally {
         STATE._auditRunning = false;
-        if (runBtn) { runBtn.disabled = false; runBtn.textContent = originalLabel || 'Lancer l’audit'; }
+        if (runBtn) { runBtn.disabled = false; runBtn.textContent = originalLabel || fpT('Lancer l’audit'); }
       }
     });
   }, 50);
@@ -15683,11 +15790,11 @@ function setupNewObjectivePanel() {
 function renderNewEndpointPanel() {
   return `
     <div class="fp-form-group">
-      <label class="fp-form-label">Nom de l'endpoint</label>
-      <input class="fp-input" id="nep-name" placeholder="API Contact Form"/>
+      <label class="fp-form-label">${fpT('Nom de l’endpoint')}</label>
+      <input class="fp-input" id="nep-name" placeholder="${fpT('API Contact Form')}"/>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">URL de l'endpoint</label>
+      <label class="fp-form-label">${fpT('URL de l’endpoint')}</label>
       <input class="fp-input" id="nep-url" placeholder="https://monsite.fr/api/contact"/>
     </div>
     <div class="fp-form-group">
@@ -15697,10 +15804,10 @@ function renderNewEndpointPanel() {
       </select>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">${fpT("Email d'alerte")}</label>
-      <input class="fp-input" id="nep-email" placeholder="alerte@email.com" value="${STATE.me?.email||''}"/>
+      <label class="fp-form-label">${fpT('Email d’alerte')}</label>
+      <input class="fp-input" id="nep-email" placeholder="${fpT('alerte@email.com')}" value="${escHtml(STATE.me?.email||'')}"/>
     </div>
-    ${btn('Ajouter et surveiller','fp-btn fp-btn-primary','','id="nep-create"')}
+    ${btn(fpT('Ajouter et surveiller'),'fp-btn fp-btn-primary','','id="nep-create"')}
   `;
 }
 function setupNewEndpointPanel() {
@@ -15713,17 +15820,17 @@ function setupNewEndpointPanel() {
         const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nep-email')?.value, type: 'api', method: $('#nep-method')?.value });
         const m = res || { id: 'm'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null, type:'api' };
         STATE.monitors.push(m);
-        showToast('success', fpT("Endpoint ajouté : ") + escHtml(name));
+        showToast('success', fpT('Endpoint ajouté : {name}', {name:escHtml(name)}));
         closeFloatPanel();
         if (STATE.route === 'monitors') render();
-      } catch(e) { showToast('error', fpT('Erreur lors de l\'ajout — ') + (e?.message || '')); }
+      } catch(e) { showToast('error', fpT('Impossible d’ajouter l’endpoint.')); }
     });
   }, 50);
 }
 
 function renderNewMonitorPanel() {
   return `
-    ${[{l:'URL du site',p:'https://monsite.fr',id:'nm-url'},{l:'Nom du monitor',p:'Mon site',id:'nm-name'},{l:'Email d\'alerte',p:'alerte@email.com',id:'nm-email'}].map(f=>`
+    ${[{l:fpT('URL du site'),p:'https://monsite.fr',id:'nm-url'},{l:fpT('Nom du monitor'),p:fpT('Mon site'),id:'nm-name'},{l:fpT('Email d’alerte'),p:fpT('alerte@email.com'),id:'nm-email'}].map(f=>`
       <div class="fp-form-group">
         <label class="fp-form-label">${f.l}</label>
         <input class="fp-input" id="${f.id}" placeholder="${f.p}"/>
@@ -15732,10 +15839,10 @@ function renderNewMonitorPanel() {
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Fréquence')}</label>
       <select class="fp-select" style="width:100%" id="nm-freq">
-        ${['Toutes les 5 min','Toutes les 15 min','Toutes les heures'].map(o=>`<option>${o}</option>`).join('')}
+        ${['Toutes les 5 min','Toutes les 15 min','Toutes les heures'].map(o=>`<option value="${o}">${fpT(o)}</option>`).join('')}
       </select>
     </div>
-    ${btn('Créer le monitor','fp-btn fp-btn-primary','','id="nm-create"')}
+    ${btn(fpT('Créer le monitor'),'fp-btn fp-btn-primary','','id="nm-create"')}
   `;
 }
 
@@ -15749,11 +15856,11 @@ function setupNewMonitorPanel() {
         const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nm-email')?.value, frequency: $('#nm-freq')?.value });
         const m = res || { id:'m'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null };
         STATE.monitors.push(m);
-        showToast('success', fpT("Monitor créé pour ") + escHtml(url));
-        addLocalNotification('monitor', fpT('📡 Monitor créé'), url + ' est maintenant surveillé');
+        showToast('success', fpT('Monitor créé pour {url}', {url:escHtml(url)}));
+        addLocalNotification('monitor', fpT('📡 Monitor créé'), fpT('{url} est maintenant surveillé', {url}));
         closeFloatPanel();
         navigate('monitors');
-      } catch(e) { showToast('error', fpT('Erreur lors de la création du monitor')); }
+      } catch(e) { showToast('error', fpT('Impossible de créer le monitor.')); }
     });
   }, 50);
 }
@@ -15766,11 +15873,11 @@ function renderNewReportPanel() {
   return `
     <div style="padding:8px 12px;background:rgba(${_rtInfo.col},0.08);border:1px solid rgba(${_rtInfo.col},0.22);border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">${_rtInfo.icon}</span>
-      <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">Préréglage : ${_rtInfo.lbl}</div><div style="font-size:10px;color:var(--fp-text-faint)">${_rtInfo.desc} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">${fpT('Modifier')}</span></div></div>
+       <div style="flex:1"><div style="font-size:11px;font-weight:700;color:rgba(${_rtInfo.col},1)">${fpT('Préréglage :')} ${fpT(_rtInfo.lbl)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${fpT(_rtInfo.desc)} · <span style="cursor:pointer;text-decoration:underline" onclick="navigate('settings');setTimeout(function(){navigateSub('workspace');},50);closeFloatPanel()">${fpT('Modifier')}</span></div></div>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Nom du rapport')}</label>
-      <input class="fp-input" id="nr-name" placeholder="Rapport Mai 2026 — Boulangerie Martin"/>
+       <input class="fp-input" id="nr-name" placeholder="${fpT('Rapport Mai 2026 — Boulangerie Martin')}"/>
     </div>
     <div class="fp-form-group">
       <label class="fp-form-label">${fpT('Site audité')}</label>
@@ -15780,7 +15887,7 @@ function renderNewReportPanel() {
       </select>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Format</label>
+       <label class="fp-form-label">${fpT('Format')}</label>
       <div style="display:flex;gap:8px">
         ${['PDF','CSV','HTML'].map(f=>`
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1px solid var(--fp-border);border-radius:8px;font-size:12px;color:var(--fp-text-soft)">
@@ -15793,17 +15900,17 @@ function renderNewReportPanel() {
       <label class="fp-form-label">${fpT('Période couverte')}</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div>
-          <label class="fp-form-label" style="font-size:10px;margin-bottom:3px">Du</label>
+           <label class="fp-form-label" style="font-size:10px;margin-bottom:3px">${fpT('Du')}</label>
           <input class="fp-input" id="nr-date-start" type="date" style="width:100%"/>
         </div>
         <div>
-          <label class="fp-form-label" style="font-size:10px;margin-bottom:3px">Au</label>
+           <label class="fp-form-label" style="font-size:10px;margin-bottom:3px">${fpT('Au')}</label>
           <input class="fp-input" id="nr-date-end" type="date" style="width:100%"/>
         </div>
       </div>
     </div>
     <div class="fp-form-group">
-      <label class="fp-form-label">Inclure White Label</label>
+       <label class="fp-form-label">${fpT('Inclure White Label')}</label>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="fp-toggle on" id="nr-wl" data-toggle="nr-wl" aria-pressed="true"></button>
         <span style="font-size:12px;color:var(--fp-text-muted)">${fpT('Logo et couleurs personnalisés')}</span>
@@ -15820,7 +15927,7 @@ function renderNewReportPanel() {
       <div style="font-size:11px;font-weight:600;color:#8b5cf6;margin-bottom:8px">${fpT('📝 Notes de réunion')}</div>
       <div id="nr-notes-list" style="font-size:11px;color:var(--fp-text-soft)"></div>
     </div>
-    ${btn('Générer le rapport','fp-btn fp-btn-primary','file','id="nr-generate"')}
+     ${btn(fpT('Générer le rapport'),'fp-btn fp-btn-primary','file','id="nr-generate"')}
   `;
 }
 
@@ -15928,13 +16035,19 @@ function setupNewReportPanel() {
         refreshMeUsage();
 
         if (format === 'PDF' && r.id) {
-          showToast('success', fpT("Téléchargement du rapport PDF « ") + escHtml(name) + " »…");
+          showToast('success', fpT("Téléchargement du rapport PDF « {name} »…", { name: escHtml(name) }));
           addLocalNotification('report', fpT('📄 Rapport PDF prêt'), name.slice(0, 50));
           downloadReportPdf(r.id, name);
         } else {
-          const notesSuffix = meetingNotes.length ? ` · ${meetingNotes.length} note${meetingNotes.length>1?'s':''} de réunion incluse${meetingNotes.length>1?'s':''}` : '';
-          showToast('success', fpT("Rapport ") + format + " « " + escHtml(name) + fpT(" » généré") + notesSuffix + ".");
-          addLocalNotification('report', `📄 Rapport ${format} généré`, name.slice(0, 50));
+          const notesSuffix = meetingNotes.length
+            ? ` · ${fpT(meetingNotes.length === 1 ? '{count} note de réunion incluse' : '{count} notes de réunion incluses', { count: meetingNotes.length })}`
+            : '';
+          showToast('success', fpT("Rapport {format} « {name} » généré{notes}.", {
+            format,
+            name: escHtml(name),
+            notes: notesSuffix,
+          }));
+          addLocalNotification('report', fpT('📄 Rapport {format} généré', { format }), name.slice(0, 50));
         }
 
         closeFloatPanel();
@@ -16020,7 +16133,7 @@ const SUB_NAVS = {
   'audits':     [{id:null,label:'Liste'},{id:'analysis',label:'Analyse'},{id:'compare',label:'Comparaison'},{id:'history',label:'Historique'},{id:'opportunites',label:'Opportunités'}],
   'monitors':   [{id:null,label:'Status'},{id:'performance',label:'Performance'},{id:'incidents',label:'Incidents'},{id:'config',label:'Config'},{id:'sla',label:'SLA'}],
   'local-seo':  [{id:null,label:'Aperçu'},{id:'map',label:'Carte'},{id:'competitors-map',label:'Concurrents'},{id:'zones',label:'Zones'},{id:'opportunities',label:'Opportunités'},{id:'reviews',label:'Avis IA'},{id:'gbp',label:'GBP'},{id:'presence',label:'Présence GBP'}],
-  'reports':    [{id:null,label:'Command Center'},{id:'exec',label:'Executive'},{id:'seo',label:'SEO'},{id:'monitoring',label:'Monitoring'},{id:'local',label:'Local SEO'},{id:'conversion',label:'Conversion'},{id:'client',label:'White-Label'},{id:'ai',label:'IA Lab'}],
+  'reports':    [{id:null,label:'Centre de rapports'},{id:'exec',label:'Exécutif'},{id:'seo',label:'SEO'},{id:'monitoring',label:'Surveillance'},{id:'local',label:'Local SEO'},{id:'conversion',label:'Conversion'},{id:'client',label:'Marque blanche'},{id:'ai',label:'Rapports IA'}],
   'team':       [{id:null,label:'Membres'},{id:'chat',label:'Chat'},{id:'activity',label:'Activité'},{id:'files',label:'Fichiers'},{id:'performance',label:'Performance'}],
   'growth':     [{id:null,label:'Tendances'},{id:'projections',label:'Projections'},{id:'objectives',label:'Objectifs'},{id:'keywords',label:'Mots-clés'}],
   'competitor': [{id:null,label:'Aperçu'},{id:'keywords',label:'Mots-clés'},{id:'growth',label:'Trafic'},{id:'backlinks',label:'Backlinks'},{id:'local',label:'Local'},{id:'alerts',label:'Alertes'},{id:'comparison',label:'Comparaison'}],
@@ -16175,7 +16288,7 @@ function renderSubNav(items) {
     <button class="fp-sub-nav-item${(STATE.subRoute === t.id) ? ' active' : ''}"
       data-sub-route="${t.id ?? ''}"
       role="tab" aria-selected="${STATE.subRoute === t.id}"
-      onclick="navigateSub(this.dataset.subRoute===''?null:this.dataset.subRoute)">${escHtml(t.label)}</button>
+      onclick="navigateSub(this.dataset.subRoute===''?null:this.dataset.subRoute)">${escHtml(STATE.route === 'reports' || STATE.route === 'competitor' || STATE.route === 'local-seo' ? fpT(t.label) : t.label)}</button>
   `).join('')}</nav>`;
 }
 
@@ -16193,7 +16306,7 @@ function aiBlock(text, chips = []) {
     </div>
     <div class="fp-ai-block-content">
       <div class="fp-ai-block-label">${fpT('Analyse IA · FlowPoint')}${_iaSug === 'proactive' ? ' <span style="font-size:9px;background:rgba(34,197,94,0.15);color:#22c55e;padding:1px 5px;border-radius:5px;margin-left:4px">Proactive</span>' : _iaSug === 'low' ? ' <span style="font-size:9px;color:var(--fp-text-faint);margin-left:4px">· ' + fpT('Silencieux') + '</span>' : ''}</div>
-      <div class="fp-ai-block-text">${text}</div>
+        <div class="fp-ai-block-text">${text}</div>
       ${_chips.length ? `<div class="fp-ai-block-actions">${_chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(_chipQuery(c))}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(fpT(_chipLabel(c)))}</button>`).join('')}</div>` : ''}
     </div>
   </div>`;
@@ -16225,7 +16338,7 @@ function fpToggleIssue(rid, el) {
     const lbl = card.querySelector('[data-issue-label]');
     if (lbl) lbl.style.textDecoration = ok ? 'line-through' : '';
   }
-  showToast(ok ? 'success' : 'info', ok ? 'Issue marquée résolue ✓' : 'Issue réouverte');
+  showToast(ok ? 'success' : 'info', ok ? fpT('Issue marquée résolue ✓') : fpT('Issue réouverte'));
 }
 
 // ── Plan limits — read from canonical definitions when available ──
@@ -16724,16 +16837,18 @@ function syncBulkBar() {
     return;
   }
 
-  const label = `${total} sélectionné${total > 1 ? 's' : ''}`;
+  const label = route === 'audits'
+    ? fpT(selAudits === 1 ? '1 audit sélectionné' : '{count} audits sélectionnés', {count:selAudits})
+    : fpT(selMonitors === 1 ? '1 monitor sélectionné' : '{count} monitors sélectionnés', {count:selMonitors});
 
   if (route === 'audits') {
     bar.innerHTML = `
       <span class="fp-bulk-count">${label}</span>
       <span class="fp-bulk-sep"></span>
       <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-export-csv">${svgIcon('download')} CSV</button>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-rerun">${svgIcon('refresh')} Relancer</button>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-archive" style="color:var(--fp-warning)">${svgIcon('archive')} Archiver</button>
-      <button class="fp-btn fp-btn-danger fp-btn-sm" id="bulk-delete-audits">${svgIcon('trash')} Supprimer</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-rerun">${svgIcon('refresh')} ${fpT('Relancer')}</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-archive" style="color:var(--fp-warning)">${svgIcon('archive')} ${fpT('Archiver')}</button>
+      <button class="fp-btn fp-btn-danger fp-btn-sm" id="bulk-delete-audits">${svgIcon('trash')} ${fpT('Supprimer')}</button>
       <span style="margin-left:auto"></span>
       <div class="fp-bulk-progress-wrap" id="bulk-progress-wrap" style="display:none">
         <div class="fp-bulk-progress"><div class="fp-bulk-progress-fill" id="bulk-progress-fill" style="width:0%"></div></div>
@@ -16745,8 +16860,8 @@ function syncBulkBar() {
     bar.innerHTML = `
       <span class="fp-bulk-count">${label}</span>
       <span class="fp-bulk-sep"></span>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-test-monitors">${svgIcon('refresh')} Tester tout</button>
-      <button class="fp-btn fp-btn-danger fp-btn-sm" id="bulk-delete-monitors">${svgIcon('trash')} Supprimer</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" id="bulk-test-monitors">${svgIcon('refresh')} ${fpT('Tout tester')}</button>
+      <button class="fp-btn fp-btn-danger fp-btn-sm" id="bulk-delete-monitors">${svgIcon('trash')} ${fpT('Supprimer')}</button>
       <span style="margin-left:auto"></span>
       <div class="fp-bulk-progress-wrap" id="bulk-progress-wrap" style="display:none">
         <div class="fp-bulk-progress"><div class="fp-bulk-progress-fill" id="bulk-progress-fill" style="width:0%"></div></div>
@@ -16774,6 +16889,34 @@ function bindBulkBarEvents() {
     if (label) label.textContent = `${done}/${total}`;
   };
   const resultToast = (ok, fail, verb, unit) => {
+    if (STATE.route === 'audits') {
+      const isRerun = verb === 'relancé';
+      if (fail === 0) {
+        const key = isRerun
+          ? (ok === 1 ? '1 audit relancé' : '{count} audits relancés')
+          : (ok === 1 ? '1 audit supprimé' : '{count} audits supprimés');
+        showToast('success', fpT(key, {count:ok}));
+      } else if (ok === 0) {
+        showToast('error', fpT(fail === 1 ? '1 audit a échoué' : '{count} audits ont échoué', {count:fail}));
+      } else {
+        const key = isRerun
+          ? '{ok} audits relancés; {fail} échoués'
+          : '{ok} audits supprimés; {fail} échoués';
+        showToast('warning', fpT(key, {ok, fail}));
+      }
+      return;
+    }
+    if (STATE.route === 'monitors') {
+      const action = verb === 'testé' ? 'test' : 'delete';
+      if (fail === 0) {
+        showToast('success', fpT(action === 'test' ? 'Vérification terminée pour {count} monitor(s)' : 'Suppression terminée pour {count} monitor(s)', {count:ok}));
+      } else if (ok === 0) {
+        showToast('error', fpT(action === 'test' ? 'Impossible de vérifier {count} monitor(s)' : 'Impossible de supprimer {count} monitor(s)', {count:fail}));
+      } else {
+        showToast('warning', fpT('{ok} monitor(s) traité(s) ; {failed} échec(s)', {ok, failed:fail}));
+      }
+      return;
+    }
     if (fail === 0) {
       showToast('success', `${ok} ${unit}${ok>1?'s':''} ${verb}${ok>1?'s':''}`);
     } else if (ok === 0) {
@@ -16806,7 +16949,7 @@ function bindBulkBarEvents() {
     a.download = `audits-flowpoint-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('success', fpT("CSV exporté — ") + audits.length + fpT(" audit") + (audits.length>1?'s':''));
+    showToast('success', fpT(audits.length === 1 ? 'CSV exporté — {count} audit' : 'CSV exporté — {count} audits', {count:audits.length}));
   });
 
   document.getElementById('bulk-rerun')?.addEventListener('click', async () => {
@@ -16814,7 +16957,7 @@ function bindBulkBarEvents() {
     const audits = STATE.audits.filter(a => ids.includes(a.id));
     if (!audits.length) return;
     showProgress(0, audits.length);
-    showToast('info', fpT("Relance de ") + audits.length + fpT(" audit") + (audits.length>1?'s':'') + fpT(" en cours…"));
+    showToast('info', fpT(audits.length === 1 ? 'Relance de {count} audit en cours…' : 'Relance de {count} audits en cours…', {count:audits.length}));
     let done = 0, ok = 0, fail = 0;
     await Promise.allSettled(audits.map(async a => {
       try {
@@ -16842,14 +16985,14 @@ function bindBulkBarEvents() {
     });
     STATE.selectedAudits.clear();
     STATE.auditShowArchived = false;
-    showToast('info', ids.length + fpT(" audit") + (ids.length>1?'s':'') + fpT(" archivé") + (ids.length>1?'s':'') + fpT(" — masqué") + (ids.length>1?'s':'') + fpT(" de la vue principale"));
+    showToast('info', fpT(ids.length === 1 ? '1 audit archivé — masqué de la vue principale' : '{count} audits archivés — masqués de la vue principale', {count:ids.length}));
     render();
   });
 
   document.getElementById('bulk-delete-audits')?.addEventListener('click', () => {
     const ids = [...STATE.selectedAudits];
     if (!ids.length) return;
-    window.fpDarkConfirm(`Supprimer ${ids.length} audit${ids.length>1?'s':''} ? Cette action est irréversible.`, async () => {
+    window.fpDarkConfirm(fpT(ids.length === 1 ? 'Supprimer l’audit sélectionné ? Cette action est irréversible.' : 'Supprimer les {count} audits sélectionnés ? Cette action est irréversible.', {count:ids.length}), async () => {
       showProgress(0, ids.length);
       let done = 0, ok = 0, fail = 0;
       await Promise.allSettled(ids.map(async id => {
@@ -16866,7 +17009,7 @@ function bindBulkBarEvents() {
       STATE.selectedAudits.clear();
       resultToast(ok, fail, 'supprimé', 'audit');
       render();
-    }, `Supprimer ${ids.length > 1 ? ids.length + ' audits' : "l'audit"}`);
+    }, fpT(ids.length === 1 ? 'Supprimer l’audit' : 'Supprimer {count} audits', {count:ids.length}));
   });
 
   // ── MONITORS ──
@@ -16875,7 +17018,7 @@ function bindBulkBarEvents() {
     const monitors = STATE.monitors.filter(m => ids.includes(m.id));
     if (!monitors.length) return;
     showProgress(0, monitors.length);
-    showToast('info', fpT("Test de ") + monitors.length + fpT(" monitor") + (monitors.length>1?'s':'') + fpT(" en cours…"));
+    showToast('info', fpT('Vérification de {count} monitor(s) en cours…', {count:monitors.length}));
     let done = 0, ok = 0, fail = 0;
     await Promise.allSettled(monitors.map(async m => {
       try { await apiAction('POST', `/api/monitors/${m.id}/check`); ok++; }
@@ -16890,7 +17033,7 @@ function bindBulkBarEvents() {
   document.getElementById('bulk-delete-monitors')?.addEventListener('click', () => {
     const ids = [...STATE.selectedMonitors];
     if (!ids.length) return;
-    window.fpDarkConfirm(`Supprimer ${ids.length} monitor${ids.length>1?'s':''} ? Cette action est irréversible.`, async () => {
+    window.fpDarkConfirm(fpT('Supprimer {count} monitor(s) sélectionné(s) ? Cette action est irréversible.', {count:ids.length}), async () => {
       showProgress(0, ids.length);
       let done = 0, ok = 0, fail = 0;
       await Promise.allSettled(ids.map(async id => {
@@ -16907,7 +17050,7 @@ function bindBulkBarEvents() {
       STATE.selectedMonitors.clear();
       resultToast(ok, fail, 'supprimé', 'monitor');
       render();
-    }, `Supprimer ${ids.length > 1 ? ids.length + ' monitors' : 'le monitor'}`);
+    }, fpT(ids.length > 1 ? 'Supprimer {count} monitors' : 'Supprimer le monitor', {count:ids.length}));
   });
 }
 
@@ -17099,7 +17242,7 @@ function bindSectionEvents() {
       });
       cb.addEventListener('click', e => e.stopPropagation());
     });
-    $('#audit-new-btn')?.addEventListener('click', () => { openFloatPanel('Nouvel audit', renderNewAuditPanel()); setupNewAuditPanel(); });
+    $('#audit-new-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Nouvel audit'), renderNewAuditPanel()); setupNewAuditPanel(); });
     // P1.2: audit-run-btn — URL validation + anti-double-click guard + proper loading state
     (function _bindAuditRun() {
       const _btn = $('#audit-run-btn');
@@ -17112,14 +17255,14 @@ function bindSectionEvents() {
         STATE._auditRunning = true;
         _btn.disabled = true;
         const _origText = _btn.textContent;
-        _btn.textContent = 'Lancement…';
+        _btn.textContent = fpT('Lancement…');
         try {
           const res = await apiAction('POST', '/api/audits', { url: _normUrl });
           const _launchedAudit = (res && (res.id || res.url)) ? res
             : { id:'a'+Date.now(), url:_normUrl, score:null, status:'pending', speed:null, date:new Date().toISOString(), issues:0 };
           STATE.audits.unshift(_launchedAudit);
           if (typeof startAuditPolling === 'function') startAuditPolling(_launchedAudit.id);
-          showToast('success', fpT("Audit lancé pour ") + escHtml(_normUrl));
+          showToast('success', fpT('Audit lancé pour {url}', {url:escHtml(_normUrl)}));
           if (_input) _input.value = '';
           render();
         } catch(e) {
@@ -17145,11 +17288,11 @@ function bindSectionEvents() {
           try {
             const sched = await apiAction('POST', '/api/audits/schedule', { url, frequency: freq });
             if (sched && !STATE.auditSchedules.find(s => s.url === url)) STATE.auditSchedules.push(sched);
-          showToast('success', fpT("Audit ") + fpT(freq === 'daily' ? 'quotidien' : freq === 'weekly' ? 'hebdo' : 'mensuel') + fpT(" activé"));
+          showToast('success', fpT('Audit planifié activé — {frequency}', {frequency:fpT(freq === 'daily' ? 'Quotidien' : freq === 'weekly' ? 'Hebdo' : 'Mensuel')}));
           } catch(_) {
             const mock = { id:'sched_'+Date.now(), url, frequency: freq, nextRun:Date.now()+7*86400000, createdAt:Date.now() };
             STATE.auditSchedules.push(mock);
-            showToast('success', fpT("Audit ") + fpT(freq === 'daily' ? 'quotidien' : freq === 'weekly' ? 'hebdo' : 'mensuel') + fpT(" activé"));
+            showToast('success', fpT('Audit planifié activé — {frequency}', {frequency:fpT(freq === 'daily' ? 'Quotidien' : freq === 'weekly' ? 'Hebdo' : 'Mensuel')}));
           }
           render();
         } else {
@@ -17244,10 +17387,11 @@ function bindSectionEvents() {
       const audit = STATE.audits.find(a => a.id === btn.dataset.id);
       if (!audit) return;
       showCtxMenu(e, [
-        { key:'view', icon:'eye',      label:'Voir les détails', action:()=>openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)) },
-        { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
-        { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
+        { key:'view', icon:'eye',      label:fpT('Voir les détails'), action:()=>openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)) },
+        { key:'copy', icon:'copy',     label:fpT('Copier l\'URL'),    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
+        { key:'pdf',  icon:'download', label:fpT('Exporter PDF'),     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
+        { key:'pin',  icon:'pin',      label: audit.pinned?fpT('Détacher'):fpT('Épingler'), action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); showToast('success',fpT(audit.pinned?'Épinglé !':'Épingle retiré')); render(); } },
+        { key:'del',  icon:'trash',    label:fpT('Supprimer'),        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',         action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
       ]);
@@ -17265,10 +17409,11 @@ function bindSectionEvents() {
       const audit = STATE.audits.find(a => a.id === row.dataset.auditId);
       if (!audit) return;
       showCtxMenu(e, [
-        { key:'view', icon:'eye',      label:'Voir les détails', action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
-        { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); render(); } },
+        { key:'view', icon:'eye',      label:fpT('Voir les détails'), action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
+        { key:'copy', icon:'copy',     label:fpT('Copier l\'URL'),    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success', fpT('URL copiée')); } },
+        { key:'pdf',  icon:'download', label:fpT('Exporter PDF'),     action:()=>{ openFloatPanel(fpT("Détail de l'audit"),renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
+        { key:'pin',  icon:'pin',      label:audit.pinned?fpT('Détacher'):fpT('Épingler'), action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>showToast('warning',fpT('Épingle enregistrée localement — synchronisation serveur échouée'))); render(); } },
+        { key:'del',  icon:'trash',    label:fpT('Supprimer'),        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error', fpT('Audit supprimé')); render(); }, danger:true },
       ]);
@@ -17291,11 +17436,11 @@ function bindSectionEvents() {
       const url = STATE.historySiteUrl || '';
       const history = STATE.auditHistory[url] || STATE.audits.filter(a => a.url === url).sort((a,b)=>new Date(a.date)-new Date(b.date));
       if (!history.length) { showToast('warning', fpT('Aucune donnée à exporter')); return; }
-      const rows = [['Date','Score','Statut','Vitesse','Issues','Origine']];
+      const rows = [[fpT('Date'),fpT('Score'),fpT('Statut'),fpT('Vitesse'),fpT('Issues'),fpT('Origine')]];
       history.forEach(h => rows.push([h.date?.slice(0,10)||'', h.score, scoreLabel(h.score), h.speed||'', h.issues||'', h.origin||'manual']));
       const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
       const blob = new Blob([csv], { type:'text/csv' });
-      const a = Object.assign(document.createElement('a'), { href:URL.createObjectURL(blob), download:`historique-seo-${url.replace(/[^a-z0-9]/gi,'-')}-${new Date().toISOString().slice(0,10)}.csv` });
+      const a = Object.assign(document.createElement('a'), { href:URL.createObjectURL(blob), download:`seo-history-${url.replace(/[^a-z0-9]/gi,'-')}-${new Date().toISOString().slice(0,10)}.csv` });
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       showToast('success', fpT('CSV exporté'));
     });
@@ -17310,7 +17455,7 @@ function bindSectionEvents() {
         const circleRect = circle.getBoundingClientRect();
         const x = circleRect.left - (wrapRect?.left || 0) + circleRect.width / 2;
         const y = circleRect.top - (wrapRect?.top || 0) - 70;
-        const originLabel = circle.dataset.origin === 'auto' ? 'Audit automatique' : 'Audit manuel';
+        const originLabel = fpT(circle.dataset.origin === 'auto' ? 'Audit automatique' : 'Audit manuel');
         const scoreNum = parseInt(circle.dataset.score) || 0;
         tip.querySelector('#fp-hist-tip-date').textContent = circle.dataset.date || '';
         tip.querySelector('#fp-hist-tip-score').textContent = circle.dataset.score + '/100';
@@ -17349,7 +17494,7 @@ function bindSectionEvents() {
     $('#monitor-check-all')?.addEventListener('click', async () => {
       const mons = (STATE.monitors || []).filter(m => m.id);
       if (!mons.length) { showToast('info', fpT('Aucun monitor à vérifier')); return; }
-        showToast('info', fpT("Vérification de ") + mons.length + fpT(" monitor") + (mons.length > 1 ? 's' : '') + "…");
+        showToast('info', fpT('Vérification de {count} monitor(s) en cours…', {count:mons.length}));
       let ok = 0, fail = 0;
       for (const m of mons) {
         try {
@@ -17362,10 +17507,10 @@ function bindSectionEvents() {
         } catch(e) { fail++; }
       }
       showToast(fail === 0 ? 'success' : ok > 0 ? 'warning' : 'error',
-        fpT("Vérification terminée — ") + ok + " OK" + (fail > 0 ? ', ' + fail + fpT(" échoué(s)") : ''));
+        fpT('Vérification terminée — {ok} réussis ; {failed} échecs.', {ok, failed:fail}));
       render();
     });
-    $('#monitor-add-endpoint-btn')?.addEventListener('click', () => { openFloatPanel('Ajouter un endpoint API', renderNewEndpointPanel()); setupNewEndpointPanel(); });
+    $('#monitor-add-endpoint-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Ajouter un endpoint API'), renderNewEndpointPanel()); setupNewEndpointPanel(); });
 
     // ── Monitor bulk checkboxes ──
     $$('.fp-monitor-cb').forEach(cb => {
@@ -17398,7 +17543,7 @@ function bindSectionEvents() {
               if (r && r.ok) {
                 const idx = STATE.monitors.findIndex(x => x.id === pingId);
                 if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
-                showToast('success', `Ping OK — ${r.responseTime}ms`);
+                showToast('success', fpT('Ping réussi — {time}ms', {time:r.responseTime}));
                 render();
               } else {
                 showToast('error', fpT('Ping échoué — site inaccessible'));
@@ -17421,7 +17566,7 @@ function bindSectionEvents() {
             .then(() => {
               const idx = STATE.monitors.findIndex(m => m.id === monitor.id);
               if (idx >= 0) STATE.monitors[idx] = { ...STATE.monitors[idx], enabled: newEnabled };
-              showToast('success', newEnabled ? 'Surveillance reprise' : 'Monitor mis en pause');
+              showToast('success', fpT(newEnabled ? 'Surveillance reprise' : 'Monitor mis en pause'));
               render();
             })
             .catch(() => { showToast('error', fpT('Erreur — réessayez')); })
@@ -17431,19 +17576,19 @@ function bindSectionEvents() {
         // Delete button
         if (e.target.closest('.monitor-del')) {
           e.stopPropagation();
-          window.fpDarkConfirm('Supprimer ' + monitor.name + ' ?', () => {
+          window.fpDarkConfirm(fpT('Supprimer {name} ?', {name:escHtml(monitor.name)}), () => {
             apiAction('DELETE', '/api/monitors/' + monitor.id).catch(() => {}).finally(() => {
               STATE.monitors = STATE.monitors.filter(m => m.id !== monitor.id);
               showToast('success', fpT('Monitor supprimé')); render();
             });
-          }, 'Supprimer le monitor');
+          }, fpT('Supprimer le monitor'));
           return;
         }
         openMonitorPanel(monitor);
       });
       card.addEventListener('contextmenu', e => {
         showCtxMenu(e, [
-          { key:'test', icon:'refresh', label:'Tester maintenant', action:()=>{
+          { key:'test', icon:'refresh', label:fpT('Tester maintenant'), action:()=>{
             (async () => {
               showToast('info', fpT('Ping en cours…'));
               try {
@@ -17451,15 +17596,15 @@ function bindSectionEvents() {
                 if (r && r.ok) {
                   const idx = STATE.monitors.findIndex(x => x.id === monitor.id);
                   if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
-                  showToast('success', `Ping OK — ${r.responseTime}ms`);
+                  showToast('success', fpT('Ping réussi — {time}ms', {time:r.responseTime}));
                   render();
                 } else { showToast('error', fpT('Ping échoué')); }
               } catch(e) { showToast('error', fpT('Ping échoué — ') + (e?.message || fpT('Erreur réseau'))); }
             })();
           } },
-          { key:'copy', icon:'copy',    label:'Copier l\'URL',     action:()=>{ navigator.clipboard?.writeText(monitor.url); showToast('success', fpT('URL copiée')); } },
+          { key:'copy', icon:'copy',    label:fpT('Copier l’URL'),     action:()=>{ navigator.clipboard?.writeText(monitor.url); showToast('success', fpT('URL copiée')); } },
           { divider:true, key:'div' },
-          { key:'del',  icon:'trash',   label:'Supprimer',          action:async()=>{ try { await apiAction('DELETE',`/api/monitors/${monitor.id}`); } catch(e){} STATE.monitors=STATE.monitors.filter(m=>m.id!==monitor.id); showToast('error', fpT('Monitor supprimé')); render(); }, danger:true },
+          { key:'del',  icon:'trash',   label:fpT('Supprimer'),          action:async()=>{ try { await apiAction('DELETE',`/api/monitors/${monitor.id}`); } catch(e){} STATE.monitors=STATE.monitors.filter(m=>m.id!==monitor.id); showToast('error', fpT('Monitor supprimé')); render(); }, danger:true },
         ]);
       });
     });
@@ -17467,12 +17612,12 @@ function bindSectionEvents() {
       openFloatPanel(fpT('Nouvelle fenêtre de maintenance'), `
         <div style="padding:4px">
           <div class="fp-form-group">
-            <label class="fp-form-label">Nom</label>
+            <label class="fp-form-label">${fpT('Nom')}</label>
             <input class="fp-input" id="mw-name" placeholder="${fpT('Déploiement hebdo')}"/>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Planification (ex: Dimanche 02:00–04:00)</label>
-            <input class="fp-input" id="mw-sched" placeholder="Dimanche 02:00–04:00"/>
+            <label class="fp-form-label">${fpT('Planification (ex : Dimanche 02:00–04:00)')}</label>
+            <input class="fp-input" id="mw-sched" placeholder="${fpT('Dimanche 02:00–04:00')}"/>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">${fpT('Sites concernés')}</label>
@@ -17489,7 +17634,7 @@ function bindSectionEvents() {
           const nm = document.getElementById('mw-name')?.value?.trim();
           const sc = document.getElementById('mw-sched')?.value?.trim();
           if (!nm || !sc) { showToast('warning', fpT('Remplissez tous les champs')); return; }
-          showToast('success', fpT("Fenêtre «") + nm + fpT("» créée"));
+          showToast('success', fpT('Fenêtre de maintenance « {name} » créée', {name:escHtml(nm)}));
           closeFloatPanel();
         });
       }, 50);
@@ -17504,7 +17649,7 @@ function bindSectionEvents() {
           const updated = await apiAction('PATCH', `/api/monitors/${id}`, { alertEmail: emailVal });
           const m = STATE.monitors.find(x => x.id === id);
           if (m) m.alertEmail = updated?.alertEmail ?? emailVal;
-          showToast('success', fpT('Email d\'alerte enregistré'));
+          showToast('success', fpT('Email d’alerte enregistré'));
         } catch(e) { showToast('error', fpT('Erreur lors de la mise à jour')); }
       });
     });
@@ -18019,8 +18164,8 @@ function bindSectionEvents() {
       if (!report) return;
       card.addEventListener('contextmenu', e => {
         showCtxMenu(e, [
-          { key:'dl',    icon:'download', label:'Télécharger', action:()=>{ downloadReportPdf(report.id, report.name||'rapport'); showToast('success', fpT('Téléchargement PDF…')); } },
-          { key:'share', icon:'copy',     label:'Copier le lien', action: async ()=>{
+          { key:'dl',    icon:'download', label:fpT('Télécharger'), action:()=>{ downloadReportPdf(report.id, report.name||'rapport'); showToast('success', fpT('Téléchargement PDF…')); } },
+          { key:'share', icon:'copy',     label:fpT('Copier le lien'), action: async ()=>{
             const wlb = JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
             const bp = { agencyName: wlb.agencyName || STATE.me?.org?.name || 'Mon Agence', logoUrl: wlb.logoUrl || '', primaryColor: wlb.primaryColor || '#2563EB', secondaryColor: wlb.secondaryColor || '#1d4ed8', footerMsg: wlb.footerMsg || '' };
             const base = location.pathname.endsWith('dashboard.html') ? location.pathname.replace('dashboard.html','report-view.html') : location.pathname.replace(/\/?$/,'/report-view.html');
@@ -18034,7 +18179,7 @@ function bindSectionEvents() {
             navigator.clipboard?.writeText(`${location.origin}${base}?token=${token}`).catch(()=>{});
             showToast('success', fpT('Lien copié ! Valable 30 jours.'));
           } },
-          { key:'regen', icon:'refresh',  label:'Regénérer', action:async()=>{
+          { key:'regen', icon:'refresh',  label:fpT('Regénérer'), action:async()=>{
             try {
               const res = await apiAction('POST', '/api/reports', { name: report.name, format: report.type || 'PDF' });
               if (res) { const idx = STATE.reports.findIndex(x=>x.id===report.id); if(idx>=0) STATE.reports.splice(idx,1); STATE.reports.unshift(res); }
@@ -18043,7 +18188,7 @@ function bindSectionEvents() {
             } catch(e) { showToast('error', fpT('Erreur lors de la régénération')); }
           } },
           { divider:true, key:'div' },
-          { key:'del',   icon:'trash',    label:'Supprimer',   action:async()=>{ try { await apiAction('DELETE',`/api/reports/${report.id}`); } catch(e){} STATE.reports=STATE.reports.filter(r=>r.id!==report.id); showToast('error', fpT('Rapport supprimé')); render(); }, danger:true },
+          { key:'del',   icon:'trash',    label:fpT('Supprimer'), action:async()=>{ try { await apiAction('DELETE',`/api/reports/${report.id}`); } catch(e){} STATE.reports=STATE.reports.filter(r=>r.id!==report.id); showToast('error', fpT('Rapport supprimé')); render(); }, danger:true },
         ]);
       });
     });
@@ -18983,7 +19128,7 @@ function bindGlobalEvents() {
   // Monitor "Nouveau" button — event delegation so it works regardless of render timing
   document.addEventListener('click', function(e) {
     if (e.target.closest('#monitor-new-btn')) {
-      openFloatPanel('Nouveau monitor', renderNewMonitorPanel());
+      openFloatPanel(fpT('Nouveau monitor'), renderNewMonitorPanel());
       setupNewMonitorPanel();
     }
   });
@@ -19177,6 +19322,158 @@ function bindGlobalEvents() {
   // keeps every supported language deterministic across rerenders; user content
   // is deliberately left untouched when it has no UI-key match.
   var FP_I18N_EN = {
+    "🤖 Générateur de posts GBP IA": "🤖 AI GBP post generator",
+    "Génération automatique de posts GBP par IA — planification, adaptation saisonnière et publication directe sur Google.": "Automatically generate GBP posts with AI, schedule them, adapt them seasonally, and publish directly to Google.",
+    "Génération IA et publication directe sur Google — bientôt disponible.": "AI generation and direct publishing to Google — coming soon.",
+    "Synchronisez automatiquement vos établissements, avis, notes et analytics GBP directement dans FlowPoint. Répondez aux avis depuis l'interface, planifiez vos posts, et recevez des alertes IA en temps réel.": "Automatically sync your locations, reviews, ratings, and GBP analytics into FlowPoint. Reply to reviews from the interface, schedule posts, and receive real-time AI alerts.",
+    "Nom exact de l’établissement": "Exact business name",
+    "Grille 5×5": "5×5 grid",
+    "Grille 7×7": "7×7 grid",
+    "Grille 9×9 (Ultra)": "9×9 grid (Ultra)",
+    "ℹ️ Une requête DataForSEO est utilisée par point : 25, 49 ou 81 selon la grille. Le quota quotidien s’applique. Les positions absentes du top 20 restent indiquées comme non trouvées.": "ℹ️ One DataForSEO request is used per point: 25, 49, or 81 depending on the grid. The daily quota applies. Positions outside the top 20 are shown as not found.",
+    "Review Intelligence — thèmes des avis": "Review Intelligence — review themes",
+    "Priorités basées sur les avis négatifs": "Priorities based on negative reviews",
+    "Créer un post": "Create a post",
+    "Aucun post programmé ce mois-ci.": "No posts scheduled this month.",
+    "Format non pris en charge par l’API Google connectée": "Format not supported by the connected Google API",
+    "Résultats Google Maps déjà enregistrés": "Previously saved Google Maps results",
+    "Cette vue réutilise les résultats en base et ne lance aucune nouvelle recherche payante.": "This view reuses saved results and does not start a new paid search.",
+    "Rang enregistré": "Saved rank",
+    "Collecté": "Collected",
+    "Aucun résultat ni carte de suivi enregistré pour le moment.": "No results or tracked map have been saved yet.",
+    "Établissement Google": "Google Business location",
+    "Actualité": "What's new",
+    "Titre de l’événement": "Event title",
+    "Début — heure locale de la fiche": "Start — listing's local time",
+    "Réservations": "Bookings",
+    "Longueur cible (100–1500 caractères)": "Target length (100–1,500 characters)",
+    "Réserver": "Book",
+    "APERÇU — GOOGLE BUSINESS PROFILE": "PREVIEW — GOOGLE BUSINESS PROFILE",
+    "J’ai relu et validé ce contenu pour publication à la date choisie.": "I have reviewed and approved this content for publication on the selected date.",
+    "Le format Produit sera conservé en brouillon : l’API Google ne permet pas sa publication.": "Product format will remain a draft: the Google API does not support publishing it.",
+    "La génération prépare un brouillon. Vérifiez le texte, les médias et la fiche avant d’enregistrer ou de programmer.": "Generation creates a draft. Review the text, media, and listing before saving or scheduling.",
+    "Générer avec l’IA": "Generate with AI",
+    "Séparés par des virgules": "Separate with commas",
+    "Générez une proposition, relisez-la puis modifiez-la ici…": "Generate a suggestion, review it, then edit it here…",
+    "Aperçu du post": "Post preview",
+    "Connectez et synchronisez Google Business Profile avant de créer un post.": "Connect and sync Google Business Profile before creating a post.",
+    "Aperçu du média": "Media preview",
+    "Español": "Spanish",
+    "🤖 BROUILLON IA — À RELIRE AVANT PUBLICATION": "🤖 AI DRAFT — REVIEW BEFORE PUBLISHING",
+    "🤖 Générer un brouillon IA": "🤖 Generate an AI draft",
+    "Concurrents identifiés dans votre zone : {count}. {packCount} en Local Pack Google. Concurrent dominant : <strong>{name}</strong> (autorité {authority}/100).": "{count} competitors identified in your area. {packCount} in the Google Local Pack. Top competitor: <strong>{name}</strong> (authority {authority}/100).",
+    "{count} avis analysés": "{count} reviews analyzed",
+    "Note moyenne : <strong>{rating}⭐</strong> · Score réputation : <strong>{score}/100</strong> · {pending} réponse(s) IA en attente · {alerts} alerte(s) critique(s)": "Average rating: <strong>{rating}⭐</strong> · Reputation score: <strong>{score}/100</strong> · {pending} AI replies pending · {alerts} critical alerts",
+    "Aucun avis analysé": "No reviews analyzed",
+    "Analysez un avis pour obtenir le sentiment IA et une réponse personnalisée.": "Analyze a review to get AI sentiment analysis and a personalized reply.",
+    "🤖 Réponses IA — Pro requis": "🤖 AI replies — Pro required",
+    "Nom de l’auteur": "Author name",
+    "Texte de l’avis…": "Review text…",
+    "{count} étoile": "{count} star",
+    "{count} étoiles": "{count} stars",
+    "Analyser avec IA": "Analyze with AI",
+    "Sentiment :": "Sentiment:",
+    "Score :": "Score:",
+    "Points forts": "Strengths",
+    "Points faibles": "Weaknesses",
+    "Conseils": "Tips",
+    "Réponse suggérée": "Suggested reply",
+    "🗺 Local Domination Maps": "🗺 Local domination maps",
+    "Geo Grid · Heatmaps · Opportunités · Intelligence locale IA": "Geo grid · Heatmaps · Opportunities · Local AI insights",
+    "Grille géo-ranking": "Geo-ranking grid",
+    "domination": "dominance",
+    "Aucune heatmap créée": "No heatmap created",
+    "Créez votre première grille géo-ranking pour visualiser votre domination locale.": "Create your first geo-ranking grid to visualize your local dominance.",
+    "🗺 Carte interactive — concurrents & zone de chalandise": "🗺 Interactive map — competitors & service area",
+    "Secteur ex: boulangerie": "Industry, e.g. bakery",
+    "🎯 Recentrer": "🎯 Recenter",
+    "Chargement de la carte…": "Loading map…",
+    "Aucune mesure locale enregistrée pour le moment. Les scores de visibilité apparaîtront lorsque des données de classement réelles seront disponibles.": "No local measurements have been saved yet. Visibility scores will appear when real ranking data is available.",
+    "Cartes configurées": "Configured maps",
+    "suivis créés": "tracked",
+    "Analyses terminées": "Analyses completed",
+    "statut enregistré": "saved status",
+    "Concurrents observés": "Competitors observed",
+    "établissements distincts": "distinct businesses",
+    "Résultats concurrents top 3": "Competitor top 3 results",
+    "dans les recherches enregistrées": "in saved searches",
+    "Mes heatmaps de domination": "My dominance heatmaps",
+    "Heatmap": "Heatmap",
+    "Mesures DataForSEO en cours. Actualisez cette page pour voir leur état.": "DataForSEO measurements are in progress. Refresh this page to see their status.",
+    "Certaines mesures sont indisponibles.": "Some measurements are unavailable.",
+    "La mesure a échoué.": "The measurement failed.",
+    "Relancer la mesure": "Retry measurement",
+    "Nom (ex: Paris Centre — Plomberie)": "Name (e.g. Paris Centre — Plumbing)",
+    "Mot-clé cible (ex: plombier urgence)": "Target keyword (e.g. emergency plumber)",
+    "Rayon 2km": "2 km radius",
+    "Rayon 5km": "5 km radius",
+    "Rayon 10km": "10 km radius",
+    "Rayon 20km": "20 km radius",
+    "Générer heatmap": "Generate heatmap",
+    "Nom, établissement et mot-clé requis": "Name, business location, and keyword are required",
+    "Coordonnées géographiques invalides": "Invalid geographic coordinates",
+    "Génération de la heatmap en cours…": "Generating heatmap…",
+    "Erreur lors de la création": "Error creating heatmap",
+    "Erreur : ": "Error: ",
+    "Analyse concurrentielle en cours…": "Competitor analysis in progress…",
+    "Point {row} · {column}": "Point {row} · {column}",
+    "Aucun concurrent correspondant aux filtres.": "No competitors match the filters.",
+    "🏆 Local Pack seulement": "🏆 Local Pack only",
+    "Autorité ≥{count}": "Authority ≥{count}",
+    "📍 Zone analysée": "📍 Analyzed area",
+    "Aucun emplacement configuré — ajoutez votre ville dans les paramètres pour des résultats locaux pertinents.": "No location configured — add your city in settings for relevant local results.",
+    "Découvrir des concurrents": "Find competitors",
+    "LÉGENDE": "LEGEND",
+    "Critique — score > 75": "Critical — score > 75",
+    "Élevé — score 55-74": "High — score 55–74",
+    "Moyen — score 35-54": "Medium — score 35–54",
+    "Faible — score < 35": "Low — score < 35",
+    "Votre établissement": "Your business",
+    "Position": "Position",
+    "{count} avis": "{count} reviews",
+    "autorité": "authority",
+    "+ Ajouter": "+ Add",
+    "Secteur d’activité": "Industry",
+    "Score GBP :": "GBP score:",
+    "<strong>{count} avis sans réponse</strong> — répondre sous 48h améliore votre classement local de <strong>+15%</strong>. ": "<strong>{count} reviews without a reply</strong> — replying within 48 hours improves your local ranking by <strong>+15%</strong>. ",
+    "Tous vos avis ont une réponse ✓. ": "All your reviews have a reply ✓. ",
+    "Publier 2 posts/semaine peut augmenter la visibilité de <strong>+22%</strong>.": "Publishing two posts per week can increase visibility by <strong>+22%</strong>.",
+    "Connectez votre Google Business Profile pour recevoir des recommandations IA personnalisées sur vos avis, votre score de fiche et votre visibilité locale.": "Connect your Google Business Profile to get personalized AI recommendations about your reviews, listing score, and local visibility.",
+    "<strong>14 avis sans réponse</strong> — répondre sous 48h améliore votre classement local de <strong>+15%</strong>. Votre score GBP est à <strong>71/100</strong> — manque principal : photos et catégories secondaires. Publier 2 posts/semaine pourrait augmenter la visibilité de <strong>+22%</strong>.": "<strong>14 reviews without a reply</strong> — replying within 48 hours improves your local ranking by <strong>+15%</strong>. Your GBP score is <strong>71/100</strong> — the main gaps are photos and secondary categories. Publishing two posts per week could increase visibility by <strong>+22%</strong>.",
+    "Critères de présence enregistrés.": "Presence criteria saved.",
+    "Sentiment : ": "Sentiment: ",
+    "Points clés :": "Key points:",
+    "Points d’amélioration :": "Areas to improve:",
+    "Conseils :": "Recommendations:",
+    "Connecter Google Business": "Connect Google Business",
+    "Connecter maintenant →": "Connect now →",
+    "Sync": "Sync",
+    "⟳ Actualiser": "⟳ Refresh",
+    "🔍 Analyser": "🔍 Analyze",
+    "Absent du top 20": "Not found in top 20",
+    "Top 3": "Top 3",
+    "Top 10": "Top 10",
+    "Top 20": "Top 20",
+    "Hors top": "Outside top 20",
+    "Zones Top 3": "Top 3 areas",
+    "Zones Top 10": "Top 10 areas",
+    "Zones hors top": "Areas outside the top 10",
+    "Zones analysées": "Areas analyzed",
+    "Mesure indisponible": "Measurement unavailable",
+    "✓ OK": "✓ OK",
+    "☝️ Exemples ci-dessus — créez vos propres grilles pour voir vos vrais résultats": "☝️ The examples above are for reference — create your own grids to see your actual results",
+    "Aucune heatmap créée — visualisez votre domination locale par zone géographique": "No heatmap created — view your local dominance by geographic area",
+    "⚔️ Carte Concurrents": "⚔️ Competitor map",
+    "Aucun concurrent mappé. Lancez une analyse pour détecter les concurrents locaux.": "No competitors mapped. Run an analysis to find local competitors.",
+    "Concurrents total": "Total competitors",
+    "dans votre zone": "in your area",
+    "En Local Pack": "In Local Pack",
+    "positions top 3 Google Maps": "Google Maps top 3 positions",
+    "Autorité moy. concurrents": "Average competitor authority",
+    "/100 territoire": "/100 area score",
+    "Note moy. concurrents": "Average competitor rating",
+    "Google Business Profile": "Google Business Profile",
+    "Analysez vos premiers avis Google pour obtenir des insights IA et des réponses automatiques.": "Analyze your first Google reviews to get AI insights and suggested replies.",
     "Performances GBP indisponibles": "GBP performance data is unavailable",
     "AI GBP Posting nécessite un accès actif à cette option. Vérifiez votre forfait ou vos droits.": "AI GBP Posting requires active access. Check your plan or permissions.",
     "Posts GBP indisponibles": "GBP posts are unavailable",
@@ -22173,6 +22470,37 @@ function bindGlobalEvents() {
     "concurrents utilisés": "competitors used",
     "Ajoutez un domaine public pour lancer une récupération réelle de ses métriques.": "Add a public domain to start retrieving its metrics.",
     "Concurrent": "Competitor",
+    "Comparaison IA": "AI comparison",
+    "Ajoutez d’abord des concurrents puis lancez une analyse IA.": "Add competitors first, then run an AI analysis.",
+    "Comparaison IA — Vous vs Concurrent": "AI comparison — You vs. competitor",
+    "Lancez une analyse IA sur un concurrent pour obtenir la comparaison détaillée.": "Run an AI analysis on a competitor to get a detailed comparison.",
+    "Concurrent analysé :": "Analyzed competitor:",
+    "Actualiser l’analyse": "Refresh analysis",
+    "Cliquez sur Analyser sur ce concurrent pour lancer l’analyse IA.": "Click Analyze on this competitor to start the AI analysis.",
+    "Analyser {name}": "Analyze {name}",
+    "Ce que vous faites mieux": "What you do better",
+    "Non déterminé — contexte de votre entreprise non fourni": "Undetermined — your company context was not provided",
+    "Ce qu’ils font mieux": "What they do better",
+    "Aucun avantage détecté": "No advantages detected",
+    "Opportunités recommandées": "Recommended opportunities",
+    "Créée": "Created",
+    "Matrice fonctionnalités": "Feature matrix",
+    "Vous": "You",
+    "Forces détectées": "Detected strengths",
+    "Non déterminé": "Undetermined",
+    "Faiblesses détectées": "Detected weaknesses",
+    "Positionnement": "Positioning",
+    "Sources & niveau de confiance": "Sources & confidence level",
+    "Analyse IA —": "AI analysis —",
+    "Proposition de valeur": "Value proposition",
+    "Tarification": "Pricing",
+    "Fonctionnalités détectées": "Detected features",
+    "Forces": "Strengths",
+    "{count} changement(s) depuis la dernière analyse": "{count} changes since the last analysis",
+    "Voir comparaison": "View comparison",
+    "Produits / Services": "Products / Services",
+    "Essai gratuit / Démo": "Free trial / Demo",
+    "Local": "Local",
     "État": "Status",
     "Concurrent sans nom": "Unnamed competitor",
     "Erreur fournisseur": "Provider error",
@@ -23236,6 +23564,780 @@ function bindGlobalEvents() {
     "Qu'est-ce qui manque ?": "What's missing?",
     "Plan d'action priorisé": "Prioritized action plan",
     "Corriger {site}": "Fix {site}",
+    "Actifs": "Active",
+    "Action prioritaire :": "Priority action:",
+    "Analysé": "Analyzed",
+    "Archivés": "Archived",
+    "Audit en cours…": "Audit running…",
+    "Audit automatique": "Automatic audit",
+    "Audit manuel": "Manual audit",
+    "Audits ce mois": "Audits this month",
+    "Audits réalisés": "Audits completed",
+    "Auto": "Automatic",
+    "Cliquez sur un point pour voir le détail de l'audit.": "Click a point to view the audit details.",
+    "Corriger": "Fix",
+    "Delta": "Change",
+    "Exporter PDF": "Export PDF",
+    "Fix IA": "AI fix",
+    "Fix IA — plan Pro": "AI fix — Pro plan",
+    "Il y a {count}h": "{count}h ago",
+    "Il y a {count}j": "{count}d ago",
+    "Issues totales": "Total issues",
+    "Lancement…": "Starting…",
+    "Lancer l’audit": "Start audit",
+    "Lancez un nouvel audit pour obtenir des recommandations IA actualisées.": "Run a new audit to get updated AI recommendations.",
+    "Manuel": "Manual",
+    "Meilleur site :": "Top site:",
+    "Mission créée →": "Mission created →",
+    "Origine": "Source",
+    "Relancer l'audit": "Rerun audit",
+    "Score actuel": "Current score",
+    "Score actuel :": "Current score:",
+    "Score moyen :": "Average score:",
+    "Site critique :": "Critical site:",
+    "Sites OK (≥70)": "Healthy sites (≥70)",
+    "Tendance :": "Trend:",
+    "Tendance linéaire": "Linear trend",
+    "Type d'audit": "Audit type",
+    "Vitesse moy.": "Avg. speed",
+    "Voir mission →": "View mission →",
+    "action prioritaire requise": "priority action required",
+    "anomalie": "issue",
+    "anomalies": "issues",
+    "corriger les balises meta sur les 3 sites les plus faibles.": "Fix meta tags on the three lowest-scoring sites.",
+    "détectée": "detected",
+    "détectées": "detected",
+    "en bonne santé": "healthy",
+    "est le leader": "is leading",
+    "problème": "issue",
+    "pt / 7j": "pt / 7d",
+    "pts": "pts",
+    "pts total": "total pts",
+    "pts/mois": "pts/month",
+    "régression linéaire": "linear regression",
+    "score PageSpeed": "PageSpeed score",
+    "score moyen": "average score",
+    "score portfolio": "portfolio score",
+    "stable": "stable",
+    "sur 90 jours": "over 90 days",
+    "sur la période": "for the period",
+    "vs": "vs.",
+    "à corriger": "to fix",
+    "{count} autres problèmes détectés": "{count} other issues detected",
+    "{count} site critique": "{count} critical site",
+    "{count} sites critiques": "{count} critical sites",
+    "{count} site en bonne santé": "{count} healthy site",
+    "{count} sites en bonne santé": "{count} healthy sites",
+    "{site} a une vitesse critique ({speed}/100). Le taux de rebond mobile peut dépasser 65%.": "{site} has critically low speed ({speed}/100). Mobile bounce rate may exceed 65%.",
+    "{site} cumule {count} problèmes — risque de déclassement progressif.": "{site} has {count} issues — risk of a gradual ranking decline.",
+    "Écart de {delta} pts — le site le plus faible perd probablement 20–35% de trafic organique.": "A {delta}-point gap — the weaker site may lose 20–35% of its organic traffic.",
+    "Évolution :": "Change:",
+    "Évolution sur les 90 derniers jours": "Over the last 90 days",
+    "Évolution sur 90 jours": "Change over 90 days",
+    "Excellent (≥80)": "Excellent (≥80)",
+    "Bon (70-79)": "Good (70–79)",
+    "Moyen (50-69)": "Moderate (50–69)",
+    "Critique (<50)": "Critical (<50)",
+    "{count} mots-clés à fort potentiel non exploités": "{count} untapped high-potential keywords",
+    "{count} opportunités locales non exploitées": "{count} untapped local opportunities",
+    "Lancez des audits et connectez vos sources de données (GSC, GBP) pour identifier des opportunités de croissance.": "Run audits and connect your data sources (GSC, GBP) to identify growth opportunities.",
+    "{count} opportunités mots-clés identifiées.": "{count} keyword opportunities identified.",
+    "{count} site(s) en zone critique.": "{count} site(s) in the critical range.",
+    "{count} contenus à fort impact manquants.": "{count} high-impact content gaps.",
+    "Priorité : contenus structurés + SEO local.": "Priority: structured content + Local SEO.",
+    "corrigez les problèmes d'audit avant de viser de nouveaux mots-clés.": "fix audit issues before targeting new keywords.",
+    "Meta tags absents + vitesse critique": "Missing meta tags + critically low speed",
+    "Contenu insuffisant + maillage faible": "Insufficient content + weak internal linking",
+    "Volume :": "Volume:",
+    "trafic": "traffic",
+    "Contenu Manquant": "Missing content",
+    "Analyser tout": "Analyze all",
+    "Sites Critiques": "Critical sites",
+    "{count} site avec score < 60 — intervention urgente requise": "{count} site with a score below 60 — urgent action required",
+    "{count} sites avec score < 60 — intervention urgente requise": "{count} sites with a score below 60 — urgent action required",
+    "Type d’audit": "Audit type",
+    "Relancer l’audit": "Rerun audit",
+    "Quotidien": "Daily",
+    "Hebdomadaire": "Weekly",
+    "Mensuel": "Monthly",
+    "Balise title manquante ou dupliquée": "Missing or duplicate title tag",
+    "Les balises title sont le premier signal SEO lu par Google. Leur absence entraîne une perte directe de 10–20% de positionnement sur les mots-clés cibles.": "Title tags are the first SEO signal Google reads. Missing tags can directly reduce rankings for target keywords by 10–20%.",
+    "Ajouter une balise <title> unique de 50–60 caractères par page, incluant le mot-clé principal en début de chaîne.": "Add a unique 50–60 character <title> tag to each page, with the primary keyword near the beginning.",
+    "Images non optimisées (>200 kb)": "Unoptimized images (>200 KB)",
+    "Des images lourdes dégradent le LCP (Core Web Vitals). Un LCP > 2,5 s fait chuter le score PageSpeed de 20+ points et pénalise le ranking mobile.": "Large images hurt LCP (Core Web Vitals). An LCP above 2.5 s can lower the PageSpeed score by 20+ points and hurt mobile rankings.",
+    "Convertir en WebP, redimensionner aux breakpoints réels (max-width CSS), ajouter loading=\"lazy\" sur les images hors viewport.": "Convert to WebP, resize to the actual breakpoints (CSS max-width), and add loading=\"lazy\" to images outside the viewport.",
+    "Maillage interne insuffisant": "Insufficient internal linking",
+    "Le maillage interne distribue le PageRank entre vos pages. Des pages orphelines ne sont pas bien crawlées et perdent leur potentiel de ranking.": "Internal links distribute PageRank across your pages. Orphan pages are not crawled effectively and lose ranking potential.",
+    "Créer au moins 3 liens internes contextuels vers chaque page stratégique depuis les pages à fort trafic.": "Add at least 3 contextual internal links to each strategic page from high-traffic pages.",
+    "Ces problèmes ont un impact individuel limité mais s'accumulent pour pénaliser le score global sur la durée.": "These issues have limited individual impact but add up to reduce the overall score over time.",
+    "Consulter le rapport complet pour la liste exhaustive et les corrections suggérées par l'IA.": "See the full report for the complete list and AI-suggested fixes.",
+    "SEO Élevé": "SEO: High",
+    "Performance Élevé": "Performance: High",
+    "Autorité Moyen": "Authority: Medium",
+    "SEO Faible": "SEO: Low",
+    "Variable": "Varies",
+    "+8–15 pts": "+8–15 pts",
+    "+12–18 pts vitesse": "+12–18 speed pts",
+    "+5–10 pts": "+5–10 pts",
+    "+2–5 pts": "+2–5 pts",
+    "Info": "Info",
+    "Important": "Important",
+    "Modéré": "Moderate",
+    "Audit lancé pour {url}": "Audit started for {url}",
+    "Audit relancé pour {url}": "Audit rerun for {url}",
+    "Analyse de {url} en cours…": "Analyzing {url}…",
+    "Passer Pro → +300 audits · IA Insights": "Upgrade to Pro → +300 audits · AI Insights",
+    "Lancer": "Run",
+    "Lancer l'audit": "Start audit",
+    "Meilleur score": "Best score",
+    "Désactiver l'audit planifié": "Disable scheduled audit",
+    "Activer l'audit planifié": "Enable scheduled audit",
+    "Hebdo": "Weekly",
+    "1 autre problème détecté": "1 other issue detected",
+    "Moy.": "Avg.",
+    "{count} site excellent": "{count} excellent site",
+    "{count} sites excellents": "{count} excellent sites",
+    "Évolution sur {count} jours": "Trend over {count} days",
+    "Choisir les sites à comparer": "Choose sites to compare",
+    "Comparer →": "Compare →",
+    "Score SEO Global": "Overall SEO score",
+    "Leader": "Leader",
+    "Catégorie par catégorie": "Category-by-category",
+    "Vitesse & Problèmes": "Speed & issues",
+    "A meilleur": "A is better",
+    "B meilleur": "B is better",
+    "Anomalies détectées": "Issues detected",
+    "Aucune anomalie critique détectée": "No critical issues detected",
+    "Classement global — tous les sites": "Overall ranking — all sites",
+    "Audit — {site}": "Audit — {site}",
+    "Vitesse PageSpeed": "PageSpeed score",
+    "Problèmes SEO": "SEO issues",
+    "pts sur 90j": "points over 90 days",
+    "Distribution : moyenne {score}/100 — cliquez sur un site pour les détails": "Distribution: average {score}/100 — select a site for details",
+    "Audit planifié activé — {frequency}": "Scheduled audit enabled — {frequency}",
+    "Copier l'URL": "Copy URL",
+    "Détacher": "Unpin",
+    "Épingler": "Pin",
+    "Issues": "Issues",
+    "Source": "Source",
+    "Site": "Site",
+    "Comparer": "Compare",
+    "Relancer": "Rerun",
+    "1 audit sélectionné": "1 audit selected",
+    "{count} audits sélectionnés": "{count} audits selected",
+    "1 audit relancé": "1 audit rerun",
+    "{count} audits relancés": "{count} audits rerun",
+    "1 audit supprimé": "1 audit deleted",
+    "{count} audits supprimés": "{count} audits deleted",
+    "1 audit a échoué": "1 audit failed",
+    "{count} audits ont échoué": "{count} audits failed",
+    "{ok} audits relancés; {fail} échoués": "{ok} audits rerun; {fail} failed",
+    "{ok} audits supprimés; {fail} échoués": "{ok} audits deleted; {fail} failed",
+    "CSV exporté — {count} audit": "CSV exported — {count} audit",
+    "CSV exporté — {count} audits": "CSV exported — {count} audits",
+    "Relance de {count} audit en cours…": "Rerunning {count} audit…",
+    "Relance de {count} audits en cours…": "Rerunning {count} audits…",
+    "1 audit archivé — masqué de la vue principale": "1 audit archived — hidden from the main view",
+    "{count} audits archivés — masqués de la vue principale": "{count} audits archived — hidden from the main view",
+    "Supprimer l’audit sélectionné ? Cette action est irréversible.": "Delete the selected audit? This action cannot be undone.",
+    "Supprimer les {count} audits sélectionnés ? Cette action est irréversible.": "Delete the selected {count} audits? This action cannot be undone.",
+    "Supprimer l’audit": "Delete audit",
+    "Supprimer {count} audits": "Delete {count} audits",
+    "Plan d'amélioration": "Improvement plan",
+    "Analyse détaillée": "Detailed analysis",
+    "Plan d'amélioration global": "Overall improvement plan",
+    "Missions prioritaires": "Priority missions",
+    "Rapport comparatif PDF": "Comparative PDF report",
+    "Créer plan de contenu IA": "Create AI content plan",
+    "Générer toutes les missions": "Generate all missions",
+    "Rapport opportunités PDF": "Opportunities report PDF",
+    "Mission créée · {site}": "Mission created · {site}",
+    "Mission créée — {site}": "Mission created — {site}",
+    "{count} opportunité mot-clé identifiée.": "{count} keyword opportunity identified.",
+    "{count} site en zone critique.": "{count} site in the critical range.",
+    "{count} sites en zone critique.": "{count} sites in the critical range.",
+    "{count} site en zone critique": "{count} site in the critical range",
+    "{count} sites en zone critique": "{count} sites in the critical range",
+    "{count} contenu à fort impact manquant.": "{count} high-impact content gap.",
+    "Opportunités Mots-clés": "Keyword opportunities",
+    "SEO Local": "Local SEO",
+    // Monitors root, detail panels, sub-pages, and their dynamic interface labels.
+    "Monitors": "Monitors",
+    "Live · Check toutes les 5 min": "Live · Check every 5 min",
+    "Vérifier tout": "Check all",
+    "Nouveau": "New",
+    "En ligne": "Online",
+    "DOWN": "DOWN",
+    "Latence moy.": "Avg. latency",
+    "Uptime global": "Global uptime",
+    "Incidents/mois": "Incidents/month",
+    "{count} en alerte": "{count} in alert",
+    "Action requise": "Action required",
+    "Tout OK": "All clear",
+    "latence moyenne actuelle": "current average latency",
+    "SLA 99.0% cible": "99.0% SLA target",
+    "Uptime": "Uptime",
+    "Latence": "Latency",
+    "Check": "Check",
+    "Il y a {value}": "{value} ago",
+    "Jamais vérifié": "Never checked",
+    "Uptime 30j": "30-day uptime",
+    "disponibilité 7j": "7-day availability",
+    "en attente de données": "waiting for data",
+    "Timeline d’activité": "Activity timeline",
+    "{count} opérationnels": "{count} operational",
+    "{count} dégradé(s)": "{count} degraded",
+    "Certificats SSL": "SSL certificates",
+    "Auto-renouvellement Let’s Encrypt actif": "Let’s Encrypt auto-renewal is active",
+    "L’expiration SSL sera affichée dès la prochaine vérification des monitors HTTPS": "SSL expiration will appear after the next HTTPS monitor check",
+    "Canaux d’alerte actifs": "Active alert channels",
+    "Tester": "Test",
+    "Mettre en pause": "Pause",
+    "Reprendre": "Resume",
+    "En pause": "Paused",
+    "Email d’alerte": "Alert email",
+    "alerte@email.com": "alert@example.com",
+    "Sauver": "Save",
+    "SMS d’alerte": "SMS alert",
+    "Les alertes SMS par numéro de téléphone seront disponibles prochainement. Utilisez les alertes email en attendant.": "SMS alerts by phone number will be available soon. Use email alerts in the meantime.",
+    "Ping maintenant": "Ping now",
+    "Timeout": "Timeout",
+    "Dernier check": "Last check",
+    "Monitor : {name}": "Monitor: {name}",
+    "Nom de l’endpoint": "Endpoint name",
+    "API Contact Form": "API Contact Form",
+    "URL de l’endpoint": "Endpoint URL",
+    "Ajouter et surveiller": "Add and monitor",
+    "URL du site": "Website URL",
+    "Nom du monitor": "Monitor name",
+    "Mon site": "My site",
+    "Créer le monitor": "Create monitor",
+    "Toutes les 5 min": "Every 5 min",
+    "Toutes les 15 min": "Every 15 min",
+    "Toutes les heures": "Every hour",
+    "+ Nouvelle fenêtre": "+ New window",
+    "Appliquer →": "Apply →",
+    "Activer Pro": "Enable Pro",
+    "Disponible à partir de Pro": "Available on Pro and above",
+    "Configuration optimale détectée. Recommandation : activer Slack alerts pour notifications équipe instantanées, et créer une fenêtre de maintenance pour les déploiements du dimanche.": "Optimal configuration detected. Recommendation: enable Slack alerts for instant team notifications and create a maintenance window for Sunday deployments.",
+    "⚙ Presets de monitoring": "⚙ Monitoring presets",
+    "Templates préconfigurés selon votre type de site — déploiement en 1 clic": "Preconfigured templates for your site type — deploy in one click",
+    "🔔 Canaux d’alerte multi-canal": "🔔 Multi-channel alerting",
+    "Escalade intelligente · Groupage d’alertes · Réduction du bruit IA": "Smart escalation · Alert grouping · AI noise reduction",
+    "{count} monitors configurés": "{count} monitors configured",
+    "#flowpoint-alerts actif": "#flowpoint-alerts active",
+    "Bot FlowPoint connecté": "FlowPoint bot connected",
+    "URL non configurée": "URL not configured",
+    "Intégration active": "Integration active",
+    "Disponible Ultra": "Available on Ultra",
+    "{plan} requis": "{plan} required",
+    "Configurer": "Configure",
+    "Intervalle de check": "Check interval",
+    "Toutes les 30s": "Every 30 sec",
+    "Toutes les 1 min": "Every 1 min",
+    "Seuil alerte latence": "Latency alert threshold",
+    "Groupage d’alertes IA": "AI alert grouping",
+    "Activé (réduction bruit)": "Enabled (noise reduction)",
+    "Désactivé": "Disabled",
+    "🛠 Fenêtres de maintenance": "🛠 Maintenance windows",
+    "Silencez les alertes pendant les déploiements planifiés": "Silence alerts during scheduled deployments",
+    "Prochaine": "Next",
+    "Modifier": "Edit",
+    "📋 Configuration par monitor": "📋 Per-monitor configuration",
+    "{count} monitor(s) configuré(s)": "{count} monitor(s) configured",
+    "📧 Email alerte": "📧 Alert email",
+    "Créer le monitor": "Create monitor",
+    "Monitor : {name}": "Monitor: {name}",
+    "URL du site à surveiller": "Website URL to monitor",
+    "Fréquence de vérification": "Check frequency",
+    "Créer les monitors": "Create monitors",
+    "Ce preset va créer {count} monitor(s) : {checks}.": "This preset will create {count} monitor(s): {checks}.",
+    "Création…": "Creating…",
+    "{count} créé(s)": "{count} created",
+    "{count} déjà configuré(s) (URL existante)": "{count} already configured (existing URL)",
+    "{count} échec(s)": "{count} failed",
+    "Preset «{name}» — {result}.": "Preset “{name}” — {result}.",
+    "Appliquer le preset «{name}»": "Apply the “{name}” preset",
+    "Modifier la fenêtre de maintenance": "Edit maintenance window",
+    "Planification (ex : Dimanche 02:00–04:00)": "Schedule (e.g. Sunday 02:00–04:00)",
+    "Actif": "Active",
+    "Statut": "Status",
+    "Site DOWN": "Site DOWN",
+    "Reprise (site UP)": "Recovered (site UP)",
+    "Configurer les alertes Email": "Configure email alerts",
+    "Email d’alerte sauvegardé": "Alert email saved",
+    "Modifier la page de statut": "Edit status page",
+    "Configurer la page de statut": "Configure status page",
+    "Enregistrer les modifications": "Save changes",
+    "Activer la page statut": "Enable status page",
+    "—": "—",
+    "⏱ Timeline d’activité": "⏱ Activity timeline",
+    "🔒 Certificats SSL": "🔒 SSL certificates",
+    "🔔 Canaux d’alerte actifs": "🔔 Active alert channels",
+    "Vérification terminée pour {count} monitor(s)": "Finished checking {count} monitor(s)",
+    "Suppression terminée pour {count} monitor(s)": "Finished deleting {count} monitor(s)",
+    "Impossible de vérifier {count} monitor(s)": "Could not check {count} monitor(s)",
+    "Impossible de supprimer {count} monitor(s)": "Could not delete {count} monitor(s)",
+    "{ok} monitor(s) traité(s) ; {failed} échec(s)": "{ok} monitor(s) processed; {failed} failed",
+    "Vérification de {count} monitor(s) en cours…": "Checking {count} monitor(s)…",
+    "Supprimer {count} monitor(s) sélectionné(s) ? Cette action est irréversible.": "Delete {count} selected monitor(s)? This action cannot be undone.",
+    "Supprimer {count} monitors": "Delete {count} monitors",
+    "Supprimer le monitor": "Delete monitor",
+    "Vérification terminée — {ok} réussis ; {failed} échecs.": "Check complete — {ok} succeeded; {failed} failed.",
+    "Ajouter un endpoint API": "Add API endpoint",
+    "Ping réussi — {time}ms": "Ping successful — {time}ms",
+    "Supprimer {name} ?": "Delete {name}?",
+    "Tester maintenant": "Test now",
+    "Copier l’URL": "Copy URL",
+    "Dimanche 02:00–04:00": "Sunday 02:00–04:00",
+    "Fenêtre de maintenance « {name} » créée": "Maintenance window “{name}” created",
+    "Email d’alerte enregistré": "Alert email saved",
+    "Aucun monitor configuré. Ajoutez vos sites pour suivre les Core Web Vitals en temps réel.": "No monitors configured. Add your sites to track Core Web Vitals in real time.",
+    "Latence moyenne globale : <strong>{latency}ms</strong>. ⚠ <strong>{site}</strong> : LCP {lcp}s + TTFB {ttfb}ms — hébergement potentiellement non optimisé. Une correction pourrait apporter <strong>+{gain} points CWV</strong> et réduire le taux de rebond.": "Overall average latency: <strong>{latency}ms</strong>. ⚠ <strong>{site}</strong>: LCP {lcp}s + TTFB {ttfb}ms — hosting may be under-optimized. Fixing it could add <strong>+{gain} CWV points</strong> and reduce the bounce rate.",
+    "Core Web Vitals surveillés sur {count} site.": "Core Web Vitals monitored on {count} site.",
+    "Core Web Vitals surveillés sur {count} sites.": "Core Web Vitals monitored on {count} sites.",
+    "Diagnostiquer le plus lent": "Diagnose the slowest",
+    "Rapport CWV complet": "Full CWV report",
+    "Recommandations CDN": "CDN recommendations",
+    "latence monitors": "monitor latency",
+    "-42ms vs hier": "-42ms vs yesterday",
+    "Score CWV moy.": "Average CWV score",
+    "score Core Web Vitals": "Core Web Vitals score",
+    "+3 pts ce mois": "+3 pts this month",
+    "Données de performance indisponibles": "Performance data unavailable",
+    "LCP moyen": "Average LCP",
+    "Cible : ≤2.5s": "Target: ≤2.5s",
+    "Sites \"Good\" CWV": "CWV \"Good\" sites",
+    "speed ≥ 90/100": "speed score ≥ 90/100",
+    "plombier + auto-moto": "plumbing + auto repair",
+    "Intelligence de la performance par IA": "AI performance intelligence",
+    "Performances mobiles en Europe": "Mobile performance in Europe",
+    "La latence mobile augmente en Europe (+18% cette semaine)": "Mobile latency is up across Europe (+18% this week)",
+    "site le plus lent : {site}": "slowest site: {site}",
+    "Pics serveur": "Server spikes",
+    "Les temps de réponse serveur culminent entre 08:00–09:00 et 19:00–20:00. Profil de charge cyclique — envisagez d’activer le cache.": "Server response times peak between 08:00–09:00 and 19:00–20:00. Traffic is cyclical; consider enabling caching.",
+    "Prévision": "Forecast",
+    "Dégradation probable vendredi à 18:00{siteSuffix} — basée sur l’historique de monitoring.": "Degradation likely Friday at 18:00{siteSuffix} — based on monitoring history.",
+    "sur {site}": "on {site}",
+    "Optimiser": "Optimize",
+    "🌍 Performance Géographique": "🌍 Geographic performance",
+    "Activer Pro →": "Upgrade to Pro →",
+    "📱 Mobile vs Desktop": "📱 Mobile vs desktop",
+    "Mobile": "Mobile",
+    "Ordinateur": "Desktop",
+    "Valeur estimée — connectez PageSpeed Insights pour les données réelles.": "Estimated value — connect PageSpeed Insights for real data.",
+    "Vérifiez l’hébergeur, les DNS et le certificat SSL.": "Check your host, DNS, and SSL certificate.",
+    "Analysez les logs serveur pour identifier la cause.": "Check server logs to identify the cause.",
+    "Site inaccessible — impact client direct.": "Site unavailable — direct customer impact.",
+    "Performance dégradée — UX impactée.": "Performance degraded — UX affected.",
+    "Site inaccessible — vérification auprès de l’hébergeur requise.": "Site unavailable — check with your hosting provider.",
+    "Latence élevée détectée : {latency}ms. Vérifiez la charge serveur et le cache.": "High latency detected: {latency}ms. Check server load and caching.",
+    "Monitor DOWN détecté. Uptime 30j : {uptime}. Vérifiez l’hébergeur, les DNS et le certificat SSL.": "Monitor DOWN detected. 30-day uptime: {uptime}. Check your host, DNS, and SSL certificate.",
+    "Latence anormalement élevée : {latency}ms. Activez le cache et compressez les ressources statiques.": "Abnormally high latency: {latency}ms. Enable caching and compress static assets.",
+    "Site inaccessible — impact client direct et crawl Google potentiellement affecté.": "Site unavailable — direct customer impact and Google crawling may be affected.",
+    "Dégradation UX — temps de réponse élevé pour les visiteurs.": "UX degraded — response times are high for visitors.",
+    "Informatif": "Informational",
+    "Tous vos monitors sont opérationnels. Vous serez alerté dès qu’une anomalie est détectée.": "All your monitors are operational. You’ll be alerted as soon as an issue is detected.",
+    "{count} incident(s) actif(s) · {down} DOWN · {degraded} site(s) dégradé(s). {message}": "{count} active incident(s) · {down} DOWN · {degraded} degraded site(s). {message}",
+    "Action immédiate requise pour les sites DOWN.": "Immediate action required for DOWN sites.",
+    "Surveillez la latence des sites dégradés.": "Monitor latency on degraded sites.",
+    "Plan de résolution IA": "AI resolution plan",
+    "Rapport incidents PDF": "Incident report PDF",
+    "Incidents actifs": "Active incidents",
+    "{down} DOWN · {degraded} site(s) dégradé(s)": "{down} DOWN · {degraded} degraded site(s)",
+    "Sites DOWN": "DOWN sites",
+    "Tous opérationnels": "All operational",
+    "MTTR moyen": "Average MTTR",
+    "En attente de résolution": "Awaiting resolution",
+    "TTD moyen": "Average TTD",
+    "Délai moyen de détection": "Average time to detect",
+    "📅 Timeline des incidents": "📅 Incident timeline",
+    "Monitor 2 — dégradé 12min": "Monitor 2 — degraded for 12 min",
+    "Calme": "Quiet",
+    "Notifié ✓": "Notified ✓",
+    "Non notifié": "Not notified",
+    "💥 Impact business": "💥 Business impact",
+    "✦ Analyse IA · Root Cause Detection": "✦ AI analysis · root cause detection",
+    "Plan d’action": "Action plan",
+    "Rapport PDF": "PDF report",
+    "actif": "active",
+    "SLA Better Stack": "Better Stack SLA",
+    "Disponibilité et incidents mesurés par Better Stack pour un monitor de cette organisation.": "Availability and incidents measured by Better Stack for a monitor in this organization.",
+    "Charger le rapport": "Load report",
+    "Monitor Better Stack pour le rapport SLA": "Better Stack monitor for the SLA report",
+    "Charger les monitors…": "Loading monitors…",
+    "Du": "From",
+    "Au": "To",
+    "Sélectionnez un monitor et une période pour charger les mesures.": "Select a monitor and time period to load measurements.",
+    "Accords de niveau de service · disponibilité · prévision des violations": "Service-level agreements · availability · breach forecasting",
+    "Rapport SLA PDF": "SLA PDF report",
+    "Page statut": "Status page",
+    "Aucune donnée de check disponible — les monitors n’ont pas encore de mesure. Les KPI SLA seront calculés après les premiers cycles de vérification automatique.": "No check data is available — monitors have no measurements yet. SLA KPIs will be calculated after the first automatic check cycles.",
+    "SLA global respecté : <strong>{uptime}%</strong> uptime sur 30 jours glissants (cible 99,0%). <strong>{compliant}/{measured}</strong> sites conformes parmi les sites mesurés.": "Global SLA met: <strong>{uptime}%</strong> uptime over a rolling 30 days (target 99.0%). <strong>{compliant}/{measured}</strong> sites are compliant among those measured.",
+    "⚠ <strong>Violation SLA détectée.</strong> Uptime global (30j) : <strong>{uptime}%</strong> (cible 99,0%). {count} site(s) hors SLA — plan correctif requis.": "⚠ <strong>SLA violation detected.</strong> Overall 30-day uptime: <strong>{uptime}%</strong> (target 99.0%). {count} site(s) are below SLA — a remediation plan is required.",
+    "Envoyer rapport client": "Send client report",
+    "Plan correctif": "Remediation plan",
+    "SLA Global (30j)": "Overall SLA (30d)",
+    "Cible : 99.0%": "Target: 99.0%",
+    "En attente de données": "Waiting for data",
+    "Sites conformes": "Compliant sites",
+    "Aucune mesure encore": "No measurements yet",
+    "{measured}/{total} mesurés": "{measured}/{total} measured",
+    "Tous mesurés": "All measured",
+    "Indisponibilité estimée": "Estimated downtime",
+    "30j glissants (estimation)": "Rolling 30 days (estimate)",
+    "Non config.": "Not configured",
+    "Non configuré": "Not configured",
+    "📊 Uptime historique — {count} mois (données réelles)": "📊 Historical uptime — {count} months (real data)",
+    "📊 Uptime historique — en attente de données": "📊 Historical uptime — awaiting data",
+    "L’historique mensuel apparaîtra après les premiers cycles de check.": "Monthly history will appear after the first check cycles.",
+    "⚠ Détection des risques SLA": "⚠ SLA risk detection",
+    "Aucun check effectué encore — données en cours de collecte": "No checks yet — data is being collected",
+    "{minutes} min d’indisponibilité (30j glissants) — violation SLA en cours": "{minutes} min of downtime (rolling 30 days) — SLA breach is ongoing",
+    "Latence élevée récurrente — à surveiller sur les 30 prochains jours": "Recurring high latency — monitor over the next 30 days",
+    "Uptime stable · Aucun risque de violation SLA": "Stable uptime · no risk of an SLA breach",
+    "Risque {risk}%": "{risk}% risk",
+    "✦ Prévision IA indisponible — données insuffisantes pour générer une prévision fiable (historique de 7 jours minimum requis).": "✦ AI forecast unavailable — not enough data to create a reliable forecast (at least 7 days of history are required).",
+    "Anticipez les violations SLA avant qu’elles surviennent": "Anticipate SLA breaches before they happen",
+    "📋 SLA par site": "📋 SLA by site",
+    "Cible": "Target",
+    "Disponibilité réelle": "Actual uptime",
+    "Indisponibilité": "Downtime",
+    "{minutes} min": "{minutes} min",
+    "Aucun": "None",
+    "Non mesuré": "Not measured",
+    "SLA OK": "SLA OK",
+    "Hors SLA": "Out of SLA",
+    "Indisponibilité totale ce mois": "Total downtime this month",
+    "{count} site(s) hors SLA": "{count} site(s) outside SLA",
+    "Aucun incident détecté": "No incidents detected",
+    "Site le plus impacté": "Most impacted site",
+    "Tous les sites conformes": "All sites compliant",
+    "Latence moyenne": "Average latency",
+    "Latence élevée — vérifier": "High latency — investigate",
+    "Dans les seuils normaux": "Within normal thresholds",
+    "Monitors conformes": "Compliant monitors",
+    "SLA 99% · {measured}/{total} mesurés": "SLA 99% · {measured}/{total} measured",
+    "SLA 99% · {month}": "SLA 99% · {month}",
+    "🌐 Page statut publique": "🌐 Public status page",
+    "Marque blanche": "White label",
+    "Abonnés email": "Email subscribers",
+    "Mise à jour": "Updated",
+    "Voir la page": "View page",
+    "🤖 Parcours synthétiques": "🤖 Synthetic journeys",
+    "Actualiser les statuts": "Refresh statuses",
+    "Test de disponibilité": "Availability test",
+    "Testez automatiquement login, checkout et formulaires — 24/7": "Automatically test login, checkout, and forms — 24/7",
+    "Activer Ultra →": "Upgrade to Ultra →",
+    "Régions de contrôle configurées dans Better Stack": "Check regions configured in Better Stack",
+    "Chargez les régions configurées pour ce workspace.": "Load the regions configured for this workspace.",
+    "Chargement des monitors Better Stack…": "Loading Better Stack monitors…",
+    "Better Stack n’est pas configuré pour ce serveur.": "Better Stack is not configured for this server.",
+    "Aucun monitor Better Stack appartenant à cette organisation.": "No Better Stack monitors belong to this organization.",
+    "Choisissez une période valide, du plus ancien au plus récent.": "Choose a valid time period, from oldest to newest.",
+    "Better Stack n’a pas renvoyé de mesures SLA exploitables pour cette période.": "Better Stack returned no usable SLA measurements for this period.",
+    "Disponibilité": "Availability",
+    "Temps d’indisponibilité": "Downtime",
+    "Incident le plus long": "Longest incident",
+    "Durée moyenne d’incident": "Average incident duration",
+    "Mesures Better Stack du {from} au {to}.": "Better Stack measurements from {from} to {to}.",
+    "Aucune région de contrôle configurée dans Better Stack.": "No check regions are configured in Better Stack.",
+    "{regions} régions · {monitors} monitors": "{regions} regions · {monitors} monitors",
+    "{count} monitor(s) en alerte": "{count} monitor(s) in alert",
+    "{count} statuts inconnus": "{count} unknown statuses",
+    "Aucun monitor en alerte": "No monitors in alert",
+    "{count} monitor(s)": "{count} monitor(s)",
+    "Lent": "Slow",
+    "Ping réussi — {time}ms · Statut : {status}": "Ping successful — {time}ms · Status: {status}",
+    "Endpoint ajouté : {name}": "Endpoint added: {name}",
+    "Impossible d’ajouter l’endpoint.": "Could not add the endpoint.",
+    "Monitor créé pour {url}": "Monitor created for {url}",
+    "{url} est maintenant surveillé": "{url} is now being monitored",
+    "Impossible de créer le monitor.": "Could not create the monitor.",
+    // Reports and reporting panels
+    " Attention : {name} — risque de désengagement.": " Watch out: {name} — at risk of disengagement.",
+    " Score de santé business : <strong>{score}/100</strong>.": " Business health score: <strong>{score}/100</strong>.",
+    " {name} est le plus engagé ({count} rapport(s)).": " {name} is the most engaged ({count} report(s)).",
+    "+0.2 vs M-1": "+0.2 vs M-1",
+    "+1 vs M-1": "+1 vs M-1",
+    "+10 pts — encore critique": "+10 pts — still critical",
+    "+12 pts en 4 mois": "+12 pts in 4 months",
+    "+12 pts en 5 mois": "+12 pts in 5 months",
+    "+14 pts en 4 mois": "+14 pts in 4 months",
+    "+14 pts — 4 mois": "+14 pts — 4 months",
+    "+4% vs M-1": "+4% vs M-1",
+    "1 dominée, 3 en progression": "1 leading, 3 improving",
+    "3 clients": "3 clients",
+    "<strong>{count} alerte{plural} critique{plural} active{plural}</strong>.": "<strong>{count} active critical alert{plural}</strong>.",
+    "<strong>{count} rapport{plural} généré{plural}</strong> — {shared} rapport{sharedPlural} partagé{sharedPlural}. Dernier : <strong>{name}</strong> ({date}). {scheduleSummary}": "<strong>{count} report{plural} generated</strong> — {shared} report{sharedPlural} shared. Latest: <strong>{name}</strong> ({date}). {scheduleSummary}",
+    "Alertes critiques": "Critical alerts",
+    "Aucun client configuré. Ajoutez vos premiers clients pour activer le reporting automatique.": "No clients configured. Add your first clients to enable automatic reporting.",
+    "Aucun revenu attribué aux événements": "No revenue attributed to events",
+    "Aucun revenu relié": "No revenue linked",
+    "Aucune alerte critique active.": "No active critical alerts.",
+    "Audit à inclure dans les rapports": "Audit to include in reports",
+    "Branding custom actif": "Custom branding active",
+    "Clients actifs": "Active clients",
+    "Clients convertis observés": "Observed converted clients",
+    "Confiance IA :": "AI confidence:",
+    "Configuration White-Label": "White-label configuration",
+    "Configurez des rapports automatiques pour vos clients.": "Set up automatic reports for your clients.",
+    "Connectez GBP": "Connect GBP",
+    "Connectez Google Business Profile pour obtenir votre rapport de visibilité locale personnalisé.": "Connect Google Business Profile to get your personalized local visibility report.",
+    "Connectez analytics": "Connect analytics",
+    "Connectez votre analytics et le suivi comportemental pour obtenir un rapport fondé sur des observations réelles. Les pertes financières resteront non mesurées sans revenus attribués.": "Connect your analytics and behavioral tracking to get a report based on real observations. Financial losses remain unmeasured without attributed revenue.",
+    "Créez vos premiers audits SEO pour générer votre rapport de performance.": "Run your first SEO audits to generate your performance report.",
+    "Créez votre premier rapport PDF pour partager vos résultats SEO avec vos clients ou votre équipe.": "Create your first PDF report to share SEO results with your clients or team.",
+    "Dernier envoi :": "Last sent:",
+    "Données connectées": "Data connected",
+    "Données de classement indisponibles": "Ranking data unavailable",
+    "Entonnoir de conversion": "Conversion funnel",
+    "Envoyé par {name}": "Sent by {name}",
+    "Gestion des clients": "Client management",
+    "Générer le rapport": "Generate report",
+    "Générer rapport": "Generate report",
+    "IA Reporting Lab — Ultra requis": "AI Reporting Lab — Ultra required",
+    "Inclure White Label": "Include white label",
+    "Inclus": "Included",
+    "Insights IA — Rapport mai 2026": "AI insights — May 2026 report",
+    "Insights générés": "Generated insights",
+    "Inter (défaut)": "Inter (default)",
+    "Latence élevée : {latency}ms": "High latency: {latency}ms",
+    "Mon Agence": "My agency",
+    "Mots-clés Top 10": "Top 10 keywords",
+    "Mots-clés Top 3": "Top 3 keywords",
+    "Nom du client pour le pack complet": "Client name for the complete pack",
+    "Non mesurée": "Not measured",
+    "Note GBP moy.": "Average GBP rating",
+    "Opportunités SEO": "SEO opportunities",
+    "PDF co-marqué client": "Client co-branded PDF",
+    "Pause": "Paused",
+    "Performance CTA": "CTA performance",
+    "Performance Google Business Profile": "Google Business Profile performance",
+    "Perte financière attribuée": "Attributed financial loss",
+    "Planifiez un envoi": "Schedule a delivery",
+    "Position": "Position",
+    "Positions mots-clés": "Keyword rankings",
+    "Prochain :": "Next:",
+    "Prochain envoi": "Next delivery",
+    "Préc.": "Previous",
+    "Préréglage :": "Preset:",
+    "Prévisions IA — Horizon M+3 (Août 2026)": "AI forecasts — M+3 outlook (August 2026)",
+    "Prévisions actives": "Active forecasts",
+    "Rapport IA généré automatiquement — <strong>{month}</strong>. {count} alertes critiques actives. Potentiel de revenus non capté : <strong>{amount}€/mois</strong>. Score de santé business : {score}/100 (+{delta} pts en 4 mois). Trajectoire : <strong>{trajectory}</strong>.": "AI report generated automatically — <strong>{month}</strong>. {count} active critical alerts. Uncaptured revenue potential: <strong>€{amount}/month</strong>. Business health score: {score}/100 (+{delta} pts in 4 months). Outlook: <strong>{trajectory}</strong>.",
+    "Rapport IA — <strong>{month}</strong>. {alerts}{score} Connectez vos sources pour des prévisions de revenus personnalisées.": "AI report — <strong>{month}</strong>. {alerts}{score} Connect your data sources for personalized revenue forecasts.",
+    "Rapport Mai 2026 — Boulangerie Martin": "Report May 2026 — Boulangerie Martin",
+    "Rapport fondé sur les données de conversion observées. Aucune perte financière n'est estimée sans revenus attribués aux événements.": "This report uses observed conversion data. No financial loss is estimated without revenue attributed to events.",
+    "Rapport préparé par {name}": "Report prepared by {name}",
+    "Rapports envoyés": "Reports sent",
+    "Rapports narratifs IA, prévisions avancées, détection d'anomalies et recommandations stratégiques.": "AI-narrated reports, advanced forecasts, anomaly detection, and strategic recommendations.",
+    "Revenu non mesuré": "Revenue not measured",
+    "Revenu observé": "Observed revenue",
+    "Revenue leaks détectées": "Detected revenue leaks",
+    "Sans audit lié": "No linked audit",
+    "Score SEO global : <strong>74/100 (+12 pts en 5 mois)</strong>. 3 mots-clés ont progressé significativement ce mois. Opportunité détectée : votre mot-clé principal peut atteindre la 1ère position avec 2 actions techniques.": "Portfolio SEO score: <strong>74/100 (+12 pts in 5 months)</strong>. Three keywords made significant gains this month. Opportunity: two technical actions could move your main keyword into first place.",
+    "Score SEO moyen de votre portfolio : <strong>{score}/100</strong>. Consultez les audits individuels pour les priorités d'optimisation par site.": "Average portfolio SEO score: <strong>{score}/100</strong>. Review individual audits to see each site's optimization priorities.",
+    "Score business": "Business score",
+    "Score {score}": "Score {score}",
+    "Site inaccessible — vérification requise": "Site inaccessible — verification required",
+    "Sites sous SLA": "Sites below SLA",
+    "Taux de conversion observé": "Observed conversion rate",
+    "Uptime moyen": "Average uptime",
+    "Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>{label}</strong> peuvent menacer votre note moyenne.": "Local visibility is up in 3 of 4 areas, with strong gains in several. One area is losing ground to stronger competition. <strong>{label}</strong> unanswered reviews could put your average rating at risk.",
+    "Visibilité locale par zone": "Local visibility by area",
+    "Visibilité moy.": "Average visibility",
+    "Volume": "Volume",
+    "Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité.": "Your business is on a positive four-month trajectory: SEO score +12 pts and business health +14 pts. <strong>Critical issue</strong>: conversion remains your weakest area. Recommended action: fix the mobile form first.",
+    "White-label": "White label",
+    "Zone": "Area",
+    "Zones analysées": "Areas analyzed",
+    "action immédiate": "Immediate action",
+    "avec rapports planifiés": "with scheduled reports",
+    "cette semaine": "this week",
+    "données exemple": "sample data",
+    "horizon M+3": "M+3 horizon",
+    "positive avec 2 risques à traiter en urgence": "positive, with 2 risks to address urgently",
+    "score indisponible": "score unavailable",
+    "sites à améliorer": "sites to improve",
+    "{count} client{plural} configuré{plural}. <strong>{active} rapport{activePlural} actif{activePlural}</strong> avec envoi automatique.": "{count} client{plural} configured. <strong>{active} report{activePlural} active</strong> with automatic delivery.",
+    "{count} envoi{plural} automatique{plural} actif{plural}.": "{count} automatic deliver{plural} active.",
+    "à impact élevé": "high impact",
+    "2–3 pages · KPIs essentiels": "2–3 pages · essential KPIs",
+    "5–8 pages · standard": "5–8 pages · standard",
+    "10+ pages · analyse complète": "10+ pages · full analysis",
+    "Priorité absolue : conversion mobile": "Top priority: mobile conversion",
+    "Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.": "Mobile conversion is 2.8x lower than desktop. Simplifying the contact form could generate +12 clients/month.",
+    "+12 clients/mois": "+12 clients/month",
+    "Accélérer le Local SEO Maps": "Grow Local SEO on Maps",
+    "Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.": "Improve the GBP profile and reviews, then compare measured local visibility before and after optimization.",
+    "Reconquérir le trafic référent": "Recover referral traffic",
+    "Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.": "Referrals fell 4% and the bounce rate is 58%. Review partnerships and create targeted co-branded content.",
+    "+400 sessions/mois": "+400 sessions/month",
+    "Appels depuis GBP": "Calls from GBP",
+    "Itineraires demandes": "Directions requested",
+    "Visites fiche": "Profile views",
+    "Note moyenne": "Average rating",
+    "Avis sans reponse": "Unanswered reviews",
+    "Photos publiées": "Photos published",
+    "Fort": "Strong",
+    "Tres fort": "Very strong",
+    "Monitoring SLA": "SLA monitoring",
+    "Logo agence": "Agency logo",
+    "Nom agence": "Agency name",
+    "Site agence": "Agency website",
+    "Pied de page custom": "Custom footer",
+    "Signature email": "Email signature",
+    "Domaine portail": "Portal domain",
+    "Typographie": "Typography",
+    "Export White-Label": "White-label export",
+    "Exemple — friction de conversion": "Example — conversion friction",
+    "Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.": "Demo only: form abandonment may signal friction. Associated revenue remains unmeasured without linked order data.",
+    "Conversion mobile critique (0.12%)": "Critical mobile conversion (0.12%)",
+    "Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d'abandons. Chaque point de conversion mobile = +47 clients/mois.": "The mobile segment (58% of traffic) converts 14× worse than desktop. The Pricing page has 61% abandonment. Each mobile conversion point = +47 clients/month.",
+    "Plan UX mobile": "Mobile UX plan",
+    "Opportunite Maps non capturee": "Uncaptured Maps opportunity",
+    "Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.": "Google Maps is your highest-quality source (3.2% conversion, 88/100 quality) but drives only 14% of traffic. Potential to triple with a stronger GBP profile and managed reviews.",
+    "Renforcer GBP": "Strengthen GBP",
+    "Declin referents accelere": "Accelerating referral decline",
+    "Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.": "Referral traffic fell 4% with a 58% bounce rate, making it the lowest-quality source. Three key partners reduced or removed their inbound links this quarter.",
+    "Analyser les referents": "Analyze referrals",
+    "Acceleration trafic organique": "Organic traffic acceleration",
+    "Le trafic organique a progresse de +130% en 8 mois — acceleration confirmee depuis mars. Le 15e arrondissement domine deja 4 mots-cles cles. Continuer sur cette lancee.": "Organic traffic is up 130% in 8 months, with acceleration since March. The 15th arrondissement already leads on 4 key terms. Keep building on this momentum.",
+    "Amplifier la strategie": "Scale the strategy",
+    "Mobile UX": "Mobile UX",
+    "Trafic M+3": "Traffic M+3",
+    "Conversion M+3": "Conversion M+3",
+    "Revenue M+3": "Revenue M+3",
+    "Local SEO M+3": "Local SEO M+3",
+    "Avis Google M+3": "Google reviews M+3",
+    "Avec maintien strategie SEO actuelle": "Assuming the current SEO strategy continues",
+    "Si plan CRO mobile execute en juin": "If the mobile CRO plan is completed in June",
+    "Combinaison trafic + conversion optimisee": "With optimized traffic and conversion",
+    "Si renforcement GBP confirme en juin": "If GBP improvements continue in June",
+    "Avec réponse systématique aux avis": "With consistent review responses",
+    "Téléchargement du rapport PDF « {name} »…": "Downloading PDF report “{name}”…",
+    "{count} note de réunion incluse": "{count} meeting note included",
+    "{count} notes de réunion incluses": "{count} meeting notes included",
+    "Rapport {format} « {name} » généré{notes}.": "{format} report “{name}” generated{notes}.",
+    "📄 Rapport {format} généré": "📄 {format} report generated",
+    "Regénérer": "Regenerate",
+    "Packs de rapports d’agence": "Agency reporting packs",
+    "Modèles réutilisables pour les rapports clients": "Reusable templates for client reports",
+    "Charger les packs": "Load packs",
+    "Aucun pack chargé.": "No packs loaded.",
+    "Créer le pack complet (3 rapports)": "Create complete pack (3 reports)",
+    "Pack créé : 3 rapports vérifiés pour {client}": "Pack created: 3 verified reports for {client}",
+    "Créer le rapport": "Create report",
+    "Aucun pack disponible.": "No packs available.",
+    "Impossible de charger les packs. Vérifiez l’accès à l’add-on.": "Could not load packs. Check add-on access.",
+    "Centre de rapports": "Reports center",
+    "Exécutif": "Executive",
+    "Surveillance": "Monitoring",
+    "Insight IA": "AI insight",
+    "IA": "AI",
+    "Priorité haute": "High priority",
+    "Générer rapport SEO PDF": "Generate SEO PDF report",
+    "Plan mots-clés": "Keyword plan",
+    "Optimiser les priorités": "Optimize priorities",
+    "Rapport local complet": "Full local report",
+    "Plan zones cibles": "Target-area plan",
+    "Rapport CRO complet": "Full CRO report",
+    "Plan conversion mobile": "Mobile conversion plan",
+    "Générer rapport client": "Generate client report",
+    "Générer rapport groupe": "Generate group report",
+    "Config white-label": "White-label setup",
+    "Ajouter un client": "Add a client",
+    "Rapport narratif complet": "Full narrative report",
+    "Exporter en PDF": "Export as PDF",
+    "Programmer envoi auto": "Schedule automatic delivery",
+    "1 monitor sélectionné": "1 monitor selected",
+    "{count} monitors sélectionnés": "{count} monitors selected",
+    "Tout tester": "Test all",
+    "Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.": "Could not load regions. Check Better Stack and access to the add-on.",
+    "Webhook configuré": "Webhook configured",
+    "Pro requis →": "Pro required →",
+    "🤖 Surveillance prédictive": "🤖 Predictive monitoring",
+    "Détection d’anomalies par IA avant les incidents": "AI anomaly detection before incidents",
+    "Latence élevée : {latency}ms — risque d’instabilité": "High latency: {latency}ms — instability risk",
+    "E-commerce": "E-commerce",
+    "API / SaaS": "API / SaaS",
+    "Local Biz": "Local business",
+    "Corporate": "Corporate",
+    "Vérif. panier + paiement · LCP <2s · SSL": "Cart + payment checks · LCP <2s · SSL",
+    "Endpoints + webhooks + latence <200ms": "Endpoints + webhooks + latency <200ms",
+    "GBP + avis + présence locale + speed mobile": "GBP + reviews + local presence + mobile speed",
+    "Multi-régions + SLA 99.9% + alertes équipe": "Multi-region + SLA 99.9% + team alerts",
+    "Checkout": "Checkout",
+    "Stripe": "Stripe",
+    "SSL": "SSL",
+    "CWV": "CWV",
+    "Endpoints": "Endpoints",
+    "Auth": "Authentication",
+    "Rate limits": "Rate limits",
+    "DNS": "DNS",
+    "Régions": "Regions",
+    "🇫🇷 France (Paris)": "🇫🇷 France (Paris)",
+    "🇩🇪 Allemagne": "🇩🇪 Germany",
+    "🇬🇧 Royaume-Uni": "🇬🇧 United Kingdom",
+    "🇳🇱 Pays-Bas": "🇳🇱 Netherlands",
+    "🇺🇸 USA (East)": "🇺🇸 USA (East)",
+    "🌏 Asie-Pacifique": "🌏 Asia-Pacific",
+    "Début": "Start",
+    "Détecté": "Detected",
+    "Notifié": "Notified",
+    "Conforme": "Compliant",
+    "Impossible de charger le rapport SLA Better Stack.": "Could not load the Better Stack SLA report.",
+    "SLA": "SLA",
+    "Maintenance OVH": "OVH maintenance",
+    "Lundi 23:00–01:00": "Monday 23:00–01:00",
+    "Domination Locale": "Local dominance",
+    "Rapport local": "Local report",
+    "Nouveau rapport": "New report",
+    "Mission locale": "Local task",
+    "Cartes suivies": "Tracked maps",
+    "Classements locaux": "Local rankings",
+    "Couverture géographique": "Geographic coverage",
+    "Concurrents enregistrés": "Tracked competitors",
+    "données de démonstration": "demo data",
+    "{count} analyse(s) terminée(s)": "{count} scan(s) completed",
+    "résultats déjà stockés": "results already stored",
+    "Aucune grille mesurée": "No grid measured",
+    "Aucune carte de positions réelles n’est disponible. Les résultats géographiques ne seront affichés qu’après l’enregistrement de mesures vérifiées.": "No real ranking map is available. Geographic results will appear after verified measurements are recorded.",
+    "Zones fortes": "Strong zones",
+    "à 70%+ couverture": "at 70%+ coverage",
+    "Trafic total": "Total traffic",
+    "par mois": "per month",
+    "toutes zones": "all zones",
+    "Position moy.": "Average position",
+    "moyenne globale": "overall average",
+    "Zones à développer": "Zones to improve",
+    "opportunités": "opportunities",
+    "Aucune zone locale configurée. Ajoutez vos zones géographiques cibles pour suivre votre couverture locale et identifier les opportunités.": "No local zones are configured. Add your target areas to track local coverage and identify opportunities.",
+    "Couverture forte sur {top}. Zone à développer en priorité : {low} — faible couverture ({coverage}%). Score moyen : {average}%.": "Strong coverage in {top}. Priority area to improve: {low} — low coverage ({coverage}%). Average score: {average}%.",
+    "Couverture forte sur {top}. Score moyen de couverture : <strong>{average}%</strong>.": "Strong coverage in {top}. Average coverage score: <strong>{average}%</strong>.",
+    "Score moyen de couverture locale : <strong>{average}%</strong>. Optimisez vos pages locales pour améliorer votre visibilité.": "Average local coverage score: <strong>{average}%</strong>. Optimize your local pages to improve visibility.",
+    "Zones d'expansion prioritaires": "Priority expansion zones",
+    "{count} page locale": "{count} local page",
+    "{count} pages locales": "{count} local pages",
+    "page à créer": "page to create",
+    "pages à créer": "pages to create",
+    "visites/mois": "visits/month",
+    "Aucune page locale": "No local page",
+    "Mission pour cette zone": "Create a task for this zone",
+    "Développer la zone": "Improve the zone",
+    "Zone bien couverte": "Zone well covered",
+    "Nouveau rapport": "New report",
+    "Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.": "You dominate local searches in your target area. Major opportunities found — creating local pages can improve your visibility.",
+    "Connectez Google Business Profile pour calculer votre score de domination locale.": "Connect Google Business Profile to calculate your local dominance score.",
+    "Aucune grille de positions vérifiée": "No verified position grid",
+    "Aucune mesure réelle disponible": "No real measurements available",
+    "Démonstration": "Demo",
+    "concurrents": "competitors",
+    "Rayon": "Radius",
+    "Votre ville": "Your city",
+    "Vous dominez {score}% des recherches locales cibles": "You dominate {score}% of target local searches",
+    "Connectez GBP pour mesurer votre domination locale": "Connect GBP to measure your local dominance",
+    "Couverture locale": "Local coverage",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -50808,14 +51910,14 @@ async function init() {
             <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;background:${sentColor}12;border:1px solid ${sentColor}30">
               <div style="font-size:24px">${_isPos ? '😊' : _isNeg ? '😟' : '😐'}</div>
               <div>
-                <div style="font-size:14px;font-weight:700;color:${sentColor}">Sentiment : ${escHtml(a.sentiment || 'neutre')}</div>
-                ${a.score != null ? `<div style="font-size:11px;color:var(--fp-text-muted)">Score : ${escHtml(String(a.score))}/10</div>` : ''}
+                <div style="font-size:14px;font-weight:700;color:${sentColor}">${fpT('Sentiment : ')}${escHtml(a.sentiment || 'neutre')}</div>
+                ${a.score != null ? `<div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Score :')} ${escHtml(String(a.score))}/10</div>` : ''}
               </div>
             </div>
-            ${(a.strengths||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#22c55e;margin-bottom:6px">✅ Points forts</div><ul style="margin:0;padding-left:16px">${renderList(a.strengths)}</ul></div>` : ''}
-            ${(a.weaknesses||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠ Points faibles</div><ul style="margin:0;padding-left:16px">${renderList(a.weaknesses)}</ul></div>` : ''}
-            ${(a.tips||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#2563EB;margin-bottom:6px">💡 Conseils</div><ul style="margin:0;padding-left:16px">${renderList(a.tips)}</ul></div>` : ''}
-            ${a.suggestedReply ? `<div style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="font-size:11px;font-weight:700;color:var(--fp-text-soft);margin-bottom:6px">💬 Réponse suggérée</div><div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">${escHtml(a.suggestedReply)}</div></div>` : ''}
+            ${(a.strengths||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#22c55e;margin-bottom:6px">✅ ${fpT('Points forts')}</div><ul style="margin:0;padding-left:16px">${renderList(a.strengths)}</ul></div>` : ''}
+            ${(a.weaknesses||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠ ${fpT('Points faibles')}</div><ul style="margin:0;padding-left:16px">${renderList(a.weaknesses)}</ul></div>` : ''}
+            ${(a.tips||[]).length ? `<div><div style="font-size:11px;font-weight:700;color:#2563EB;margin-bottom:6px">💡 ${fpT('Conseils')}</div><ul style="margin:0;padding-left:16px">${renderList(a.tips)}</ul></div>` : ''}
+            ${a.suggestedReply ? `<div style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)"><div style="font-size:11px;font-weight:700;color:var(--fp-text-soft);margin-bottom:6px">${fpT('💬 Réponse suggérée')}</div><div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">${escHtml(a.suggestedReply)}</div></div>` : ''}
           </div>`
         );
         await window.FP_REVIEW_INTEL_API.load();
@@ -52947,14 +54049,14 @@ function renderAuditsAnalysis() {
     ] : [];
   })();
   return `
-    ${aiBlock(`Score moyen : <strong>${avgSc}/100</strong>. Meilleur site : <strong>${escHtml(topSite?.url||'—')}</strong> (${topSite?.score}/100). Site critique : <strong>${escHtml(botSite?.url||'—')}</strong> (${botSite?.score}/100, ${botSite?.issues||0} problèmes). <strong>Action prioritaire :</strong> corriger les balises meta sur les 3 sites les plus faibles.`,
+    ${aiBlock(`${fpT('Score moyen :')} <strong>${avgSc}/100</strong>. ${fpT('Meilleur site :')} <strong>${escHtml(topSite?.url||'—')}</strong> (${topSite?.score}/100). ${fpT('Site critique :')} <strong>${escHtml(botSite?.url||'—')}</strong> (${botSite?.score}/100, ${botSite?.issues||0} ${fpT((botSite?.issues||0) === 1 ? 'problème' : 'problèmes')}). <strong>${fpT('Action prioritaire :')}</strong> ${fpT('corriger les balises meta sur les 3 sites les plus faibles.')}`,
       ['Plan d\'amélioration', 'Analyse détaillée', 'Créer toutes les missions'])}
 
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Score moyen', avgSc + '/100', (() => { if (STATE.audits.length < 2) return 'score portfolio'; const _sorted = [...STATE.audits].sort((a,b)=>new Date(a.date)-new Date(b.date)); const _d = Math.round(_sorted[_sorted.length-1].score - _sorted[0].score); return _d > 0 ? '+'+_d+' pts total' : _d < 0 ? _d+' pts total' : 'stable'; })(), avgSc >= 70 ? 'up' : 'neutral')}
-      ${statCard('Sites OK (≥70)', STATE.audits.filter(a=>a.score>=70).length + '/' + STATE.audits.length, 'en bonne santé', 'neutral')}
-      ${statCard('Issues totales', totalIssues, 'à corriger', 'down')}
-      ${statCard('Vitesse moy.', avgSpeed + '/100', 'score PageSpeed', 'up')}
+      ${statCard(fpT('Score moyen'), avgSc + '/100', (() => { if (STATE.audits.length < 2) return fpT('score portfolio'); const _sorted = [...STATE.audits].sort((a,b)=>new Date(a.date)-new Date(b.date)); const _d = Math.round(_sorted[_sorted.length-1].score - _sorted[0].score); return _d > 0 ? '+'+_d+' '+fpT('pts total') : _d < 0 ? _d+' '+fpT('pts total') : fpT('stable'); })(), avgSc >= 70 ? 'up' : 'neutral')}
+      ${statCard(fpT('Sites OK (≥70)'), STATE.audits.filter(a=>a.score>=70).length + '/' + STATE.audits.length, fpT('en bonne santé'), 'neutral')}
+      ${statCard(fpT('Issues totales'), totalIssues, fpT('à corriger'), 'down')}
+      ${statCard(fpT('Vitesse moy.'), avgSpeed + '/100', fpT('score PageSpeed'), 'up')}
     </div>
 
     ${(() => {
@@ -52975,23 +54077,23 @@ function renderAuditsAnalysis() {
         const dEl = d === null ? `<span style="color:var(--fp-text-faint)">—</span>`
           : `<span style="color:${d>0?'#22c55e':d<0?'#ef4444':'#94a3b8'};font-weight:700">${d>0?'↑+':d<0?'↓':'→'}${Math.abs(d)}</span>`;
         const originBadge = h.origin === 'auto'
-          ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">Auto</span>`
-          : `<span style="background:var(--fp-track);color:var(--fp-text-muted);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px">Manuel</span>`;
+          ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">${fpT('Auto')}</span>`
+          : `<span style="background:var(--fp-track);color:var(--fp-text-muted);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px">${fpT('Manuel')}</span>`;
         const statLabel = h.score>=80?'Excellent':h.score>=70?'Bon':h.score>=50?'Moyen':'Critique';
         const statColor = scoreColor(h.score);
         return `<tr class="fp-hist-row" data-hist-audit-id="${escHtml(h.id)}" style="cursor:pointer">
           <td style="color:var(--fp-text-muted);font-size:11px">${new Date(h.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'short',year:'numeric'})}</td>
           <td style="text-align:center"><div class="fp-score-bar-wrap" style="justify-content:center"><div class="fp-score-bar-track" style="width:60px"><div class="fp-score-bar-fill" style="width:${h.score}%;background:${scoreColor(h.score)}"></div></div><span class="fp-score-val" style="color:${scoreColor(h.score)}">${Math.round(h.score)}</span></div></td>
           <td style="text-align:center">${dEl}</td>
-          <td style="text-align:center">${badge(statLabel, statColor)}</td>
+          <td style="text-align:center">${badge(fpT(statLabel), statColor)}</td>
           <td style="text-align:center">${originBadge}</td>
         </tr>`;
       }).join('');
       return `<div class="fp-card fp-mb-16">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
           <div>
-            <div class="fp-card-title">Historique du score SEO par site</div>
-            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Évolution sur 90 jours · ${escHtml(domain) || '—'}</div>
+            <div class="fp-card-title">${fpT('Historique du score SEO par site')}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('Évolution sur {count} jours',{count:90})} · ${escHtml(domain) || '—'}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <select class="fp-select" id="hist-site-sel" style="font-size:12px;max-width:200px">
@@ -53001,23 +54103,23 @@ function renderAuditsAnalysis() {
           </div>
         </div>
         <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;font-size:11px;color:var(--fp-text-muted)">
-          <span>── <span style="color:#2563EB">Score SEO</span></span>
-          <span>╌╌ <span style="color:rgba(245,158,11,0.8)">Tendance${tl?' ('+( tl.perMonth>=0?'+':'')+tl.perMonth.toFixed(1)+' pts/mois)':''}</span></span>
+          <span>── <span style="color:#2563EB">${fpT('Score SEO')}</span></span>
+          <span>╌╌ <span style="color:rgba(245,158,11,0.8)">${fpT('Tendance')}${tl?' ('+( tl.perMonth>=0?'+':'')+tl.perMonth.toFixed(1)+' '+fpT('pts/mois')+')':''}</span></span>
           ${latestScore!==null?`<span style="margin-left:auto;font-weight:700;color:${scoreColor(latestScore)}">${latestScore}/100</span>`:''}
           ${totalDelta!==null?`<span style="color:${totalDelta>=0?'#22c55e':'#ef4444'};font-weight:700">${totalDelta>=0?'+':''}${totalDelta} pts</span>`:''}
         </div>
         ${historyLineChart(rawHist, tl)}
         ${rawHist.length >= 2 ? `<div class="fp-table-wrap" style="margin-top:16px">
           <table class="fp-table">
-            <thead><tr><th>Date</th><th style="text-align:center">Score</th><th style="text-align:center">Delta</th><th style="text-align:center">Origine</th><th style="text-align:center">Source</th></tr></thead>
+            <thead><tr><th>${fpT('Date')}</th><th style="text-align:center">${fpT('Score')}</th><th style="text-align:center">${fpT('Delta')}</th><th style="text-align:center">${fpT('Origine')}</th><th style="text-align:center">${fpT('Source')}</th></tr></thead>
             <tbody id="hist-table-body">${histRows}</tbody>
           </table>
         </div>` : ''}
       </div>`;
     })()}
 
-    <div class="fp-card fp-mb-16" style="cursor:pointer" onclick="showToast('info', fpT('Distribution : moy. ${Math.round(STATE.audits.reduce((s,a)=>s+a.score,0)/Math.max(1,STATE.audits.length))}/100 — cliquez sur un site pour les détails'))">
-        <div class="fp-card-title" style="margin-bottom:14px">Distribution des scores</div>
+    <div class="fp-card fp-mb-16" style="cursor:pointer" onclick="showToast('info', fpT('Distribution : moyenne {score}/100 — cliquez sur un site pour les détails', {score:${Math.round(STATE.audits.reduce((s,a)=>s+a.score,0)/Math.max(1,STATE.audits.length))}}))">
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('Distribution des scores')}</div>
         <div class="fp-bar-chart" style="height:80px;align-items:flex-end">
           ${STATE.audits.map(a => `
             <div class="fp-bar-chart-col" title="${escHtml(a.url)}: ${a.score}/100">
@@ -53027,34 +54129,33 @@ function renderAuditsAnalysis() {
           `).join('')}
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--fp-border)">
-          <span style="font-size:11px;color:var(--fp-text-faint)">Moy. <strong style="color:var(--fp-text)">${Math.round(STATE.audits.reduce((s,a)=>s+a.score,0)/Math.max(1,STATE.audits.length))}/100</strong></span>
-          <span style="font-size:11px;color:#ef4444">${STATE.audits.filter(a=>a.score<60).length} critiques</span>
-          <span style="font-size:11px;color:#22c55e">${STATE.audits.filter(a=>a.score>=80).length} excellents</span>
+          <span style="font-size:11px;color:var(--fp-text-faint)">${fpT('Moy.')} <strong style="color:var(--fp-text)">${Math.round(STATE.audits.reduce((s,a)=>s+a.score,0)/Math.max(1,STATE.audits.length))}/100</strong></span>
+          <span style="font-size:11px;color:#ef4444">${fpT(STATE.audits.filter(a=>a.score<60).length === 1 ? '{count} site critique' : '{count} sites critiques',{count:STATE.audits.filter(a=>a.score<60).length})}</span>
+          <span style="font-size:11px;color:#22c55e">${fpT(STATE.audits.filter(a=>a.score>=80).length === 1 ? '{count} site excellent' : '{count} sites excellents',{count:STATE.audits.filter(a=>a.score>=80).length})}</span>
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--fp-border)">
-          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Détail par site</div>
+          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">${fpT('Détail par site')}</div>
           <div style="display:flex;flex-direction:column;gap:7px;max-height:110px;overflow-y:auto">
             ${STATE.audits.map(a => {
               const domain = a.url.replace(/^https?:\/\//,'').replace(/\/$/,'');
               const label = a.score>=80?'Excellent':a.score>=70?'Bon':a.score>=50?'Moyen':'Critique';
               const lc = a.score>=80?'#22c55e':a.score>=70?'#3b82f6':a.score>=50?'#f59e0b':'#ef4444';
-              const issues = a.score>=80?'Aucun problème critique':a.score>=70?'Quelques optimisations':a.score>=50?'Corrections requises':'Audit urgent requis';
               return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--fp-border)">
                 <div style="width:8px;height:8px;border-radius:50%;background:${scoreColor(a.score)};flex-shrink:0"></div>
                 <span style="flex:1;font-size:11px;color:var(--fp-text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(a.url)}">${escHtml(domain)}</span>
                 <span style="font-size:12px;font-weight:800;color:${scoreColor(a.score)};min-width:28px;text-align:right;font-family:var(--fp-font-head)">${a.score}</span>
-                <span style="font-size:9px;font-weight:600;color:${lc};min-width:52px;text-align:right;background:${lc}18;padding:2px 6px;border-radius:4px">${label}</span>
+                <span style="font-size:9px;font-weight:600;color:${lc};min-width:52px;text-align:right;background:${lc}18;padding:2px 6px;border-radius:4px">${fpT(label)}</span>
               </div>`;
             }).join('')}
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px;width:100%" onclick="navigate('audits')">Voir tous les audits</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px;width:100%" onclick="navigate('audits')">${fpT('Voir tous les audits')}</button>
         </div>
       </div>
       <div class="fp-card fp-mb-16">
-        <div class="fp-card-title" style="margin-bottom:14px">Évolution par site (30j)</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('Évolution par site (30j)')}</div>
         ${seoTrendLineChart(STATE.audits)}
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--fp-border)">
-          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Évolution sur 30 jours</div>
+          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">${fpT('Évolution sur 30 jours')}</div>
           <div style="display:flex;flex-direction:column;gap:6px;max-height:170px;overflow-y:auto">
             ${[...STATE.audits].sort((a,b)=>{
               const da = (seoTrendData(a,30)[29]-seoTrendData(a,30)[0]);
@@ -53070,7 +54171,7 @@ function renderAuditsAnalysis() {
                 <span style="flex:1;font-size:11px;color:var(--fp-text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(domain)}</span>
                 ${sparklineSVG(td, dc, 70, 22)}
                 <span style="font-size:12px;font-weight:800;color:${scoreColor(a.score)};font-family:var(--fp-font-head);min-width:26px;text-align:right">${a.score}</span>
-                <span style="font-size:11px;font-weight:700;color:${dc};min-width:44px;text-align:right">${delta>0?'+':''}${delta} pts</span>
+                <span style="font-size:11px;font-weight:700;color:${dc};min-width:44px;text-align:right">${delta>0?'+':''}${delta} ${fpT('pts')}</span>
               </div>`;
             }).join('')}
           </div>
@@ -53078,7 +54179,7 @@ function renderAuditsAnalysis() {
       </div>
 
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:14px">Tendance hebdomadaire par site</div>
+      <div class="fp-card-title" style="margin-bottom:14px">${fpT('Tendance hebdomadaire par site')}</div>
       <div class="fp-site-sparkline-grid">
         ${STATE.audits.map(a => {
           const td = seoTrendData(a, 7);
@@ -53092,10 +54193,10 @@ function renderAuditsAnalysis() {
             <div class="fp-site-sparkline-row">
               <div>
                 <div class="fp-site-sparkline-score" style="color:${c}">${a.score}</div>
-                <div class="fp-site-sparkline-label">Score SEO</div>
+                <div class="fp-site-sparkline-label">${fpT('Score SEO')}</div>
               </div>
               <div class="fp-site-sparkline-meta">
-                <span class="fp-site-sparkline-change" style="color:${trendColor}">${delta > 0 ? '+' : ''}${delta}pt / 7j</span>
+                <span class="fp-site-sparkline-change" style="color:${trendColor}">${delta > 0 ? '+' : ''}${delta} ${fpT('pt / 7j')}</span>
                 ${sparklineSVG(td, trendColor, 90, 32)}
               </div>
             </div>
@@ -53105,21 +54206,21 @@ function renderAuditsAnalysis() {
     </div>
 
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:14px">Top problèmes récurrents</div>
+      <div class="fp-card-title" style="margin-bottom:14px">${fpT('Top problèmes récurrents')}</div>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${topProblems.map(p=>`
           <div style="display:flex;align-items:center;gap:12px">
             <div style="min-width:160px;font-size:12px;color:var(--fp-text-soft)">${escHtml(p.cat)}</div>
             <div style="flex:1"><div class="fp-progress-track" style="height:6px"><div class="fp-progress-fill" style="width:${p.pct}%;background:${p.color}"></div></div></div>
             <div style="font-size:12px;font-weight:700;color:${p.color};min-width:30px;text-align:right">${p.count}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigate('missions')">Corriger</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigate('missions')">${fpT('Corriger')}</button>
           </div>
         `).join('')}
       </div>
     </div>
 
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:12px">Répartition par catégorie de score</div>
+      <div class="fp-card-title" style="margin-bottom:12px">${fpT('Répartition par catégorie de score')}</div>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         ${[
           {label:'Excellent (≥80)',count:STATE.audits.filter(a=>a.score>=80).length,color:'#22c55e'},
@@ -53129,7 +54230,7 @@ function renderAuditsAnalysis() {
         ].map(c=>`
           <div class="fp-stat-card" style="flex:1;min-width:100px;text-align:center;border-left:3px solid ${c.color}">
             <div style="font-size:24px;font-weight:800;color:${c.color}">${c.count}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.label)}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(fpT(c.label))}</div>
           </div>
         `).join('')}
       </div>
@@ -53145,7 +54246,7 @@ function renderAuditsCompare() {
   if (!STATE.cmpB || !urlList.includes(STATE.cmpB)) STATE.cmpB = urlList[1] || urlList[0] || '';
   const auditA = audits.find(a => a.url === STATE.cmpA) || audits[0];
   const auditB = audits.find(a => a.url === STATE.cmpB) || audits[1] || audits[0];
-  if (!auditA) return `<div class="fp-empty">Aucun audit disponible pour comparer.</div>`;
+  if (!auditA) return `<div class="fp-empty">${fpT('Aucun audit disponible pour comparer.')}</div>`;
   const clamp = v => Math.min(100, Math.max(12, Math.round(v)));
   const catScore = (a, i) => {
     const h = a.score;
@@ -53164,18 +54265,18 @@ function renderAuditsCompare() {
   const winnerA = (auditA?.score||0) >= (auditB?.score||0);
   const drifts = [];
   if (Math.abs((auditA?.score||0)-(auditB?.score||0)) > 25)
-    drifts.push(`Écart de ${Math.abs((auditA?.score||0)-(auditB?.score||0))} pts — le site le plus faible perd probablement 20–35% de trafic organique.`);
+    drifts.push(fpT('Écart de {delta} pts — le site le plus faible perd probablement 20–35% de trafic organique.', {delta:Math.abs((auditA?.score||0)-(auditB?.score||0))}));
   if ((auditA?.speed||0) < 50)
-    drifts.push(`${domA} a une vitesse critique (${auditA.speed}/100). Le taux de rebond mobile peut dépasser 65%.`);
+    drifts.push(fpT('{site} a une vitesse critique ({speed}/100). Le taux de rebond mobile peut dépasser 65%.', {site:escHtml(domA), speed:auditA.speed}));
   if ((auditA?.issues||0) > 15)
-    drifts.push(`${domA} cumule ${auditA.issues} problèmes — risque de déclassement progressif.`);
+    drifts.push(fpT('{site} cumule {count} problèmes — risque de déclassement progressif.', {site:escHtml(domA), count:auditA.issues}));
 
   return `
-    ${aiBlock(`Comparaison <strong>${escHtml(domA)}</strong> (${auditA?.score}/100) vs <strong>${escHtml(domB)}</strong> (${auditB?.score}/100). ${drifts.length?'<strong>'+drifts.length+' anomalie(s)</strong> détectée(s). ':''}<strong>${winnerA?escHtml(domA):escHtml(domB)}</strong> est le leader.`,
+    ${aiBlock(`${fpT('Comparaison')} <strong>${escHtml(domA)}</strong> (${auditA?.score}/100) ${fpT('vs')} <strong>${escHtml(domB)}</strong> (${auditB?.score}/100). ${drifts.length?`<strong>${drifts.length} ${fpT(drifts.length===1?'anomalie':'anomalies')}</strong> ${fpT(drifts.length===1?'détectée':'détectées')}. `:''}<strong>${winnerA?escHtml(domA):escHtml(domB)}</strong> ${fpT('est le leader')}.`,
       ['Plan d\'amélioration global','Missions prioritaires','Rapport comparatif PDF'])}
 
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:14px">🔀 Choisir les sites à comparer</div>
+      <div class="fp-card-title" style="margin-bottom:14px">🔀 ${fpT('Choisir les sites à comparer')}</div>
       <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:flex-end">
         <div>
           <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Site A</div>
@@ -53191,35 +54292,35 @@ function renderAuditsCompare() {
           </select>
         </div>
       </div>
-      <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="STATE.cmpA=document.getElementById('cmp-site-a').value;STATE.cmpB=document.getElementById('cmp-site-b').value;navigateSub('compare')">Comparer →</button>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="STATE.cmpA=document.getElementById('cmp-site-a').value;STATE.cmpB=document.getElementById('cmp-site-b').value;navigateSub('compare')">${fpT('Comparer →')}</button>
     </div>
 
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:16px">📊 Score SEO Global</div>
+      <div class="fp-card-title" style="margin-bottom:16px">📊 ${fpT('Score SEO Global')}</div>
       <div style="display:flex;gap:14px">
         <div class="fp-cmp-score-block" style="border-color:${winnerA?'rgba(34,197,94,.35)':'var(--fp-border)'}">
           <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(auditA?.url||'')}">Site A · ${escHtml(domA)}</div>
           <div class="fp-cmp-score-num" style="color:${scoreColor(auditA?.score||0)}">${auditA?.score||'—'}</div>
           <div style="margin-top:6px">${badge(scoreLabel(auditA?.score||0),scoreColor(auditA?.score||0))}</div>
-          ${winnerA?`<div class="fp-cmp-winner-badge">🏆 Leader</div>`:''}
+          ${winnerA?`<div class="fp-cmp-winner-badge">🏆 ${fpT('Leader')}</div>`:''}
         </div>
         <div class="fp-cmp-score-block" style="border-color:${!winnerA?'rgba(34,197,94,.35)':'var(--fp-border)'}">
           <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(auditB?.url||'')}">Site B · ${escHtml(domB)}</div>
           <div class="fp-cmp-score-num" style="color:${scoreColor(auditB?.score||0)}">${auditB?.score||'—'}</div>
           <div style="margin-top:6px">${badge(scoreLabel(auditB?.score||0),scoreColor(auditB?.score||0))}</div>
-          ${!winnerA?`<div class="fp-cmp-winner-badge">🏆 Leader</div>`:''}
+          ${!winnerA?`<div class="fp-cmp-winner-badge">🏆 ${fpT('Leader')}</div>`:''}
         </div>
       </div>
     </div>
 
     <div class="fp-grid-2 fp-mb-16">
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🔬 Catégorie par catégorie</div>
+        <div class="fp-card-title" style="margin-bottom:14px">🔬 ${fpT('Catégorie par catégorie')}</div>
         <div style="display:flex;flex-direction:column">
           ${catNames.map((cat,i)=>{
             const sA=catScore(auditA,i), sB=catScore(auditB||auditA,i), wA=sA>=sB;
             return `<div class="fp-cmp-cat-row">
-              <span class="fp-cmp-cat-name">${cat.icon} ${cat.n}</span>
+              <span class="fp-cmp-cat-name">${cat.icon} ${fpT(cat.n)}</span>
               <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:5px;align-items:center">
                 <div class="fp-cmp-cat-bar"><div class="fp-cmp-cat-fill" style="width:${sA}%;background:${wA?cat.color:'rgba(255,255,255,0.15)'}"></div></div>
                 <div class="fp-cmp-cat-bar"><div class="fp-cmp-cat-fill" style="width:${sB}%;background:${!wA?cat.color:'rgba(255,255,255,0.15)'}"></div></div>
@@ -53238,7 +54339,7 @@ function renderAuditsCompare() {
         </div>
       </div>
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">⚡ Vitesse & Problèmes</div>
+        <div class="fp-card-title" style="margin-bottom:14px">⚡ ${fpT('Vitesse & Problèmes')}</div>
         <div style="display:flex;flex-direction:column;gap:16px">
           ${[
             {label:'Vitesse PageSpeed',valA:auditA?.speed||0,valB:auditB?.speed||0,suffix:'/100',cA:v=>v>=70?'#22c55e':v>=50?'#f59e0b':'#ef4444',lowerBetter:false},
@@ -53246,28 +54347,28 @@ function renderAuditsCompare() {
           ].map(r=>{
             const wA=r.lowerBetter?r.valA<=r.valB:r.valA>=r.valB;
             return `<div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${r.label}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${fpT(r.label)}</div>
               <div style="display:flex;align-items:center;gap:10px">
                 <span style="font-size:20px;font-weight:800;color:${r.cA(r.valA)};font-family:var(--fp-font-head);min-width:38px">${r.valA}${r.suffix}</span>
-                ${wA?`<span style="font-size:10px;background:rgba(34,197,94,0.12);color:#22c55e;padding:2px 7px;border-radius:5px">A meilleur</span>`:``}
-                ${!wA?`<span style="font-size:10px;background:rgba(139,92,246,0.12);color:#8b5cf6;padding:2px 7px;border-radius:5px">B meilleur</span>`:``}
+                ${wA?`<span style="font-size:10px;background:rgba(34,197,94,0.12);color:#22c55e;padding:2px 7px;border-radius:5px">${fpT('A meilleur')}</span>`:``}
+                ${!wA?`<span style="font-size:10px;background:rgba(139,92,246,0.12);color:#8b5cf6;padding:2px 7px;border-radius:5px">${fpT('B meilleur')}</span>`:``}
                 <span style="font-size:20px;font-weight:800;color:${r.cA(r.valB)};font-family:var(--fp-font-head);min-width:38px;text-align:right;margin-left:auto">${r.valB}${r.suffix}</span>
               </div>
             </div>`;
           }).join('')}
         </div>
         ${drifts.length?`<div style="margin-top:16px">
-          <div style="font-size:11px;font-weight:700;color:var(--fp-danger);margin-bottom:8px">⚠ Anomalies détectées</div>
+          <div style="font-size:11px;font-weight:700;color:var(--fp-danger);margin-bottom:8px">⚠ ${fpT('Anomalies détectées')}</div>
           ${drifts.map(d=>`<div class="fp-cmp-drift-alert"><span style="flex-shrink:0">⚠</span><span>${d}</span></div>`).join('')}
-        </div>`:`<div style="margin-top:16px;padding:10px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;font-size:11.5px;color:#22c55e">✅ Aucune anomalie critique détectée</div>`}
+        </div>`:`<div style="margin-top:16px;padding:10px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:8px;font-size:11.5px;color:#22c55e">✅ ${fpT('Aucune anomalie critique détectée')}</div>`}
       </div>
     </div>
 
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">📋 Classement global — tous les sites</div>
+      <div class="fp-card-title" style="margin-bottom:14px">📋 ${fpT('Classement global — tous les sites')}</div>
       <div style="overflow-x:auto">
         <table class="fp-data-table">
-          <thead><tr><th>#</th><th>Site</th><th style="text-align:center">Score</th><th style="text-align:center">Vitesse</th><th style="text-align:center">Issues</th><th style="text-align:center">Statut</th><th style="text-align:center">Actions</th></tr></thead>
+          <thead><tr><th>#</th><th>${fpT('Site')}</th><th style="text-align:center">${fpT('Score')}</th><th style="text-align:center">${fpT('Vitesse')}</th><th style="text-align:center">Issues</th><th style="text-align:center">${fpT('Statut')}</th><th style="text-align:center">${fpT('Actions')}</th></tr></thead>
           <tbody>
             ${[...audits].sort((a,b)=>b.score-a.score).map((a,i)=>`
               <tr>
@@ -53284,8 +54385,8 @@ function renderAuditsCompare() {
                 <td style="text-align:center">${badge(scoreLabel(a.score),scoreColor(a.score))}</td>
                 <td style="text-align:center">
                   <div style="display:flex;gap:6px;justify-content:center">
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="STATE.cmpA='${escHtml(a.url)}';navigateSub('compare')">Comparer</button>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openFloatPanel('Audit — ${escHtml(a.url.replace(/^https?:\/\//,'').replace(/\/$/,'').slice(0,30))}',renderAuditDetailPanel(STATE.audits.find(x=>x.id==='${a.id}')))">Détail</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="STATE.cmpA='${escHtml(a.url)}';navigateSub('compare')">${fpT('Comparer')}</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openFloatPanel(window.fpT('Audit — {site}',{site:escHtml('${a.url.replace(/^https?:\/\//,'').replace(/\/$/,'').slice(0,30)}')}),renderAuditDetailPanel(STATE.audits.find(x=>x.id==='${a.id}')))">${fpT('Détail')}</button>
                   </div>
                 </td>
               </tr>
@@ -53300,7 +54401,7 @@ function renderAuditsCompare() {
 // ── AUDITS HISTORY SUB-PAGE ──
 
 function historyLineChart(points, trendLine) {
-  if (!points || points.length === 0) return `<div style="height:180px;display:flex;align-items:center;justify-content:center;color:var(--fp-text-faint);font-size:13px">Aucune donnée — lancez des audits pour voir l\'évolution</div>`;
+  if (!points || points.length === 0) return `<div style="height:180px;display:flex;align-items:center;justify-content:center;color:var(--fp-text-faint);font-size:13px">${fpT('Aucune donnée — lancez des audits pour voir l\'évolution')}</div>`;
   const w = 560, h = 180;
   const padL = 36, padR = 16, padT = 14, padB = 30;
   const innerW = w - padL - padR, innerH = h - padT - padB;
@@ -53413,7 +54514,7 @@ function renderAuditsHistory() {
   const maxScore = rawHistory.length ? Math.max(...rawHistory.map(h => h.score)) : null;
 
   const trendDesc = trendLine
-    ? `Tendance : <strong>${trendLine.perMonth >= 0 ? '+' : ''}${trendLine.perMonth.toFixed(1)} pts/mois</strong>`
+    ? `${fpT('Tendance :')} <strong>${trendLine.perMonth >= 0 ? '+' : ''}${trendLine.perMonth.toFixed(1)} ${fpT('pts/mois')}</strong>`
     : '';
 
   const tableRows = rawHistory.slice().reverse().map((h, i, arr) => {
@@ -53423,8 +54524,8 @@ function renderAuditsHistory() {
       ? `<span style="color:var(--fp-text-faint)">—</span>`
       : `<span style="color:${delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#94a3b8'};font-weight:700">${delta > 0 ? '↑+' : delta < 0 ? '↓' : '→'}${Math.abs(delta)}</span>`;
     const originBadge = h.origin === 'auto'
-      ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">Auto</span>`
-      : `<span style="background:var(--fp-track);color:var(--fp-text-muted);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px">Manuel</span>`;
+      ? `<span style="background:rgba(139,92,246,0.15);color:#8b5cf6;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid rgba(139,92,246,0.3)">${fpT('Auto')}</span>`
+      : `<span style="background:var(--fp-track);color:var(--fp-text-muted);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px">${fpT('Manuel')}</span>`;
     return `<tr class="fp-hist-row" data-hist-audit-id="${escHtml(h.id)}" style="cursor:pointer">
       <td style="color:var(--fp-text-muted);font-size:12px">${new Date(h.date).toLocaleDateString(getLocale(), { day: '2-digit', month: 'short', year: 'numeric' })}</td>
       <td style="padding-right:20px"><div class="fp-score-bar-wrap"><div class="fp-score-bar-track"><div class="fp-score-bar-fill" style="width:${h.score}%;background:${scoreColor(h.score)}"></div></div><span class="fp-score-val" style="color:${scoreColor(h.score)}">${Math.round(h.score)}</span></div></td>
@@ -53437,44 +54538,44 @@ function renderAuditsHistory() {
   return `
     <div class="fp-section-header">
       <div>
-        <h1>Historique du score SEO</h1>
-        <div class="fp-section-sub">Évolution sur les 90 derniers jours${domain ? ' · ' + escHtml(domain) : ''}</div>
+        <h1>${fpT('Historique du score SEO')}</h1>
+        <div class="fp-section-sub">${fpT('Évolution sur les 90 derniers jours')}${domain ? ' · ' + escHtml(domain) : ''}</div>
       </div>
       <div class="fp-section-actions">
         <select class="fp-select" id="hist-site-sel" style="font-size:12px;max-width:240px">
           ${urls.map(u => `<option value="${escHtml(u)}" ${u === selectedUrl ? 'selected' : ''}>${escHtml(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</option>`).join('')}
         </select>
-        ${btn('Exporter CSV', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'id="hist-export-csv"')}
+        ${btn(fpT('Exporter CSV'), 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'id="hist-export-csv"')}
       </div>
     </div>
 
-    ${aiBlock(`<strong>${escHtml(domain || '—')}</strong> · Score actuel : <strong>${latestScore !== null ? latestScore + '/100' : '—'}</strong>${totalDelta !== null ? ` · Évolution : <strong style="color:${totalDelta >= 0 ? '#22c55e' : '#ef4444'}">${totalDelta >= 0 ? '+' : ''}${totalDelta} pts</strong>` : ''}${trendDesc ? ' · ' + trendDesc : ''}. Cliquez sur un point pour voir le détail de l\'audit.`, ['Plan d\'amélioration', 'Créer une mission'])}
+    ${aiBlock(`<strong>${escHtml(domain || '—')}</strong> · ${fpT('Score actuel :')} <strong>${latestScore !== null ? latestScore + '/100' : '—'}</strong>${totalDelta !== null ? ` · ${fpT('Évolution :')} <strong style="color:${totalDelta >= 0 ? '#22c55e' : '#ef4444'}">${totalDelta >= 0 ? '+' : ''}${totalDelta} ${fpT('pts')}</strong>` : ''}${trendDesc ? ' · ' + trendDesc : ''}. ${fpT('Cliquez sur un point pour voir le détail de l\'audit.')}`, ['Plan d\'amélioration', 'Créer une mission'])}
 
     <div class="fp-card fp-mb-16">
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-        <div class="fp-card-title">Évolution du score</div>
+        <div class="fp-card-title">${fpT('Évolution du score')}</div>
         <div style="display:flex;gap:14px;align-items:center;font-size:11px;color:var(--fp-text-muted);flex-wrap:wrap">
-          <span>── <span style="color:#2563EB">Score SEO</span></span>
-          <span>╌╌ <span style="color:rgba(245,158,11,0.8)">Tendance linéaire${trendLine ? ' (' + (trendLine.perMonth >= 0 ? '+' : '') + trendLine.perMonth.toFixed(1) + ' pts/mois)' : ''}</span></span>
+          <span>── <span style="color:#2563EB">${fpT('Score SEO')}</span></span>
+          <span>╌╌ <span style="color:rgba(245,158,11,0.8)">${fpT('Tendance linéaire')}${trendLine ? ' (' + (trendLine.perMonth >= 0 ? '+' : '') + trendLine.perMonth.toFixed(1) + ' ' + fpT('pts/mois') + ')' : ''}</span></span>
         </div>
       </div>
       ${historyLineChart(rawHistory, trendLine)}
     </div>
 
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Score actuel', latestScore !== null ? latestScore + '/100' : '—', totalDelta !== null ? (totalDelta >= 0 ? '+' + totalDelta + ' pts' : totalDelta + ' pts') : '—', totalDelta !== null ? (totalDelta >= 0 ? 'up' : 'down') : 'neutral')}
-      ${statCard('Audits réalisés', rawHistory.length, 'sur 90 jours', 'neutral')}
-      ${statCard('Tendance', trendLine ? (trendLine.perMonth >= 0 ? '+' : '') + trendLine.perMonth.toFixed(1) + ' pts/mois' : '—', 'régression linéaire', trendLine && trendLine.perMonth >= 0 ? 'up' : 'down')}
-      ${statCard('Meilleur score', maxScore !== null ? maxScore + '/100' : '—', 'sur la période', 'up')}
+      ${statCard(fpT('Score actuel'), latestScore !== null ? latestScore + '/100' : '—', totalDelta !== null ? (totalDelta >= 0 ? '+' + totalDelta : totalDelta) + ' ' + fpT('pts') : '—', totalDelta !== null ? (totalDelta >= 0 ? 'up' : 'down') : 'neutral')}
+      ${statCard(fpT('Audits réalisés'), rawHistory.length, fpT('sur 90 jours'), 'neutral')}
+      ${statCard(fpT('Tendance'), trendLine ? (trendLine.perMonth >= 0 ? '+' : '') + trendLine.perMonth.toFixed(1) + ' ' + fpT('pts/mois') : '—', fpT('régression linéaire'), trendLine && trendLine.perMonth >= 0 ? 'up' : 'down')}
+      ${statCard(fpT('Meilleur score'), maxScore !== null ? maxScore + '/100' : '—', fpT('sur la période'), 'up')}
     </div>
 
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">Historique des audits</div>
+      <div class="fp-card-title" style="margin-bottom:14px">${fpT('Historique des audits')}</div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="fp-table" style="min-width:420px;width:100%">
-          <thead><tr><th>Date</th><th style="text-align:center">Score SEO</th><th style="text-align:center">Delta</th><th style="text-align:center">Statut</th><th style="text-align:center">Origine</th></tr></thead>
+          <thead><tr><th>${fpT('Date')}</th><th style="text-align:center">${fpT('Score SEO')}</th><th style="text-align:center">${fpT('Delta')}</th><th style="text-align:center">${fpT('Statut')}</th><th style="text-align:center">${fpT('Origine')}</th></tr></thead>
           <tbody id="hist-table-body">
-            ${rawHistory.length ? tableRows : `<tr><td colspan="5" style="text-align:center;color:var(--fp-text-faint);padding:24px">Aucun audit — lancez un audit pour cet URL</td></tr>`}
+            ${rawHistory.length ? tableRows : `<tr><td colspan="5" style="text-align:center;color:var(--fp-text-faint);padding:24px">${fpT('Aucun audit — lancez un audit pour cet URL')}</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -53516,37 +54617,42 @@ function renderAuditsOpportunites() {
   ] : [];
   const weakPages = STATE.audits.filter(a=>a.score<60).map(a=>({
     url:a.url, score:a.score, speed:a.speed, issues:a.issues, id:a.id,
-    topIssue: a.score<40 ? 'Meta tags absents + vitesse critique' : 'Contenu insuffisant + maillage faible',
+    topIssue: fpT(a.score<40 ? 'Meta tags absents + vitesse critique' : 'Contenu insuffisant + maillage faible'),
   }));
   const diffColor = d => d==='Faible'?'rgba(34,197,94,0.1)':d==='Moyen'?'rgba(245,158,11,0.1)':'rgba(239,68,68,0.1)';
   const diffTxt  = d => d==='Faible'?'#22c55e':d==='Moyen'?'#f59e0b':'#ef4444';
   window._fpKwOpps = kwOpps.map(k=>({title:k.missionTitle||k.kw,desc:k.missionDesc||'',site:k.site}));
+  const aiSummary = kwOpps.length > 0 || contentOpps.length > 0
+    ? [
+        kwOpps.length ? fpT(kwOpps.length === 1 ? '{count} opportunité mot-clé identifiée.' : '{count} opportunités mots-clés identifiées.', {count:kwOpps.length}) : '',
+        weakPages.length ? fpT(weakPages.length === 1 ? '{count} site en zone critique.' : '{count} sites en zone critique.', {count:weakPages.length}) : '',
+        contentOpps.length ? fpT(contentOpps.length === 1 ? '{count} contenu à fort impact manquant.' : '{count} contenus à fort impact manquants.', {count:contentOpps.length}) : '',
+        fpT('Priorité : contenus structurés + SEO local.'),
+      ].filter(Boolean).join(' ')
+    : weakPages.length > 0
+      ? `${fpT(weakPages.length === 1 ? '{count} site en zone critique' : '{count} sites en zone critique', {count:weakPages.length})} — ${fpT('corrigez les problèmes d\'audit avant de viser de nouveaux mots-clés.')}`
+      : fpT('Lancez des audits et connectez vos sources de données (GSC, GBP) pour identifier des opportunités de croissance.');
   return `
-    ${aiBlock(kwOpps.length > 0 || contentOpps.length > 0
-      ? `${kwOpps.length} opportunités mots-clés identifiées. ${weakPages.length} site(s) en zone critique. ${contentOpps.length} contenus à fort impact manquants. Priorité : contenus structurés + SEO local.`
-      : weakPages.length > 0
-        ? `${weakPages.length} site(s) en zone critique — corrigez les problèmes d'audit avant de viser de nouveaux mots-clés.`
-        : `Lancez des audits et connectez vos sources de données (GSC, GBP) pour identifier des opportunités de croissance.`,
-      ['Créer plan de contenu IA','Générer toutes les missions','Rapport opportunités PDF'])}
+    ${aiBlock(aiSummary, ['Créer plan de contenu IA','Générer toutes les missions','Rapport opportunités PDF'])}
 
     <div class="fp-card fp-mb-16">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="fp-card-title">🔍 Opportunités Mots-clés</div>
-          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${kwOpps.length} mots-clés à fort potentiel non exploités</div>
+          <div class="fp-card-title">🔍 ${fpT('Opportunités Mots-clés')}</div>
+          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('{count} mots-clés à fort potentiel non exploités',{count:kwOpps.length})}</div>
         </div>
-        ${btn('Analyser tout','fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigate(\'audits\')"')}
+        ${btn(fpT('Analyser tout'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigate(\'audits\')"')}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${(()=>{
           const rankBadge = n => `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:${n>9?'12':'14'}px;font-weight:800;color:#fff;font-family:var(--fp-font-head);box-shadow:0 2px 10px rgba(37,99,235,0.45);flex-shrink:0;letter-spacing:-0.5px">${n}</div>`;
-          const missionBtn = (idx) => `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0;width:110px;justify-content:center" data-kw-idx="${idx}" onclick="(function(btn){var idx=+btn.dataset.kwIdx;var o=window._fpKwOpps[idx];if(!o)return;var m={id:'m_'+Date.now(),title:o.title,desc:o.desc,site:o.site,status:'todo',priority:'high',createdAt:new Date().toISOString()};if(!STATE.missions)STATE.missions=[];STATE.missions.unshift(m);showToast('success','Mission créée · '+o.site);openFloatPanel('✅ Mission créée — '+o.site,'<div style=\\'padding:16px\\'><div style=\\'font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px\\'>'+o.title+'</div><div style=\\'font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px\\'>'+o.desc+'</div><div style=\\'display:flex;gap:8px\\'><button class=\\'fp-btn fp-btn-primary fp-btn-sm\\' onclick=\\'navigate(\\'missions\\');closeFloatPanel&&closeFloatPanel()\\'>Voir les missions</button><button class=\\'fp-btn fp-btn-ghost fp-btn-sm\\' onclick=\\'closeFloatPanel&&closeFloatPanel()\\'>Fermer</button></div></div>');})(this)">+ Mission</button>`;
+          const missionBtn = (idx) => `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0;width:110px;justify-content:center" data-kw-idx="${idx}" onclick="(function(btn){var idx=+btn.dataset.kwIdx;var o=window._fpKwOpps[idx];if(!o)return;var m={id:'m_'+Date.now(),title:o.title,desc:o.desc,site:o.site,status:'todo',priority:'high',createdAt:new Date().toISOString()};if(!STATE.missions)STATE.missions=[];STATE.missions.unshift(m);showToast('success',window.fpT('Mission créée · {site}',{site:escHtml(o.site)}));openFloatPanel(window.fpT('Mission créée — {site}',{site:escHtml(o.site)}),'<div style=\\'padding:16px\\'><div style=\\'font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px\\'>'+o.title+'</div><div style=\\'font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:14px\\'>'+o.desc+'</div><div style=\\'display:flex;gap:8px\\'><button class=\\'fp-btn fp-btn-primary fp-btn-sm\\' onclick=\\'navigate(\\'missions\\');closeFloatPanel&&closeFloatPanel()\\'>Voir les missions</button><button class=\\'fp-btn fp-btn-ghost fp-btn-sm\\' onclick=\\'closeFloatPanel&&closeFloatPanel()\\'>Fermer</button></div></div>');})(this)">+ ${fpT('Mission')}</button>`;
           const cardHtml = (kw, i, globalIdx) => `
             <div class="fp-opp-card" style="gap:14px;align-items:center">
               ${rankBadge(globalIdx+1)}
               <div style="flex:1;min-width:0">
                 <div class="fp-opp-title">${kw.kw}</div>
-                <div class="fp-opp-desc">Volume : <strong style="color:var(--fp-text)">${kw.vol}</strong> · <span style="color:var(--fp-accent)">${kw.site}</span></div>
+              <div class="fp-opp-desc">${fpT('Volume :')} <strong style="color:var(--fp-text)">${kw.vol}</strong> · <span style="color:var(--fp-accent)">${kw.site}</span></div>
                 <div class="fp-opp-chips">
                   <span class="fp-opp-chip" style="background:rgba(34,197,94,0.1);color:#22c55e">📈 ${kw.gain} trafic</span>
                   <span class="fp-opp-chip" style="background:${diffColor(kw.diff)};color:${diffTxt(kw.diff)}">Diff. ${kw.diff}</span>
@@ -53561,8 +54667,8 @@ function renderAuditsOpportunites() {
                 ${kwOpps.slice(SHOW).map((kw, i) => cardHtml(kw, i, i + SHOW)).join('')}
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:11px;margin-top:2px"
-                onclick="(function(btn){var ex=document.getElementById('kw-opp-extras');var show=ex.style.display==='none';ex.style.display=show?'flex':'none';ex.style.flexDirection='column';ex.style.gap='8px';btn.textContent=show?'Voir moins ↑':'Voir ${kwOpps.length-3} de plus →';})(this)">
-                Voir ${kwOpps.length-3} de plus →
+                onclick="(function(btn){var ex=document.getElementById('kw-opp-extras');var show=ex.style.display==='none';ex.style.display=show?'flex':'none';ex.style.flexDirection='column';ex.style.gap='8px';btn.textContent=show?window.fpT('Voir moins ↑'):window.fpT('Voir {count} de plus →',{count:${kwOpps.length-3}});})(this)">
+                ${fpT('Voir {count} de plus →',{count:kwOpps.length-3})}
               </button>` : '');
         })()}
       </div>
@@ -53570,10 +54676,10 @@ function renderAuditsOpportunites() {
 
     <div class="fp-grid-2 fp-mb-16">
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:4px">✍️ Contenu Manquant</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Contenu à fort impact SEO non créé</div>
+        <div class="fp-card-title" style="margin-bottom:4px">✍️ ${fpT('Contenu Manquant')}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT('Contenu à fort impact SEO non créé')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${contentOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les recommandations de contenu apparaîtront après vos premiers audits SEO</div>` : ''}${contentOpps.map(co=>`
+          ${contentOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Les recommandations de contenu apparaîtront après vos premiers audits SEO')}</div>` : ''}${contentOpps.map(co=>`
             <div class="fp-opp-card">
               <div style="font-size:22px;flex-shrink:0">${co.icon}</div>
               <div style="flex:1;min-width:0">
@@ -53590,10 +54696,10 @@ function renderAuditsOpportunites() {
       </div>
 
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:4px">📍 SEO Local</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${localOpps.length > 0 ? localOpps.length + ' opportunités locales non exploitées' : 'Opportunités locales'}</div>
+        <div class="fp-card-title" style="margin-bottom:4px">📍 ${fpT('SEO Local')}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${localOpps.length > 0 ? fpT('{count} opportunités locales non exploitées',{count:localOpps.length}) : fpT('Opportunités locales')}</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-          ${localOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez Google Business Profile pour détecter les opportunités locales</div>` : ''}${localOpps.map(lo=>`
+          ${localOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Connectez Google Business Profile pour détecter les opportunités locales')}</div>` : ''}${localOpps.map(lo=>`
             <div style="padding:10px;background:var(--fp-inner-card);border:1px solid ${lo.color}22;border-radius:9px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;flex-wrap:wrap;gap:4px">
                 <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${lo.title}</span>
@@ -53612,8 +54718,8 @@ function renderAuditsOpportunites() {
 
     ${weakPages.length ? `
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:4px">⚠️ Sites Critiques</div>
-      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${weakPages.length} site(s) avec score < 60 — intervention urgente requise</div>
+      <div class="fp-card-title" style="margin-bottom:4px">⚠️ ${fpT('Sites Critiques')}</div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT(weakPages.length === 1 ? '{count} site avec score < 60 — intervention urgente requise' : '{count} sites avec score < 60 — intervention urgente requise',{count:weakPages.length})}</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${weakPages.map(wp=>`
           <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:9px;flex-wrap:wrap">
@@ -53626,8 +54732,8 @@ function renderAuditsOpportunites() {
               <div style="font-size:11px;color:var(--fp-text-muted)">${wp.topIssue}</div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(async()=>{const u=wp?.url||'';if(!u)return;try{const r=await apiAction('POST','/api/audits',{url:u});if(r){STATE.audits.unshift(r);showToast('success','Audit lancé pour '+escHtml(u));render();}else showToast('info', fpT('Audit en cours…'));}catch(e){showToast('error', fpT('Erreur audit'))}})()">Audit</button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openFloatPanel('Audit',renderAuditDetailPanel(STATE.audits.find(x=>x.id==='${wp.id}')))">Détail</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(async()=>{const u=wp?.url||'';if(!u)return;try{const r=await apiAction('POST','/api/audits',{url:u});if(r){STATE.audits.unshift(r);showToast('success',window.fpT('Audit lancé pour {url}',{url:escHtml(u)}));render();}else showToast('info', fpT('Audit en cours…'));}catch(e){showToast('error', fpT('Erreur audit'))}})()">${fpT('Audit')}</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openFloatPanel(window.fpT('Audit'),renderAuditDetailPanel(STATE.audits.find(x=>x.id==='${wp.id}')))">${fpT('Détail')}</button>
             </div>
           </div>
         `).join('')}
@@ -53635,8 +54741,8 @@ function renderAuditsOpportunites() {
     </div>` : `
     <div class="fp-card" style="text-align:center;padding:28px">
       <div style="font-size:28px;margin-bottom:10px">✅</div>
-      <div style="font-weight:700;color:var(--fp-success);font-size:14px">Aucune page critique !</div>
-      <div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">Tous vos sites ont un score ≥ 60. Continuez l\'optimisation.</div>
+      <div style="font-weight:700;color:var(--fp-success);font-size:14px">${fpT('Aucune page critique !')}</div>
+      <div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">${fpT('Tous vos sites ont un score ≥ 60. Continuez l\'optimisation.')}</div>
     </div>`}
   `;
 }
@@ -53679,11 +54785,11 @@ function renderMonitorsPerformance() {
   return `
     ${aiBlock(
       cwv.length === 0
-        ? 'Aucun monitor configuré. Ajoutez vos sites pour suivre les Core Web Vitals en temps réel.'
+        ? fpT('Aucun monitor configuré. Ajoutez vos sites pour suivre les Core Web Vitals en temps réel.')
         : _cwvWorst
-          ? `Latence globale moyenne : <strong>${_cwvAvgLat}ms</strong>. ⚠ <strong>${escHtml(_cwvWorst.site)}</strong> : LCP ${_cwvWorst.lcp}s + TTFB ${_cwvWorst.ttfb}ms — probable hébergement non optimisé. Corriger peut gagner <strong>+${cwv.filter(c=>c.score<65).length > 0 ? '15–20' : '5–10'} pts CWV</strong> et réduire le taux de rebond.`
-          : `Core Web Vitals surveillés sur ${cwv.length} site${cwv.length > 1 ? 's' : ''}.`,
-      ['Diagnostiquer le plus lent', 'Rapport CWV complet', 'Recommandations CDN']
+           ? fpT('Latence moyenne globale : <strong>{latency}ms</strong>. ⚠ <strong>{site}</strong> : LCP {lcp}s + TTFB {ttfb}ms — hébergement potentiellement non optimisé. Une correction pourrait apporter <strong>+{gain} points CWV</strong> et réduire le taux de rebond.', {latency:_cwvAvgLat, site:escHtml(_cwvWorst.site), lcp:_cwvWorst.lcp, ttfb:_cwvWorst.ttfb, gain:cwv.filter(c=>c.score<65).length > 0 ? '15–20' : '5–10'})
+          : fpT(cwv.length === 1 ? 'Core Web Vitals surveillés sur {count} site.' : 'Core Web Vitals surveillés sur {count} sites.', {count:cwv.length}),
+      [fpT('Diagnostiquer le plus lent'), fpT('Rapport CWV complet'), fpT('Recommandations CDN')]
     )}
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
@@ -53693,10 +54799,10 @@ function renderMonitorsPerformance() {
         const _cwvData = STATE.overview?.coreWebVitals || null;
         const _goodCwv = STATE.audits ? STATE.audits.filter(a=>(a.speed||0)>=90).length : null;
         return [
-          { l: 'Latence moy.',     v: _avgLat != null ? _avgLat+'ms' : (PREVIEW_MODE ? '319ms' : '—'),  c: _avgLat != null ? (_avgLat>400?'#ef4444':_avgLat>200?'#f59e0b':'#22c55e') : '#22c55e', sub: _avgLat != null ? 'latence monitors' : PREVIEW_MODE ? '-42ms vs hier' : 'Aucun monitor' },
-          { l: 'Score CWV moy.',   v: _cwvData != null ? _cwvData+'/100' : (PREVIEW_MODE ? '71/100' : '—'), c: _cwvData != null ? (_cwvData>=90?'#22c55e':_cwvData>=70?'#f59e0b':'#ef4444') : '#f59e0b', sub: _cwvData != null ? 'score Core Web Vitals' : PREVIEW_MODE ? '+3 pts ce mois' : 'Données de performance indisponibles' },
-          { l: 'LCP moyen',        v: PREVIEW_MODE ? '2.7s' : '—', c: '#f59e0b', sub: 'Cible : ≤2.5s' },
-          { l: 'Sites "Good" CWV', v: _goodCwv != null ? _goodCwv+'/'+STATE.audits.length : (PREVIEW_MODE ? '2/5' : '—'), c: '#2563EB', sub: _goodCwv != null ? 'speed ≥ 90/100' : PREVIEW_MODE ? 'plombier + auto-moto' : 'Aucun audit' },
+          { l: fpT('Latence moy.'),     v: _avgLat != null ? _avgLat+'ms' : (PREVIEW_MODE ? '319ms' : '—'),  c: _avgLat != null ? (_avgLat>400?'#ef4444':_avgLat>200?'#f59e0b':'#22c55e') : '#22c55e', sub: fpT(_avgLat != null ? 'latence monitors' : PREVIEW_MODE ? '-42ms vs hier' : 'Aucun monitor') },
+          { l: fpT('Score CWV moy.'),   v: _cwvData != null ? _cwvData+'/100' : (PREVIEW_MODE ? '71/100' : '—'), c: _cwvData != null ? (_cwvData>=90?'#22c55e':_cwvData>=70?'#f59e0b':'#ef4444') : '#f59e0b', sub: fpT(_cwvData != null ? 'score Core Web Vitals' : PREVIEW_MODE ? '+3 pts ce mois' : 'Données de performance indisponibles') },
+          { l: fpT('LCP moyen'),        v: PREVIEW_MODE ? '2.7s' : '—', c: '#f59e0b', sub: fpT('Cible : ≤2.5s') },
+           { l: fpT('Sites "Good" CWV'), v: _goodCwv != null ? _goodCwv+'/'+STATE.audits.length : (PREVIEW_MODE ? '2/5' : '—'), c: '#2563EB', sub: fpT(_goodCwv != null ? 'speed ≥ 90/100' : PREVIEW_MODE ? 'plombier + auto-moto' : 'Aucun audit') },
         ];
       })().map(s => `
         <div class="fp-card fp-card-sm">
@@ -53711,25 +54817,25 @@ function renderMonitorsPerformance() {
     <div class="fp-card fp-mb-16" style="background:linear-gradient(135deg,rgba(37,99,235,0.06) 0%,rgba(139,92,246,0.04) 100%);border-color:rgba(37,99,235,0.18)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
         <span style="font-size:16px">✦</span>
-        <span style="font-size:13px;font-weight:700;color:#2563EB">IA Performance Intelligence</span>
+        <span style="font-size:13px;font-weight:700;color:#2563EB">${fpT('Intelligence de la performance par IA')}</span>
         ${isUltra ? '' : '<span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.12);padding:1px 7px;border-radius:4px;font-weight:600">Ultra</span>'}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         ${[
-          { icon: '📱', title: 'Mobile Europe', msg: 'La latence mobile augmente en Europe (+18% cette semaine)' + (STATE.monitors&&STATE.monitors.length>0?' — site le plus lent : ' + (STATE.monitors.reduce((b,m)=>(m.latency||0)>(b.latency||0)?m:b,STATE.monitors[0]).url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'') + '.', color: '#f59e0b' },
-          { icon: '⚡', title: 'Pics serveur', msg: 'Les temps de réponse serveur spikent 08h–09h et 19h–20h. Pattern de charge cyclique — cache à activer.', color: '#ef4444' },
-          { icon: '🔮', title: 'Prévision', msg: 'Dégradation probable vendredi 18h' + (STATE.monitors&&STATE.monitors.length>0?' sur '+((STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,'')):'') + ' — basée sur l\'historique de monitoring.', color: '#2563EB' },
+          { icon: '📱', title: fpT('Performances mobiles en Europe'), msg: fpT('La latence mobile augmente en Europe (+18% cette semaine)') + (STATE.monitors&&STATE.monitors.length>0?' — '+fpT('site le plus lent : {site}', {site:escHtml((STATE.monitors.reduce((b,m)=>(m.latency||0)>(b.latency||0)?m:b,STATE.monitors[0]).url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''))}):'') + '.', color: '#f59e0b' },
+          { icon: '⚡', title: fpT('Pics serveur'), msg: fpT('Les temps de réponse serveur culminent entre 08:00–09:00 et 19:00–20:00. Profil de charge cyclique — envisagez d’activer le cache.'), color: '#ef4444' },
+          { icon: '🔮', title: fpT('Prévision'), msg: fpT('Dégradation probable vendredi à 18:00{siteSuffix} — basée sur l’historique de monitoring.', {siteSuffix:STATE.monitors&&STATE.monitors.length>0?fpT('sur {site}', {site:escHtml((STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''))}):''}), color: '#2563EB' },
         ].map(ins => `
           <div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border-left:2px solid ${ins.color}">
             <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:4px">${ins.icon} ${ins.title}</div>
-            <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${isUltra ? ins.msg : ins.msg.slice(0, 40) + '… <span style=\"color:#8b5cf6;font-weight:600\">Ultra requis</span>'}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${isUltra ? ins.msg : ins.msg.slice(0, 40) + '… <span style=\"color:#8b5cf6;font-weight:600\">' + fpT('Ultra requis') + '</span>'}</div>
           </div>
         `).join('')}
       </div>
     </div>
 
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:14px">⚡ Latence temps réel par site</div>
+      <div class="fp-card-title" style="margin-bottom:14px">${fpT('⚡ Latence temps réel par site')}</div>
       <div class="fp-funnel">
         ${STATE.monitors.map(m => `
           <div class="fp-funnel-step">
@@ -53753,13 +54859,13 @@ function renderMonitorsPerformance() {
         <table class="fp-data-table">
           <thead>
             <tr>
-              <th>Site</th>
+               <th>${fpT('Site')}</th>
               <th style="text-align:center">LCP<div style="font-size:9px;color:var(--fp-text-faint);font-weight:400">≤2.5s</div></th>
               <th style="text-align:center">CLS<div style="font-size:9px;color:var(--fp-text-faint);font-weight:400">≤0.1</div></th>
               <th style="text-align:center">INP<div style="font-size:9px;color:var(--fp-text-faint);font-weight:400">≤200ms</div></th>
               <th style="text-align:center">TTFB<div style="font-size:9px;color:var(--fp-text-faint);font-weight:400">≤600ms</div></th>
               <th style="text-align:center">Score</th>
-              <th style="text-align:center">Action</th>
+               <th style="text-align:center">${fpT('Action')}</th>
             </tr>
           </thead>
           <tbody>
@@ -53785,29 +54891,29 @@ function renderMonitorsPerformance() {
                 <td style="text-align:center">
                   <span style="font-size:16px;font-weight:800;color:${c.score >= 80 ? '#22c55e' : c.score >= 50 ? '#f59e0b' : '#ef4444'}">${c.score}</span>
                 </td>
-                <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(b){var site=b.closest('tr')?.querySelector('td')?.textContent?.trim()||'Site';var title='Optimiser CWV — '+site;var dup=STATE.missions.find(function(m){return m.title.toLowerCase()===title.toLowerCase()&&m.status!=='done';});if(dup){showToast('info', fpT('Mission déjà créée'));b.textContent='Voir →';b.onclick=function(){navigate('missions');};return;}b.textContent='Création…';b.disabled=true;apiAction('POST','/api/missions',{title:title,category:'Performance',status:'todo',priority:'high',impact:'Élevé'}).then(function(r){var m=r||{id:'ms'+Date.now(),title:title,category:'Performance',status:'todo'};STATE.missions.unshift(m);b.textContent='✓ Créée';b.style.color='#22c55e';b.disabled=false;b.onclick=function(){navigate('missions');};showToast('success', fpT('Mission créée'));}).catch(function(){b.textContent='Optimiser';b.disabled=false;});})(this)">Optimiser</button></td>
+               <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(b){var site=b.closest('tr')?.querySelector('td')?.textContent?.trim()||'Site';var title='Optimiser CWV — '+site;var dup=STATE.missions.find(function(m){return m.title.toLowerCase()===title.toLowerCase()&&m.status!=='done';});if(dup){showToast('info', fpT('Mission déjà créée'));b.textContent=fpT('Voir →');b.onclick=function(){navigate('missions');};return;}b.textContent=fpT('Création…');b.disabled=true;apiAction('POST','/api/missions',{title:title,category:'Performance',status:'todo',priority:'high',impact:'Élevé'}).then(function(r){var m=r||{id:'ms'+Date.now(),title:title,category:'Performance',status:'todo'};STATE.missions.unshift(m);b.textContent='✓ '+fpT('Créée');b.style.color='#22c55e';b.disabled=false;b.onclick=function(){navigate('missions');};showToast('success', fpT('Mission créée'));}).catch(function(){b.textContent=fpT('Optimiser');b.disabled=false;});})(this)">${fpT('Optimiser')}</button></td>
               </tr>
             `).join('')}
           </tbody>
         </table>
       </div>
       <div style="display:flex;gap:16px;margin-top:10px;font-size:10.5px;color:var(--fp-text-faint)">
-        <span><span style="color:#22c55e">●</span> Bon</span>
-        <span><span style="color:#f59e0b">●</span>À améliorer</span>
-        <span><span style="color:#ef4444">●</span> Mauvais</span>
+        <span><span style="color:#22c55e">●</span> ${fpT('Bon')}</span>
+        <span><span style="color:#f59e0b">●</span>${fpT('À améliorer')}</span>
+        <span><span style="color:#ef4444">●</span> ${fpT('Mauvais')}</span>
       </div>
     </div>
 
     <div class="fp-grid-2">
       <!-- Regional perf -->
       <div class="fp-card" style="${isPro ? '' : 'opacity:0.75'}">
-        <div class="fp-card-title" style="margin-bottom:4px">🌍 Performance Géographique${isPro ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Pro</span>'}</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Latence depuis 6 régions mondiales</div>
+        <div class="fp-card-title" style="margin-bottom:4px">${fpT('🌍 Performance Géographique')}${isPro ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Pro</span>'}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT('Latence depuis 6 régions mondiales')}</div>
         ${isPro ? `
           <div style="display:flex;flex-direction:column;gap:8px">
             ${regions.map(r => `
               <div style="display:flex;align-items:center;gap:10px">
-                <span style="font-size:11.5px;color:var(--fp-text-soft);min-width:175px">${r.name}</span>
+                <span style="font-size:11.5px;color:var(--fp-text-soft);min-width:175px">${fpT(r.name)}</span>
                 <div style="flex:1;height:5px;background:var(--fp-track);border-radius:3px;overflow:hidden">
                   <div style="height:100%;width:${Math.min(100, r.latency / 600 * 100)}%;background:${r.ok ? '#22c55e' : r.latency < 450 ? '#f59e0b' : '#ef4444'};border-radius:3px;transition:width .6s"></div>
                 </div>
@@ -53816,20 +54922,20 @@ function renderMonitorsPerformance() {
             `).join('')}
           </div>
           <div style="margin-top:14px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
-            ⚠ Latence critique en Asie-Pacifique (520ms). Envisagez un CDN avec PoP Asie (Cloudflare / Fastly).
+            ${fpT('⚠ Latence critique en Asie-Pacifique (520ms). Envisagez un CDN avec PoP Asie (Cloudflare / Fastly).')}
           </div>
         ` : `
           <div style="text-align:center;padding:20px">
             <div style="font-size:32px;margin-bottom:10px">🌍</div>
-            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Monitoring depuis 6 régions mondiales</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Activer Pro →</button>
+            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Monitoring depuis 6 régions mondiales')}</div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">${fpT('Activer Pro →')}</button>
           </div>
         `}
       </div>
 
       <!-- Mobile vs Desktop -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📱 Mobile vs Desktop</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('📱 Mobile vs Desktop')}</div>
         <div style="display:flex;flex-direction:column;gap:12px">
           ${cwv.slice(0, 5).map(c => {
             const mob = c.mobile_score != null ? c.mobile_score : Math.max(20, Math.round(c.score * 0.82));
@@ -53838,16 +54944,16 @@ function renderMonitorsPerformance() {
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:5px">
                   <span style="font-size:11px;color:var(--fp-text-soft)">${c.site}</span>
-                  <span style="font-size:10px;color:#ef4444">Mobile −${delta} pts</span>
+                   <span style="font-size:10px;color:#ef4444">${fpT('Mobile')} −${delta} ${fpT('pts')}</span>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
                   <div>
-                    <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">🖥 Desktop</div>
+                     <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">🖥 ${fpT('Ordinateur')}</div>
                     <div style="height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden"><div style="height:100%;width:${c.score}%;background:${c.score>=80?'#22c55e':c.score>=50?'#f59e0b':'#ef4444'};border-radius:3px"></div></div>
                     <div style="font-size:10px;font-weight:700;color:${c.score>=80?'#22c55e':c.score>=50?'#f59e0b':'#ef4444'};margin-top:2px">${c.score}/100</div>
                   </div>
                   <div>
-                    <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">📱 Mobile</div>
+                     <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">📱 ${fpT('Mobile')}</div>
                     <div style="height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden"><div style="height:100%;width:${mob}%;background:${mob>=80?'#22c55e':mob>=50?'#f59e0b':'#ef4444'};border-radius:3px"></div></div>
                     <div style="font-size:10px;font-weight:700;color:${mob>=80?'#22c55e':mob>=50?'#f59e0b':'#ef4444'};margin-top:2px">${mob}/100</div>
                   </div>
@@ -53858,11 +54964,11 @@ function renderMonitorsPerformance() {
         </div>
         ${cwv.length > 0 ? `
         <div style="margin-top:14px;padding:8px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;font-size:11px;color:var(--fp-text-soft)">
-          ⚠ Scores mobiles estimés (basés sur la latence monitors + score audit). Le mobile représente généralement 60–70% du trafic Google.
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Valeur <em>estimée</em> — connectez PageSpeed Insights pour les données réelles.</div>
+           ${fpT('⚠ Scores mobiles estimés (basés sur la latence monitors + score audit). Le mobile représente généralement 60–70% du trafic Google.')}
+           <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('Valeur estimée — connectez PageSpeed Insights pour les données réelles.')}</div>
         </div>` : `
         <div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
-          Ajoutez des monitors et lancez des audits pour voir la comparaison Mobile / Desktop.
+           ${fpT('Ajoutez des monitors et lancez des audits pour voir la comparaison Mobile / Desktop.')}
         </div>`}
       </div>
     </div>
@@ -53891,9 +54997,9 @@ function renderMonitorsIncidents() {
       duration: 'En cours',
       type: ev.type === 'monitor_down' ? 'DOWN' : 'DÉGRADATION',
       severity: ev.severity === 'critical' ? 'critical' : 'warning',
-      rootCause: ev.message || 'Vérifiez l\'hébergeur, les DNS et le certificat SSL.',
-      aiAnalysis: ev.message || 'Analysez les logs serveur pour identifier la cause.',
-      impact: ev.type === 'monitor_down' ? 'Site inaccessible — impact client direct.' : 'Performance dégradée — UX impactée.',
+      rootCause: ev.message || fpT('Vérifiez l’hébergeur, les DNS et le certificat SSL.'),
+      aiAnalysis: ev.message || fpT('Analysez les logs serveur pour identifier la cause.'),
+      impact: ev.type === 'monitor_down' ? fpT('Site inaccessible — impact client direct.') : fpT('Performance dégradée — UX impactée.'),
       services: ['Monitor', 'Uptime'],
       ttd: ev.triggeredAt ? _fmtT(new Date(ev.triggeredAt)) : '—',
       ttr: 'En cours', notifiedBool: false,
@@ -53922,14 +55028,14 @@ function renderMonitorsIncidents() {
         type: m.status === 'down' ? 'DOWN' : 'DÉGRADATION (>500ms)',
         severity: m.status === 'down' ? 'critical' : 'warning',
         rootCause: m.status === 'down'
-          ? 'Site inaccessible — vérification auprès de l\'hébergeur requise.'
-          : `Latence élevée détectée : ${m.latency||'—'}ms. Vérifiez la charge serveur et le cache.`,
+          ? fpT('Site inaccessible — vérification auprès de l’hébergeur requise.')
+          : fpT('Latence élevée détectée : {latency}ms. Vérifiez la charge serveur et le cache.', {latency:m.latency||'—'}),
         aiAnalysis: m.status === 'down'
-          ? `Monitor DOWN détecté. Uptime 30j : ${typeof m.uptime === 'number' ? m.uptime + '%' : '—'}. Vérifiez l'hébergeur, les DNS et le certificat SSL.`
-          : `Latence anormalement élevée : ${m.latency||'—'}ms. Activez le cache et compressez les ressources statiques.`,
+          ? fpT('Monitor DOWN détecté. Uptime 30j : {uptime}. Vérifiez l’hébergeur, les DNS et le certificat SSL.', {uptime:typeof m.uptime === 'number' ? m.uptime + '%' : '—'})
+          : fpT('Latence anormalement élevée : {latency}ms. Activez le cache et compressez les ressources statiques.', {latency:m.latency||'—'}),
         impact: m.status === 'down'
-          ? 'Site inaccessible — impact client direct et crawl Google potentiellement affecté.'
-          : 'Dégradation UX — temps de réponse élevé pour les visiteurs.',
+          ? fpT('Site inaccessible — impact client direct et crawl Google potentiellement affecté.')
+          : fpT('Dégradation UX — temps de réponse élevé pour les visiteurs.'),
         services: ['Site web'],
         ttd: fmtLastCheck(m.lastCheck) || '—',
         ttr: 'En cours',
@@ -53942,32 +55048,37 @@ function renderMonitorsIncidents() {
   const incidents = [..._realMonEvents, ..._syntheticIncidents];
 
   const sevColor = s => s === 'critical' ? '#ef4444' : s === 'warning' ? '#f59e0b' : '#94a3b8';
-  const sevLabel = s => s === 'critical' ? 'Critique' : s === 'warning' ? 'Important' : 'Informatif';
+  const sevLabel = s => fpT(s === 'critical' ? 'Critique' : s === 'warning' ? 'Important' : 'Informatif');
   const sevEmoji = s => s === 'critical' ? '🔴' : s === 'warning' ? '🟡' : 'ℹ️';
 
   if (incidents.length === 0) return `
     <div class="fp-card" style="text-align:center;padding:48px 24px;margin-bottom:0">
       <div style="font-size:36px;margin-bottom:12px">✅</div>
-      <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Aucun incident actif</div>
+      <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${fpT('Aucun incident actif')}</div>
       <div style="font-size:12px;color:var(--fp-text-faint);max-width:380px;margin:0 auto;line-height:1.6">
-        Tous vos monitors sont opérationnels. Vous serez alerté dès qu'une anomalie est détectée.
-        ${_monAll.length === 0 ? '<br><br><a style="color:#2563EB;cursor:pointer" onclick="navigate(\'monitors\')">Ajouter des monitors →</a>' : ''}
+        ${fpT('Tous vos monitors sont opérationnels. Vous serez alerté dès qu’une anomalie est détectée.')}
+        ${_monAll.length === 0 ? '<br><br><a style="color:#2563EB;cursor:pointer" onclick="navigate(\'monitors\')">' + fpT('Ajouter des monitors →') + '</a>' : ''}
       </div>
     </div>
   `;
 
   return `
     ${aiBlock(
-      `<strong>${incidents.length} incident${incidents.length > 1 ? 's' : ''} actif${incidents.length > 1 ? 's' : ''}</strong> · ${_monDown.length} DOWN · ${_monWarn.length} dégradé${_monWarn.length !== 1 ? 's' : ''}. ${_monDown.length > 0 ? 'Action immédiate requise sur les sites DOWN.' : 'Surveillez la latence sur les sites dégradés.'}`,
-      ['Plan de résolution IA', 'Rapport incidents PDF', 'Alertes SMS — bientôt disponible']
+       fpT('{count} incident(s) actif(s) · {down} DOWN · {degraded} site(s) dégradé(s). {message}', {
+        count:incidents.length,
+        down:_monDown.length,
+        degraded:_monWarn.length,
+        message:_monDown.length > 0 ? fpT('Action immédiate requise pour les sites DOWN.') : fpT('Surveillez la latence des sites dégradés.'),
+      }),
+      [fpT('Plan de résolution IA'), fpT('Rapport incidents PDF'), fpT('Alertes SMS — bientôt disponible')]
     )}
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
       ${[
-        { l: 'Incidents actifs',  v: String(incidents.length),   c: incidents.length > 0 ? '#ef4444' : '#22c55e', sub: _monDown.length + ' DOWN · ' + _monWarn.length + ' dégradé' },
-        { l: 'Sites DOWN',        v: String(_monDown.length),    c: _monDown.length > 0 ? '#ef4444' : '#22c55e',  sub: _monDown.length > 0 ? 'Action requise' : 'Tous opérationnels' },
-        { l: 'MTTR moyen',        v: '—',                         c: '#94a3b8', sub: 'En attente de résolution' },
-        { l: 'TTD moyen',         v: '—',                         c: '#94a3b8', sub: 'Time to detect' },
+        { l: fpT('Incidents actifs'),  v: String(incidents.length),   c: incidents.length > 0 ? '#ef4444' : '#22c55e', sub: fpT('{down} DOWN · {degraded} site(s) dégradé(s)', {down:_monDown.length, degraded:_monWarn.length}) },
+        { l: fpT('Sites DOWN'),        v: String(_monDown.length),    c: _monDown.length > 0 ? '#ef4444' : '#22c55e',  sub: fpT(_monDown.length > 0 ? 'Action requise' : 'Tous opérationnels') },
+        { l: fpT('MTTR moyen'),        v: '—',                         c: '#94a3b8', sub: fpT('En attente de résolution') },
+        { l: fpT('TTD moyen'),         v: '—',                         c: '#94a3b8', sub: fpT('Délai moyen de détection') },
       ].map(s => `
         <div class="fp-card fp-card-sm">
           <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${s.l}</div>
@@ -53979,7 +55090,7 @@ function renderMonitorsIncidents() {
 
     <!-- Timeline visual -->
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:18px">📅 Timeline des incidents — ${CUR_MONTH}</div>
+        <div class="fp-card-title" style="margin-bottom:18px">${fpT('📅 Timeline des incidents')} — ${CUR_MONTH}</div>
       <div style="position:relative;padding:0 10px">
         <div style="position:absolute;top:10px;left:10px;right:10px;height:2px;background:rgba(255,255,255,0.07);border-radius:1px"></div>
         <div style="display:flex;justify-content:space-between;position:relative;z-index:1">
@@ -53989,12 +55100,12 @@ function renderMonitorsIncidents() {
               ? _incRaw.map(i => ({ day: new Date(i.date).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}), label: (i.monName||'Monitor').replace(/^https?:\/\//,'').slice(0,20)+(i.duration?' '+i.duration:''), type: i.severity||'info' }))
               : (PREVIEW_MODE ? [
                   { day: '20/04', label: 'Monitor 1 — 3min', type: 'info' },
-                  { day: '28/04', label: 'Monitor 2 — dégradé 12min', type: 'warning' },
-                  { day: '01/05', label: 'Calme', type: 'ok' },
+                  { day: '28/04', label: fpT('Monitor 2 — dégradé 12min'), type: 'warning' },
+                  { day: '01/05', label: fpT('Calme'), type: 'ok' },
                   { day: '03/05', label: 'Monitor 3 — DOWN 44min', type: 'critical' },
-                  { day: '07/05', label: 'Calme', type: 'ok' },
-                  { day: '09/05', label: 'Aujourd\'hui', type: 'today' },
-                ] : [{ day: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}), label: 'Aucun incident', type: 'ok' }]);
+                  { day: '07/05', label: fpT('Calme'), type: 'ok' },
+                  { day: '09/05', label: fpT('Aujourd’hui'), type: 'today' },
+                ] : [{ day: new Date().toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit'}), label: fpT('Aucun incident'), type: 'ok' }]);
             return _evList;
           })()).map(ev => `
             <div style="display:flex;flex-direction:column;align-items:center;gap:6px;max-width:80px">
@@ -54019,8 +55130,8 @@ function renderMonitorsIncidents() {
                 <span style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(inc.site)}</span>
                 ${badge(sevLabel(inc.severity), sevColor(inc.severity))}
                 ${badge(inc.type, '#94a3b8')}
-                ${badge('Résolu', '#22c55e')}
-                ${inc.notifiedBool ? badge('Notifié ✓', '#2563EB') : '<span style="font-size:10px;color:var(--fp-text-faint)">⚠ Non notifié</span>'}
+                ${badge(fpT('Résolu'), '#22c55e')}
+                ${inc.notifiedBool ? badge(fpT('Notifié ✓'), '#2563EB') : '<span style="font-size:10px;color:var(--fp-text-faint)">⚠ ' + fpT('Non notifié') + '</span>'}
               </div>
               <div style="font-size:11px;color:var(--fp-text-faint);font-family:var(--fp-font-mono)">${inc.date||'—'} · ${inc.start||'—'} → ${inc.end||'—'} · <strong>${inc.duration||'—'}</strong></div>
             </div>
@@ -54042,7 +55153,7 @@ function renderMonitorsIncidents() {
                 <div style="text-align:center;min-width:55px">
                   <div style="width:10px;height:10px;border-radius:50%;background:${step.color};margin:0 auto 4px;box-shadow:0 0 6px ${step.color}60"></div>
                   <div style="font-size:11px;font-weight:700;color:${step.color}">${step.time}</div>
-                  <div style="font-size:9px;color:var(--fp-text-faint)">${step.label}</div>
+                  <div style="font-size:9px;color:var(--fp-text-faint)">${fpT(step.label)}</div>
                 </div>
                 ${i < arr.length - 1 ? '<div style="flex:1;height:1px;background:rgba(255,255,255,0.1);min-width:20px;margin:0 4px;margin-top:-18px"></div>' : ''}
               </div>
@@ -54052,32 +55163,32 @@ function renderMonitorsIncidents() {
           <!-- Details -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
             <div style="background:var(--fp-inner-card);border-radius:8px;padding:10px">
-              <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">🔍 Cause identifiée</div>
+              <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">${fpT('🔍 Cause identifiée')}</div>
               <div style="font-size:11.5px;color:var(--fp-text-soft);line-height:1.5">${escHtml(inc.rootCause)}</div>
             </div>
             <div style="background:var(--fp-inner-card);border-radius:8px;padding:10px">
-              <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">💥 Impact business</div>
+              <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">${fpT('💥 Impact business')}</div>
               <div style="font-size:11.5px;color:${inc.severity==='critical'?'#ef4444':'var(--fp-text-soft)'};line-height:1.5">${escHtml(inc.impact)}</div>
             </div>
           </div>
 
           <!-- AI root cause -->
           <div style="background:rgba(37,99,235,0.07);border-left:2px solid #2563EB;padding:10px 12px;border-radius:0 8px 8px 0;margin-bottom:12px">
-            <div style="font-size:10px;font-weight:700;color:#2563EB;margin-bottom:4px">✦ Analyse IA · Root Cause Detection</div>
+            <div style="font-size:10px;font-weight:700;color:#2563EB;margin-bottom:4px">${fpT('✦ Analyse IA · Root Cause Detection')}</div>
             <div style="font-size:11.5px;color:var(--fp-text-soft);line-height:1.6">${escHtml(inc.aiAnalysis)}</div>
           </div>
 
           <!-- Services + actions -->
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
             <div>
-              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:5px">Services impactés :</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:5px">${fpT('Services impactés :')}</div>
               <div style="display:flex;gap:5px;flex-wrap:wrap">
                 ${inc.services.map(s => `<span style="font-size:10px;background:rgba(239,68,68,0.1);color:#ef4444;border-radius:4px;padding:2px 7px">${s}</span>`).join('')}
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              ${btn('Plan d\'action', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="navigate(\'missions\')"')}
-              ${btn('Rapport PDF', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}
+              ${btn(fpT('Plan d’action'), 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="navigate(\'missions\')"')}
+              ${btn(fpT('Rapport PDF'), 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'onclick="openFloatPanel(fpT(\'Nouveau rapport\'),renderNewReportPanel());setupNewReportPanel()"')}
             </div>
           </div>
         </div>
@@ -54098,12 +55209,12 @@ function renderMonitorsConfig() {
     { icon: '🏢', name: 'Corporate',   desc: 'Multi-régions + SLA 99.9% + alertes équipe',  checks: ['Uptime', 'Régions', 'SLA', 'SSL', 'Incidents'], color: '#8b5cf6', pro: true },
   ];
   const channels = [
-    { icon: '📧', name: 'Email',    active: true,    detail: `${STATE.monitors.filter(m => m.alertEmail).length} monitors configurés`, color: '#22c55e', gate: null },
-    { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts actif' : 'Disponible à partir de Pro', color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
-    { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot FlowPoint connecté' : 'Disponible à partir de Pro', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
+    { icon: '📧', name: 'Email',    active: true,    detail: fpT('{count} monitors configurés', {count:STATE.monitors.filter(m => m.alertEmail).length}), color: '#22c55e', gate: null },
+    { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts ' + fpT('actif') : fpT('Disponible à partir de Pro'), color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
+    { icon: '🎮', name: 'Discord',  active: isPro,   detail: fpT(isPro ? 'Bot FlowPoint connecté' : 'Disponible à partir de Pro'), color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
     { icon: '📱', name: 'SMS',      active: false, detail: fpT('Bientôt disponible'), color: '#f59e0b', gate: null, soon: true },
-    { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible à partir de Pro', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
-    { icon: '📢', name: 'PagerDuty',active: isUltra, detail: isUltra ? 'Intégration active' : 'Disponible Ultra', color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
+    { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||fpT('URL non configurée')) : fpT('Disponible à partir de Pro'), color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
+    { icon: '📢', name: 'PagerDuty',active: isUltra, detail: fpT(isUltra ? 'Intégration active' : 'Disponible Ultra'), color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
   ];
   const _nextMaint = function(dow, hour) {
     var now = new Date();
@@ -54119,27 +55230,27 @@ function renderMonitorsConfig() {
   ];
 
   return `
-    ${aiBlock('Configuration optimale détectée. Recommandation : activer <strong>Slack alerts</strong>pour notifications équipe instantanées, et créer une<strong>fenêtre de maintenance</strong> pour les déploiements du dimanche.', [])}
+    ${aiBlock(fpT('Configuration optimale détectée. Recommandation : activer Slack alerts pour notifications équipe instantanées, et créer une fenêtre de maintenance pour les déploiements du dimanche.'), [])}
 
     <!-- Presets -->
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:4px">⚙ Presets de monitoring</div>
-      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:16px">Templates préconfigurés selon votre type de site — déploiement en 1 clic</div>
+      <div class="fp-card-title" style="margin-bottom:4px">${fpT('⚙ Presets de monitoring')}</div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:16px">${fpT('Templates préconfigurés selon votre type de site — déploiement en 1 clic')}</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
         ${presets.map(p => `
           <div style="padding:14px;background:var(--fp-inner-card);border:1px solid ${p.color}22;border-radius:10px;${p.pro && !isPro ? 'opacity:0.65' : ''}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               <span style="font-size:22px;display:flex;align-items:center">${typeof p.icon==='string'&&p.icon.startsWith('<')? p.icon : escHtml(p.icon)}</span>
               <div>
-                <div style="font-size:12.5px;font-weight:700;color:var(--fp-text)">${p.name}${p.pro && !isPro ? ' <span style="font-size:9px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 5px;border-radius:3px">Pro</span>' : ''}</div>
-                <div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:1px">${p.desc}</div>
+                <div style="font-size:12.5px;font-weight:700;color:var(--fp-text)">${fpT(p.name)}${p.pro && !isPro ? ' <span style="font-size:9px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 5px;border-radius:3px">Pro</span>' : ''}</div>
+                <div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:1px">${fpT(p.desc)}</div>
               </div>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">
-              ${p.checks.map(c => `<span style="font-size:9.5px;background:${p.color}15;color:${p.color};border-radius:4px;padding:1px 6px">${c}</span>`).join('')}
+              ${p.checks.map(c => `<span style="font-size:9.5px;background:${p.color}15;color:${p.color};border-radius:4px;padding:1px 6px">${fpT(c)}</span>`).join('')}
             </div>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;${p.pro && !isPro ? 'opacity:0.5;cursor:not-allowed' : ''}" data-pname="${escHtml(p.name)}" data-pchecks="${p.checks.map(c => escHtml(c)).join(',')}" onclick="${p.pro && !isPro ? 'navigate(\'billing\')' : 'window._applyMonitorPreset(this)'}">
-              ${p.pro && !isPro ? '🔒 Activer Pro' : 'Appliquer →'}
+              ${p.pro && !isPro ? '🔒 ' + fpT('Activer Pro') : fpT('Appliquer →')}
             </button>
           </div>
         `).join('')}
@@ -54148,8 +55259,8 @@ function renderMonitorsConfig() {
 
     <!-- Alert Channels -->
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:4px">🔔 Canaux d\'alerte multi-canal</div>
-      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:16px">Escalade intelligente · Groupage d\'alertes · Réduction du bruit IA</div>
+      <div class="fp-card-title" style="margin-bottom:4px">${fpT('🔔 Canaux d’alerte multi-canal')}</div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:16px">${fpT('Escalade intelligente · Groupage d’alertes · Réduction du bruit IA')}</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">
         ${channels.map(ch => `
           <div style="padding:12px;background:var(--fp-inner-card);border:1px solid ${ch.active ? ch.color + '35' : 'var(--fp-border)'};border-radius:10px;${!ch.active ? 'opacity:0.65' : ''}">
@@ -54161,8 +55272,8 @@ function renderMonitorsConfig() {
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.active ? ch.color : '#64748b'};${ch.active ? 'box-shadow:0 0 6px ' + ch.color + '60' : ''}"></div>
             </div>
             <div style="font-size:10.5px;color:var(--fp-text-muted);margin-bottom:10px">${ch.detail}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px${ch.soon ? ';cursor:not-allowed' : ''}"${ch.soon ? ` disabled title="${fpT('Bientôt disponible')}"` : (ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : '')} onclick="${ch.soon ? '' : (!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/>Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning', fpT('Email invalide'));return;}try{await apiAction('PATCH','/api/me/prefs',{settings:{alertEmail:v}});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error', fpT('Erreur lors de la sauvegarde'));}});},50)" : '')}">
-              ${ch.soon ? fpT('Bientôt disponible') : (!ch.active ? `🔒 ${ch.gate} requis` : ch.name === 'Email' ? 'Configurer' : 'Bientôt disponible')}
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px${ch.soon ? ';cursor:not-allowed' : ''}"${ch.soon ? ` disabled title="${fpT('Bientôt disponible')}"` : (ch.active && ch.name !== 'Email' ? ` disabled title="${fpT('Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant')}"` : '')} onclick="${ch.soon ? '' : (!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "window._openMonitorEmailAlerts()" : '')}">
+              ${ch.soon ? fpT('Bientôt disponible') : (!ch.active ? `🔒 ${fpT('{plan} requis', {plan:ch.gate})}` : ch.name === 'Email' ? fpT('Configurer') : fpT('Bientôt disponible'))}
             </button>
           </div>
         `).join('')}
@@ -54171,16 +55282,16 @@ function renderMonitorsConfig() {
       <!-- Global settings -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;padding-top:14px;border-top:1px solid var(--fp-border)">
         <div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">Intervalle de check</div>
-          <select class="fp-select" style="width:100%" onchange="(function(s){if((s.value==='30s'&&!${isUltra})||(s.value==='1m'&&!${isPro})){showToast('info',s.value==='30s'?'Intervalle 30s — plan Ultra requis':'Intervalle 1 min — plan Pro requis');s.value='5m';}else{showToast('success', fpT('Intervalle sauvegardé'));}})(this)">
-            <option value="30s"${isUltra?'':' disabled style="color:#64748b"'}>Toutes les 30s${isUltra?'':' (Ultra requis)'}</option>
-            <option value="1m"${isPro?'':' disabled style="color:#64748b"'}>Toutes les 1 min${isPro?'':' (Pro requis)'}</option>
-            <option value="5m" selected>Toutes les 5 min</option>
-            <option value="10m">Toutes les 10 min</option>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">${fpT('Intervalle de check')}</div>
+          <select class="fp-select" style="width:100%" onchange="(function(s){if((s.value==='30s'&&!${isUltra})||(s.value==='1m'&&!${isPro})){showToast('info',fpT(s.value==='30s'?'Intervalle de 30 s — forfait Ultra requis':'Intervalle de 1 min — forfait Pro requis'));s.value='5m';}else{showToast('success', fpT('Intervalle sauvegardé'));}})(this)">
+            <option value="30s"${isUltra?'':' disabled style="color:#64748b"'}>${fpT('Toutes les 30s')}${isUltra?'':' ('+fpT('Ultra requis')+')'}</option>
+            <option value="1m"${isPro?'':' disabled style="color:#64748b"'}>${fpT('Toutes les 1 min')}${isPro?'':' ('+fpT('Pro requis')+')'}</option>
+            <option value="5m" selected>${fpT('Toutes les 5 min')}</option>
+            <option value="10m">${fpT('Toutes les 10 min')}</option>
           </select>
         </div>
         <div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">Seuil alerte latence</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">${fpT('Seuil alerte latence')}</div>
           <select class="fp-select" style="width:100%">
             <option>200ms</option>
             <option selected>500ms</option>
@@ -54188,10 +55299,10 @@ function renderMonitorsConfig() {
           </select>
         </div>
         <div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">Groupage d\'alertes IA</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">${fpT('Groupage d’alertes IA')}</div>
           <select class="fp-select" style="width:100%">
-            <option selected>Activé (réduction bruit)</option>
-            <option>Désactivé</option>
+            <option selected>${fpT('Activé (réduction bruit)')}</option>
+            <option>${fpT('Désactivé')}</option>
           </select>
         </div>
       </div>
@@ -54201,24 +55312,24 @@ function renderMonitorsConfig() {
     <div class="fp-card fp-mb-16">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div class="fp-card-title" style="margin-bottom:0">🛠 Fenêtres de maintenance</div>
-          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Silencez les alertes pendant les déploiements planifiés</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('🛠 Fenêtres de maintenance')}</div>
+          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('Silencez les alertes pendant les déploiements planifiés')}</div>
         </div>
-        ${btn('+ Nouvelle fenêtre', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'id="maint-new-btn"')}
+        ${btn(fpT('+ Nouvelle fenêtre'), 'fp-btn fp-btn-ghost fp-btn-sm', '', 'id="maint-new-btn"')}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
         ${windows.map(w => `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:9px;flex-wrap:wrap">
             <div style="flex:1;min-width:120px">
-              <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${w.name}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted)">${w.schedule} · ${w.sites}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${fpT(w.name)}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted)">${fpT(w.schedule)} · ${fpT(w.sites)}</div>
             </div>
             <div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">Prochaine</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Prochaine')}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-accent)">${w.next}</div>
             </div>
-            ${badge('Actif', '#22c55e')}
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="window._editMaintWindow(this)">Modifier</button>
+            ${badge(fpT('Actif'), '#22c55e')}
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="window._editMaintWindow(this)">${fpT('Modifier')}</button>
           </div>
         `).join('')}
       </div>
@@ -54227,16 +55338,16 @@ function renderMonitorsConfig() {
     <!-- Per-monitor config -->
     <div class="fp-card" style="padding:0;overflow:hidden">
       <div style="padding:14px 18px 10px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div class="fp-card-title" style="margin:0">📋 Configuration par monitor</div>
-        <div style="font-size:11px;color:var(--fp-text-muted)">${STATE.monitors.length} monitor${STATE.monitors.length!==1?'s':''} configuré${STATE.monitors.length!==1?'s':''}</div>
+        <div class="fp-card-title" style="margin:0">${fpT('📋 Configuration par monitor')}</div>
+        <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('{count} monitor(s) configuré(s)', {count:STATE.monitors.length})}</div>
       </div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <!-- Header row -->
         <div style="display:grid;grid-template-columns:minmax(140px,1.5fr) minmax(180px,2fr) minmax(160px,2fr) 80px;gap:0;padding:7px 18px 7px 18px;background:var(--fp-bg-inset);border-bottom:1px solid var(--fp-border);min-width:576px;padding-right:24px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">Monitor</div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📧 Email alerte</div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📱 SMS alerte <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:4px;font-weight:700">${fpT('Bientôt disponible')}</span></div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint);text-align:center">Statut</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">${fpT('📧 Email alerte')}</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📱 ${fpT('SMS d’alerte')} <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:4px;font-weight:700">${fpT('Bientôt disponible')}</span></div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint);text-align:center">${fpT('Statut')}</div>
         </div>
         ${STATE.monitors.map((m,i) => `
           <div style="display:grid;grid-template-columns:minmax(140px,1.5fr) minmax(180px,2fr) minmax(160px,2fr) 80px;gap:0;align-items:center;padding:11px 24px 11px 18px;border-bottom:${i<STATE.monitors.length-1?'1px solid var(--fp-border)':'none'};transition:background 0.15s;min-width:576px" onmouseover="this.style.background='var(--fp-bg-inset)'" onmouseout="this.style.background='transparent'">
@@ -54250,7 +55361,7 @@ function renderMonitorsConfig() {
             </div>
             <!-- Email -->
             <div style="display:flex;gap:6px;align-items:center;padding-right:12px">
-              <input class="fp-input monitor-cfg-email" data-monitor-id="${m.id}" placeholder="alerte@email.com" value="${escHtml(m.alertEmail || '')}" style="flex:1;height:28px;font-size:11px;min-width:0"/>
+              <input class="fp-input monitor-cfg-email" data-monitor-id="${m.id}" placeholder="${fpT('alerte@email.com')}" value="${escHtml(m.alertEmail || '')}" style="flex:1;height:28px;font-size:11px;min-width:0"/>
               <button class="fp-btn fp-btn-primary fp-btn-sm monitor-cfg-save" data-monitor-id="${m.id}" style="flex-shrink:0;height:28px;padding:0 10px">✓</button>
             </div>
             <!-- SMS — Bientôt disponible (disabled, not wired) -->
@@ -54295,22 +55406,22 @@ function renderLocalSEOZones() {
 
   return `
     ${aiBlock((()=>{
-      if(!zones.length)return 'Aucune zone locale configurée. Ajoutez vos zones géographiques cibles pour suivre votre couverture locale et identifier les opportunités.';
+      if(!zones.length)return fpT('Aucune zone locale configurée. Ajoutez vos zones géographiques cibles pour suivre votre couverture locale et identifier les opportunités.');
       const _fort=zones.filter(z=>z.status==='fort');
       const _faible=zones.filter(z=>z.status==='faible');
       const _top=_fort[0]?.name;
       const _low=_faible[0]?.name;
       const _avgCov=zones.length?Math.round(zones.reduce((s,z)=>s+(z.cov||0),0)/zones.length):0;
-      if(_top&&_low)return 'Couverture forte sur <strong>'+_top+'</strong>. Zone à développer en priorité : <strong>'+_low+'</strong> — faible couverture ('+(_faible[0].cov||0)+'%). Score moyen : '+_avgCov+'%.';
-      if(_top)return 'Couverture forte sur <strong>'+_top+'</strong>. Score moyen de couverture : <strong>'+_avgCov+'%</strong>.';
-      return 'Score moyen de couverture locale : <strong>'+_avgCov+'%</strong>. Optimisez vos pages locales pour améliorer votre visibilité.';
-    })(), ['Développer les zones faibles', 'Créer pages locales', 'Rapport zones'])}
+      if(_top&&_low)return fpT('Couverture forte sur {top}. Zone à développer en priorité : {low} — faible couverture ({coverage}%). Score moyen : {average}%.',{top:'<strong>'+escHtml(_top)+'</strong>',low:'<strong>'+escHtml(_low)+'</strong>',coverage:_faible[0].cov||0,average:_avgCov});
+      if(_top)return fpT('Couverture forte sur {top}. Score moyen de couverture : <strong>{average}%</strong>.',{top:'<strong>'+escHtml(_top)+'</strong>',average:_avgCov});
+      return fpT('Score moyen de couverture locale : <strong>{average}%</strong>. Optimisez vos pages locales pour améliorer votre visibilité.',{average:_avgCov});
+    })(), ['Développer les zones faibles', 'Créer pages locales', 'Rapport zones'].map(key => fpT(key)))}
 
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Zones fortes', zones.filter(z => z.status === 'fort').length + '/' + zones.length, 'à 70%+ couverture', 'neutral')}
-      ${statCard('Trafic total', zones.reduce((s,z) => s + (z.traffic||0), 0) + '/mois', 'toutes zones', 'up')}
-      ${statCard('Position moy.', zones.length > 0 ? '#' + (zones.reduce((s,z) => s + (z.pos||0), 0) / zones.length).toFixed(1) : '—', 'moyenne globale', 'neutral')}
-      ${statCard('Zones à développer', zones.filter(z => z.status !== 'fort').length, 'opportunités', 'down')}
+      ${statCard(fpT('Zones fortes'), zones.filter(z => z.status === 'fort').length + '/' + zones.length, fpT('à 70%+ couverture'), 'neutral')}
+      ${statCard(fpT('Trafic total'), zones.reduce((s,z) => s + (z.traffic||0), 0) + ' ' + fpT('par mois'), fpT('toutes zones'), 'up')}
+      ${statCard(fpT('Position moy.'), zones.length > 0 ? '#' + (zones.reduce((s,z) => s + (z.pos||0), 0) / zones.length).toFixed(1) : '—', fpT('moyenne globale'), 'neutral')}
+      ${statCard(fpT('Zones à développer'), zones.filter(z => z.status !== 'fort').length, fpT('opportunités'), 'down')}
     </div>
 
     <!-- ZONE CARDS GRID -->
@@ -54324,16 +55435,16 @@ function renderLocalSEOZones() {
           <div class="fp-card" style="border-color:${z.status === 'faible' ? 'rgba(239,68,68,0.2)' : z.status === 'fort' ? 'rgba(34,197,94,0.2)' : 'var(--fp-border)'}">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
               <div>
-                <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${z.name}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${z.region} · ${z.traffic} visites/mois</div>
+                <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(z.name)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${escHtml(z.region)} · ${z.traffic} ${fpT('visites/mois')}</div>
               </div>
-              ${badge(sl, sc)}
+              ${badge(fpT(sl), sc)}
             </div>
 
             <!-- Coverage bar -->
             <div style="margin-bottom:12px">
               <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span style="font-size:11px;color:var(--fp-text-muted)">Couverture locale</span>
+                <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Couverture locale')}</span>
                 <span style="font-size:11px;font-weight:700;color:${sc}">${z.cov}%</span>
               </div>
               <div class="fp-progress-track" style="height:6px">
@@ -54349,27 +55460,27 @@ function renderLocalSEOZones() {
               </div>
               <div>
                 <div style="font-size:16px;font-weight:800;color:var(--fp-text-soft)">#${z.mobile}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">📱 Mobile</div>
+                <div style="font-size:9px;color:var(--fp-text-faint)">📱 ${fpT('Mobile')}</div>
               </div>
               <div>
                 <div style="font-size:16px;font-weight:800;color:var(--fp-text-soft)">${z.kw}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">Mots-clés</div>
+                <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('Mots-clés')}</div>
               </div>
               <div>
                 <div style="font-size:16px;font-weight:800;color:${dc}">${ds}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">Tendance</div>
+                <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('Tendance')}</div>
               </div>
             </div>
 
             <!-- Pages count -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <span style="font-size:11px;color:var(--fp-text-muted)">${z.pages} page${z.pages !== 1 ? 's' : ''} locale${z.pages !== 1 ? 's' : ''}</span>
-              ${z.pages === 0 ? `<span style="font-size:10px;font-weight:700;color:#ef4444">⚠ Aucune page locale</span>` : ''}
+              <span style="font-size:11px;color:var(--fp-text-muted)">${fpT(z.pages === 1 ? '{count} page locale' : '{count} pages locales', { count: z.pages })}</span>
+              ${z.pages === 0 ? `<span style="font-size:10px;font-weight:700;color:#ef4444">⚠ ${fpT('Aucune page locale')}</span>` : ''}
             </div>
 
             ${z.status !== 'fort'
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%" data-zn="${escHtml(z.name||'locale')}" onclick="_fpMQ('Développer la zone '+this.dataset.zn,'Local SEO','medium')">+ Mission pour cette zone</button>`
-              : `<div style="font-size:11px;color:#22c55e;text-align:center;padding:6px">✓ Zone bien couverte</div>`
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%" data-zn="${escHtml(z.name||'locale')}" onclick="_fpMQ(fpT('Développer la zone')+' '+this.dataset.zn,'Local SEO','medium')">+ ${fpT('Mission pour cette zone')}</button>`
+              : `<div style="font-size:11px;color:#22c55e;text-align:center;padding:6px">✓ ${fpT('Zone bien couverte')}</div>`
             }
           </div>
         `;
@@ -54380,7 +55491,7 @@ function renderLocalSEOZones() {
     <div class="fp-card" style="border-color:rgba(34,197,94,0.2)">
       <div class="fp-card-title" style="margin-bottom:14px">
         ${svgIcon('trending-up').replace('stroke="currentColor"','stroke="#22c55e"')}
-        Zones d\'expansion prioritaires
+        ${fpT("Zones d'expansion prioritaires")}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${expansion.map(e => `
@@ -54388,12 +55499,12 @@ function renderLocalSEOZones() {
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="font-size:13px;font-weight:700;color:var(--fp-text)">${e.city}</span>
-                ${badge(e.priority, e.priority === 'Haute' ? '#22c55e' : '#f59e0b')}
+                ${badge(fpT(e.priority), e.priority === 'Haute' ? '#22c55e' : '#f59e0b')}
               </div>
-              <div style="font-size:11px;color:var(--fp-text-muted)">${e.opp} · ${e.pages} page${e.pages > 1 ? 's' : ''} à créer · ${e.effort}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted)">${e.opp} · ${e.pages} ${fpT(e.pages > 1 ? 'pages à créer' : 'page à créer')} · ${e.effort}</div>
               <div style="font-size:12px;font-weight:700;color:#22c55e;margin-top:2px">${e.potential}</div>
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var card=btn.closest('[data-expansion-title]');var title=card?card.dataset.expansionTitle:'Mission expansion';apiAction('POST','/api/missions',{title:title,source:'expansion',status:'todo',priority:'medium'}).then(r=>{if(r&&r.id){showToast('success', fpT('Mission expansion créée !'));navigate('missions');}else showToast('info', fpT('Accéder aux missions pour créer'));}).catch(()=>navigate('missions'));})(this)">Déployer</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var card=btn.closest('[data-expansion-title]');var title=card?card.dataset.expansionTitle:'Mission expansion';apiAction('POST','/api/missions',{title:title,source:'expansion',status:'todo',priority:'medium'}).then(r=>{if(r&&r.id){showToast('success', fpT('Mission expansion créée !'));navigate('missions');}else showToast('info', fpT('Accéder aux missions pour créer'));}).catch(()=>navigate('missions'));})(this)">${fpT('Déployer')}</button>
           </div>
         `).join('')}
       </div>
@@ -56516,7 +57627,7 @@ function renderCompetitor() {
       </div>
       ${sub === 'comparison' ? (() => {
         // ── Comparaison IA ────────────────────────────────────────────────────
-        if (competitors.length === 0) return `<div class="fp-card" style="text-align:center;padding:48px 24px;margin-bottom:16px"><div style="font-size:40px;margin-bottom:12px">⚔️</div><div style="font-weight:700;margin-bottom:8px">Comparaison IA</div><div style="font-size:13px;color:var(--fp-text-muted)">Ajoutez d'abord des concurrents puis lancez une analyse IA.</div></div>`;
+        if (competitors.length === 0) return `<div class="fp-card" style="text-align:center;padding:48px 24px;margin-bottom:16px"><div style="font-size:40px;margin-bottom:12px">⚔️</div><div style="font-weight:700;margin-bottom:8px">${fpT('Comparaison IA')}</div><div style="font-size:13px;color:var(--fp-text-muted)">${fpT('Ajoutez d’abord des concurrents puis lancez une analyse IA.')}</div></div>`;
         // Load analyses for all competitors in background
         competitors.forEach(c => {
           if (!STATE.competitorAnalyses || !STATE.competitorAnalyses[c.id]) {
@@ -56527,16 +57638,16 @@ function renderCompetitor() {
         const analyzed = competitors.filter(c => analyses[c.id]);
         if (analyzed.length === 0) {
           return `<div class="fp-card fp-mb-16" style="padding:28px 24px">
-            <div class="fp-card-title" style="margin-bottom:12px">⚔️ Comparaison IA — Vous vs Concurrent</div>
-            <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:18px">Lancez une analyse IA sur un concurrent pour obtenir la comparaison détaillée.</div>
+            <div class="fp-card-title" style="margin-bottom:12px">⚔️ ${fpT('Comparaison IA — Vous vs Concurrent')}</div>
+            <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:18px">${fpT('Lancez une analyse IA sur un concurrent pour obtenir la comparaison détaillée.')}</div>
             <div style="display:flex;flex-direction:column;gap:10px">
               ${competitors.map(c => {
                 const loading = STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[c.id];
                 return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
                   <div style="flex:1"><div style="font-weight:600;font-size:12px">${escHtml(c.name)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(String(c.url||'').replace(/^https?:\/\//,''))}</div></div>
                   ${loading
-                    ? `<span class="fp-badge fp-badge--ghost" style="font-size:10px">Analyse en cours…</span>`
-                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}')">🔬 Analyser</button>`}
+                    ? `<span class="fp-badge fp-badge--ghost" style="font-size:10px">${fpT('Analyse en cours…')}</span>`
+                    : `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}')">🔬 ${fpT('Analyser')}</button>`}
                 </div>`;
               }).join('')}
             </div>
@@ -56550,7 +57661,7 @@ function renderCompetitor() {
         return `
           <div class="fp-card fp-mb-12">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span style="font-size:12px;font-weight:600;color:var(--fp-text-muted)">Concurrent analysé :</span>
+              <span style="font-size:12px;font-weight:600;color:var(--fp-text-muted)">${fpT('Concurrent analysé :')}</span>
               ${competitors.map(c => {
                 const hasA = !!analyses[c.id];
                 const loading = STATE._competitorAnalysisLoading && STATE._competitorAnalysisLoading[c.id];
@@ -56559,27 +57670,27 @@ function renderCompetitor() {
                   onclick="STATE._selectedCompetitorId='${escHtml(c.id)}';render()"
                 >${escHtml(c.name)}${hasA?' ✓':loading?' ⏳':''}</button>`;
               }).join('')}
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:auto;font-size:11px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}',true)">↺ Actualiser l'analyse</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:auto;font-size:11px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}',true)">↺ ${fpT('Actualiser l’analyse')}</button>
             </div>
           </div>
-          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">Cliquez <strong>Analyser</strong> sur ce concurrent pour lancer l'analyse IA.</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 Analyser ${escHtml(selComp.name||'')}</button></div>` : `
+          ${!analysis ? `<div class="fp-card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--fp-text-muted)">${fpT('Cliquez sur Analyser sur ce concurrent pour lancer l’analyse IA.')}</div><button class="fp-btn fp-btn-primary" style="margin-top:14px" onclick="window.fpAnalyzeCompetitor('${escHtml(selComp.id)}','${escHtml(selComp.name||'')}')">🔬 ${fpT('Analyser {name}', { name: escHtml(selComp.name||'') })}</button></div>` : `
           <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px;margin-top:16px">
             <div class="fp-card" style="border-left:3px solid #22c55e">
-              <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ Ce que vous faites mieux</div>
+              <div class="fp-card-title" style="margin-bottom:10px;color:#22c55e">✅ ${fpT('Ce que vous faites mieux')}</div>
               ${(analysis.you_better||[]).length===0
-                ? `<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Non déterminé — contexte de votre entreprise non fourni</div>`
+                ? `<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">${fpT('Non déterminé — contexte de votre entreprise non fourni')}</div>`
                 : `<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">${(analysis.you_better).map(s=>`<li style="font-size:12px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
             <div class="fp-card" style="border-left:3px solid #ef4444">
-              <div class="fp-card-title" style="margin-bottom:10px;color:#ef4444">⚠️ Ce qu'ils font mieux</div>
+              <div class="fp-card-title" style="margin-bottom:10px;color:#ef4444">⚠️ ${fpT('Ce qu’ils font mieux')}</div>
               ${(analysis.they_better||[]).length===0
-                ? `<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">Aucun avantage détecté</div>`
+                ? `<div style="font-size:12px;color:var(--fp-text-muted);font-style:italic">${fpT('Aucun avantage détecté')}</div>`
                 : `<ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">${(analysis.they_better).map(s=>`<li style="font-size:12px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
           </div>
           ${(analysis.opportunities||[]).length>0 ? `
           <div class="fp-card fp-mb-16" style="margin-top:16px">
-            <div class="fp-card-title" style="margin-bottom:12px">💡 Opportunités recommandées</div>
+            <div class="fp-card-title" style="margin-bottom:12px">💡 ${fpT('Opportunités recommandées')}</div>
             <div style="display:flex;flex-direction:column;gap:10px">
               ${(analysis.opportunities).map((op,i)=>`
                 <div style="padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
@@ -56588,7 +57699,7 @@ function renderCompetitor() {
                     <div style="flex:1">
                       <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(String(op.title||''))}</div>
                       <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(String(op.description||''))}</div>
-                      ${(function(){var _k=String(op.missionTitle||op.title||'');var _d=String(op.missionDesc||op.description||'');var _done=STATE._fpMissionCreated&&STATE._fpMissionCreated.has(_k);return '<button class="fp-btn '+(_done?'fp-btn-ghost':'fp-btn-primary')+' fp-btn-sm" style="font-size:10px"'+(_done?' disabled':' onclick="window.fpCreateMissionFromOpportunity(\''+escHtml(_k)+'\',\''+escHtml(_d)+'\',this)"')+'>'+(_done?'✓ Créée':'✚ Créer une mission')+'</button>';})()} 
+                      ${(function(){var _k=String(op.missionTitle||op.title||'');var _d=String(op.missionDesc||op.description||'');var _done=STATE._fpMissionCreated&&STATE._fpMissionCreated.has(_k);return '<button class="fp-btn '+(_done?'fp-btn-ghost':'fp-btn-primary')+' fp-btn-sm" style="font-size:10px"'+(_done?' disabled':' onclick="window.fpCreateMissionFromOpportunity(\''+escHtml(_k)+'\',\''+escHtml(_d)+'\',this)"')+'>'+(_done?'✓ '+fpT('Créée'):'✚ '+fpT('Créer une mission'))+'</button>';})()}
                     </div>
                   </div>
                 </div>`).join('')}
@@ -56596,10 +57707,10 @@ function renderCompetitor() {
           </div>` : ''}
           ${(analysis.feature_matrix||[]).length>0 ? `
           <div class="fp-card fp-mb-16" style="margin-top:16px">
-            <div class="fp-card-title" style="margin-bottom:12px">📊 Matrice fonctionnalités</div>
+            <div class="fp-card-title" style="margin-bottom:12px">📊 ${fpT('Matrice fonctionnalités')}</div>
             <div style="overflow-x:auto">
               <table class="fp-table" style="width:100%">
-                <thead><tr><th>Fonctionnalité</th><th>Vous</th><th>${escHtml(selComp.name||'Concurrent')}</th></tr></thead>
+                <thead><tr><th>${fpT('Fonctionnalité')}</th><th>${fpT('Vous')}</th><th>${escHtml(selComp.name||fpT('Concurrent'))}</th></tr></thead>
                 <tbody>${(analysis.feature_matrix).map(row=>`<tr>
                   <td style="font-size:12px">${escHtml(String(row.feature||''))}</td>
                   <td style="font-size:12px;color:${String(row.you||'')==='✓'||String(row.you||'').toLowerCase().includes('oui')?'#22c55e':String(row.you||'')==='—'?'var(--fp-text-faint)':'var(--fp-text)'}">${escHtml(String(row.you||'—'))}</td>
@@ -56610,16 +57721,16 @@ function renderCompetitor() {
           </div>` : ''}
           <div class="fp-grid fp-grid-2 fp-mb-16" style="gap:16px;margin-top:16px">
             <div class="fp-card">
-              <div class="fp-card-title" style="margin-bottom:8px">💪 Forces détectées</div>
-              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+              <div class="fp-card-title" style="margin-bottom:8px">💪 ${fpT('Forces détectées')}</div>
+              ${(analysis.strengths||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Non déterminé')}</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.strengths).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
             <div class="fp-card">
-              <div class="fp-card-title" style="margin-bottom:8px">⚠️ Faiblesses détectées</div>
-              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">Non déterminé</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
+              <div class="fp-card-title" style="margin-bottom:8px">⚠️ ${fpT('Faiblesses détectées')}</div>
+              ${(analysis.weaknesses||[]).length===0?`<div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Non déterminé')}</div>`:`<ul style="margin:0;padding-left:16px">${(analysis.weaknesses).map(s=>`<li style="font-size:12px;margin-bottom:4px">${escHtml(String(s))}</li>`).join('')}</ul>`}
             </div>
           </div>
           <div class="fp-card fp-mb-16" style="margin-top:16px">
-            <div class="fp-card-title" style="margin-bottom:8px">📋 Positionnement — ${escHtml(selComp.name||'')}</div>
+            <div class="fp-card-title" style="margin-bottom:8px">📋 ${fpT('Positionnement')} — ${escHtml(selComp.name||'')}</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px">
               ${[
                 {label:'Proposition de valeur',val:analysis.value_prop},
@@ -56628,14 +57739,14 @@ function renderCompetitor() {
                 {label:'Tarification',val:analysis.pricing},
                 {label:'Essai gratuit / Démo',val:analysis.trial},
               ].map(item=>`<div style="padding:10px;background:var(--fp-inner-card);border-radius:8px;border:1px solid var(--fp-border)">
-                <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${escHtml(item.label)}</div>
-                <div style="font-size:12px;color:${String(item.val||'')!=='Non déterminé'?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${String(item.val||'')==='Non déterminé'?'italic':'normal'}">${escHtml(String(item.val||'Non déterminé'))}</div>
+                <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${escHtml(fpT(item.label))}</div>
+                <div style="font-size:12px;color:${String(item.val||'')!=='Non déterminé'?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${String(item.val||'')==='Non déterminé'?'italic':'normal'}">${escHtml(!item.val || String(item.val)==='Non déterminé' ? fpT('Non déterminé') : String(item.val))}</div>
               </div>`).join('')}
             </div>
           </div>
           ${(analysis.sources||[]).length>0 ? `
           <div class="fp-card fp-mb-16" style="opacity:0.85;margin-top:16px">
-            <div class="fp-card-title" style="margin-bottom:10px;font-size:11px">🔍 Sources & niveau de confiance</div>
+            <div class="fp-card-title" style="margin-bottom:10px;font-size:11px">🔍 ${fpT('Sources & niveau de confiance')}</div>
             <div style="display:flex;flex-direction:column;gap:6px">
               ${(analysis.sources).slice(0,6).map(s=>{
                 const conf = s.confidence==='high'?'🟢':s.confidence==='medium'?'🟡':'🔴';
@@ -56728,24 +57839,25 @@ function renderCompetitor() {
                   const _a = _persistedA;
                   if (!_a) return '';
                   const _nd = 'Non déterminé';
+                  const _displayNd = value => !value || String(value) === _nd ? fpT(_nd) : String(value);
                   return `<tr style="background:var(--fp-inner-card)"><td colspan="6" style="padding:12px 16px">
                     <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
                       <div style="flex:2;min-width:200px">
-                        <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Analyse IA — ${escHtml(c.name||'')}</div>
-                        <div style="font-size:11px;font-weight:600;margin-bottom:2px">Proposition de valeur</div>
-                        <div style="font-size:11px;color:${_a.value_prop!==_nd?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${_a.value_prop===_nd?'italic':'normal'};margin-bottom:8px">${escHtml(_a.value_prop||_nd)}</div>
-                        <div style="font-size:11px;font-weight:600;margin-bottom:2px">Tarification</div>
-                        <div style="font-size:11px;color:${_a.pricing!==_nd?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${_a.pricing===_nd?'italic':'normal'};margin-bottom:8px">${escHtml(_a.pricing||_nd)}</div>
+                        <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${fpT('Analyse IA —')} ${escHtml(c.name||'')}</div>
+                        <div style="font-size:11px;font-weight:600;margin-bottom:2px">${fpT('Proposition de valeur')}</div>
+                        <div style="font-size:11px;color:${_a.value_prop!==_nd?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${_a.value_prop===_nd?'italic':'normal'};margin-bottom:8px">${escHtml(_displayNd(_a.value_prop))}</div>
+                        <div style="font-size:11px;font-weight:600;margin-bottom:2px">${fpT('Tarification')}</div>
+                        <div style="font-size:11px;color:${_a.pricing!==_nd?'var(--fp-text)':'var(--fp-text-faint)'};font-style:${_a.pricing===_nd?'italic':'normal'};margin-bottom:8px">${escHtml(_displayNd(_a.pricing))}</div>
                         ${_a.trial&&_a.trial!==_nd?`<div style="font-size:11px;padding:4px 8px;background:rgba(34,197,94,0.1);border-radius:6px;color:#22c55e;display:inline-block;margin-bottom:8px">✓ ${escHtml(_a.trial)}</div>`:''}
                       </div>
                       <div style="flex:3;min-width:280px">
-                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Fonctionnalités détectées</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${(_a.features).slice(0,8).map(f=>`<span style="font-size:10px;padding:2px 7px;background:rgba(37,99,235,0.08);border-radius:10px;color:var(--fp-accent)">${escHtml(String(f))}</span>`).join('')}</div>`:''}
-                        ${(_a.strengths||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">Forces</div><div style="font-size:11px;margin-bottom:8px">${(_a.strengths).slice(0,3).map(s=>`• ${escHtml(String(s))}`).join(' &nbsp;')}</div>`:''}
-                        ${(_a.changes_detected||[]).length>0?`<div style="font-size:10px;padding:6px 10px;background:rgba(245,158,11,0.1);border-radius:6px;color:#f59e0b;margin-bottom:6px">🔄 ${_a.changes_detected.length} changement(s) depuis la dernière analyse</div>`:''}
+                        ${(_a.features||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">${fpT('Fonctionnalités détectées')}</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${(_a.features).slice(0,8).map(f=>`<span style="font-size:10px;padding:2px 7px;background:rgba(37,99,235,0.08);border-radius:10px;color:var(--fp-accent)">${escHtml(String(f))}</span>`).join('')}</div>`:''}
+                        ${(_a.strengths||[]).length>0?`<div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;margin-bottom:4px">${fpT('Forces')}</div><div style="font-size:11px;margin-bottom:8px">${(_a.strengths).slice(0,3).map(s=>`• ${escHtml(String(s))}`).join(' &nbsp;')}</div>`:''}
+                        ${(_a.changes_detected||[]).length>0?`<div style="font-size:10px;padding:6px 10px;background:rgba(245,158,11,0.1);border-radius:6px;color:#f59e0b;margin-bottom:6px">🔄 ${fpT('{count} changement(s) depuis la dernière analyse', { count: _a.changes_detected.length })}</div>`:''}
                       </div>
                       <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="STATE._selectedCompetitorId='${escHtml(c.id)}';navigateSub('comparison')">⚔️ Voir comparaison</button>
-                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}',true)">↺ Actualiser</button>
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="STATE._selectedCompetitorId='${escHtml(c.id)}';navigateSub('comparison')">⚔️ ${fpT('Voir comparaison')}</button>
+                        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window.fpAnalyzeCompetitor('${escHtml(c.id)}','${escHtml(c.name||'')}',true)">↺ ${fpT('Actualiser')}</button>
                       </div>
                     </div>
                   </td></tr>`;
@@ -62449,28 +63561,28 @@ function renderBetterStackSlaPanel() {
     <section class="fp-card fp-mb-16" aria-labelledby="fp-bs-sla-title">
       <div class="fp-card-header">
         <div>
-          <h2 id="fp-bs-sla-title">SLA Better Stack</h2>
-          <p class="fp-text-muted">Disponibilité et incidents mesurés par Better Stack pour un monitor de cette organisation.</p>
+          <h2 id="fp-bs-sla-title">${fpT('SLA Better Stack')}</h2>
+          <p class="fp-text-muted">${fpT('Disponibilité et incidents mesurés par Better Stack pour un monitor de cette organisation.')}</p>
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadSla()">Charger le rapport</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadSla()">${fpT('Charger le rapport')}</button>
       </div>
       <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:12px 0">
         <label style="display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)">
           Monitor
-          <select id="fp-bs-sla-monitor" class="fp-select" aria-label="Monitor Better Stack pour le rapport SLA">
-            <option value="">Charger les monitors…</option>
+          <select id="fp-bs-sla-monitor" class="fp-select" aria-label="${fpT('Monitor Better Stack pour le rapport SLA')}">
+            <option value="">${fpT('Charger les monitors…')}</option>
           </select>
         </label>
         <label style="display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)">
-          Du
+          ${fpT('Du')}
           <input id="fp-bs-sla-from" class="fp-input" type="date" value="${from}" max="${today}"/>
         </label>
         <label style="display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)">
-          Au
+          ${fpT('Au')}
           <input id="fp-bs-sla-to" class="fp-input" type="date" value="${today}" max="${today}"/>
         </label>
       </div>
-      <div id="fp-bs-sla-status" class="fp-text-muted" role="status" aria-live="polite">Sélectionnez un monitor et une période pour charger les mesures.</div>
+      <div id="fp-bs-sla-status" class="fp-text-muted" role="status" aria-live="polite">${fpT('Sélectionnez un monitor et une période pour charger les mesures.')}</div>
       <div id="fp-bs-sla-result" style="margin-top:12px"></div>
     </section>`;
 }
@@ -62525,11 +63637,11 @@ function renderMonitorsSLA() {
     <div class="fp-section-header">
       <div>
         <h1>SLA Intelligence Center</h1>
-        <div class="fp-section-sub">Service Level Agreements · Engagement uptime · Prévision breach · ${CUR_MONTH}</div>
+        <div class="fp-section-sub">${fpT('Accords de niveau de service · disponibilité · prévision des violations')} · ${CUR_MONTH}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Rapport SLA PDF', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}
-        ${btn('Page statut', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', `onclick="const u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>showToast('success','Lien copié : '+u)).catch(()=>showToast('info','URL : '+u));"  `)}
+        ${btn(fpT('Rapport SLA PDF'), 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'onclick="openFloatPanel(fpT(\'Nouveau rapport\'),renderNewReportPanel());setupNewReportPanel()"')}
+        ${btn(fpT('Page statut'), 'fp-btn fp-btn-primary fp-btn-sm', 'globe', `onclick="const u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>showToast('success',fpT('Lien copié : {url}',{url:escHtml(u)}))).catch(()=>showToast('info',fpT('URL : {url}',{url:escHtml(u)})));"`)}
       </div>
     </div>
 
@@ -62537,19 +63649,19 @@ function renderMonitorsSLA() {
 
     ${aiBlock(
       globalUptime == null
-        ? `Aucune donnée de check disponible — les monitors n'ont pas encore de mesure. Les KPI SLA seront calculés après les premiers cycles de vérification automatique.`
+        ? fpT('Aucune donnée de check disponible — les monitors n’ont pas encore de mesure. Les KPI SLA seront calculés après les premiers cycles de vérification automatique.')
         : slaOK
-          ? `SLA global respecté : <strong>${globalUptime}%</strong> uptime sur 30 jours glissants (cible 99,0%). <strong>${_measuredSla.filter(s => s.risk === 'Conforme').length}/${_measuredSla.length}</strong> sites conformes parmi les sites mesurés.`
-          : `⚠ <strong>Violation SLA détectée.</strong> Uptime global (30j) : <strong>${globalUptime}%</strong> (cible 99,0%). ${_measuredSla.filter(s => !s.ok).length} site(s) hors SLA — plan correctif requis.`,
-      ['Rapport SLA complet', 'Envoyer rapport client', 'Plan correctif']
+          ? fpT('SLA global respecté : <strong>{uptime}%</strong> uptime sur 30 jours glissants (cible 99,0%). <strong>{compliant}/{measured}</strong> sites conformes parmi les sites mesurés.', {uptime:globalUptime, compliant:_measuredSla.filter(s => s.risk === 'Conforme').length, measured:_measuredSla.length})
+          : fpT('⚠ <strong>Violation SLA détectée.</strong> Uptime global (30j) : <strong>{uptime}%</strong> (cible 99,0%). {count} site(s) hors SLA — plan correctif requis.', {uptime:globalUptime, count:_measuredSla.filter(s => !s.ok).length}),
+      [fpT('Rapport SLA complet'), fpT('Envoyer rapport client'), fpT('Plan correctif')]
     )}
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
       ${[
-        { l: 'SLA Global (30j)',  v: globalUptime != null ? globalUptime + '%' : '—', c: globalUptime == null ? '#94a3b8' : slaOK ? '#22c55e' : '#ef4444', sub: globalUptime != null ? 'Cible : 99.0%' : 'En attente de données' },
-        { l: 'Sites conformes',  v: globalUptime != null ? _measuredSla.filter(s => s.ok).length + '/' + _measuredSla.length : '—/' + monitors.length, c: '#22c55e', sub: _measuredSla.length < monitors.length ? (_measuredSla.length === 0 ? 'Aucune mesure encore' : _measuredSla.length + '/' + monitors.length + ' mesurés') : 'Tous mesurés' },
-        { l: 'Downtime estimé',  v: (()=>{ const _d=_measuredSla.reduce((s,sd)=>s+(sd.downMin||0),0); return _measuredSla.length===0?'—':_d===0?'0 min':_d<60?_d+' min':Math.round(_d/60)+'h '+(_d%60?_d%60+'min':''); })(), c: _measuredSla.some(s=>!s.ok)?'#ef4444':'#22c55e', sub: '30j glissants (estimation)' },
-        { l: 'Page statut', v: (STATE.settings&&STATE.settings.statusPageUrl)?'Active':'Non config.', c: (STATE.settings&&STATE.settings.statusPageUrl)?'#22c55e':'#94a3b8', sub: (STATE.settings&&STATE.settings.statusPageUrl)||'Non configuré' },
+        { l: fpT('SLA Global (30j)'),  v: globalUptime != null ? globalUptime + '%' : '—', c: globalUptime == null ? '#94a3b8' : slaOK ? '#22c55e' : '#ef4444', sub: fpT(globalUptime != null ? 'Cible : 99.0%' : 'En attente de données') },
+        { l: fpT('Sites conformes'),  v: globalUptime != null ? _measuredSla.filter(s => s.ok).length + '/' + _measuredSla.length : '—/' + monitors.length, c: '#22c55e', sub: _measuredSla.length < monitors.length ? (_measuredSla.length === 0 ? fpT('Aucune mesure encore') : fpT('{measured}/{total} mesurés', {measured:_measuredSla.length,total:monitors.length})) : fpT('Tous mesurés') },
+        { l: fpT('Indisponibilité estimée'),  v: (()=>{ const _d=_measuredSla.reduce((s,sd)=>s+(sd.downMin||0),0); return _measuredSla.length===0?'—':_d===0?'0 min':_d<60?_d+' min':Math.round(_d/60)+'h '+(_d%60?_d%60+'min':''); })(), c: _measuredSla.some(s=>!s.ok)?'#ef4444':'#22c55e', sub: fpT('30j glissants (estimation)') },
+        { l: fpT('Page statut'), v: (STATE.settings&&STATE.settings.statusPageUrl)?fpT('Actif'):fpT('Non config.'), c: (STATE.settings&&STATE.settings.statusPageUrl)?'#22c55e':'#94a3b8', sub: (STATE.settings&&STATE.settings.statusPageUrl)||fpT('Non configuré') },
       ].map(s => `
         <div class="fp-card fp-card-sm">
           <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${s.l}</div>
@@ -62562,7 +63674,7 @@ function renderMonitorsSLA() {
     <div class="fp-grid-2 fp-mb-16">
       <!-- Uptime chart — only rendered when real check data exists -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📊 Uptime historique — ${hasRealMonthData ? months.length + ' mois (données réelles)' : 'en attente de données'}</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT(hasRealMonthData ? '📊 Uptime historique — {count} mois (données réelles)' : '📊 Uptime historique — en attente de données', {count:months.length})}</div>
         ${hasRealMonthData ? `
         <div style="display:flex;align-items:flex-end;gap:8px;height:90px;margin-bottom:8px">
           ${uptimes.map((v, i) => `
@@ -62585,28 +63697,28 @@ function renderMonitorsSLA() {
         ` : `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:110px;background:var(--fp-inner-card);border-radius:8px">
           <span style="font-size:24px">📡</span>
-          <span style="font-size:12px;color:var(--fp-text-muted)">Données en cours de collecte</span>
-          <span style="font-size:10px;color:var(--fp-text-faint)">L'historique mensuel apparaîtra après les premiers cycles de check.</span>
+          <span style="font-size:12px;color:var(--fp-text-muted)">${fpT('Données en cours de collecte')}</span>
+          <span style="font-size:10px;color:var(--fp-text-faint)">${fpT('L’historique mensuel apparaîtra après les premiers cycles de check.')}</span>
         </div>
         `}
       </div>
 
       <!-- SLA Risk Detection -->
       <div class="fp-card" style="${isUltra ? '' : 'opacity:0.8'}">
-        <div class="fp-card-title" style="margin-bottom:4px">⚠ SLA Risk Detection${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Détection proactive des violations SLA à venir</div>
+        <div class="fp-card-title" style="margin-bottom:4px">${fpT('⚠ Détection des risques SLA')}${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT('Détection proactive des violations SLA à venir')}</div>
         ${isUltra ? `
           <div style="display:flex;flex-direction:column;gap:12px">
             ${(slaData.length ? slaData : []).slice(0, 3).map(({ m, up, ok, downMin, measured }) => {
               const riskScore = !measured ? 0 : ok ? Math.max(0, Math.round((99.5 - up) * 50)) : Math.min(95, Math.round((100 - up) * 20 + 40));
               const rColor    = !measured ? '#94a3b8' : riskScore > 60 ? '#ef4444' : riskScore > 30 ? '#f59e0b' : '#22c55e';
-              const rMsg      = !measured ? 'Aucun check effectué encore — données en cours de collecte' : !ok ? `${downMin||0} min downtime (30j rolling) — SLA breach en cours` : riskScore > 30 ? 'Latence élevée récurrente — surveiller sous 30j' : 'Uptime stable · Aucun risque de violation SLA';
+              const rMsg      = !measured ? fpT('Aucun check effectué encore — données en cours de collecte') : !ok ? fpT('{minutes} min d’indisponibilité (30j glissants) — violation SLA en cours', {minutes:downMin||0}) : riskScore > 30 ? fpT('Latence élevée récurrente — à surveiller sur les 30 prochains jours') : fpT('Uptime stable · Aucun risque de violation SLA');
               const r = { site: (m.url||m.name||'').replace(/^https?:\/\//,''), risk: riskScore, msg: rMsg, color: rColor };
               return `
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:4px">
                   <span style="font-size:11.5px;color:var(--fp-text-soft)">${r.site}</span>
-                  <span style="font-size:12px;font-weight:800;color:${r.color}">Risque ${r.risk}%</span>
+                  <span style="font-size:12px;font-weight:800;color:${r.color}">${fpT('Risque {risk}%', {risk:r.risk})}</span>
                 </div>
                 <div style="height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin-bottom:4px">
                   <div style="height:100%;width:${r.risk}%;background:${r.color};border-radius:3px;transition:width .6s"></div>
@@ -62616,13 +63728,13 @@ function renderMonitorsSLA() {
             `}).join('')}
           </div>
           <div style="margin-top:14px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
-            ✦ Prévision IA : indisponible — données insuffisantes pour générer une prévision fiable (historique < 7 jours requis).
+            ${fpT('✦ Prévision IA indisponible — données insuffisantes pour générer une prévision fiable (historique de 7 jours minimum requis).')}
           </div>
         ` : `
           <div style="text-align:center;padding:20px">
             <div style="font-size:32px;margin-bottom:10px">🔮</div>
-            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Anticipez les violations SLA avant qu\'elles surviennent</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra →</button>
+            <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Anticipez les violations SLA avant qu’elles surviennent')}</div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra →')}</button>
           </div>
         `}
       </div>
@@ -62630,11 +63742,11 @@ function renderMonitorsSLA() {
 
     <!-- SLA table per site -->
     <div class="fp-card fp-mb-16">
-      <div class="fp-card-title" style="margin-bottom:14px">📋 SLA par site — ${CUR_MONTH}</div>
+      <div class="fp-card-title" style="margin-bottom:14px">${fpT('📋 SLA par site')} — ${CUR_MONTH}</div>
       <div style="overflow-x:auto">
         <table class="fp-data-table">
           <thead>
-            <tr><th>Site</th><th style="text-align:center">Cible</th><th style="text-align:center">Uptime réel</th><th style="text-align:center">Downtime</th><th style="text-align:center">Incidents</th><th style="text-align:center">Risque</th><th style="text-align:center">Statut</th></tr>
+            <tr><th>${fpT('Site')}</th><th style="text-align:center">${fpT('Cible')}</th><th style="text-align:center">${fpT('Disponibilité réelle')}</th><th style="text-align:center">${fpT('Indisponibilité')}</th><th style="text-align:center">${fpT('Incidents')}</th><th style="text-align:center">${fpT('Risque')}</th><th style="text-align:center">${fpT('Statut')}</th></tr>
           </thead>
           <tbody>
             ${slaData.map(({ m, up, ok, downMin, risk, measured }) => `
@@ -62650,13 +63762,13 @@ function renderMonitorsSLA() {
                        <div style="height:3px;background:var(--fp-track);border-radius:2px;width:60px;margin-top:3px;margin-left:auto;margin-right:auto">
                          <div style="height:100%;width:${Math.min(100, up)}%;background:${ok ? '#22c55e' : '#ef4444'};border-radius:2px"></div>
                        </div>`
-                    : `<span style="color:var(--fp-text-faint);font-size:11px">En attente</span>`
+                     : `<span style="color:var(--fp-text-faint);font-size:11px">${fpT('En attente')}</span>`
                   }
                 </td>
-                <td style="text-align:center">${!measured ? '<span style="color:var(--fp-text-faint)">—</span>' : downMin > 0 ? '<span style="color:#f59e0b">' + downMin + ' min</span>' : '<span style="color:#22c55e">0 min</span>'}</td>
-                <td style="text-align:center">${m.status === 'down' ? '<span style="color:#ef4444;font-weight:600">En cours</span>' : '<span style="color:var(--fp-text-faint)">Aucun</span>'}</td>
-                <td style="text-align:center">${badge(risk, risk === 'Conforme' ? '#22c55e' : risk === 'À risque' ? '#f59e0b' : risk === 'En attente' ? '#94a3b8' : '#ef4444')}</td>
-                <td style="text-align:center">${!measured ? badge('Non mesuré', '#94a3b8') : badge(ok ? 'SLA OK' : 'Hors SLA', ok ? '#22c55e' : '#ef4444')}</td>
+                <td style="text-align:center">${!measured ? '<span style="color:var(--fp-text-faint)">—</span>' : downMin > 0 ? '<span style="color:#f59e0b">' + fpT('{minutes} min', {minutes:downMin}) + '</span>' : '<span style="color:#22c55e">0 min</span>'}</td>
+                <td style="text-align:center">${m.status === 'down' ? '<span style="color:#ef4444;font-weight:600">' + fpT('En cours') + '</span>' : '<span style="color:var(--fp-text-faint)">' + fpT('Aucun') + '</span>'}</td>
+                <td style="text-align:center">${badge(fpT(risk), risk === 'Conforme' ? '#22c55e' : risk === 'À risque' ? '#f59e0b' : risk === 'En attente' ? '#94a3b8' : '#ef4444')}</td>
+                <td style="text-align:center">${!measured ? badge(fpT('Non mesuré'), '#94a3b8') : badge(fpT(ok ? 'SLA OK' : 'Hors SLA'), ok ? '#22c55e' : '#ef4444')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -62669,7 +63781,7 @@ function renderMonitorsSLA() {
       <!-- Business Impact -->
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:4px">💼 Business Impact Engine</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Impact des incidents sur vos KPI business</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${fpT('Impact des incidents sur vos KPI business')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${(() => {
             // Business Impact Engine — only real data from monitor checks.
@@ -62681,10 +63793,10 @@ function renderMonitorsSLA() {
             const avgLatency = monitors.length > 0 ? Math.round(monitors.reduce((s, m) => s + (Number(m.latency)||0), 0) / monitors.length) : 0;
             const _fmtDown = min => min === 0 ? '0 min' : min < 60 ? min + ' min' : Math.floor(min/60) + 'h' + (min%60 ? ' ' + (min%60) + 'min' : '');
             return [
-              { icon: '⏱️', title: 'Downtime total ce mois',  val: _fmtDown(totalDownMin), sub: totalDownMin > 0 ? downMons.length + ' site(s) hors SLA' : 'Aucun incident détecté', color: totalDownMin > 0 ? '#ef4444' : '#22c55e' },
-              { icon: '🌐', title: 'Site le plus impacté',    val: worstSite && worstDown && worstDown.downMin > 0 ? _fmtDown(worstDown.downMin) : '—', sub: worstSite && worstDown && worstDown.downMin > 0 ? worstSite : 'Tous les sites conformes', color: worstDown && worstDown.downMin > 0 ? '#f59e0b' : '#22c55e' },
-              { icon: '⚡', title: 'Latence moyenne',          val: avgLatency > 0 ? avgLatency + ' ms' : '—', sub: avgLatency > 500 ? 'Latence élevée — vérifier' : avgLatency > 0 ? 'Dans les seuils normaux' : 'Aucune mesure encore', color: avgLatency > 500 ? '#f59e0b' : '#22c55e' },
-              { icon: '📊', title: 'Monitors conformes',       val: _measuredSla.length === 0 ? '—' : _measuredSla.filter(s => s.ok).length + '/' + _measuredSla.length, sub: _measuredSla.length < monitors.length ? 'SLA 99% · ' + _measuredSla.length + '/' + monitors.length + ' mesurés' : 'SLA 99% · ' + CUR_MONTH, color: _measuredSla.length > 0 && _measuredSla.every(s => s.ok) ? '#22c55e' : '#f59e0b' },
+              { icon: '⏱️', title: fpT('Indisponibilité totale ce mois'),  val: _fmtDown(totalDownMin), sub: totalDownMin > 0 ? fpT('{count} site(s) hors SLA', {count:downMons.length}) : fpT('Aucun incident détecté'), color: totalDownMin > 0 ? '#ef4444' : '#22c55e' },
+              { icon: '🌐', title: fpT('Site le plus impacté'),    val: worstSite && worstDown && worstDown.downMin > 0 ? _fmtDown(worstDown.downMin) : '—', sub: worstSite && worstDown && worstDown.downMin > 0 ? worstSite : fpT('Tous les sites conformes'), color: worstDown && worstDown.downMin > 0 ? '#f59e0b' : '#22c55e' },
+              { icon: '⚡', title: fpT('Latence moyenne'),          val: avgLatency > 0 ? avgLatency + ' ms' : '—', sub: avgLatency > 500 ? fpT('Latence élevée — vérifier') : avgLatency > 0 ? fpT('Dans les seuils normaux') : fpT('Aucune mesure encore'), color: avgLatency > 500 ? '#f59e0b' : '#22c55e' },
+              { icon: '📊', title: fpT('Monitors conformes'),       val: _measuredSla.length === 0 ? '—' : _measuredSla.filter(s => s.ok).length + '/' + _measuredSla.length, sub: _measuredSla.length < monitors.length ? fpT('SLA 99% · {measured}/{total} mesurés', {measured:_measuredSla.length,total:monitors.length}) : fpT('SLA 99% · {month}', {month:CUR_MONTH}), color: _measuredSla.length > 0 && _measuredSla.every(s => s.ok) ? '#22c55e' : '#f59e0b' },
             ];
           })().map(kpi => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">
@@ -62701,15 +63813,15 @@ function renderMonitorsSLA() {
 
       <!-- Public status page -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🌐 Page statut publique</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🌐 Page statut publique')}</div>
         <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:10px;padding:12px;margin-bottom:14px">
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:4px">URL de votre page statut</div>
-          <div style="font-family:var(--fp-font-mono);font-size:12px;color:var(--fp-accent)">${escHtml((STATE.settings&&STATE.settings.statusPageUrl)||'Non configuré')}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:4px">${fpT('URL de votre page statut')}</div>
+          <div style="font-family:var(--fp-font-mono);font-size:12px;color:var(--fp-accent)">${escHtml((STATE.settings&&STATE.settings.statusPageUrl)||fpT('Non configuré'))}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
           ${[
-            { l: 'Monitors affichés', v: 'Actif' }, { l: 'White Label', v: 'Actif' },
-            { l: 'Abonnés email', v: String(STATE.settings?.statusPage?.subscribers ?? (PREVIEW_MODE ? 3 : 0)) }, { l: 'Mise à jour', v: 'Temps réel' },
+            { l: fpT('Monitors affichés'), v: fpT('Actif') }, { l: fpT('Marque blanche'), v: fpT('Actif') },
+            { l: fpT('Abonnés email'), v: String(STATE.settings?.statusPage?.subscribers ?? (PREVIEW_MODE ? 3 : 0)) }, { l: fpT('Mise à jour'), v: fpT('Temps réel') },
           ].map(s => `
             <div style="background:var(--fp-inner-card);border-radius:8px;padding:8px 10px;text-align:center">
               <div style="font-size:10px;color:var(--fp-text-faint)">${s.l}</div>
@@ -62718,8 +63830,8 @@ function renderMonitorsSLA() {
           `).join('')}
         </div>
         <div style="display:flex;gap:8px">
-          ${btn('Copier lien', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;if(navigator.clipboard){navigator.clipboard.writeText(u).then(function(){showToast(\'success\',\'Lien copié !\')}).catch(function(){showToast(\'info\',u)});}else{showToast(\'info\',u);}})();"')}
-          ${btn('Voir la page', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="window._fpSlaViewPage()"')}
+          ${btn(fpT('Copier le lien'), 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;if(navigator.clipboard){navigator.clipboard.writeText(u).then(function(){showToast(\'success\',fpT(\'Lien copié !\'))}).catch(function(){showToast(\'info\',u)});}else{showToast(\'info\',u);}})();"')}
+          ${btn(fpT('Voir la page'), 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="window._fpSlaViewPage()"')}
         </div>
       </div>
     </div>
@@ -62728,20 +63840,20 @@ function renderMonitorsSLA() {
     <div class="fp-card" style="${isUltra ? '' : 'opacity:0.8'}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div>
-          <div class="fp-card-title" style="margin-bottom:0">🤖 Journeys Synthétiques${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
-          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Simulation automatique des parcours utilisateurs critiques</div>
+          <div class="fp-card-title" style="margin-bottom:0">${fpT('🤖 Parcours synthétiques')}${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
+          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">${fpT('Simulation automatique des parcours utilisateurs critiques')}</div>
         </div>
-        ${isUltra ? btn('Actualiser les statuts', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="render(STATE.currentSection);showToast(\'success\',\'Statuts actualisés\')"') : ''}
+        ${isUltra ? btn(fpT('Actualiser les statuts'), 'fp-btn fp-btn-ghost fp-btn-sm', '', `onclick="render(STATE.currentSection);showToast('success',fpT('Statuts actualisés'))"`) : ''}
       </div>
       ${isUltra ? (monitors.length === 0 ? `
         <div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px">
           <div style="font-size:24px;margin-bottom:8px">🤖</div>
-          <div style="font-weight:600;margin-bottom:4px">Aucun monitor configuré</div>
-          <div style="font-size:11px">Ajoutez des monitors pour activer les simulations de parcours utilisateurs.</div>
+          <div style="font-weight:600;margin-bottom:4px">${fpT('Aucun monitor configuré')}</div>
+          <div style="font-size:11px">${fpT('Ajoutez des monitors pour activer les simulations de parcours utilisateurs.')}</div>
         </div>` : `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
           ${monitors.slice(0,3).map((mon, ji) => {
-            const j = { icon: '🌐', name: mon.name || 'Test de disponibilité', status: mon.status === 'down' ? 'FAIL' : 'OK', time: mon.status === 'down' ? '—' : (mon.latency ? (mon.latency/1000).toFixed(1) + 's' : '—'), site: (mon.url||mon.name||'').replace(/^https?:\/\//,'') };
+            const j = { icon: '🌐', name: mon.name || fpT('Test de disponibilité'), status: mon.status === 'down' ? 'FAIL' : 'OK', time: mon.status === 'down' ? '—' : (mon.latency ? (mon.latency/1000).toFixed(1) + 's' : '—'), site: (mon.url||mon.name||'').replace(/^https?:\/\//,'') };
             return `
             <div style="padding:12px;background:var(--fp-inner-card);border:1px solid ${j.status === 'OK' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'};border-radius:9px">
               <div style="font-size:22px;margin-bottom:8px">${j.icon}</div>
@@ -62757,8 +63869,8 @@ function renderMonitorsSLA() {
       `) : `
         <div style="text-align:center;padding:20px">
           <div style="font-size:32px;margin-bottom:10px">🤖</div>
-          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Testez automatiquement login, checkout, formulaires — 24/7</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Activer Ultra →</button>
+          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Testez automatiquement login, checkout et formulaires — 24/7')}</div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">${fpT('Activer Ultra →')}</button>
         </div>
       `}
     </div>
@@ -62877,19 +63989,19 @@ function renderLocalSEOGBP() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           GBP Intelligence
-          ${STATE.gbp?.connected ? `<span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e">● Connecté</span>` : ''}
+          ${STATE.gbp?.connected ? `<span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e">● ${fpT('Connecté')}</span>` : ''}
         </h1>
-        <div class="fp-section-sub">Google Business Profile — Analytique, avis et contenu IA</div>
+        <div class="fp-section-sub">${fpT('Google Business Profile — Analytique, avis et contenu IA')}</div>
       </div>
       <div class="fp-section-actions">
         ${STATE.gbp?.connected
-          ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.sync():showToast('info', fpT('Sync...'))" style="margin-right:8px">🔄 Synchroniser</button>`
+          ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.sync():showToast('info', fpT('Sync...'))" style="margin-right:8px">🔄 ${fpT('Synchroniser')}</button>`
           : `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():showToast('info', fpT('Connexion…'))" style="background:linear-gradient(135deg,#2563EB,#1d4ed8);border-color:#2563EB;margin-right:8px">
                <svg width="14" height="14" viewBox="0 0 48 48" style="vertical-align:middle;margin-right:4px"><path fill="#fff" d="M47.5 24.6c0-1.6-.1-3.1-.4-4.6H24v8.7h13.2c-.6 3-2.3 5.5-4.9 7.2v6h7.9c4.6-4.3 7.3-10.5 7.3-17.3z"/><path fill="#93c5fd" d="M24 48c6.5 0 12-2.2 16-5.9l-7.9-6c-2.1 1.4-4.8 2.3-8.1 2.3-6.2 0-11.5-4.2-13.4-9.9H2.5v6.2C6.5 42.8 14.7 48 24 48z"/><path fill="#bfdbfe" d="M10.6 28.5c-.5-1.4-.8-3-.8-4.5s.3-3.1.8-4.5v-6.2H2.5C.9 16.7 0 20.3 0 24s.9 7.3 2.5 10.7l8.1-6.2z"/><path fill="#dbeafe" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.3 30.4 0 24 0 14.7 0 6.5 5.2 2.5 13.3l8.1 6.2C12.5 13.7 17.8 9.5 24 9.5z"/></svg>
-               Connecter Google Business
+               ${fpT('Connecter Google Business')}
              </button>`}
         ${STATE.gbp?.connected
-          ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'&&window.FP_GBP_API.disconnect()" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">Déconnecter</button>`
+          ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'&&window.FP_GBP_API.disconnect()" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">${fpT('Déconnecter')}</button>`
           : ''}
       </div>
     </div>
@@ -62899,14 +64011,14 @@ function renderLocalSEOGBP() {
     <div style="background:linear-gradient(135deg,rgba(66,133,244,0.08),rgba(52,168,83,0.06));border:1px solid rgba(66,133,244,0.25);border-radius:16px;padding:24px 28px;margin-bottom:20px;display:flex;align-items:center;gap:20px">
       <div style="font-size:44px;flex-shrink:0">📍</div>
       <div style="flex:1">
-        <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:6px">Connectez votre Google Business Profile</div>
-        <div style="font-size:13px;color:#64748b;line-height:1.6">Synchronisez automatiquement vos établissements, avis, notes et analytics GBP directement dans FlowPoint. Répondez aux avis depuis l\'interface, planifiez vos posts, et recevez des alertes IA en temps réel.</div>
+        <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:6px">${fpT('Connectez votre Google Business Profile')}</div>
+        <div style="font-size:13px;color:#64748b;line-height:1.6">${fpT("Synchronisez automatiquement vos établissements, avis, notes et analytics GBP directement dans FlowPoint. Répondez aux avis depuis l'interface, planifiez vos posts, et recevez des alertes IA en temps réel.")}</div>
         <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap">
           <button onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():showToast('info', fpT('Connexion OAuth…'))" style="padding:10px 20px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#1d4ed8);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer">
-            Connecter maintenant →
+            ${fpT('Connecter maintenant →')}
           </button>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            ${['📊 Reviews temps réel','🔔 Alertes IA','📝 Posts auto','⭐ Réponses IA'].map(f=>`<span style="font-size:11px;padding:5px 10px;border-radius:20px;background:rgba(66,133,244,0.1);border:1px solid rgba(66,133,244,0.2);color:#93c5fd">${f}</span>`).join('')}
+            ${['📊 Reviews temps réel','🔔 Alertes IA','📝 Posts auto','⭐ Réponses IA'].map(f=>`<span style="font-size:11px;padding:5px 10px;border-radius:20px;background:rgba(66,133,244,0.1);border:1px solid rgba(66,133,244,0.2);color:#93c5fd">${fpT(f)}</span>`).join('')}
           </div>
         </div>
       </div>
@@ -62915,12 +64027,12 @@ function renderLocalSEOGBP() {
     <div style="background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.2);border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)"></div>
-        <span style="font-size:13px;font-weight:600;color:#22c55e">Google Business Profile connecté</span>
+        <span style="font-size:13px;font-weight:600;color:#22c55e">${fpT('Google Business Profile connecté')}</span>
         <span style="font-size:11px;color:#64748b">— ${escHtml(STATE.gbp?.email || '')} · ${STATE.gbp?.locations?.length || 0} établissement(s)</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:#475569">Dernière sync : ${STATE.gbp?.lastSync ? new Date(STATE.gbp.lastSync).toLocaleString(getLocale(), {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'jamais'}</span>
-        <button onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.sync():null" class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px">🔄 Sync</button>
+        <span style="font-size:11px;color:#475569">${fpT('Dernière sync :')} ${STATE.gbp?.lastSync ? new Date(STATE.gbp.lastSync).toLocaleString(getLocale(), {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : fpT('jamais')}</span>
+        <button onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.sync():null" class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px">🔄 ${fpT('Sync')}</button>
       </div>
     </div>`}
 
@@ -62928,11 +64040,11 @@ function renderLocalSEOGBP() {
     <div style="margin-top:20px">
       ${aiBlock(
       gbpConnected && totalReviews > 0
-        ? (unanswered > 0 ? '<strong>' + unanswered + ' avis sans réponse</strong> — répondre sous 48h améliore votre classement local de <strong>+15%</strong>. ' : 'Tous vos avis ont une réponse ✓. ') + 'Score GBP : <strong>' + (gbpHealth !== null ? gbpHealth : completePct) + '/100</strong>. Publier 2 posts/semaine peut augmenter la visibilité de <strong>+22%</strong>.'
+        ? (unanswered > 0 ? fpT('<strong>{count} avis sans réponse</strong> — répondre sous 48h améliore votre classement local de <strong>+15%</strong>. ', {count:unanswered}) : fpT('Tous vos avis ont une réponse ✓. ')) + fpT('Score GBP :') + ' <strong>' + (gbpHealth !== null ? gbpHealth : completePct) + '/100</strong>. ' + fpT('Publier 2 posts/semaine peut augmenter la visibilité de <strong>+22%</strong>.')
         : PREVIEW_MODE
-          ? '<strong>14 avis sans réponse</strong> — répondre sous 48h améliore votre classement local de <strong>+15%</strong>. Votre score GBP est à <strong>71/100</strong> — manque principal : photos et catégories secondaires. Publier 2 posts/semaine pourrait augmenter la visibilité de <strong>+22%</strong>.'
-          : 'Connectez votre Google Business Profile pour recevoir des recommandations IA personnalisées sur vos avis, votre score de fiche et votre visibilité locale.',
-      ['Répondre aux avis', 'Optimiser la fiche', 'Planifier des posts'])}
+          ? fpT('<strong>14 avis sans réponse</strong> — répondre sous 48h améliore votre classement local de <strong>+15%</strong>. Votre score GBP est à <strong>71/100</strong> — manque principal : photos et catégories secondaires. Publier 2 posts/semaine pourrait augmenter la visibilité de <strong>+22%</strong>.')
+          : fpT('Connectez votre Google Business Profile pour recevoir des recommandations IA personnalisées sur vos avis, votre score de fiche et votre visibilité locale.'),
+      ['Répondre aux avis', 'Optimiser la fiche', 'Planifier des posts'].map(key => fpT(key)))}
     </div>
 
     <!-- GBP HEALTH + STATS — real data when connected -->
@@ -71542,20 +72654,20 @@ window.FP_BETTERSTACK_API = {
 function renderGlobalMonitoringPanel() {
   if (!STATE.me?.addons?.globalMonitoring) return '';
   return `<section class="fp-card" style="margin-top:18px">
-    <div class="fp-card-header"><div><h2>Global Monitoring</h2><p class="fp-text-muted">Régions de contrôle configurées dans Better Stack</p></div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadGlobal()">Actualiser</button>
+    <div class="fp-card-header"><div><h2>Global Monitoring</h2><p class="fp-text-muted">${fpT('Régions de contrôle configurées dans Better Stack')}</p></div>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadGlobal()">${fpT('Actualiser')}</button>
     </div>
-    <div id="fp-global-monitoring-result" class="fp-text-muted">Chargez les régions configurées pour ce workspace.</div>
+    <div id="fp-global-monitoring-result" class="fp-text-muted">${fpT('Chargez les régions configurées pour ce workspace.')}</div>
   </section>`;
 }
 
 function renderAgencyPacksPanel() {
   if (!STATE.me?.addons?.agencyPacks) return '';
   return `<section class="fp-card" style="margin-top:18px">
-    <div class="fp-card-header"><div><h2>Agency Reporting Packs</h2><p class="fp-text-muted">Modèles réutilisables pour les rapports clients</p></div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()">Charger les packs</button>
+    <div class="fp-card-header"><div><h2>${fpT('Packs de rapports d’agence')}</h2><p class="fp-text-muted">${fpT('Modèles réutilisables pour les rapports clients')}</p></div>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()">${fpT('Charger les packs')}</button>
     </div>
-    <div id="fp-agency-packs-result" class="fp-text-muted">Aucun pack chargé.</div>
+    <div id="fp-agency-packs-result" class="fp-text-muted">${fpT('Aucun pack chargé.')}</div>
   </section>`;
 }
 
@@ -71567,11 +72679,11 @@ window.FP_V1_ADDON_PANELS = {
     const fromInput = document.getElementById('fp-bs-sla-from');
     const toInput = document.getElementById('fp-bs-sla-to');
     if (!status || !target || !select || !fromInput || !toInput) return;
-    status.textContent = 'Chargement des monitors Better Stack…';
+    status.textContent = fpT('Chargement des monitors Better Stack…');
     target.replaceChildren();
     try {
       const config = await window.FP_BETTERSTACK_API.loadConfig();
-      if (config?.configured !== true) throw new Error('Better Stack n’est pas configuré pour ce serveur.');
+      if (config?.configured !== true) throw new Error(fpT('Better Stack n’est pas configuré pour ce serveur.'));
       const monitors = await window.FP_BETTERSTACK_API.loadMonitors();
       const previous = select.value;
       select.replaceChildren();
@@ -71585,7 +72697,7 @@ window.FP_V1_ADDON_PANELS = {
         select.appendChild(option);
       }
       if (!select.options.length) {
-        status.textContent = 'Aucun monitor Better Stack appartenant à cette organisation.';
+        status.textContent = fpT('Aucun monitor Better Stack appartenant à cette organisation.');
         return;
       }
       if (monitors.some(monitor => String(monitor?.id || '') === previous)) select.value = previous;
@@ -71599,13 +72711,13 @@ window.FP_V1_ADDON_PANELS = {
         return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
       };
       if (!validDate(from) || !validDate(to) || from > to || to > today) {
-        throw new Error('Choisissez une période valide, du plus ancien au plus récent.');
+        throw new Error(fpT('Choisissez une période valide, du plus ancien au plus récent.'));
       }
       const report = await window.FP_BETTERSTACK_API.getMonitorSLA(select.value, from, to);
       const metrics = report?.data?.attributes;
       const availability = Number(metrics?.availability);
       if (!metrics || !Number.isFinite(availability) || availability < 0 || availability > 100) {
-        throw new Error('Better Stack n’a pas renvoyé de mesures SLA exploitables pour cette période.');
+        throw new Error(fpT('Better Stack n’a pas renvoyé de mesures SLA exploitables pour cette période.'));
       }
       const formatDuration = value => {
         const seconds = Number(value);
@@ -71618,11 +72730,11 @@ window.FP_V1_ADDON_PANELS = {
           .filter(Boolean).join(' ');
       };
       const cards = [
-        ['Disponibilité', `${availability.toFixed(4)} %`],
-        ['Temps d’indisponibilité', formatDuration(metrics.total_downtime)],
-        ['Incidents', typeof metrics.number_of_incidents === 'number' && Number.isFinite(metrics.number_of_incidents) && metrics.number_of_incidents >= 0 ? String(metrics.number_of_incidents) : '—'],
-        ['Incident le plus long', formatDuration(metrics.longest_incident)],
-        ['Durée moyenne d’incident', formatDuration(metrics.average_incident)],
+        [fpT('Disponibilité'), `${availability.toFixed(4)} %`],
+        [fpT('Temps d’indisponibilité'), formatDuration(metrics.total_downtime)],
+        [fpT('Incidents'), typeof metrics.number_of_incidents === 'number' && Number.isFinite(metrics.number_of_incidents) && metrics.number_of_incidents >= 0 ? String(metrics.number_of_incidents) : '—'],
+        [fpT('Incident le plus long'), formatDuration(metrics.longest_incident)],
+        [fpT('Durée moyenne d’incident'), formatDuration(metrics.average_incident)],
       ];
       const grid = document.createElement('div');
       grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px';
@@ -71639,44 +72751,44 @@ window.FP_V1_ADDON_PANELS = {
         grid.appendChild(card);
       }
       target.appendChild(grid);
-      status.textContent = `Mesures Better Stack du ${from} au ${to}.`;
+      status.textContent = fpT('Mesures Better Stack du {from} au {to}.', {from, to});
     } catch (err) {
-      status.textContent = err?.message || 'Impossible de charger le rapport SLA Better Stack.';
+      status.textContent = err?.message || fpT('Impossible de charger le rapport SLA Better Stack.');
     }
   },
   async loadGlobal() {
     const target = document.getElementById('fp-global-monitoring-result');
     if (!target) return;
-    target.textContent = 'Chargement…';
+    target.textContent = fpT('Chargement…');
     try {
       const summary = await window.FP_BETTERSTACK_API.loadGlobalOverview();
       target.replaceChildren();
       if (!summary?.regions?.length) {
-        target.textContent = 'Aucune région de contrôle configurée dans Better Stack.';
+        target.textContent = fpT('Aucune région de contrôle configurée dans Better Stack.');
         return;
       }
       const heading = document.createElement('p');
-      heading.textContent = `${summary.configuredRegionCount} régions · ${summary.configuredMonitorCount} monitors`;
+      heading.textContent = fpT('{regions} régions · {monitors} monitors', {regions:summary.configuredRegionCount, monitors:summary.configuredMonitorCount});
       target.appendChild(heading);
       for (const region of summary.regions) {
         const row = document.createElement('p');
         const health = region.health || {};
         const alerts = (health.down || 0) + (health.degraded || 0);
-        const statusText = alerts > 0 ? alerts + ' monitors en alerte' : (health.unknown || 0) > 0 ? health.unknown + ' états inconnus' : 'aucun monitor en alerte';
-        row.textContent = region.region + ': ' + region.monitorCount + ' monitor(s) — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ');
+        const statusText = alerts > 0 ? fpT('{count} monitor(s) en alerte', {count:alerts}) : (health.unknown || 0) > 0 ? fpT('{count} statuts inconnus', {count:health.unknown}) : fpT('Aucun monitor en alerte');
+        row.textContent = region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ');
         target.appendChild(row);
       }
       const note = document.createElement('small');
       note.textContent = summary.note || '';
       target.appendChild(note);
     } catch {
-      target.textContent = 'Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.';
+      target.textContent = fpT('Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.');
     }
   },
   async loadAgencyPacks() {
     const target = document.getElementById('fp-agency-packs-result');
     if (!target) return;
-    target.textContent = 'Chargement…';
+    target.textContent = fpT('Chargement…');
     try {
       const result = await apiFetch('/api/reports/agency-packs');
       target.replaceChildren();
@@ -71684,32 +72796,32 @@ window.FP_V1_ADDON_PANELS = {
       bundleControls.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px';
       const clientInput = document.createElement('input');
       clientInput.type = 'text'; clientInput.maxLength = 160;
-      clientInput.placeholder = 'Nom du client pour le pack complet';
-      clientInput.setAttribute('aria-label', 'Nom du client');
+      clientInput.placeholder = fpT('Nom du client pour le pack complet');
+      clientInput.setAttribute('aria-label', fpT('Nom du client'));
       const auditSelect = document.createElement('select');
-      auditSelect.setAttribute('aria-label', 'Audit à inclure dans les rapports');
+      auditSelect.setAttribute('aria-label', fpT('Audit à inclure dans les rapports'));
       const noAuditOption = document.createElement('option');
       noAuditOption.value = '';
-      noAuditOption.textContent = 'Sans audit lié';
+      noAuditOption.textContent = fpT('Sans audit lié');
       auditSelect.appendChild(noAuditOption);
       const audits = Array.isArray(result?.audits) ? result.audits : [];
       for (const audit of audits) {
         const option = document.createElement('option');
         option.value = String(audit.id || '');
         const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
-          ? 'score indisponible'
-          : `score ${audit.score}`;
+          ? fpT('score indisponible')
+          : fpT('Score {score}', { score: audit.score });
         const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString(getLocale()) : '';
-        option.textContent = [audit.url || 'Site', measuredScore, measuredDate].filter(Boolean).join(' · ');
+        option.textContent = [audit.url || fpT('Site'), measuredScore, measuredDate].filter(Boolean).join(' · ');
         auditSelect.appendChild(option);
       }
       if (audits.length) auditSelect.value = String(audits[0].id || '');
       const bundleButton = document.createElement('button');
       bundleButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
-      bundleButton.textContent = 'Créer le pack complet (3 rapports)';
+      bundleButton.textContent = fpT('Créer le pack complet (3 rapports)');
       bundleButton.addEventListener('click', async () => {
         const clientName = clientInput.value.trim();
-        if (clientName.length < 2) { showToast('error', 'Saisissez le nom du client'); return; }
+        if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
         bundleButton.disabled = true;
         try {
           const bundle = await apiFetch('/api/reports/agency-packs/generate', {
@@ -71725,9 +72837,9 @@ window.FP_V1_ADDON_PANELS = {
           await window._fpReportsAPI.load({ force: true });
           const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
           if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
-          showToast('success', fpT('Pack créé : 3 rapports vérifiés pour ') + clientName);
+          showToast('success', fpT('Pack créé : 3 rapports vérifiés pour {client}', { client: escHtml(clientName) }));
           render();
-        } catch { showToast('error', 'Le pack complet n’a pas pu être créé'); bundleButton.disabled = false; }
+        } catch { showToast('error', fpT('Le pack complet n’a pas pu être créé')); bundleButton.disabled = false; }
       });
       bundleControls.append(clientInput, auditSelect, bundleButton);
       target.appendChild(bundleControls);
@@ -71738,7 +72850,7 @@ window.FP_V1_ADDON_PANELS = {
         label.textContent = `${pack.name} — ${pack.description}`;
         const button = document.createElement('button');
         button.className = 'fp-btn fp-btn-primary fp-btn-sm';
-        button.textContent = 'Créer le rapport';
+        button.textContent = fpT('Créer le rapport');
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {
@@ -71750,14 +72862,14 @@ window.FP_V1_ADDON_PANELS = {
             });
             if (!created?.id) throw new Error('Rapport non confirmé');
             render();
-          } catch { showToast('error', 'Impossible de créer le rapport'); button.disabled = false; }
+          } catch { showToast('error', fpT('Impossible de créer le rapport')); button.disabled = false; }
         });
         row.append(label, button);
         target.appendChild(row);
       }
-      if (!result?.packs?.length) target.textContent = 'Aucun pack disponible.';
+      if (!result?.packs?.length) target.textContent = fpT('Aucun pack disponible.');
     } catch {
-      target.textContent = 'Impossible de charger les packs. Vérifiez l’accès à l’add-on.';
+      target.textContent = fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
     }
   },
 };
@@ -74124,7 +75236,7 @@ function renderLocalDominationMaps() {
     catch { return ''; }
     const rankColor = r => r == null ? '#94a3b8' : r <= 3 ? '#22c55e' : r <= 10 ? '#f59e0b' : r <= 20 ? '#f97316' : '#ef4444';
     const rankLabel = r => r == null ? '>20' : `#${r}`;
-    const rankStatus = r => r == null ? 'Absent du top 20' : r <= 3 ? 'Top 3' : r <= 10 ? 'Top 10' : r <= 20 ? 'Top 20' : 'Hors top';
+    const rankStatus = r => r == null ? fpT('Absent du top 20') : r <= 3 ? fpT('Top 3') : r <= 10 ? fpT('Top 10') : r <= 20 ? fpT('Top 20') : fpT('Hors top');
     const sorted = [...cells].sort((a,b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
     const top3 = cells.filter(c=>c.rank!=null && c.rank<=3).length;
     const top10 = cells.filter(c=>c.rank!=null && c.rank<=10).length;
@@ -74132,10 +75244,10 @@ function renderLocalDominationMaps() {
     return `
       <div class="fp-grid-4cols" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${[
-          {label:'Zones Top 3',val:top3,total:cells.length,color:'#22c55e'},
-          {label:'Zones Top 10',val:top10,total:cells.length,color:'#f59e0b'},
-          {label:'Zones hors top',val:out,total:cells.length,color:'#ef4444'},
-          {label:'Zones analysées',val:cells.length,total:cells.length,color:'#2563EB'},
+          {label:fpT('Zones Top 3'),val:top3,total:cells.length,color:'#22c55e'},
+          {label:fpT('Zones Top 10'),val:top10,total:cells.length,color:'#f59e0b'},
+          {label:fpT('Zones hors top'),val:out,total:cells.length,color:'#ef4444'},
+          {label:fpT('Zones analysées'),val:cells.length,total:cells.length,color:'#2563EB'},
         ].map(s=>`
           <div style="padding:10px 12px;background:${s.color}0d;border:1px solid ${s.color}33;border-radius:10px;text-align:center">
             <div style="font-size:20px;font-weight:900;color:${s.color};font-family:var(--fp-font-head)">${s.val}</div>
@@ -74147,11 +75259,11 @@ function renderLocalDominationMaps() {
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="border-bottom:1px solid var(--fp-border)">
-            <th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">Zone</th>
-            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">Position</th>
-            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">Évolution</th>
-            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">Statut</th>
-            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">Action</th>
+            <th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT('Zone')}</th>
+            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT('Position')}</th>
+            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT('Évolution')}</th>
+            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT('Statut')}</th>
+            <th style="padding:6px 10px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT('Action')}</th>
           </tr></thead>
           <tbody>
             ${sorted.slice(0,15).map((c,i)=>{
@@ -74159,11 +75271,11 @@ function renderLocalDominationMaps() {
               const chg = c.rankChange;
               const chgColor = chg > 0 ? '#22c55e' : chg < 0 ? '#ef4444' : '#94a3b8';
               return `<tr style="border-bottom:1px solid var(--fp-border)">
-                <td style="padding:7px 10px;font-weight:600;color:var(--fp-text);white-space:nowrap">Point ${Number(c.row)+1} · ${Number(c.column)+1}</td>
+                <td style="padding:7px 10px;font-weight:600;color:var(--fp-text);white-space:nowrap">${fpT('Point {row} · {column}', { row: Number(c.row)+1, column: Number(c.column)+1 })}</td>
                 <td style="padding:7px 10px;text-align:center;font-weight:900;font-size:14px;color:${col};font-family:var(--fp-font-head)">${rankLabel(c.rank)}</td>
                 <td style="padding:7px 10px;text-align:center;font-weight:700;color:${chgColor}">—</td>
-                <td style="padding:7px 10px;text-align:center"><span style="background:${col}18;color:${col};font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap">${c.status === 'error' ? 'Mesure indisponible' : rankStatus(c.rank)}</span></td>
-                <td style="padding:7px 10px;text-align:center">${c.rank != null && c.rank > 10 ? '<span style="font-size:11px;color:var(--fp-text-faint)">À améliorer</span>' : c.rank != null ? '<span style="font-size:11px;color:#22c55e">✓ OK</span>' : '—'}</td>
+                <td style="padding:7px 10px;text-align:center"><span style="background:${col}18;color:${col};font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap">${c.status === 'error' ? fpT('Mesure indisponible') : rankStatus(c.rank)}</span></td>
+                <td style="padding:7px 10px;text-align:center">${c.rank != null && c.rank > 10 ? '<span style="font-size:11px;color:var(--fp-text-faint)">'+fpT('À améliorer')+'</span>' : c.rank != null ? '<span style="font-size:11px;color:#22c55e">'+fpT('✓ OK')+'</span>' : '—'}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -74186,21 +75298,21 @@ function renderLocalDominationMaps() {
   return `
     <div class="fp-section-header">
       <div>
-        <h1>🗺 Local Domination Maps</h1>
-        <div class="fp-section-sub">Geo Grid · Heatmaps · Opportunités · Intelligence locale IA</div>
+        <h1>${fpT('🗺 Local Domination Maps')}</h1>
+        <div class="fp-section-sub">${fpT('Geo Grid · Heatmaps · Opportunités · Intelligence locale IA')}</div>
       </div>
       <div class="fp-section-actions">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_LOCAL_MAPS_API?.load().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateHeatmapModal()">+ Nouvelle heatmap</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_LOCAL_MAPS_API?.load().then(()=>render(STATE.currentSection))">${fpT('⟳ Actualiser')}</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateHeatmapModal()">${fpT('+ Nouvelle heatmap')}</button>
       </div>
     </div>
 
     <!-- INTERACTIVE GOOGLE MAP (FP_MAPS_API auto-init via MutationObserver) -->
     <div class="fp-card fp-mb-16" style="padding:0;overflow:hidden;position:relative;min-height:520px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
-        <div class="fp-card-title" style="margin-bottom:0">📍 Carte interactive — concurrents & zone de chalandise</div>
+        <div class="fp-card-title" style="margin-bottom:0">${fpT('🗺 Carte interactive — concurrents & zone de chalandise')}</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input id="fp-map-keyword" type="text" placeholder="Secteur ex: boulangerie" value="${escHtml(_gKeyword)}"
+          <input id="fp-map-keyword" type="text" placeholder="${fpT('Secteur ex: boulangerie')}" value="${escHtml(_gKeyword)}"
             style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;width:150px"
             onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',this.value)">
           <select id="fp-map-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-gmap',parseInt(this.value))"
@@ -74213,14 +75325,14 @@ function renderLocalDominationMaps() {
             <option value="50000">50 km</option>
             <option value="100000">100 km</option>
           </select>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.recenter('fp-gmap')">🎯 Recentrer</button>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',document.getElementById('fp-map-keyword')?.value||'')">🔍 Analyser</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.recenter('fp-gmap')">${fpT('🎯 Recentrer')}</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-gmap',document.getElementById('fp-map-keyword')?.value||'')">${fpT('🔍 Analyser')}</button>
         </div>
       </div>
       <div style="position:relative">
         <div id="fp-gmap-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px;border-radius:var(--fp-radius-lg)">
           <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
-          <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Chargement de la carte…</div>
+          <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${fpT('Chargement de la carte…')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Maps · Places · Heatmap</div>
         </div>
         <div id="fp-gmap" style="width:100%;height:520px"
@@ -74232,16 +75344,16 @@ function renderLocalDominationMaps() {
     ${aiBlock(
       Array.isArray(mapsData.insights) && mapsData.insights.length
         ? mapsData.insights.map(escHtml).join(' ')
-        : 'Aucune mesure locale enregistrée pour le moment. Les scores de visibilité apparaîtront lorsque des données de classement réelles seront disponibles.',
-      ['Consulter les mesures enregistrées', 'Découvrir des concurrents']
+        : fpT('Aucune mesure locale enregistrée pour le moment. Les scores de visibilité apparaîtront lorsque des données de classement réelles seront disponibles.'),
+      ['Consulter les mesures enregistrées', 'Découvrir des concurrents'].map(key => fpT(key))
     )}
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Cartes configurées', String(stats.totalHeatmaps ?? heatmaps.length), 'suivis créés', 'neutral')}
-      ${statCard('Analyses terminées', String(stats.completedScans || 0), 'statut enregistré', 'neutral')}
-      ${statCard('Concurrents observés', String(stats.uniqueCompetitors || 0), 'établissements distincts', 'neutral')}
-      ${statCard('Résultats concurrents top 3', String(stats.top3CompetitorResults || 0), 'dans les recherches enregistrées', 'neutral')}
+      ${statCard(fpT('Cartes configurées'), String(stats.totalHeatmaps ?? heatmaps.length), fpT('suivis créés'), 'neutral')}
+      ${statCard(fpT('Analyses terminées'), String(stats.completedScans || 0), fpT('statut enregistré'), 'neutral')}
+      ${statCard(fpT('Concurrents observés'), String(stats.uniqueCompetitors || 0), fpT('établissements distincts'), 'neutral')}
+      ${statCard(fpT('Résultats concurrents top 3'), String(stats.top3CompetitorResults || 0), fpT('dans les recherches enregistrées'), 'neutral')}
     </div>
 
     <!-- TABS -->
@@ -74249,7 +75361,7 @@ function renderLocalDominationMaps() {
       ${[['grid','🗺 Geo Grid'],['list','📋 Mes Heatmaps'],['opportunities','💎 Opportunités']].map(([id, label]) => `
         <button onclick="window._mapsTab='${id}';render(STATE.currentSection)"
           style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab === id ? 'var(--fp-accent)' : 'transparent'};background:none;color:${activeTab === id ? 'var(--fp-accent)' : 'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab === id ? '700' : '500'};cursor:pointer">
-          ${label}
+          ${fpT(label)}
         </button>
       `).join('')}
     </div>
@@ -74258,9 +75370,9 @@ function renderLocalDominationMaps() {
       ${heatmaps.length === 0 ? `
         <div class="fp-card" style="text-align:center;padding:40px">
           <div style="font-size:40px;margin-bottom:12px">🗺</div>
-          <div style="font-size:15px;font-weight:700;margin-bottom:6px">Aucune heatmap créée</div>
-          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:20px">Créez votre première grille géo-ranking pour visualiser votre domination locale.</div>
-          <button class="fp-btn fp-btn-primary" onclick="window._showCreateHeatmapModal()">+ Créer une heatmap</button>
+          <div style="font-size:15px;font-weight:700;margin-bottom:6px">${fpT('Aucune heatmap créée')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:20px">${fpT('Créez votre première grille géo-ranking pour visualiser votre domination locale.')}</div>
+          <button class="fp-btn fp-btn-primary" onclick="window._showCreateHeatmapModal()">${fpT('+ Créer une heatmap')}</button>
         </div>
       ` : `
         <!-- GEO GRID — full-width card -->
@@ -74278,7 +75390,7 @@ function renderLocalDominationMaps() {
             <div style="display:flex;align-items:center;gap:10px">
               <div style="text-align:right">
                 <div style="font-size:22px;font-weight:900;color:${activeHeatmap?.dominance_score >= 40 ? '#22c55e' : '#f59e0b'};line-height:1">${activeHeatmap?.dominance_score == null ? '—' : `${activeHeatmap.dominance_score}%`}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em">domination</div>
+                <div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em">${fpT('domination')}</div>
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
                 onclick="showToast('info', fpT('Analyse IA en cours…'));window.FP_LOCAL_MAPS_API?.getAIRecommendations().then(r=>{showToast('success', fpT('Recommandations générées'));openFloatPanel('🤖 Recommandations IA', '<div style=\'padding:16px;font-size:12px;line-height:1.7;color:var(--fp-text-muted)\'>'+escHtml(r?.summary||'')+'</div>');})">
@@ -74290,9 +75402,9 @@ function renderLocalDominationMaps() {
           ${['pending','running','partial','failed'].includes(activeHeatmap?.status) ? `
             <div style="padding:10px 12px;margin:10px 0;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
               ${activeHeatmap?.status === 'running' || activeHeatmap?.status === 'pending'
-                ? 'Mesures DataForSEO en cours. Actualisez cette page pour voir leur état.'
-                : escHtml(activeHeatmap?.scan_error || (activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
-              ${activeHeatmap?.status === 'failed' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">Relancer la mesure</button>` : ''}
+                ? fpT('Mesures DataForSEO en cours. Actualisez cette page pour voir leur état.')
+                : escHtml(activeHeatmap?.scan_error || fpT(activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
+              ${activeHeatmap?.status === 'failed' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">${fpT('Relancer la mesure')}</button>` : ''}
             </div>
           ` : ''}
 
@@ -74354,14 +75466,14 @@ function renderLocalDominationMaps() {
                 </div>
                 <div style="text-align:right;flex-shrink:0">
                   <div style="font-size:17px;font-weight:800;color:${h.color}">${h.score}%</div>
-                  <div style="font-size:9px;color:var(--fp-text-faint)">domination</div>
+                  <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('domination')}</div>
                 </div>
                 <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window._showCreateHeatmapModal()">Créer</button>
               </div>
             `).join('') : ''}
             <div style="text-align:center;padding:14px;border:2px dashed var(--fp-border);border-radius:10px;color:var(--fp-text-muted);font-size:12px">
-              ${PREVIEW_MODE ? '☝️ Exemples ci-dessus — créez vos propres grilles pour voir vos vrais résultats' : 'Aucune heatmap créée — visualisez votre domination locale par zone géographique'}
-              <br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window._showCreateHeatmapModal()">+ Créer ma première heatmap</button>
+              ${PREVIEW_MODE ? fpT('☝️ Exemples ci-dessus — créez vos propres grilles pour voir vos vrais résultats') : fpT('Aucune heatmap créée — visualisez votre domination locale par zone géographique')}
+              <br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window._showCreateHeatmapModal()">${fpT('+ Créer ma première heatmap')}</button>
             </div>
           </div>
         ` : `
@@ -74411,35 +75523,35 @@ function renderLocalDominationMaps() {
     <!-- CREATE HEATMAP MODAL -->
     <div id="fp-heatmap-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
       <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-sidebar);border:1px solid var(--fp-border)">
-        <div style="font-size:16px;font-weight:700;margin-bottom:16px">🗺 Nouvelle heatmap de domination</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:16px">${fpT('🗺 Nouvelle heatmap de domination')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          <input id="hm-name" class="fp-input" placeholder="Nom (ex: Paris Centre — Plomberie)"/>
-          <input id="hm-business" class="fp-input" placeholder="Nom exact de l’établissement" value="${escHtml(_gName)}"/>
-          <input id="hm-keyword" class="fp-input" placeholder="Mot-clé cible (ex: plombier urgence)"/>
+          <input id="hm-name" class="fp-input" placeholder="${fpT('Nom (ex: Paris Centre — Plomberie)')}"/>
+          <input id="hm-business" class="fp-input" placeholder="${fpT('Nom exact de l’établissement')}" value="${escHtml(_gName)}"/>
+          <input id="hm-keyword" class="fp-input" placeholder="${fpT('Mot-clé cible (ex: plombier urgence)')}"/>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <input id="hm-lat" class="fp-input" placeholder="Latitude (ex: 48.8566)" value="${STATE.me?.location?.latitude != null ? Number(STATE.me.location.latitude).toFixed(4) : ''}"/>
             <input id="hm-lng" class="fp-input" placeholder="Longitude (ex: 2.3522)" value="${STATE.me?.location?.longitude != null ? Number(STATE.me.location.longitude).toFixed(4) : ''}"/>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <select id="hm-radius" class="fp-input">
-              <option value="2">Rayon 2km</option>
-              <option value="5" selected>Rayon 5km</option>
-              <option value="10">Rayon 10km</option>
-              <option value="20">Rayon 20km</option>
+              <option value="2">${fpT('Rayon 2km')}</option>
+              <option value="5" selected>${fpT('Rayon 5km')}</option>
+              <option value="10">${fpT('Rayon 10km')}</option>
+              <option value="20">${fpT('Rayon 20km')}</option>
             </select>
             <select id="hm-grid" class="fp-input">
-              <option value="5">Grille 5×5</option>
-              <option value="7" selected>Grille 7×7</option>
-              <option value="9">Grille 9×9 (Ultra)</option>
+              <option value="5">${fpT('Grille 5×5')}</option>
+              <option value="7" selected>${fpT('Grille 7×7')}</option>
+              <option value="9">${fpT('Grille 9×9 (Ultra)')}</option>
             </select>
           </div>
           <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-            ℹ️ Une requête DataForSEO est utilisée par point : 25, 49 ou 81 selon la grille. Le quota quotidien s’applique. Les positions absentes du top 20 restent indiquées comme non trouvées.
+            ${fpT('ℹ️ Une requête DataForSEO est utilisée par point : 25, 49 ou 81 selon la grille. Le quota quotidien s’applique. Les positions absentes du top 20 restent indiquées comme non trouvées.')}
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-heatmap-modal').style.display='none'">Annuler</button>
-          <button class="fp-btn fp-btn-primary" onclick="window._submitCreateHeatmap()">Générer heatmap</button>
+          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-heatmap-modal').style.display='none'">${fpT('Annuler')}</button>
+          <button class="fp-btn fp-btn-primary" onclick="window._submitCreateHeatmap()">${fpT('Générer heatmap')}</button>
         </div>
       </div>
     </div>
@@ -74468,40 +75580,45 @@ function renderLocalCompetitorMap() {
   return `
     <div class="fp-section-header">
       <div>
-        <h1>⚔️ Carte Concurrents</h1>
+        <h1>${fpT('⚔️ Carte Concurrents')}</h1>
         <div class="fp-section-sub">Local Pack · Autorité · Ratings · Distance</div>
       </div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_LOCAL_MAPS_API?.load().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_LOCAL_MAPS_API?.load().then(()=>render(STATE.currentSection))">${fpT('⟳ Actualiser')}</button>
     </div>
 
     ${aiBlock(
       competitors.length > 0
-        ? `${competitors.length} concurrents identifiés dans votre zone. ${competitors.filter(c => c.is_local_pack).length} en Local Pack Google. Concurrent dominant : <strong>${escHtml(competitors[0]?.name || '—')}</strong> (autorité ${competitors[0]?.authority_score || 0}/100).`
-        : 'Aucun concurrent mappé. Lancez une analyse pour détecter les concurrents locaux.',
-      ['Analyser autorité', 'Comparer ratings', 'Trouver failles concurrents']
+        ? fpT('Concurrents identifiés dans votre zone : {count}. {packCount} en Local Pack Google. Concurrent dominant : <strong>{name}</strong> (autorité {authority}/100).', {
+            count: competitors.length,
+            packCount: competitors.filter(c => c.is_local_pack).length,
+            name: escHtml(competitors[0]?.name || '—'),
+            authority: competitors[0]?.authority_score || 0,
+          })
+        : fpT('Aucun concurrent mappé. Lancez une analyse pour détecter les concurrents locaux.'),
+      ['Analyser autorité', 'Comparer ratings', 'Trouver failles concurrents'].map(key => fpT(key))
     )}
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Concurrents total', String(competitors.length), 'dans votre zone', 'neutral')}
-      ${statCard('En Local Pack', String(competitors.filter(c => c.is_local_pack).length), 'positions top 3 Google Maps', competitors.filter(c => c.is_local_pack).length > 2 ? 'down' : 'neutral')}
-      ${statCard('Autorité moy. concurrents', competitors.length > 0 ? String(Math.round(competitors.reduce((s, c) => s + c.authority_score, 0) / competitors.length)) : '—', '/100 territoire', 'neutral')}
-      ${statCard('Note moy. concurrents', competitors.length > 0 ? (competitors.reduce((s, c) => s + parseFloat(c.rating || 0), 0) / competitors.length).toFixed(1) + '⭐' : '—', 'Google Business Profile', 'neutral')}
+      ${statCard(fpT('Concurrents total'), String(competitors.length), fpT('dans votre zone'), 'neutral')}
+      ${statCard(fpT('En Local Pack'), String(competitors.filter(c => c.is_local_pack).length), fpT('positions top 3 Google Maps'), competitors.filter(c => c.is_local_pack).length > 2 ? 'down' : 'neutral')}
+      ${statCard(fpT('Autorité moy. concurrents'), competitors.length > 0 ? String(Math.round(competitors.reduce((s, c) => s + c.authority_score, 0) / competitors.length)) : '—', fpT('/100 territoire'), 'neutral')}
+      ${statCard(fpT('Note moy. concurrents'), competitors.length > 0 ? (competitors.reduce((s, c) => s + parseFloat(c.rating || 0), 0) / competitors.length).toFixed(1) + '⭐' : '—', fpT('Google Business Profile'), 'neutral')}
     </div>
 
     <!-- FILTERS -->
     <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
-      <button class="fp-btn ${filterPack ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._mapFilterPack=!window._mapFilterPack;render(STATE.currentSection)">🏆 Local Pack seulement</button>
-      ${[0,40,60,80].map(min => `<button class="fp-btn ${filterMin===min?'fp-btn-primary':'fp-btn-ghost'} fp-btn-sm" onclick="window._mapFilterMin=${min};render(STATE.currentSection)">Autorité ≥${min}</button>`).join('')}
+      <button class="fp-btn ${filterPack ? 'fp-btn-primary' : 'fp-btn-ghost'} fp-btn-sm" onclick="window._mapFilterPack=!window._mapFilterPack;render(STATE.currentSection)">${fpT('🏆 Local Pack seulement')}</button>
+      ${[0,40,60,80].map(min => `<button class="fp-btn ${filterMin===min?'fp-btn-primary':'fp-btn-ghost'} fp-btn-sm" onclick="window._mapFilterMin=${min};render(STATE.currentSection)">${fpT('Autorité ≥{count}', {count:min})}</button>`).join('')}
     </div>
 
     <div class="fp-card fp-mb-16" style="padding:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div>
-          <div style="font-size:12px;font-weight:800">📍 Zone analysée</div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">${configuredLocation ? escHtml(configuredLocation) : 'Aucun emplacement configuré — ajoutez votre ville dans les paramètres pour des résultats locaux pertinents.'}</div>
+          <div style="font-size:12px;font-weight:800">${fpT('📍 Zone analysée')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">${configuredLocation ? escHtml(configuredLocation) : fpT('Aucun emplacement configuré — ajoutez votre ville dans les paramètres pour des résultats locaux pertinents.')}</div>
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._discoverLocalCompetitors()">Découvrir des concurrents</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._discoverLocalCompetitors()">${fpT('Découvrir des concurrents')}</button>
       </div>
     </div>
 
@@ -74510,7 +75627,7 @@ function renderLocalCompetitorMap() {
       <div style="display:flex;flex-direction:column;gap:8px;padding:12px 16px;border-bottom:1px solid var(--fp-border)">
         <div class="fp-card-title" style="margin-bottom:0">🏴 Carte des concurrents</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input id="fp-comp-keyword" type="text" placeholder="Secteur d'activité" value="${escHtml(_cKeyword)}"
+          <input id="fp-comp-keyword" type="text" placeholder="${fpT('Secteur d’activité')}" value="${escHtml(_cKeyword)}"
             style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text);font-size:12px;padding:6px 10px;flex:1;min-width:100px"
             onkeydown="if(event.key==='Enter')typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',this.value)">
           <select id="fp-comp-radius" onchange="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.setRadius('fp-competitors-map',parseInt(this.value))"
@@ -74522,13 +75639,13 @@ function renderLocalCompetitorMap() {
             <option value="50000">50 km</option>
             <option value="100000">100 km</option>
           </select>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',document.getElementById('fp-comp-keyword')?.value||'')">🔍 Analyser</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_MAPS_API!=='undefined'&&window.FP_MAPS_API.reloadData('fp-competitors-map',document.getElementById('fp-comp-keyword')?.value||'')">${fpT('🔍 Analyser')}</button>
         </div>
       </div>
       <div style="position:relative">
         <div id="fp-competitors-map-skeleton" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95));z-index:10;gap:12px">
           <div style="position:absolute;inset:0;pointer-events:none"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div><div style="width:220px;height:12px;border-radius:6px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>
-          <div style="font-size:13px;font-weight:600;color:var(--fp-text)">Analyse concurrentielle en cours…</div>
+          <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${fpT('Analyse concurrentielle en cours…')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Google Places API · Scoring IA</div>
         </div>
         <div id="fp-competitors-map" style="width:100%;height:540px"
@@ -74536,14 +75653,14 @@ function renderLocalCompetitorMap() {
           data-mode="competitors"></div>
         <!-- Legend overlay — elevated above Google attribution bar -->
         <div style="position:absolute;bottom:50px;left:12px;background:var(--fp-surface);border:1px solid var(--fp-border);border-radius:10px;padding:10px 14px;z-index:5;box-shadow:0 2px 12px rgba(0,0,0,0.15)">
-          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">LÉGENDE</div>
+          <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);margin-bottom:6px">${fpT('LÉGENDE')}</div>
           ${[
             {c:'#ef4444',l:'Critique — score > 75'},
             {c:'#f59e0b',l:'Élevé — score 55-74'},
             {c:'#2563EB',l:'Moyen — score 35-54'},
             {c:'#22c55e',l:'Faible — score < 35'},
             {c:'#8b5cf6',l:'Votre établissement'},
-          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text)">${x.l}</span></div>`).join('')}
+          ].map(x=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><div style="width:10px;height:10px;border-radius:50%;background:${x.c};flex-shrink:0"></div><span style="font-size:10px;color:var(--fp-text)">${fpT(x.l)}</span></div>`).join('')}
         </div>
       </div>
     </div>
@@ -74553,7 +75670,7 @@ function renderLocalCompetitorMap() {
 
       <!-- Competitor cards -->
       <div style="display:flex;flex-direction:column;gap:6px">
-        ${filtered.length === 0 ? `<div style="text-align:center;padding:16px;color:var(--fp-text-muted);font-size:12px">Aucun concurrent correspondant aux filtres.</div>` :
+        ${filtered.length === 0 ? `<div style="text-align:center;padding:16px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucun concurrent correspondant aux filtres.')}</div>` :
         filtered.map((c, i) => `
           <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid ${c.is_local_pack ? 'rgba(245,158,11,0.2)' : 'var(--fp-border)'};background:${c.is_local_pack ? 'rgba(245,158,11,0.04)' : 'var(--fp-inner-card)'}">
             <div style="font-size:20px;flex-shrink:0">${c.is_local_pack ? '🏆' : '📍'}</div>
@@ -74562,15 +75679,15 @@ function renderLocalCompetitorMap() {
                 <span style="font-size:13px;font-weight:700;color:var(--fp-text)">${escHtml(c.name)}</span>
                 ${c.is_local_pack ? `<span style="font-size:8px;padding:1px 6px;border-radius:6px;background:rgba(245,158,11,0.15);color:var(--fp-warning)">Local Pack</span>` : ''}
               </div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.address || '')} · Position ${c.rank || '—'}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.address || '')} · ${fpT('Position')} ${c.rank || '—'}</div>
               <div style="display:flex;gap:8px;margin-top:3px">
-                <span style="font-size:10px;color:var(--fp-warning)">⭐ ${parseFloat(c.rating || 0).toFixed(1)} (${Number(c.review_count || 0).toLocaleString(getLocale())} avis)</span>
+                <span style="font-size:10px;color:var(--fp-warning)">⭐ ${parseFloat(c.rating || 0).toFixed(1)} (${fpT('{count} avis', {count:Number(c.review_count || 0).toLocaleString(getLocale())})})</span>
                 <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(c.category || '')}</span>
               </div>
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-size:16px;font-weight:800;color:${authColor(c.authority_score)}">${c.authority_score}</div>
-              <div style="font-size:9px;color:var(--fp-text-faint)">autorité</div>
+              <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('autorité')}</div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm fp-local-add-competitor" data-competitor-id="${escHtml(String(c.id || ''))}" style="font-size:9px;margin-top:5px;padding:3px 5px">+ Ajouter</button>
             </div>
           </div>
@@ -74619,33 +75736,38 @@ function renderLocalSEOReviews() {
     <div class="fp-section-header">
       <div>
         <h1>⭐ Review Intelligence IA</h1>
-        <div class="fp-section-sub">Sentiment · Réputation · Réponses IA · Alertes</div>
+        <div class="fp-section-sub">${fpT('Sentiment · Réputation · Réponses IA · Alertes')}</div>
       </div>
       <div class="fp-section-actions">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVIEW_INTEL_API?.load().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showAnalyzeReviewModal()">+ Analyser un avis</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVIEW_INTEL_API?.load().then(()=>render(STATE.currentSection))">${fpT('⟳ Actualiser')}</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showAnalyzeReviewModal()">${fpT('+ Analyser un avis')}</button>
       </div>
     </div>
 
     ${aiBlock(
       stats.totalReviews > 0
-        ? `Note moyenne : <strong>${stats.avgRating}⭐</strong> · Score réputation : <strong>${stats.reputationScore}/100</strong> · ${stats.pendingReplies} réponse${stats.pendingReplies !== 1 ? 's' : ''} IA en attente · ${stats.criticalAlerts} alerte${stats.criticalAlerts !== 1 ? 's' : ''} critique${stats.criticalAlerts !== 1 ? 's' : ''}`
-        : 'Analysez vos premiers avis Google pour obtenir des insights IA et des réponses automatiques.',
-      ['Générer réponses IA', 'Analyser sentiment', 'Voir alertes critiques']
+        ? fpT('Note moyenne : <strong>{rating}⭐</strong> · Score réputation : <strong>{score}/100</strong> · {pending} réponse(s) IA en attente · {alerts} alerte(s) critique(s)', {
+            rating: stats.avgRating,
+            score: stats.reputationScore,
+            pending: stats.pendingReplies,
+            alerts: stats.criticalAlerts,
+          })
+        : fpT('Analysez vos premiers avis Google pour obtenir des insights IA et des réponses automatiques.'),
+      ['Générer réponses IA', 'Analyser sentiment', 'Voir alertes critiques'].map(key => fpT(key))
     )}
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Score réputation', stats.totalReviews > 0 ? String(stats.reputationScore || 0) + '/100' : '—', stats.totalReviews > 0 ? 'global calculé IA' : 'Aucune donnée', stats.reputationScore >= 70 ? 'up' : 'neutral')}
-      ${statCard('Note moyenne', stats.avgRating ? String(stats.avgRating) + ' ⭐' : '—', `${stats.totalReviews || 0} avis analysés`, 'up')}
-      ${statCard('Avis positifs', stats.totalReviews > 0 ? String(stats.sentimentDist?.positive || 0) : '—', stats.totalReviews > 0 ? 'sentiment détecté par IA' : 'Aucune donnée', 'up')}
-      ${statCard('Avis négatifs', stats.totalReviews > 0 ? String(stats.sentimentDist?.negative || 0) : '—', stats.totalReviews > 0 ? 'nécessitent réponse urgente' : 'Aucune donnée', stats.sentimentDist?.negative > 0 ? 'down' : 'neutral')}
+      ${statCard(fpT('Score réputation'), stats.totalReviews > 0 ? String(stats.reputationScore || 0) + '/100' : '—', fpT(stats.totalReviews > 0 ? 'global calculé IA' : 'Aucune donnée'), stats.reputationScore >= 70 ? 'up' : 'neutral')}
+      ${statCard(fpT('Note moyenne'), stats.avgRating ? String(stats.avgRating) + ' ⭐' : '—', fpT('{count} avis analysés', {count:stats.totalReviews || 0}), 'up')}
+      ${statCard(fpT('Avis positifs'), stats.totalReviews > 0 ? String(stats.sentimentDist?.positive || 0) : '—', fpT(stats.totalReviews > 0 ? 'sentiment détecté par IA' : 'Aucune donnée'), 'up')}
+      ${statCard(fpT('Avis négatifs'), stats.totalReviews > 0 ? String(stats.sentimentDist?.negative || 0) : '—', fpT(stats.totalReviews > 0 ? 'nécessitent réponse urgente' : 'Aucune donnée'), stats.sentimentDist?.negative > 0 ? 'down' : 'neutral')}
     </div>
 
     <!-- ALERTS -->
     ${alerts.length > 0 ? `
       <div class="fp-card fp-mb-16" style="border-left:3px solid var(--fp-danger)">
-        <div class="fp-card-title" style="margin-bottom:10px;color:var(--fp-danger)">🚨 Alertes réputation actives</div>
+        <div class="fp-card-title" style="margin-bottom:10px;color:var(--fp-danger)">${fpT('🚨 Alertes réputation actives')}</div>
         ${alerts.slice(0, 3).map(a => `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(239,68,68,0.1)">
             <span style="font-size:14px">${a.severity === 'critical' ? '🚨' : '⚠️'}</span>
@@ -74653,7 +75775,7 @@ function renderLocalSEOReviews() {
               <div style="font-weight:600;color:var(--fp-danger)">${escHtml(a.title)}</div>
               <div style="color:var(--fp-text-faint);font-size:10px">${escHtml(a.description || '')}</div>
             </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info', fpT('Marquez l\'alerte comme résolue depuis le panel Monitors'))">Résoudre</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info', fpT('Marquez l\'alerte comme résolue depuis le panel Monitors'))">${fpT('Résoudre')}</button>
           </div>
         `).join('')}
       </div>
@@ -74661,13 +75783,13 @@ function renderLocalSEOReviews() {
 
     <!-- REVIEWS LIST -->
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">📋 Avis analysés</div>
+      <div class="fp-card-title" style="margin-bottom:14px">${fpT('📋 Avis analysés')}</div>
       ${reviews.length === 0 ? `
         <div style="text-align:center;padding:24px">
           <div style="font-size:32px;margin-bottom:10px">⭐</div>
-          <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Aucun avis analysé</div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px">Analysez un avis pour obtenir le sentiment IA et une réponse personnalisée.</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showAnalyzeReviewModal()">+ Analyser un avis</button>
+          <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${fpT('Aucun avis analysé')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px">${fpT('Analysez un avis pour obtenir le sentiment IA et une réponse personnalisée.')}</div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showAnalyzeReviewModal()">${fpT('+ Analyser un avis')}</button>
         </div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -74696,13 +75818,13 @@ function renderLocalSEOReviews() {
                 ${_reviewText ? `<div style="font-size:12px;color:var(--fp-text-soft);line-height:1.6;padding:8px;background:var(--fp-bg-inset);border-radius:8px;margin-bottom:8px">${escHtml(_reviewText)}</div>` : ''}
                 ${_replyDraft ? `
                   <div style="padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
-                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 BROUILLON IA — À RELIRE AVANT PUBLICATION</div>
+                    <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">${fpT('🤖 BROUILLON IA — À RELIRE AVANT PUBLICATION')}</div>
                     <div class="fp-rv-ai-text" style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml(_replyDraft)}</div>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-id="${_rId}" style="margin-top:6px;font-size:9px" onclick="event.stopPropagation();(function(btn){var el=document.getElementById(btn.dataset.rvId);var txt=el&&el.querySelector('.fp-rv-ai-text');if(txt&&navigator.clipboard)navigator.clipboard.writeText(txt.textContent||'').then(()=>showToast('success',fpT('Réponse copiée')));})(this)">📋 Copier la réponse</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-id="${_rId}" style="margin-top:6px;font-size:9px" onclick="event.stopPropagation();(function(btn){var el=document.getElementById(btn.dataset.rvId);var txt=el&&el.querySelector('.fp-rv-ai-text');if(txt&&navigator.clipboard)navigator.clipboard.writeText(txt.textContent||'').then(()=>showToast('success',fpT('Réponse copiée')));})(this)">${fpT('📋 Copier la réponse')}</button>
                   </div>
                 ` : isPro ? `
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" data-rv-api-id="${_safeApiId}" style="font-size:10px" onclick="event.stopPropagation();(function(btn){var id=btn.dataset.rvApiId;btn.disabled=true;showToast('info',fpT('Génération réponse IA…'));window.FP_REVIEW_INTEL_API&&window.FP_REVIEW_INTEL_API.generateReply(id,'professional','fr').then(function(result){if(!result||result.ok!==true||!result.reply)throw new Error('REPLY_GENERATION_FAILED');window._fpReviewReplyDrafts=window._fpReviewReplyDrafts||{};window._fpReviewReplyDrafts[id]=result.reply;showToast('success',fpT('Réponse générée !'));render(STATE.currentSection);}).catch(function(){showToast('error',fpT('Impossible de générer la réponse. Réessayez.'));btn.disabled=false;});})(this)">🤖 Générer un brouillon IA</button>
-                ` : `<div style="font-size:10px;color:var(--fp-text-faint)">Réponses IA — Pro requis</div>`}
+                ` : `<div style="font-size:10px;color:var(--fp-text-faint)">${fpT('🤖 Réponses IA — Pro requis')}</div>`}
               </div>
             </div>`;
           }).join('')}
@@ -74713,22 +75835,22 @@ function renderLocalSEOReviews() {
     <!-- ANALYZE REVIEW MODAL -->
     <div id="fp-review-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
       <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-sidebar);border:1px solid var(--fp-border)">
-        <div style="font-size:16px;font-weight:700;margin-bottom:16px">⭐ Analyser un avis</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:16px">${fpT('⭐ Analyser un avis')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          <input id="rv-author" class="fp-input" placeholder="Nom de l\'auteur"/>
+          <input id="rv-author" class="fp-input" placeholder="${fpT('Nom de l’auteur')}"/>
           <select id="rv-rating" class="fp-input">
-            ${[5,4,3,2,1].map(n => `<option value="${n}">${'⭐'.repeat(n)} — ${n} étoile${n>1?'s':''}</option>`).join('')}
+            ${[5,4,3,2,1].map(n => `<option value="${n}">${'⭐'.repeat(n)} — ${fpT(n === 1 ? '{count} étoile' : '{count} étoiles', {count:n})}</option>`).join('')}
           </select>
-          <textarea id="rv-text" class="fp-input" rows="4" placeholder="Texte de l\'avis…" style="resize:vertical"></textarea>
+          <textarea id="rv-text" class="fp-input" rows="4" placeholder="${fpT('Texte de l’avis…')}" style="resize:vertical"></textarea>
           <select id="rv-lang" class="fp-input">
-            <option value="fr">Français</option>
+            <option value="fr">${fpT('Français')}</option>
             <option value="en">English</option>
-            <option value="es">Español</option>
+            <option value="es">${fpT('Español')}</option>
           </select>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-review-modal').style.display='none'">Annuler</button>
-          <button class="fp-btn fp-btn-primary" onclick="window._submitAnalyzeReview()">Analyser avec IA</button>
+          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-review-modal').style.display='none'">${fpT('Annuler')}</button>
+          <button class="fp-btn fp-btn-primary" onclick="window._submitAnalyzeReview()">${fpT('Analyser avec IA')}</button>
         </div>
       </div>
     </div>
