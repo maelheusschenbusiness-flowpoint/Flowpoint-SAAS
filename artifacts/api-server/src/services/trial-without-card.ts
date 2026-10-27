@@ -41,6 +41,59 @@ export function isTrialWithoutCardEnabled(env: NodeJS.ProcessEnv = process.env):
 }
 
 /**
+ * Limite par domaine d'entreprise : au-dela de `max` essais demarres sur
+ * `windowDays` jours pour un meme domaine, un nouvel essai est refuse.
+ * Configurable : TRIAL_DOMAIN_MAX_TRIALS (defaut 3), TRIAL_DOMAIN_WINDOW_DAYS
+ * (defaut 30). Valeurs invalides → defauts.
+ */
+export function trialDomainLimit(env: NodeJS.ProcessEnv = process.env): { max: number; windowDays: number } {
+  const int = (raw: unknown, dflt: number, lo: number, hi: number) => {
+    const n = Number(String(raw ?? "").trim());
+    return Number.isInteger(n) && n >= lo && n <= hi ? n : dflt;
+  };
+  return {
+    max: int(env["TRIAL_DOMAIN_MAX_TRIALS"], 3, 1, 1000),
+    windowDays: int(env["TRIAL_DOMAIN_WINDOW_DAYS"], 30, 1, 3650),
+  };
+}
+
+/**
+ * Predicat SQL (table `organizations`, sans alias) d'un essai sans carte EXPIRE :
+ * `trialing`, aucun abonnement Stripe, essai consomme, echeance passee. C'est
+ * exactement l'etat que normalizeSubscriptionStatus ramene a `none`/`incomplete`.
+ */
+export const CARDLESS_TRIAL_EXPIRED_WHERE =
+  `subscription_status = 'trialing'
+   AND COALESCE(stripe_subscription_id, '') = ''
+   AND trial_consumed_at IS NOT NULL
+   AND trial_ends_at IS NOT NULL
+   AND trial_ends_at <= NOW()`;
+
+/**
+ * Parmi `orgIds`, celles dont l'essai sans carte a expire — pour que les taches
+ * planifiees les sautent (no-op drapeau eteint). Ne leve jamais : en cas d'erreur, ensemble vide
+ * (comportement d'avant : la tache tourne) et l'appelant journalise.
+ */
+export async function expiredCardlessTrialOrgIds(
+  db: { query: (sql: string, values?: unknown[]) => Promise<{ rows: Array<{ id: string }> }> },
+  orgIds: Iterable<string>,
+): Promise<Set<string>> {
+  // Drapeau eteint : aucune requete, aucun changement pour les taches planifiees.
+  if (!isTrialWithoutCardEnabled()) return new Set();
+  const ids = [...new Set([...orgIds].filter(id => /^[0-9a-f-]{36}$/i.test(String(id ?? ""))))];
+  if (ids.length === 0) return new Set();
+  try {
+    const r = await db.query(
+      `SELECT id::text AS id FROM organizations WHERE id::text = ANY($1::text[]) AND ${CARDLESS_TRIAL_EXPIRED_WHERE}`,
+      [ids],
+    );
+    return new Set((r.rows ?? []).map(x => String(x.id)));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
  * Messageries grand public : le garde « un essai par domaine » ne s'y applique
  * pas (des milliers de personnes differentes partagent gmail.com). Le garde
  * par adresse canonique, lui, s'applique partout.
@@ -52,6 +105,8 @@ export const FREE_MAIL_DOMAINS = new Set([
   "orange.fr", "wanadoo.fr", "free.fr", "sfr.fr", "neuf.fr", "laposte.net", "bbox.fr",
   "numericable.fr", "gmx.fr", "gmx.com", "gmx.de", "gmx.net", "proton.me", "protonmail.com",
   "pm.me", "skynet.be", "telenet.be", "voo.be", "bluewin.ch", "web.de", "zoho.com", "mail.com",
+  "hotmail.co.uk", "outlook.de", "hotmail.de", "hotmail.it", "hotmail.es", "live.co.uk", "yahoo.co.uk",
+  "protonmail.ch", "proton.ch", "tutanota.com", "free.com", "club-internet.fr", "aliceadsl.fr",
 ]);
 
 const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
@@ -121,19 +176,25 @@ export function cardlessTrialEndForCheckout(ctx: CardlessTrialState, now: Date =
 
 export type TrialAbuseVerdict =
   | { ok: true }
-  | { ok: false; code: "TRIAL_ALREADY_USED_EMAIL" | "TRIAL_ALREADY_USED_DOMAIN"; domain?: string };
+  | { ok: false; code: "TRIAL_ALREADY_USED_EMAIL" | "TRIAL_DOMAIN_LIMIT"; domain?: string };
 
 type Queryable = Pick<PoolClient, "query">;
 
 /**
- * Un essai par boite mail canonique, et un par domaine d'entreprise.
+ * Un essai par boite mail canonique, et une limite par domaine d'entreprise.
  *
- * Interroge `organizations` (source de verite) : toute organisation dont le
- * proprietaire a la meme adresse canonique bloque ; pour un domaine
- * d'entreprise, toute organisation existante de ce domaine bloque — l'equipe
- * rejoint l'espace existant par invitation au lieu d'enchainer les essais.
+ * - Boite : toute organisation dont le proprietaire a la meme adresse
+ *   canonique bloque (meme apres expiration ou paiement : un seul essai).
+ * - Domaine d'entreprise (jamais pour une messagerie grand public) : refus
+ *   seulement quand `max` essais ont deja demarre sur ce domaine dans les
+ *   `windowDays` derniers jours. Plusieurs personnes d'une meme entreprise
+ *   peuvent donc chacune essayer, sans enchainement illimite.
  */
-export async function checkTrialAbuse(db: Queryable, email: string): Promise<TrialAbuseVerdict> {
+export async function checkTrialAbuse(
+  db: Queryable,
+  email: string,
+  limit: { max: number; windowDays: number } = trialDomainLimit(),
+): Promise<TrialAbuseVerdict> {
   const c = canonicalTrialEmail(email);
   const domains = c.domain === "gmail.com" ? ["gmail.com", "googlemail.com"] : [c.domain];
   const sameMailbox = await db.query(
@@ -150,13 +211,14 @@ export async function checkTrialAbuse(db: Queryable, email: string): Promise<Tri
 
   const domain = trialGuardDomain(email);
   if (domain) {
-    const sameCompany = await db.query(
-      `SELECT 1 FROM organizations
+    const recent = await db.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM organizations
         WHERE lower(split_part(owner_email, '@', 2)) = $1
-        LIMIT 1`,
-      [domain],
+          AND trial_started_at IS NOT NULL
+          AND trial_started_at > NOW() - ($2::int * INTERVAL '1 day')`,
+      [domain, limit.windowDays],
     );
-    if ((sameCompany.rows?.length ?? 0) > 0) return { ok: false, code: "TRIAL_ALREADY_USED_DOMAIN", domain };
+    if (Number(recent.rows?.[0]?.n ?? 0) >= limit.max) return { ok: false, code: "TRIAL_DOMAIN_LIMIT", domain };
   }
   return { ok: true };
 }
@@ -171,6 +233,8 @@ export interface CardlessTrialInput {
   preToken: string;
   orgId: string;
   userId: string;
+  /** 'magic_link' (formulaire) ou 'google' (OAuth). */
+  authProvider?: "magic_link" | "google";
 }
 
 export type CardlessTrialResult =
@@ -235,27 +299,31 @@ export async function activateCardlessTrial(client: PoolClient, input: CardlessT
 
     const user = await client.query<{ id: string }>(
       `INSERT INTO users (id, email, first_name, last_name, auth_provider, email_verified, status)
-       VALUES ($1, $2, $3, '', 'magic_link', TRUE, 'active')
+       VALUES ($1, $2, $3, '', $4, TRUE, 'active')
        ON CONFLICT (email) DO UPDATE
          SET status = 'active', email_verified = TRUE,
              first_name = COALESCE(NULLIF(EXCLUDED.first_name, ''), users.first_name), updated_at = NOW()
          WHERE users.status = 'pending'
        RETURNING id`,
-      [input.userId, email, input.firstName],
+      [input.userId, email, input.firstName, input.authProvider ?? "magic_link"],
     );
     const userId = user.rows[0]?.id;
     // Pas de ligne rendue : un compte non `pending` existe deja (course avec une
     // autre inscription). On n'ecrase jamais un compte actif ou suspendu.
     if (!userId) throw Object.assign(new Error("account already exists"), { code: "ACCOUNT_EXISTS" });
 
+    // trial_started_email_sent_at = NOW() : l'email d'activation « essai sans
+    // carte » EST l'avis de debut d'essai. Sans cela, un paiement pendant l'essai
+    // (webhook subscription.created trialing) rendrait l'org eligible a l'email
+    // « essai demarre » et la passe de relance (retryLifecycleEmails) l'enverrait.
     const org = await client.query<{ trial_ends_at: Date; trial_started_at: Date }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status, owner_email, owner_first_name,
           stripe_customer_id, stripe_subscription_id, trial_started_at, trial_consumed_at, trial_ends_at,
-          seller_id, fp_lid)
+          seller_id, fp_lid, trial_started_email_sent_at)
        VALUES ($1, $2, $3, $4, 'active', $5, 'trialing', $6, $7,
                NULL, NULL, NOW(), NOW(), NOW() + ($8::int * INTERVAL '1 day'),
-               $9, $10)
+               $9, $10, NOW())
        RETURNING trial_ends_at, trial_started_at`,
       [input.orgId, input.companyName,
        input.orgId.replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60),

@@ -211,6 +211,8 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pending_plan_date         TEXT;`);
     // Jalon 5: trial-cron notification tracking moved from org_settings to organizations
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ending_notified_at  TIMESTAMPTZ;`);
+    // Essai sans carte : email « essai termine » envoye une seule fois.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_expired_notified_at TIMESTAMPTZ;`);
     // Lifecycle email claims persist independently from Stripe webhook event
     // idempotency so a temporary mail-provider failure can be retried safely.
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ;`);

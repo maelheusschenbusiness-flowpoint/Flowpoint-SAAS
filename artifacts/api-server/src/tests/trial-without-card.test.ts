@@ -28,7 +28,8 @@ const OTHER = "ZzYyXxWwVvUuTtSsRr0123";
 // ── Fausse base Postgres ────────────────────────────────────────────────────
 type Org = { id: string; owner_email: string; plan: string; subscription_status: string;
              stripe_customer_id: string | null; stripe_subscription_id: string | null;
-             trial_consumed: boolean; fp_lid: string | null; seller_id: string | null };
+             trial_consumed: boolean; fp_lid: string | null; seller_id: string | null;
+             trial_started_days_ago?: number; expired?: boolean };
 let users: Map<string, { id: string; status: string }>;
 let orgs: Org[];
 let pending: { token: string; email: string; fp_lid: string | null; consumed: boolean; stripe_customer_id: string | null }[];
@@ -36,6 +37,7 @@ let members: unknown[][];
 let magicTokens: string[];
 let writes: string[];
 let locks: string[];
+let failOrgLookup = false;
 
 function canonLocal(email: string): { local: string; domain: string } {
   const [l, d] = email.toLowerCase().split("@");
@@ -60,9 +62,17 @@ function answer(sql: string, v: unknown[] = []) {
     const hit = orgs.find(o => { const c = canonLocal(o.owner_email); return domains.includes(c.domain) && c.local === local; });
     return { rows: hit ? [{ "?column?": 1 }] : [], rowCount: hit ? 1 : 0 };
   }
-  if (/FROM organizations WHERE lower\(split_part\(owner_email, '@', 2\)\) = \$1/i.test(s)) {
-    const hit = orgs.find(o => o.owner_email.split("@")[1] === v[0]);
-    return { rows: hit ? [{ "?column?": 1 }] : [], rowCount: hit ? 1 : 0 };
+  if (/SELECT COUNT\(\*\)::int AS n FROM organizations WHERE lower\(split_part\(owner_email, '@', 2\)\) = \$1/i.test(s)) {
+    const windowDays = Number(v[1]);
+    const n = orgs.filter(o => o.owner_email.split("@")[1] === v[0]
+      && o.trial_started_days_ago !== undefined && o.trial_started_days_ago < windowDays).length;
+    return { rows: [{ n }], rowCount: 1 };
+  }
+  if (/FROM organizations WHERE id::text = ANY/i.test(s) || /FROM organizations WHERE id = \$1 AND subscription_status = 'trialing'/i.test(s)) {
+    if (failOrgLookup) throw new Error("db down");
+    const ids = Array.isArray(v[0]) ? (v[0] as string[]) : [String(v[0])];
+    const hit = orgs.filter(o => ids.includes(o.id) && o.expired);
+    return { rows: hit.map(o => ({ id: o.id })), rowCount: hit.length };
   }
   if (/^DELETE FROM pending_signups WHERE lower\(email\)/i.test(s)) {
     writes.push("delete_pending");
@@ -136,6 +146,8 @@ const tw = await import("../services/trial-without-card.js");
 const { normalizeSubscriptionStatus, statusGrantsAccess, NORMALIZE_IMPOSSIBLE_STATES_SQL } = await import("../lib/subscription-state.js");
 const { loadBillingContext } = await import("../services/billing-context.js");
 const { default: authRouter } = await import("../routes/auth.js");
+const gate = await import("../middlewares/trialExpiredGate.js");
+const { pool: fakePool } = await import("@workspace/db");
 
 function app() {
   const a = express();
@@ -149,8 +161,12 @@ const trialBody = (extra: Record<string, unknown> = {}) => ({ firstName: "Marie"
 
 beforeEach(() => {
   users = new Map(); orgs = []; pending = []; members = []; magicTokens = []; writes = []; locks = [];
+  failOrgLookup = false;
   vi.clearAllMocks();
+  gate.clearTrialGateCache();
   delete process.env["TRIAL_WITHOUT_CARD"];
+  delete process.env["TRIAL_DOMAIN_MAX_TRIALS"];
+  delete process.env["TRIAL_DOMAIN_WINDOW_DAYS"];
 });
 afterEach(() => { delete process.env["TRIAL_WITHOUT_CARD"]; });
 
@@ -173,6 +189,22 @@ describe("B — helpers purs", () => {
     expect(tw.trialGuardDomain("a@gmail.com")).toBeNull();
     expect(tw.trialGuardDomain("a@orange.fr")).toBeNull();
     expect(tw.trialGuardDomain("a@skynet.be")).toBeNull();
+    for (const d of ["gmail.com", "outlook.com", "hotmail.fr", "live.fr", "yahoo.fr", "icloud.com", "orange.fr",
+                     "free.fr", "laposte.net", "sfr.fr", "wanadoo.fr", "proton.me", "protonmail.com", "gmx.fr"]) {
+      expect(tw.trialGuardDomain(`x@${d}`)).toBeNull();
+    }
+  });
+  it("Outlook/Hotmail/Live : +etiquette retiree, points conserves", () => {
+    expect(tw.canonicalTrialEmail("Jean.Dupont+promo@Outlook.fr").canonical).toBe("jean.dupont@outlook.fr");
+    expect(tw.canonicalTrialEmail("a+b@hotmail.com").canonical).toBe("a@hotmail.com");
+    expect(tw.canonicalTrialEmail("a+b@live.be").canonical).toBe("a@live.be");
+  });
+  it("limite de domaine configurable, valeurs invalides → defauts 3 / 30 j", () => {
+    expect(tw.trialDomainLimit({})).toEqual({ max: 3, windowDays: 30 });
+    expect(tw.trialDomainLimit({ TRIAL_DOMAIN_MAX_TRIALS: "5", TRIAL_DOMAIN_WINDOW_DAYS: "7" } as NodeJS.ProcessEnv))
+      .toEqual({ max: 5, windowDays: 7 });
+    expect(tw.trialDomainLimit({ TRIAL_DOMAIN_MAX_TRIALS: "0", TRIAL_DOMAIN_WINDOW_DAYS: "abc" } as NodeJS.ProcessEnv))
+      .toEqual({ max: 3, windowDays: 30 });
   });
   const now = new Date("2026-10-27T10:00:00Z");
   const cardless = { rawSubscriptionStatus: "trialing", stripeSubscriptionId: null, stripeCustomerId: null,
@@ -283,13 +315,34 @@ describe("E — anti-abus (drapeau allume)", () => {
     expect(r.body.code).toBe("TRIAL_ALREADY_USED_EMAIL");
     expect(writes).not.toContain("insert_org");
   });
-  it("meme domaine d'entreprise → 409 TRIAL_ALREADY_USED_DOMAIN", async () => {
-    orgs.push({ id: "o0", owner_email: "boss@agence-test.fr", plan: "pro", subscription_status: "active",
-      stripe_customer_id: "cus_1", stripe_subscription_id: "sub_1", trial_consumed: true, fp_lid: null, seller_id: null });
+  const colleague = (email: string, daysAgo: number): Org => ({ id: `o-${email}`, owner_email: email, plan: "standard",
+    subscription_status: "trialing", stripe_customer_id: null, stripe_subscription_id: null, trial_consumed: true,
+    fp_lid: null, seller_id: null, trial_started_days_ago: daysAgo });
+  it("meme domaine d'entreprise : des collegues peuvent essayer sous le seuil (2 < 3)", async () => {
+    orgs.push(colleague("boss@agence-test.fr", 2), colleague("paul@agence-test.fr", 10));
+    const r = await request(app()).post("/api/auth/trial-signup").send(trialBody());
+    expect(r.status).toBe(200);
+  });
+  it("au seuil (3 essais / 30 j / domaine) → 409 TRIAL_DOMAIN_LIMIT", async () => {
+    orgs.push(colleague("a@agence-test.fr", 1), colleague("b@agence-test.fr", 5), colleague("c@agence-test.fr", 29));
     const r = await request(app()).post("/api/auth/trial-signup").send(trialBody());
     expect(r.status).toBe(409);
-    expect(r.body.code).toBe("TRIAL_ALREADY_USED_DOMAIN");
+    expect(r.body.code).toBe("TRIAL_DOMAIN_LIMIT");
     expect(writes).not.toContain("insert_org");
+  });
+  it("essais du domaine hors fenetre : ne comptent pas", async () => {
+    orgs.push(colleague("a@agence-test.fr", 40), colleague("b@agence-test.fr", 45), colleague("c@agence-test.fr", 60));
+    expect((await request(app()).post("/api/auth/trial-signup").send(trialBody())).status).toBe(200);
+  });
+  it("seuil configurable : TRIAL_DOMAIN_MAX_TRIALS=1", async () => {
+    process.env["TRIAL_DOMAIN_MAX_TRIALS"] = "1";
+    orgs.push(colleague("a@agence-test.fr", 1));
+    expect((await request(app()).post("/api/auth/trial-signup").send(trialBody())).body.code).toBe("TRIAL_DOMAIN_LIMIT");
+  });
+  it("Outlook +etiquette : meme boite → 409", async () => {
+    orgs.push(colleague("jean@outlook.fr", 100));
+    const r = await request(app()).post("/api/auth/trial-signup").send(trialBody({ email: "jean+2@outlook.fr" }));
+    expect(r.body.code).toBe("TRIAL_ALREADY_USED_EMAIL");
   });
   it("messagerie grand public : pas de garde de domaine", async () => {
     orgs.push({ id: "o0", owner_email: "autre@gmail.com", plan: "standard", subscription_status: "none",
@@ -323,7 +376,11 @@ describe("F — activation (drapeau allume)", () => {
     expect(users.get("marie@agence-test.fr")?.status).toBe("active");
     expect(createStripeClient).not.toHaveBeenCalled();
     expect(locks).toEqual(["fp-cardless-trial:agence-test.fr"]);
-    expect(upsertOrgSettings).toHaveBeenCalledWith(orgs[0]!.id, expect.objectContaining({ orgName: "Agence Test", firstName: "Marie" }));
+    // les dates d'essai vont aussi dans org_settings : le webhook subscription.created
+    // n'y verra pas un « premier essai » et ne reecrira ni trial_* ni l'email de debut.
+    expect(upsertOrgSettings).toHaveBeenCalledWith(orgs[0]!.id, expect.objectContaining({
+      orgName: "Agence Test", firstName: "Marie", trialConsumedAt: "2026-10-27T10:00:00.000Z",
+      trialStartedAt: "2026-10-27T10:00:00.000Z", trialEndsAt: "2026-11-10T10:00:00.000Z" }));
   });
   it("entreprise optionnelle : repli sur le domaine", async () => {
     await request(app()).post("/api/auth/trial-signup").send(trialBody());
@@ -397,5 +454,128 @@ describe("G — contrats source", () => {
   });
   it("finalize-checkout (parcours carte) n'est pas touche par le drapeau", () => {
     expect(read("../routes/public-billing.ts")).not.toMatch(/TRIAL_WITHOUT_CARD|trial-without-card/);
+  });
+});
+
+
+describe("H — controle d'acces serveur apres expiration", () => {
+  it.each([
+    ["POST", "/ai/chat", "blocked"], ["GET", "/ai/recommendations", "blocked"], ["GET", "/seo/domain", "blocked"],
+    ["GET", "/keywords/ranks", "blocked"], ["GET", "/pagespeed", "blocked"], ["POST", "/audits", "blocked"],
+    ["POST", "/missions/run", "blocked"], ["POST", "/automations", "blocked"], ["POST", "/reports/generate", "blocked"],
+    ["POST", "/monitors", "blocked"],
+    ["GET", "/audits", "read"], ["GET", "/overview", "read"],
+    ["POST", "/billing/upgrade", "open"], ["POST", "/billing/checkout", "open"], ["POST", "/billing/portal", "open"],
+    ["DELETE", "/billing/account", "open"], ["GET", "/me", "open"], ["PATCH", "/me/prefs", "open"],
+    ["PUT", "/ai/preferences", "open"], ["GET", "/settings/data-export", "open"], ["POST", "/auth/logout", "open"],
+    ["GET", "/notifications", "open"],
+  ])("%s %s → %s", (m, p, d) => { expect(gate.decideExpiredTrialAccess(m, p)).toBe(d); });
+
+  const ORG = "22222222-2222-4222-8222-222222222222";
+  function gatedApp(orgId = ORG) {
+    const a = express();
+    a.use(express.json());
+    a.use((req: any, _r, n) => { req.orgContext = { orgId }; n(); });
+    a.use(gate.trialExpiredGate);
+    a.all("/{*rest}", (_q, r) => { r.json({ reached: true }); });
+    return a;
+  }
+  const expiredOrg = (): Org => ({ id: ORG, owner_email: "x@agence-test.fr", plan: "standard", subscription_status: "trialing",
+    stripe_customer_id: null, stripe_subscription_id: null, trial_consumed: true, fp_lid: null, seller_id: null, expired: true });
+
+  it("drapeau eteint : tout passe, aucune requete", async () => {
+    orgs.push(expiredOrg());
+    const r = await request(gatedApp()).post("/ai/chat").send({});
+    expect(r.body.reached).toBe(true);
+    expect(fakePool.query).not.toHaveBeenCalled();
+  });
+  it("essai expire : route couteuse → 402 TRIAL_EXPIRED", async () => {
+    process.env["TRIAL_WITHOUT_CARD"] = "true";
+    orgs.push(expiredOrg());
+    const r = await request(gatedApp()).post("/ai/chat").send({});
+    expect(r.status).toBe(402);
+    expect(r.body.code).toBe("TRIAL_EXPIRED");
+  });
+  it("essai expire : route de paiement ouverte (upgrade) et lecture ouverte", async () => {
+    process.env["TRIAL_WITHOUT_CARD"] = "true";
+    orgs.push(expiredOrg());
+    expect((await request(gatedApp()).post("/billing/upgrade").send({ plan: "pro" })).body.reached).toBe(true);
+    expect((await request(gatedApp()).get("/audits")).body.reached).toBe(true);
+  });
+  it("essai en cours ou paye : rien n'est bloque", async () => {
+    process.env["TRIAL_WITHOUT_CARD"] = "true";
+    orgs.push({ ...expiredOrg(), expired: false });
+    expect((await request(gatedApp()).post("/ai/chat").send({})).body.reached).toBe(true);
+  });
+  it("base indisponible : on laisse passer (journalise)", async () => {
+    process.env["TRIAL_WITHOUT_CARD"] = "true";
+    failOrgLookup = true;
+    expect((await request(gatedApp()).post("/ai/chat").send({})).body.reached).toBe(true);
+  });
+  it("monte dans routes/index.ts apres l'authentification, avant les routeurs metier", () => {
+    const idx = read("../routes/index.ts");
+    expect(idx.indexOf("router.use(trialExpiredGate)")).toBeGreaterThan(idx.indexOf("router.use(requireAuth)"));
+    expect(idx.indexOf("router.use(trialExpiredGate)")).toBeLessThan(idx.indexOf("router.use(aiRouter)"));
+  });
+});
+
+describe("I — taches planifiees", () => {
+  const ORG = "33333333-3333-4333-8333-333333333333";
+  it("drapeau eteint : expiredCardlessTrialOrgIds ne requete pas", async () => {
+    const db = { query: vi.fn() };
+    expect((await tw.expiredCardlessTrialOrgIds(db as never, [ORG])).size).toBe(0);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+  it("drapeau allume : rend les orgs expirees ; erreur → ensemble vide", async () => {
+    process.env["TRIAL_WITHOUT_CARD"] = "true";
+    const db = { query: vi.fn(async () => ({ rows: [{ id: ORG }] })) };
+    expect([...(await tw.expiredCardlessTrialOrgIds(db as never, [ORG, "default", ORG]))]).toEqual([ORG]);
+    const bad = { query: vi.fn(async () => { throw new Error("x"); }) };
+    expect((await tw.expiredCardlessTrialOrgIds(bad as never, [ORG])).size).toBe(0);
+  });
+  it("moniteurs, audits planifies et DataForSEO sautent les orgs expirees (contrats source)", () => {
+    expect(read("../routes/monitors.ts")).toMatch(/if \(_expiredOrgs\.has\(_cronOrgId\)\) continue;/);
+    expect(read("../services/audit-schedule-cron.ts")).toMatch(/for \(const row of runnable\.slice/);
+    expect(read("../routes/dataforseo-cron.ts")).toMatch(/filter\(r => !expired\.has\(r\.org_id\)\)/);
+  });
+});
+
+describe("J — Google OAuth (drapeau allume)", () => {
+  beforeEach(() => {
+    process.env["TRIAL_WITHOUT_CARD"] = "true";
+    process.env["GOOGLE_CLIENT_ID"] = "cid"; process.env["GOOGLE_CLIENT_SECRET"] = "secret";
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  function stubGoogle(profile: Record<string, unknown>) {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+      json: async () => (String(url).includes("token") ? { access_token: "at" } : profile),
+    })));
+  }
+  const state = (o: Record<string, unknown>) => Buffer.from(JSON.stringify({ ts: Date.now(), ...o })).toString("base64");
+
+  it("nouveau compte Google verifie : essai ouvert, fp_lid de l'etat OAuth propage, aucun lien magique", async () => {
+    stubGoogle({ email: "lea@agence-g.fr", email_verified: true, given_name: "Léa" });
+    const r = await request(app()).get(`/api/auth/google/callback?code=c&state=${state({ fp_lid: VALID })}`);
+    expect(r.status).toBe(302);
+    expect(orgs).toHaveLength(1);
+    expect(orgs[0]).toMatchObject({ owner_email: "lea@agence-g.fr", subscription_status: "trialing", fp_lid: VALID });
+    expect(sendActivationMagicLink).not.toHaveBeenCalled();
+    expect(queueConversionEvent.mock.calls.map(c => c[0]["stage"])).toEqual(["signup", "trial"]);
+  });
+  it("second essai par Google (variante canonique Gmail) → refuse, aucune org", async () => {
+    orgs.push({ id: "o1", owner_email: "lea.martin@gmail.com", plan: "standard", subscription_status: "none",
+      stripe_customer_id: null, stripe_subscription_id: null, trial_consumed: true, fp_lid: null, seller_id: null });
+    stubGoogle({ email: "leamartin@googlemail.com", email_verified: true, given_name: "Léa" });
+    const r = await request(app()).get(`/api/auth/google/callback?code=c&state=${state({})}`);
+    expect(r.status).toBe(302);
+    expect(r.headers.location).toMatch(/signin\.html\?error=trial_already_used/);
+    expect(orgs).toHaveLength(1);
+  });
+  it("email non verifie par Google : pas d'essai sans carte (parcours historique)", async () => {
+    stubGoogle({ email: "x@agence-g.fr", email_verified: false, given_name: "X" });
+    await request(app()).get(`/api/auth/google/callback?code=c&state=${state({})}`);
+    // le coeur de l'essai sans carte (verrou + transaction) n'a pas tourne
+    expect(locks).toEqual([]);
+    expect(orgs.some(o => o.subscription_status === "trialing")).toBe(false);
   });
 });

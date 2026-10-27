@@ -1371,13 +1371,139 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
      domaine). Nom, pays, adresse, ville, code postal, telephone et TVA sont
      des donnees de FACTURATION : Stripe Checkout les collecte au paiement.
    ─ Anti-abus : honeypot, authRateLimit + trialSignupRateLimit, emails
-     jetables, liste blanche, comptes existants, un essai par adresse
-     canonique et par domaine d'entreprise (services/trial-without-card.ts).
+     jetables, liste blanche, comptes existants, un essai par boite canonique,
+     limite par domaine d'entreprise (services/trial-without-card.ts).
    ─ Aucun objet Stripe n'est cree. L'organisation est `trialing` avec
-     trial_consumed_at pose ; a l'echeance elle se normalise en `none`.
+     trial_consumed_at pose ; a l'echeance elle se normalise en `none` et
+     middlewares/trialExpiredGate.ts bloque les traitements couteux.
+   ─ Google OAuth : le meme parcours est appele depuis /auth/google/callback.
 ════════════════════════════════════════════════════════════════════════════ */
 // Wrapper : l'export est lu a la requete, pas au chargement du module.
 const trialSignupLimiter = (req: Request, res: Response, next: () => void) => trialSignupRateLimit(req, res, next);
+
+/** Un compte existe deja pour cet email (memes surfaces que pre-register) ? */
+async function cardlessTrialAccountExists(email: string): Promise<boolean> {
+  const _u = await pool.query<{ status: string }>(`SELECT status FROM users WHERE lower(email) = $1 LIMIT 1`, [email]);
+  const _st = _u.rows[0]?.status ?? "";
+  const _member = await pool.query(
+    `SELECT om.id FROM organization_members om JOIN users u ON u.id = om.user_id
+      WHERE lower(u.email) = $1 AND om.status = 'active' LIMIT 1`, [email]);
+  const _owned = await pool.query(`SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [email]);
+  const _legacy = await loadOrgSettings(email).catch(() => null);
+  const _legacyActive = !!_legacy?.stripeCustomerId ||
+    ["active", "trialing", "past_due", "canceled", "ended", "expired", "unpaid"].includes(_legacy?.subscriptionStatus ?? "");
+  return (_u.rows.length > 0 && _st !== "pending") || _member.rows.length > 0 || _owned.rows.length > 0
+    || !!(_legacy?.orgId && _legacyActive);
+}
+
+type CardlessStart =
+  | { ok: true; result: Extract<Awaited<ReturnType<typeof activateCardlessTrial>>, { ok: true }>; preToken: string }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+const ACCOUNT_EXISTS_BODY = {
+  error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+  code: "ACCOUNT_EXISTS",
+  redirectTo: "/login.html",
+};
+
+/**
+ * Coeur commun formulaire / Google : gardes, transaction, puis effets
+ * secondaires en meilleur effort (jalons AI Lab, funnel, profil org_settings,
+ * nettoyage des clients Stripe orphelins). Ne cree aucun objet Stripe.
+ */
+async function startCardlessTrial(req: Request, opts: {
+  email: string; firstName: string; companyName: string; sellerId: string | null;
+  rawFpLid: unknown; authProvider: "magic_link" | "google";
+}): Promise<CardlessStart> {
+  const preToken = generateToken();
+  let result: Awaited<ReturnType<typeof activateCardlessTrial>>;
+  const client = await pool.connect();
+  try {
+    result = await activateCardlessTrial(client, {
+      email: opts.email, firstName: opts.firstName, companyName: opts.companyName, sellerId: opts.sellerId,
+      rawFpLid: opts.rawFpLid, preToken, orgId: randomUUID(), userId: randomUUID(), authProvider: opts.authProvider,
+    });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "ACCOUNT_EXISTS" || code === "23505") return { ok: false, status: 409, body: ACCOUNT_EXISTS_BODY };
+    logger.error({ err: (err as Error)?.message, code }, "[Auth/TrialSignup] activation failed");
+    return { ok: false, status: 500, body: { error: "La création de votre essai a échoué. Réessayez dans quelques instants." } };
+  } finally {
+    client.release();
+  }
+
+  if (!result.ok) {
+    const domainLimit = result.verdict.code === "TRIAL_DOMAIN_LIMIT";
+    return { ok: false, status: 409, body: {
+      error: domainLimit
+        ? "Trop d'essais gratuits ont été démarrés récemment pour votre entreprise. Demandez une invitation à un collègue ou contactez-nous."
+        : "Un essai gratuit a déjà été utilisé avec cette adresse. Connectez-vous pour activer votre abonnement.",
+      code: result.verdict.code,
+      redirectTo: "/login.html",
+    } };
+  }
+
+  logger.info({ orgId: result.orgId, plan: CARDLESS_TRIAL_PLAN, trialEndsAt: result.trialEndsAt, provider: opts.authProvider },
+    "[Auth/TrialSignup] cardless trial activated (no Stripe object created)");
+
+  // Profil org_settings. Les dates d'essai y sont aussi ecrites : le webhook
+  // customer.subscription.created lit org_settings.trial_consumed_at pour
+  // decider s'il s'agit d'un PREMIER essai ; sans elles, un paiement pendant
+  // l'essai reecrirait trial_started_at et renverrait l'email « essai demarre ».
+  try {
+    const { upsertOrgSettings } = await import("../services/org-settings.js");
+    await upsertOrgSettings(result.orgId, {
+      email: opts.email, orgName: opts.companyName, firstName: opts.firstName, lastName: "",
+      plan: CARDLESS_TRIAL_PLAN,
+      trialConsumedAt: result.trialStartedAt, trialStartedAt: result.trialStartedAt, trialEndsAt: result.trialEndsAt,
+    });
+  } catch (_osErr) {
+    logger.error({ err: (_osErr as Error)?.message, orgId: result.orgId }, "[Auth/TrialSignup] org_settings profile failed (non-fatal)");
+  }
+
+  // AI Lab — jalons `signup` puis `trial`, apres COMMIT, en meilleur effort.
+  if (result.fpLid) {
+    void queueConversionEvent({
+      eventId: stableEventId("signup", preToken), stage: "signup", source: "saas",
+      fpLid: result.fpLid, occurredAt: result.signupCreatedAt,
+    });
+    void queueConversionEvent({
+      eventId: stableEventId("trial", preToken), stage: "trial", source: "saas",
+      fpLid: result.fpLid, occurredAt: result.trialStartedAt,
+    });
+  }
+
+  const funnelAttribution = normaliserAttributionFunnel(
+    req.cookies?.["fp_analytics_consent"], req.body?.visiteurId ?? req.query?.["visiteurId"], req.body?.source);
+  if (funnelAttribution) {
+    void enregistrerEtape({
+      etape: "signup_form_completed", visiteurId: funnelAttribution.visiteurId,
+      source: funnelAttribution.source, cleIdempotence: `signup_form_completed:${preToken}`,
+    });
+    void enregistrerEtape({
+      etape: "trial_activated", visiteurId: funnelAttribution.visiteurId,
+      source: funnelAttribution.source, plan: CARDLESS_TRIAL_PLAN, orgId: result.orgId,
+      cleIdempotence: `trial_activated:${result.orgId}`,
+    });
+  }
+
+  if (result.staleCustomerIds.length > 0) {
+    const stale = result.staleCustomerIds;
+    (async () => {
+      try {
+        const { createStripeClient: _cs, getStripeKey: _gk } = await import("../services/stripe-factory.js");
+        const _stripe = await _cs(_gk());
+        for (const cid of stale) {
+          await _stripe.customers.del(cid).catch((e: unknown) =>
+            logger.warn({ customerId: cid, err: e }, "[Auth/TrialSignup] stale Stripe customer cleanup failed (non-fatal)"));
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "[Auth/TrialSignup] stale Stripe customers cleanup failed (non-fatal)");
+      }
+    })();
+  }
+  return { ok: true, result, preToken };
+}
 
 router.post("/auth/trial-signup", authRateLimit, trialSignupLimiter, async (req: Request, res: Response) => {
   if (!isTrialWithoutCardEnabled()) {
@@ -1411,25 +1537,8 @@ router.post("/auth/trial-signup", authRateLimit, trialSignupLimiter, async (req:
     return;
   }
 
-  // Comptes existants — memes surfaces que pre-register.
   try {
-    const _u = await pool.query<{ status: string }>(`SELECT status FROM users WHERE lower(email) = $1 LIMIT 1`, [normalizedEmail]);
-    const _st = _u.rows[0]?.status ?? "";
-    const _member = await pool.query(
-      `SELECT om.id FROM organization_members om JOIN users u ON u.id = om.user_id
-        WHERE lower(u.email) = $1 AND om.status = 'active' LIMIT 1`, [normalizedEmail]);
-    const _owned = await pool.query(`SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
-    const _legacy = await loadOrgSettings(normalizedEmail).catch(() => null);
-    const _legacyActive = !!_legacy?.stripeCustomerId ||
-      ["active", "trialing", "past_due", "canceled", "ended", "expired", "unpaid"].includes(_legacy?.subscriptionStatus ?? "");
-    if ((_u.rows.length > 0 && _st !== "pending") || _member.rows.length > 0 || _owned.rows.length > 0 || (_legacy?.orgId && _legacyActive)) {
-      res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
-        code: "ACCOUNT_EXISTS",
-        redirectTo: "/login.html",
-      });
-      return;
-    }
+    if (await cardlessTrialAccountExists(normalizedEmail)) { res.status(409).json(ACCOUNT_EXISTS_BODY); return; }
   } catch (_guardErr) {
     logger.warn({ err: _guardErr }, "[Auth/TrialSignup] account guard failed");
     res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
@@ -1446,97 +1555,10 @@ router.post("/auth/trial-signup", authRateLimit, trialSignupLimiter, async (req:
     }
   }
 
-  const preToken = generateToken();
-  const orgId = randomUUID();
-  let result: Awaited<ReturnType<typeof activateCardlessTrial>>;
-  const client = await pool.connect();
-  try {
-    result = await activateCardlessTrial(client, {
-      email: normalizedEmail, firstName: fn, companyName: company, sellerId,
-      rawFpLid: _rawFpLid, preToken, orgId, userId: randomUUID(),
-    });
-  } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code === "ACCOUNT_EXISTS" || code === "23505") {
-      res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
-        code: "ACCOUNT_EXISTS",
-        redirectTo: "/login.html",
-      });
-      return;
-    }
-    logger.error({ err: (err as Error)?.message, code }, "[Auth/TrialSignup] activation failed");
-    res.status(500).json({ error: "La création de votre essai a échoué. Réessayez dans quelques instants." });
-    return;
-  } finally {
-    client.release();
-  }
-
-  if (!result.ok) {
-    const sameDomain = result.verdict.code === "TRIAL_ALREADY_USED_DOMAIN";
-    res.status(409).json({
-      error: sameDomain
-        ? "Votre entreprise dispose déjà d'un espace FlowPoint. Demandez une invitation à son administrateur, ou contactez-nous."
-        : "Un essai gratuit a déjà été utilisé avec cette adresse. Connectez-vous pour activer votre abonnement.",
-      code: result.verdict.code,
-      redirectTo: "/login.html",
-    });
-    return;
-  }
-
-  logger.info({ orgId: result.orgId, plan: CARDLESS_TRIAL_PLAN, trialEndsAt: result.trialEndsAt },
-    "[Auth/TrialSignup] cardless trial activated (no Stripe object created)");
-
-  // AI Lab — jalons `signup` puis `trial`, apres COMMIT, en meilleur effort.
-  // Horodatages persistes ; identifiants derives du jeton par condensat.
-  if (result.fpLid) {
-    void queueConversionEvent({
-      eventId: stableEventId("signup", preToken), stage: "signup", source: "saas",
-      fpLid: result.fpLid, occurredAt: result.signupCreatedAt,
-    });
-    void queueConversionEvent({
-      eventId: stableEventId("trial", preToken), stage: "trial", source: "saas",
-      fpLid: result.fpLid, occurredAt: result.trialStartedAt,
-    });
-  }
-
-  const funnelAttribution = normaliserAttributionFunnel(
-    req.cookies?.["fp_analytics_consent"], req.body?.visiteurId, req.body?.source);
-  if (funnelAttribution) {
-    void enregistrerEtape({
-      etape: "signup_form_completed", visiteurId: funnelAttribution.visiteurId,
-      source: funnelAttribution.source, cleIdempotence: `signup_form_completed:${preToken}`,
-    });
-    void enregistrerEtape({
-      etape: "trial_activated", visiteurId: funnelAttribution.visiteurId,
-      source: funnelAttribution.source, plan: CARDLESS_TRIAL_PLAN, orgId: result.orgId,
-      cleIdempotence: `trial_activated:${result.orgId}`,
-    });
-  }
-
-  // Clients Stripe orphelins d'un parcours carte abandonne — meme nettoyage que pre-register.
-  if (result.staleCustomerIds.length > 0) {
-    (async () => {
-      try {
-        const { createStripeClient: _cs, getStripeKey: _gk } = await import("../services/stripe-factory.js");
-        const _stripe = await _cs(_gk());
-        for (const cid of result.staleCustomerIds) {
-          await _stripe.customers.del(cid).catch((e: unknown) =>
-            logger.warn({ customerId: cid, err: e }, "[Auth/TrialSignup] stale Stripe customer cleanup failed (non-fatal)"));
-        }
-      } catch (e) {
-        logger.warn({ err: e }, "[Auth/TrialSignup] stale Stripe customers cleanup failed (non-fatal)");
-      }
-    })();
-  }
-
-  // Profil org_settings (non bloquant) — l'adresse viendra du paiement.
-  try {
-    const { upsertOrgSettings } = await import("../services/org-settings.js");
-    await upsertOrgSettings(result.orgId, { email: normalizedEmail, orgName: company, firstName: fn, lastName: "" });
-  } catch (_osErr) {
-    logger.warn({ err: (_osErr as Error)?.message }, "[Auth/TrialSignup] org_settings profile failed (non-fatal)");
-  }
+  const started = await startCardlessTrial(req, {
+    email: normalizedEmail, firstName: fn, companyName: company, sellerId, rawFpLid: _rawFpLid, authProvider: "magic_link",
+  });
+  if (!started.ok) { res.status(started.status).json(started.body); return; }
 
   // Lien magique : seule porte d'entree, il prouve la possession de la boite.
   let activationEmailSent = false;
@@ -1561,7 +1583,7 @@ router.post("/auth/trial-signup", authRateLimit, trialSignupLimiter, async (req:
   res.json({
     ok: true,
     activationEmailSent,
-    trialEndsAt: result.trialEndsAt,
+    trialEndsAt: started.result.trialEndsAt,
     ...(activationEmailSent ? {} : { emailFailed: true }),
   });
 });
@@ -2357,7 +2379,45 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         _googleOrgRow.subscription_status !== "" &&
         _googleOrgRow.subscription_status !== "pending_billing";
 
-      if (_googleIsActivated) {
+      // Essai sans carte (TRIAL_WITHOUT_CARD) : un NOUVEAU compte Google ouvre
+      // directement son essai — memes gardes que le formulaire (boite canonique,
+      // limite de domaine, comptes existants), fp_lid et seller_code de l'etat
+      // OAuth propages. L'email est verifie par Google : la session est emise
+      // ci-dessous comme pour toute connexion Google, sans lien magique.
+      let _googleCardless: { orgId: string; userUuid: string } | null = null;
+      const _gTrialEmail = String(user.email ?? "").trim().toLowerCase();
+      // Seule une adresse VERIFIEE par Google ouvre un essai sans lien magique.
+      if (!_googleIsActivated && isTrialWithoutCardEnabled() && _gTrialEmail && user.email_verified === true) {
+        if (isDisposableEmail(_gTrialEmail)) {
+          res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_auth_failed`, req.query));
+          return;
+        }
+        if (await cardlessTrialAccountExists(_gTrialEmail)) {
+          // Compte existant non active (ex. ancien parcours carte) : parcours historique ci-dessous.
+          logger.info({ email: resolvedEmail }, "[Auth] Google cardless — existing account, legacy path kept");
+        } else {
+          const _gFirst = String(user.given_name ?? (user.name ? user.name.split(" ")[0] : "") ?? "").trim().slice(0, 100)
+            || _gTrialEmail.split("@")[0] || "Utilisateur";
+          const started = await startCardlessTrial(req, {
+            email: _gTrialEmail, firstName: _gFirst,
+            companyName: (_gTrialEmail.split("@")[1] || _gTrialEmail).slice(0, 200),
+            sellerId: sellerIdFromState, rawFpLid: fpLidFromState, authProvider: "google",
+          });
+          if (!started.ok) {
+            const _code = String(started.body["code"] ?? "");
+            const _err = _code === "TRIAL_ALREADY_USED_EMAIL" ? "trial_already_used"
+              : _code === "TRIAL_DOMAIN_LIMIT" ? "trial_domain_limit"
+              : _code === "ACCOUNT_EXISTS" ? "account_exists" : "google_signup_retry";
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=${_err}`, req.query));
+            return;
+          }
+          _googleCardless = { orgId: started.result.orgId, userUuid: started.result.userId };
+        }
+      }
+
+      if (_googleCardless) {
+        googleIdentity = _googleCardless;
+      } else if (_googleIsActivated) {
         // Existing activated org — resolve identity directly, no pending_billing redirect.
         logger.info(
           { email: resolvedEmail, status: _googleOrgRow!.subscription_status },

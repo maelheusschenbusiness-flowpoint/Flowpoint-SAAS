@@ -357,6 +357,52 @@ export async function checkCalendarReminders(): Promise<void> {
   }
 }
 
+// ── Essai sans carte expire (TRIAL_WITHOUT_CARD) ─────────────────────────────
+//
+// Aucun webhook Stripe ne signale la fin d'un essai sans carte : cette passe
+// envoie une fois l'email « essai termine » et le jalon funnel trial_expired.
+// Meme schema de reservation atomique que le rappel J-3.
+export async function checkCardlessTrialExpirations(): Promise<number> {
+  const { isTrialWithoutCardEnabled, CARDLESS_TRIAL_EXPIRED_WHERE } = await import("./trial-without-card.js");
+  if (!isTrialWithoutCardEnabled()) return 0;
+  const client = await pool.connect();
+  let sent = 0;
+  try {
+    const { rows } = await client.query<{ org_id: string; email: string; first_name: string | null; plan: string }>(`
+      WITH candidates AS (
+        SELECT id FROM organizations
+        WHERE ${CARDLESS_TRIAL_EXPIRED_WHERE}
+          AND trial_expired_notified_at IS NULL
+          AND owner_email IS NOT NULL AND owner_email != ''
+        LIMIT 100
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE organizations o SET trial_expired_notified_at = NOW()
+      FROM candidates c WHERE o.id = c.id
+      RETURNING o.id AS org_id, o.owner_email AS email, o.owner_first_name AS first_name, o.plan
+    `);
+    for (const row of rows) {
+      const result = await mailer.sendTrialExpired({
+        to: row.email, name: row.first_name ?? row.email.split("@")[0] ?? "", plan: row.plan ?? "standard",
+      }).catch((e: unknown) => ({ ok: false, error: String(e) }));
+      if (result.ok) {
+        sent++;
+        const { enregistrerEtape } = await import("./funnel-events.js");
+        void enregistrerEtape({ etape: "trial_expired", orgId: row.org_id, plan: row.plan,
+          cleIdempotence: `trial_expired:cardless:${row.org_id}` });
+      } else {
+        await client.query(`UPDATE organizations SET trial_expired_notified_at = NULL WHERE id = $1`, [row.org_id]);
+        logger.warn({ orgId: row.org_id }, "[trial-cron] trial-expired email failed — will retry");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "[trial-cron] checkCardlessTrialExpirations failed (non-fatal)");
+  } finally {
+    client.release();
+  }
+  return sent;
+}
+
 const TRIAL_CRON_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 h, exact J-3 claim
 const MONITOR_HEALTH_INTERVAL_MS = 60 * 1000; // check every 1 min which monitors are due
 
@@ -383,6 +429,9 @@ export function startMonitorCron(): void {
   setInterval(() => void checkTrialEndingReminders(), TRIAL_CRON_INTERVAL_MS);
   void retryLifecycleEmails();
   setInterval(() => void retryLifecycleEmails(), TRIAL_CRON_INTERVAL_MS);
+  // Essai sans carte expire : toutes les heures (no-op drapeau eteint).
+  void checkCardlessTrialExpirations();
+  setInterval(() => void checkCardlessTrialExpirations(), 60 * 60 * 1000);
 
   // Monitor health: run immediately, then every minute (each monitor is only
   // actually re-checked once its own `frequency` window has elapsed).
