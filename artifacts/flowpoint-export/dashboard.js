@@ -24530,6 +24530,273 @@ function bindGlobalEvents() {
     "Auditer": "Audit",
     "⟳ Synchroniser…": "⟳ Syncing…",
     "Synchronisation des positions indisponible — vérifiez votre configuration.": "Position sync is unavailable — check your configuration.",
+    " · Vitesse <strong>{score}/100</strong>": " · Speed <strong>{score}/100</strong>",
+    "+trafic": "+traffic",
+    "-4% vs mois passé": "-4% vs last month",
+    "<strong>68% des visiteurs quittent la page avant le CTA</strong>. La zone la plus cliquée : votre numéro de téléphone. Recommandation : remonter le CTA d’appel au-dessus de la ligne de flottaison.": "<strong>68% of visitors leave the page before reaching the CTA</strong>. The most-clicked area is your phone number. Recommendation: move the call CTA above the fold.",
+    "Ajouter des mots-clés à surveiller": "Add keywords to track",
+    "Alertes conversion mobile": "Mobile conversion alerts",
+    "Améliorer la page Tarifs": "Improve the Pricing page",
+    "Analyse de funnel chargée depuis votre analytics.": "Funnel analysis loaded from your analytics.",
+    "Analyser UX mobile": "Analyze mobile UX",
+    "Analyser le funnel": "Analyze the funnel",
+    "Analyser le parcours": "Analyze the journey",
+    "Appareils — conversions": "Devices — conversions",
+    "Arrêté": "Stopped",
+    "Aucun revenu attribué": "No revenue attributed",
+    "Aucun revenu attribué aux événements observés": "No revenue attributed to observed events",
+    "Aucun score CRO mesuré.": "No CRO score measured.",
+    "Aucun score observé disponible.": "No observed score available.",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "No actionable behavioral signals were found in the last 30 days. These events do not measure revenue.",
+    "Aucun événement de conversion configuré ou aucune conversion enregistrée sur les {days} derniers jours.": "No conversion events are configured, or no conversions were recorded in the last {days} days.",
+    "Aucune donnée de conversion observée": "No conversion data observed",
+    "Aucune donnée observée": "No observed data",
+    "Aucune mesure de conversion disponible. Connectez GA4 et le suivi comportemental; aucun résultat financier n'est extrapolé.": "No conversion measurements are available. Connect GA4 and behavioral tracking; no financial results are extrapolated.",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "No euro losses are calculated without revenue data linked to these events.",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "No financial loss is shown in preview without measured revenue data.",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "No forecast is shown: observed conversions and a sufficient baseline period are required.",
+    "Bientôt disponible — visualisez votre entonnoir de conversion étape par étape depuis vos sources analytics.": "Coming soon — view your conversion funnel step by step using your analytics sources.",
+    "Bon niveau technique. Connectez GA4 ou Matomo pour voir votre entonnoir en temps réel et identifier les étapes perdantes.": "Your technical foundation is in good shape. Connect GA4 or Matomo to view your funnel in real time and identify drop-off points.",
+    "Bouton mort": "Dead button",
+    "Brouillon": "Draft",
+    "CTA FORMULAIRE": "FORM CTA",
+    "CTA actuel : \"{cta}\"": "Current CTA: \"{cta}\"",
+    "CTA invisible": "CTA not visible",
+    "CTA visible sans scroll": "CTA visible without scrolling",
+    "Clics CTA": "CTA clicks",
+    "Clients/mois observés": "Observed clients/month",
+    "Comparer mobile vs desktop": "Compare mobile vs desktop",
+    "Configurer un monitor de disponibilité": "Set up an uptime monitor",
+    "Configurez des <strong>Key Events</strong> dans GA4 pour commencer le suivi.": "Set up <strong>Key Events</strong> in GA4 to start tracking.",
+    "Configurez des <strong>Key Events</strong> dans votre propriété GA4.": "Set up <strong>Key Events</strong> in your GA4 property.",
+    "Connecter GA4 pour mesurer les conversions réelles": "Connect GA4 to measure real conversions",
+    "Connectez GA4 pour afficher votre entonnoir en temps réel.": "Connect GA4 to display your funnel in real time.",
+    "Connectez Google Analytics 4 ou le suivi comportemental": "Connect Google Analytics 4 or behavioral tracking",
+    "Connectez heatmaps": "Connect heatmaps",
+    "Connectez vos analytics comportementaux pour détecter les rage clicks, hésitations et points de friction UX.": "Connect behavioral analytics to detect rage clicks, hesitation, and UX friction points.",
+    "Connectez vos analytics et vos heatmaps pour analyser le comportement visiteurs et détecter les zones de friction.": "Connect analytics and heatmaps to analyze visitor behavior and detect friction areas.",
+    "Connectez vos sources comportementales pour obtenir des observations CRO. Aucun gain financier ne sera affiché sans revenus réellement attribués.": "Connect behavioral sources to get CRO insights. No financial gains will be shown without revenue actually attributed.",
+    "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée.": "Connect your analytics (GA4, Matomo) and conversion data to get a personalized funnel analysis.",
+    "Conv. Mobile": "Mobile conversions",
+    "Conversions totales": "Total conversions",
+    "Corriger les fuites": "Fix conversion leaks",
+    "Créer la mission CTA": "Create a CTA mission",
+    "Dead click": "Dead click",
+    "Diagnostic initial": "Initial diagnosis",
+    "Données insuffisantes — 30 expositions/variante requises": "Insufficient data — 30 exposures per variant are required",
+    "Efficacité CTA": "CTA effectiveness",
+    "Erreur inconnue": "Unknown error",
+    "FORMULAIRE (8 champs)": "FORM (8 fields)",
+    "Fidélisation": "Retention",
+    "Formulaire tactile (48px min)": "Touch-friendly form (48px minimum)",
+    "Fuite détectée": "Leak detected",
+    "Funnel — Ce mois": "Funnel — This month",
+    "Gain de trafic": "Traffic gains",
+    "Géographie — conversions": "Geography — conversions",
+    "Heatmap & Analyse UX": "Heatmap & UX analysis",
+    "Indispensable": "Essential",
+    "Intelligence comportementale": "Behavioral intelligence",
+    "La plus grande perte de votre funnel : <strong>88% des visiteurs quittent sans explorer le site</strong> (clics Google non convertis). Sur mobile, le taux contact-client est <strong>3x inférieur</strong> au desktop. Priorité absolue : simplifier le formulaire et accélérer le mobile.": "The largest funnel drop-off: <strong>88% of visitors leave without exploring the site</strong> (Google clicks that do not convert). On mobile, the visitor-to-customer rate is <strong>3x lower</strong> than desktop. Top priority: simplify the form and improve mobile speed.",
+    "Lancer un premier audit SEO": "Run your first SEO audit",
+    "Landing pages — conversions": "Landing pages — conversions",
+    "Le CTA <strong>Réserver un appel</strong> est quasi-invisible (31/100) et génère 0.4% de CTR — <strong>coût : environ 23 clients perdus par mois</strong>. Sur mobile, tous vos CTAs principaux perdent en moyenne -48% de CTR. Simple action : déplacer le CTA principal au-dessus de la ligne de flottaison.": "The <strong>Book a call</strong> CTA is nearly invisible (31/100) and gets a 0.4% CTR — <strong>cost: about 23 lost customers per month</strong>. On mobile, your main CTAs average 48% lower CTR. One simple action: move the primary CTA above the fold.",
+    "Maintenir": "Maintain",
+    "Me notifier": "Notify me",
+    "Moy./conv. {revenue}": "Avg./conversion {revenue}",
+    "Moyenne :": "Average:",
+    "Navigation thumb-friendly": "Thumb-friendly navigation",
+    "Non concluant · p={pValue}": "Inconclusive · p={pValue}",
+    "Numéro cliquable (tel:)": "Tap-to-call phone number (tel:)",
+    "Opportunités de conversion — observations comportementales": "Conversion opportunities — behavioral observations",
+    "Optimiser le CTA principal": "Optimize the primary CTA",
+    "Optimiser le formulaire": "Optimize the form",
+    "Optimiser les pages à score 60-74 (vitesse mobile)": "Optimize pages scoring 60–74 (mobile speed)",
+    "Plan CRO complet": "Full CRO plan",
+    "Portfolio optimisé — planifier la revue mensuelle": "Portfolio optimized — schedule the monthly review",
+    "Profondeur scroll": "Scroll depth",
+    "Prévenir les pertes": "Prevent losses",
+    "Rage click": "Rage click",
+    "Rage clicks": "Rage clicks",
+    "Rapport CTAs complet": "Full CTA report",
+    "Revenu relié aux événements": "Revenue linked to events",
+    "Revenue Leak — Top fuites": "Revenue Leak — Top leaks",
+    "Revenue Leak →": "Revenue Leak →",
+    "Revenus GA4": "GA4 revenue",
+    "Revenus non configurés": "Revenue not configured",
+    "Rich snippets": "Rich snippets",
+    "Récurrent": "Recurring",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Significant result · p={pValue} · winner {winner}",
+    "Santé conv.": "Conversion health",
+    "Score SEO faible ({score}/100) — corriger les issues critiques": "Low SEO score ({score}/100) — fix critical issues",
+    "Score SEO moyen <strong>{score}/100</strong> · Vitesse <strong>{speed}/100</strong> — La vitesse est le principal levier de conversion. Chaque seconde gagnée = +7% de conversions en moyenne.": "Average SEO score <strong>{score}/100</strong> · Speed <strong>{speed}/100</strong> — Speed is the main conversion opportunity. Each second saved means 7% more conversions on average.",
+    "Score SEO moyen <strong>{score}/100</strong>{speed} — Les problèmes techniques freinent vos conversions. Priorité : optimiser la vitesse et le SEO on-page avant d’analyser le funnel.": "Average SEO score <strong>{score}/100</strong>{speed} — Technical issues are limiting conversions. Priority: improve speed and on-page SEO before analyzing the funnel.",
+    "Score UX": "UX score",
+    "Score de santé observé : <strong>{score}/100</strong>. Connectez vos événements de conversion pour compléter l'analyse.": "Observed health score: <strong>{score}/100</strong>. Connect conversion events to complete the analysis.",
+    "Score de santé observé : {score}/100.": "Observed health score: {score}/100.",
+    "Score solide — ajouter Schema Markup FAQ sur les pages clés": "Strong score — add FAQ Schema Markup to key pages",
+    "Scores de conversion observés — {count} indicateur(s)": "Observed conversion scores — {count} metric(s)",
+    "Signal confirmé": "Confirmed signal",
+    "Signal récurrent": "Recurring signal",
+    "Signal à confirmer": "Signal to confirm",
+    "Source :": "Source:",
+    "Sources — conversions": "Sources — conversions",
+    "Stabilité Funnel": "Funnel stability",
+    "Suivi de position": "Rank tracking",
+    "Taux de conversion observé : <strong>{rate}%</strong>. Les recommandations reposent sur les événements comportementaux collectés; aucun gain financier n'est prédit sans revenus attribués.": "Observed conversion rate: <strong>{rate}%</strong>. Recommendations are based on collected behavioral events; no financial gains are predicted without attributed revenue.",
+    "Taux de conversion observé : <strong>{rate}%</strong>. {health} Aucun gain financier n'est estimé sans revenus attribués.": "Observed conversion rate: <strong>{rate}%</strong>. {health} No financial gains are estimated without attributed revenue.",
+    "Tester les CTAs": "Test CTAs",
+    "Tests A/B CTAs": "CTA A/B tests",
+    "Texte lisible sans zoom": "Text readable without zooming",
+    "Trust Score": "Trust score",
+    "UX Lab →": "UX Lab →",
+    "UX dégradée": "Degraded UX",
+    "Ultra : Heatmap live": "Ultra: live heatmap",
+    "Variant A (actuel)": "Variant A (current)",
+    "Variant B (IA)": "Variant B (AI)",
+    "Vitesse < 2.5s": "Speed under 2.5s",
+    "Voir la heatmap": "View heatmap",
+    "Zone OK": "Good area",
+    "atteint": "reached",
+    "confiance": "confidence",
+    "conversions · {count} sessions": "conversions · {count} sessions",
+    "de la page en moy.": "of the page on average",
+    "engagement": "engagement",
+    "score session": "session score",
+    "sur bouton principal": "on the primary button",
+    "total": "total",
+    "{amount}€/mois": "€{amount}/month",
+    "{change}{percent}% taux vs période préc.": "{change}{percent}% rate vs previous period",
+    "{count} entrées observées": "{count} observed entries",
+    "{count} monitor DOWN — intervention immédiate": "{count} monitor DOWN — immediate action required",
+    "{count} monitor en alerte latence": "{count} monitor with a latency alert",
+    "{count} monitors DOWN — intervention immédiate": "{count} monitors DOWN — immediate action required",
+    "{count} monitors en alerte latence": "{count} monitors with latency alerts",
+    "{count} observations CRO analysées": "{count} CRO observations analyzed",
+    "{count} opportunités observées": "{count} observed opportunities",
+    "{count} sessions": "{count} sessions",
+    "{count} type(s) d’événement": "{count} event type(s)",
+    "{events} événements sur {sessions} sessions.": "{events} events across {sessions} sessions.",
+    "{events} événements · {sessions} sessions": "{events} events · {sessions} sessions",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} events · {sessions} sessions · confidence {confidence} · source {source}",
+    "{hesitations} hésitations et {rageClicks} rage clicks détectés. Score UX mobile : {passed}/{total} points OK.": "{hesitations} hesitation events and {rageClicks} rage clicks detected. Mobile UX score: {passed}/{total} checks passed.",
+    "{percent}% de chute vers \"{step}\"": "{percent}% drop-off to \"{step}\"",
+    "{rate} taux": "{rate} rate",
+    "Événements de conversion": "Conversion events",
+    "Événements de conversion, revenus et landing pages": "Conversion events, revenue, and landing pages",
+    "Événements de conversion, revenus et landing pages — {days} derniers jours": "Conversion events, revenue, and landing pages — last {days} days",
+    "📉 74% des utilisateurs n’atteignent pas la section Contact — une opportunité CTA majeure.": "📉 74% of users do not reach the Contact section — a major CTA opportunity.",
+    "🚨 <strong>{count} monitor DOWN</strong> — chaque minute d’indisponibilité = conversions perdues. Résolvez d’abord l’incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.": "🚨 <strong>{count} monitor DOWN</strong> — every minute of downtime means lost conversions. Resolve the incident first, then connect GA4 or Matomo for full funnel tracking.",
+    "🚨 <strong>{count} monitors DOWN</strong> — chaque minute d’indisponibilité = conversions perdues. Résolvez d’abord l’incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.": "🚨 <strong>{count} monitors DOWN</strong> — every minute of downtime means lost conversions. Resolve the incident first, then connect GA4 or Matomo for full funnel tracking.",
+    "Revenu": "Revenue",
+    "Revenu moy./conv.": "Avg. revenue/conv.",
+    "Taux": "Rate",
+    "Source / Medium": "Source / Medium",
+    "Visibilité du CTA principal": "Primary CTA visibility",
+    "Clarté de l'offre (headline)": "Offer clarity (headline)",
+    "Confiance (avis + logos)": "Trust (reviews + logos)",
+    "Vitesse perçue mobile": "Perceived mobile speed",
+    "Formulaire de contact": "Contact form",
+    "CTA trop bas dans la page": "CTA too far down the page",
+    "Message améliorable": "Message could be clearer",
+    "Bien positionné": "Well positioned",
+    "LCP > 2.5s": "LCP > 2.5s",
+    "Simple et efficace": "Simple and effective",
+    "Header / Navigation": "Header / Navigation",
+    "Section services": "Services section",
+    "CTA \"Nous contacter\"": "CTA \"Contact us\"",
+    "Section avis clients": "Customer reviews section",
+    "Footer": "Footer",
+    "72% des clics se perdent dans le menu": "72% of clicks are lost in the menu",
+    "Les visiteurs scrollent sans s'arrêter": "Visitors scroll without stopping",
+    "Non visible par 88% des visiteurs": "Not visible to 88% of visitors",
+    "Bien lue, génère de la confiance": "Well read and builds trust",
+    "Peu utilisé mais fonctionnel": "Rarely used but functional",
+    "+0.04% vs M-1": "+0.04% vs previous month",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 points/month on average · Consistent with current CRO actions",
+    "-88% des visiteurs perdus": "88% of visitors lost",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} exposures / {aConversions} conversions · B: {bExposures} / {bConversions}",
+    "Above fold": "Above the fold",
+    "Activer l'add-on": "Enable add-on",
+    "Analyse de profondeur de scroll": "Scroll depth analysis",
+    "Aucune expérience": "No experiments yet",
+    "Aucune opportunité observée": "No opportunities observed",
+    "Below fold": "Below the fold",
+    "Bottom": "Bottom",
+    "CTA": "CTA",
+    "CTA Intelligence — Pro requis": "CTA Intelligence — Pro required",
+    "CTA non cliquable": "CTA is not clickable",
+    "CTAs analysés": "CTAs analyzed",
+    "CTAs critiques": "Critical CTAs",
+    "CTR Global": "Overall CTR",
+    "CTR Mobile": "Mobile CTR",
+    "CTR mobile moyen": "Average mobile CTR",
+    "Checklist UX Mobile": "Mobile UX checklist",
+    "Clics→Pages": "Clicks→Pages",
+    "Clients potentiels": "Potential customers",
+    "Confiance élevée": "High confidence",
+    "Conversion Command Center": "Conversion Command Center",
+    "Créer une expérience": "Create experiment",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Create a draft. It cannot start until the new snippet confirms data collection.",
+    "Effort :": "Effort:",
+    "En dessous du seuil": "Below threshold",
+    "Entonnoir de conversion · 30 derniers jours": "Conversion funnel · last 30 days",
+    "Examiner les observations": "Review observations",
+    "Gain estimé : {gain}": "Estimated gain: {gain}",
+    "Gain financier": "Financial gain",
+    "Header": "Header",
+    "Hero": "Hero",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Recommendations will appear after real behavioral signals are collected. No rate or gain is made up.",
+    "Meilleur CTR": "Best CTR",
+    "Mid-page": "Mid-page",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Unmeasured; no revenue is attributed to observed events",
+    "Nous contacter — Header": "Contact us — Header",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Observations are based on events actually collected. Financial estimates and forecasts remain hidden until conversion or revenue data is linked.",
+    "Opportunités majeures": "Major opportunities",
+    "Performance de chaque CTA": "Performance of each CTA",
+    "Pire chute": "Largest drop-off",
+    "Potentiel mobile": "Mobile potential",
+    "Profondeur scroll moy.": "Average scroll depth",
+    "Rage clicks & Dead clicks détectés": "Detected rage clicks and dead clicks",
+    "Revoir les données": "Review data",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Reduce mobile bounce rate from 32% to 22% = 8 more estimated customers/month",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Without form optimization, the estimated ceiling is 0.38% (vs. 0.41% target)",
+    "Score UX global": "Overall UX score",
+    "Score friction :": "Friction score:",
+    "Score mobile UX": "Mobile UX score",
+    "Secteur : 0.18%": "Industry: 0.18%",
+    "Sessions affectées": "Affected sessions",
+    "Signaux comportementaux et actions CRO": "Behavioral signals and CRO actions",
+    "Signaux observés": "Observed signals",
+    "Taux global": "Overall rate",
+    "UX & Friction Lab — Pro requis": "UX & Friction Lab — Pro required",
+    "abandon à mi-page": "drop-off halfway down the page",
+    "au moins 30 sessions": "at least 30 sessions",
+    "aucune conversion/revenu attribué": "no attributed conversions or revenue",
+    "ce mois — critique": "this month — critical",
+    "clients/mois": "customers/month",
+    "sessions distinctes par signal": "distinct sessions per signal",
+    "si taux atteint 0.41%": "if a 0.41% rate is reached",
+    "sur toutes vos pages": "across all your pages",
+    "visibilité < 50 ou CTR < 0.5%": "visibility < 50 or CTR < 0.5%",
+    "vs 1.63% desktop": "vs. 1.63% on desktop",
+    "vs taux desktop actuel": "vs. current desktop rate",
+    "{count} clients": "{count} customers",
+    "🎯 Objectif M+3 :": "🎯 Month 3 target:",
+    "📱 Mobile vs 💻 Desktop": "📱 Mobile vs 💻 Desktop",
+    "🧪 Expériences A/B": "🧪 A/B experiments",
+    "Les événements comportementaux sont temporairement indisponibles.": "Behavioral events are temporarily unavailable.",
+    "Tarifs (50–75%)": "Pricing (50–75%)",
+    "Page formulaire": "Form page",
+    "Page contact": "Contact page",
+    "Page accueil": "Home page",
+    "Page services": "Services page",
+    "Page tarifs": "Pricing page",
+    "Bouton Envoyer (inactif)": "Submit button (inactive)",
+    "Numéro de téléphone (non-cliquable)": "Phone number (not clickable)",
+    "Logo partenaires": "Partner logos",
+    "Titre H2 (zone inactive)": "H2 heading (inactive area)",
+    "Colonne prix Pro vs Ultra": "Pro vs Ultra pricing column",
+    "Optimiser CRO — {page}": "Optimize CRO — {page}",
   };
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
@@ -59226,13 +59493,13 @@ function renderConversion() {
   const _mkHCol = function(v) { return v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444'; };
   const _convPlaceholder = null; // pre-declare
   const healthScores = _croScRaw ? [
-    { label: 'Santé conv.', val: _croScRaw.overallScore, icon: '📊' },
-    { label: 'Trust Score', val: _croScRaw.copyScore, icon: '🛡' },
-    { label: 'Score UX', val: _croScRaw.frictionScore, icon: '🎨' },
-    { label: 'Conv. Mobile', val: _croScRaw.mobileScore, icon: '📱' },
-    { label: 'Efficacité CTA', val: _croScRaw.ctaScore, icon: '🎯' },
-    { label: 'Stabilité Funnel', val: _croScRaw.formScore, icon: '🔄' },
-    { label: 'Fidélisation', val: _croScRaw.retentionScore, icon: '🔁' },
+    { label: fpT('Santé conv.'), val: _croScRaw.overallScore, icon: '📊' },
+    { label: fpT('Trust Score'), val: _croScRaw.copyScore, icon: '🛡' },
+    { label: fpT('Score UX'), val: _croScRaw.frictionScore, icon: '🎨' },
+    { label: fpT('Conv. Mobile'), val: _croScRaw.mobileScore, icon: '📱' },
+    { label: fpT('Efficacité CTA'), val: _croScRaw.ctaScore, icon: '🎯' },
+    { label: fpT('Stabilité Funnel'), val: _croScRaw.formScore, icon: '🔄' },
+    { label: fpT('Fidélisation'), val: _croScRaw.retentionScore, icon: '🔁' },
   ].filter(h => typeof h.val === 'number' && Number.isFinite(h.val))
     .map(h => ({ ...h, val: Math.min(99, Math.max(0, Math.round(h.val))), color: _mkHCol(h.val) }))
     : [];
@@ -59247,7 +59514,7 @@ function renderConversion() {
       <div class="fp-card" style="text-align:center;padding:48px 24px;margin-bottom:16px">
         <div style="font-size:40px;margin-bottom:12px">🔵</div>
         <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Funnel Analytics</div>
-        <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;margin:0 auto">Bientôt disponible — visualisez votre entonnoir de conversion étape par étape depuis vos sources analytics.</div>
+        <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;margin:0 auto">${fpT('Bientôt disponible — visualisez votre entonnoir de conversion étape par étape depuis vos sources analytics.')}</div>
       </div>`;
     // eslint-disable-next-line no-unreachable
     const mobileSteps = STATE.behavioral?.mobileSteps || (PREVIEW_MODE ? [
@@ -59269,24 +59536,26 @@ function renderConversion() {
     ] : []);
     return `
       ${aiBlock(PREVIEW_MODE
-        ? "La plus grande perte de votre funnel : <strong>88% des visiteurs quittent sans explorer le site</strong> (clics Google non convertis). Sur mobile, le taux contact-client est <strong>3x inférieur</strong> au desktop. Priorité absolue : simplifier le formulaire et accélérer le mobile."
+        ? fpT("La plus grande perte de votre funnel : <strong>88% des visiteurs quittent sans explorer le site</strong> (clics Google non convertis). Sur mobile, le taux contact-client est <strong>3x inférieur</strong> au desktop. Priorité absolue : simplifier le formulaire et accélérer le mobile.")
         : (funnelSteps
-            ? "Analyse de funnel chargée depuis votre analytics."
+            ? fpT("Analyse de funnel chargée depuis votre analytics.")
             : (() => {
                 const _fA = (STATE.audits||[]).length ? Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length) : null;
                 const _fS = (STATE.audits||[]).filter(a=>a.speed!=null).length ? Math.round((STATE.audits||[]).filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/(STATE.audits||[]).filter(a=>a.speed!=null).length) : null;
                 const _fD = (STATE.monitors||[]).filter(m=>m.status==='down').length;
-                if (_fD > 0) return `🚨 <strong>${_fD} monitor${_fD>1?'s':''} DOWN</strong> — chaque minute d'indisponibilité = conversions perdues. Résolvez d'abord l'incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.`;
-                if (_fA != null) return `Score SEO moyen <strong>${_fA}/100</strong>${_fS!=null?' · Vitesse <strong>'+_fS+'/100</strong>':''} — ${_fA < 60 ? 'Les problèmes techniques freinent vos conversions. Priorité : optimiser la vitesse et le SEO on-page avant d\'analyser le funnel.' : _fS!=null&&_fS<70 ? 'La vitesse est le principal levier de conversion. Chaque seconde gagnée = +7% de conversions en moyenne.' : 'Bon niveau technique. Connectez GA4 ou Matomo pour voir votre entonnoir en temps réel et identifier les étapes perdantes.'}`;
-                return "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée.";
+                if (_fD > 0) return fpT(_fD === 1 ? '🚨 <strong>{count} monitor DOWN</strong> — chaque minute d’indisponibilité = conversions perdues. Résolvez d’abord l’incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.' : '🚨 <strong>{count} monitors DOWN</strong> — chaque minute d’indisponibilité = conversions perdues. Résolvez d’abord l’incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.', { count:_fD });
+                if (_fA != null && _fA < 60) return fpT('Score SEO moyen <strong>{score}/100</strong>{speed} — Les problèmes techniques freinent vos conversions. Priorité : optimiser la vitesse et le SEO on-page avant d’analyser le funnel.', { score:_fA, speed:_fS!=null ? fpT(' · Vitesse <strong>{score}/100</strong>', { score:_fS }) : '' });
+                if (_fA != null && _fS != null && _fS < 70) return fpT('Score SEO moyen <strong>{score}/100</strong> · Vitesse <strong>{speed}/100</strong> — La vitesse est le principal levier de conversion. Chaque seconde gagnée = +7% de conversions en moyenne.', { score:_fA, speed:_fS });
+                if (_fA != null) return fpT('Bon niveau technique. Connectez GA4 ou Matomo pour voir votre entonnoir en temps réel et identifier les étapes perdantes.');
+                return fpT("Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée.");
               })()),
-        ["Optimiser le formulaire", "Comparer mobile vs desktop", "Plan CRO complet"])}
+        [fpT("Optimiser le formulaire"), fpT("Comparer mobile vs desktop"), fpT("Plan CRO complet")])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard("Taux global", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "+0.04% vs M-1" : "Connectez analytics", "neutral", PREVIEW_MODE ? "Secteur : 0.18%" : "")}
-        ${statCard("Pire chute", "Clics→Pages", PREVIEW_MODE ? "-88% des visiteurs perdus" : "Connectez analytics", "down")}
-        ${statCard("Potentiel mobile", displayStat(null, "×2.8"), PREVIEW_MODE ? "vs taux desktop actuel" : "Connectez analytics", "neutral")}
-        ${statCard("Clients potentiels", displayStat(STATE.overview?.clientsPerMonth ? '+' + STATE.overview.clientsPerMonth + '/mois' : null, "+47/mois"), PREVIEW_MODE ? "si taux atteint 0.41%" : "Connectez analytics", "neutral")}
+        ${statCard(fpT("Taux global"), displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? fpT("+0.04% vs M-1") : fpT("Connectez analytics"), "neutral", PREVIEW_MODE ? fpT("Secteur : 0.18%") : "")}
+        ${statCard(fpT("Pire chute"), fpT("Clics→Pages"), PREVIEW_MODE ? fpT("-88% des visiteurs perdus") : fpT("Connectez analytics"), "down")}
+        ${statCard(fpT("Potentiel mobile"), displayStat(null, "×2.8"), PREVIEW_MODE ? fpT("vs taux desktop actuel") : fpT("Connectez analytics"), "neutral")}
+        ${statCard(fpT("Clients potentiels"), displayStat(STATE.overview?.clientsPerMonth ? '+' + STATE.overview.clientsPerMonth + '/mois' : null, "+47/mois"), PREVIEW_MODE ? fpT("si taux atteint 0.41%") : fpT("Connectez analytics"), "neutral")}
       </div>
 
       <!-- FUNNEL VISUALIZATION -->
@@ -59294,9 +59563,9 @@ function renderConversion() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon("filter").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-            Entonnoir de conversion · 30 derniers jours
+            ${fpT('Entonnoir de conversion · 30 derniers jours')}
           </div>
-          <span style="font-size:11px;color:var(--fp-text-faint)">${funnelSteps.length ? Number(funnelSteps[0].n ?? funnelSteps[0].abs ?? 0).toLocaleString(getLocale()) + ' entrées observées' : 'Aucune donnée observée'}</span>
+          <span style="font-size:11px;color:var(--fp-text-faint)">${funnelSteps.length ? fpT('{count} entrées observées', { count:Number(funnelSteps[0].n ?? funnelSteps[0].abs ?? 0).toLocaleString(getLocale()) }) : fpT('Aucune donnée observée')}</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${funnelSteps && funnelSteps.length > 0 ? funnelSteps.map((s, idx) => `
@@ -59313,22 +59582,22 @@ function renderConversion() {
                   ${s.drop !== null ? `<div style="font-size:10px;color:#ef4444;font-weight:600">-${s.drop}%</div>` : ""}
                 </div>
               </div>
-              ${idx < funnelSteps.length - 1 ? `<div style="margin-left:140px;font-size:10px;color:var(--fp-text-faint);padding-left:4px">▼ ${100 - Math.round(funnelSteps[idx+1].abs / s.abs * 100)}% de chute vers "${escHtml(funnelSteps[idx+1].label)}"</div>` : ""}
+              ${idx < funnelSteps.length - 1 ? `<div style="margin-left:140px;font-size:10px;color:var(--fp-text-faint);padding-left:4px">▼ ${fpT('{percent}% de chute vers "{step}"', { percent:100 - Math.round(funnelSteps[idx+1].abs / s.abs * 100), step:escHtml(funnelSteps[idx+1].label) })}</div>` : ""}
             </div>
-          `).join("") : `<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 Connectez GA4 pour afficher votre entonnoir en temps réel.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button></div>`}
+          `).join("") : `<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 ${fpT('Connectez GA4 pour afficher votre entonnoir en temps réel.')}<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">${fpT('Connecter GA4')}</button></div>`}
         </div>
       </div>
 
       <!-- MOBILE VS DESKTOP + FRICTION -->
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📱 Mobile vs 💻 Desktop</div>
+          <div class="fp-card-title" style="margin-bottom:14px">${fpT('📱 Mobile vs 💻 Desktop')}</div>
           <table class="fp-data-table">
             <thead><tr>
-              <th>Étape</th>
+              <th>${fpT('Étape')}</th>
               <th style="text-align:center;color:#8b5cf6">Mobile</th>
               <th style="text-align:center;color:#06b6d4">Desktop</th>
-              <th style="text-align:center">Écart</th>
+              <th style="text-align:center">${fpT('Écart')}</th>
             </tr></thead>
             <tbody>
               ${mobileSteps.map(m => {
@@ -59344,7 +59613,7 @@ function renderConversion() {
           </table>
         </div>
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">⚡ Points de friction détectés</div>
+          <div class="fp-card-title" style="margin-bottom:14px">${fpT('⚡ Points de friction détectés')}</div>
           <div style="display:flex;flex-direction:column;gap:8px">
             ${friction.map(f => `
               <div style="padding:10px 12px;border-radius:8px;border:1px solid var(--fp-border);border-left:3px solid ${f.score < 50 ? "#ef4444" : f.score < 65 ? "#f59e0b" : "#22c55e"};background:var(--fp-inner-card)">
@@ -59353,7 +59622,7 @@ function renderConversion() {
                   ${badge(f.impact, f.impact === "Critique" ? "#ef4444" : f.impact === "Élevé" ? "#f59e0b" : "#64748b")}
                 </div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(f.issue)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">Score friction :<strong style="color:${f.score < 50 ? "#ef4444" : "#f59e0b"}">${f.score}/100</strong></div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fpT('Score friction :')}<strong style="color:${f.score < 50 ? "#ef4444" : "#f59e0b"}">${f.score}/100</strong></div>
               </div>
             `).join("")}
           </div>
@@ -59372,6 +59641,8 @@ function renderConversion() {
       { section: "Tarifs (50–75%)",     depth: 48, eng: 38 },
       { section: "Contact (75–100%)",   depth: 22, eng: 14 },
     ] : []);
+    const isPreviewScrollData = !STATE.behavioral?.scrollData && PREVIEW_MODE;
+    const previewScrollLabels = { "Tarifs (50–75%)": fpT("Tarifs (50–75%)") };
     const clicks = STATE.behavioral?.clicks || (PREVIEW_MODE ? [
       { type: "Rage click",  page: "Page formulaire",   count: 47,  zone: "Bouton Envoyer (inactif)", sev: "critical" },
       { type: "Rage click",  page: "Page contact",      count: 31,  zone: "Numéro de téléphone (non-cliquable)", sev: "critical" },
@@ -59379,6 +59650,15 @@ function renderConversion() {
       { type: "Dead click",  page: "Page services",     count: 19,  zone: "Titre H2 (zone inactive)",  sev: "warning" },
       { type: "Hesitation",  page: "Page tarifs",       count: 84,  zone: "Colonne prix Pro vs Ultra",  sev: "info" },
     ] : []);
+    const isPreviewClickData = !STATE.behavioral?.clicks && PREVIEW_MODE;
+    const previewClickLabels = {
+      "Page formulaire": fpT("Page formulaire"), "Page contact": fpT("Page contact"),
+      "Page accueil": fpT("Page accueil"), "Page services": fpT("Page services"),
+      "Page tarifs": fpT("Page tarifs"), "Bouton Envoyer (inactif)": fpT("Bouton Envoyer (inactif)"),
+      "Numéro de téléphone (non-cliquable)": fpT("Numéro de téléphone (non-cliquable)"),
+      "Logo partenaires": fpT("Logo partenaires"), "Titre H2 (zone inactive)": fpT("Titre H2 (zone inactive)"),
+      "Colonne prix Pro vs Ultra": fpT("Colonne prix Pro vs Ultra"),
+    };
     const mobileChecks = STATE.behavioral?.mobileChecks || (PREVIEW_MODE ? [
       { item: "CTA visible sans scroll",      ok: false },
       { item: "Formulaire tactile (48px min)",ok: false },
@@ -59387,55 +59667,68 @@ function renderConversion() {
       { item: "Navigation thumb-friendly",    ok: true  },
       { item: "Numéro cliquable (tel:)",      ok: false },
     ] : []);
+    const mobileCheckLabels = {
+      "CTA visible sans scroll": fpT("CTA visible sans scroll"),
+      "Formulaire tactile (48px min)": fpT("Formulaire tactile (48px min)"),
+      "Vitesse < 2.5s": fpT("Vitesse < 2.5s"),
+      "Texte lisible sans zoom": fpT("Texte lisible sans zoom"),
+      "Navigation thumb-friendly": fpT("Navigation thumb-friendly"),
+      "Numéro cliquable (tel:)": fpT("Numéro cliquable (tel:)"),
+    };
     return `
       ${isPro
         ? aiBlock(clicks.length > 0
-            ? `${clicks.filter(c=>c.type==='Hesitation').reduce((s,c)=>s+(c.count||0),0)} hésitations et ${clicks.filter(c=>c.type==='Rage click').reduce((s,c)=>s+(c.count||0),0)} rage clicks détectés. Score UX mobile : ${mobileChecks.length ? mobileChecks.filter(c=>c.ok).length+'/'+mobileChecks.length+' points OK' : '—'}.`
-            : 'Connectez vos analytics comportementaux pour détecter les rage clicks, hésitations et points de friction UX.',
-            ["Corriger le formulaire", "Améliorer la page Tarifs", "Plan UX mobile"])
+            ? fpT('{hesitations} hésitations et {rageClicks} rage clicks détectés. Score UX mobile : {passed}/{total} points OK.', {
+                hesitations:clicks.filter(c=>c.type==='Hesitation').reduce((s,c)=>s+(c.count||0),0),
+                rageClicks:clicks.filter(c=>c.type==='Rage click').reduce((s,c)=>s+(c.count||0),0),
+                passed:mobileChecks.length ? mobileChecks.filter(c=>c.ok).length : '—',
+                total:mobileChecks.length,
+              })
+            : fpT('Connectez vos analytics comportementaux pour détecter les rage clicks, hésitations et points de friction UX.'),
+            [fpT("Corriger le formulaire"), fpT("Améliorer la page Tarifs"), fpT("Plan UX mobile")])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🔬</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">UX & Friction Lab — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rage clicks, dead clicks, heatmaps de friction et analyse comportementale avancée.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
+            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${fpT('UX & Friction Lab — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Rage clicks, dead clicks, heatmaps de friction et analyse comportementale avancée.')}</div></div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button>
           </div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard("Score UX global", displayStat(null, "62/100"), PREVIEW_MODE ? "Opportunités majeures" : "Connectez heatmaps", "neutral")}
-        ${statCard("Rage clicks", displayStat(null, "78"), PREVIEW_MODE ? "ce mois — critique" : "Connectez heatmaps", "neutral")}
-        ${statCard("Profondeur scroll moy.", displayStat(null, "48%"), PREVIEW_MODE ? "abandon à mi-page" : "Connectez heatmaps", "neutral")}
-        ${statCard("Score mobile UX", displayStat(null, "44/100"), PREVIEW_MODE ? "En dessous du seuil" : "Connectez analytics", "neutral")}
+        ${statCard(fpT("Score UX global"), displayStat(null, "62/100"), PREVIEW_MODE ? fpT("Opportunités majeures") : fpT("Connectez heatmaps"), "neutral")}
+        ${statCard(fpT("Rage clicks"), displayStat(null, "78"), PREVIEW_MODE ? fpT("ce mois — critique") : fpT("Connectez heatmaps"), "neutral")}
+        ${statCard(fpT("Profondeur scroll moy."), displayStat(null, "48%"), PREVIEW_MODE ? fpT("abandon à mi-page") : fpT("Connectez heatmaps"), "neutral")}
+        ${statCard(fpT("Score mobile UX"), displayStat(null, "44/100"), PREVIEW_MODE ? fpT("En dessous du seuil") : fpT("Connectez analytics"), "neutral")}
       </div>
 
       <!-- SCROLL DEPTH -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("bar-chart-2").replace('stroke="currentColor"', 'stroke="#06b6d4"')}
-          Analyse de profondeur de scroll
+          ${fpT('Analyse de profondeur de scroll')}
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${scrollData.map(s => `
             <div style="display:flex;align-items:center;gap:12px">
-              <span style="font-size:11px;color:var(--fp-text-muted);min-width:160px">${escHtml(s.section)}</span>
+              <span style="font-size:11px;color:var(--fp-text-muted);min-width:160px">${escHtml(isPreviewScrollData ? previewScrollLabels[s.section] || s.section : s.section)}</span>
               <div style="flex:1;display:flex;flex-direction:column;gap:3px">
                 <div style="display:flex;align-items:center;gap:6px">
                   <div class="fp-progress-track" style="flex:1;height:6px;border-radius:3px">
                     <div class="fp-progress-fill" style="width:${s.depth}%;background:#2563EB;border-radius:3px"></div>
                   </div>
                   <span style="font-size:11px;font-weight:700;color:#2563EB;min-width:32px">${s.depth}%</span>
-                  <span style="font-size:9px;color:var(--fp-text-faint)">atteint</span>
+                   <span style="font-size:9px;color:var(--fp-text-faint)">${fpT('atteint')}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px">
                   <div class="fp-progress-track" style="flex:1;height:4px;border-radius:3px">
                     <div class="fp-progress-fill" style="width:${s.eng}%;background:${s.eng > 60 ? "#22c55e" : s.eng > 35 ? "#f59e0b" : "#ef4444"};border-radius:3px"></div>
                   </div>
                   <span style="font-size:10px;font-weight:700;color:${s.eng > 60 ? "#22c55e" : s.eng > 35 ? "#f59e0b" : "#ef4444"};min-width:32px">${s.eng}%</span>
-                  <span style="font-size:9px;color:var(--fp-text-faint)">engagement</span>
+                   <span style="font-size:9px;color:var(--fp-text-faint)">${fpT('engagement')}</span>
                 </div>
               </div>
             </div>
           `).join("")}
-          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">📉 74% des utilisateurs n\'atteignent pas la section Contact — une opportunité CTA majeure.</div>
+          <div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">${fpT('📉 74% des utilisateurs n’atteignent pas la section Contact — une opportunité CTA majeure.')}</div>
         </div>
       </div>
 
@@ -59444,16 +59737,16 @@ function renderConversion() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">
             ${svgIcon("zap").replace('stroke="currentColor"', 'stroke="#ef4444"')}
-            Rage clicks & Dead clicks détectés
+            ${fpT('Rage clicks & Dead clicks détectés')}
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
             ${clicks.map(c => {
               const sc = c.sev === "critical" ? "#ef4444" : c.sev === "warning" ? "#f59e0b" : "#2563EB";
               return `<div style="padding:10px 12px;border-radius:8px;background:${sc}09;border:1px solid ${sc}30;display:flex;align-items:flex-start;gap:10px">
-                <div style="flex-shrink:0;margin-top:2px">${badge(c.type, sc)}</div>
+                <div style="flex-shrink:0;margin-top:2px">${badge(({ 'Rage click':fpT('Rage click'), 'Dead click':fpT('Dead click'), Hesitation:fpT('Hésitation') })[c.type] || c.type, sc)}</div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(c.page)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4">${escHtml(c.zone)}</div>
+                  <div style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(isPreviewClickData ? previewClickLabels[c.page] || c.page : c.page)}</div>
+                  <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4">${escHtml(isPreviewClickData ? previewClickLabels[c.zone] || c.zone : c.zone)}</div>
                 </div>
                 <div style="font-size:13px;font-weight:800;color:${sc};flex-shrink:0">${c.count}×</div>
               </div>`;
@@ -59463,7 +59756,7 @@ function renderConversion() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">
             ${svgIcon("smartphone").replace('stroke="currentColor"', 'stroke="#8b5cf6"')}
-            Checklist UX Mobile
+            ${fpT('Checklist UX Mobile')}
           </div>
           <div style="display:flex;flex-direction:column;gap:8px">
             ${mobileChecks.map(m => `
@@ -59471,12 +59764,12 @@ function renderConversion() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${m.ok ? "#22c55e" : "#ef4444"}" stroke-width="2.5">
                   ${m.ok ? "<polyline points='20 6 9 17 4 12'/>" : "<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>"}
                 </svg>
-                <span style="font-size:12px;color:${m.ok ? "var(--fp-text-soft)" : "var(--fp-text-muted)"}">${escHtml(m.item)}</span>
+                <span style="font-size:12px;color:${m.ok ? "var(--fp-text-soft)" : "var(--fp-text-muted)"}">${escHtml(mobileCheckLabels[m.item] || m.item)}</span>
               </div>
             `).join("")}
           </div>
           <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444">
-            ⚠ 4 critères UX mobile échoués — Score : 44/100
+            ${fpT('⚠ 4 critères UX mobile échoués — Score : 44/100')}
           </div>
         </div>
       </div>
@@ -59484,7 +59777,7 @@ function renderConversion() {
       <!-- FRICTION HEATMAP SVG -->
       ${isPro ? `
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🔥 Heatmap de friction — Page d\'accueil</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🔥 Heatmap de friction — Page d\'accueil')}</div>
         <div style="position:relative;width:100%;height:290px;background:${document.documentElement.getAttribute('data-theme')==='light'?'linear-gradient(180deg,#f0f4ff,#e0e7ff)':'linear-gradient(180deg,#050810,#070d1c)'};border-radius:12px;overflow:hidden;border:1px solid var(--fp-border)">
           <svg width="100%" height="100%" viewBox="0 0 600 290" style="position:absolute;inset:0">
             <defs>
@@ -59502,9 +59795,9 @@ function renderConversion() {
             <rect x="190" y="52" width="220" height="46" rx="2" fill="rgba(255,255,255,0.03)"/>
             <text x="300" y="79" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.15)">SERVICES</text>
             <rect x="190" y="104" width="220" height="36" rx="2" fill="rgba(255,255,255,0.03)"/>
-            <text x="300" y="126" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.15)">CTA FORMULAIRE</text>
+            <text x="300" y="126" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.15)">${fpT('CTA FORMULAIRE')}</text>
             <rect x="190" y="146" width="220" height="64" rx="2" fill="rgba(255,255,255,0.03)"/>
-            <text x="300" y="182" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.15)">FORMULAIRE (8 champs)</text>
+            <text x="300" y="182" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.15)">${fpT('FORMULAIRE (8 champs)')}</text>
             <rect x="190" y="216" width="220" height="56" rx="2" fill="rgba(255,255,255,0.03)"/>
             <text x="300" y="248" text-anchor="middle" font-size="8" fill="rgba(255,255,255,0.15)">FOOTER</text>
             <!-- Heatmap blobs over wireframe -->
@@ -59521,17 +59814,17 @@ function renderConversion() {
             <text x="386" y="96" text-anchor="middle" font-size="9" fill="#ef4444" font-weight="700">28 dead clicks</text>
             <!-- Side annotations -->
             <line x1="430" y1="214" x2="455" y2="214" stroke="#ef4444" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
-            <text x="458" y="218" font-size="8" fill="#ef4444">CTA non cliquable</text>
+            <text x="458" y="218" font-size="8" fill="#ef4444">${fpT('CTA non cliquable')}</text>
             <line x1="430" y1="126" x2="455" y2="126" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
-            <text x="458" y="130" font-size="8" fill="#f59e0b">CTA invisible</text>
+            <text x="458" y="130" font-size="8" fill="#f59e0b">${fpT('CTA invisible')}</text>
             <line x1="430" y1="96" x2="455" y2="96" stroke="#ef4444" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
-            <text x="458" y="100" font-size="8" fill="#ef4444">Bouton mort</text>
+            <text x="458" y="100" font-size="8" fill="#ef4444">${fpT('Bouton mort')}</text>
           </svg>
-          <div style="position:absolute;top:8px;left:12px;font-size:10px;color:var(--fp-text-faint)">Zones de friction — Page formulaire</div>
+          <div style="position:absolute;top:8px;left:12px;font-size:10px;color:var(--fp-text-faint)">${fpT('Zones de friction — Page formulaire')}</div>
           <div style="position:absolute;bottom:8px;right:12px;display:flex;gap:10px">
-            <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>Rage clicks</span>
-            <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Hésitation</span>
-            <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block"></span>Zone OK</span>
+            <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>${fpT('Rage clicks')}</span>
+            <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block"></span>${fpT('Hésitation')}</span>
+            <span style="font-size:10px;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block"></span>${fpT('Zone OK')}</span>
           </div>
         </div>
       </div>
@@ -59558,44 +59851,46 @@ function renderConversion() {
     ] : []);
     return `
       ${isPro
-        ? aiBlock("Le CTA <strong>Réserver un appel</strong> est quasi-invisible (31/100) et génère 0.4% de CTR — <strong>coût : environ 23 clients perdus par mois</strong>. Sur mobile, tous vos CTAs principaux perdent en moyenne -48% de CTR. Simple action : déplacer le CTA principal au-dessus de la ligne de flottaison.",
-            ["Optimiser le CTA principal", "Tests A/B CTAs", "Rapport CTAs complet"])
+        ? aiBlock(fpT("Le CTA <strong>Réserver un appel</strong> est quasi-invisible (31/100) et génère 0.4% de CTR — <strong>coût : environ 23 clients perdus par mois</strong>. Sur mobile, tous vos CTAs principaux perdent en moyenne -48% de CTR. Simple action : déplacer le CTA principal au-dessus de la ligne de flottaison."),
+            [fpT("Optimiser le CTA principal"), fpT("Tests A/B CTAs"), fpT("Rapport CTAs complet")])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🎯</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">CTA Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de visibilité, CTR par CTA, performance mobile et suggestions IA.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button>
+            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${fpT('CTA Intelligence — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Analyse de visibilité, CTR par CTA, performance mobile et suggestions IA.')}</div></div>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button>
           </div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard("CTAs analysés", String(ctas.length), "sur toutes vos pages", "neutral")}
-        ${statCard("CTAs critiques", String(ctas.filter(c => c.impact === "Critique").length), "visibilité < 50 ou CTR < 0.5%", "down")}
-        ${statCard("Meilleur CTR", displayStat(null, "3.2%"), PREVIEW_MODE ? "Nous contacter — Header" : "Connectez analytics", "neutral")}
-        ${statCard("CTR mobile moyen", displayStat(null, "1.07%"), PREVIEW_MODE ? "vs 1.63% desktop" : "Connectez analytics", "neutral")}
+        ${statCard(fpT("CTAs analysés"), String(ctas.length), fpT("sur toutes vos pages"), "neutral")}
+        ${statCard(fpT("CTAs critiques"), String(ctas.filter(c => c.impact === "Critique").length), fpT("visibilité < 50 ou CTR < 0.5%"), "down")}
+        ${statCard(fpT("Meilleur CTR"), displayStat(null, "3.2%"), PREVIEW_MODE ? fpT("Nous contacter — Header") : fpT("Connectez analytics"), "neutral")}
+        ${statCard(fpT("CTR mobile moyen"), displayStat(null, "1.07%"), PREVIEW_MODE ? fpT("vs 1.63% desktop") : fpT("Connectez analytics"), "neutral")}
       </div>
 
       <!-- CTA TABLE -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("target").replace('stroke="currentColor"', 'stroke="#f59e0b"')}
-          Performance de chaque CTA
+          ${fpT('Performance de chaque CTA')}
         </div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
-              <th>CTA</th>
-              <th style="text-align:center">Page</th>
-              <th style="text-align:center">Visibilité</th>
-              <th style="text-align:center">CTR Global</th>
-              <th style="text-align:center">CTR Mobile</th>
-              <th style="text-align:center">Position</th>
-              <th style="text-align:center">Impact</th>
-              <th style="text-align:center">Action</th>
+              <th>${fpT('CTA')}</th>
+              <th style="text-align:center">${fpT('Page')}</th>
+              <th style="text-align:center">${fpT('Visibilité')}</th>
+              <th style="text-align:center">${fpT('CTR Global')}</th>
+              <th style="text-align:center">${fpT('CTR Mobile')}</th>
+              <th style="text-align:center">${fpT('Position')}</th>
+              <th style="text-align:center">${fpT('Impact')}</th>
+              <th style="text-align:center">${fpT('Action')}</th>
             </tr></thead>
             <tbody>
               ${ctas.map(c => {
                 const vc = c.vis >= 80 ? "#22c55e" : c.vis >= 60 ? "#f59e0b" : "#ef4444";
-                const ic = c.impact === "Critique" ? "#ef4444" : c.impact === "Élevé" ? "#f59e0b" : c.impact === "Moyen" ? "#2563EB" : "#64748b";
+                 const ic = c.impact === "Critique" ? "#ef4444" : c.impact === "Élevé" ? "#f59e0b" : c.impact === "Moyen" ? "#2563EB" : "#64748b";
+                 const impactLabel = ({ Critique:fpT('Critique'), Élevé:fpT('Élevé'), Moyen:fpT('Moyen'), Faible:fpT('Faible') })[c.impact] || c.impact;
+                const positionLabel = ({ 'Above fold':fpT('Above fold'), 'Below fold':fpT('Below fold'), Header:fpT('Header'), 'Mid-page':fpT('Mid-page'), Hero:fpT('Hero'), Bottom:fpT('Bottom') })[c.pos] || c.pos;
                 return `<tr>
                   <td style="font-weight:700">${escHtml(c.name)}</td>
                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(c.page)}</td>
@@ -59607,9 +59902,9 @@ function renderConversion() {
                   </td>
                   <td style="text-align:center;font-weight:700;color:${c.ctr >= 2 ? "#22c55e" : c.ctr >= 1 ? "#f59e0b" : "#ef4444"}">${c.ctr}%</td>
                   <td style="text-align:center;font-weight:700;color:${c.mob >= 1.5 ? "#22c55e" : c.mob >= 0.8 ? "#f59e0b" : "#ef4444"}">${c.mob}%</td>
-                  <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(c.pos)}</td>
-                  <td style="text-align:center">${badge(c.impact, ic)}</td>
-                  <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(b){var site=b.closest('tr')?.querySelector('td')?.textContent?.trim()||'Page';var title='Optimiser CRO — '+site;var dup=STATE.missions.find(function(m){return m.title.toLowerCase()===title.toLowerCase()&&m.status!=='done';});if(dup){showToast('info', fpT('Mission déjà créée'));b.textContent='Voir →';b.onclick=function(){navigate('missions');};return;}b.textContent='Création…';b.disabled=true;apiAction('POST','/api/missions',{title:title,category:'Performance',status:'todo',priority:'high',impact:'Élevé'}).then(function(r){var m=r||{id:'ms'+Date.now(),title:title,category:'Performance',status:'todo'};STATE.missions.unshift(m);b.textContent='✓ Créée';b.style.color='#22c55e';b.disabled=false;b.onclick=function(){navigate('missions');};showToast('success', fpT('Mission créée'));}).catch(function(){b.textContent='Optimiser';b.disabled=false;});})(this)">Optimiser</button></td>
+                  <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(positionLabel)}</td>
+                   <td style="text-align:center">${badge(impactLabel, ic)}</td>
+                   <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(b){var site=b.closest('tr')?.querySelector('td')?.textContent?.trim()||'Page';var title=fpT('Optimiser CRO — {page}',{page:site});var dup=STATE.missions.find(function(m){return m.title.toLowerCase()===title.toLowerCase()&&m.status!=='done';});if(dup){showToast('info', fpT('Mission déjà créée'));b.textContent=fpT('Voir →');b.onclick=function(){navigate('missions');};return;}b.textContent=fpT('Création…');b.disabled=true;apiAction('POST','/api/missions',{title:title,category:'Performance',status:'todo',priority:'high',impact:'Élevé'}).then(function(r){var m=r||{id:'ms'+Date.now(),title:title,category:'Performance',status:'todo'};STATE.missions.unshift(m);b.textContent=fpT('✓ Créée');b.style.color='#22c55e';b.disabled=false;b.onclick=function(){navigate('missions');};showToast('success', fpT('Mission créée'));}).catch(function(){b.textContent=fpT('Optimiser');b.disabled=false;});})(this)">${fpT('Optimiser')}</button></td>
                 </tr>`;
               }).join("")}
             </tbody>
@@ -59619,21 +59914,21 @@ function renderConversion() {
 
       <!-- A/B TEST IDEAS FOR CTAs -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🧪 Suggestions de tests A/B pour vos CTAs</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🧪 Suggestions de tests A/B pour vos CTAs')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${abIdeas.map(ab => `
             <div style="padding:12px 14px;border-radius:10px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.2)">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <span style="font-size:12px;font-weight:700;color:var(--fp-text)">CTA actuel : "${escHtml(ab.cta)}"</span>
-                <span style="font-size:11px;font-weight:700;color:#22c55e">${escHtml(ab.estGain)} estimé</span>
+                <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${fpT('CTA actuel : "{cta}"', { cta:escHtml(ab.cta) })}</span>
+                <span style="font-size:11px;font-weight:700;color:#22c55e">${fpT('Gain estimé : {gain}', { gain:escHtml(ab.estGain) })}</span>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                <div style="padding:8px;border-radius:6px;border:1px solid var(--fp-border)"><div style="font-size:9px;color:var(--fp-text-faint)">Variant A (actuel)</div><div style="font-size:12px;font-weight:600;margin-top:3px">"${escHtml(ab.cta)}"</div></div>
-                <div style="padding:8px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.05)"><div style="font-size:9px;color:#22c55e">Variant B (IA)</div><div style="font-size:12px;font-weight:600;margin-top:3px">"${escHtml(ab.varB)}"</div></div>
+                <div style="padding:8px;border-radius:6px;border:1px solid var(--fp-border)"><div style="font-size:9px;color:var(--fp-text-faint)">${fpT('Variant A (actuel)')}</div><div style="font-size:12px;font-weight:600;margin-top:3px">"${escHtml(ab.cta)}"</div></div>
+                <div style="padding:8px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.05)"><div style="font-size:9px;color:#22c55e">${fpT('Variant B (IA)')}</div><div style="font-size:12px;font-weight:600;margin-top:3px">"${escHtml(ab.varB)}"</div></div>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:10px;color:var(--fp-text-faint)">Effort : ${escHtml(ab.effort)}</span>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('billing');setTimeout(()=>navigateSub('addons'),50)">Activer l'add-on</button>
+                <span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Effort :')} ${escHtml(ab.effort)}</span>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('billing');setTimeout(()=>navigateSub('addons'),50)">${fpT("Activer l'add-on")}</button>
               </div>
             </div>
           `).join("")}
@@ -59650,32 +59945,33 @@ function renderConversion() {
     const leaks = (_rlData?.opportunities || []).map(l => ({
       page: l.page || 'Page',
       siteUrl: l.siteUrl || '',
-      issue: `${l.recommendation || ''} ${l.observedEvents || 0} événements sur ${l.affectedSessions || 0} sessions.`,
+      recommendation: l.recommendation || '',
       events: Number(l.observedEvents || 0),
       sessions: Number(l.affectedSessions || 0),
       confidence: l.confidence || 'low',
       id: l.id,
     }));
     const _rlIsEmpty = !leaks.length;
-    const _rlEmptyReason = (_rlData && _rlData.error) || "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.";
+    const _rlEmptyReason = (_rlData && _rlData.error) || null;
+    const _rlEmptyText = _rlEmptyReason || fpT("Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.");
     return `
       ${_rlIsEmpty
         ? `<div style="padding:32px 24px;text-align:center;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
             <div style="font-size:36px;margin-bottom:12px">💸</div>
-            <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune opportunité observée</div>
-            <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyReason)}</div>
+            <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Aucune opportunité observée')}</div>
+            <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyText)}</div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">${fpT('Lancer la détection')}</button>
             </div>
            </div>`
-        : `<div class="fp-card fp-mb-20"><strong>${leaks.length} opportunités observées</strong><div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.</div></div>`
+        : `<div class="fp-card fp-mb-20"><strong>${fpT('{count} opportunités observées', { count:leaks.length })}</strong><div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">${fpT('Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.')}</div></div>`
       }
 
       <!-- REVENUE LEAK LIST -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("alert-triangle").replace('stroke="currentColor"', 'stroke="#ef4444"')}
-          Opportunités de conversion — observations comportementales
+          ${fpT('Opportunités de conversion — observations comportementales')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${leaks.length === 0
@@ -59686,12 +59982,12 @@ function renderConversion() {
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${sc}20;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:${sc}">${i + 1}</div>
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${l.siteUrl ? `${escHtml(l.siteUrl)} · ` : ''}${escHtml(l.page)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.issue)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${l.events} événements · ${l.sessions} sessions · confiance ${escHtml(l.confidence)} · source behavior_events</div>
+                <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.recommendation)} ${fpT('{events} événements sur {sessions} sessions.', { events:l.events, sessions:l.sessions })}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('{events} événements · {sessions} sessions · confiance {confidence} · source {source}', { events:l.events, sessions:l.sessions, confidence:({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[l.confidence] || l.confidence, source:'behavior_events' })}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text-muted)">Revenu non mesuré</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||'Corriger point de friction conversion','Conversion','high')">Corriger</button>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text-muted)">${fpT('Revenu non mesuré')}</div>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||fpT('Corriger point de friction conversion'),'Conversion','high')">${fpT('Corriger')}</button>
               </div>
             </div>`;
           }).join("")}
@@ -59708,7 +60004,7 @@ function renderConversion() {
     const _croRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
     const _priEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
     const roadmap = (_croRecs && _croRecs.length) ? _croRecs.slice(0, 6).map(function(r) {
-      return { week: r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer', action: r.title || r.recommendation, impact: `${r.frequency || r.observedEvents || 0} événements · ${r.affectedSessions || 0} sessions`, done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
+      return { week: fpT(r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer'), action: r.title || r.recommendation, impact: fpT('{events} événements · {sessions} sessions', { events:r.frequency || r.observedEvents || 0, sessions:r.affectedSessions || 0 }), done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
     }) : [];
     const experiments = (STATE.cro?.experiments?.length > 0
       ? STATE.cro.experiments.slice(0, 6).map(ex => ({
@@ -59722,22 +60018,22 @@ function renderConversion() {
     const forecast = [];
     return `
       ${aiBlock((_croRecs || []).length
-        ? "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée."
-        : "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.",
-        ["Examiner les observations", "Créer une mission", "Revoir les données"])}
+        ? fpT("Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.")
+        : fpT("Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé."),
+        [fpT("Examiner les observations"), fpT("Créer une mission"), fpT("Revoir les données")])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard("Signaux observés", String(_croRecs?.length || 0), "30 derniers jours", "neutral")}
-        ${statCard("Sessions affectées", String((_croRecs || []).reduce((n, r) => n + Number(r.affectedSessions || 0), 0)), "sessions distinctes par signal", "neutral")}
-        ${statCard("Confiance élevée", String((_croRecs || []).filter(r => r.confidence === 'high').length), "au moins 30 sessions", "neutral")}
-        ${statCard("Gain financier", "Non mesuré", "aucune conversion/revenu attribué", "neutral")}
+        ${statCard(fpT("Signaux observés"), String(_croRecs?.length || 0), fpT("30 derniers jours"), "neutral")}
+        ${statCard(fpT("Sessions affectées"), String((_croRecs || []).reduce((n, r) => n + Number(r.affectedSessions || 0), 0)), fpT("sessions distinctes par signal"), "neutral")}
+        ${statCard(fpT("Confiance élevée"), String((_croRecs || []).filter(r => r.confidence === 'high').length), fpT("au moins 30 sessions"), "neutral")}
+        ${statCard(fpT("Gain financier"), fpT("Non mesuré"), fpT("aucune conversion/revenu attribué"), "neutral")}
       </div>
 
       <!-- ROADMAP -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("map").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-          Signaux comportementaux et actions CRO
+          ${fpT('Signaux comportementaux et actions CRO')}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${roadmap.map((r, i) => `
@@ -59749,8 +60045,8 @@ function renderConversion() {
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${escHtml(r.impact)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">Source : ${escHtml(r.source)} · confiance ${escHtml(r.confidence)}</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ('Optimiser la conversion','Conversion','medium')">Mission</button>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Source :')} ${escHtml(r.source)} · ${fpT('confiance')} ${escHtml(({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[r.confidence] || r.confidence)}</div>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ(fpT('Optimiser la conversion'),'Conversion','medium')">${fpT('Mission')}</button>
               </div>
             </div>
           `).join("")}
@@ -59760,20 +60056,20 @@ function renderConversion() {
       <!-- EXPERIMENTS + FORECAST -->
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="fp-card-title">🧪 Expériences A/B</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.create()">Créer une expérience</button></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="fp-card-title">${fpT('🧪 Expériences A/B')}</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.create()">${fpT('Créer une expérience')}</button></div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${experiments.length === 0
-              ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint)"><div style="font-size:24px;margin-bottom:8px">🧪</div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">Aucune expérience</div><div style="font-size:11px;margin-top:4px">Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.</div></div>`
+              ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint)"><div style="font-size:24px;margin-bottom:8px">🧪</div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${fpT('Aucune expérience')}</div><div style="font-size:11px;margin-top:4px">${fpT('Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.')}</div></div>`
               : experiments.map(ex => `
               <div style="padding:12px 14px;border-radius:10px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.2)">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ex.name)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(ex.hypo)} · ${escHtml(ex.page)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">A : ${ex.a.exposures} expositions / ${ex.a.conversions} conversions · B : ${ex.b.exposures} / ${ex.b.conversions}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${fpT('A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}', { aExposures:ex.a.exposures, aConversions:ex.a.conversions, bExposures:ex.b.exposures, bConversions:ex.b.conversions })}</div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
-                  <span style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${ex.result.status === 'significant' ? `Résultat significatif · p=${Number(ex.result.pValue).toFixed(3)} · gagnant ${escHtml(ex.result.winner)}` : ex.result.status === 'inconclusive' ? `Non concluant · p=${Number(ex.result.pValue).toFixed(3)}` : 'Données insuffisantes — 30 expositions/variante requises'} · ${escHtml(ex.status)}</span>
+                  <span style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${ex.result.status === 'significant' ? fpT('Résultat significatif · p={pValue} · gagnant {winner}', { pValue:Number(ex.result.pValue).toFixed(3), winner:escHtml(ex.result.winner) }) : ex.result.status === 'inconclusive' ? fpT('Non concluant · p={pValue}', { pValue:Number(ex.result.pValue).toFixed(3) }) : fpT('Données insuffisantes — 30 expositions/variante requises')} · ${escHtml(({draft:fpT('Brouillon'),running:fpT('En cours'),stopped:fpT('Arrêté')})[ex.status] || ex.status)}</span>
                   <div style="display:flex;gap:6px;flex-shrink:0">
-                    ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">Démarrer</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">Arrêter</button>` : ''}
-                    ${ex.status === 'draft' || ex.status === 'stopped' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-ab-delete="${escHtml(ex.id)}">Supprimer</button>` : ''}
+                    ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">${fpT('Démarrer')}</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">${fpT('Arrêter')}</button>` : ''}
+                    ${ex.status === 'draft' || ex.status === 'stopped' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-ab-delete="${escHtml(ex.id)}">${fpT('Supprimer')}</button>` : ''}
                   </div>
                 </div>
               </div>
@@ -59781,38 +60077,38 @@ function renderConversion() {
           </div>
         </div>
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📈 Prévision de conversion</div>
+          <div class="fp-card-title" style="margin-bottom:14px">${fpT('📈 Prévision de conversion')}</div>
           <div style="display:flex;gap:8px;align-items:flex-end;height:120px;margin-bottom:12px">
             ${forecast.map((f, i) => `
               <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
                 <div style="font-size:11px;font-weight:700;color:${i === 0 ? "var(--fp-text-muted)" : "#22c55e"}">${f.rate}%</div>
                 <div style="width:100%;max-width:50px;height:${Math.round(f.rate / 0.41 * 100)}px;background:${i === 0 ? "rgba(37,99,235,0.3)" : "linear-gradient(180deg,rgba(34,197,94,0.6),rgba(34,197,94,0.1))"};border-radius:6px 6px 0 0;border-top:2px solid ${i === 0 ? "#2563EB" : "#22c55e"}"></div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(f.month)}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">${f.clients} clients</div>
+                <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('{count} clients', { count:f.clients })}</div>
               </div>
             `).join("")}
           </div>
           ${forecast.length >= 4 ? `<div style="display:flex;flex-direction:column;gap:6px">
             <div style="padding:10px;background:rgba(34,197,94,0.06);border-radius:8px;font-size:12px;color:#22c55e;text-align:center">
-              🎯 Objectif M+3 : <strong>0.41%</strong> — +${forecast.length >= 4 ? forecast[3].clients - forecast[0].clients : '—'} clients/mois
+              ${fpT('🎯 Objectif M+3 :')} <strong>0.41%</strong> — +${forecast.length >= 4 ? forecast[3].clients - forecast[0].clients : '—'} ${fpT('clients/mois')}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div style="padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;border-left:3px solid #2563EB;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#2563EB">Levier principal</strong> — Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés
+                <strong style="color:#2563EB">${fpT('Levier principal')}</strong> — ${fpT('Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés')}
               </div>
               <div style="padding:8px 10px;background:rgba(34,197,94,0.05);border-radius:8px;border-left:3px solid #22c55e;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#22c55e">Tendance</strong> — +0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours
+                <strong style="color:#22c55e">${fpT('Tendance')}</strong> — ${fpT('+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours')}
               </div>
               <div style="padding:8px 10px;background:rgba(245,158,11,0.05);border-radius:8px;border-left:3px solid #f59e0b;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#f59e0b">Risque</strong> — Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)
+                <strong style="color:#f59e0b">${fpT('Risque')}</strong> — ${fpT('Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)')}
               </div>
               <div style="padding:8px 10px;background:rgba(139,92,246,0.05);border-radius:8px;border-left:3px solid #8b5cf6;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#8b5cf6">Impact revenus</strong> — Non mesuré; aucun revenu n’est attribué aux événements observés
+                <strong style="color:#8b5cf6">${fpT('Impact revenus')}</strong> — ${fpT('Non mesuré; aucun revenu n’est attribué aux événements observés')}
               </div>
             </div>
           </div>` : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:20px;margin-bottom:8px">📊</div>
-            <div>Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.</div>
+                <div>${fpT('Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.')}</div>
           </div>`}
         </div>
       </div>
@@ -59828,24 +60124,22 @@ function renderConversion() {
     ? _rlSum.totalMonthlyLoss : null;
   const _behConv = window.FP_DATA && window.FP_DATA.behavioral && window.FP_DATA.behavioral.sessionStats;
   const sessions = _behConv ? [
-    { label: "Engagement moyen",       val: (_behConv.avgEngagement || null) !== null ? _behConv.avgEngagement + '%' : '—', delta: "score session",  bad: (_behConv.avgEngagement || 100) < 60  },
-    { label: "Rage clicks détectés",   val: _behConv.rageClicks !== undefined ? String(_behConv.rageClicks) : '—',           delta: "ce mois",         bad: (_behConv.rageClicks || 0) > 20     },
-    { label: "Sessions enregistrées",  val: _behConv.total ? _behConv.total.toLocaleString(getLocale()) : '—',                   delta: "total",           bad: false                               },
-    { label: "Taux de rebond",          val: _behConv.bounceRate !== undefined ? _behConv.bounceRate + '%' : '—',            delta: "des sessions",    bad: (_behConv.bounceRate || 0) > 50     },
+    { label: fpT("Engagement moyen"),       val: (_behConv.avgEngagement || null) !== null ? _behConv.avgEngagement + '%' : '—', delta: fpT("score session"), bad: (_behConv.avgEngagement || 100) < 60 },
+    { label: fpT("Rage clicks détectés"),   val: _behConv.rageClicks !== undefined ? String(_behConv.rageClicks) : '—',         delta: fpT("ce mois"),       bad: (_behConv.rageClicks || 0) > 20 },
+    { label: fpT("Sessions enregistrées"),  val: _behConv.total ? _behConv.total.toLocaleString(getLocale()) : '—',             delta: fpT("total"),         bad: false },
+    { label: fpT("Taux de rebond"),          val: _behConv.bounceRate !== undefined ? _behConv.bounceRate + '%' : '—',          delta: fpT("des sessions"),  bad: (_behConv.bounceRate || 0) > 50 },
   ] : [];
   const mobIssues = [];
 
   return `
     <div class="fp-section-header">
       <div>
-        <h1 style="display:flex;align-items:center;gap:10px">
-          Conversion Command Center
-        </h1>
-        <div class="fp-section-sub">Plateforme de CRO, intelligence comportementale et optimisation revenue</div>
+        <h1 style="display:flex;align-items:center;gap:10px">${fpT('Conversion Command Center')}</h1>
+        <div class="fp-section-sub">${fpT('Plateforme de CRO, intelligence comportementale et optimisation revenue')}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn("Lancer analyse", "fp-btn fp-btn-primary fp-btn-sm", "search", "onclick=\"navigate('audits')\"" )}
-        ${btn("Rapport CRO", "fp-btn fp-btn-ghost fp-btn-sm", "download", "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
+        ${btn(fpT("Lancer analyse"), "fp-btn fp-btn-primary fp-btn-sm", "search", "onclick=\"navigate('audits')\"" )}
+        ${btn(fpT("Rapport CRO"), "fp-btn fp-btn-ghost fp-btn-sm", "download", "onclick=\"openFloatPanel('"+fpT('Nouveau rapport')+"',renderNewReportPanel());setupNewReportPanel()\"" )}
       </div>
     </div>
 
@@ -59853,22 +60147,22 @@ function renderConversion() {
     ${isUltra
       ? aiBlock(
           STATE.overview?.conversionRate != null
-            ? "Taux de conversion observé : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Les recommandations reposent sur les événements comportementaux collectés; aucun gain financier n'est prédit sans revenus attribués."
-            : "Connectez vos sources comportementales pour obtenir des observations CRO. Aucun gain financier ne sera affiché sans revenus réellement attribués.",
-          ["Plan CRO complet", "Corriger les fuites", "Tester les CTAs"])
+            ? fpT("Taux de conversion observé : <strong>{rate}%</strong>. Les recommandations reposent sur les événements comportementaux collectés; aucun gain financier n'est prédit sans revenus attribués.", { rate:(STATE.overview.conversionRate*100).toFixed(2) })
+            : fpT("Connectez vos sources comportementales pour obtenir des observations CRO. Aucun gain financier ne sera affiché sans revenus réellement attribués."),
+          [fpT("Plan CRO complet"), fpT("Corriger les fuites"), fpT("Tester les CTAs")])
       : `<div style="background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.06));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px">🤖</div>
-          <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de conversion personnalisés, forecasting et recommandations business chaque semaine.</div></div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${fpT('Stratège CRO IA — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Plans de conversion personnalisés, forecasting et recommandations business chaque semaine.')}</div></div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button>
         </div>`
     }
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard("Taux de conversion observé", STATE.overview?.conversionRate != null ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : "—", STATE.overview?.conversionRate != null ? "Données connectées" : "Connectez analytics", "neutral")}
-      ${statCard("Clients/mois observés", STATE.overview?.clientsPerMonth != null ? String(STATE.overview.clientsPerMonth) : "—", STATE.overview?.clientsPerMonth != null ? "Données connectées" : "Connectez analytics", "neutral")}
-      ${statCard("Revenu observé", STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + "€/mois" : "Non mesuré", STATE.overview?.revenue != null ? "Données connectées" : "Aucun revenu relié", "neutral")}
-      ${statCard("Perte financière attribuée", leakTotal !== null ? leakTotal.toLocaleString(getLocale()) + "€/mois" : "Non mesurée", leakTotal !== null ? "Revenu relié aux événements" : "Aucun revenu attribué", "neutral")}
+      ${statCard(fpT("Taux de conversion observé"), STATE.overview?.conversionRate != null ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : "—", STATE.overview?.conversionRate != null ? fpT("Données connectées") : fpT("Connectez analytics"), "neutral")}
+      ${statCard(fpT("Clients/mois observés"), STATE.overview?.clientsPerMonth != null ? String(STATE.overview.clientsPerMonth) : "—", STATE.overview?.clientsPerMonth != null ? fpT("Données connectées") : fpT("Connectez analytics"), "neutral")}
+      ${statCard(fpT("Revenu observé"), STATE.overview?.revenue != null ? fpT("{amount}€/mois", { amount:STATE.overview.revenue.toLocaleString(getLocale()) }) : fpT("Non mesuré"), STATE.overview?.revenue != null ? fpT("Données connectées") : fpT("Aucun revenu relié"), "neutral")}
+      ${statCard(fpT("Perte financière attribuée"), leakTotal !== null ? fpT("{amount}€/mois", { amount:leakTotal.toLocaleString(getLocale()) }) : fpT("Non mesurée"), leakTotal !== null ? fpT("Revenu relié aux événements") : fpT("Aucun revenu attribué"), "neutral")}
     </div>
 
     ${aiBlock(
@@ -59877,11 +60171,11 @@ function renderConversion() {
           ? (_ga4Funnel[_ga4Funnel.length-1].abs / Math.max(_ga4Funnel[0].abs, 1) * 100).toFixed(2)
           : null;
         const _avgHs = healthScores.length ? Math.round(healthScores.reduce((s,h)=>s+h.val,0)/healthScores.length) : null;
-        if (_cr) return `Taux de conversion observé : <strong>${_cr}%</strong>. ${_avgHs != null ? `Score de santé observé : ${_avgHs}/100.` : 'Aucun score CRO mesuré.'} Aucun gain financier n'est estimé sans revenus attribués.`;
-        if (_avgHs != null) return `Score de santé observé : <strong>${_avgHs}/100</strong>. Connectez vos événements de conversion pour compléter l'analyse.`;
-        return "Aucune mesure de conversion disponible. Connectez GA4 et le suivi comportemental; aucun résultat financier n'est extrapolé.";
+        if (_cr) return fpT("Taux de conversion observé : <strong>{rate}%</strong>. {health} Aucun gain financier n'est estimé sans revenus attribués.", { rate:_cr, health:_avgHs != null ? fpT("Score de santé observé : {score}/100.", { score:_avgHs }) : fpT("Aucun score CRO mesuré.") });
+        if (_avgHs != null) return fpT("Score de santé observé : <strong>{score}/100</strong>. Connectez vos événements de conversion pour compléter l'analyse.", { score:_avgHs });
+        return fpT("Aucune mesure de conversion disponible. Connectez GA4 et le suivi comportemental; aucun résultat financier n'est extrapolé.");
       })(),
-      ['Voir la heatmap', 'Analyser le funnel', 'Revenue Leak →']
+      [fpT('Voir la heatmap'), fpT('Analyser le funnel'), fpT('Revenue Leak →')]
     )}
 
     <!-- 7 HEALTH SCORES -->
@@ -59889,9 +60183,9 @@ function renderConversion() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div class="fp-card-title" style="margin-bottom:0">
           ${svgIcon("activity").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-          Scores de conversion observés — ${healthScores.length} indicateur(s)
+          ${fpT('Scores de conversion observés — {count} indicateur(s)', { count:healthScores.length })}
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Moyenne :<strong style="color:#f59e0b">${healthScores.length ? Math.round(healthScores.reduce((sum,h)=>sum+h.val,0)/healthScores.length) + '/100' : 'Non mesurée'}</strong></span>
+        <span style="font-size:11px;color:var(--fp-text-faint)">${fpT('Moyenne :')}<strong style="color:#f59e0b">${healthScores.length ? Math.round(healthScores.reduce((sum,h)=>sum+h.val,0)/healthScores.length) + '/100' : fpT('Non mesurée')}</strong></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${healthScores.map(h => {
@@ -59907,16 +60201,16 @@ function renderConversion() {
               <text x="32" y="36" text-anchor="middle" font-size="13" font-weight="800" fill="${h.color}">${h.val}</text>
             </svg>
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${h.icon} ${escHtml(h.label)}</div>
-            <div style="margin-top:6px">${badge(h.val >= 70 ? "Bon" : h.val >= 50 ? "Moyen" : "Critique", h.color)}</div>
+            <div style="margin-top:6px">${badge(fpT(h.val >= 70 ? "Bon" : h.val >= 50 ? "Moyen" : "Critique"), h.color)}</div>
           </div>`;
-        }).join("") || `<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--fp-text-faint);font-size:12px">Aucun score observé disponible.</div>`}
+        }).join("") || `<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--fp-text-faint);font-size:12px">${fpT('Aucun score observé disponible.')}</div>`}
       </div>
     </div>
 
     ${!_ga4Connected() && !PREVIEW_MODE ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(100,116,139,0.07);border:1px dashed rgba(100,116,139,0.3);border-radius:10px;margin-bottom:14px">
       <span style="font-size:14px">🧪</span>
-      <div style="font-size:11px;color:var(--fp-text-muted)"><strong style="color:var(--fp-text)">Aucune donnée de conversion observée</strong> — Connectez Google Analytics 4 ou le suivi comportemental</div>
-      <button class="fp-btn fp-btn-sm" style="margin-left:auto;flex-shrink:0;font-size:11px" onclick="navigate('analytics')">Connecter GA4 →</button>
+      <div style="font-size:11px;color:var(--fp-text-muted)"><strong style="color:var(--fp-text)">${fpT('Aucune donnée de conversion observée')}</strong> — ${fpT('Connectez Google Analytics 4 ou le suivi comportemental')}</div>
+      <button class="fp-btn fp-btn-sm" style="margin-left:auto;flex-shrink:0;font-size:11px" onclick="navigate('analytics')">${fpT('Connecter GA4 →')}</button>
     </div>` : ''}
 
     <!-- FUNNEL SNAPSHOT + SESSION INTEL -->
@@ -59925,9 +60219,9 @@ function renderConversion() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon("filter").replace('stroke="currentColor"', 'stroke="#8b5cf6"')}
-            Funnel — Ce mois
+            ${fpT('Funnel — Ce mois')}
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('funnel')">Analyse complète →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('funnel')">${fpT('Analyse complète →')}</button>
         </div>
         ${funnelSteps && funnelSteps.length > 0 ? funnelSteps.map((s, idx) => `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${idx < funnelSteps.length - 1 ? "4px" : "0"}">
@@ -59937,9 +60231,9 @@ function renderConversion() {
             </div>
             <span style="font-size:11px;font-weight:700;color:${s.color};min-width:48px;text-align:right">${escHtml(s.val)}</span>
           </div>
-        `).join("") : `<div style="padding:14px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez analytics pour afficher le funnel →</div>`}
+        `).join("") : `<div style="padding:14px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Connectez analytics pour afficher le funnel →')}</div>`}
         ${funnelSteps && funnelSteps.length > 0 ? `<div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444;text-align:center">
-          ⚠ 88% des visiteurs quittent sans explorer le site
+          ${fpT('⚠ 88% des visiteurs quittent sans explorer le site')}
         </div>` : ''}
       </div>
 
@@ -59947,9 +60241,9 @@ function renderConversion() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon("eye").replace('stroke="currentColor"', 'stroke="#06b6d4"')}
-            Intelligence comportementale
+            ${fpT('Intelligence comportementale')}
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('ux-lab')">Détails →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('ux-lab')">${fpT('Détails →')}</button>
         </div>
         ${sessions.map(s => `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -59969,12 +60263,12 @@ function renderConversion() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon("smartphone").replace('stroke="currentColor"', 'stroke="#ef4444"')}
-            Alertes conversion mobile
+            ${fpT('Alertes conversion mobile')}
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('ux-lab')">UX Lab →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('ux-lab')">${fpT('UX Lab →')}</button>
         </div>
         <div style="font-size:12px;font-weight:700;color:#ef4444;padding:10px 12px;background:rgba(239,68,68,0.08);border-radius:8px;margin-bottom:10px">
-          ⚠ Score UX Mobile : 44/100 — En dessous du seuil critique
+          ${fpT('⚠ Score UX Mobile : 44/100 — En dessous du seuil critique')}
         </div>
         ${mobIssues.map(m => `
           <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -59985,16 +60279,16 @@ function renderConversion() {
             </div>
           </div>
         `).join("")}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:12px" onclick="navigateSub('ux-lab')">Analyser UX mobile</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:12px" onclick="navigateSub('ux-lab')">${fpT('Analyser UX mobile')}</button>
       </div>
 
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon("alert-triangle").replace('stroke="currentColor"', 'stroke="#ef4444"')}
-            Revenue Leak — Top fuites
+            ${fpT('Revenue Leak — Top fuites')}
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('revenue-leak')">Toutes les fuites →</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('revenue-leak')">${fpT('Toutes les fuites →')}</button>
         </div>
         ${(function() {
           const _realLeaks = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.leaks;
@@ -60004,20 +60298,20 @@ function renderConversion() {
               return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                 <div style="display:flex;align-items:center;gap:8px">
                   <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
-                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||'Fuite détectée')}</span>
+                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||fpT('Fuite détectée'))}</span>
                 </div>
-                <span style="font-size:11px;color:var(--fp-text-muted)">Revenu non mesuré</span>
+                <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Revenu non mesuré')}</span>
               </div>`;
             }).join('');
           }
           if (PREVIEW_MODE) {
-            return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.</div>`;
+            return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.')}</div>`;
           }
-          return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
+          return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Connectez vos analytics pour détecter les fuites de revenus →')}</div>`;
         })()}
         <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center">
-          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString(getLocale()) + '€/mois' : 'Non mesurée'}</div>
-          <div style="font-size:10px;color:var(--fp-text-faint)">Aucun revenu attribué aux événements observés</div>
+          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + fpT('{amount}€/mois', { amount:leakTotal.toLocaleString(getLocale()) }) : fpT('Non mesurée')}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Aucun revenu attribué aux événements observés')}</div>
         </div>
       </div>
     </div>
@@ -60027,9 +60321,9 @@ function renderConversion() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div class="fp-card-title" style="margin-bottom:0">
           ${svgIcon("zap").replace('stroke="currentColor"', 'stroke="#22c55e"')}
-          Quick Wins CRO — Actions à fort impact immédiat
+          ${fpT('Quick Wins CRO — Actions à fort impact immédiat')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('cro')">Plan complet →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('cro')">${fpT('Plan complet →')}</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${(function() {
@@ -60043,25 +60337,25 @@ function renderConversion() {
           const _hasGA4       = !!(window.FP_DATA?.ga4?.sessions);
           const _hasKw        = (STATE.keywords||[]).length > 0;
           if (_monitorsDown > 0)
-            _qw.push({ t: _monitorsDown + ' monitor' + (_monitorsDown>1?'s':'') + ' DOWN — intervention immédiate', impact: 'Critique', effort: 'Immédiat', priority: 'Critique' });
+            _qw.push({ t: fpT(_monitorsDown === 1 ? '{count} monitor DOWN — intervention immédiate' : '{count} monitors DOWN — intervention immédiate', { count:_monitorsDown }), impact: fpT('Critique'), effort: fpT('Immédiat'), priority: 'Critique' });
           if (!_hasGA4)
-            _qw.push({ t: 'Connecter GA4 pour mesurer les conversions réelles', impact: 'Indispensable', effort: '15 min', priority: 'Critique' });
+            _qw.push({ t: fpT('Connecter GA4 pour mesurer les conversions réelles'), impact: fpT('Indispensable'), effort: '15 min', priority: 'Critique' });
           if (!_hasAudits)
-            _qw.push({ t: 'Lancer un premier audit SEO', impact: 'Diagnostic initial', effort: '2 min', priority: 'Critique' });
+            _qw.push({ t: fpT('Lancer un premier audit SEO'), impact: fpT('Diagnostic initial'), effort: '2 min', priority: 'Critique' });
           if (_avgSc > 0 && _avgSc < 60)
-            _qw.push({ t: 'Score SEO faible (' + _avgSc + '/100) — corriger les issues critiques', impact: '+trafic', effort: '2-4h', priority: 'Critique' });
+            _qw.push({ t: fpT('Score SEO faible ({score}/100) — corriger les issues critiques', { score:_avgSc }), impact: fpT('+trafic'), effort: '2-4h', priority: 'Critique' });
           if (_monitorsWarn > 0 && _monitorsDown === 0)
-            _qw.push({ t: _monitorsWarn + ' monitor' + (_monitorsWarn>1?'s':'') + ' en alerte latence', impact: 'UX dégradée', effort: '1h', priority: 'Élevé' });
+            _qw.push({ t: fpT(_monitorsWarn === 1 ? '{count} monitor en alerte latence' : '{count} monitors en alerte latence', { count:_monitorsWarn }), impact: fpT('UX dégradée'), effort: '1h', priority: 'Élevé' });
           if (_avgSc >= 60 && _avgSc < 75)
-            _qw.push({ t: 'Optimiser les pages à score 60-74 (vitesse mobile)', impact: 'Gain de trafic', effort: '2h', priority: 'Élevé' });
+            _qw.push({ t: fpT('Optimiser les pages à score 60-74 (vitesse mobile)'), impact: fpT('Gain de trafic'), effort: '2h', priority: 'Élevé' });
           if (!_hasMonitors)
-            _qw.push({ t: 'Configurer un monitor de disponibilité', impact: 'Prévenir les pertes', effort: '5 min', priority: 'Élevé' });
+            _qw.push({ t: fpT('Configurer un monitor de disponibilité'), impact: fpT('Prévenir les pertes'), effort: '5 min', priority: 'Élevé' });
           if (!_hasKw)
-            _qw.push({ t: 'Ajouter des mots-clés à surveiller', impact: 'Suivi de position', effort: '10 min', priority: 'Moyen' });
+            _qw.push({ t: fpT('Ajouter des mots-clés à surveiller'), impact: fpT('Suivi de position'), effort: '10 min', priority: 'Moyen' });
           if (_avgSc >= 75)
-            _qw.push({ t: 'Score solide — ajouter Schema Markup FAQ sur les pages clés', impact: 'Rich snippets', effort: '1h', priority: 'Moyen' });
+            _qw.push({ t: fpT('Score solide — ajouter Schema Markup FAQ sur les pages clés'), impact: fpT('Rich snippets'), effort: '1h', priority: 'Moyen' });
           if (_qw.length === 0)
-            _qw.push({ t: 'Portfolio optimisé — planifier la revue mensuelle', impact: 'Maintenir', effort: 'Récurrent', priority: 'Moyen' });
+            _qw.push({ t: fpT('Portfolio optimisé — planifier la revue mensuelle'), impact: fpT('Maintenir'), effort: fpT('Récurrent'), priority: 'Moyen' });
           return _qw.slice(0,4).map(r => {
             const pc = r.priority === 'Critique' ? '#ef4444' : r.priority === 'Élevé' ? '#f59e0b' : '#2563EB';
             return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
@@ -60072,8 +60366,8 @@ function renderConversion() {
                 <div style="font-size:12px;font-weight:800;color:#22c55e">${escHtml(r.impact)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.effort)}</div>
               </div>
-              ${badge(r.priority, pc)}
-              <button class="fp-btn fp-btn-ghost fp-btn-sm quick-win-btn" data-label="${escHtml(r.t)}">Commencer</button>
+              ${badge(fpT(r.priority), pc)}
+              <button class="fp-btn fp-btn-ghost fp-btn-sm quick-win-btn" data-label="${escHtml(r.t)}">${fpT('Commencer')}</button>
             </div>`;
           }).join('');
         })()}
@@ -65480,28 +65774,28 @@ function renderCompetitorsMap() {
 function renderConversionHeatmap() {
   return `
     <div class="fp-section-header">
-      <div><h1>Heatmap & Analyse UX</h1><div class="fp-section-sub">Comportement visiteurs · Sessions enregistrées · Zones de friction</div></div>
+      <div><h1>${fpT('Heatmap & Analyse UX')}</h1><div class="fp-section-sub">${fpT('Comportement visiteurs · Sessions enregistrées · Zones de friction')}</div></div>
       <div class="fp-section-actions">
-        <button class="fp-upgrade-btn ultra" onclick="navigateSub('plans')">Ultra : Heatmap live</button>
+        <button class="fp-upgrade-btn ultra" onclick="navigateSub('plans')">${fpT('Ultra : Heatmap live')}</button>
       </div>
     </div>
-    ${aiBlock(PREVIEW_MODE ? '<strong>68% des visiteurs quittent la page avant le CTA</strong>. La zone la plus cliquée : votre numéro de téléphone. Recommandation : remonter le CTA d\'appel au-dessus de la ligne de flottaison.' : 'Connectez vos analytics et vos heatmaps pour analyser le comportement visiteurs et détecter les zones de friction.',['Créer la mission CTA','Analyser le parcours'])}
+    ${aiBlock(PREVIEW_MODE ? fpT('<strong>68% des visiteurs quittent la page avant le CTA</strong>. La zone la plus cliquée : votre numéro de téléphone. Recommandation : remonter le CTA d’appel au-dessus de la ligne de flottaison.') : fpT('Connectez vos analytics et vos heatmaps pour analyser le comportement visiteurs et détecter les zones de friction.'),[fpT('Créer la mission CTA'),fpT('Analyser le parcours')])}
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Sessions enregistrées', displayStat(STATE.overview?.sessions ? String(STATE.overview.sessions) : null, '842'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
-      ${statCard('Taux de rebond', displayStat(null, '62%'), PREVIEW_MODE ? '-4% vs mois passé' : 'Connectez analytics', 'neutral')}
-      ${statCard('Profondeur scroll', displayStat(null, '38%'), PREVIEW_MODE ? 'de la page en moy.' : 'Connectez heatmaps', 'neutral')}
-      ${statCard('Clics CTA', displayStat(null, '134'), PREVIEW_MODE ? 'sur bouton principal' : 'Connectez analytics', 'neutral')}
+      ${statCard(fpT('Sessions enregistrées'), displayStat(STATE.overview?.sessions ? String(STATE.overview.sessions) : null, '842'), PREVIEW_MODE ? fpT('ce mois') : fpT('Connectez analytics'), 'neutral')}
+      ${statCard(fpT('Taux de rebond'), displayStat(null, '62%'), PREVIEW_MODE ? fpT('-4% vs mois passé') : fpT('Connectez analytics'), 'neutral')}
+      ${statCard(fpT('Profondeur scroll'), displayStat(null, '38%'), PREVIEW_MODE ? fpT('de la page en moy.') : fpT('Connectez heatmaps'), 'neutral')}
+      ${statCard(fpT('Clics CTA'), displayStat(null, '134'), PREVIEW_MODE ? fpT('sur bouton principal') : fpT('Connectez analytics'), 'neutral')}
     </div>
     <div class="fp-grid-2 fp-mb-16">
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">Score UX / CRO par élément</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('Score UX / CRO par élément')}</div>
         ${[
           { label:'Visibilité du CTA principal', score:42, color:'var(--fp-danger)', issue:'CTA trop bas dans la page' },
           { label:'Clarté de l\'offre (headline)', score:71, color:'var(--fp-warning)', issue:'Message améliorable' },
           { label:'Confiance (avis + logos)', score:85, color:'var(--fp-success)', issue:'Bien positionné' },
           { label:'Vitesse perçue mobile', score:68, color:'var(--fp-warning)', issue:'LCP > 2.5s' },
           { label:'Formulaire de contact', score:90, color:'var(--fp-success)', issue:'Simple et efficace' },
-        ].map(s => `
+        ].map(s => ({ ...s, label:fpT(s.label), issue:fpT(s.issue) })).map(s => `
           <div style="margin-bottom:12px">
             <div style="display:flex;justify-content:space-between;margin-bottom:4px">
               <span style="font-size:12px;color:var(--fp-text)">${escHtml(s.label)}</span>
@@ -65513,14 +65807,14 @@ function renderConversionHeatmap() {
         `).join('')}
       </div>
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">Zones de friction identifiées</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('Zones de friction identifiées')}</div>
         ${[
           { zone:'Header / Navigation', friction:'Élevée', color:'var(--fp-danger)', desc:'72% des clics se perdent dans le menu' },
           { zone:'Section services', friction:'Moyenne', color:'var(--fp-warning)', desc:'Les visiteurs scrollent sans s\'arrêter' },
           { zone:'CTA "Nous contacter"', friction:'Critique', color:'var(--fp-danger)', desc:'Non visible par 88% des visiteurs' },
           { zone:'Section avis clients', friction:'Faible', color:'var(--fp-success)', desc:'Bien lue, génère de la confiance' },
           { zone:'Footer', friction:'Faible', color:'var(--fp-success)', desc:'Peu utilisé mais fonctionnel' },
-        ].map(z => `
+        ].map(z => ({ ...z, zone:fpT(z.zone), friction:fpT(z.friction), desc:fpT(z.desc) })).map(z => `
           <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--fp-border)">
             <div style="width:8px;height:8px;border-radius:50%;background:${z.color};margin-top:4px;flex-shrink:0"></div>
             <div style="flex:1">
@@ -65532,20 +65826,20 @@ function renderConversionHeatmap() {
             </div>
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="navigate('missions');showToast('info', fpT('Accédez aux missions pour créer vos optimisations CRO'))">Créer les missions CRO</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="navigate('missions');showToast('info', fpT('Accédez aux missions pour créer vos optimisations CRO'))">${fpT('Créer les missions CRO')}</button>
       </div>
     </div>
     <div class="fp-card" style="text-align:center;padding:32px 20px">
       <div style="width:56px;height:56px;border-radius:16px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.14);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
         ${(typeof svgIcon==='function' ? svgIcon('monitor') : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="22"').replace('height="14"','height="22"')}
       </div>
-      <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Heatmap live — Bientôt disponible</div>
+      <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${fpT('Heatmap live — Bientôt disponible')}</div>
       <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;margin:0 auto 18px;line-height:1.6">
-        Visualisez en temps réel où cliquent vos visiteurs, leurs mouvements de souris et zones de friction — page par page.
+        ${fpT('Visualisez en temps réel où cliquent vos visiteurs, leurs mouvements de souris et zones de friction — page par page.')}
       </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer à Ultra</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp:notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent='✓ Vous serez notifié'">Me notifier</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer à Ultra')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp:notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent=fpT('✓ Vous serez notifié')">${fpT('Me notifier')}</button>
       </div>
     </div>
   `;
@@ -66776,10 +67070,11 @@ window._fpConversionAPI = {
 
 // ── Loading / Error skeleton helpers ──────────────────────────────────────────
 function _fpConvLoadingSkeleton() {
-  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
+  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">'+fpT('Chargement des données…')+'</div></div></div>' + renderPageSkeleton({ hero: false, stats: 4, statH: 80, toolbar: false, cards: 4, cardCols: 2, cardH: 160, rows: 0 });
 }
 function _fpConvErrorSkeleton(err) {
-  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||'Erreur inconnue'))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Réessayer</button></div>';
+  const message = err == null || err === '' ? fpT('Erreur inconnue') : err;
+  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">'+fpT('Erreur de chargement')+'</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(message))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 '+fpT('Réessayer')+'</button></div>';
 }
 
 function _fpAnaLoadingSkeleton() {
@@ -67247,7 +67542,7 @@ function renderGA4Conversion() {
   if (!STATE.me) return _fpConvLoadingSkeleton();
   const _cvPremium = STATE.me.hasPremiumAccess ?? STATE.me.canAccessPremium ?? false;
   if (_cvPremium === false) {
-    return `<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Événements de conversion, revenus et landing pages</div></div></div>
+    return `<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">${fpT('Événements de conversion, revenus et landing pages')}</div></div></div>
     <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
       <div style="font-size:48px;margin-bottom:16px">🔒</div>
       <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Fonctionnalité Premium')}</div>
@@ -67259,7 +67554,7 @@ function renderGA4Conversion() {
   const cvS = window._fpConversionState || {};
   if (!cvS.loaded && !cvS.loading) setTimeout(() => window._fpConversionAPI.loadAll(), 60);
   if (cvS.loading && !cvS.data) return _fpConvLoadingSkeleton();
-  if (cvS.error  && !cvS.data) return _fpConvErrorSkeleton(cvS.error);
+  if (cvS.error  && !cvS.data) return _fpConvErrorSkeleton(cvS.error === 'Statut GA4 indisponible — réessayez dans un instant.' ? fpT(cvS.error) : cvS.error);
 
   const days    = cvS.days || 30;
   const data    = cvS.data || {};
@@ -67269,15 +67564,15 @@ function renderGA4Conversion() {
   const periodSel = `
     <select onchange="window._fpConversionAPI.loadAll(parseInt(this.value))"
       style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
-      <option value="7"  ${days===7?'selected':''}>7 jours</option>
-      <option value="30" ${days===30?'selected':''}>30 jours</option>
-      <option value="90" ${days===90?'selected':''}>90 jours</option>
+      <option value="7"  ${days===7?'selected':''}>${fpT('7 jours')}</option>
+      <option value="30" ${days===30?'selected':''}>${fpT('30 jours')}</option>
+      <option value="90" ${days===90?'selected':''}>${fpT('90 jours')}</option>
     </select>
-    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Actualiser</button>`;
+    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 ${fpT('Actualiser')}</button>`;
 
   const header = `
     <div class="fp-section-header">
-      <div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Événements de conversion, revenus et landing pages — ${days} derniers jours</div></div>
+      <div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">${fpT('Événements de conversion, revenus et landing pages — {days} derniers jours', { days })}</div></div>
       <div class="fp-section-actions">${periodSel}</div>
     </div>`;
 
@@ -67288,7 +67583,7 @@ function renderGA4Conversion() {
     return header + `
       <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
         <div style="font-size:40px;margin-bottom:14px">⏳</div>
-        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Connexion GA4 en cours de configuration</div>
+        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Connexion GA4 en cours de configuration')}</div>
         <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 20px">
           ${fpT('Votre compte Google est connecté. La découverte de votre propriété GA4 est en cours — cela prend généralement moins d\u2019une minute.')}
         </div>
@@ -67301,11 +67596,11 @@ function renderGA4Conversion() {
     return header + `
       <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
         <div style="font-size:40px;margin-bottom:14px">🔌</div>
-        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Google Analytics 4 non connecté</div>
+        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Google Analytics 4 non connecté')}</div>
         <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 20px">
-          Connectez GA4 pour afficher vos conversions réelles, revenus, landing pages et analyses par source.
+          ${fpT('Connectez GA4 pour afficher vos conversions réelles, revenus, landing pages et analyses par source.')}
         </div>
-        <button class="fp-btn fp-btn-primary" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
+        <button class="fp-btn fp-btn-primary" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">${fpT('Connecter GA4')}</button>
       </div>`;
   }
 
@@ -67333,12 +67628,12 @@ function renderGA4Conversion() {
     return header + `
       <div style="text-align:center;padding:48px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
         <div style="font-size:36px;margin-bottom:12px">🎯</div>
-        <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune conversion GA4 sur la période</div>
+        <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Aucune conversion GA4 sur la période')}</div>
         <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">
-          Aucun événement de conversion configuré ou aucune conversion enregistrée sur les ${days} derniers jours.<br>
-          Configurez des <strong>Key Events</strong> dans GA4 pour commencer le suivi.
+          ${fpT('Aucun événement de conversion configuré ou aucune conversion enregistrée sur les {days} derniers jours.', { days })}<br>
+          ${fpT('Configurez des <strong>Key Events</strong> dans GA4 pour commencer le suivi.')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Actualiser</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 ${fpT('Actualiser')}</button>
       </div>`;
   }
 
@@ -67346,35 +67641,35 @@ function renderGA4Conversion() {
   const kpiRow = `
     <div class="fp-stat-row fp-mb-20">
       <div class="fp-stat-card">
-        <div class="fp-stat-label">Conversions totales</div>
+        <div class="fp-stat-label">${fpT('Conversions totales')}</div>
         <div class="fp-stat-value">${fmt(totalConv)}</div>
-        ${convDiff != null ? `<div class="fp-stat-sub" style="color:${convDiff>=0?'#22c55e':'#ef4444'}">${convDiff>=0?'+':''}${convDiff}% taux vs période préc.</div>` : '<div class="fp-stat-sub">—</div>'}
+        ${convDiff != null ? `<div class="fp-stat-sub" style="color:${convDiff>=0?'#22c55e':'#ef4444'}">${fpT('{change}{percent}% taux vs période préc.', { change:convDiff>=0?'+':'', percent:convDiff })}</div>` : '<div class="fp-stat-sub">—</div>'}
       </div>
       <div class="fp-stat-card">
-        <div class="fp-stat-label">Taux de conversion</div>
+        <div class="fp-stat-label">${fpT('Taux de conversion')}</div>
         <div class="fp-stat-value">${fmtPct(convRate)}</div>
-        <div class="fp-stat-sub">${sessions ? fmt(sessions) + ' sessions' : '—'}</div>
+        <div class="fp-stat-sub">${sessions ? fpT('{count} sessions', { count:fmt(sessions) }) : '—'}</div>
       </div>
       <div class="fp-stat-card">
-        <div class="fp-stat-label">Revenus GA4</div>
+        <div class="fp-stat-label">${fpT('Revenus GA4')}</div>
         <div class="fp-stat-value">${fmtRev(totalRev)}</div>
-        <div class="fp-stat-sub">${avgRevConv != null ? 'Moy./conv. ' + fmtRev(avgRevConv) : 'Revenus non configurés'}</div>
+        <div class="fp-stat-sub">${avgRevConv != null ? fpT('Moy./conv. {revenue}', { revenue:fmtRev(avgRevConv) }) : fpT('Revenus non configurés')}</div>
       </div>
       <div class="fp-stat-card">
-        <div class="fp-stat-label">Utilisateurs</div>
+        <div class="fp-stat-label">${fpT('Utilisateurs')}</div>
         <div class="fp-stat-value">${fmt(users)}</div>
-        <div class="fp-stat-sub">${events.length ? events.length + ' type(s) d\'événement' : '—'}</div>
+        <div class="fp-stat-sub">${events.length ? fpT('{count} type(s) d’événement', { count:events.length }) : '—'}</div>
       </div>
     </div>`;
 
   // ── CONVERSION EVENTS ─────────────────────────────────────────────
   const eventsBlock = events.length > 0 ? `
     <div class="fp-card fp-mb-20">
-      <div class="fp-card-title" style="margin-bottom:14px">⚡ Événements de conversion</div>
+      <div class="fp-card-title" style="margin-bottom:14px">⚡ ${fpT('Événements de conversion')}</div>
       <div style="overflow-x:auto">
         <table style="width:100%;min-width:440px;border-collapse:collapse;font-size:12px">
           <thead><tr style="border-bottom:1px solid var(--fp-border)">
-            ${['Événement','Conversions','Revenu','Revenu moy./conv.'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+            ${['Événement','Conversions','Revenu','Revenu moy./conv.'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT(h)}</th>`).join('')}
           </tr></thead>
           <tbody>
             ${events.slice(0,20).map(ev => `
@@ -67389,17 +67684,17 @@ function renderGA4Conversion() {
       </div>
     </div>` : `
     <div class="fp-card fp-mb-20" style="text-align:center;padding:28px">
-      <div style="font-size:13px;color:var(--fp-text-muted)">Aucun événement de conversion trouvé.<br>Configurez des <strong>Key Events</strong>dans votre propriété GA4.</div>
+      <div style="font-size:13px;color:var(--fp-text-muted)">${fpT('Aucun événement de conversion trouvé.')}<br>${fpT('Configurez des <strong>Key Events</strong> dans votre propriété GA4.')}</div>
     </div>`;
 
   // ── LANDING PAGES ─────────────────────────────────────────────────
   const pagesBlock = pages.length > 0 ? `
     <div class="fp-card fp-mb-20">
-      <div class="fp-card-title" style="margin-bottom:14px">📄 Landing pages — conversions</div>
+      <div class="fp-card-title" style="margin-bottom:14px">📄 ${fpT('Landing pages — conversions')}</div>
       <div style="overflow-x:auto">
         <table style="width:100%;min-width:500px;border-collapse:collapse;font-size:12px">
           <thead><tr style="border-bottom:1px solid var(--fp-border)">
-            ${['Page','Sessions','Utilisateurs','Conversions','Taux','Revenu'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+            ${['Page','Sessions','Utilisateurs','Conversions','Taux','Revenu'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT(h)}</th>`).join('')}
           </tr></thead>
           <tbody>
             ${pages.slice(0,15).map(p => `
@@ -67419,11 +67714,11 @@ function renderGA4Conversion() {
   // ── SOURCES + DEVICES + GEO ───────────────────────────────────────
   const sourcesBlock = sources.length > 0 ? `
     <div class="fp-card fp-mb-20">
-      <div class="fp-card-title" style="margin-bottom:14px">🚦 Sources — conversions</div>
+      <div class="fp-card-title" style="margin-bottom:14px">🚦 ${fpT('Sources — conversions')}</div>
       <div style="overflow-x:auto">
         <table style="width:100%;min-width:480px;border-collapse:collapse;font-size:12px">
           <thead><tr style="border-bottom:1px solid var(--fp-border)">
-            ${['Canal','Source / Medium','Sessions','Conversions','Taux'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+            ${['Canal','Source / Medium','Sessions','Conversions','Taux'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT(h)}</th>`).join('')}
           </tr></thead>
           <tbody>
             ${sources.slice(0,15).map(s => {
@@ -67443,14 +67738,14 @@ function renderGA4Conversion() {
 
   const devicesBlock = devices.length > 0 ? `
     <div class="fp-card fp-mb-20">
-      <div class="fp-card-title" style="margin-bottom:14px">📱 Appareils — conversions</div>
+      <div class="fp-card-title" style="margin-bottom:14px">📱 ${fpT('Appareils — conversions')}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
         ${devices.map(d => `
           <div class="fp-card" style="padding:14px 16px">
             <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px;text-transform:capitalize">${escHtml(d.device)}</div>
             <div style="font-size:22px;font-weight:900;color:#2563EB;font-family:var(--fp-font-head);margin-bottom:3px">${fmt(d.conversions)}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:6px">conversions · ${fmt(d.sessions)} sessions</div>
-            <div style="font-size:11px;font-weight:700;color:${d.conversionRate>2?'#22c55e':d.conversionRate>0.5?'#f59e0b':'var(--fp-text-muted)'}">${fmtPct(d.conversionRate)} taux</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:6px">${fpT('conversions · {count} sessions', { count:fmt(d.sessions) })}</div>
+            <div style="font-size:11px;font-weight:700;color:${d.conversionRate>2?'#22c55e':d.conversionRate>0.5?'#f59e0b':'var(--fp-text-muted)'}">${fpT('{rate} taux', { rate:fmtPct(d.conversionRate) })}</div>
             ${d.revenue > 0 ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fmtRev(d.revenue)}</div>` : ''}
           </div>`).join('')}
       </div>
@@ -67458,11 +67753,11 @@ function renderGA4Conversion() {
 
   const geoBlock = geo.length > 0 ? `
     <div class="fp-card fp-mb-20">
-      <div class="fp-card-title" style="margin-bottom:14px">🌍 Géographie — conversions</div>
+      <div class="fp-card-title" style="margin-bottom:14px">🌍 ${fpT('Géographie — conversions')}</div>
       <div style="overflow-x:auto">
         <table style="width:100%;min-width:400px;border-collapse:collapse;font-size:12px">
           <thead><tr style="border-bottom:1px solid var(--fp-border)">
-            ${['Pays','Ville','Sessions','Conversions','Taux','Revenu'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+            ${['Pays','Ville','Sessions','Conversions','Taux','Revenu'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${fpT(h)}</th>`).join('')}
           </tr></thead>
           <tbody>
             ${geo.slice(0,15).map(g => `
@@ -73302,7 +73597,7 @@ window.FP_BEHAVIORAL_API = {
             ? fpT('Signaux mesurés générés ; recommandations IA indisponibles')
             : fpT('Aucun signal ne dépasse actuellement les seuils de détection.'));
       }
-      else showToast('error', r?.error || 'Erreur');
+      else showToast('error', r?.error || fpT('Erreur'));
     } catch(e) { showToast('error', String(e)); }
   },
 };
@@ -73342,8 +73637,8 @@ window.FP_CRO_API = {
         window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [] };
         if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
-        showToast('success', (r.observations || []).length + fpT(" observations CRO analysées"));
-      } else showToast('error', r?.error || 'Erreur');
+        showToast('success', fpT('{count} observations CRO analysées', { count:(r.observations || []).length }));
+      } else showToast('error', r?.error || fpT('Erreur'));
     } catch(e) { showToast('error', String(e)); }
   },
 
@@ -73371,7 +73666,7 @@ window.FP_AB_TEST_API = {
   },
   async create() {
     const siteUrl = window.FP_DATA?.activeSite;
-    if (!siteUrl) { showToast('error', 'Sélectionnez un site avec le snippet comportemental installé.'); return; }
+    if (!siteUrl) { showToast('error', fpT('Sélectionnez un site avec le snippet comportemental installé.')); return; }
     const page = prompt(fpT('Chemin de page à tester (ex. /tarifs):'), location.pathname);
     if (!page) return;
     const name = prompt(fpT('Nom de l’expérience:'));
@@ -73397,21 +73692,21 @@ window.FP_AB_TEST_API = {
     if (!variantBText) return;
     try {
       await apiFetch('/api/ab-testing/experiments', { method: 'POST', body: JSON.stringify({ siteUrl, page, name, selector, goalSelector, hypothesis, variantAText, variantBText }) });
-      showToast('success', 'Brouillon créé. Réinstallez le nouveau snippet, puis démarrez le test.');
+      showToast('success', fpT('Brouillon créé. Réinstallez le nouveau snippet, puis démarrez le test.'));
       await this.refresh(siteUrl);
     } catch (e) { showToast('error', String(e)); }
   },
   async start(id) {
     try {
       await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}/start`, { method: 'POST', body: '{}' });
-      showToast('success', 'Expérience démarrée : les variantes seront servies par le snippet.');
+      showToast('success', fpT('Expérience démarrée : les variantes seront servies par le snippet.'));
       await this.refresh(window.FP_DATA?.activeSite);
     } catch (e) { showToast('error', String(e)); }
   },
   async stop(id) {
     try {
       await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}/stop`, { method: 'POST', body: '{}' });
-      showToast('success', 'Expérience arrêtée.');
+      showToast('success', fpT('Expérience arrêtée.'));
       await this.refresh(window.FP_DATA?.activeSite);
     } catch (e) { showToast('error', String(e)); }
   },
@@ -73419,7 +73714,7 @@ window.FP_AB_TEST_API = {
     if (!window.confirm(fpT('Supprimer définitivement ce brouillon ou ce test arrêté ?'))) return;
     try {
       await apiFetch(`/api/ab-testing/experiments/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      showToast('success', 'Expérience supprimée.');
+      showToast('success', fpT('Expérience supprimée.'));
       await this.refresh(window.FP_DATA?.activeSite);
     } catch (e) { showToast('error', String(e)); }
   },
@@ -73463,7 +73758,7 @@ window.FP_REVENUE_LEAK_API = {
       window.FP_DATA.revenueLeak = {
         _fromRealData: true, leaks: [], opportunities: [], summary: null,
         financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
-        noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
+        noData: true, error: fpT('Les événements comportementaux sont temporairement indisponibles.'),
       };
       console.warn('[FP_REVENUE_LEAK_API] load error:', e);
     }
@@ -73482,8 +73777,8 @@ window.FP_REVENUE_LEAK_API = {
           noData: r.noData ?? !(r.opportunities || []).length, error: r.error || null,
         };
         render();
-        showToast('success', (r.opportunities || []).length + fpT(" opportunités observées"));
-      } else showToast('error', r?.error || 'Erreur');
+        showToast('success', fpT('{count} opportunités observées', { count:(r.opportunities || []).length }));
+      } else showToast('error', r?.error || fpT('Erreur'));
     } catch(e) { showToast('error', String(e)); }
   },
 

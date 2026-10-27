@@ -1655,6 +1655,184 @@ describe("private dashboard static English localization", () => {
     expect(dashboardSource).toContain("fpT('Objectif supprimé')");
   });
 
+  it("audits Conversion routes, dynamic states, and customer data boundaries", () => {
+    const expectedByFunction: Record<string, string[]> = {
+      renderConversion: [
+        "Bientôt disponible — visualisez votre entonnoir de conversion étape par étape depuis vos sources analytics.",
+        "{hesitations} hésitations et {rageClicks} rage clicks détectés. Score UX mobile : {passed}/{total} points OK.",
+        "CTA actuel : \"{cta}\"",
+        "{count} opportunités observées",
+        "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.",
+        "Taux de conversion observé : <strong>{rate}%</strong>. {health} Aucun gain financier n'est estimé sans revenus attribués.",
+        "Taux global", "Pire chute", "Potentiel mobile", "Clients potentiels",
+        "Entonnoir de conversion · 30 derniers jours", "Connectez analytics",
+        "📱 Mobile vs 💻 Desktop", "Étape", "Écart", "⚡ Points de friction détectés",
+        "Score friction :", "UX & Friction Lab — Pro requis",
+        "Rage clicks, dead clicks, heatmaps de friction et analyse comportementale avancée.",
+        "Opportunités majeures", "ce mois — critique", "abandon à mi-page", "En dessous du seuil",
+        "Analyse de profondeur de scroll", "Rage clicks & Dead clicks détectés", "Checklist UX Mobile",
+        "Tarifs (50–75%)", "Page formulaire", "Page contact", "Page accueil", "Page services",
+        "Page tarifs", "Bouton Envoyer (inactif)", "Numéro de téléphone (non-cliquable)",
+        "Logo partenaires", "Titre H2 (zone inactive)", "Colonne prix Pro vs Ultra",
+        "🔥 Heatmap de friction — Page d'accueil", "CTA non cliquable",
+        "CTA Intelligence — Pro requis",
+        "Analyse de visibilité, CTR par CTA, performance mobile et suggestions IA.",
+        "CTAs analysés", "CTAs critiques", "sur toutes vos pages",
+        "visibilité < 50 ou CTR < 0.5%", "Meilleur CTR", "Nous contacter — Header",
+        "CTR mobile moyen", "vs 1.63% desktop", "vs taux desktop actuel",
+        "Performance de chaque CTA", "CTA", "Page", "Visibilité", "CTR Global",
+        "CTR Mobile", "Position", "Impact", "Action", "Above fold", "Below fold",
+        "Header", "Mid-page", "Hero", "Bottom",
+        "🧪 Suggestions de tests A/B pour vos CTAs", "Gain estimé : {gain}", "Effort :",
+        "Activer l'add-on", "Aucune opportunité observée",
+        "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}",
+        "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.",
+        "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.",
+        "Examiner les observations", "Créer une mission", "Revoir les données",
+        "Signaux observés", "30 derniers jours", "Sessions affectées",
+        "sessions distinctes par signal", "Confiance élevée", "au moins 30 sessions",
+        "Gain financier", "aucune conversion/revenu attribué",
+        "Signaux comportementaux et actions CRO", "Mission", "🧪 Expériences A/B",
+        "Créer une expérience", "Aucune expérience",
+        "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.",
+        "Démarrer", "Arrêter", "Supprimer", "📈 Prévision de conversion",
+        "{count} clients", "🎯 Objectif M+3 :", "clients/mois", "Levier principal",
+        "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés",
+        "Tendance", "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours",
+        "Risque", "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)",
+        "Impact revenus", "Non mesuré; aucun revenu n’est attribué aux événements observés",
+        "Conversion Command Center", "Gain estimé : {gain}", "Clics→Pages",
+      ],
+      renderConversionHeatmap: [
+        "Heatmap & Analyse UX",
+        "Me notifier",
+        "Visualisez en temps réel où cliquent vos visiteurs, leurs mouvements de souris et zones de friction — page par page.",
+      ],
+      _fpConvLoadingSkeleton: ["Chargement des données…"],
+      _fpConvErrorSkeleton: ["Erreur de chargement", "Réessayer"],
+      renderGA4Conversion: [
+        "Événements de conversion, revenus et landing pages — {days} derniers jours",
+        "Aucun événement de conversion configuré ou aucune conversion enregistrée sur les {days} derniers jours.",
+        "Conversions totales",
+        "Moy./conv. {revenue}",
+        "Landing pages — conversions",
+        "Sources — conversions",
+        "Appareils — conversions",
+        "Géographie — conversions",
+        "Événements de conversion, revenus et landing pages",
+        "Fonctionnalité Premium",
+        "La Conversion GA4 est réservée aux abonnés actifs. Reprenez un abonnement pour accéder à vos données.",
+        "Choisir un abonnement", "7 jours", "30 jours", "90 jours", "Actualiser",
+        "Connexion GA4 en cours de configuration",
+        "Votre compte Google est connecté. La découverte de votre propriété GA4 est en cours — cela prend généralement moins d’une minute.",
+        "Google Analytics 4 non connecté",
+        "Connectez GA4 pour afficher vos conversions réelles, revenus, landing pages et analyses par source.",
+        "Aucune conversion GA4 sur la période",
+        "Aucun événement de conversion configuré ou aucune conversion enregistrée sur les {days} derniers jours.",
+        "Configurez des <strong>Key Events</strong> dans GA4 pour commencer le suivi.",
+        "{change}{percent}% taux vs période préc.",
+        "Taux de conversion", "{count} sessions", "Revenus GA4", "Moy./conv. {revenue}",
+        "Revenus non configurés", "Utilisateurs", "{count} type(s) d’événement",
+        "Aucun événement de conversion trouvé.",
+        "Configurez des <strong>Key Events</strong> dans votre propriété GA4.",
+        "Landing pages — conversions", "Sources — conversions", "Appareils — conversions",
+        "Géographie — conversions", "conversions · {count} sessions", "{rate} taux",
+      ],
+    };
+    for (const [functionName, keys] of Object.entries(expectedByFunction)) {
+      const referenced = translationKeysInFunction(functionName);
+      for (const key of keys) {
+        expect(referenced.has(key), `${functionName} should translate "${key}"`).toBe(true);
+        expect(englishKeys.has(key), `Conversion English catalogue should contain "${key}"`).toBe(true);
+      }
+    }
+
+    const dynamicCatalogKeys = [
+      "Événement", "Conversions", "Revenu", "Revenu moy./conv.",
+      "Page", "Sessions", "Utilisateurs", "Taux", "Canal", "Source / Medium", "Pays", "Ville",
+      "Visibilité du CTA principal", "Clarté de l'offre (headline)", "Confiance (avis + logos)",
+      "Vitesse perçue mobile", "Formulaire de contact", "CTA trop bas dans la page",
+      "Message améliorable", "Bien positionné", "LCP > 2.5s", "Simple et efficace",
+      "Header / Navigation", "Section services", "CTA \"Nous contacter\"", "Section avis clients",
+      "Footer", "Élevée", "Moyenne", "Critique", "Faible",
+      "72% des clics se perdent dans le menu", "Les visiteurs scrollent sans s'arrêter",
+      "Non visible par 88% des visiteurs", "Bien lue, génère de la confiance",
+      "Peu utilisé mais fonctionnel",
+    ];
+    for (const key of dynamicCatalogKeys) {
+      expect(englishKeys.has(key), `Conversion dynamic label should translate "${key}"`).toBe(true);
+    }
+
+    const conversionActionMessages = [
+      "Sélectionnez un site avec le snippet comportemental installé.",
+      "Chemin de page à tester (ex. /tarifs):",
+      "Nom de l’expérience:",
+      "Sélecteur CSS de l’élément à modifier (ex. #cta-principal):",
+      "Sélecteur CSS de conversion (ex. form#contact button[type=submit]):",
+      "Texte témoin affiché avant toute modification du site:",
+      "Proposition fondée sur les signaux observés. Raison : ",
+      " Mesure : ",
+      "Continuer sans suggestion IA et saisir les textes manuellement ?",
+      "Hypothèse à valider:",
+      "Texte de la variante B:",
+      "Brouillon créé. Réinstallez le nouveau snippet, puis démarrez le test.",
+      "Expérience démarrée : les variantes seront servies par le snippet.",
+      "Expérience arrêtée.",
+      "Supprimer définitivement ce brouillon ou ce test arrêté ?",
+      "Expérience supprimée.",
+      "Les événements comportementaux sont temporairement indisponibles.",
+      "Fuite marquée comme résolue",
+      "Nouveau rapport",
+      "Optimiser CRO — {page}",
+    ];
+    for (const key of conversionActionMessages) {
+      expect(
+        dashboardSource.includes(`fpT('${key}'`) || dashboardSource.includes(`fpT("${key}"`),
+        `Conversion action should translate "${key}"`,
+      ).toBe(true);
+      expect(englishKeys.has(key), `Conversion action English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    const expectedTranslations = new Map([
+      ["{amount}€/mois", "€{amount}/month"],
+      ["{count} opportunités observées", "{count} observed opportunities"],
+      ["CTA actuel : \"{cta}\"", "Current CTA: \"{cta}\""],
+    ]);
+    for (const [key, translation] of expectedTranslations) {
+      expect(englishTranslations.get(key), `Conversion translation for "${key}"`).toBe(translation);
+    }
+
+    for (const binding of [
+      "escHtml(l.recommendation)",
+      "escHtml(ev.name)",
+      "escHtml(p.path)",
+      "escHtml(s.channel)",
+      "escHtml(s.sourceMedium)",
+      "escHtml(d.device)",
+      "escHtml(g.country)",
+      "escHtml(g.city)",
+      "escHtml(ab.cta)",
+      "escHtml(ab.varB)",
+      "escHtml(c.name)",
+      "escHtml(c.page)",
+      "escHtml(positionLabel)",
+      "escHtml(isPreviewClickData ? previewClickLabels[c.page] || c.page : c.page)",
+      "escHtml(isPreviewClickData ? previewClickLabels[c.zone] || c.zone : c.zone)",
+      "fpT('Optimiser CRO — {page}'",
+      "const positionLabel = ({ 'Above fold':fpT('Above fold'), 'Below fold':fpT('Below fold'), Header:fpT('Header'), 'Mid-page':fpT('Mid-page'), Hero:fpT('Hero'), Bottom:fpT('Bottom') })[c.pos] || c.pos;",
+      "const sub = STATE.subRoute;",
+      "['funnel','ux-lab','cta','revenue-leak','cro'].includes(sub)",
+      "impact:'Élevé'",
+      "r?.error || fpT('Erreur')",
+    ]) {
+      expect(dashboardSource).toContain(binding);
+    }
+
+    const conversionAddon = sourceFiles.find(({ fileName }) => fileName === "conversion-opportunity-engine-addon.js")?.source.text || "";
+    expect(conversionAddon).toContain("escapeHtml(item.landingPage)");
+    expect(conversionAddon).toContain('String(error?.message || t("Impossible de charger les données GA4."))');
+  });
+
   it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
     const missing: Array<{ file: string; line: number; key: string }> = [];
 
