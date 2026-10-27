@@ -10232,7 +10232,7 @@ function renderBilling() {
       var _rawDate = r.nextBillingDate || r.currentPeriodEnd || r.trialEndsAt || null;
       var _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString(getLocale(), {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
       var _isTrialing2 = (r.subscriptionStatus || r.status || '').toLowerCase() === 'trialing';
-      var _nextLabel2  = _isTrialing2 ? "Fin d'essai" : 'Prochaine facturation';
+       var _nextLabel2  = _isTrialing2 ? fpT("Fin d'essai") : fpT('Prochaine facturation');
       var _planAmtMap = { standard:29, pro:79, ultra:149, agency:149 };
       var _nextAmount = r.nextAmount || _planAmtMap[(r.plan||'').toLowerCase()] || null;
       var hadPlan = ((STATE.billing || {}).plan || (STATE.me || {}).plan || '').toLowerCase();
@@ -10358,7 +10358,7 @@ function renderBilling() {
     const _modal = document.createElement('div');
     _modal.id = 'fp-cancel-sub-modal';
     _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">${fpT("Annuler l'abonnement")}</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.<br><br><strong style="color:var(--fp-text)">${fpT('Toutes les fonctionnalités payantes seront désactivées après cette date.')}</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">${fpT('Garder mon abonnement')}</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">${fpT("Confirmer l'annulation")}</button></div></div>`;
+     _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">${fpT("Annuler l'abonnement")}</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">${fpT("Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.")}<br><br><strong style="color:var(--fp-text)">${fpT('Toutes les fonctionnalités payantes seront désactivées après cette date.')}</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">${fpT('Garder mon abonnement')}</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">${fpT("Confirmer l'annulation")}</button></div></div>`;
     document.body.appendChild(_modal);
   };
   window.fpConfirmCancelSubscription = async function() {
@@ -10376,7 +10376,7 @@ function renderBilling() {
           if (STATE.billing) STATE.billing.cancelAtPeriodEnd = true;
         }
         setTimeout(()=>navigateSub('plans'), 700);
-      } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+     } else { showToast('error', (r && r.error) || fpT('Erreur lors de l’annulation')); }
     } catch(e) { showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('annulation impossible'))); }
   };
   window.fpReactivateSubscription = async function() {
@@ -10400,7 +10400,7 @@ function renderBilling() {
     const _modal = document.createElement('div');
     _modal.id = 'fp-cancel-trial-modal';
     _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-    _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">${fpT("Terminer l'essai gratuit")}</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.<br><br>${fpT('Tu peux te réabonner à tout moment.')}</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">${fpT("Continuer l'essai")}</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">${fpT("Terminer l'essai")}</button></div></div>`;
+     _modal.innerHTML = `<div style="background:var(--fp-card-bg,#0d1525);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">${fpT("Terminer l'essai gratuit")}</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">${fpT("Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.")}<br><br>${fpT('Tu peux te réabonner à tout moment.')}</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">${fpT("Continuer l'essai")}</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">${fpT("Terminer l'essai")}</button></div></div>`;
     document.body.appendChild(_modal);
   };
   window.fpConfirmCancelTrial = async function() {
@@ -10427,7 +10427,7 @@ function renderBilling() {
         if (STATE.billing) STATE.billing.subscriptionStatus = 'active';
         showToast('info', fpT('Votre essai est déjà converti en abonnement actif'));
         setTimeout(()=>navigateSub('manage'), 800);
-      } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+     } else { showToast('error', (r && r.error) || fpT('Erreur lors de l’annulation')); }
     } catch(e) { showToast('error', fpT('Erreur : ') + ((e && e.message) || fpT('annulation impossible'))); }
   };
 
@@ -10476,15 +10476,15 @@ function renderBilling() {
         if (r && r.error === 'plan_already_active') { window._fpPlanUpgradeRecord = null; showToast('info', fpT('Vous êtes déjà sur ce plan.')); return; }
         // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
         window._fpPlanUpgradeRecord = null;
-        showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
+        showToast('error', (r && (r.message || r.error)) || fpT('Le changement de plan a échoué. Réessayez.'));
         window._fpResyncBillingState();
       } catch(e) {
         // plan upgrade suppression: uses _fpPlanUpgradeRecord (30s timestamp), no early reset needed
         window._fpPlanUpgradeRecord = null;
         const _rawMsg = (e && e.message) || '';
         const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
-        if (e && e.code === 'plan_already_active') { showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.'); return; }
-        showToast('error', (!_isToken && _rawMsg) || 'Le changement de plan a échoué. Réessayez.');
+        if (e && e.code === 'plan_already_active') { showToast('info', (!_isToken && _rawMsg) || fpT('Vous êtes déjà sur ce plan.')); return; }
+        showToast('error', (!_isToken && _rawMsg) || fpT('Le changement de plan a échoué. Réessayez.'));
         window._fpResyncBillingState();
       }
     };
@@ -10507,22 +10507,22 @@ function renderBilling() {
       ${_pendingBanner}
       ${aiBlock(
         isUltra
-          ? "Plan <strong>Ultra</strong> actif. Vous bénéficiez de toutes les fonctionnalités — audits illimités, monitors avancés, IA complète et rétention 365 jours."
+          ? fpT("Plan <strong>Ultra</strong> actif. Vous bénéficiez de toutes les fonctionnalités — audits illimités, monitors avancés, IA complète et rétention 365 jours.")
           : (isPro && !isUltra)
-            ? "Plan <strong>Pro</strong> actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous."
-            : "Plan <strong>Standard</strong> actif. Le passage à Pro débloque davantage d\'audits, l\'IA avancée et les rapports client — comparez les plans ci-dessous.",
-        ['Voir les fonctionnalités', 'Comparer les plans']
+            ? fpT("Plan <strong>Pro</strong> actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous.")
+            : fpT("Plan <strong>Standard</strong> actif. Le passage à Pro débloque davantage d'audits, l'IA avancée et les rapports client — comparez les plans ci-dessous."),
+        [fpT('Voir les fonctionnalités'), fpT('Comparer les plans')]
       )}
 
       <div class="fp-stat-row fp-mb-20">
-    ${statCard('Plan actuel', plan, fpT('actif · abonnement mensuel'), 'up')}
+    ${statCard(fpT('Plan actuel'), plan, fpT('actif · abonnement mensuel'), 'up')}
         ${STATE.billing?.subscriptionId
-          ? statCard('Coût mensuel', (_def?.priceEur ?? '') + '€', 'HT · abonnement mensuel', 'neutral')
-          : statCard('Accès plan', plan, 'Compte interne — aucune facturation Stripe', 'neutral')}
+          ? statCard(fpT('Coût mensuel'), (_def?.priceEur ?? '') + '€', fpT('HT · abonnement mensuel'), 'neutral')
+          : statCard(fpT('Accès plan'), plan, fpT('Compte interne — aucune facturation Stripe'), 'neutral')}
         ${STATE.billing?.subscriptionId
-          ? statCard(STATE.billing?.nextDateLabel || 'Prochaine facture', STATE.billing?.nextDate || '—', STATE.billing?.nextDate ? (STATE.billing?.nextDateLabel || 'prochaine échéance') : '—', 'neutral')
-          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
-        ${statCard('Sans engagement', 'Mensuel', 'résiliation à tout moment', 'up')}
+          ? statCard(fpT(STATE.billing?.nextDateLabel || 'Prochaine facture'), STATE.billing?.nextDate || '—', STATE.billing?.nextDate ? fpT(STATE.billing?.nextDateLabel || 'prochaine échéance') : '—', 'neutral')
+          : statCard(fpT('Facturation'), '—', fpT('Aucune subscription Stripe'), 'neutral')}
+        ${statCard(fpT('Sans engagement'), fpT('Mensuel'), fpT('résiliation à tout moment'), 'up')}
       </div>
 
       <!-- PLAN CARDS -->
@@ -10539,26 +10539,26 @@ function renderBilling() {
           return `<div style="border-radius:16px;border:2px solid ${isCurrent ? p.color : 'var(--fp-border)'};background:${_planBg};padding:22px;position:relative;overflow:hidden;transition:border-color 0.2s;display:flex;flex-direction:column">
             ${isCurrent ? `<div style="position:absolute;top:14px;right:14px;font-size:10px;font-weight:700;background:${p.color};color:#fff;padding:3px 10px;border-radius:20px">${fpT('Plan actuel')}</div>` : ''}
             <div style="margin-bottom:16px">
-              <div style="font-size:11px;font-weight:600;color:${p.color};margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">${escHtml(p.badge)}</div>
+              <div style="font-size:11px;font-weight:600;color:${p.color};margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">${escHtml(fpT(p.badge))}</div>
               <div style="font-size:22px;font-weight:900;color:var(--fp-text);margin-bottom:2px;font-family:var(--fp-font-head)">${escHtml(p.name)}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(p.tagline)}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(fpT(p.tagline))}</div>
             </div>
             <div style="margin-bottom:16px">
               <span style="font-size:36px;font-weight:900;color:${p.color};font-family:var(--fp-font-head)">${p.price}€</span>
-              <span style="font-size:12px;color:var(--fp-text-faint)">/mois · sans engagement</span>
+              <span style="font-size:12px;color:var(--fp-text-faint)">${fpT('/mois · sans engagement')}</span>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px;flex:1">
               ${p.features.map(f => `<div style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--fp-text-soft)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${p.color}" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><polyline points="20 6 9 17 4 12"/></svg>
-                ${escHtml(f)}
+                ${escHtml(fpT(f))}
               </div>`).join('')}
               ${p.locked.map(f => `<div style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--fp-text-faint)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                ${escHtml(f)}
+                ${escHtml(fpT(f))}
               </div>`).join('')}
             </div>
             <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="fpUpgradeOrCheckout('${p.id}')"`}>
-              ${isCurrent ? 'Plan actuel' : `Passer ${p.name} →`}
+              ${isCurrent ? fpT('Plan actuel') : `${fpT('Passer')} ${p.name} →`}
             </button>
           </div>`;
         }).join('')}
@@ -10569,7 +10569,7 @@ function renderBilling() {
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
           <div class="fp-card-title" style="margin-bottom:0">${fpT('📊 Comparaison détaillée des plans')}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${PLANS.map(p => `<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${p.id==='ultra'?'rgba(37,99,235,0.15)':p.color+'18'};color:${p.id==='ultra'?'#2563EB':p.color};border:1px solid ${p.id==='ultra'?'rgba(37,99,235,0.3)':p.color+'33'}">${p.name} — ${p.price}€/mois</span>`).join('')}
+            ${PLANS.map(p => `<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:${p.id==='ultra'?'rgba(37,99,235,0.15)':p.color+'18'};color:${p.id==='ultra'?'#2563EB':p.color};border:1px solid ${p.id==='ultra'?'rgba(37,99,235,0.3)':p.color+'33'}">${p.name} — ${p.price}€${fpT('/mois')}</span>`).join('')}
           </div>
         </div>
         <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--fp-border)">
@@ -10621,16 +10621,16 @@ function renderBilling() {
                     ['Résiliation', 'Mensuel', 'Mensuel', 'Mensuel'],
                   ]},
                 ].map(({ group, rows }, gi) => [
-                '<tr><td colspan="4" style="padding:8px 14px 4px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--fp-text-faint);background:var(--fp-bg-subtle);border-top:' + (gi>0?'1px solid var(--fp-border)':'none') + '">' + group + '</td></tr>',
+                '<tr><td colspan="4" style="padding:8px 14px 4px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--fp-text-faint);background:var(--fp-bg-subtle);border-top:' + (gi>0?'1px solid var(--fp-border)':'none') + '">' + escHtml(fpT(group)) + '</td></tr>',
                 ...rows.map(([feat, ...vals], ri) =>
                   '<tr style="background:' + (ri%2===0?'transparent':'var(--fp-bg-subtle)') + '">' +
-                  '  <td style="padding:8px 14px;font-size:11px;font-weight:600;color:var(--fp-text-soft);border-top:1px solid var(--fp-border);white-space:nowrap">' + escHtml(feat) + '</td>' +
+                  '  <td style="padding:8px 14px;font-size:11px;font-weight:600;color:var(--fp-text-soft);border-top:1px solid var(--fp-border);white-space:nowrap">' + escHtml(fpT(String(feat))) + '</td>' +
                   vals.map((v, i) => {
                     const col = i === 2 ? '#2563EB' : PLANS[i].color;
                     const vs = String(v);
                     const isCheck = vs.startsWith('\u2713');
                     const isDash = vs === '\u2014';
-                    return '<td style="text-align:center;padding:8px 14px;font-size:11px;font-weight:' + (isDash?400:700) + ';color:' + (isDash?'var(--fp-text-faint)':col) + ';border-top:1px solid var(--fp-border);white-space:nowrap">' + (isDash ? '\u2013' : v) + '</td>';
+                    return '<td style="text-align:center;padding:8px 14px;font-size:11px;font-weight:' + (isDash?400:700) + ';color:' + (isDash?'var(--fp-text-faint)':col) + ';border-top:1px solid var(--fp-border);white-space:nowrap">' + (isDash ? '\u2013' : escHtml(fpT(vs))) + '</td>';
                   }).join('') +
                   '</tr>'
                 )
@@ -10651,16 +10651,16 @@ function renderBilling() {
         const _te = _trialDate && !isNaN(_trialDate.getTime()) ? _trialDate.toLocaleDateString(getLocale()) : null;
 
         // ── Danger zone footer (always visible) ─────────────────────────────
-        const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Zone danger — action irréversible')}</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div>`;
+        const _dangerZone = `<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Zone danger — action irréversible')}</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ ${fpT('Supprimer mon compte')}</button></div>`;
 
         // ── Suspendu (past_due / unpaid) ─────────────────────────────────────
         if (_ss === 'past_due' || _ss === 'unpaid') {
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('🔴 Suspendu · Paiement en échec')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">${fpT('Mettre à jour le paiement')}</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.</div>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #ef4444"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ ${fpT("Gestion de l'abonnement")}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('🔴 Suspendu · Paiement en échec')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#ef4444;border-color:#ef4444;flex-shrink:0" onclick="fpOpenStripePortal ? fpOpenStripePortal() : navigateSub('plans')">${fpT('Mettre à jour le paiement')}</button></div><div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444">${fpT("Ton paiement a échoué. Mets à jour ton moyen de paiement pour rétablir l'accès aux fonctionnalités Premium. Tes données sont conservées.")}</div>${_dangerZone}</div>`;
         }
 
         // ── Expiré (canceled / none — ancien abonné) ─────────────────────────
         if (_ss === 'canceled' || (_ss === 'none' && _bs.hadSubscription)) {
-          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Ton abonnement a expiré. Tes données sont conservées.')}<br><br>${fpT('Choisis un plan ci-dessous pour reprendre ton accès Premium — tes projets, audits et données restent intacts.')}</div><button class="fp-btn fp-btn-primary" style="width:100%;margin-bottom:8px" onclick="navigateSub('plans')">${fpT('Choisir un plan et reprendre →')}</button>${_dangerZone}</div>`;
+          return `<div class="fp-card" style="margin-top:16px;border-left:4px solid #94a3b8"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ ${fpT("Gestion de l'abonnement")}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('⚫ Expiré · Fonctionnalités Premium désactivées')}</div></div></div><div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Ton abonnement a expiré. Tes données sont conservées.')}<br><br>${fpT('Choisis un plan ci-dessous pour reprendre ton accès Premium — tes projets, audits et données restent intacts.')}</div><button class="fp-btn fp-btn-primary" style="width:100%;margin-bottom:8px" onclick="navigateSub('plans')">${fpT('Choisir un plan et reprendre →')}</button>${_dangerZone}</div>`;
         }
 
         // ── États actifs ─────────────────────────────────────────────────────
@@ -10673,7 +10673,7 @@ function renderBilling() {
             ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">${fpT("Terminer l'essai")}</button>`
             : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">${fpT("Annuler l'abonnement")}</button>`;
         const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">${fpT("Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur \"Réactiver\" pour rétablir le renouvellement automatique.")}</div>` : '';
-        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}${_dangerZone}</div>`;
+        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ ${fpT("Gestion de l'abonnement")}</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}${_dangerZone}</div>`;
       })()}
     `;
   }
@@ -10754,7 +10754,7 @@ function renderBilling() {
       }
       a.priceMinor     = d ? d.priceMinor : null;
       a.oneTime        = d ? !!d.oneTime : false;
-      a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
+      a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : fpT('/mois')) : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
       a.allowedPlans   = d && Array.isArray(d.allowedPlans) ? d.allowedPlans : null;
       // availability from server catalog — 'coming_soon' | 'beta' | 'available' | 'live'
@@ -10787,11 +10787,11 @@ function renderBilling() {
 
     function _fpAddonAccessLabel(state) {
       return ({
-        included: 'Inclus',
-        coming_soon: 'Bientôt',
-        validation_required: 'Bientôt',
-        plan_unavailable: 'Non disponible avec votre forfait',
-        catalog_unavailable: 'Indisponible',
+        included: fpT('Inclus'),
+        coming_soon: fpT('Bientôt'),
+        validation_required: fpT('Bientôt'),
+        plan_unavailable: fpT('Non disponible avec votre forfait'),
+        catalog_unavailable: fpT('Indisponible'),
       })[state] || '';
     }
     /* addon-catalog-policy:end */
@@ -10815,7 +10815,7 @@ function renderBilling() {
       const _hasActiveSubUp = _subStatUp === 'active' || _subStatUp === 'trialing';
       const _renewalCanceledUp = !!STATE.billing?.cancelAtPeriodEnd;
       if (_hasActiveSubUp && !_renewalCanceledUp && _curPlan && _curPlan === _targetPlan) {
-        showToast('info', fpT('Vous êtes déjà sur le plan ') + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
+        showToast('info', fpT('Vous êtes déjà sur le plan {plan}.', { plan: _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) }));
         return;
       }
       // Always try the upgrade API first — _fpDoUpgrade handles the noSubscription
@@ -10898,7 +10898,7 @@ function renderBilling() {
         // surface it verbatim. Never leave optimistic state behind — re-fetch
         // the authoritative billing state so every page stays consistent.
         window._fpPlanUpgradeRecord = null;
-        showToast('error', (r && (r.message || r.error)) || 'Le changement de plan a échoué. Réessayez.');
+        showToast('error', (r && (r.message || r.error)) || fpT('Le changement de plan a échoué. Réessayez.'));
         _fpResyncBillingState();
       } catch (e) {
         window._fpPlanUpgradeRecord = null;
@@ -10910,10 +10910,10 @@ function renderBilling() {
         const _rawMsg = (e && e.message) || '';
         const _isToken = /^[a-z0-9_]+$/.test(_rawMsg);
         if (e && e.code === 'plan_already_active') {
-          showToast('info', (!_isToken && _rawMsg) || 'Vous êtes déjà sur ce plan.');
+          showToast('info', (!_isToken && _rawMsg) || fpT('Vous êtes déjà sur ce plan.'));
           return;
         }
-        showToast('error', (!_isToken && _rawMsg) || 'Le changement de plan a échoué. Réessayez.');
+        showToast('error', (!_isToken && _rawMsg) || fpT('Le changement de plan a échoué. Réessayez.'));
         // Re-fetch authoritative state so no stale optimistic plan lingers.
         _fpResyncBillingState();
       }
@@ -10950,18 +10950,18 @@ function renderBilling() {
     };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
-      if (!_a) { showToast('error', 'Catalogue des add-ons indisponible.'); return; }
+      if (!_a) { showToast('error', fpT('Catalogue des add-ons indisponible.')); return; }
       const key = _ADDON_STRIPE_KEYS[_a.name];
-      if (!key) { showToast('error', 'Add-on absent du catalogue.'); return; }
+      if (!key) { showToast('error', fpT('Add-on absent du catalogue.')); return; }
       const purchaseState = _fpAddonPurchaseState(_a, currentPlan, isIncluded(_a));
       if (purchaseState !== 'purchasable') {
         const message = purchaseState === 'included'
-          ? 'Cet add-on est déjà inclus dans votre plan.'
+          ? fpT('Cet add-on est déjà inclus dans votre plan.')
           : purchaseState === 'coming_soon'
-            ? 'Cet add-on sera bientôt disponible.'
+            ? fpT('Cet add-on sera bientôt disponible.')
             : purchaseState === 'plan_unavailable'
-              ? 'Cet add-on n’est pas disponible avec votre forfait.'
-              : 'Le catalogue des add-ons est indisponible.';
+              ? fpT('Cet add-on n’est pas disponible avec votre forfait.')
+              : fpT('Le catalogue des add-ons est indisponible.');
         showToast(purchaseState === 'included' ? 'info' : 'error', message);
         return;
       }
@@ -10988,7 +10988,7 @@ function renderBilling() {
       const key = _ADDON_STRIPE_KEYS[addonName];
       if (!key) { showToast('error', fpT('Add-on inconnu')); return; }
       window.fpDarkConfirm
-        ? window.fpDarkConfirm('Désactiver cet add-on ? La facturation Stripe correspondante sera arrêtée.', function() { window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key); }, 'Désactiver')
+        ? window.fpDarkConfirm(fpT('Désactiver cet add-on ? La facturation Stripe correspondante sera arrêtée.'), function() { window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key); }, fpT('Désactiver'))
         : (window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key));
     };
     window._fpAllAddons = allAddons;
@@ -11010,38 +11010,38 @@ function renderBilling() {
       const featuresHtml = (a.features || []).map(f =>
         `<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--fp-border)">
           <span style="color:${accentColor};font-size:14px;flex-shrink:0;margin-top:1px">✓</span>
-          <span style="font-size:12px;color:var(--fp-text-soft);line-height:1.5">${escHtml(f)}</span>
+          <span style="font-size:12px;color:var(--fp-text-soft);line-height:1.5">${escHtml(fpT(f))}</span>
         </div>`
       ).join('');
-      const inclBadge = a.includedFrom === 'standard' ? 'Tous les plans' : a.includedFrom === 'pro' ? 'Plan Pro & Ultra' : a.includedFrom === 'ultra' ? 'Plan Ultra' : null;
+      const inclBadge = a.includedFrom === 'standard' ? fpT('Tous les plans') : a.includedFrom === 'pro' ? fpT('Plan Pro & Ultra') : a.includedFrom === 'ultra' ? fpT('Plan Ultra') : null;
       openFloatPanel(
-        `${a.icon} ${a.name}`,
+        `${a.icon} ${fpT(a.name)}`,
         `<div style="padding:20px;display:flex;flex-direction:column;gap:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(a.cat)}</span>
-              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(a.tag)}</span>
-              ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ Inclus — ${inclBadge}</span>` : ''}
-              ${a.availability === 'coming_soon' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">⏳ Bientôt disponible</span>` : a.availability === 'beta' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">🧪 Bêta</span>` : ''}
+              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.07);color:var(--fp-text-muted)">${escHtml(fpT(a.cat))}</span>
+              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${accentColor}18;color:${accentColor}">${escHtml(fpT(a.tag))}</span>
+              ${inclBadge ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e">✓ ${fpT('Inclus')} — ${inclBadge}</span>` : ''}
+              ${a.availability === 'coming_soon' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">⏳ ${fpT('Bientôt disponible')}</span>` : a.availability === 'beta' ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,158,11,0.12);color:#f59e0b">🧪 ${fpT('Bêta')}</span>` : ''}
             </div>
             <button onclick="closeFloatPanel&&closeFloatPanel()" style="width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--fp-text-muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="${fpT('Fermer')}">×</button>
           </div>
-          <p style="font-size:13px;color:var(--fp-text-soft);line-height:1.6;margin:0">${escHtml(a.desc)}</p>
+          <p style="font-size:13px;color:var(--fp-text-soft);line-height:1.6;margin:0">${escHtml(fpT(a.desc))}</p>
           <div style="background:${accentColor}0d;border:1px solid ${accentColor}33;border-radius:10px;padding:12px 14px">
-            <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Fonctionnalité principale</div>
-            <div style="font-size:15px;font-weight:800;color:${accentColor}">✦ ${escHtml(a.roi)}</div>
+            <div style="font-size:10px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${fpT('Fonctionnalité principale')}</div>
+            <div style="font-size:15px;font-weight:800;color:${accentColor}">✦ ${escHtml(fpT(a.roi))}</div>
           </div>
           <div>
-            <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Ce que vous obtenez</div>
+            <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">${fpT('Ce que vous obtenez')}</div>
             ${featuresHtml}
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;padding-top:14px;border-top:1px solid var(--fp-border)">
             <div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">Prix</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Prix')}</div>
               <div style="font-size:18px;font-weight:900;color:${accessState === 'included' ? '#22c55e' : 'var(--fp-text)'}">${accessState === 'purchasable' ? escHtml(a.price) : escHtml(_fpAddonAccessLabel(accessState))}</div>
             </div>
             ${accessState === 'included'
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">Inclus</button>`
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('Inclus')}</button>`
               : a.active && !isInc
                 ? a.key === 'conversionOpportunityEngine'
                   ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenConversionOpportunityEngine()">${fpT('Ouvrir')}</button>`
@@ -11054,23 +11054,23 @@ function renderBilling() {
                     : a.key === 'agencyPortfolioPriorities'
                       ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenAgencyPortfolioPriorities()">${fpT('Ouvrir')}</button>`
                     : (_FP_QTY_ADDON_KEYS[a.key]
-                    ? `<div style="display:flex;align-items:center;gap:8px">${accessState === 'purchasable' ? `<div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button>` : `<span>${escHtml(_fpAddonAccessLabel(accessState))}</span>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                    ? `<div style="display:flex;align-items:center;gap:8px">${accessState === 'purchasable' ? `<div style="display:flex;align-items:center;gap:4px" title="${fpT('Packs supplémentaires')}"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">${fpT('Ajouter')} — ${escHtml(a.price)}</button>` : `<span>${escHtml(_fpAddonAccessLabel(accessState))}</span>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
                 : accessState !== 'purchasable'
                   ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.6;cursor:not-allowed">${escHtml(_fpAddonAccessLabel(accessState))}</button>`
                 : a.wizardFn
-                  ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
+                  ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 ${fpT('Lancer')} →</button>`
                   : a.availability === 'coming_soon'
-                    ? `<button class="fp-btn fp-btn-ghost" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
+                    ? `<button class="fp-btn fp-btn-ghost" disabled style="opacity:0.6;cursor:not-allowed">⏳ ${fpT('Bientôt disponible')}</button>`
                   : `${_FP_QTY_ADDON_KEYS[a.key] ? `
                     <div style="display:flex;align-items:center;gap:10px">
-                      <div style="display:flex;align-items:center;gap:4px" title="Nombre de packs">
+                      <div style="display:flex;align-items:center;gap:4px" title="${fpT('Nombre de packs')}">
                         <button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button>
                         <input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)">
                         <button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button>
                       </div>
-                      <button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>
-                    </div>` : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`}`
+                      <button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">${fpT('Activer')} — ${escHtml(a.price)}</button>
+                    </div>` : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">${fpT('Activer')} — ${escHtml(a.price)}</button>`}`
             }
           </div>
         </div>`
@@ -11102,20 +11102,20 @@ function renderBilling() {
 
     return `
       ${aiBlock(
-        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Consultez le catalogue pour voir les modules réellement disponibles avec votre offre; les modules indisponibles ou à venir ne sont pas proposés ici.`,
-        ['Voir les add-ons disponibles', 'Voir mon forfait', 'Voir ROI des add-ons']
+        fpT(`Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan {plan}. Consultez le catalogue pour voir les modules réellement disponibles avec votre offre; les modules indisponibles ou à venir ne sont pas proposés ici.`, { plan: escHtml(currentPlan) }),
+        [fpT('Voir les add-ons disponibles'), fpT('Voir mon forfait'), fpT('Voir ROI des add-ons')]
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Add-ons actifs', String(activeCount), manualActiveCount > 0 ? manualActiveCount + ' extra(s) + ' + includedCount + ' inclus' : 'inclus dans votre plan', activeCount > 0 ? 'up' : 'neutral')}
-        ${statCard('Add-ons inclus dans le plan', String(includedCount), 'sans coût additionnel', includedCount > 0 ? 'up' : 'neutral')}
-        ${statCard('Modules IA dispo', String(allAddons.filter(a => a.cat === 'IA').length), 'modules d\'intelligence', 'up')}
-        ${statCard('ROI estimé', '—', 'Connectez analytics', 'neutral')}
+        ${statCard(fpT('Add-ons actifs'), String(activeCount), manualActiveCount > 0 ? manualActiveCount + ' ' + fpT('extra(s)') + ' + ' + includedCount + ' ' + fpT('inclus') : fpT('inclus dans votre plan'), activeCount > 0 ? 'up' : 'neutral')}
+        ${statCard(fpT('Add-ons inclus dans le plan'), String(includedCount), fpT('sans coût additionnel'), includedCount > 0 ? 'up' : 'neutral')}
+        ${statCard(fpT('Modules IA dispo'), String(allAddons.filter(a => a.cat === 'IA').length), fpT('modules d\'intelligence'), 'up')}
+        ${statCard(fpT('ROI estimé'), '—', fpT('Connectez analytics'), 'neutral')}
       </div>
 
       <!-- CATEGORY FILTER -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-        ${cats.map(c => `<button onclick="STATE.addonsFilter='${c}';render()" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;border:1px solid ${(STATE.addonsFilter||'Tous')===c?'var(--fp-accent)':'var(--fp-border)'};background:${(STATE.addonsFilter||'Tous')===c?'rgba(37,99,235,0.12)':'transparent'};color:${(STATE.addonsFilter||'Tous')===c?'var(--fp-accent)':'var(--fp-text-muted)'};cursor:pointer">${escHtml(c)}</button>`).join('')}
+        ${cats.map(c => `<button onclick="STATE.addonsFilter='${c}';render()" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;border:1px solid ${(STATE.addonsFilter||'Tous')===c?'var(--fp-accent)':'var(--fp-border)'};background:${(STATE.addonsFilter||'Tous')===c?'rgba(37,99,235,0.12)':'transparent'};color:${(STATE.addonsFilter||'Tous')===c?'var(--fp-accent)':'var(--fp-text-muted)'};cursor:pointer">${escHtml(fpT(c))}</button>`).join('')}
       </div>
 
       <!-- ADD-ONS GRID -->
@@ -11138,20 +11138,20 @@ function renderBilling() {
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div style="font-size:20px;flex-shrink:0">${a.icon}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text);line-height:1.3">${escHtml(a.name)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);line-height:1.3">${escHtml(fpT(a.name))}</div>
                 <div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">
-                  ${badge(a.cat, '#475569')}
-                  ${badge(a.tag, cardAccent)}
+                  ${badge(fpT(a.cat), '#475569')}
+                  ${badge(fpT(a.tag), cardAccent)}
                 </div>
               </div>
               ${(inc || a.active) ? `<div style="width:8px;height:8px;border-radius:50%;background:${cardAccent};flex-shrink:0;margin-top:4px;box-shadow:0 0 8px ${cardAccent}88"></div>` : ''}
             </div>
-            <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(a.desc)}</div>
-            <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(a.roi)}</div>
+            <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(fpT(a.desc))}</div>
+            <div style="font-size:10px;color:${cardAccent};font-weight:600;margin-bottom:10px">✦ ${escHtml(fpT(a.roi))}</div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:6px" onclick="event.stopPropagation()">
               <span style="font-size:12px;font-weight:800;color:${(purchaseState === 'included' || a.active) ? cardAccent : 'var(--fp-text)'}">${purchaseState === 'purchasable' ? escHtml(a.price) : escHtml(_fpAddonAccessLabel(purchaseState))}</span>
               ${purchaseState === 'included'
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">Inclus</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">${fpT('Inclus')}</button>`
                 : a.active
                   ? (_FP_QTY_ADDON_KEYS[a.key]
                       ? `<div style="display:flex;gap:4px;align-items:center">${purchaseState === 'purchasable' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Ajouter +1')}</button>` : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled>${escHtml(_fpAddonAccessLabel(purchaseState))}</button>`}<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
@@ -11159,9 +11159,9 @@ function renderBilling() {
                   : purchaseState !== 'purchasable'
                     ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">${escHtml(_fpAddonAccessLabel(purchaseState))}</button>`
                   : a.wizardFn
-                    ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
+                    ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 ${fpT('Lancer')} →</button>`
                     : a.availability === 'coming_soon'
-                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ Bientôt</button>`
+                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ ${fpT('Bientôt')}</button>`
                       : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
               }
             </div>
@@ -11189,6 +11189,11 @@ function renderBilling() {
           { id:'FP-2026-011', date:'01/01/2026', amount:'49.00', plan:'Standard', addons:'Aucun',                                status:'Payée',   color:'#22c55e' },
           { id:'FP-2025-121', date:'01/12/2025', amount:'49.00', plan:'Standard', addons:'Aucun',                                status:'Payée',   color:'#22c55e' },
         ] : []);
+    const invoiceStatusDisplay = status => ({
+      payée: fpT('Payée'), paid: fpT('Paid'),
+      échouée: fpT('Échouée'), failed: fpT('Failed'),
+      'en attente': fpT('En attente'), pending: fpT('Pending'),
+    })[String(status || '').toLowerCase()] || status;
     const _brandColors = { visa:'#1a1f71', mastercard:'#eb001b', amex:'#2e77bc', discover:'#f76010' };
     const paymentMethods = STATE.billing?.paymentMethods?.length > 0
       ? STATE.billing.paymentMethods.map(pm => {
@@ -11207,27 +11212,27 @@ function renderBilling() {
     return `
       ${aiBlock(
         STATE.billing?.invoices?.length > 0
-          ? "Toutes vos factures sont à jour ✅. Consultez le portail Stripe pour votre historique de facturation complet."
+          ? fpT("Toutes vos factures sont à jour ✅. Consultez le portail Stripe pour votre historique de facturation complet.")
           : PREVIEW_MODE
-            ? "Toutes vos factures sont à jour ✅. Prochain débit : <strong>79€ le 1er juin 2026</strong> (Plan Pro). Votre carte Visa est valide. Aucun paiement échoué détecté ce semestre."
-            : "Connectez Stripe pour afficher votre historique de facturation et les prévisions de débit.",
-        ['Télécharger factures', 'Mettre à jour carte', 'Voir l\'historique']
+            ? fpT("Toutes vos factures sont à jour ✅. Prochain débit : <strong>79€ le 1er juin 2026</strong> (Plan Pro). Votre carte Visa est valide. Aucun paiement échoué détecté ce semestre.")
+            : fpT('Connectez Stripe pour afficher votre historique de facturation et les prévisions de débit.'),
+        [fpT('Télécharger factures'), fpT('Mettre à jour carte'), fpT("Voir l'historique")]
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Total payé 2026', displayStat(STATE.billing?.totalPaid != null ? STATE.billing.totalPaid + '€' : null, PREVIEW_MODE ? '286€' : '0€'), PREVIEW_MODE ? '5 factures · HT' : (STATE.billing?.totalPaid ? 'Total HT' : 'Aucune facture'), 'neutral')}
+        ${statCard(fpT('Total payé 2026'), displayStat(STATE.billing?.totalPaid != null ? STATE.billing.totalPaid + '€' : null, PREVIEW_MODE ? '286€' : '0€'), PREVIEW_MODE ? fpT('5 factures · HT') : (STATE.billing?.totalPaid ? fpT('Total HT') : fpT('Aucune facture')), 'neutral')}
         ${STATE.billing?.subscriptionId
-          ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral')
-          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
-        ${statCard('Méthodes de paiement', String(paymentMethods.length), paymentMethods.length > 0 ? 'actives — ' + (paymentMethods[0]?.brand || 'Carte') + ' par défaut' : 'Aucune carte enregistrée', 'up')}
-        ${statCard('Paiements échoués', displayStat(STATE.billing?.failedPayments != null ? String(STATE.billing.failedPayments) : '0', '0'), PREVIEW_MODE ? 'aucun incident 2026' : (STATE.billing?.failedPayments ? STATE.billing.failedPayments + ' incident(s)' : 'Aucun incident'), 'up')}
+          ? statCard(fpT('Prochain débit'), displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), fpT('Prochaine échéance'), 'neutral')
+          : statCard(fpT('Facturation'), '—', fpT('Aucune subscription Stripe'), 'neutral')}
+        ${statCard(fpT('Méthodes de paiement'), String(paymentMethods.length), paymentMethods.length > 0 ? fpT('actives — {brand} par défaut', { brand: paymentMethods[0]?.brand || fpT('Carte') }) : fpT('Aucune carte enregistrée'), 'up')}
+        ${statCard(fpT('Paiements échoués'), displayStat(STATE.billing?.failedPayments != null ? String(STATE.billing.failedPayments) : '0', '0'), PREVIEW_MODE ? fpT('aucun incident 2026') : (STATE.billing?.failedPayments ? fpT('{count} incident(s)', { count: STATE.billing.failedPayments }) : fpT('Aucun incident')), 'up')}
       </div>
 
       <!-- PAYMENT METHODS -->
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">${fpT('💳 Méthodes de paiement')}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('success', fpT('Redirection vers le portail de paiement Stripe…'))}).catch(()=>showToast('info', fpT('Portail Stripe — vérifiez votre plan')))">+ Ajouter une carte</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('success', fpT('Redirection vers le portail de paiement Stripe…'))}).catch(()=>showToast('info', fpT('Portail Stripe — vérifiez votre plan')))">+ ${fpT('Ajouter une carte')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${paymentMethods.map(pm => `
@@ -11237,9 +11242,9 @@ function renderBilling() {
               </div>
               <div class="fp-payment-info" style="flex:1;min-width:0">
                 <div style="font-size:13px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pm.type} •••• ${pm.last4}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted)">Expire ${pm.expires}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Expire')} ${pm.expires}</div>
               </div>
-              ${pm.default ? badge('Par défaut', '#22c55e') : ''}
+              ${pm.default ? badge(fpT('Par défaut'), '#22c55e') : ''}
               <div class="fp-payment-btns" style="display:flex;gap:6px;flex-shrink:0">
                 ${!pm.default ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Gérez vos cartes via le portail Stripe'))}).catch(()=>showToast('info', fpT('Portail Stripe')))">${fpT('Définir par défaut')}</button>` : ''}
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Gérez vos cartes via le portail Stripe'))}).catch(()=>showToast('info', fpT('Portail Stripe')))">${fpT('Supprimer')}</button>
@@ -11252,19 +11257,19 @@ function renderBilling() {
       <!-- INVOICE TABLE -->
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">🧾 Historique des factures</div>
+          <div class="fp-card-title" style="margin-bottom:0">🧾 ${fpT('Historique des factures')}</div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="exportInvoicesCsv()">${fpT('Exporter tout')}</button>
         </div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead><tr>
               <th>${fpT('Numéro')}</th>
-              <th style="text-align:center">Date</th>
-              <th style="text-align:center">Plan</th>
-              <th style="text-align:center">Modules</th>
-              <th style="text-align:center">Total HT</th>
+              <th style="text-align:center">${fpT('Date')}</th>
+              <th style="text-align:center">${fpT('Plan')}</th>
+              <th style="text-align:center">${fpT('Modules')}</th>
+              <th style="text-align:center">${fpT('Total HT')}</th>
               <th style="text-align:center">${fpT('Statut')}</th>
-              <th style="text-align:center;vertical-align:middle">Actions</th>
+              <th style="text-align:center;vertical-align:middle">${fpT('Actions')}</th>
             </tr></thead>
             <tbody>
               ${invoices.map(inv => `<tr>
@@ -11273,10 +11278,10 @@ function renderBilling() {
                 <td style="text-align:center">${badge(inv.plan, '#2563EB')}</td>
                 <td style="text-align:center;font-size:10px;color:var(--fp-text-faint);max-width:180px">${escHtml(inv.addons)}</td>
                 <td style="text-align:center;font-weight:800;font-family:var(--fp-font-mono)">${inv.amount === '—' ? '—' : `${escHtml(inv.amount)}€`}</td>
-                <td style="text-align:center">${badge(inv.status, inv.status === 'Payée' ? '#22c55e' : '#ef4444')}</td>
+                <td style="text-align:center">${badge(invoiceStatusDisplay(inv.status), inv.status === 'Payée' || inv.status === 'paid' ? '#22c55e' : '#ef4444')}</td>
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="(function(inv){if(inv.pdfUrl){window.open(inv.pdfUrl,'_blank');}else if(inv.hostedUrl){window.open(inv.hostedUrl,'_blank');}else{apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Facture '+escHtml(inv.id)+' — portail Stripe');}).catch(()=>showToast('info','Facture '+escHtml(inv.id)));}})({pdfUrl:'${escHtml(inv.pdfUrl||'')}',hostedUrl:'${escHtml(inv.hostedUrl||'')}',id:'${escHtml(inv.id)}'})">PDF</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="(function(inv){if(inv.pdfUrl){window.open(inv.pdfUrl,'_blank');}else if(inv.hostedUrl){window.open(inv.hostedUrl,'_blank');}else{apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info',fpT('Facture {id} — portail Stripe',{id:inv.id}));}).catch(()=>showToast('info',fpT('Facture {id}',{id:inv.id})));}})({pdfUrl:'${escHtml(inv.pdfUrl||'')}',hostedUrl:'${escHtml(inv.hostedUrl||'')}',id:'${escHtml(inv.id)}'})">PDF</button>
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="(function(inv){if(inv.hostedUrl){window.open(inv.hostedUrl,'_blank');}else{apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info', fpT('Retrouvez vos factures dans le portail Stripe'));}).catch(()=>showToast('info', fpT('Portail Stripe')));}})({hostedUrl:'${escHtml(inv.hostedUrl||'')}'})">Email</button>
                   </div>
                 </td>
@@ -11295,30 +11300,30 @@ function renderBilling() {
     return `
       ${isPro
         ? aiBlock((()=>{
-            if(!usages||!usages.length)return 'Aucune donnée d\'usage disponible. Connectez votre compte pour voir vos métriques en temps réel.';
+            if(!usages||!usages.length)return fpT('Aucune donnée d\'usage disponible. Connectez votre compte pour voir vos métriques en temps réel.');
             const _crit=usages.filter(u=>(u.forecast||0)>80);
             const _live=usages.filter(u=>!u.na&&Number.isFinite(u.v)&&Number.isFinite(u.max)&&u.max>0);
             const _top=_live.slice().sort((a,b)=>Math.round(b.v/b.max*100)-Math.round(a.v/a.max*100))[0];
             const _topPct=_top?Math.round(_top.v/_top.max*100):null;
-            return fpT('Analyse usage')+' '+CUR_MONTH+'. '+(_crit.length?'<strong>'+_crit.length+' '+fpT('ressource(s) en alerte prévision (&gt;80%)')+'</strong> — '+fpT('action recommandée dans les 8 prochains jours.')+' ':'')+(_top&&_topPct!=null?escHtml(_top.label||'Usage')+' '+fpT('à')+' <strong>'+_topPct+'%</strong> — '+fpT('ressource la plus sollicitée.')+' ':'')+(_crit.length===0?fpT('Consommation stable sur toutes les ressources.'):'');
+            return fpT('Analyse usage')+' '+CUR_MONTH+'. '+(_crit.length?'<strong>'+_crit.length+' '+fpT('ressource(s) en alerte prévision (&gt;80%)')+'</strong> — '+fpT('action recommandée dans les 8 prochains jours.')+' ':'')+(_top&&_topPct!=null?escHtml(fpT(_top.label||'Usage'))+' '+fpT('à')+' <strong>'+_topPct+'%</strong> — '+fpT('ressource la plus sollicitée.')+' ':'')+(_crit.length===0?fpT('Consommation stable sur toutes les ressources.'):'');
           })(),
-          ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
+          [fpT('Ajouter des crédits'), fpT('Voir prévisions 30j'), fpT('Rapport usage complet')]
           )
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Usage Analytics avancé — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Prévisions, alertes de seuil et analytics d'utilisation détaillés.")}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Usage moyen', (()=>{ const _live = usages.filter(u => !u.na && Number.isFinite(u.v) && Number.isFinite(u.max) && u.max > 0); const _u = _live.length > 0 ? Math.round(_live.reduce((s,u)=>s+Math.round(u.v/u.max*100),0)/_live.length) : null; return displayStat(_u !== null ? _u + '%' : null, '58%'); })(), 'des ressources utilisées', 'up')}
-        ${statCard('Ressources critiques', String(usages.filter(u => u.forecast > 80).length), 'seuil d\'alerte 80%', 'down')}
-        ${statCard('Prévision 30j', (()=>{ const _fl = usages.filter(u => Number.isFinite(u.forecast)); const _f = _fl.length > 0 ? Math.round(_fl.reduce((s,u)=>s+u.forecast,0)/_fl.length) : null; return displayStat(_f !== null ? _f + '%' : null, '82%'); })(), 'usage moyen prévu', 'neutral')}
-        ${statCard('Plan capacity', plan, 'adapté à votre usage actuel', 'up')}
+        ${statCard(fpT('Usage moyen'), (()=>{ const _live = usages.filter(u => !u.na && Number.isFinite(u.v) && Number.isFinite(u.max) && u.max > 0); const _u = _live.length > 0 ? Math.round(_live.reduce((s,u)=>s+Math.round(u.v/u.max*100),0)/_live.length) : null; return displayStat(_u !== null ? _u + '%' : null, '58%'); })(), fpT('des ressources utilisées'), 'up')}
+        ${statCard(fpT('Ressources critiques'), String(usages.filter(u => u.forecast > 80).length), fpT('seuil d\'alerte 80%'), 'down')}
+        ${statCard(fpT('Prévision 30j'), (()=>{ const _fl = usages.filter(u => Number.isFinite(u.forecast)); const _f = _fl.length > 0 ? Math.round(_fl.reduce((s,u)=>s+u.forecast,0)/_fl.length) : null; return displayStat(_f !== null ? _f + '%' : null, '82%'); })(), fpT('usage moyen prévu'), 'neutral')}
+        ${statCard(fpT('Plan capacity'), plan, fpT('adapté à votre usage actuel'), 'up')}
       </div>
 
       <!-- USAGE GRID -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:20px">
         ${usages.map(u => {
-          if (u.na) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><div style="width:24px;height:24px;border-radius:7px;background:rgba(100,116,139,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon(u.icon).replace('stroke="currentColor"','stroke="#64748b"').replace('width="14"','width="12"').replace('height="14"','height="12"')}</div><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span></div><div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Non instrumenté')}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">—</div></div>`;
-          if (!u.max || u.max <= 0) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">—</div></div>`;
+           if (u.na) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><div style="width:24px;height:24px;border-radius:7px;background:rgba(100,116,139,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon(u.icon).replace('stroke="currentColor"','stroke="#64748b"').replace('width="14"','width="12"').replace('height="14"','height="12"')}</div><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(u.l))}</span></div><div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Non instrumenté')}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">—</div></div>`;
+           if (!u.max || u.max <= 0) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(u.l))}</span><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">—</div></div>`;
           const pct  = Math.round(u.v / u.max * 100);
           const fc   = u.forecast;
           const pc   = pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : u.color;
@@ -11326,12 +11331,12 @@ function renderBilling() {
           const vDisp = u.unit ? u.v + u.unit : String(u.v);
           const mDisp = u.unit ? u.max + u.unit : String(u.max);
           return `<div class="fp-card" style="border-left:3px solid ${pc};position:relative;overflow:hidden;padding:12px 14px">
-            ${pct > 80 ? `<div style="position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;background:rgba(239,68,68,0.15);color:#ef4444;padding:1px 6px;border-radius:10px">⚠ Critique</div>` : fc > 80 ? `<div style="position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:10px">⟶ Alerte</div>` : ''}
+             ${pct > 80 ? `<div style="position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;background:rgba(239,68,68,0.15);color:#ef4444;padding:1px 6px;border-radius:10px">⚠ ${fpT('Critique')}</div>` : fc > 80 ? `<div style="position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:10px">⟶ ${fpT('Alerte')}</div>` : ''}
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
               <div style="width:24px;height:24px;border-radius:7px;background:${pc}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 ${svgIcon(u.icon).replace('stroke="currentColor"',`stroke="${pc}"`).replace('width="14"','width="12"').replace('height="14"','height="12"')}
               </div>
-              <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span>
+               <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(u.l))}</span>
             </div>
             <div style="display:flex;align-items:baseline;gap:3px;margin-bottom:6px">
               <span style="font-size:18px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${vDisp}</span>
@@ -11361,11 +11366,11 @@ function renderBilling() {
                 ${svgIcon('bot').replace('stroke="currentColor"','stroke="#2563EB"').replace('width="14"','width="13"').replace('height="14"','height="13"')}
               </div>
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
-              <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
+              <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">${fpT('IA Performante')}</span>
             </div>
             <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),iu=t>=10000000,fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return iu?'\u221e '+fpT('AI Credits consomm\u00e9s ce mois'):fk(u.used)+' / '+fk(t)+' '+fpT('AI Credits consomm\u00e9s ce mois');})() : fpT('Chargement des cr\u00e9dits IA\u2026')} \u00b7 ${fpT('R\u00e9initialisation le')} ${(function(){var d=STATE.aiCredits?.resetDate?new Date(STATE.aiCredits.resetDate):null;if(!d||Number.isNaN(d.getTime()))d=new Date(new Date().getFullYear(),new Date().getMonth()+1,1);return d.toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'numeric'});}())}</div>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir d\u00e9tails complets \u2192</button>
+         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">${fpT('Voir détails complets →')}</button>
         </div>
         <div style="height:8px;border-radius:99px;background:var(--fp-track);overflow:hidden;margin-bottom:8px">
           <div style="height:100%;width:${STATE.aiCredits ? (function(){var u=STATE.aiCredits,p=u.used/Math.max((u.limit||0)+(u.extra||0),1)*100;return p>0?Math.min(Math.max(p,0.5),100):0;}()) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
@@ -11416,7 +11421,7 @@ function renderBilling() {
             const c = f.rate > 75 ? '#22c55e' : f.rate > 50 ? '#f59e0b' : '#ef4444';
             return `<div style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05)">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <span style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(f.feat)}</span>
+                <span style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(fpT(f.feat))}</span>
                 <span style="font-size:10px;font-weight:700;color:#22c55e">${escHtml(f.trend)}</span>
               </div>
               <div class="fp-progress-track" style="height:5px;margin-bottom:4px"><div class="fp-progress-fill" style="width:${f.rate}%;background:${c}"></div></div>
@@ -11435,13 +11440,13 @@ function renderBilling() {
     const strategies = PREVIEW_MODE ? [
       {
         title:'Passage Ultra recommandé dans 6 semaines',
-        body:'Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (' + fpPlanPriceLabel('ultra') + ') coûte +' + fpPlanDeltaEur('pro','ultra') + '€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
+        body:fpT('Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra ({price}) coûte +{delta}€ mais génère 4h/semaine d’économie d’automatisation = 200€ de valeur temps. ROI positif en 1 mois.', { price: fpPlanPriceLabel('ultra'), delta: fpPlanDeltaEur('pro','ultra') }),
         priority:'Haute', color:'#f59e0b', action:'Simuler Ultra',
         metrics:['Audits 76% de capacité', 'Seuil prévu J+8', 'ROI : +200€/mois'],
       },
       {
         title:'AI CRO Strategist — Conversion non exploitée',
-        body:'Votre taux de conversion mobile est à 0.8% (benchmark secteur : 2.1%). AI CRO Strategist (' + fpAddonPriceLabel('aiCro') + ') détecterait les frictions et prioriserait les tests. Gain estimé : +1.3% conversion = +€€€.',
+        body:fpT('Votre taux de conversion mobile est à 0.8% (benchmark secteur : 2.1%). AI CRO Strategist ({price}) détecterait les frictions et prioriserait les tests. Gain estimé : +1.3% conversion = +€€€.', { price: fpAddonPriceLabel('aiCro') }),
         priority:'Moyenne', color:'#2563EB', action:'Essayer AI CRO',
         metrics:['Conversion mobile 0.8%', 'Benchmark : 2.1%', 'Gain potentiel : +62%'],
       },
@@ -11468,17 +11473,17 @@ function renderBilling() {
     return `
       ${isUltra
         ? aiBlock(PREVIEW_MODE
-            ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
-            : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
-            ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
+            ? fpT("IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes.")
+            : fpT("IA Stratégiste activé. <strong>{count} opportunités d'optimisation identifiées</strong> à partir de vos données réelles.", { count: strategies.length }),
+            [fpT('Appliquer toutes les recommandations'), fpT('Rapport ROI complet'), fpT('Prévision 6 mois')])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Stratégiste complet — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT("Analyse ROI, prévision d'upgrade, et optimisation des coûts SaaS automatisée.")}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Score optimisation', displayStat(upgradeScore!=null?upgradeScore+'/100':null, '62/100'), PREVIEW_MODE ? '+15 pts ce mois' : upgradeScore!=null?'+'+upgradeScore+'pts':'Analyse en cours', 'neutral')}
-        ${statCard('Actions identifiées', displayStat(strategies.length > 0 ? String(strategies.length) : null, '3'), PREVIEW_MODE ? 'opportunités prioritaires' : (strategies.length > 0 ? 'opportunités identifiées' : 'Aucune action'), 'neutral')}
-        ${statCard('ROI add-ons estimé', '—', 'Activez des add-ons', 'neutral')}
-        ${statCard('Alertes churn', isUltra ? String(churnRisks.length) : '—', churnRisks.length > 0 ? 'signaux faibles détectés' : 'aucun signal faible', 'neutral')}
+        ${statCard(fpT('Score optimisation'), displayStat(upgradeScore!=null?upgradeScore+'/100':null, '62/100'), PREVIEW_MODE ? fpT('+15 pts ce mois') : upgradeScore!=null?fpT('+{count} pts', { count: upgradeScore }):fpT('Analyse en cours'), 'neutral')}
+        ${statCard(fpT('Actions identifiées'), displayStat(strategies.length > 0 ? String(strategies.length) : null, '3'), PREVIEW_MODE ? fpT('opportunités prioritaires') : (strategies.length > 0 ? fpT('opportunités identifiées') : fpT('Aucune action')), 'neutral')}
+        ${statCard(fpT('ROI add-ons estimé'), '—', fpT('Activez des add-ons'), 'neutral')}
+        ${statCard(fpT('Alertes churn'), isUltra ? String(churnRisks.length) : '—', churnRisks.length > 0 ? fpT('signaux faibles détectés') : fpT('aucun signal faible'), 'neutral')}
       </div>
 
       ${isUltra ? `
@@ -11489,14 +11494,14 @@ function renderBilling() {
             <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">
               <div style="width:28px;height:28px;border-radius:50%;background:${s.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:900;color:${s.color}">${i+1}</div>
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(s.title)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:10px">${escHtml(s.body)}</div>
+                 <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(s.title))}</div>
+                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.6;margin-bottom:10px">${escHtml(fpT(s.body))}</div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-                  ${s.metrics.map(m => `<span style="font-size:10px;font-weight:600;padding:3px 9px;border-radius:10px;background:${s.color}18;color:${s.color}">${escHtml(m)}</span>`).join('')}
+                   ${s.metrics.map(m => `<span style="font-size:10px;font-weight:600;padding:3px 9px;border-radius:10px;background:${s.color}18;color:${s.color}">${escHtml(fpT(m))}</span>`).join('')}
                 </div>
                 <div style="display:flex;align-items:center;gap:10px">
-                  ${badge('Priorité ' + s.priority, s.color)}
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${s.color};border-color:${s.color}" onclick="navigate('billing')">${escHtml(s.action)} →</button>
+                   ${badge(fpT('Priorité {priority}', { priority: fpT(s.priority) }), s.color)}
+                   <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${s.color};border-color:${s.color}" onclick="navigate('billing')">${escHtml(fpT(s.action))} →</button>
                 </div>
               </div>
             </div>
@@ -11511,10 +11516,10 @@ function renderBilling() {
           ${churnRisks.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Aucun signal de churn détecté')}</div>` : ''}${churnRisks.map(r => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${r.color}07;border:1px solid ${r.color}28">
               <div style="flex:1">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(r.risk)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(r.desc)}</div>
+                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(r.risk))}</div>
+                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(fpT(r.desc))}</div>
               </div>
-              <div style="font-size:11px;font-weight:700;color:${r.color};min-width:40px;text-align:center">Risque ${r.score}%</div>
+               <div style="font-size:11px;font-weight:700;color:${r.color};min-width:40px;text-align:center">${fpT('Risque {score}%', { score: r.score })}</div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('billing')">${fpT('Analyser')}</button>
             </div>
           `).join('')}
@@ -11535,16 +11540,16 @@ function renderBilling() {
           { name:'Agence Principale',  clients:4, seats:3, plan:'Pro',   mrr:'316€', status:'Actif', color:'#2563EB' },
           { name:'Client Boulangerie', clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',  color:'#22c55e' },
           { name:'Client Plombier',    clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',  color:'#22c55e' },
-        ] : [{ name: STATE.me?.orgName || 'Espace principal', clients: (STATE.clients||[]).length || 0, seats: (STATE.team||[]).length || 1, plan: STATE.me?.plan || 'Pro', mrr: '—', status: 'Actif', color: '#2563EB' }]);
+        ] : [{ name: STATE.me?.orgName || fpT('Espace principal'), clients: (STATE.clients||[]).length || 0, seats: (STATE.team||[]).length || 1, plan: STATE.me?.plan || 'Pro', mrr: '—', status: 'Actif', color: '#2563EB' }]);
     const features = [
-      { name:'White-Label Rapports',  active:true, desc:'Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés',    icon:'🎨', color:'#f59e0b' },
-      { name:'Multi-workspace',       active:true, desc:'Gérez plusieurs workspaces clients séparés dans une seule interface unifiée',       icon:'🏢', color:'#2563EB' },
-      { name:'Audit Log Complet',     active:true, desc:'Historique exhaustif de toutes les actions de l\'équipe — conformité RGPD native',  icon:'📋', color:'#22c55e' },
-      { name:'2FA / MFA',             active:true, desc:'Authentification à deux facteurs obligatoire pour sécuriser chaque connexion',     icon:'🔐', color:'#ef4444' },
-      { name:'Analytics Temps Réel',  active:true, desc:'Tableaux de bord live, graphiques instantanés et alertes en temps réel',          icon:'📊', color:'#2563EB' },
-      { name:'RGPD Compliance',       active:true, desc:'Droit à l\'oubli, exports de données, consentements et DPA disponibles',          icon:'🛡️', color:'#22c55e' },
-      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return 'Exports '+(_q>=1000?_fmt(_q):_q)+'/mois';}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return 'Exportez vos données en CSV, PDF ou JSON — quota: '+_q+' exports/mois selon votre plan';}()), icon:'📤', color:'#8b5cf6' },
-      { name:'API GraphQL',           active:true, desc:'Accès complet à l\'API GraphQL pour intégrer FlowPoint dans vos outils métier',   icon:'⚡', color:'#06b6d4' },
+      { name:fpT('White-Label Rapports'),  active:true, desc:fpT('Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés'),    icon:'🎨', color:'#f59e0b' },
+      { name:fpT('Multi-workspace'),       active:true, desc:fpT('Gérez plusieurs workspaces clients séparés dans une seule interface unifiée'),       icon:'🏢', color:'#2563EB' },
+      { name:fpT('Audit Log Complet'),     active:true, desc:fpT("Historique exhaustif de toutes les actions de l’équipe — conformité RGPD native"),  icon:'📋', color:'#22c55e' },
+      { name:fpT('2FA / MFA'),             active:true, desc:fpT('Authentification à deux facteurs obligatoire pour sécuriser chaque connexion'),     icon:'🔐', color:'#ef4444' },
+      { name:fpT('Analytics Temps Réel'),  active:true, desc:fpT('Tableaux de bord live, graphiques instantanés et alertes en temps réel'),          icon:'📊', color:'#2563EB' },
+      { name:fpT('RGPD Compliance'),       active:true, desc:fpT("Droit à l’oubli, exports de données, consentements et DPA disponibles"),          icon:'🛡️', color:'#22c55e' },
+      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return fpT('Exports {count}/mois',{count:_q>=1000?_fmt(_q):_q});}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return fpT('Exportez vos données en CSV, PDF ou JSON — quota: {count} exports/mois selon votre plan',{count:_q});}()), icon:'📤', color:'#8b5cf6' },
+      { name:fpT('API GraphQL'),           active:true, desc:fpT("Accès complet à l’API GraphQL pour intégrer FlowPoint dans vos outils métier"),   icon:'⚡', color:'#06b6d4' },
     ];
     return `
       ${isUltra
@@ -11552,8 +11557,8 @@ function renderBilling() {
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
               <div style="font-size:28px">🏢</div>
               <div>
-                <div style="font-size:14px;font-weight:800;margin-bottom:3px">Agency Lab <span style="color:#8b5cf6">actif</span></div>
-                <div style="font-size:12px;color:var(--fp-text-muted)"><strong>${workspaces.length} workspace${workspaces.length!==1?'s':''}</strong> géré${workspaces.length!==1?'s':''} · ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''} · White-label &amp; custom domain disponibles</div>
+                <div style="font-size:14px;font-weight:800;margin-bottom:3px">Agency Lab <span style="color:#8b5cf6">${fpT('actif')}</span></div>
+                <div style="font-size:12px;color:var(--fp-text-muted)"><strong>${fpT(workspaces.length === 1 ? '{count} workspace' : '{count} workspaces', { count: workspaces.length })}</strong> ${fpT(workspaces.length === 1 ? 'géré' : 'gérés')} · ${fpT(workspaces.reduce((s,w)=>s+(w.clients||0),0) === 1 ? '{count} client' : '{count} clients', { count: workspaces.reduce((s,w)=>s+(w.clients||0),0) })} · ${fpT('White-label & custom domain disponibles')}</div>
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -11566,29 +11571,29 @@ function renderBilling() {
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
               <div style="font-size:28px">🏢</div>
               <div>
-                <div style="font-size:14px;font-weight:800;margin-bottom:3px">Agency Lab — Ultra requis</div>
+                <div style="font-size:14px;font-weight:800;margin-bottom:3px">${fpT('Agency Lab — Ultra requis')}</div>
                 <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Multi-workspace, SSO, white-label portail, facturation client et analytics agence avancés.')}</div>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
-              ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
+              ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${fpT(f)}</div>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (${fpPlanPriceLabel('ultra')})</button>
+            <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fpT('Débloquer Agency Lab → Passer Ultra ({price})', { price: fpPlanPriceLabel('ultra') })}</button>
           </div>`
       }
 
       ${!isUltra ? '' : `
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Workspaces', String(workspaces.length), 'agence + clients', 'up')}
-        ${statCard('MRR Agence', '—', 'Connectez facturation', 'neutral')}
-        ${statCard('Fonctions actives', String(features.filter(f => f.active).length) + '/' + features.length, 'Ultra actives', 'up')}
-        ${statCard('Conformité RGPD', 'En cours', 'audit log à activer', 'neutral')}
+        ${statCard(fpT('Workspaces'), String(workspaces.length), fpT('agence + clients'), 'up')}
+        ${statCard(fpT('MRR Agence'), '—', fpT('Connectez facturation'), 'neutral')}
+        ${statCard(fpT('Fonctions actives'), String(features.filter(f => f.active).length) + '/' + features.length, fpT('Ultra actives'), 'up')}
+        ${statCard(fpT('Conformité RGPD'), fpT('En cours'), fpT('audit log à activer'), 'neutral')}
       </div>
 
       <!-- WORKSPACES -->
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">🏢 Gestion des workspaces</div>
+          <div class="fp-card-title" style="margin-bottom:0">🏢 ${fpT('Gestion des workspaces')}</div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="${fpT('Gestion multi-workspace bientôt disponible')}">${fpT('+ Workspace (bientôt)')}</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -11596,12 +11601,12 @@ function renderBilling() {
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${ws.color}22">
               <div style="width:36px;height:36px;border-radius:10px;background:${ws.color}18;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🏢</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(ws.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">${ws.clients} client(s) · ${ws.seats} siège(s) · Plan ${ws.plan}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(PREVIEW_MODE ? fpT(ws.name) : ws.name)}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${fpT('{clients} client(s) · {seats} siège(s) · Plan {plan}', { clients: ws.clients, seats: ws.seats, plan: ws.plan })}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${ws.mrr}</div>
-                ${badge(ws.status, ws.status === 'Actif' ? '#22c55e' : '#2563EB')}
+                ${badge(fpT(ws.status), ws.status === 'Actif' ? '#22c55e' : '#2563EB')}
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings')">${fpT('Gérer')}</button>
             </div>
@@ -11622,7 +11627,7 @@ function renderBilling() {
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4;margin-bottom:8px">${escHtml(f.desc)}</div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `navigateSub('plans')` : f.active ? `navigate('settings')` : `navigateSub('addons')`}">
-                ${f.locked ? '🔒 Ultra requis' : f.active ? '✓ Configurer' : 'Activer →'}
+                ${f.locked ? '🔒 ' + fpT('Ultra requis') : f.active ? '✓ ' + fpT('Configurer') : fpT('Activer →')}
               </button>
             </div>
           `).join('')}
@@ -11643,13 +11648,13 @@ function renderBilling() {
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
-          Billing Command Center
+          ${fpT('Billing Command Center')}
         </h1>
-        <div class="fp-section-sub">Plan ${plan} actif · ${healthScore!=null?'Usage health '+healthScore+'/100':'Calcul usage en cours'}</div>
+        <div class="fp-section-sub">${fpT('Plan {plan} actif', { plan })} · ${healthScore!=null?fpT('Usage health {score}/100', { score: healthScore }):fpT('Calcul usage en cours')}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Télécharger facture','fp-btn fp-btn-ghost fp-btn-sm','download',"onclick=\"apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('success', fpT('Portail Stripe ouvert'))}).catch(()=>showToast('info', fpT('Portail Stripe')))\"" )}
-        ${btn('Gérer le plan','fp-btn fp-btn-primary fp-btn-sm','zap',     "onclick=\"navigateSub('plans')\"" )}
+        ${btn(fpT('Télécharger facture'),'fp-btn fp-btn-ghost fp-btn-sm','download',"onclick=\"apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('success', fpT('Portail Stripe ouvert'))}).catch(()=>showToast('info', fpT('Portail Stripe')))\"" )}
+        ${btn(fpT('Gérer le plan'),'fp-btn fp-btn-primary fp-btn-sm','zap',     "onclick=\"navigateSub('plans')\"" )}
       </div>
     </div>
 
@@ -11657,7 +11662,7 @@ function renderBilling() {
     ${isPro
       ? aiBlock(
           criticalUsages.length > 0
-            ? "⚠ <strong>" + criticalUsages.map(u => u.l).join(' ' + fpT('et') + ' ') + " " + fpT('approchent de la limite du plan') + "</strong>. " + fpT('Recommandation : ajouter un pack ou passer Ultra avant d\'atteindre le seuil. Sans engagement — résiliation possible à tout moment.')
+            ? "⚠ <strong>" + criticalUsages.map(u => fpT(u.l)).join(' ' + fpT('et') + ' ') + " " + fpT('approchent de la limite du plan') + "</strong>. " + fpT('Recommandation : ajouter un pack ou passer Ultra avant d\'atteindre le seuil. Sans engagement — résiliation possible à tout moment.')
             : fpT('Usage sain — toutes les ressources sont sous contrôle.') + " <strong>" + fpT('3 add-ons IA recommandés') + "</strong> " + fpT('pour maximiser l\'efficacité de votre agence. Sans engagement, résiliable à tout moment.'),
           [fpT('Optimiser mon plan'), fpT('Voir les add-ons IA'), fpT('Comparer les plans')]
         )
@@ -11666,12 +11671,12 @@ function renderBilling() {
 
     <!-- HERO KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€') + '/mois', 'up')}
-      ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
-      ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
+      ${statCard(fpT('Plan actuel'), plan, fpT('actif · {price}/mois', { price: plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€' }), 'up')}
+      ${statCard(fpT('Usage Health'), displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? fpT('Sain — sous contrôle') : fpT('Attention requise')):PREVIEW_MODE?fpT('Sain — sous contrôle'):fpT('Calcul en cours'), healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
+      ${statCard(fpT('Potentiel upgrade'), displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? fpT('Plan optimal atteint') : fpT('Score upgrade détecté'), isUltra ? 'up' : 'neutral')}
       ${STATE.billing?.subscriptionId
-          ? statCard('Prochain débit', displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), 'Prochaine échéance', 'neutral')
-          : statCard('Facturation', '—', 'Aucune subscription Stripe', 'neutral')}
+          ? statCard(fpT('Prochain débit'), displayStat(STATE.billing?.nextAmount != null ? STATE.billing.nextAmount + '€' : null, '—'), fpT('Prochaine échéance'), 'neutral')
+          : statCard(fpT('Facturation'), '—', fpT('Aucune subscription Stripe'), 'neutral')}
     </div>
 
     <!-- PLAN + GAUGES -->
@@ -11686,18 +11691,18 @@ function renderBilling() {
             <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></g>
           </svg>
           <div>
-            <div style="font-size:22px;font-weight:900;color:var(--fp-text);font-family:var(--fp-font-head)">Plan ${plan}</div>
+            <div style="font-size:22px;font-weight:900;color:var(--fp-text);font-family:var(--fp-font-head)">${fpT('Plan {plan}', { plan })}</div>
             <div style="font-size:12px;color:#22c55e;display:flex;align-items:center;gap:5px;margin-top:2px">
               ${svgIcon('check').replace('stroke="currentColor"','stroke="#22c55e"').replace('width="14"','width="12"').replace('height="14"','height="12"')}
-              ${STATE.billing?.subscriptionId ? 'Actif · Renouvellement ' + (STATE.billing?.nextDate || '—') : 'Actif'}
+              ${STATE.billing?.subscriptionId ? fpT('Actif · Renouvellement {date}', { date: STATE.billing?.nextDate || '—' }) : fpT('Actif')}
             </div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
           ${[
-            { label:'Coût mensuel',       val: STATE.billing?.subscriptionId ? (isStd ? '29€' : isPro && !isUltra ? '79€' : '149€') : '—' },
-            { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
-            { label:'Add-ons actifs',     val: (()=>{
+            { label:fpT('Coût mensuel'),       val: STATE.billing?.subscriptionId ? (isStd ? '29€' : isPro && !isUltra ? '79€' : '149€') : '—' },
+            { label:fpT('Sans engagement'),    val: fpT('Mensuel — résiliation libre') },
+            { label:fpT('Add-ons actifs'), val: (()=>{
                 // Source of truth: /api/addons (FP_DATA.addons.active) — merged with the
                 // legacy STATE.billing.addons map so neither source under-counts.
                 const _merged = Object.assign({}, STATE.billing?.addons || {}, window.FP_DATA?.addons?.active || {});
@@ -11707,17 +11712,17 @@ function renderBilling() {
                 const _incActive = _activeKeys.filter(k => _defs[k] && _defs[k].includedInPlan === true || (_defs[k] && Array.isArray(_defs[k].includedIn) && _defs[k].includedIn.includes(_planKey2))).length;
                 const _n = _activeKeys.length;
                 const _inc = _incActive;
-                return _n+' actif'+(_n!==1?'s':'')+' · '+_inc+' inclus (plan)';
+                return fpT('{count} actif(s) · {included} inclus (plan)', { count: _n, included: _inc });
               })() },
-            { label:'Prochaine facture',  val: STATE.billing?.subscriptionId ? (STATE.billing?.nextDate || '—') : 'Aucune facturation Stripe' },
+            { label:fpT('Prochaine facture'),  val: STATE.billing?.subscriptionId ? (STATE.billing?.nextDate || '—') : fpT('Aucune facturation Stripe') },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px">${escHtml(m.label)}</div>
             <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${m.val}</div>
           </div>`).join('')}
         </div>
         <div style="display:flex;gap:8px">
-          ${btn('Changer de plan','fp-btn fp-btn-primary fp-btn-sm','','onclick="navigateSub(\'plans\')"')}
-          ${btn('Add-ons','fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigateSub(\'addons\')"')}
+          ${btn(fpT('Changer de plan'),'fp-btn fp-btn-primary fp-btn-sm','','onclick="navigateSub(\'plans\')"')}
+          ${btn(fpT('Add-ons'),'fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigateSub(\'addons\')"')}
         </div>
       </div>
 
@@ -11733,7 +11738,7 @@ function renderBilling() {
           </svg>
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Usage Health Score')}</div>
-            <div style="font-size:11px;color:${usageHealth > 70 ? '#22c55e' : '#f59e0b'};font-weight:600;margin-bottom:4px">${usageHealth > 70 ? '✓ Sain — toutes ressources sous contrôle' : '⚠ Quelques ressources à surveiller'}</div>
+            <div style="font-size:11px;color:${usageHealth > 70 ? '#22c55e' : '#f59e0b'};font-weight:600;margin-bottom:4px">${usageHealth > 70 ? '✓ ' + fpT('Sain — toutes ressources sous contrôle') : '⚠ ' + fpT('Quelques ressources à surveiller')}</div>
             <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Score composé · 9 ressources')}</div>
           </div>
         </div>
@@ -11750,7 +11755,7 @@ function renderBilling() {
               const label = u.na || u.max === 0 ? 'N/A' : `${vd}/${md} (${pct}%)`;
               return `<div>
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-                  <span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(u.l)}</span>
+                  <span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(fpT(u.l))}</span>
                   <span style="font-size:11px;font-weight:700;color:${pc}">${label}</span>
                 </div>
                 <div class="fp-progress-track" style="height:5px"><div class="fp-progress-fill" style="width:${u.max > 0 ? pct : 0}%;background:${pc}"></div></div>
@@ -11767,19 +11772,19 @@ function renderBilling() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('clock').replace('stroke="currentColor"','stroke="#2563EB"')}
-          Timeline facturation — Événements récents
+          ${fpT('Timeline facturation — Événements récents')}
         </div>
         <div style="position:relative;padding-left:20px">
           <div style="position:absolute;left:6px;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,#2563EB,transparent)"></div>
           ${(()=>{ const _tlEvents = STATE.billing?.invoices?.length > 0
-            ? STATE.billing.invoices.slice(0,6).map(inv => ({ d:_fmtInvDate(inv.date||inv.created), ev:'Facture '+(inv.status==='failed'?'échouée':'payée')+' — '+(inv.amount||inv.total||'—')+'€', c:inv.status==='failed'?'#ef4444':'#22c55e' }))
+            ? STATE.billing.invoices.slice(0,6).map(inv => ({ d:_fmtInvDate(inv.date||inv.created), ev:fpT('Facture {status} — {amount}€', { status: fpT(inv.status==='failed'?'échouée':'payée'), amount: inv.amount||inv.total||'—' }), c:inv.status==='failed'?'#ef4444':'#22c55e' }))
             : (PREVIEW_MODE ? [
-            { d:'01/05/2026', ev:'Facture payée — 79€',                     c:'#22c55e' },
-            { d:'28/04/2026', ev:'Usage AI Crédits > 40% — seuil atteint',  c:'#f59e0b' },
-            { d:'15/04/2026', ev:'Add-on Monitors +50 — activé',            c:'#2563EB' },
-            { d:'01/04/2026', ev:'Facture payée — 79€',                     c:'#22c55e' },
-            { d:'01/03/2026', ev:'Passage Plan Pro — upgrade',              c:'#8b5cf6' },
-            { d:'01/02/2026', ev:'Facture payée — 49€ (Standard)',          c:'#22c55e' },
+            { d:'01/05/2026', ev:fpT('Facture payée — 79€'),                     c:'#22c55e' },
+            { d:'28/04/2026', ev:fpT('Usage AI Crédits > 40% — seuil atteint'),  c:'#f59e0b' },
+            { d:'15/04/2026', ev:fpT('Add-on Monitors +50 — activé'),            c:'#2563EB' },
+            { d:'01/04/2026', ev:fpT('Facture payée — 79€'),                     c:'#22c55e' },
+            { d:'01/03/2026', ev:fpT('Passage Plan Pro — upgrade'),              c:'#8b5cf6' },
+            { d:'01/02/2026', ev:fpT('Facture payée — 49€ (Standard)'),          c:'#22c55e' },
           ] : []);
           if (_tlEvents.length === 0) return `<div style="padding:14px;text-align:center;color:var(--fp-text-faint);font-size:11px">${fpT('Aucune facture disponible — votre abonnement démarre ce mois-ci.')}</div>`;
           return _tlEvents.map(ev => `<div style="position:relative;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -11792,21 +11797,21 @@ function renderBilling() {
 
       <!-- QUICK NAV -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🧭 Espaces de facturation</div>
+        <div class="fp-card-title" style="margin-bottom:14px">🧭 ${fpT('Espaces de facturation')}</div>
         <div style="display:flex;flex-direction:column;gap:7px">
           ${[
-            { label:'Plans & Abonnements',  sub:'plans',          icon:'💎', desc:'Comparer les plans · Upgrade · ROI' },
-            { label:'Add-ons Marketplace',  sub:'addons',         icon:'🛒', desc:PREVIEW_MODE ? '3 actifs sur 29 disponibles · Marketplace' : 'Étendre les capacités · Marketplace' },
-            { label:'Factures & Paiements', sub:'invoices',       icon:'🧾', desc:PREVIEW_MODE ? '6 factures · 286€ payés 2026' : 'Historique de facturation · Portail Stripe' },
-            { label:'Usage Analytics',      sub:'usage',          icon:'📊', desc:criticalUsages.length > 0 ? criticalUsages.length + ' ressource(s) à surveiller' : 'Toutes ressources saines' },
-            { label:'IA Stratégiste',       sub:'ai-strategist',  icon:'🧠', desc:PREVIEW_MODE ? '4 recommandations · 192€ économies' : 'Recommandations d\'optimisation des coûts' },
-            { label:'Agency Lab',       sub:'enterprise',     icon:'🏢', desc:isUltra ? ((STATE.workspaces||[]).length > 0 ? (STATE.workspaces||[]).length + ' workspace(s) actif(s)' : 'Gérez vos workspaces clients') : 'Ultra requis — portail agence complet' },
+            { label:'Plans & Abonnements',  sub:'plans',          icon:'💎', desc:fpT('Comparer les plans · Upgrade · ROI') },
+            { label:'Add-ons Marketplace',  sub:'addons',         icon:'🛒', desc:PREVIEW_MODE ? fpT('3 actifs sur 29 disponibles · Marketplace') : fpT('Étendre les capacités · Marketplace') },
+            { label:'Factures & Paiements', sub:'invoices',       icon:'🧾', desc:PREVIEW_MODE ? fpT('6 factures · 286€ payés 2026') : fpT('Historique de facturation · Portail Stripe') },
+            { label:'Usage Analytics',      sub:'usage',          icon:'📊', desc:criticalUsages.length > 0 ? fpT('{count} ressource(s) à surveiller', { count: criticalUsages.length }) : fpT('Toutes ressources saines') },
+            { label:'IA Stratégiste',       sub:'ai-strategist',  icon:'🧠', desc:PREVIEW_MODE ? fpT('4 recommandations · 192€ économies') : fpT("Recommandations d'optimisation des coûts") },
+            { label:'Agency Lab',       sub:'enterprise',     icon:'🏢', desc:isUltra ? ((STATE.workspaces||[]).length > 0 ? fpT('{count} workspace(s) actif(s)', { count: (STATE.workspaces||[]).length }) : fpT('Gérez vos workspaces clients')) : fpT('Ultra requis — portail agence complet') },
           ].map(n => `
             <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(n.label)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(n.desc)}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpT(n.label))}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(fpT(n.desc))}</div>
               </div>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--fp-text-faint)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
@@ -24798,6 +24803,16 @@ function bindGlobalEvents() {
     "Colonne prix Pro vs Ultra": "Pro vs Ultra pricing column",
     "Optimiser CRO — {page}": "Optimize CRO — {page}",
   };
+  if (window.FP_I18N_EN_BILLING) {
+    Object.keys(window.FP_I18N_EN_BILLING).forEach(function(k) {
+      if (
+        !Object.prototype.hasOwnProperty.call(FP_I18N_EN, k) &&
+        !Object.prototype.hasOwnProperty.call(FP_I18N_EN_EXTRA, k)
+      ) {
+        FP_I18N_EN_EXTRA[k] = window.FP_I18N_EN_BILLING[k];
+      }
+    });
+  }
   // Merge without overriding curated entries above
   Object.keys(FP_I18N_EN_EXTRA).forEach(function(k) {
     if (!Object.prototype.hasOwnProperty.call(FP_I18N_EN, k)) FP_I18N_EN[k] = FP_I18N_EN_EXTRA[k];

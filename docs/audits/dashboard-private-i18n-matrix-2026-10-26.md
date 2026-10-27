@@ -53,7 +53,7 @@
 | `competitor` | (racine), `keywords`, `growth`, `backlinks`, `local`, `alerts`, `comparison` | PASS — branches de production, sous-navigation et données AI/fournisseur vérifiées | BLOCKED |
 | `conversion` | (racine), `funnel`, `ux-lab`, `cta`, `revenue-leak`, `cro`, Heatmap accessible | PASS — vues, branches GA4, états vides/erreur, labels dynamiques, prompts/confirmations A/B, actions et limites des données client vérifiés statiquement | BLOCKED |
 | `alerts-center` | (racine), `incidents`, `seo`, `performance`, `conversion`, `local`, `competitor`, `ai` | EN COURS | BLOCKED |
-| `billing` | (racine), `plans`, `addons`, `usage`, `invoices`, `ai-strategist`, `enterprise` | EN COURS | BLOCKED |
+| `billing` | (racine), `plans`, `addons`, `usage`, `invoices`, `ai-strategist`, `enterprise` | PASS — catalogue des plans/add-ons, usage et crédits, factures, états de paiement, AI Strategist, Enterprise Lab, états dynamiques et limites des données client vérifiés statiquement | BLOCKED |
 | `settings` | (racine), `workspace`, `team`, `security`, `alerts`, `automations`, `integrations`, `api`, `ai-config`, `data`, `localisation`, `sso` | EN COURS | BLOCKED |
 | `ai` | (racine), `usage`, `intelligence`, `insights`, `actions`, `strategist` | EN COURS | BLOCKED |
 | `activity-feed` | (racine), `team`, `seo`, `monitoring`, `ai`, `reports`, `competitor`, `ops` | EN COURS | BLOCKED |

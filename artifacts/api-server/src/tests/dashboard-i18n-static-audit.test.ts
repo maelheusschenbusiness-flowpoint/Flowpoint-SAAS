@@ -8,9 +8,24 @@ const dashboardSource = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/dashboard.js"),
   "utf8",
 );
+const billingI18nSource = readFileSync(
+  resolve(process.cwd(), "../flowpoint-export/billing-i18n-en.js"),
+  "utf8",
+);
+const dashboardHtml = readFileSync(
+  resolve(process.cwd(), "../flowpoint-export/dashboard.html"),
+  "utf8",
+);
 const backendSource = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/fp-backend.js"),
   "utf8",
+);
+const planCatalogSource = ts.createSourceFile(
+  "plans.ts",
+  readFileSync(resolve(process.cwd(), "src/lib/plans.ts"), "utf8"),
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS,
 );
 const missionRouteSource = readFileSync(
   resolve(process.cwd(), "src/routes/missions.ts"),
@@ -32,6 +47,16 @@ const sourceFiles = [
     source: ts.createSourceFile(
       "dashboard.js",
       dashboardSource,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    ),
+  },
+  {
+    fileName: "billing-i18n-en.js",
+    source: ts.createSourceFile(
+      "billing-i18n-en.js",
+      billingI18nSource,
       ts.ScriptTarget.Latest,
       true,
       ts.ScriptKind.JS,
@@ -184,10 +209,14 @@ function arrayElementCountInFunctionVariable(functionName: string, variableName:
   return count;
 }
 
-function stringValuesInObjectFields(variableName: string, fieldNames: string[]): Set<string> {
+function stringValuesInObjectFields(
+  variableName: string,
+  fieldNames: string[],
+  source: ts.SourceFile = sourceFiles[0].source,
+): Set<string> {
   const values = new Set<string>();
   const fields = new Set(fieldNames);
-  walk(sourceFiles[0].source, (node) => {
+  walk(source, (node) => {
     if (
       !ts.isVariableDeclaration(node) ||
       !ts.isIdentifier(node.name) ||
@@ -219,6 +248,38 @@ function stringValuesInObjectFields(variableName: string, fieldNames: string[]):
   return values;
 }
 
+function stringValuesInObjectArrayFields(variableName: string, fieldNames: string[]): Set<string> {
+  const values = new Set<string>();
+  const fields = new Set(fieldNames);
+  walk(sourceFiles[0].source, (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      node.name.text !== variableName ||
+      !node.initializer ||
+      !ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      return;
+    }
+    for (const element of node.initializer.elements) {
+      if (!ts.isObjectLiteralExpression(element)) continue;
+      for (const property of element.properties) {
+        if (
+          !ts.isPropertyAssignment(property) ||
+          (!ts.isStringLiteral(property.name) && !ts.isIdentifier(property.name)) ||
+          !fields.has(property.name.text)
+        ) continue;
+        walk(property.initializer, (part) => {
+          if (ts.isStringLiteral(part) || ts.isNoSubstitutionTemplateLiteral(part)) {
+            values.add(part.text);
+          }
+        });
+      }
+    }
+  });
+  return values;
+}
+
 function arrayStringValuesInVariable(variableName: string): string[] {
   const values: string[] = [];
   walk(sourceFiles[0].source, (node) => {
@@ -242,35 +303,37 @@ function arrayStringValuesInVariable(variableName: string): string[] {
 
 const englishKeys = new Set<string>();
 const englishTranslations = new Map<string, string>();
-walk(sourceFiles[0].source, (node) => {
-  if (
-    !ts.isVariableDeclaration(node) ||
-    !ts.isIdentifier(node.name) ||
-    !["FP_I18N_EN", "FP_I18N_EN_EXTRA"].includes(node.name.text) ||
-    !node.initializer ||
-    !ts.isObjectLiteralExpression(node.initializer)
-  ) {
-    return;
-  }
+for (const { source } of sourceFiles) {
+  walk(source, (node) => {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      !["FP_I18N_EN", "FP_I18N_EN_EXTRA", "FP_I18N_EN_BILLING"].includes(node.name.text) ||
+      !node.initializer ||
+      !ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      return;
+    }
 
-  for (const property of node.initializer.properties) {
-    if (
-      !ts.isPropertyAssignment(property) ||
-      !property.name ||
-      (!ts.isStringLiteral(property.name) && !ts.isIdentifier(property.name))
-    ) {
-      continue;
+    for (const property of node.initializer.properties) {
+      if (
+        !ts.isPropertyAssignment(property) ||
+        !property.name ||
+        (!ts.isStringLiteral(property.name) && !ts.isIdentifier(property.name))
+      ) {
+        continue;
+      }
+      englishKeys.add(property.name.text);
+      if (
+        (ts.isStringLiteral(property.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(property.initializer)) &&
+        !englishTranslations.has(property.name.text)
+      ) {
+        englishTranslations.set(property.name.text, property.initializer.text);
+      }
     }
-    englishKeys.add(property.name.text);
-    if (
-      (ts.isStringLiteral(property.initializer) ||
-        ts.isNoSubstitutionTemplateLiteral(property.initializer)) &&
-      !englishTranslations.has(property.name.text)
-    ) {
-      englishTranslations.set(property.name.text, property.initializer.text);
-    }
-  }
-});
+  });
+}
 
 const frenchUiText =
   /(?:[àâäçéèêëîïôöùûüÿœæ]|\b(?:supprimer|fichier|envoyer|envoyée|créé|créée|erreur|désactivé|activé|activation|en cours|canal|connecteur|surveillance|vérification|ajouter|ajouté|saisissez|adresse|données|réessayez|fréquence|quotidien|hebdo|mensuel|connexion|établissement|avis|coordonnées|opportunité|règle|assignation|rapport|mission|concurrent|sélectionné|sélectionnée|généré|générée|téléchargé|importé|chargement|inconnu|pause|prochain|formulaire|abandons|sessions|sortie|autorisation|dernière|instant|crédits|déconnecter|statut|thème|sombre|clair|manuellement|irréversible)\b)/i;
@@ -1831,6 +1894,70 @@ describe("private dashboard static English localization", () => {
     const conversionAddon = sourceFiles.find(({ fileName }) => fileName === "conversion-opportunity-engine-addon.js")?.source.text || "";
     expect(conversionAddon).toContain("escapeHtml(item.landingPage)");
     expect(conversionAddon).toContain('String(error?.message || t("Impossible de charger les données GA4."))');
+  });
+
+  it("audits Billing plans, add-ons, usage, invoices, strategist, and enterprise views", () => {
+    const billingKeys = translationKeysInFunction("renderBilling");
+    for (const key of [
+      "Plan actuel", "Coût mensuel", "📊 Comparaison détaillée des plans",
+      "Gestion de l'abonnement", "Ajouter des crédits", "Historique des factures",
+      "Méthodes de paiement", "Usage moyen", "Prévision 30j",
+      "Agency Lab — Ultra requis", "Espaces de facturation", "Billing Command Center",
+    ]) {
+      expect(billingKeys.has(key), `Billing should translate "${key}"`).toBe(true);
+      expect(englishKeys.has(key), `Billing English catalogue should contain "${key}"`).toBe(true);
+    }
+
+    for (const route of ["plans", "addons", "usage", "invoices", "ai-strategist", "enterprise"]) {
+      expect(dashboardSource).toContain(`sub === '${route}'`);
+    }
+    const billingScriptIndex = dashboardHtml.indexOf('src="billing-i18n-en.js');
+    const dashboardScriptIndex = dashboardHtml.indexOf('src="dashboard.js');
+    expect(billingScriptIndex).toBeGreaterThanOrEqual(0);
+    expect(billingScriptIndex).toBeLessThan(dashboardScriptIndex);
+
+    const productMetadata = new Set([
+      ...stringValuesInObjectFields("PLAN_DEFINITIONS", ["name", "badge", "tagline", "features", "locked"], planCatalogSource),
+      ...stringValuesInObjectFields("ADDON_DEFINITIONS", ["name", "category", "description"], planCatalogSource),
+      ...stringValuesInObjectArrayFields("allAddons", ["name", "cat", "tag", "roi", "desc", "features"]),
+      "IA Stratégiste",
+      "Add-ons actifs",
+    ]);
+    for (const key of productMetadata) {
+      expect(englishKeys.has(key), `Billing product metadata should translate "${key}"`).toBe(true);
+    }
+    for (const key of [
+      "IA & SEO", "Audits / mois", "Utilisateurs",
+      "Rapports PDF", "Analytics concurrents", "Facturation client",
+      "Onboarding dédié", "SLA garanti", "Rétention", "AI Crédits / mois",
+      "Stockage", "Résiliation", "Prioritaire 4h", "Dédié <1h",
+      "✓ Complet", "✓ Illimitée", "✓ Avancés", "30 jours",
+      "90 jours", "365 jours",
+    ]) {
+      expect(englishKeys.has(key), `Billing comparison table should translate "${key}"`).toBe(true);
+    }
+
+    for (const binding of [
+      "fpT(p.badge)",
+      "fpT(p.tagline)",
+      "fpT(f)",
+      "fpT(a.name)",
+      "fpT(a.desc)",
+      "fpT(a.cat)",
+      "fpT(a.tag)",
+      "fpT(a.roi)",
+      "escHtml(PREVIEW_MODE ? fpT(ws.name) : ws.name)",
+      'data-addon-name="${escHtml(a.name)}"',
+      "const _ADDON_STRIPE_KEYS = Object.fromEntries(allAddons.map(a => [a.name, a.key]));",
+      "escHtml(inv.addons)",
+      "escHtml(inv.amount)",
+      "STATE.billing?.nextAmount",
+      "label:fpT('Add-ons actifs')",
+      "fpT('{clients} client(s) · {seats} siège(s) · Plan {plan}'",
+      "fpT('Facture {status} — {amount}€'",
+    ]) {
+      expect(dashboardSource).toContain(binding);
+    }
   });
 
   it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
