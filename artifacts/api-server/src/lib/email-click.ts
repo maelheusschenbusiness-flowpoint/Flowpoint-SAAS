@@ -64,15 +64,46 @@ export interface ClicEmail {
   utmCampaign: string | null;
   utmContent: string | null;
   cible: CleCible;
+  /** Vrai quand la requete portait une donnee personnelle : rien n'est reporte ni compte. */
+  refuse?: boolean;
 }
 
+// Caracteres de controle (tabulation, retour a la ligne, NUL…) : jamais acceptes.
+// eslint-disable-next-line no-control-regex
+const CONTROLE_RE = /[\u0000-\u001f\u007f]/;
+
 function texte(value: unknown): string | null {
-  // `?a=1&a=2` arrive en tableau : ambigu, donc ignore.
-  return typeof value === "string" ? value.trim() : null;
+  // `?a=1&a=2` arrive en tableau : ambigu, donc ignore. Aucune normalisation
+  // (ni trim, ni decodage supplementaire) : une valeur est exacte ou rejetee.
+  return typeof value === "string" && !CONTROLE_RE.test(value) ? value : null;
+}
+
+/**
+ * Une adresse email (ou un fragment) dans N'IMPORTE QUEL parametre, nom compris,
+ * meme encodee deux fois (`%40`) ou en arobase pleine chasse (U+FF20). Le lien
+ * Smartlead ne doit porter que le fp_lid : un `@` signale une erreur de
+ * gabarit qui ferait transiter une donnee personnelle.
+ */
+const ARROBASE_RE = /@|%40|\uff20|\ufe6b/i;
+
+export function contientDonneePersonnelle(query: Record<string, unknown> | undefined): boolean {
+  if (!query) return false;
+  const valeurs = (v: unknown): string[] =>
+    typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(valeurs)
+      : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => [k, ...valeurs(x)]) : [];
+  return Object.entries(query).some(([k, v]) => [k, ...valeurs(v)].some((x) => ARROBASE_RE.test(x)));
+}
+
+/** Clic vide : la destination par defaut, sans aucun parametre ni comptage. */
+function clicVide(env: NodeJS.ProcessEnv): ClicEmail {
+  const parDefaut = env["FP_GO_DEFAULT_TARGET"];
+  return { fpLid: null, utmSource: null, utmMedium: null, utmCampaign: null, utmContent: null,
+    cible: estCleCible(parDefaut) ? parDefaut : "signup", refuse: true };
 }
 
 export function lireClic(query: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv = process.env): ClicEmail {
   const q = query ?? {};
+  if (contientDonneePersonnelle(q)) return clicVide(env);
   const source = texte(q["utm_source"])?.toLowerCase() ?? null;
   const medium = texte(q["utm_medium"])?.toLowerCase() ?? null;
   const campagne = texte(q["utm_campaign"])?.toLowerCase() ?? null;
@@ -94,7 +125,9 @@ export function lireClic(query: Record<string, unknown> | undefined, env: NodeJS
  * `fp_source=smartlead` accompagne `utm_source` : c'est le nom que lit
  * `funnel-tracking.js` en premier.
  */
-export function urlRedirection(clic: ClicEmail): string {
+export function urlRedirection(clic: ClicEmail, options: { marqueurVisite?: boolean } = {}): string {
+  const base = CIBLES_CLIC[clic.cible];
+  if (clic.refuse) return base;
   const params = new URLSearchParams();
   if (clic.fpLid) params.set("fp_lid", clic.fpLid);
   if (clic.utmSource) {
@@ -104,7 +137,10 @@ export function urlRedirection(clic: ClicEmail): string {
   if (clic.utmMedium) params.set("utm_medium", clic.utmMedium);
   if (clic.utmCampaign) params.set("utm_campaign", clic.utmCampaign);
   if (clic.utmContent) params.set("utm_content", clic.utmContent);
-  const base = CIBLES_CLIC[clic.cible];
+  // `fp_v=1` demande a la page d'arrivee d'envoyer le signal de visite
+  // navigateur. Pose seulement quand ce signal est active (FP_EMAIL_VISIT_BEACON) :
+  // sinon la page n'envoie rien du tout.
+  if (options.marqueurVisite && clic.fpLid && clic.utmSource && clic.cible !== "site") params.set("fp_v", "1");
   const search = params.toString();
   return search ? `${base}?${search}` : base;
 }
@@ -168,4 +204,20 @@ export function cleIdempotenceClic(fpLid: string, bot: boolean, jour: string): s
 
 export function suiviClicActif(env: NodeJS.ProcessEnv = process.env): boolean {
   return env["FP_EMAIL_CLICK_TRACKING"] === "on";
+}
+
+/**
+ * Second drapeau, separe et desactive par defaut : le signal de visite
+ * navigateur (`email_visite`). Il fait executer un script sur le terminal du
+ * prospect pour mesurer la campagne ; son exemption de consentement (art. 82
+ * LIL / 5.3 ePrivacy) n'est pas acquise et doit etre validee avant activation.
+ * N'a d'effet que si le suivi des clics est lui-meme actif.
+ */
+export function signalVisiteActif(env: NodeJS.ProcessEnv = process.env): boolean {
+  return suiviClicActif(env) && env["FP_EMAIL_VISIT_BEACON"] === "on";
+}
+
+/** La visite navigateur : un par lead et par jour. */
+export function cleIdempotenceVisite(fpLid: string, jour: string): string {
+  return `email_visite:${empreinteLead(fpLid)}:${jour}`;
 }

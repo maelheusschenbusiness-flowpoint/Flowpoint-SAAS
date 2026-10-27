@@ -17,6 +17,7 @@ import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
 import { withCarriedParams } from "./lib/carry-params.js";
 import emailClickRouter from "./routes/email-click.js";
+import { serialiserRequeteHttp } from "./lib/http-log.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -51,9 +52,7 @@ const pinoMiddleware = (pinoHttp as any)({
   logger,
   genReqId: (req: { id?: string }) => req.id ?? "unknown",
   serializers: {
-    req: (req: { id?: string; method?: string; url?: string }) => ({
-      id: req.id, method: req.method, url: req.url?.split("?")[0],
-    }),
+    req: serialiserRequeteHttp,
     res: (res: { statusCode?: number }) => ({ statusCode: res.statusCode }),
   },
 }) as import("express").RequestHandler;

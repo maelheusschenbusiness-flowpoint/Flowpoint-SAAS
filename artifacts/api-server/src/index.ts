@@ -412,6 +412,11 @@ async function main() {
       .then(({ startConversionOutboxWorker }) => startConversionOutboxWorker())
       .catch((err) => logger.warn({ err }, "[AI Lab] conversion outbox worker not started"));
 
+    // Attribution Smartlead : conservation limitee a 13 mois des lignes email_clic / email_visite.
+    import("./services/funnel-events.js")
+      .then(({ demarrerPurgeAttributionEmail }) => demarrerPurgeAttributionEmail())
+      .catch((err) => logger.warn({ err }, "[Tunnel] email attribution purge not started"));
+
     import("./services/ai-engine.js")
       .then(({ startAiUsageOutboxWorker }) => startAiUsageOutboxWorker())
       .catch((err) => logger.warn({ err }, "[AI] usage outbox worker not started"));

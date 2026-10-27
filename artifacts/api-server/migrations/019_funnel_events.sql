@@ -42,8 +42,8 @@ ALTER TABLE public.funnel_events ADD CONSTRAINT funnel_events_etape_check CHECK 
   'landing_vue', 'tarifs_vus', 'cta_clique', 'signup_started', 'signup_form_engaged',
   'signup_form_completed', 'checkout_started', 'checkout_completed', 'trial_activated',
   'trial_expired', 'subscription_activated',
-  -- 020 (27/10/2026) : etape serveur du clic Smartlead. Repetee ici parce que ce
-  -- fichier est rejoue a chaque migration : sans elle, il retirerait l'etape et
-  -- echouerait sur les lignes `email_clic` deja inscrites.
-  'email_clic'
+  -- 020 (27/10/2026) : etapes de l'attribution Smartlead. Repetees ici parce que
+  -- ce fichier est rejoue a chaque migration : sans elles, il les retirerait et
+  -- echouerait sur les lignes `email_clic` / `email_visite` deja inscrites.
+  'email_clic', 'email_visite'
 ));

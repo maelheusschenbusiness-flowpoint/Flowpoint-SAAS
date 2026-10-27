@@ -10,15 +10,20 @@
 import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import {
+  CIBLES_CLIC,
   cleIdempotenceClic,
+  cleIdempotenceVisite,
+  contientDonneePersonnelle,
   empreinteLead,
   estBotSuspect,
   lireClic,
+  signalVisiteActif,
   suiviClicActif,
   urlRedirection,
 } from "../lib/email-click.js";
-import { clientIp } from "../middlewares/rateLimiter.js";
-import { enregistrerClicEmail } from "../services/funnel-events.js";
+import { normalizeFpLid } from "../lib/fp-lid.js";
+import { clientIp, createIpRateLimit } from "../middlewares/rateLimiter.js";
+import { enregistrerClicEmail, enregistrerVisiteEmail } from "../services/funnel-events.js";
 
 const router = Router();
 
@@ -51,9 +56,11 @@ export function reinitialiserLimiteClic(): void {
 
 async function traiter(req: Request, res: Response): Promise<void> {
   const clic = lireClic(req.query as Record<string, unknown>);
-  const cible = urlRedirection(clic);
+  // La base est une constante de `CIBLES_CLIC` : jamais Host, Origin,
+  // X-Forwarded-Host ni Referer.
+  const cible = urlRedirection(clic, { marqueurVisite: signalVisiteActif() });
 
-  if (suiviClicActif() && clic.fpLid && clic.utmSource === "smartlead" && autoriserEcriture(clientIp(req))) {
+  if (!clic.refuse && suiviClicActif() && clic.fpLid && clic.utmSource === "smartlead" && autoriserEcriture(clientIp(req))) {
     const bot = estBotSuspect({ method: req.method, headers: req.headers });
     const jour = new Date().toISOString().slice(0, 10);
     // Attendu (quelques ms) pour que l'ecriture ne soit pas perdue si le
@@ -76,6 +83,33 @@ async function traiter(req: Request, res: Response): Promise<void> {
 
 // Express sert HEAD avec le gestionnaire GET : `req.method` reste `HEAD`,
 // ce qui marque ces verifications de lien comme `bot_suspect`.
-router.get("/go", (req, res) => { void traiter(req, res); });
+router.get("/go", (req, res) => {
+  traiter(req, res).catch(() => {
+    // Jamais d'erreur 500 (le gestionnaire d'erreurs journaliserait l'URL
+    // complete) : la destination par defaut, sans parametre, et rien d'autre.
+    if (!res.headersSent) res.redirect(302, CIBLES_CLIC.signup);
+  });
+});
+
+/**
+ * Second signal, navigateur : la page d'arrivee confirme qu'un script s'est
+ * execute pour ce lead. Sans cookie (`credentials: "omit"` cote client), sans
+ * consentement marketing, et inerte tant que `FP_EMAIL_VISIT_BEACON` n'est pas
+ * `on`. Repond toujours 204 : le navigateur n'apprend rien.
+ */
+const visitRateLimit = createIpRateLimit("public_email_visit", 30, 60_000);
+router.post("/api/public/email-visit", visitRateLimit, (req: Request, res: Response) => {
+  const corps = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const fpLid = normalizeFpLid(corps["fp_lid"]);
+  res.setHeader("Cache-Control", "no-store");
+  if (!signalVisiteActif() || !fpLid || contientDonneePersonnelle(corps)) {
+    res.status(204).end();
+    return;
+  }
+  const jour = new Date().toISOString().slice(0, 10);
+  enregistrerVisiteEmail(empreinteLead(fpLid), cleIdempotenceVisite(fpLid, jour))
+    .catch(() => false)
+    .finally(() => { if (!res.headersSent) res.status(204).end(); });
+});
 
 export default router;
