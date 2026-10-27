@@ -2334,14 +2334,22 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
             const { pool: _commPool } = await import("@workspace/db");
 
-            // Load seller_id from organizations
-            const _orgSellerR = await _commPool.query<{ seller_id: string | null; owner_email: string; plan: string }>(
-              `SELECT seller_id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
-            );
-            const _orgRow     = _orgSellerR.rows[0];
+            // Load seller_id from organizations.
+            // organizations.id est un UUID : un orgId historique a cle email (ou
+            // tout autre non-UUID) ne peut designer aucune ligne, donc aucun
+            // vendeur. Sans cette garde, PostgreSQL rejette le parametre (22P02)
+            // et tout le webhook repond 500 en boucle de relivraison Stripe.
+            // Seule cette lecture est evitee ; toute autre erreur remonte.
+            const _orgIdIsUuid = UUID_RE_WH.test(orgId);
+            const _orgRow = _orgIdIsUuid
+              ? (await _commPool.query<{ seller_id: string | null; owner_email: string; plan: string }>(
+                  `SELECT seller_id, owner_email, plan FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
+                )).rows[0]
+              : undefined;
             const _sellerUUID = _orgRow?.seller_id ?? null;
             if (!_sellerUUID) {
-              logger.info({ orgId }, "[Webhook/seller] Payment has no seller attribution");
+              logger.info({ orgId, orgIdShape: _orgIdIsUuid ? "uuid" : "non-uuid" },
+                "[Webhook/seller] Payment has no seller attribution");
             } else {
             const _attrR = await _commPool.query<{ seller_attribution_method: "ref_link" | "manual" | null }>(
               `SELECT seller_attribution_method FROM organizations WHERE id = $1 LIMIT 1`, [orgId]
