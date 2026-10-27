@@ -14,7 +14,8 @@
  *   node scripts/e2e-stripe-webhook-non-uuid.mjs
  *
  * Cas verifies :
- *   1. historique non UUID (cle email) → 200, evenement « processed », statut actif ;
+ *   1. historique non UUID (cle email, sans adresse) → 200, evenement « processed »,
+ *      statut actif, aucun email de facturation ;
  *   2. nouveau compte UUID avec vendeur → 200 et paiement inscrit au registre vendeur ;
  *   3. nouveau compte UUID sans vendeur → 200, rien au registre ;
  *   4. une vraie panne d'ecriture (registre vendeur indisponible) → toujours 500,
@@ -60,11 +61,18 @@ const invoice = (cus, n) => ({
 });
 
 // ── 1. Historique : cle email dans org_settings, aucune ligne organizations ──
+// Comme les 31 organisations historiques de la base de test : colonne email vide.
+const { readdirSync } = await import("node:fs");
+const MAIL_DIR = process.env.TEST_MAIL_DIR ?? "";
+const mailCount = () => MAIL_DIR ? readdirSync(MAIL_DIR).filter(f => f.endsWith(".json")).length : 0;
 const legacyId = `legacy.${RUN}@example.test`;
 const cusLegacy = `cus_nu_legacy_${RUN}`;
 await q(`INSERT INTO org_settings (org_id, plan, email, stripe_customer_id, subscription_status)
-         VALUES ($1,'pro',$1,$2,'past_due')`, [legacyId, cusLegacy]);
+         VALUES ($1,'pro',NULL,$2,'past_due')`, [legacyId, cusLegacy]);
+const mailsBefore = mailCount();
 let w = await webhook("invoice.payment_succeeded", invoice(cusLegacy, 1));
+check("historique non UUID : aucun email de facturation capture", !!MAIL_DIR && mailCount() === mailsBefore,
+  MAIL_DIR ? `${mailCount() - mailsBefore} email(s)` : "TEST_MAIL_DIR absent");
 check("historique non UUID : invoice.payment_succeeded → 200 (etait 500)", w.status === 200, `status ${w.status}`);
 check("historique non UUID : evenement marque processed", (await eventStatus(w.id)) === "processed", String(await eventStatus(w.id)));
 const [osLegacy] = await q(`SELECT subscription_status FROM org_settings WHERE org_id=$1`, [legacyId]);
