@@ -161,6 +161,10 @@ export default defineConfig({
       // Livraison Stripe : signature reelle, cinq familles d'evenements, rejeu,
       // separation live/test et exemption des webhooks du compteur global
       "src/tests/stripe-webhook-delivery.test.ts",
+      // Essai 14 jours sans carte (TRIAL_WITHOUT_CARD, eteint par defaut)
+      "src/tests/trial-without-card.test.ts",
+      "src/tests/trial-without-card-emails.test.ts",
+      "src/tests/dashboard-trial-expired.test.ts",
     ],
     environment: "node",
     globals:     false,

@@ -15,7 +15,10 @@ export function startDataForSEOCron(): void {
         const res = await client.query<{ domain: string; org_id: string }>(
           `SELECT DISTINCT domain, org_id FROM seo_domain_metrics WHERE cached_at < now() - interval '6 hours' LIMIT 20`,
         );
-        domains = res.rows.map(r => r.domain);
+        // Essai sans carte expire : pas de rafraichissement DataForSEO.
+        const { expiredCardlessTrialOrgIds } = await import("../services/trial-without-card.js");
+        const expired = await expiredCardlessTrialOrgIds(pool, res.rows.map(r => r.org_id));
+        domains = res.rows.filter(r => !expired.has(r.org_id)).map(r => r.domain);
       } finally {
         client.release();
       }

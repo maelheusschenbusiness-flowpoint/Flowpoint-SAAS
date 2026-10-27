@@ -335,7 +335,7 @@
   <!-- ── ÉTAPE 1 : Formulaire d'inscription ── -->
   <div id="signup-screen">
     <h1 class="card-title">Créer votre compte FlowPoint</h1>
-    <p class="card-sub">Renseignez vos informations pour créer votre compte FlowPoint.</p>
+    <p class="card-sub" id="signup-sub">Renseignez vos informations pour créer votre compte FlowPoint.</p>
 
     <a href="/api/auth/google/login" class="btn-oauth fp-hidden" id="btn-google-oauth">
       <svg width="18" height="18" viewBox="0 0 48 48">
@@ -359,7 +359,7 @@
             <label for="firstName">Prénom *</label>
             <input type="text" id="firstName" name="firstName" placeholder="Marie" required autocomplete="given-name" />
           </div>
-          <div class="field">
+          <div class="field billing-field">
             <label for="lastName">Nom *</label>
             <input type="text" id="lastName" name="lastName" placeholder="Dupont" required autocomplete="family-name" />
           </div>
@@ -371,11 +371,11 @@
         </div>
 
         <div class="field">
-          <label for="companyName">Nom de l'entreprise *</label>
+          <label for="companyName">Nom de l'entreprise <span id="company-req">*</span></label>
           <input type="text" id="companyName" name="companyName" placeholder="Mon Agence Digitale" required autocomplete="organization" />
         </div>
 
-        <div class="field">
+        <div class="field billing-field">
           <label for="country">Pays *</label>
           <select id="country" name="country" required autocomplete="country">
             <option value="">— Sélectionner —</option>
@@ -391,12 +391,12 @@
           </select>
         </div>
 
-        <div class="field">
+        <div class="field billing-field">
           <label for="address">Adresse *</label>
           <input type="text" id="address" name="address" placeholder="12 rue de la Paix" required autocomplete="street-address" />
         </div>
 
-        <div class="row-2">
+        <div class="row-2 billing-field">
           <div class="field">
             <label for="city">Ville *</label>
             <input type="text" id="city" name="city" placeholder="Paris" required autocomplete="address-level2" />
@@ -407,7 +407,7 @@
           </div>
         </div>
 
-        <div class="row-2">
+        <div class="row-2 billing-field">
           <div class="field">
             <label for="phone">Téléphone <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
             <input type="tel" id="phone" name="phone" placeholder="+33 6 12 34 56 78" autocomplete="tel" />
@@ -428,7 +428,16 @@
     </form>
 
     <p class="footer-link">Déjà un compte ? <a id="existing-account-link" href="/login.html">Se connecter</a></p>
+    <p class="footer-link fp-hidden" id="cardless-note" style="margin-top:6px">14 jours d'essai gratuit · Sans carte bancaire · Vos informations de facturation ne sont demandées qu'au paiement</p>
     <p class="footer-link" style="margin-top:6px"><a href="/pricing.html">Voir les plans et tarifs →</a></p>
+  </div>
+
+  <!-- ── ESSAI SANS CARTE : lien envoyé (TRIAL_WITHOUT_CARD) ── -->
+  <div id="trial-sent-screen" style="display:none">
+    <h1 class="card-title">Votre essai gratuit est prêt</h1>
+    <p class="card-sub" id="trial-sent-sub">Nous venons de vous envoyer un lien de connexion. Ouvrez-le pour accéder à votre espace — aucune carte bancaire n'est demandée.</p>
+    <div id="trial-sent-msg" class="msg" role="alert"></div>
+    <p class="footer-link"><a href="/login.html">Renvoyer un lien de connexion →</a></p>
   </div>
 
   <!-- ── ÉTAPE 2 : Choix du plan ── -->
@@ -622,7 +631,10 @@
       google_auth_failed:    "Erreur d'authentification Google. Veuillez réessayer.",
       github_auth_failed:    "Erreur d'authentification GitHub. Veuillez réessayer.",
       missing_code:          "Code OAuth manquant. Veuillez réessayer.",
-      google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer."
+      google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer.",
+      trial_already_used:    "Un essai gratuit a déjà été utilisé avec cette adresse. Connectez-vous pour activer votre abonnement.",
+      trial_domain_limit:    "Trop d'essais gratuits ont été démarrés récemment pour votre entreprise. Demandez une invitation à un collègue ou contactez-nous.",
+      account_exists:        "Un compte existe déjà avec cette adresse email. Veuillez vous connecter."
     };
     var msgEl = document.getElementById('signup-msg');
     if (msgEl) showMsg(msgEl, 'error', escHtml(ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ')));
@@ -683,6 +695,57 @@
   var signupBtn = document.getElementById('signup-btn');
   var signupMsg = document.getElementById('signup-msg');
 
+  /* ── Essai sans carte (drapeau serveur TRIAL_WITHOUT_CARD) ──
+     Activé uniquement quand /api/auth/providers renvoie trialWithoutCard:true.
+     Formulaire court : email, prénom, entreprise (optionnelle). Les champs de
+     facturation (nom, pays, adresse, ville, code postal, téléphone, TVA) sont
+     masqués : Stripe Checkout les collecte au moment du paiement. */
+  var _cardlessTrial = false;
+  function enableCardlessTrial() {
+    _cardlessTrial = true;
+    document.querySelectorAll('.billing-field').forEach(function(el) { el.style.display = 'none'; });
+    var req = document.getElementById('company-req');
+    if (req) req.textContent = '(optionnel)';
+    var sub = document.getElementById('signup-sub');
+    if (sub) sub.textContent = 'Démarrez vos 14 jours d\'essai gratuit — sans carte bancaire.';
+    var note = document.getElementById('cardless-note');
+    if (note) note.classList.remove('fp-hidden');
+    var txt = signupBtn && signupBtn.querySelector('.btn-text');
+    if (txt) txt.textContent = 'Démarrer mon essai gratuit →';
+  }
+
+  function submitCardlessTrial(payload) {
+    setLoading(signupBtn, true);
+    fetch('/api/auth/trial-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(res) {
+      setLoading(signupBtn, false);
+      if (!res.ok) {
+        var errTxt = escHtml(res.data.error || 'Une erreur est survenue.');
+        var redir  = res.data.redirectTo || '';
+        showMsg(signupMsg, 'error', redir
+          ? errTxt + ' <a href="' + escHtml(redir) + '" style="font-weight:700;text-decoration:underline;color:inherit">→ Continuer</a>'
+          : errTxt);
+        return;
+      }
+      document.getElementById('signup-screen').style.display = 'none';
+      document.getElementById('trial-sent-screen').style.display = 'block';
+      if (res.data.emailFailed) {
+        showMsg(document.getElementById('trial-sent-msg'), 'error',
+          'Votre essai est actif, mais l\'email n\'a pas pu être envoyé. <a href="/login.html" style="font-weight:700;text-decoration:underline;color:inherit">Demander un lien de connexion</a>');
+      }
+    })
+    .catch(function() {
+      setLoading(signupBtn, false);
+      showMsg(signupMsg, 'error', 'Impossible de joindre le serveur. Vérifiez votre connexion.');
+    });
+  }
+
   document.getElementById('signup-form').addEventListener('submit', function(e) {
     e.preventDefault();
     clearMsg(signupMsg);
@@ -698,6 +761,20 @@
     var postalCode = val('postalCode');
     var phone      = val('phone');
     var vat        = val('vat');
+
+    if (_cardlessTrial) {
+      if (!firstName) { showMsg(signupMsg,'error','Le prénom est requis.'); return; }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        showMsg(signupMsg,'error','Adresse email invalide.'); return;
+      }
+      if (isDisposable(email)) {
+        showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
+      }
+      submitCardlessTrial({ _hp: hp, firstName: firstName, email: email, companyName: companyName || undefined,
+        seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})(),
+        fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})() });
+      return;
+    }
 
     if (!firstName)   { showMsg(signupMsg,'error','Le prénom est requis.');              return; }
     if (!lastName)    { showMsg(signupMsg,'error','Le nom est requis.');                 return; }
@@ -772,6 +849,7 @@
   fetch('/api/auth/providers', { credentials: 'include' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (data && data.trialWithoutCard === true) enableCardlessTrial();
       var hasOAuth = false;
       ['google'].forEach(function(id) {
         var p = (data.providers || []).find(function(x) { return x.id === id; });

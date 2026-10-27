@@ -727,6 +727,45 @@ function _confirmSessionExpired() {
     });
 }
 
+// ── FP_TRIAL_EXPIRED_BANNER:start ─────────────────────────────────────────────
+// Essai sans carte expire : l'API repond 402 { code: 'TRIAL_EXPIRED', redirectTo }.
+// Un bandeau unique (idempotent) explique la situation et mene au paiement.
+// textContent uniquement (jamais innerHTML) ; le lien n'accepte qu'un chemin
+// local commencant par '/' (sinon la page Facturation par defaut).
+function fpShowTrialExpiredBanner(detail, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || !d.body) return null;
+  const DEFAULT_HREF = '/dashboard.html#billing/plans';
+  const raw = detail && typeof detail.redirectTo === 'string' ? detail.redirectTo : '';
+  const href = /^\/(?!\/)/.test(raw) ? raw : DEFAULT_HREF;
+  const msg = (detail && typeof detail.error === 'string' && detail.error.trim())
+    ? detail.error.trim()
+    : 'Votre essai gratuit est terminé. Activez votre abonnement pour continuer.';
+  let bar = d.getElementById('fp-trial-expired-banner');
+  if (!bar) {
+    bar = d.createElement('div');
+    bar.id = 'fp-trial-expired-banner';
+    bar.setAttribute('role', 'alert');
+    // Fixe et au-dessus de tout (onboarding, modales) : le lien de paiement doit rester cliquable.
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;' +
+      'padding:12px 16px;background:#fff7ed;color:#9a3412;border-bottom:1px solid #fdba74;font-size:14px;';
+    const text = d.createElement('span');
+    text.className = 'fp-trial-expired-text';
+    const link = d.createElement('a');
+    link.className = 'fp-trial-expired-cta';
+    link.style.cssText = 'font-weight:700;color:#c2410c;text-decoration:underline;';
+    link.textContent = 'Activer mon abonnement →';
+    bar.appendChild(text);
+    bar.appendChild(link);
+    if (d.body.firstChild) d.body.insertBefore(bar, d.body.firstChild); else d.body.appendChild(bar);
+  }
+  bar.querySelector('.fp-trial-expired-text').textContent = msg;
+  bar.querySelector('.fp-trial-expired-cta').setAttribute('href', href);
+  return bar;
+}
+if (typeof window !== 'undefined') window.fpShowTrialExpiredBanner = fpShowTrialExpiredBanner;
+// ── FP_TRIAL_EXPIRED_BANNER:end ───────────────────────────────────────────────
+
 async function apiFetch(path, opts = {}) {
   // The session coordinator must settle before selecting the cache partition.
   if (window.__fpSessionReady) await window.__fpSessionReady;
@@ -901,6 +940,10 @@ async function apiFetch(path, opts = {}) {
       err.code = detail?.code
         || (typeof detail?.error === 'string' && /^[a-z0-9_]+$/.test(detail.error) ? detail.error : undefined);
       err.retryAfterSeconds = detail?.details?.retryAfterSeconds;
+      // Essai sans carte expire : bandeau + lien de paiement (une seule fois).
+      if (res.status === 402 && err.code === 'TRIAL_EXPIRED') {
+        try { fpShowTrialExpiredBanner(detail); } catch (_) {}
+      }
       throw err;
     }
     const data = await res.json();
@@ -10254,7 +10297,10 @@ function renderBilling() {
       // a canceled account with the same historical plan MUST proceed to Checkout.
       // cancel_at_period_end (status still 'active') is correctly caught here too.
       const _subStatUp = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
-      const _hasActiveSubUp = _subStatUp === 'active' || _subStatUp === 'trialing';
+      // Essai sans carte (TRIAL_WITHOUT_CARD) : 'trialing' sans abonnement Stripe.
+      // Choisir le plan de l'essai doit ouvrir le paiement, pas « déjà sur ce plan ».
+      const _cardlessTrialUp = _subStatUp === 'trialing' && !STATE.me?.stripeSubscriptionId && !STATE.billing?.stripeSubscriptionId && !STATE.me?.stripeCustomerId;
+      const _hasActiveSubUp = (_subStatUp === 'active' || _subStatUp === 'trialing') && !_cardlessTrialUp;
       const _renewalCanceledUp = !!STATE.billing?.cancelAtPeriodEnd;
       if (_hasActiveSubUp && !_renewalCanceledUp && _curPlan && _curPlan === _targetPlan) {
         showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');

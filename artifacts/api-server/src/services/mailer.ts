@@ -373,6 +373,26 @@ async function sendTrialEnding(opts: {
   });
 }
 
+// ── 3b. Trial Expired (essai sans carte, TRIAL_WITHOUT_CARD) ─────────────────
+
+async function sendTrialExpired(opts: { to: string; name: string; plan: string }): Promise<MailResult> {
+  const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
+  return send({
+    to: opts.to,
+    subject: "Ton essai FlowPoint est terminé — tes données t'attendent",
+    tag: "trial_expired",
+    html: layout({
+      eyebrow: "Essai terminé",
+      accentColor: "#ea580c",
+      title: `Ton essai ${planLabel} est terminé`,
+      body: `<p style="margin:0 0 16px;">Bonjour ${opts.name}, tes 14 jours d'essai gratuit sont terminés. Aucun prélèvement n'a eu lieu.</p>
+             <p style="margin:0 0 16px;">Tes données sont conservées. Active ton abonnement pour retrouver l'IA, le SEO et toutes tes fonctionnalités.</p>`,
+      cta: { label: "Activer mon abonnement →", url: APP_LINKS.billing },
+      note: "Questions ? Réponds à cet e-mail, on te répond en quelques heures.",
+    }),
+  });
+}
+
 // ── 4. Payment Succeeded (renewal or add-on) ─────────────────────────────────
 
 async function sendPaymentSucceeded(opts: {
@@ -827,6 +847,8 @@ async function sendActivationMagicLink(opts: {
   plan: string;
   magicLinkUrl: string;
   isTrial: boolean;
+  /** Essai gratuit sans carte (TRIAL_WITHOUT_CARD) : aucun paiement n'a eu lieu. */
+  cardless?: boolean;
 }): Promise<MailResult> {
   const planLabel = { standard: "Standard", pro: "Pro", ultra: "Ultra" }[opts.plan.toLowerCase()] ?? opts.plan;
   const subject = opts.isTrial
@@ -836,7 +858,12 @@ async function sendActivationMagicLink(opts: {
   const eyebrow = opts.isTrial ? "Essai gratuit 14 jours" : "Compte activé";
   const accentColor = opts.isTrial ? "#7c3aed" : "#2563EB";
 
-  const body = opts.isTrial
+  const body = opts.cardless
+    ? `<p style="margin:0 0 16px;">Ton essai gratuit <strong>FlowPoint ${planLabel}</strong> de 14 jours est actif — sans carte bancaire.</p>
+       <p style="margin:0 0 16px;">Clique sur le bouton ci-dessous pour accéder à ton compte. Ce lien est à usage unique et expire dans 24 heures.</p>
+       <p style="margin:0 0 16px;">À la fin de l'essai, tu pourras activer ton abonnement depuis la page Facturation. Sans abonnement, l'accès aux fonctionnalités s'arrête : rien ne t'est prélevé.</p>
+       <p style="margin:0;color:#64748b;font-size:13px;">Si tu n'as pas créé ce compte, ignore cet email.</p>`
+    : opts.isTrial
     ? `<p style="margin:0 0 16px;">Ton paiement est confirmé. Ton essai gratuit <strong>FlowPoint ${planLabel}</strong> est maintenant actif.</p>
        <p style="margin:0 0 16px;">Clique sur le bouton ci-dessous pour accéder à ton compte. Ce lien est à usage unique et expire dans 24 heures.</p>
        <p style="margin:0;color:#64748b;font-size:13px;">Si tu n'as pas créé ce compte, ignore cet email.</p>`
@@ -917,6 +944,7 @@ export const mailer = {
   sendWelcome,
   sendTrialStarted,
   sendTrialEnding,
+  sendTrialExpired,
   sendPaymentSucceeded,
   sendPlanChanged,
   sendPaymentFailed,
