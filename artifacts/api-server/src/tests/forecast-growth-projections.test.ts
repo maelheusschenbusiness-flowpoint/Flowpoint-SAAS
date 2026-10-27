@@ -25,6 +25,10 @@ function renderWithHistory(
   const context = vm.createContext({
     STATE: { overview: { auditHistory }, missions: [] },
     PREVIEW_MODE: false,
+    fpT: (key: string, values?: Record<string, unknown>) =>
+      key.replace(/\{(\w+)\}/g, (_match, name: string) =>
+        String(values?.[name] ?? ""),
+      ),
     avgScore: () => 80,
     computeGrowthProjection: () => ({ stepPerWeek, score30d: 80 }),
     getLocale: () => "fr-BE",
