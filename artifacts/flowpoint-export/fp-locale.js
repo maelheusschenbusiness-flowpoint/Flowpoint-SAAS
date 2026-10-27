@@ -620,9 +620,14 @@
 
   function translatePublicDocument() {
     var filename = String(window.location.pathname || '').split('/').pop() || 'index.html';
-    if (!PUBLIC_PAGES[filename] || resolveLanguage() !== 'en') return;
+    if (!PUBLIC_PAGES[filename]) return;
 
-    document.documentElement.lang = 'en';
+    var language = resolveLanguage();
+    // Public pages are authored in French and translated to English. Keep the
+    // document language aligned with the content selected for this visitor.
+    document.documentElement.lang = language === 'en' ? 'en' : 'fr';
+    if (language !== 'en') return;
+
     if (PUBLIC_ENGLISH[document.title]) document.title = PUBLIC_ENGLISH[document.title];
     if (document.head) translateSubtree(document.head);
     translateSubtree(document.body);

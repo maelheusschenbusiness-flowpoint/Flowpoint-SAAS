@@ -11,12 +11,23 @@ const publicDashboardHtml = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/dashboard.html"),
   "utf8",
 );
+const publicLocalePages = [
+  "signin.html",
+  "login.html",
+  "pricing.html",
+  "cancel.html",
+  "success.html",
+  "accept-invitation.html",
+  "login-verify.html",
+  "report-view.html",
+  "checkout-return.html",
+];
 
 function loadLocale(
-  initialLanguage = "en",
+  initialLanguage: string | null = "en",
   options: { readyState?: string; title?: string; metadata?: any[] } = {},
 ) {
-  let storedLanguage = initialLanguage;
+  let storedLanguage: string | null = initialLanguage;
   const window = { location: { pathname: "/pricing.html" } };
   const emptyRoot = {
     nodeType: 1,
@@ -26,7 +37,7 @@ function loadLocale(
   const document = {
     readyState: options.readyState ?? "loading",
     title: options.title ?? "",
-    documentElement: { lang: "" },
+    documentElement: { lang: "en" },
     head: {
       nodeType: 1,
       matches: () => false,
@@ -57,6 +68,24 @@ function loadLocale(
 }
 
 describe("public English localization", () => {
+  it("declares English in the initial HTML for every page translated by the public locale loader", () => {
+    for (const filename of publicLocalePages) {
+      const html = readFileSync(
+        resolve(process.cwd(), `../flowpoint-export/${filename}`),
+        "utf8",
+      );
+      expect(html.match(/<html\b[^>]*\blang="([^"]+)"/)?.[1], filename).toBe("en");
+    }
+  });
+
+  it("keeps the rendered document language aligned with the default and saved French preference", () => {
+    const defaultLanguage = loadLocale(null, { readyState: "complete" });
+    const frenchLanguage = loadLocale("fr", { readyState: "complete" });
+
+    expect(defaultLanguage.document.documentElement.lang).toBe("en");
+    expect(frenchLanguage.document.documentElement.lang).toBe("fr");
+  });
+
   it("translates the exact pricing catalogue labels found during certification", () => {
     const { window } = loadLocale("en");
 
