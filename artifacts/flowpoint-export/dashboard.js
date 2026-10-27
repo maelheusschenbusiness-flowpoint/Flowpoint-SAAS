@@ -1005,7 +1005,9 @@ async function apiFetch(path, opts = {}) {
         || (typeof detail?.error === 'string' && /^[a-z0-9_]+$/.test(detail.error) ? detail.error : undefined);
       err.retryAfterSeconds = detail?.details?.retryAfterSeconds;
       // Essai sans carte expire : bandeau + lien de paiement (une seule fois).
-      if (res.status === 402 && err.code === 'TRIAL_EXPIRED') {
+      // Test-Replit : le garde central requirePaidAccess repond SUBSCRIPTION_REQUIRED
+      // avant trialExpiredGate ; les deux codes affichent le meme bandeau de paiement.
+      if (res.status === 402 && (err.code === 'TRIAL_EXPIRED' || err.code === 'SUBSCRIPTION_REQUIRED')) {
         try { fpShowTrialExpiredBanner(detail); } catch (_) {}
       }
       throw err;

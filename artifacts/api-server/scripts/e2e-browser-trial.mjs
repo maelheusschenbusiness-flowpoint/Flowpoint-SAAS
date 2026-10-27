@@ -30,7 +30,12 @@ let pass = 0, fail = 0; const out = [];
 const check = (n, c, d = "") => { c ? pass++ : fail++; out.push(`${c ? "PASS" : "FAIL"}  ${n}${d ? "  — " + d : ""}`); };
 
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+// Langue du navigateur : fr-FR par defaut (les assertions portent sur les textes
+// francais). Sur Test-Replit, fp-locale.js traduit les pages publiques selon la langue.
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: process.env.E2E_LOCALE ?? "fr-FR" });
+// Test-Replit : la langue des pages publiques vient de localStorage « fp:language »
+// (anglais par defaut). Les assertions portent sur le francais.
+await ctx.addInitScript(lang => { try { localStorage.setItem("fp:language", lang); } catch (_) {} }, process.env.E2E_LANG ?? "fr");
 const blocked = [];
 await ctx.route("**/*", route => {
   const u = route.request().url();
@@ -112,11 +117,11 @@ if (PHASE === "flag-on") {
   const status = await page.evaluate(async () => {
     try { await apiFetch("/api/ai/recommendations"); return "ok"; } catch (e) { return `${e.status}:${e.code}:${String(e.message).slice(0,120)}`; }
   });
-  check("dashboard après échéance : appel coûteux réel → 402 TRIAL_EXPIRED", status.startsWith("402:TRIAL_EXPIRED"), status);
+  check("dashboard après échéance : appel coûteux réel → 402 TRIAL_EXPIRED", /^402:(TRIAL_EXPIRED|SUBSCRIPTION_REQUIRED)/.test(status), status);
   await page.waitForSelector("#fp-trial-expired-banner", { state: "visible", timeout: 5000 });
   const bannerText = await page.locator("#fp-trial-expired-banner .fp-trial-expired-text").textContent();
   const href = await page.locator("#fp-trial-expired-banner .fp-trial-expired-cta").getAttribute("href");
-  check("bandeau : message serveur affiché", /essai gratuit est terminé/.test(bannerText ?? ""), bannerText ?? "");
+  check("bandeau : message serveur affiché", /essai gratuit est terminé|abonnement actif/.test(bannerText ?? ""), bannerText ?? "");
   check("bandeau : lien de paiement vers la facturation", href === "/dashboard.html#billing/plans", href ?? "");
   await page.evaluate(async () => { try { await apiFetch("/api/seo/overview"); } catch (_) {} });
   check("bandeau : unique après plusieurs 402", await page.locator("#fp-trial-expired-banner").count() === 1);
@@ -129,7 +134,7 @@ if (PHASE === "flag-on") {
   check("dashboard : aucune exception JS", errs.pageErrors.length === 0, errs.pageErrors.join(" | "));
   check("dashboard : aucune erreur console JS inattendue", unexpected(errs).length === 0, unexpected(errs).slice(0, 5).join(" | "));
   const newErr = errs.http.filter(h => !beforeExpiry.has(`${h.status} ${h.path}`));
-  const notTrial = newErr.filter(h => !(h.status === 402 && h.code === "TRIAL_EXPIRED"));
+  const notTrial = newErr.filter(h => !(h.status === 402 && ["TRIAL_EXPIRED", "SUBSCRIPTION_REQUIRED"].includes(h.code)));
   check("dashboard après échéance : toute nouvelle réponse en erreur est un 402 TRIAL_EXPIRED", notTrial.length === 0,
     notTrial.map(h => `${h.status} ${h.path} ${h.code}`).join(", "));
   out.push(`INFO  après échéance, 402 TRIAL_EXPIRED : ${[...new Set(newErr.map(h => h.path))].join(", ")}`);

@@ -451,7 +451,7 @@ window.__fpPageLoadTs = Date.now();
           // Essai sans carte expire : bandeau + lien de paiement (dashboard.js).
           // Meme message d'erreur qu'avant ; status/code ajoutes pour les appelants.
           return res.json().catch(function () { return null; }).then(function (d) {
-            if (d && d.code === 'TRIAL_EXPIRED' && typeof window.fpShowTrialExpiredBanner === 'function') {
+            if (d && (d.code === 'TRIAL_EXPIRED' || d.code === 'SUBSCRIPTION_REQUIRED') && typeof window.fpShowTrialExpiredBanner === 'function') {
               try { window.fpShowTrialExpiredBanner(d); } catch (_) {}
             }
             var _e402 = new Error('HTTP 402 ' + path); _e402.status = 402; _e402.code = d && d.code;

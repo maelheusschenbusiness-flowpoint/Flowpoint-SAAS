@@ -27,6 +27,9 @@ const db = new pg.Pool({ connectionString: DB_URL });
 const q = async (sql, v = []) => (await db.query(sql, v)).rows;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const RUN = Date.now().toString(36);
+// Sur Test-Replit, le garde central requirePaidAccess (monte sur /api) repond
+// SUBSCRIPTION_REQUIRED avant trialExpiredGate : les deux codes prouvent le blocage.
+const EXPIRED_CODES = ["TRIAL_EXPIRED", "SUBSCRIPTION_REQUIRED"];
 const FP_LID = crypto.randomBytes(16).toString("base64url").slice(0, 22);
 let pass = 0, fail = 0;
 const results = [];
@@ -87,9 +90,9 @@ if (PHASE === "flag-off") {
   rr = await api("GET", "/api/auth/providers");
   check("drapeau OFF : /auth/providers → trialWithoutCard=false (signin.html reste sur le parcours carte)", rr.body?.trialWithoutCard === false);
   rr = await api("POST", "/api/ai/chat", { token: st.tokenA, body: { message: "x" } });
-  check("drapeau OFF : essai sans carte expire existant → POST /api/ai/chat 402 TRIAL_EXPIRED", rr.status === 402 && rr.body?.code === "TRIAL_EXPIRED", `status ${rr.status}`);
+  check("drapeau OFF : essai sans carte expire existant → POST /api/ai/chat 402 TRIAL_EXPIRED", rr.status === 402 && EXPIRED_CODES.includes(rr.body?.code), `status ${rr.status}`);
   rr = await api("POST", "/api/billing/upgrade", { token: st.tokenA, body: { plan: "pro" } });
-  check("drapeau OFF : paiement toujours ouvert", rr.body?.code !== "TRIAL_EXPIRED", `status ${rr.status}`);
+  check("drapeau OFF : paiement toujours ouvert", !EXPIRED_CODES.includes(rr.body?.code), `status ${rr.status}`);
   const [mon] = await q(`SELECT last_check FROM monitors WHERE id=$1`, [st.monitor]);
   check("drapeau OFF : moniteur de l'org expiree non verifie par le cron", String(mon?.last_check) === String(st.monitorLastCheck), String(mon?.last_check));
   const [ctl] = await q(`SELECT last_check FROM monitors WHERE id=$1`, [st.ctrlMonitor]);
@@ -168,7 +171,7 @@ check("email d'activation capture (transport de test) : bon destinataire, sujet 
 r = await api("GET", "/api/me", { token: tokenA });
 check("/api/me pendant l'essai : trialing + acces premium", r.body?.subscriptionStatus === "trialing" && r.body?.hasPremiumAccess === true);
 r = await api("POST", "/api/ai/chat", { token: tokenA, body: { message: "bonjour" } });
-check("pendant l'essai : /api/ai/chat n'est PAS bloque par le garde", r.body?.code !== "TRIAL_EXPIRED", `status ${r.status}`);
+check("pendant l'essai : /api/ai/chat n'est PAS bloque par le garde", !EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.code ?? ""}`);
 
 // ── 4. Expiration simulee ────────────────────────────────────────────────────
 await q(`UPDATE organizations SET trial_ends_at = NOW() - INTERVAL '1 minute' WHERE id=$1`, [orgA.id]);
@@ -176,15 +179,15 @@ await sleep(31_000); // cache du garde : 30 s
 r = await api("GET", "/api/me", { token: tokenA });
 check("/api/me apres echeance : none + mustCompleteBilling", r.body?.subscriptionStatus === "none" && r.body?.mustCompleteBilling === true, r.body?.subscriptionStatus);
 r = await api("POST", "/api/ai/chat", { token: tokenA, body: { message: "bonjour" } });
-check("apres echeance : POST /api/ai/chat → 402 TRIAL_EXPIRED", r.status === 402 && r.body?.code === "TRIAL_EXPIRED", `status ${r.status}`);
+check("apres echeance : POST /api/ai/chat → 402 TRIAL_EXPIRED", r.status === 402 && EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.code ?? ""}`);
 r = await api("GET", "/api/seo/overview", { token: tokenA });
-check("apres echeance : GET /api/seo/* → 402 TRIAL_EXPIRED", r.status === 402 && r.body?.code === "TRIAL_EXPIRED", `status ${r.status}`);
+check("apres echeance : GET /api/seo/* → 402 TRIAL_EXPIRED", r.status === 402 && EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.code ?? ""}`);
 r = await api("POST", "/api/audits", { token: tokenA, body: { url: "https://example.com" } });
-check("apres echeance : POST /api/audits → 402 TRIAL_EXPIRED", r.status === 402 && r.body?.code === "TRIAL_EXPIRED", `status ${r.status}`);
+check("apres echeance : POST /api/audits → 402 TRIAL_EXPIRED", r.status === 402 && EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.code ?? ""}`);
 r = await api("POST", "/api/billing/upgrade", { token: tokenA, body: { plan: "pro" } });
-check("apres echeance : POST /api/billing/upgrade reste ouvert (pas de 402 TRIAL_EXPIRED)", r.body?.code !== "TRIAL_EXPIRED", `status ${r.status} ${r.body?.error ?? ""}`);
+check("apres echeance : POST /api/billing/upgrade reste ouvert (pas de 402 TRIAL_EXPIRED)", !EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.error ?? ""}`);
 r = await api("PATCH", "/api/me/prefs", { token: tokenA, body: { pinned: [] } });
-check("apres echeance : PATCH /api/me/prefs reste ouvert", r.body?.code !== "TRIAL_EXPIRED", `status ${r.status}`);
+check("apres echeance : PATCH /api/me/prefs reste ouvert", !EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.code ?? ""}`);
 r = await api("GET", "/api/me", { token: tokenA });
 check("apres echeance : GET /api/me reste ouvert", r.status === 200);
 
@@ -239,7 +242,7 @@ check("aucun email « essai demarre » en attente apres le webhook (sent_at pose
 const tokenB = await login(B);
 await q(`UPDATE organizations SET subscription_status='active', trial_ends_at = NOW() - INTERVAL '1 day' WHERE id=$1`, [orgB.id]);
 r = await api("POST", "/api/ai/chat", { token: tokenB, body: { message: "x" } });
-check("org payee, echeance passee : jamais TRIAL_EXPIRED", r.body?.code !== "TRIAL_EXPIRED", `status ${r.status}`);
+check("org payee, echeance passee : jamais TRIAL_EXPIRED", !EXPIRED_CODES.includes(r.body?.code), `status ${r.status} ${r.body?.code ?? ""}`);
 
 // ── 6. Rate limit IP (meme IP, rafale) ──────────────────────────────────────
 let got429 = false;

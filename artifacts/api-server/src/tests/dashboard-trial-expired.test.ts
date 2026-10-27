@@ -54,7 +54,7 @@ function load() {
 describe("dashboard : 402 TRIAL_EXPIRED", () => {
   it("le bloc existe et apiFetch l'appelle sur 402 + code TRIAL_EXPIRED", () => {
     expect(fnSrc.length).toBeGreaterThan(200);
-    expect(src).toMatch(/if \(res\.status === 402 && err\.code === 'TRIAL_EXPIRED'\) \{\s*try \{ fpShowTrialExpiredBanner\(detail\); \} catch \(_\) \{\}/);
+    expect(src).toMatch(/if \(res\.status === 402 && \(err\.code === 'TRIAL_EXPIRED' \|\| err\.code === 'SUBSCRIPTION_REQUIRED'\)\) \{\s*try \{ fpShowTrialExpiredBanner\(detail\); \} catch \(_\) \{\}/);
   });
   it("affiche un bandeau en tete de page : message serveur + lien de paiement", () => {
     const doc = makeDoc();
