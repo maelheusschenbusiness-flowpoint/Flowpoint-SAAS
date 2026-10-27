@@ -287,6 +287,13 @@ export function createIpRateLimit(
 export const publicCheckoutRateLimit = createIpRateLimit("public_checkout", 20, 60_000);
 
 /**
+ * Essai sans carte (TRIAL_WITHOUT_CARD) — par IP, en plus de authRateLimit.
+ * Une inscription ouvre un compte actif sans paiement : 5 par heure et par IP
+ * suffisent a un humain (fautes de frappe comprises) et bornent une rafale.
+ */
+export const trialSignupRateLimit = createIpRateLimit("trial_signup", 5, 60 * 60_000);
+
+/**
  * Strict per-IP rate limiter for auth endpoints (login, register).
  * 10 attempts per 15 minutes per IP — prevents brute-force and credential stuffing.
  */

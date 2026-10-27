@@ -10254,7 +10254,10 @@ function renderBilling() {
       // a canceled account with the same historical plan MUST proceed to Checkout.
       // cancel_at_period_end (status still 'active') is correctly caught here too.
       const _subStatUp = String(STATE.billing?.subscriptionStatus || STATE.billing?.status || STATE.me?.subscriptionStatus || '').toLowerCase();
-      const _hasActiveSubUp = _subStatUp === 'active' || _subStatUp === 'trialing';
+      // Essai sans carte (TRIAL_WITHOUT_CARD) : 'trialing' sans abonnement Stripe.
+      // Choisir le plan de l'essai doit ouvrir le paiement, pas « déjà sur ce plan ».
+      const _cardlessTrialUp = _subStatUp === 'trialing' && !STATE.me?.stripeSubscriptionId && !STATE.billing?.stripeSubscriptionId && !STATE.me?.stripeCustomerId;
+      const _hasActiveSubUp = (_subStatUp === 'active' || _subStatUp === 'trialing') && !_cardlessTrialUp;
       const _renewalCanceledUp = !!STATE.billing?.cancelAtPeriodEnd;
       if (_hasActiveSubUp && !_renewalCanceledUp && _curPlan && _curPlan === _targetPlan) {
         showToast('info', 'Vous êtes déjà sur le plan ' + _targetPlan.charAt(0).toUpperCase() + _targetPlan.slice(1) + '.');
