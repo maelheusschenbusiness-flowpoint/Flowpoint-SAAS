@@ -317,6 +317,8 @@ export default defineConfig({
       "src/services/workflow-schedule-cron.test.ts",
       "src/services/workflow-schedule-cron-db.test.ts",
       "src/services/automation-service-awl-report-postgres.test.ts",
+      // Essai 14 jours sans carte (TRIAL_WITHOUT_CARD, eteint par defaut)
+      "src/tests/trial-without-card.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.

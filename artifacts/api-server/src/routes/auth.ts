@@ -12,7 +12,7 @@ import { enregistrerEtape, normaliserAttributionFunnel } from "../services/funne
 import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
-import { authRateLimit } from "../middlewares/rateLimiter.js";
+import { authRateLimit, trialSignupRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
 import { captureTestMail } from "../services/mailer.js";
@@ -22,6 +22,7 @@ import { getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
+import { activateCardlessTrial, CARDLESS_TRIAL_PLAN, isTrialWithoutCardEnabled } from "../services/trial-without-card.js";
 
 const router = Router();
 
@@ -1359,6 +1360,210 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   }
 
   res.json({ ok: true, preRegisterToken: preToken });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+   POST /api/auth/trial-signup
+   ─ Essai gratuit 14 jours SANS carte (drapeau TRIAL_WITHOUT_CARD, eteint par
+     defaut → 404, le parcours pre-register + carte reste seul en service).
+   ─ Champs : email (identite + connexion par lien magique), prenom (emails,
+     personnalisation), entreprise (nom de l'espace ; optionnel, repli sur le
+     domaine). Nom, pays, adresse, ville, code postal, telephone et TVA sont
+     des donnees de FACTURATION : Stripe Checkout les collecte au paiement.
+   ─ Anti-abus : honeypot, authRateLimit + trialSignupRateLimit, emails
+     jetables, liste blanche, comptes existants, un essai par adresse
+     canonique et par domaine d'entreprise (services/trial-without-card.ts).
+   ─ Aucun objet Stripe n'est cree. L'organisation est `trialing` avec
+     trial_consumed_at pose ; a l'echeance elle se normalise en `none`.
+════════════════════════════════════════════════════════════════════════════ */
+// Wrapper : l'export est lu a la requete, pas au chargement du module.
+const trialSignupLimiter = (req: Request, res: Response, next: () => void) => trialSignupRateLimit(req, res, next);
+
+router.post("/auth/trial-signup", authRateLimit, trialSignupLimiter, async (req: Request, res: Response) => {
+  if (!isTrialWithoutCardEnabled()) {
+    res.status(404).json({ error: "Inscription sans carte indisponible.", code: "TRIAL_WITHOUT_CARD_DISABLED", redirectTo: "/signin.html" });
+    return;
+  }
+  const { _hp, firstName, email, companyName, seller_code: _rawSellerCode, fp_lid: _rawFpLid } =
+    req.body as Record<string, string | undefined>;
+
+  // Honeypot — meme reponse qu'un succes, rien n'est ecrit.
+  if (_hp && String(_hp).trim().length > 0) {
+    res.json({ ok: true, activationEmailSent: true });
+    return;
+  }
+
+  const normalizedEmail = String(email ?? "").toLowerCase().trim();
+  if (!normalizedEmail || normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
+    res.status(400).json({ error: "Adresse email invalide ou manquante." });
+    return;
+  }
+  const fn = String(firstName ?? "").trim().slice(0, 100);
+  if (!fn) { res.status(400).json({ error: "Le prénom est requis." }); return; }
+  const company = (String(companyName ?? "").trim() || normalizedEmail.split("@")[1] || normalizedEmail).slice(0, 200);
+
+  if (isDisposableEmail(normalizedEmail)) {
+    res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
+    return;
+  }
+  if (!isEmailAllowed(normalizedEmail)) {
+    res.json({ ok: true, activationEmailSent: true });
+    return;
+  }
+
+  // Comptes existants — memes surfaces que pre-register.
+  try {
+    const _u = await pool.query<{ status: string }>(`SELECT status FROM users WHERE lower(email) = $1 LIMIT 1`, [normalizedEmail]);
+    const _st = _u.rows[0]?.status ?? "";
+    const _member = await pool.query(
+      `SELECT om.id FROM organization_members om JOIN users u ON u.id = om.user_id
+        WHERE lower(u.email) = $1 AND om.status = 'active' LIMIT 1`, [normalizedEmail]);
+    const _owned = await pool.query(`SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
+    const _legacy = await loadOrgSettings(normalizedEmail).catch(() => null);
+    const _legacyActive = !!_legacy?.stripeCustomerId ||
+      ["active", "trialing", "past_due", "canceled", "ended", "expired", "unpaid"].includes(_legacy?.subscriptionStatus ?? "");
+    if ((_u.rows.length > 0 && _st !== "pending") || _member.rows.length > 0 || _owned.rows.length > 0 || (_legacy?.orgId && _legacyActive)) {
+      res.status(409).json({
+        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+        code: "ACCOUNT_EXISTS",
+        redirectTo: "/login.html",
+      });
+      return;
+    }
+  } catch (_guardErr) {
+    logger.warn({ err: _guardErr }, "[Auth/TrialSignup] account guard failed");
+    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    return;
+  }
+
+  let sellerId: string | null = null;
+  if (_rawSellerCode) {
+    try {
+      const { validateSellerCode } = await import("../services/seller-attribution.js");
+      sellerId = (await validateSellerCode(_rawSellerCode))?.id ?? null;
+    } catch (_se) {
+      logger.warn({ _se }, "[Auth/TrialSignup] seller_code lookup failed (non-fatal)");
+    }
+  }
+
+  const preToken = generateToken();
+  const orgId = randomUUID();
+  let result: Awaited<ReturnType<typeof activateCardlessTrial>>;
+  const client = await pool.connect();
+  try {
+    result = await activateCardlessTrial(client, {
+      email: normalizedEmail, firstName: fn, companyName: company, sellerId,
+      rawFpLid: _rawFpLid, preToken, orgId, userId: randomUUID(),
+    });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "ACCOUNT_EXISTS" || code === "23505") {
+      res.status(409).json({
+        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+        code: "ACCOUNT_EXISTS",
+        redirectTo: "/login.html",
+      });
+      return;
+    }
+    logger.error({ err: (err as Error)?.message, code }, "[Auth/TrialSignup] activation failed");
+    res.status(500).json({ error: "La création de votre essai a échoué. Réessayez dans quelques instants." });
+    return;
+  } finally {
+    client.release();
+  }
+
+  if (!result.ok) {
+    const sameDomain = result.verdict.code === "TRIAL_ALREADY_USED_DOMAIN";
+    res.status(409).json({
+      error: sameDomain
+        ? "Votre entreprise dispose déjà d'un espace FlowPoint. Demandez une invitation à son administrateur, ou contactez-nous."
+        : "Un essai gratuit a déjà été utilisé avec cette adresse. Connectez-vous pour activer votre abonnement.",
+      code: result.verdict.code,
+      redirectTo: "/login.html",
+    });
+    return;
+  }
+
+  logger.info({ orgId: result.orgId, plan: CARDLESS_TRIAL_PLAN, trialEndsAt: result.trialEndsAt },
+    "[Auth/TrialSignup] cardless trial activated (no Stripe object created)");
+
+  // AI Lab — jalons `signup` puis `trial`, apres COMMIT, en meilleur effort.
+  // Horodatages persistes ; identifiants derives du jeton par condensat.
+  if (result.fpLid) {
+    void queueConversionEvent({
+      eventId: stableEventId("signup", preToken), stage: "signup", source: "saas",
+      fpLid: result.fpLid, occurredAt: result.signupCreatedAt,
+    });
+    void queueConversionEvent({
+      eventId: stableEventId("trial", preToken), stage: "trial", source: "saas",
+      fpLid: result.fpLid, occurredAt: result.trialStartedAt,
+    });
+  }
+
+  const funnelAttribution = normaliserAttributionFunnel(
+    req.cookies?.["fp_analytics_consent"], req.body?.visiteurId, req.body?.source);
+  if (funnelAttribution) {
+    void enregistrerEtape({
+      etape: "signup_form_completed", visiteurId: funnelAttribution.visiteurId,
+      source: funnelAttribution.source, cleIdempotence: `signup_form_completed:${preToken}`,
+    });
+    void enregistrerEtape({
+      etape: "trial_activated", visiteurId: funnelAttribution.visiteurId,
+      source: funnelAttribution.source, plan: CARDLESS_TRIAL_PLAN, orgId: result.orgId,
+      cleIdempotence: `trial_activated:${result.orgId}`,
+    });
+  }
+
+  // Clients Stripe orphelins d'un parcours carte abandonne — meme nettoyage que pre-register.
+  if (result.staleCustomerIds.length > 0) {
+    (async () => {
+      try {
+        const { createStripeClient: _cs, getStripeKey: _gk } = await import("../services/stripe-factory.js");
+        const _stripe = await _cs(_gk());
+        for (const cid of result.staleCustomerIds) {
+          await _stripe.customers.del(cid).catch((e: unknown) =>
+            logger.warn({ customerId: cid, err: e }, "[Auth/TrialSignup] stale Stripe customer cleanup failed (non-fatal)"));
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "[Auth/TrialSignup] stale Stripe customers cleanup failed (non-fatal)");
+      }
+    })();
+  }
+
+  // Profil org_settings (non bloquant) — l'adresse viendra du paiement.
+  try {
+    const { upsertOrgSettings } = await import("../services/org-settings.js");
+    await upsertOrgSettings(result.orgId, { email: normalizedEmail, orgName: company, firstName: fn, lastName: "" });
+  } catch (_osErr) {
+    logger.warn({ err: (_osErr as Error)?.message }, "[Auth/TrialSignup] org_settings profile failed (non-fatal)");
+  }
+
+  // Lien magique : seule porte d'entree, il prouve la possession de la boite.
+  let activationEmailSent = false;
+  try {
+    const magicToken = generateToken();
+    await pool.query(
+      `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+       VALUES ($1, $2, NOW() + INTERVAL '24 hours', FALSE) ON CONFLICT (token) DO NOTHING`,
+      [magicToken, normalizedEmail]);
+    const pubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+    const { mailer } = await import("../services/mailer.js");
+    const mail = await mailer.sendActivationMagicLink({
+      to: normalizedEmail, name: fn, plan: CARDLESS_TRIAL_PLAN,
+      magicLinkUrl: `${pubUrl}/login-verify.html?token=${magicToken}`,
+      isTrial: true, cardless: true,
+    });
+    activationEmailSent = !!mail?.ok;
+  } catch (_mlErr) {
+    logger.error({ err: (_mlErr as Error)?.message }, "[Auth/TrialSignup] activation email failed");
+  }
+
+  res.json({
+    ok: true,
+    activationEmailSent,
+    trialEndsAt: result.trialEndsAt,
+    ...(activationEmailSent ? {} : { emailFailed: true }),
+  });
 });
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -2895,6 +3100,8 @@ router.get("/auth/providers", (_req: Request, res: Response) => {
       { id: "github", name: "GitHub", configured: githubConfigured, loginUrl: "/api/auth/github/login" },
       { id: "magic-link", name: "Email (Magic Link)", configured: true, loginUrl: "/api/auth/login-request" },
     ],
+    // Essai sans carte : signin.html bascule sur le formulaire court quand il est actif.
+    trialWithoutCard: isTrialWithoutCardEnabled(),
   });
 });
 

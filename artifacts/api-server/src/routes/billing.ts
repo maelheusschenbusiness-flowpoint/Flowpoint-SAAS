@@ -9,6 +9,7 @@ import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublisha
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
+import { cardlessTrialEndForCheckout } from "../services/trial-without-card.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
   startTrial, validateCoupon, getInvoices, trackBillingEvent,
@@ -1851,7 +1852,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       // mode Stripe creates it only when Checkout completes; the webhook then
       // anchors session.customer to the organization.
       const _nsBucket = Math.floor(Date.now() / (30 * 60 * 1000));
-      const _nsKey    = `fp-nosub-checkout-${orgId}-${targetPlan}-${_nsBucket}`;
+      // Essai sans carte en cours (TRIAL_WITHOUT_CARD) : le premier prelevement
+      // tombe a la fin de l'essai deja accorde, pas aujourd'hui. Sans essai sans
+      // carte, `_nsTrialEnd` est undefined et la session est identique a avant.
+      const _nsTrialEnd = cardlessTrialEndForCheckout(billingCtx);
+      const _nsKey    = `fp-nosub-checkout-${orgId}-${targetPlan}-${_nsBucket}${_nsTrialEnd ? `-te${_nsTrialEnd}` : ""}`;
       const _nsSess = await stripe.checkout.sessions.create(
         {
           mode:       "subscription",
@@ -1866,7 +1871,10 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             reactivation: "true",
             userId:       String(req.userId ?? ""),
           },
-          subscription_data: { metadata: { plan: targetPlan, orgId, reactivation: "true" } },
+          subscription_data: {
+            metadata: { plan: targetPlan, orgId, reactivation: "true" },
+            ...(_nsTrialEnd ? { trial_end: _nsTrialEnd } : {}),
+          },
         },
         { idempotencyKey: _nsKey },
       );
