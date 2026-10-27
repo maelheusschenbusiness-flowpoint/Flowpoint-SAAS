@@ -11862,16 +11862,16 @@ function renderAlertRules() {
           <div style="min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.name)}</div>
             <div style="font-size:11px;color:var(--fp-text-muted);margin-top:1px">
-              ${escHtml(typeLabels[r.type] || r.type)}${r.operator ? ' ' + escHtml(opLabels[r.operator] || r.operator) : ''}${r.threshold != null ? ' ' + r.threshold + unit : ''}
+              ${escHtml(fpT(typeLabels[r.type] || r.type))}${r.operator ? ' ' + escHtml(opLabels[r.operator] || r.operator) : ''}${r.threshold != null ? ' ' + r.threshold + unit : ''}
               ${r.durationMin > 0 ? ` · ${r.durationMin} min` : ''}
               · <span style="color:var(--fp-accent)">${channels.join(', ')}</span>
-              ${sites.length > 0 ? ` · <span title="${sites.join(', ')}">${sites.length} site(s) ciblé(s)</span>` : ' · tous les sites'}
+              ${sites.length > 0 ? ` · <span title="${sites.join(', ')}">${fpT('{count} targeted site(s)', { count: sites.length })}</span>` : ' · ' + fpT('All sites')}
             </div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           <span data-ar-badge style="font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;${r.enabled ? 'background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)' : 'background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)'}">
-            ${r.enabled ? 'Active' : 'Inactive'}
+            ${fpT(r.enabled ? 'Active' : 'Inactive')}
           </span>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" data-edit-rule="${escHtml(r.id)}" style="padding:4px 10px">${fpT('Modifier')}</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" data-delete-rule="${escHtml(r.id)}" style="color:var(--fp-danger);border-color:rgba(239,68,68,0.2);padding:4px 10px">${fpT('Supprimer')}</button>
@@ -11881,21 +11881,21 @@ function renderAlertRules() {
         <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">${fpT('Modifier la règle')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">Nom</label>
+            <label class="fp-form-label">${fpT('Nom')}</label>
             <input class="fp-input edit-rule-name" data-rule="${escHtml(r.id)}" value="${escHtml(r.name)}" style="width:100%"/>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">${fpT('Type de métrique')}</label>
             <select class="fp-select edit-rule-type" data-rule="${escHtml(r.id)}" style="width:100%">
               <option value="seo_score" ${r.type==='seo_score'?'selected':''}>${fpT('Score SEO')}</option>
-              <option value="latency" ${r.type==='latency'?'selected':''}>Latence</option>
+              <option value="latency" ${r.type==='latency'?'selected':''}>${fpT('Latence')}</option>
               <option value="uptime" ${r.type==='uptime'?'selected':''}>Uptime</option>
-              <option value="monitor_down" ${r.type==='monitor_down'?'selected':''}>Monitor DOWN</option>
+              <option value="monitor_down" ${r.type==='monitor_down'?'selected':''}>${fpT('Monitor DOWN')}</option>
               <option value="keyword_ranking_drop" ${r.type==='keyword_ranking_drop'?'selected':''} disabled>${fpT('Chute ranking mot-clé (bientôt disponible)')}</option>
             </select>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Condition</label>
+            <label class="fp-form-label">${fpT('Condition')}</label>
             <select class="fp-select edit-rule-operator" data-rule="${escHtml(r.id)}" style="width:100%">
               <option value="lt" ${r.operator==='lt'?'selected':''}>${fpT('Inférieur à (&lt;)')}</option>
               <option value="gt" ${r.operator==='gt'?'selected':''}>${fpT('Supérieur à (&gt;)')}</option>
@@ -11903,7 +11903,7 @@ function renderAlertRules() {
             </select>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Seuil</label>
+            <label class="fp-form-label">${fpT('Seuil')}</label>
             <input class="fp-input edit-rule-threshold" type="number" data-rule="${escHtml(r.id)}" value="${r.threshold}" style="width:100%"/>
           </div>
           <div class="fp-form-group">
@@ -11914,7 +11914,7 @@ function renderAlertRules() {
             <label class="fp-form-label">${fpT('Canaux de notification')}</label>
             <div style="display:flex;gap:12px">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-                <input type="checkbox" class="edit-rule-ch-email" data-rule="${escHtml(r.id)}" ${channels.includes('email')?'checked':''} style="accent-color:#2563EB"/> Email
+                <input type="checkbox" class="edit-rule-ch-email" data-rule="${escHtml(r.id)}" ${channels.includes('email')?'checked':''} style="accent-color:#2563EB"/> ${fpT('Email')}
               </label>
               <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="${fpT('Alertes SMS — bientôt disponible')}" onclick="event.preventDefault();showToast('info', fpT('Alertes SMS — bientôt disponible.'))">
                 <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">${fpT('Bientôt')}</span>
@@ -11930,7 +11930,7 @@ function renderAlertRules() {
           </div>` : ''}
         </div>
         <div style="display:flex;gap:8px">
-          <button class="fp-btn fp-btn-primary fp-btn-sm save-edit-rule" data-rule="${escHtml(r.id)}">Sauvegarder</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm save-edit-rule" data-rule="${escHtml(r.id)}">${fpT('Sauvegarder')}</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm cancel-edit-rule" data-rule="${escHtml(r.id)}">${fpT('Annuler')}</button>
         </div>
       </div>
@@ -11940,15 +11940,15 @@ function renderAlertRules() {
   return `
     ${aiBlock(
       (rules||[]).length > 0
-        ? `${rules.length} règle${rules.length !== 1 ? 's' : ''} d\'alerte configurée${rules.length !== 1 ? 's' : ''} — ${(rules||[]).filter(r=>r.enabled!==false).length} active${(rules||[]).filter(r=>r.enabled!==false).length !== 1 ? 's' : ''}. ${(rules||[]).some(r=>r.status==='triggered') ? '⚠️ Une ou plusieurs alertes déclenchées — vérifiez immédiatement.' : 'Surveillance automatique de vos sites en cours.'}`
-        : "Configurez vos premières règles d\'alerte pour être notifié automatiquement des incidents, chutes de score ou problèmes de monitoring.",
-      ['Créer une règle', 'Latence critique', 'Score SEO critique', 'Chute ranking']
+        ? `${rules.length} ${fpT(rules.length === 1 ? 'alert rule configured' : 'alert rules configured')} — ${(rules||[]).filter(r=>r.enabled!==false).length} ${fpT('active')}. ${(rules||[]).some(r=>r.status==='triggered') ? fpT('One or more alerts have been triggered — review them immediately.') : fpT('Automatic monitoring of your sites is in progress.')}`
+        : fpT('Set up your first alert rules to be notified automatically about incidents, score drops, or monitoring issues.'),
+      [fpT('Create a rule'), fpT('Critical latency'), fpT('Critical SEO score'), fpT('Ranking drop')]
     )}
     <div class="fp-card" style="margin-bottom:16px" data-fp-anchor="settings-notifications">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
-          <div class="fp-card-title">Règles d\'alerte personnalisées</div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${rules.length} règle${rules.length !== 1 ? 's' : ''} configurée${rules.length !== 1 ? 's' : ''}</div>
+          <div class="fp-card-title">${fpT('Custom alert rules')}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${rules.length} ${fpT(rules.length === 1 ? 'rule configured' : 'rules configured')}</div>
         </div>
         <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form">${fpT('+ Nouvelle règle')}</button>
       </div>
@@ -11956,7 +11956,7 @@ function renderAlertRules() {
       ${rules.length === 0 ? `
         <div style="text-align:center;padding:24px;color:var(--fp-text-muted)">
           <div style="font-size:32px;margin-bottom:8px">🔔</div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:4px">Aucune règle d\'alerte</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${fpT('No alert rules')}</div>
           <div style="font-size:11px">${fpT('Utilisez les templates ci-dessous ou créez votre propre règle.')}</div>
         </div>
       ` : `
@@ -11966,7 +11966,7 @@ function renderAlertRules() {
       `}
 
       <div id="add-rule-form" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--fp-border)">
-        <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">Nouvelle règle d\'alerte</div>
+        <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">${fpT('New alert rule')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="fp-form-group" style="grid-column:1/-1">
             <label class="fp-form-label">${fpT('Nom de la règle')}</label>
@@ -11976,14 +11976,14 @@ function renderAlertRules() {
             <label class="fp-form-label">${fpT('Type de métrique')}</label>
             <select class="fp-select" id="rule-type" style="width:100%">
               <option value="seo_score">${fpT('Score SEO')}</option>
-              <option value="latency">Latence</option>
+              <option value="latency">${fpT('Latence')}</option>
               <option value="uptime">Uptime</option>
-              <option value="monitor_down">Monitor DOWN</option>
+              <option value="monitor_down">${fpT('Monitor DOWN')}</option>
               <option value="keyword_ranking_drop" disabled>${fpT('Chute ranking mot-clé (bientôt disponible)')}</option>
             </select>
           </div>
           <div class="fp-form-group" id="rule-operator-group">
-            <label class="fp-form-label">Condition</label>
+            <label class="fp-form-label">${fpT('Condition')}</label>
             <select class="fp-select" id="rule-operator" style="width:100%">
               <option value="lt">${fpT('Inférieur à (&lt;)')}</option>
               <option value="lte">${fpT('Inférieur ou égal à (≤)')}</option>
@@ -11993,7 +11993,7 @@ function renderAlertRules() {
             </select>
           </div>
           <div class="fp-form-group" id="rule-threshold-group">
-            <label class="fp-form-label">Seuil</label>
+            <label class="fp-form-label">${fpT('Seuil')}</label>
             <input class="fp-input" id="rule-threshold" type="number" placeholder="ex. 50" style="width:100%"/>
           </div>
           <div class="fp-form-group">
@@ -12004,7 +12004,7 @@ function renderAlertRules() {
             <label class="fp-form-label">${fpT('Canaux de notification')}</label>
             <div style="display:flex;gap:12px">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-                <input type="checkbox" id="rule-ch-email" checked style="accent-color:#2563EB"/> Email
+                <input type="checkbox" id="rule-ch-email" checked style="accent-color:#2563EB"/> ${fpT('Email')}
               </label>
               <label style="display:flex;align-items:center;gap:6px;cursor:not-allowed;font-size:12px;opacity:0.5" title="${fpT('Alertes SMS — bientôt disponible')}" onclick="event.preventDefault();showToast('info', fpT('Alertes SMS — bientôt disponible.'))">
                 <input type="checkbox" id="rule-ch-sms" disabled style="accent-color:#2563EB;pointer-events:none"/> SMS <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:5px;margin-left:3px">${fpT('Bientôt')}</span>
@@ -12013,7 +12013,7 @@ function renderAlertRules() {
           </div>
           ${availableSiteUrls.length > 0 ? `
           <div class="fp-form-group" style="grid-column:1/-1">
-            <label class="fp-form-label">${fpT('Sites ciblés')}<span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous les sites)</span></label>
+            <label class="fp-form-label">${fpT('Sites ciblés')}<span style="font-weight:400;color:var(--fp-text-faint)">(${fpT('leave blank for all sites')})</span></label>
             <div class="fp-sites-scroll" style="max-height:120px;overflow-y:auto;padding:6px 8px;background:var(--fp-bg-inset);border:1px solid var(--fp-border);border-radius:7px">
               ${availableSiteUrls.map(u => `
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;padding:3px 0">
@@ -12056,10 +12056,10 @@ function renderAlertRules() {
           return `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.name)}</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpT(t.name))}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);margin-top:1px">
-                  ${escHtml(typeLabels[t.type])} ${escHtml(opLabels[t.operator])} ${t.threshold}${unit}
-                  · ${t.channels.join(', ')}
+                  ${escHtml(fpT(typeLabels[t.type]))} ${escHtml(opLabels[t.operator])} ${t.threshold}${unit}
+                  · ${t.channels.map(channel => fpT(channel)).join(', ')}
                   ${t.durationMin > 0 ? ` · min ${t.durationMin} min` : ''}
                 </div>
               </div>
@@ -12147,8 +12147,8 @@ function renderSettings() {
   if (sub === 'workspace') {
     return `
       ${aiBlock(
-        "Workspace configuré et en bonne santé. <strong>" + fpT("Branding white-label actif") + "</strong> — logo et couleurs personnalisés détectés. Recommandation : activer le domaine personnalisé pour une expérience client premium.",
-        ['Configurer le domaine', 'Optimiser le branding', 'IA : Sauvegarder']
+        fpT("Workspace configured and healthy.") + " <strong>" + fpT("Active white-label branding") + "</strong> — " + fpT("custom logo and colors detected. Recommendation: enable a custom domain for a premium client experience."),
+        [fpT('Configure domain'), fpT('Optimize branding'), fpT('AI: Save')]
       )}
 
       <div class="fp-grid-2 fp-mb-20">
@@ -12156,7 +12156,7 @@ function renderSettings() {
         <div class="fp-card" id="fp-profile-form">
           <div class="fp-card-title">
             ${svgIcon('user').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Profil & Organisation
+            ${fpT('Profile & Organization')}
           </div>
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
             <div style="width:52px;height:52px;border-radius:16px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.25);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#2563EB;flex-shrink:0">${me.firstName.charAt(0)}</div>
@@ -12179,8 +12179,8 @@ function renderSettings() {
             {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'Ex : France'},
             {l:'Téléphone',    id:'prof-phone',  v:me.location?.phone||'',                  t:'tel',  ph:'Ex : +33 6 XX XX XX XX'},
           ].map(f => `<div class="fp-form-group">
-            <label class="fp-form-label">${escHtml(f.l)}</label>
-            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly style="opacity:0.6;cursor:not-allowed"' : ''}/>
+            <label class="fp-form-label">${escHtml(fpT(f.l))}</label>
+            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(fpT(f.ph))}"` : ''}${f.ro ? ' readonly style="opacity:0.6;cursor:not-allowed"' : ''}/>
             ${f.ro ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">'+fpT("Votre adresse email est gérée par votre méthode d'authentification.")+'</div>' : ''}
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
@@ -12190,13 +12190,13 @@ function renderSettings() {
             {l:"Webhook d'alerte (endpoint)",   k:'webhookUrl',    t:'url', ph:'https://hooks.slack.com/services/...', ultra:false},
             {l:'Téléphone SMS urgence',         k:'smsPhone',      t:'tel', ph:'+33 6 00 00 00 00', ultra:true, soon:true},
           ].map(f => `<div class="fp-form-group" style="opacity:${f.soon || (f.ultra && !isUltra) ? '0.55' : '1'}">
-            <label class="fp-form-label">${escHtml(f.l)}${f.soon ? ' <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:6px">' + fpT('Bientôt disponible') + '</span>' + (f.ultra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra</span>' : '') : (f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra requis</span>' : '')}</label>
-            <input class="fp-input" type="${f.t}" value="${escHtml(s[f.k]||'')}" placeholder="${f.ph}"
-              ${f.soon || (f.ultra && !isUltra) ? `disabled title="${f.soon ? 'Fonctionnalité bientôt disponible — réservée au plan Ultra' : 'Disponible avec le plan Ultra'}"` : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
+            <label class="fp-form-label">${escHtml(fpT(f.l))}${f.soon ? ' <span style="font-size:9px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 6px;border-radius:6px">' + fpT('Bientôt disponible') + '</span>' + (f.ultra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra</span>' : '') : (f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">' + fpT('Ultra requis') + '</span>' : '')}</label>
+            <input class="fp-input" type="${f.t}" value="${escHtml(s[f.k]||'')}" placeholder="${escHtml(fpT(f.ph))}"
+              ${f.soon || (f.ultra && !isUltra) ? `disabled title="${escHtml(fpT(f.soon ? 'Feature coming soon — reserved for the Ultra plan' : 'Available with the Ultra plan'))}"` : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
             ${f.soon ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">' + fpT('Les alertes SMS par numéro de téléphone seront disponibles prochainement pour les plans Ultra.') + '</div>' : ''}
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const profilePayload={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim()};const tzVal=(document.getElementById('prof-tz')?.value||'').trim();const locationPayload={address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim(),phone:(document.getElementById('prof-phone')?.value||'').trim()};const hasLoc=locationPayload.address||locationPayload.city||locationPayload.postalCode||locationPayload.country||locationPayload.phone;const [rMe,rTz,rLoc]=await Promise.all([apiAction('PATCH','/api/me',profilePayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur profil'})),tzVal?apiAction('PATCH','/api/me/settings',{timezone:tzVal}).catch(e=>({_err:true,error:(e&&e.error)||'Erreur fuseau'})):Promise.resolve({ok:true}),hasLoc?apiAction('PATCH','/api/location',locationPayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur localisation'})):Promise.resolve({ok:true})]);btn.disabled=false;btn.textContent='Sauvegarder';if(rMe&&rMe._err){showToast('error',rMe.error||'Erreur profil');return;}if(rTz&&rTz._err){showToast('error',rTz.error||'Erreur fuseau horaire');return;}if(hasLoc&&rLoc&&rLoc._err){showToast('error',rLoc.error||'Erreur localisation');return;}const [freshMe,freshSettings,freshLoc]=await Promise.all([fetch('/api/me',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),fetch('/api/me/settings',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),hasLoc?fetch('/api/location',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]);if(freshMe&&!freshMe.error){STATE.me=freshMe;}if(freshSettings&&typeof freshSettings==='object'&&!freshSettings.error){STATE.settings=Object.assign(STATE.settings||{},freshSettings);}if(freshLoc&&!freshLoc.error){if(!STATE.me)STATE.me={};STATE.me.location=freshLoc;}showToast('success', fpT('Profil sauvegard\u00e9 !'));render();})()">Sauvegarder</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent=fpT('Saving…');const profilePayload={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim()};const tzVal=(document.getElementById('prof-tz')?.value||'').trim();const locationPayload={address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim(),phone:(document.getElementById('prof-phone')?.value||'').trim()};const hasLoc=locationPayload.address||locationPayload.city||locationPayload.postalCode||locationPayload.country||locationPayload.phone;const [rMe,rTz,rLoc]=await Promise.all([apiAction('PATCH','/api/me',profilePayload).catch(e=>({_err:true,error:(e&&e.error)||fpT('Profile error')})),tzVal?apiAction('PATCH','/api/me/settings',{timezone:tzVal}).catch(e=>({_err:true,error:(e&&e.error)||fpT('Timezone error')})):Promise.resolve({ok:true}),hasLoc?apiAction('PATCH','/api/location',locationPayload).catch(e=>({_err:true,error:(e&&e.error)||fpT('Location error')})):Promise.resolve({ok:true})]);btn.disabled=false;btn.textContent=fpT('Save');if(rMe&&rMe._err){showToast('error',rMe.error||fpT('Profile error'));return;}if(rTz&&rTz._err){showToast('error',rTz.error||fpT('Time zone error'));return;}if(hasLoc&&rLoc&&rLoc._err){showToast('error',rLoc.error||fpT('Location error'));return;}const [freshMe,freshSettings,freshLoc]=await Promise.all([fetch('/api/me',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),fetch('/api/me/settings',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),hasLoc?fetch('/api/location',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]);if(freshMe&&!freshMe.error){STATE.me=freshMe;}if(freshSettings&&typeof freshSettings==='object'&&!freshSettings.error){STATE.settings=Object.assign(STATE.settings||{},freshSettings);}if(freshLoc&&!freshLoc.error){if(!STATE.me)STATE.me={};STATE.me.location=freshLoc;}showToast('success', fpT('Profile saved!'));render();})()">${fpT('Save')}</button>
           </div>
         </div>
 
@@ -12204,23 +12204,23 @@ function renderSettings() {
         <div class="fp-card">
           <div class="fp-card-title">
             ${svgIcon('layout').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-            Apparence & Personnalisation
+            ${fpT('Apparence & Personnalisation')}
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">${fpT('Thème')}</label>
             <div style="display:flex;gap:6px">
-              ${(()=>{ const _at = s.themeAuto ? 'auto' : (STATE.theme || 'dark'); return [['🌗 Automatique','auto'],['🌑 Sombre','dark'],['☀️ Clair','light']].map(([label,val]) => { const on = val === _at; return `<button class="fp-btn fp-btn-ghost fp-btn-sm${on?' active':''}" style="${on?'border-color:var(--fp-accent);color:var(--fp-accent);':''};flex:1;font-size:11px" onclick="applyThemeChoice('${val}')">${label}</button>`; }).join(''); })()}
+              ${(()=>{ const _at = s.themeAuto ? 'auto' : (STATE.theme || 'dark'); return [['🌗 Automatique','auto'],['🌑 Sombre','dark'],['☀️ Clair','light']].map(([label,val]) => { const on = val === _at; return `<button class="fp-btn fp-btn-ghost fp-btn-sm${on?' active':''}" style="${on?'border-color:var(--fp-accent);color:var(--fp-accent);':''};flex:1;font-size:11px" onclick="applyThemeChoice('${val}')">${fpT(label)}</button>`; }).join(''); })()}
             </div>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Langue</label>
+            <label class="fp-form-label">${fpT('Langue')}</label>
             <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success', fpT('Langue sauvegardée'))">
               ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'en')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
             <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('La préférence est sauvegardée et appliquée à l’interface.')}</div>
           </div>
           <div class="fp-form-group">
-            <label class="fp-form-label">Format de date</label>
+            <label class="fp-form-label">${fpT('Format de date')}</label>
             <select class="fp-select" style="width:100%" onchange="applyDateFormatPref(this.value);saveSettings();showToast('success', fpT('Format de date sauvegardé'))">
               ${['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD'].map(fmt => `<option${(s.dateFormat||'DD/MM/YYYY')===fmt?' selected':''}>${fmt}</option>`).join('')}
             </select>
@@ -12244,7 +12244,7 @@ function renderSettings() {
                   <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(item.label)}</div>
                   <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(item.desc)}</div>
                 </div>
-                <button class="fp-check-btn${on ? ' on' : ''}" data-pref-check="${escHtml(item.key)}" aria-pressed="${on}" title="${on ? 'Désactiver' : 'Activer'}" onclick="(function(k){STATE.settings[k]=!STATE.settings[k];saveSettings();render();}('${item.key}'))" style="width:26px;height:26px;border-radius:7px;border:2px solid ${on ? '#2563EB' : 'var(--fp-border)'};background:${on ? '#2563EB' : 'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s">
+                 <button class="fp-check-btn${on ? ' on' : ''}" data-pref-check="${escHtml(item.key)}" aria-pressed="${on}" title="${fpT(on ? 'Disable' : 'Enable')}" onclick="(function(k){STATE.settings[k]=!STATE.settings[k];saveSettings();render();}('${item.key}'))" style="width:26px;height:26px;border-radius:7px;border:2px solid ${on ? '#2563EB' : 'var(--fp-border)'};background:${on ? '#2563EB' : 'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s">
                   ${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
                 </button>
               </div>`;
@@ -12259,37 +12259,37 @@ function renderSettings() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('tag').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Branding White Label
+            ${fpT('White-label branding')}
           </div>
-          <span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">✓ Inclus</span>
+          <span style="font-size:10px;padding:2px 10px;border-radius:20px;background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">✓ ${fpT('Included')}</span>
         </div>
-        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px">Personnalisez les rapports partagés avec vos clients — logo, couleurs et nom d\'agence.</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px">${fpT('Personnalisez les rapports partagés avec vos clients — logo, couleurs et nom d\'agence.')}</div>
         <div class="fp-grid-2">
           <div>
             <div class="fp-form-group">
-              <label class="fp-form-label">URL du logo</label>
+              <label class="fp-form-label">${fpT('Logo URL')}</label>
               <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%"/>
             </div>
             <div class="fp-form-group">
-              <label class="fp-form-label">Nom de l\'agence</label>
-              <input class="fp-input" id="wl-agency-name" type="text" placeholder="${escHtml(me?.org?.name || 'Mon Agence SEO')}" value="${escHtml(wlBranding.agencyName || '')}" style="width:100%"/>
+              <label class="fp-form-label">${fpT('Agency name')}</label>
+              <input class="fp-input" id="wl-agency-name" type="text" placeholder="${escHtml(me?.org?.name || fpT('My SEO agency'))}" value="${escHtml(wlBranding.agencyName || '')}" style="width:100%"/>
             </div>
             <div class="fp-form-group">
-              <label class="fp-form-label">Pied de page</label>
-              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%"/>
+              <label class="fp-form-label">${fpT('Footer')}</label>
+              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="${fpT('Confidential report — © My SEO Agency 2026')}" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%"/>
             </div>
           </div>
           <div>
             <div style="display:flex;gap:10px;margin-bottom:12px">
               <div class="fp-form-group" style="flex:1">
-                <label class="fp-form-label">Couleur principale</label>
+                <label class="fp-form-label">${fpT('Primary color')}</label>
                 <div style="display:flex;align-items:center;gap:8px">
                   <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px"/>
                   <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
                 </div>
               </div>
               <div class="fp-form-group" style="flex:1">
-                <label class="fp-form-label">Couleur secondaire</label>
+                <label class="fp-form-label">${fpT('Secondary color')}</label>
                 <div style="display:flex;align-items:center;gap:8px">
                   <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px"/>
                   <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
@@ -12302,11 +12302,11 @@ function renderSettings() {
                 <div style="width:32px;height:32px;border-radius:8px;background:${wlBranding.primaryColor || '#2563EB'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:${wlBranding.agencyName ? '#fff' : 'rgba(255,255,255,0.35)'}">${(wlBranding.agencyName || 'A').charAt(0).toUpperCase()}</div>
                 <div>
                   <div style="font-size:12px;font-weight:600;color:${wlBranding.agencyName ? 'var(--fp-text)' : 'var(--fp-text-faint)'}">${escHtml(wlBranding.agencyName || 'Mon Agence SEO')}</div>
-                  <div style="font-size:10px;color:var(--fp-text-muted)">Rapport confidentiel · ${CUR_MONTH}</div>
+                  <div style="font-size:10px;color:var(--fp-text-muted)">${fpT('Confidential report')} · ${CUR_MONTH}</div>
                 </div>
               </div>
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%">Sauvegarder le branding</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%">${fpT('Save branding')}</button>
           </div>
         </div>
       </div>
@@ -12384,12 +12384,12 @@ function renderSettings() {
     const roleColors2 = { owner:'#2563EB', manager:'#8b5cf6', editor:'#22c55e', viewer:'#94a3b8' };
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map(t => ({
       id:     String(t.id || t._id || ''),
-      name:   t.name || t.firstName || 'Membre',
+      name:   t.name || t.firstName || 'Member',
       role:   (t.role||'viewer').charAt(0).toUpperCase() + (t.role||'viewer').slice(1),
       email:  t.email || '',
       avatar: (t.name || t.firstName || '?').charAt(0).toUpperCase(),
       color:  roleColors2[t.role?.toLowerCase()] || '#94a3b8',
-      last:   t.status === 'active' ? 'En ligne' : 'Hors ligne',
+      last:   t.status === 'active' ? 'Online' : 'Offline',
       status: t.status || 'inactive',
     }));
     const roles = ['Owner','Manager','Editor','Viewer'];
@@ -12408,9 +12408,9 @@ function renderSettings() {
           if (_tm.length === 0) return fpT("Aucun membre dans l'équipe. Invitez des collaborateurs pour partager l'accès au tableau de bord et gérer les permissions.");
           const _mgrs = _tm.filter(function(m) { return m.role === 'manager'; });
           const _billingWarn = _mgrs.length > 0
-            ? ' <strong>' + escHtml(_mgrs[0].name || _mgrs[0].email || 'Un manager') + ' (Manager) a accès à la facturation</strong> — vérifiez si ce niveau de permission est souhaité.'
-            : ' Recommandation : créer un rôle personnalisé «Rapporteur» pour les utilisateurs qui génèrent uniquement des rapports.';
-          return _tm.length + ' membre' + (_tm.length > 1 ? 's' : '') + ' actif' + (_tm.length > 1 ? 's' : '') + '.' + _billingWarn;
+            ? ' <strong>' + escHtml(_mgrs[0].name || _mgrs[0].email || fpT('A manager')) + ' (Manager) ' + fpT('has billing access') + '</strong> — ' + fpT('check whether this permission level is intended.')
+            : ' ' + fpT('Recommendation: create a custom "Reporter" role for users who only generate reports.');
+          return fpT('{count} active member(s).', { count: _tm.length }) + _billingWarn;
         })(),
         [fpT('Créer un rôle custom'), fpT('Auditer les permissions'), fpT('IA : Inviter un membre')]
       )}
@@ -12424,11 +12424,11 @@ function renderSettings() {
         const _sAvail = Math.max(0, _sLim - _sUsed);
         return `
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Membres actifs', String(members.length), _sUsed + '/' + _sLim + ' inclus', 'up')}
-        ${statCard('Rôles définis', String(roles.length), '4 rôles système', 'up')}
+        ${statCard(fpT('Active members'), String(members.length), _sUsed + '/' + _sLim + ' ' + fpT('included'), 'up')}
+        ${statCard(fpT('Defined roles'), String(roles.length), '4 ' + fpT('system roles'), 'up')}
         ${statCard(fpT('Sièges disponibles'), String(_sAvail), fpT('inclus dans votre plan'), _sAvail > 0 ? 'up' : 'neutral')}`;
       })()}
-        ${statCard('Dernière activité', displayStat(STATE.team && STATE.team.length > 0 ? 'Récemment' : null, 'Il y a 2h'), STATE.team && STATE.team.length > 0 ? STATE.team[0].name || 'Membre actif' : PREVIEW_MODE ? 'Sophie Martin' : 'Aucun membre', STATE.team && STATE.team.length > 0 ? 'up' : 'neutral')}
+        ${statCard(fpT('Latest activity'), displayStat(STATE.team && STATE.team.length > 0 ? fpT('Recently') : null, PREVIEW_MODE ? fpT('2 hours ago') : '—'), STATE.team && STATE.team.length > 0 ? STATE.team[0].name || fpT('Active member') : PREVIEW_MODE ? 'Sophie Martin' : fpT('No members'), STATE.team && STATE.team.length > 0 ? 'up' : 'neutral')}
       </div>
 
       <!-- MEMBERS -->
@@ -12436,7 +12436,7 @@ function renderSettings() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Membres de l\'équipe
+            ${fpT('Membres de l\'équipe')}
           </div>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpOpenInvite()">+ ${fpT('Inviter')}</button>
         </div>
@@ -12446,7 +12446,7 @@ function renderSettings() {
               <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${m.color},${m.color}88);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0">${m.avatar}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(fpT(m.last))}</div>
               </div>
               ${m.role === 'Owner'
                 ? `<span style="font-size:11px;padding:4px 10px;border-radius:7px;background:rgba(245,158,11,0.12);color:#f59e0b;font-weight:700;flex-shrink:0">Owner</span>`
@@ -12464,19 +12464,19 @@ function renderSettings() {
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('lock').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          Matrice de permissions
+          ${fpT('Matrice de permissions')}
         </div>
         <div style="overflow-x:auto">
           <table class="fp-data-table">
             <thead>
               <tr>
-                <th>Module</th>
+                <th>${fpT('Module')}</th>
                 ${roles.map(r => `<th style="text-align:center;color:var(--fp-accent)">${r}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
               ${modules.map((mod, mi) => `<tr>
-                <td style="font-weight:600;font-size:11px">${escHtml(mod)}</td>
+                <td style="font-weight:600;font-size:11px">${escHtml(fpT(mod))}</td>
                 ${roles.map(r => {
                   const has = permMatrix[r][mi];
                   return `<td style="text-align:center">
@@ -12494,7 +12494,7 @@ function renderSettings() {
       <!-- CUSTOM ROLES (Ultra) -->
       <div class="fp-card" style="${isUltra ? '' : 'opacity:0.65'}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div class="fp-card-title" style="margin-bottom:0">🔐 Rôles personnalisés ${!isUltra ? '<span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 7px;border-radius:8px;margin-left:6px">Ultra</span>' : ''}</div>
+          <div class="fp-card-title" style="margin-bottom:0">🔐 ${fpT('Rôles personnalisés')} ${!isUltra ? '<span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 7px;border-radius:8px;margin-left:6px">Ultra</span>' : ''}</div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ ${fpT('Créer un rôle')}</button>
         </div>
         <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Créez des rôles sur mesure avec des permissions granulaires par module, par client et par workspace.')}</div>
@@ -12531,15 +12531,15 @@ function renderSettings() {
           var isCur = !!(l.isCurrent || l.current);
           var rawDate = l.date || l.timestamp || null;
           var locale = getLocale();
-          var dateStr = isCur ? 'Maintenant' : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
+           var dateStr = isCur ? fpT('Now') : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
           var rawUa = l.device||l.userAgent||'';
-          var parsedDev = (function(ua){if(!ua)return 'Appareil inconnu';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Appareil inconnu';})(rawUa);
-          return { device: parsedDev, location: 'Localisation inconnue', ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
+           var parsedDev = (function(ua){if(!ua)return 'Unknown device';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Unknown device';})(rawUa);
+           return { device: parsedDev, location: fpT('Unknown location'), ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
         })
       : [];
-    const _parseDeviceUA = function(ua){if(!ua)return 'Appareil inconnu';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Appareil inconnu';};
+     const _parseDeviceUA = function(ua){if(!ua)return 'Unknown device';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Unknown device';};
     const loginHistory = _lhList
-      ? _lhList.map(l => ({ event: l.event||l.type||'Connexion', device: _parseDeviceUA(l.device||l.userAgent||''), ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
+           ? _lhList.map(l => ({ event: l.event||l.type||'Sign-in', device: _parseDeviceUA(l.device||l.userAgent||''), ip: l.ip||'***.***.***.***', date: (l.date||l.timestamp) ? new Date(l.date||l.timestamp).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false, current: !!(l.isCurrent||l.current) }))
       : (PREVIEW_MODE ? [
           {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
           {event:'Connexion réussie',  device:'iPhone 15 · Safari',   ip:'92.140.xxx.xxx',date:'08/05 · 18h42', success:true  },
@@ -12549,8 +12549,8 @@ function renderSettings() {
     const circ34 = 2 * Math.PI * 34;
     return `
       ${aiBlock(
-        (()=>{const _vul=secItems.filter(i=>!i.done);return '<strong>' + fpT('Score de sécurité :') + ' '+secScore+'/100</strong>. '+(_vul.length>0?'<strong>'+_vul.length+' vulnérabilité'+(_vul.length>1?'s':'')+' détectée'+(_vul.length>1?'s':'')+' : '+_vul.map(v=>escHtml(v.label)).join(', ')+'</strong>.':' Aucune vulnérabilité critique détectée ✅.')+' Action prioritaire : activer le 2FA et déclarer la Content-Security-Policy.';})(),
-        ['Activer le 2FA', 'Configurer les alertes', 'Auditer les sessions']
+        (()=>{const _vul=secItems.filter(i=>!i.done);return '<strong>' + fpT('Security score:') + ' '+secScore+'/100</strong>. '+(_vul.length>0?'<strong>'+fpT('{count} vulnerabilities detected:',{count:_vul.length})+' '+_vul.map(v=>escHtml(fpT(v.label))).join(', ')+'</strong>.':' '+fpT('No critical vulnerabilities detected ✅')+'.')+' '+fpT('Priority action: enable 2FA and declare your Content-Security-Policy.');})(),
+        [fpT('Enable 2FA'), fpT('Configure alerts'), fpT('Audit sessions')]
       )}
 
       ${(STATE.settings && STATE.settings.secLevel) === 'enterprise' ? `<div style="padding:10px 14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;margin-bottom:16px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">🔐</span><div><div style="font-size:12px;font-weight:700;color:#22c55e">${fpT('Sécurité avancée activée')}</div><div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Journalisation renforcée · Alertes sur tentatives échouées · Sessions à durée réduite')}</div></div></div>` : ''}
@@ -12565,19 +12565,19 @@ function renderSettings() {
             <text x="45" y="50" text-anchor="middle" font-size="18" font-weight="900" fill="${secScore > 85 ? '#22c55e' : secScore > 60 ? '#f59e0b' : '#ef4444'}" font-family="Outfit,sans-serif">${secScore}</text>
           </svg>
           <div>
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Score Sécurité')}</div>
-            <div style="font-size:11px;color:${secScore > 85 ? '#22c55e' : secScore > 60 ? '#f59e0b' : '#ef4444'};font-weight:600;margin-bottom:4px">${secScore > 85 ? '✓ Bon' : '⚠ ' + (secScore > 60 ? 'Moyen' : 'Critique')} — ${secItems.filter(i=>!i.done).length} action${secItems.filter(i=>!i.done).length !== 1 ? 's' : ''} requise${secItems.filter(i=>!i.done).length !== 1 ? 's' : ''}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">${secItems.length} critères évalués</div>
+             <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Security score')}</div>
+             <div style="font-size:11px;color:${secScore > 85 ? '#22c55e' : secScore > 60 ? '#f59e0b' : '#ef4444'};font-weight:600;margin-bottom:4px">${secScore > 85 ? '✓ ' + fpT('Good') : '⚠ ' + fpT(secScore > 60 ? 'Moderate' : 'Critical')} — ${secItems.filter(i=>!i.done).length} ${fpT(secItems.filter(i=>!i.done).length === 1 ? 'action required' : 'actions required')}</div>
+             <div style="font-size:10px;color:var(--fp-text-faint)">${secItems.length} ${fpT('criteria evaluated')}</div>
           </div>
         </div>
-        ${statCard('Sessions actives', String(sessions.length), '2 appareils reconnus', 'up')}
-        ${statCard('2FA', displayStat(STATE.me?.twoFactorEnabled ? 'Activé' : null, 'Non activé'), STATE.me?.twoFactorEnabled ? 'Compte sécurisé' : 'Action critique requise', STATE.me?.twoFactorEnabled ? 'up' : 'down')}
-        ${statCard('Dernière alerte', displayStat(null, '07/05 · 03h21'), PREVIEW_MODE ? 'Tentative échouée (IP inconnue)' : 'Aucune alerte récente', PREVIEW_MODE ? 'down' : 'neutral')}
+         ${statCard(fpT('Active sessions'), String(sessions.length), '2 ' + fpT('recognized devices'), 'up')}
+         ${statCard('2FA', displayStat(STATE.me?.twoFactorEnabled ? fpT('Enabled') : null, fpT('Not enabled')), STATE.me?.twoFactorEnabled ? fpT('Account secured') : fpT('Critical action required'), STATE.me?.twoFactorEnabled ? 'up' : 'down')}
+         ${statCard(fpT('Latest alert'), displayStat(null, '07/05 · 03h21'), PREVIEW_MODE ? fpT('Failed attempt (unknown IP)') : fpT('No recent alerts'), PREVIEW_MODE ? 'down' : 'neutral')}
       </div>
 
       <!-- SECURITY CHECKLIST -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🛡️ Checklist de sécurité')}</div>
+         <div class="fp-card-title" style="margin-bottom:14px">${fpT('🛡️ Security checklist')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${secItems.map(item => `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:${item.done ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)'};border:1px solid ${item.done ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}">
@@ -12587,16 +12587,16 @@ function renderSettings() {
                 </svg>
               </div>
               <div style="flex:1">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(item.label)}</div>
-                <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(item.desc)} · +${item.weight} pts</div>
+         <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(item.label))}</div>
+         <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(fpT(item.desc))} · +${item.weight} pts</div>
               </div>
               ${!item.done
-                ? (item.label === '2FA non configuré'
-                    ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="document.getElementById('fp-sec-2fa')?.scrollIntoView({behavior:'smooth'})">Configurer 2FA →</button>`
+                 ? (item.label === '2FA non configuré'
+                     ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="document.getElementById('fp-sec-2fa')?.scrollIntoView({behavior:'smooth'})">${fpT('Configure 2FA')} →</button>`
                     : item.label === 'CSP absente'
                       ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('warning', fpT('Ajoutez Content-Security-Policy dans vos en-têtes HTTP. Exemple : default-src \'self\''))">${fpT('Voir guide →')}</button>`
                       : item.label === 'CORS wildcard potentiel'
-                        ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('api'),50)">Restreindre →</button>`
+                         ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('api'),50)">${fpT('Restrict')} →</button>`
                         : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info', fpT('Disponible prochainement'))">${fpT('Bientôt →')}</button>`)
                 : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
@@ -12608,31 +12608,31 @@ function renderSettings() {
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-            <div class="fp-card-title" style="margin-bottom:0">💻 Sessions actives</div>
+             <div class="fp-card-title" style="margin-bottom:0">💻 ${fpT('Active sessions')}</div>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="disconnectAllSessions()">${fpT('Tout déconnecter')}</button>
           </div>
           ${sessions.map(sess => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${sess.current ? 'rgba(37,99,235,0.25)' : 'var(--fp-border)'};margin-bottom:6px">
               <div style="font-size:20px;flex-shrink:0">${sess.device.includes('Mac') ? '💻' : '📱'}</div>
               <div style="flex:1">
-                <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(sess.device)} ${sess.current ? '<span style="font-size:9px;color:#22c55e">● Actuel</span>' : ''}</div>
+                 <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(sess.device))} ${sess.current ? '<span style="font-size:9px;color:#22c55e">● ' + fpT('Current') + '</span>' : ''}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(sess.location)} · IP ${escHtml(sess.ip)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(sess.date)}</div>
               </div>
-              ${!sess.current && sess.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success','Session révoquée');STATE.activeSessions=(STATE.activeSessions||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error','Erreur : '+String(e.message||e));b.disabled=false;b.textContent='Terminer';}})(this)">${fpT('Terminer')}</button>` : ''}
+               ${!sess.current && sess.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success',fpT('Session revoked'));STATE.activeSessions=(STATE.activeSessions||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error',fpT('Error: {error}',{error:String(e.message||e)}));b.disabled=false;b.textContent=fpT('End session');}})(this)">${fpT('End session')}</button>` : ''}
             </div>
           `).join('')}
         </div>
 
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📋 Historique des connexions</div>
+           <div class="fp-card-title" style="margin-bottom:14px">📋 ${fpT('Sign-in history')}</div>
           <div style="display:flex;flex-direction:column;gap:6px">
             ${loginHistory.length > 0 ? loginHistory.map(log => `
               <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--fp-inner-card)">
                 <div style="width:6px;height:6px;border-radius:50%;background:${log.success ? '#22c55e' : '#ef4444'};flex-shrink:0"></div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:11px;font-weight:600;color:${log.success ? 'var(--fp-text)' : '#ef4444'}">${escHtml(log.event)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(log.device)} · ${escHtml(log.ip)}</div>
+                   <div style="font-size:11px;font-weight:600;color:${log.success ? 'var(--fp-text)' : '#ef4444'}">${escHtml(fpT(log.event))}</div>
+                   <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(fpT(log.device))} · ${escHtml(log.ip)}</div>
                 </div>
                 <div style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">${escHtml(log.date)}</div>
               </div>
@@ -12646,7 +12646,7 @@ function renderSettings() {
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
           <div style="font-size:24px">🔐</div>
           <div>
-            <div style="font-size:13px;font-weight:700;color:#ef4444">${fpT('Double authentification (2FA) — Non configurée')}</div>
+         <div style="font-size:13px;font-weight:700;color:#ef4444">${fpT('Double authentification (2FA) — Non configurée')}</div>
             <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Sans 2FA, votre compte est vulnérable aux accès non autorisés.')}</div>
           </div>
           <span style="margin-left:auto;flex-shrink:0;font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444">${fpT('Bientôt disponible')}</span>
@@ -12725,17 +12725,17 @@ function renderSettings() {
     return `
       ${isPro
         ? aiBlock(
-            (()=>{ const _act=workflows.filter(w=>w.active).length; return _act>0 ? `${_act} automation${_act>1?'s':''} active${_act>1?'s':''}. Consultez les statistiques d'exécution ci-dessous ou créez un nouveau workflow à partir d'un template.` : 'Aucune automation active pour le moment. Créez votre premier workflow à partir d\'un template pour automatiser rapports, alertes et audits.'; })(),
-            ['Créer un workflow', 'Voir les templates']
+            (()=>{ const _act=workflows.filter(w=>w.active).length; return _act>0 ? fpT('{count} active workflow(s). See the run statistics below or create a new workflow from a template.', { count: _act }) : fpT('No active automations yet. Create your first workflow from a template to automate reports, alerts, and audits.'); })(),
+            [fpT('Create a workflow'), fpT('View templates')]
           )
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('Automatisations avancées — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Workflows multi-étapes, IA automation et triggers intelligents.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Workflows actifs', String(workflows.filter(w => w.active).length), 'sur ' + workflows.length + ' configurés', 'up')}
-        ${statCard('Exécutions ce mois', String(workflows.reduce((s,w) => s + w.runs, 0)), 'automatisations réussies', 'up')}
-        ${statCard('Temps économisé', displayStat(null, PREVIEW_MODE ? '~6h/mois' : '—'), PREVIEW_MODE ? 'estimé par l\'IA' : 'Activez des workflows', 'neutral')}
-        ${statCard('Templates dispo', '+99', 'prêts à l\'emploi', 'up')}
+        ${statCard(fpT('Active workflows'), String(workflows.filter(w => w.active).length), fpT('{count} configured', { count: workflows.length }), 'up')}
+        ${statCard(fpT('Runs this month'), String(workflows.reduce((s,w) => s + w.runs, 0)), fpT('successful automations'), 'up')}
+        ${statCard(fpT('Time saved'), displayStat(null, PREVIEW_MODE ? '~6h/mo' : '—'), PREVIEW_MODE ? fpT('AI estimate') : fpT('Activate workflows'), 'neutral')}
+        ${statCard(fpT('Available templates'), '+99', fpT('ready to use'), 'up')}
       </div>
 
       <!-- WORKFLOWS LIST -->
@@ -12743,7 +12743,7 @@ function renderSettings() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('zap').replace('stroke="currentColor"','stroke="#f59e0b"')}
-            Workflows configurés
+            ${fpT('Configured workflows')}
           </div>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openNewWorkflowPanel()">${fpT('+ Créer')}</button>
         </div>
@@ -12759,7 +12759,7 @@ function renderSettings() {
                 <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                   ⚡ <strong>${escHtml(wf.trigger)}</strong> → ${escHtml(wf.action)}
                 </div>
-                <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} exécutions · Dernier : ${escHtml(wf.lastRun)}</div>
+                <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} ${fpT('runs')} · ${fpT('Last run')}: ${escHtml(wf.lastRun)}</div>
               </div>
               <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : `showToast('error', fpT('Workflow invalide : identifiant manquant'))`}"></button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;${wf.active ? '' : 'opacity:.45;cursor:not-allowed'}" ${wf.active ? '' : `disabled title="${fpT("Activez le workflow avant de l'exécuter")}"`} onclick="${wf.id && wf.active ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : ''}">▶ Run</button>
@@ -12771,14 +12771,14 @@ function renderSettings() {
 
       <!-- TEMPLATES -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📦 Templates de workflows</div>
+        <div class="fp-card-title" style="margin-bottom:14px">📦 ${fpT('Workflow templates')}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
           ${templates.map(t => `
             <div style="padding:14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);display:flex;flex-direction:column;min-height:130px">
               <div style="font-size:20px;margin-bottom:6px">${t.icon}</div>
-              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(t.name)}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(t.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">Utiliser ce template</button>
+              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(t.name))}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(fpT(t.desc))}</div>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">${fpT('Use this template')}</button>
             </div>
           `).join('')}
         </div>
@@ -13176,20 +13176,20 @@ function renderSettings() {
         return `
           <!-- STAT ROW -->
           <div class="fp-stat-row fp-mb-16" data-fp-anchor="integrations-hub">
-            ${statCard('Intégrations actives', String(totalConnected + nativeConnected), 'webhooks + natives', totalConnected>0?'up':'neutral')}
-            ${statCard('Déclencheurs envoyés', String(stats.totalRuns||0), 'toutes intégrations', 'up')}
-            ${statCard('Taux de succès', stats.totalDeliveries > 0 && stats.successRate != null ? stats.successRate+'%' : '—', stats.totalDeliveries > 0 ? 'livraisons réussies' : 'Aucune livraison', stats.totalDeliveries > 0 && stats.successRate < 90 ? 'down' : 'neutral')}
-            ${statCard('Erreurs (24h)', String(stats.recentErrors||0), 'alertes récentes', stats.recentErrors>0?'down':'up')}
-            ${statCard('Latence moy.', stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', 'livraison webhook', 'neutral')}
-            ${statCard('Templates', '+99', 'prêts à utiliser', 'up')}
-            ${statCard('Synchros réussies', String(Math.max(0,(stats.totalRuns||0)-(stats.recentErrors||0))), 'depuis 30 jours', (stats.recentErrors||0)>0?'neutral':'up')}
-            ${statCard('Quota API restant', displayStat(null, '85%'), PREVIEW_MODE ? '→ 1 500 / 2 000 appels' : 'Voir usage API', 'neutral')}
+            ${statCard(fpT('Active integrations'), String(totalConnected + nativeConnected), fpT('webhooks + native'), totalConnected>0?'up':'neutral')}
+            ${statCard(fpT('Triggers sent'), String(stats.totalRuns||0), fpT('all integrations'), 'up')}
+            ${statCard(fpT('Success rate'), stats.totalDeliveries > 0 && stats.successRate != null ? stats.successRate+'%' : '—', stats.totalDeliveries > 0 ? fpT('successful deliveries') : fpT('No deliveries'), stats.totalDeliveries > 0 && stats.successRate < 90 ? 'down' : 'neutral')}
+            ${statCard(fpT('Errors (24h)'), String(stats.recentErrors||0), fpT('recent alerts'), stats.recentErrors>0?'down':'up')}
+            ${statCard(fpT('Average latency'), stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', fpT('webhook delivery'), 'neutral')}
+            ${statCard(fpT('Templates'), '+99', fpT('ready to use'), 'up')}
+            ${statCard(fpT('Successful syncs'), String(Math.max(0,(stats.totalRuns||0)-(stats.recentErrors||0))), fpT('in the last 30 days'), (stats.recentErrors||0)>0?'neutral':'up')}
+            ${statCard(fpT('API quota remaining'), displayStat(null, '85%'), PREVIEW_MODE ? '→ 1,500 / 2,000 ' + fpT('calls') : fpT('View API usage'), 'neutral')}
           </div>
 
           <!-- AUTOMATION PLATFORMS -->
           <div class="fp-card fp-mb-20">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-              <div class="fp-card-title" style="margin-bottom:0">⚡ Plateformes d\'automatisation</div>
+              <div class="fp-card-title" style="margin-bottom:0">⚡ ${fpT('Automation platforms')}</div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
               ${platformCards.map(p => `
@@ -13200,16 +13200,16 @@ function renderSettings() {
                       <div style="display:flex;align-items:center;gap:8px">
                         <span style="font-size:14px;font-weight:700;color:var(--fp-text)">${p.name}</span>
                         ${p.connected>0
-                          ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${platColor(p.id)}22;color:${platColor(p.id)};font-weight:700">${p.connected} actif${p.connected>1?'s':''}</span>`
+                          ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${platColor(p.id)}22;color:${platColor(p.id)};font-weight:700">${fpT('{count} active integration(s)',{count:p.connected})}</span>`
                           : `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--fp-track);color:var(--fp-text-faint)">${fpT('Non connecté')}</span>`
                         }
                       </div>
                     </div>
                   </div>
-                  <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;line-height:1.5">${p.desc}</div>
+                  <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;line-height:1.5">${fpT(p.desc)}</div>
                   <button class="fp-btn ${p.connected>0?'fp-btn-ghost':'fp-btn-primary'} fp-btn-sm" style="width:100%;font-size:11px"
                     onclick="window._showConnectModal('${p.id}','${p.name}','')">
-                    ${p.connected>0?'⚙️ Configurer':'+ Connecter'}
+                    ${p.connected>0?'⚙️ '+fpT('Configure'):'+ '+fpT('Connect')}
                   </button>
                 </div>
               `).join('')}
@@ -13218,7 +13218,7 @@ function renderSettings() {
 
           <!-- NATIVE INTEGRATIONS -->
           <div class="fp-card">
-            <div class="fp-card-title" style="margin-bottom:14px">${fpT('🔍 Intégrations natives FlowPoint')}</div>
+            <div class="fp-card-title" style="margin-bottom:14px">${fpT('🔍 FlowPoint native integrations')}</div>
             <div style="display:flex;flex-direction:column;gap:0">
               ${[
                 {name:'Google Business Profile', svc:'gbp', icon:'🏢', connected:gbpConn, btn:gbpConn?"navigate('local-seo')"  :"typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')", disconnectEndpoint:'/api/google/disconnect', desc:'Fiches GBP, avis, posts locaux'},
@@ -13230,12 +13230,12 @@ function renderSettings() {
                   ${nativeSvgIcon(n.name)}
                   <div style="flex:1">
                     <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${n.name}</div>
-                    <div style="font-size:11px;color:var(--fp-text-faint)">${n.desc}</div>
+                    <div style="font-size:11px;color:var(--fp-text-faint)">${fpT(n.desc)}</div>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
-                    <span style="font-size:11px;color:${n.connected?'var(--fp-success)':'var(--fp-text-faint)'};${n.connected?'':'opacity:0.5'}">${n.connected?'● Connecté':'○ Non connecté'}</span>
+                    <span style="font-size:11px;color:${n.connected?'var(--fp-success)':'var(--fp-text-faint)'};${n.connected?'':'opacity:0.5'}">${n.connected?'● '+fpT('Connected'):'○ '+fpT('Not connected')}</span>
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"${n.comingSoon ? ` disabled title="${fpT('Bientôt disponible')}"` : ''} onclick="${n.comingSoon ? '' : n.btn}">
-                      ${n.connected?'Gérer':n.comingSoon?'Bientôt':'Connecter'}
+                      ${n.connected?fpT('Manage'):n.comingSoon?fpT('Coming soon'):fpT('Connect')}
                     </button>
                     ${n.connected && n.disconnectEndpoint ? `<button class="fp-btn fp-btn-ghost fp-btn-sm fp-native-disconnect-btn" data-svc="${n.svc}" data-endpoint="${n.disconnectEndpoint}" data-name="${n.name}" style="font-size:10px;color:var(--fp-danger);border-color:rgba(239,68,68,0.3)">${fpT('Déconnecter')}</button>` : ''}
                   </div>
@@ -13252,7 +13252,7 @@ function renderSettings() {
           <div class="fp-card fp-mb-16">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
               <div class="fp-card-title" style="margin-bottom:0">${fpT('🔗 Webhooks sortants configurés')}</div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showNewWebhookModal()">+ Nouveau webhook</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showNewWebhookModal()">+ ${fpT('New webhook')}</button>
             </div>
             ${intgs.length === 0 ? `
               <div style="text-align:center;padding:32px;color:var(--fp-text-muted)">
@@ -13265,13 +13265,13 @@ function renderSettings() {
               <div style="overflow-x:auto">
                 <table class="fp-data-table">
                   <thead><tr>
-                    <th></th><th>Nom</th><th>Plateforme</th><th style="text-align:center">Endpoint</th>
+                    <th></th><th>${fpT('Name')}</th><th>${fpT('Platform')}</th><th style="text-align:center">${fpT('Endpoint')}</th>
                     <th style="text-align:center">${fpT('Événements')}</th>
                     <th style="text-align:center">${fpT('Déclenchements')}</th>
                     <th style="text-align:center">${fpT('Taux succès')}</th>
                     <th style="text-align:center">${fpT('Dernier trigger')}</th>
                     <th style="text-align:center">${fpT('Statut')}</th>
-                    <th style="text-align:center">Actions</th>
+                    <th style="text-align:center">${fpT('Actions')}</th>
                   </tr></thead>
                   <tbody>
                     ${intgs.map(i => {
@@ -13293,19 +13293,19 @@ function renderSettings() {
                             </span>
                           </td>
                           <td style="text-align:center">
-                            <span style="font-size:11px;color:var(--fp-text-muted)">${Array.isArray(i.events)&&i.events.length>0?i.events.length+' event'+(i.events.length>1?'s':''):'Tous'}</span>
+                            <span style="font-size:11px;color:var(--fp-text-muted)">${Array.isArray(i.events)&&i.events.length>0?i.events.length+' '+fpT(i.events.length===1?'event':'events'):fpT('All')}</span>
                           </td>
                           <td style="text-align:center;font-size:13px;font-weight:700;color:var(--fp-text)">${i.trigger_count ?? 0}</td>
                           <td style="text-align:center">
                             <span style="font-size:11px;font-weight:700;color:${successRate == null ? 'var(--fp-text-faint)' : successRate>=90?'var(--fp-success)':successRate>=70?'var(--fp-warning)':'var(--fp-danger)'}">${successRate == null ? '—' : successRate+'%'}</span>
                           </td>
                           <td style="text-align:center;font-size:10px;color:var(--fp-text-faint)">
-                            ${i.last_triggered_at ? new Date(i.last_triggered_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'Jamais'}
+                            ${i.last_triggered_at ? new Date(i.last_triggered_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : fpT('Never')}
                           </td>
-                          <td style="text-align:center">${i.active?'<span style="color:var(--fp-success);font-size:11px">● Actif</span>':'<span style="color:var(--fp-text-faint);font-size:11px">○ Inactif</span>'}</td>
+                          <td style="text-align:center">${i.active?'<span style="color:var(--fp-success);font-size:11px">● '+fpT('Active')+'</span>':'<span style="color:var(--fp-text-faint);font-size:11px">○ '+fpT('Inactive')+'</span>'}</td>
                           <td style="text-align:center">
                             <div style="display:flex;gap:4px;justify-content:center">
-                              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._testWebhook('${escHtml(i.id)}','${escHtml(i.name)}')">🧪 Test</button>
+                              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._testWebhook('${escHtml(i.id)}','${escHtml(i.name)}')">🧪 ${fpT('Test')}</button>
                               <button class="fp-toggle${i.active?' on':''}" onclick="window._toggleWebhook('${escHtml(i.id)}',${!i.active})" style="transform:scale(0.8)"></button>
                               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window._deleteWebhook('${escHtml(i.id)}')">✕</button>
                             </div>
@@ -13322,12 +13322,12 @@ function renderSettings() {
           <!-- INCOMING WEBHOOKS -->
           <div class="fp-card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-              <div class="fp-card-title" style="margin-bottom:0">📥 Webhooks entrants</div>
+              <div class="fp-card-title" style="margin-bottom:0">📥 ${fpT('Incoming webhooks')}</div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._createIncomingWebhook()">${fpT('+ Créer endpoint')}</button>
             </div>
             ${incoming.length === 0 ? `
               <div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:12px">
-                Créez un endpoint entrant pour recevoir des événements depuis Zapier, Make ou tout autre outil.
+                ${fpT('Create an incoming endpoint to receive events from Zapier, Make, or any other tool.')}
               </div>
             ` : incoming.map(w => `
               <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);margin-bottom:8px">
@@ -13336,11 +13336,11 @@ function renderSettings() {
                   <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(w.name)}</div>
                   <div style="font-size:10px;font-family:var(--fp-font-mono);color:var(--fp-accent);margin-top:3px;cursor:pointer;word-break:break-all"
                     onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.origin+'/api/integrations/webhook/incoming/'+'${escHtml(w.token)}').then(()=>showToast('success', fpT('URL copiée !')))">
-                    POST /api/integrations/webhook/incoming/${escHtml(w.token?.slice(0,16))}… <span style="font-size:9px">[📋 copier]</span>
+                    POST /api/integrations/webhook/incoming/${escHtml(w.token?.slice(0,16))}… <span style="font-size:9px">[📋 ${fpT('Copy')}]</span>
                   </div>
-                  <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">Action: ${w.action||'—'} · Reçus: ${w.receive_count||0}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${fpT('Action')}: ${w.action||'—'} · ${fpT('Received')}: ${w.receive_count||0}</div>
                 </div>
-                <span style="font-size:10px;color:${w.active?'var(--fp-success)':'var(--fp-text-faint)'}">${w.active?'● Actif':'○ Inactif'}</span>
+                <span style="font-size:10px;color:${w.active?'var(--fp-success)':'var(--fp-text-faint)'}">${w.active?'● '+fpT('Active'):'○ '+fpT('Inactive')}</span>
               </div>
             `).join('')}
           </div>
@@ -13363,7 +13363,7 @@ function renderSettings() {
             ${['Tous',...cats].map(c => `
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgTemplCat='${c}';render(STATE.currentSection)"
                 style="${_activeCat===c?'border-color:var(--fp-accent);color:var(--fp-accent)':''}">
-                ${c}
+                ${fpT(c)}
               </button>
             `).join('')}
           </div>
@@ -13374,21 +13374,21 @@ function renderSettings() {
                   <div style="display:flex;align-items:center;gap:8px">
                     ${platSvgIcon(t.platform)}
                     <div style="flex:1">
-                      <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(t.name)}</div>
+                      <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(t.name))}</div>
                       <div style="display:flex;gap:4px;margin-top:2px">
                         <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:${platColor(t.platform)}22;color:${platColor(t.platform)}">${t.platform}</span>
                         <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:${planColor(t.plan_required||'Standard')}22;color:${planColor(t.plan_required||'Standard')}">${t.plan_required||'Standard'}</span>
                       </div>
                     </div>
                   </div>
-                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${escHtml(t.description||'')}</div>
+                  <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5">${escHtml(fpT(t.description||''))}</div>
                   <div style="font-size:10px;color:var(--fp-text-faint)">
-                    ⚡ Trigger : <strong>${t.trigger_event}</strong>
+                    ⚡ ${fpT('Trigger')}: <strong>${t.trigger_event}</strong>
                   </div>
                   <div style="display:flex;gap:6px;margin-top:4px">
                     <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1;font-size:10px"
                       onclick="window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}')">
-                      Utiliser ce template
+                       ${fpT('Use this template')}
                     </button>
                     <span style="font-size:10px;color:var(--fp-text-faint);align-self:center">🔥 ${t.popularity||0}</span>
                   </div>
@@ -13404,8 +13404,8 @@ function renderSettings() {
         return `
           <div class="fp-card fp-mb-16">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-              <div class="fp-card-title" style="margin-bottom:0">📋 Historique des livraisons</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
+              <div class="fp-card-title" style="margin-bottom:0">📋 ${fpT('Delivery history')}</div>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ ${fpT('Refresh')}</button>
             </div>
             ${allRuns.length===0 ? `
               <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucune livraison encore. Testez un webhook pour commencer.')}</div>
@@ -13416,9 +13416,9 @@ function renderSettings() {
                     <th>${fpT('Statut')}</th><th>${fpT('Intégration')}</th><th>${fpT('Événement')}</th>
                     <th style="text-align:center">HTTP</th>
                     <th style="text-align:center">${fpT('Durée')}</th>
-                    <th style="text-align:center">Tentatives</th>
-                    <th>Date</th>
-                    <th style="text-align:center">Action</th>
+                    <th style="text-align:center">${fpT('Attempts')}</th>
+                    <th>${fpT('Date')}</th>
+                    <th style="text-align:center">${fpT('Action')}</th>
                   </tr></thead>
                   <tbody>
                     ${allRuns.map(r => `
@@ -13448,7 +13448,7 @@ function renderSettings() {
 
           <!-- EVENT LOGS -->
           <div class="fp-card">
-            <div class="fp-card-title" style="margin-bottom:14px">${fpT('📝 Journal des événements')}</div>
+          <div class="fp-card-title" style="margin-bottom:14px">${fpT('📝 Event log')}</div>
             ${logs.length===0 ? `<div style="text-align:center;padding:20px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucun événement enregistré.')}</div>` : `
               <div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
                 ${logs.map(l => {
@@ -13479,22 +13479,26 @@ function renderSettings() {
       <div class="fp-section-header">
         <div>
           <h1 style="display:flex;align-items:center;gap:10px">
-            🔌 Integration Hub
-            ${totalConnected>0 ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:var(--fp-success)">${totalConnected} actif${totalConnected>1?'s':''}</span>` : ''}
+            🔌 ${fpT('Integration Hub')}
+            ${totalConnected>0 ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:var(--fp-success)">${fpT('{count} active',{count:totalConnected})}</span>` : ''}
           </h1>
           <div class="fp-section-sub">${fpT('Zapier · Make · Slack · Notion · HubSpot · Webhooks temps réel')}</div>
         </div>
         <div class="fp-section-actions">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ Actualiser</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._intgRefresh(this)">⟳ ${fpT('Refresh')}</button>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._intgTab='webhooks';render(STATE.currentSection);setTimeout(()=>window._showNewWebhookModal&&window._showNewWebhookModal(),100)">${fpT('+ Créer une intégration')}</button>
         </div>
       </div>
 
       ${aiBlock(
         totalConnected > 0
-          ? `${totalConnected} intégration${totalConnected>1?'s':''} active${totalConnected>1?'s':''}. ${stats.totalDeliveries > 0 ? `Taux de succès : <strong>${stats.successRate}%</strong>. ${stats.recentErrors>0?'<strong>'+stats.recentErrors+' erreur(s)</strong> dans les 24h — vérifiez les logs de livraison.':'Toutes les livraisons sont nominales.'}` : 'Aucune livraison encore. Testez un webhook pour commencer.'}`
-          : 'Connectez Zapier ou Make pour automatiser vos workflows SEO. Ou créez un webhook personnalisé pour notifier vos outils en temps réel.',
-        ['IA : Connecter Zapier', 'IA : Configurer Slack', 'Voir les templates']
+          ? fpT('{count} integration(s) active.', {count:totalConnected}) + (stats.totalDeliveries > 0
+            ? ' ' + fpT('Success rate: {rate}%.', {rate:stats.successRate}) + (stats.recentErrors>0
+              ? ' ' + fpT('{count} error(s) in the last 24 hours — check the delivery logs.', {count:stats.recentErrors})
+              : ' ' + fpT('All deliveries are operating normally.'))
+            : ' ' + fpT('No deliveries yet. Test a webhook to get started.'))
+          : fpT('Connect Zapier or Make to automate your SEO workflows, or create a custom webhook to notify your tools in real time.'),
+        [fpT('AI: Connect Zapier'), fpT('AI: Configure Slack'), fpT('View templates')]
       )}
 
       <!-- TABS -->
@@ -13507,7 +13511,7 @@ function renderSettings() {
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
             style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
-            ${label} ${cnt ? `<span style="font-size:10px;opacity:0.7">(${cnt})</span>` : ''}
+            ${fpT(label)} ${cnt ? `<span style="font-size:10px;opacity:0.7">(${cnt})</span>` : ''}
           </button>
         `).join('')}
       </div>
@@ -13517,14 +13521,14 @@ function renderSettings() {
       <!-- CONNECT MODAL -->
       <div id="fp-intg-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
         <div class="fp-card" style="width:480px;max-width:92vw;padding:24px">
-          <div id="fp-intg-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">${fpT('Connecter une intégration')}</div>
+          <div id="fp-intg-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">${fpT('Connect an integration')}</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             <div>
-              <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Nom</label>
-              <input id="intg-name" class="fp-input" placeholder="Ex : Zapier — Alertes Monitor"/>
+              <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Name')}</label>
+              <input id="intg-name" class="fp-input" placeholder="${fpT('e.g. Zapier — monitor alerts')}"/>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">URL Webhook (endpoint de destination)</label>
+              <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Webhook URL (destination endpoint)')}</label>
               <input id="intg-url" class="fp-input" placeholder="https://hooks.zapier.com/hooks/catch/..."/>
             </div>
             <div>
@@ -13541,7 +13545,7 @@ function renderSettings() {
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
             <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-intg-modal').style.display='none'">${fpT('Annuler')}</button>
-            <button class="fp-btn fp-btn-primary" onclick="window._submitConnect()">Connecter & Tester</button>
+            <button class="fp-btn fp-btn-primary" onclick="window._submitConnect()">${fpT('Connect and test')}</button>
           </div>
         </div>
       </div>
@@ -13569,37 +13573,37 @@ function renderSettings() {
     return `
       ${isUltra
         ? aiBlock(
-            (()=>{ const _avail=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_avail.filter(m=>m.active); const _off=_avail.filter(m=>!m.active); return `IA Config Lab actif. <strong>${_avail.length} modules IA disponibles</strong> — ${_on.length} actif${_on.length>1?'s':''}.${_off.length?` Recommandation : activer le module <strong>${escHtml(_off[0].label)}</strong>.`:''} Intensité IA actuelle : ${escHtml(_savedIntensity)}.`; })(),
-            ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
+            (()=>{ const _avail=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_avail.filter(m=>m.active); const _off=_avail.filter(m=>!m.active); return fpT('AI Config Lab is active.')+' <strong>'+fpT('{count} AI module(s) available',{count:_avail.length})+'</strong> — '+fpT('{count} active module(s).',{count:_on.length})+(_off.length?' '+fpT('Recommendation: enable the')+' <strong>'+escHtml(fpT(_off[0].label))+'</strong>.':'')+' '+fpT('Current AI intensity:')+' '+escHtml(fpT(_savedIntensity))+'.'; })(),
+            [fpT('Enable all modules'), fpT('Optimize AI intensity'), fpT('AI Lab report')]
           )
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('IA Config Lab complet — Ultra requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('IA Stratégiste, churn prevention, market intelligence et automation agressive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">${fpT('Passer Ultra')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${(()=>{ const _unlocked=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_unlocked.filter(m=>m.active).length; return statCard('Modules IA actifs', _on + '/' + _unlocked.length, _unlocked.length<aiModules.length ? (aiModules.length-_unlocked.length)+' verrouillés (plan)' : 'modules configurés', _on>0?'up':'neutral'); })()}
-        ${statCard('Intensité IA', _savedIntensity, 'recommandations mesurées', 'up')}
-        ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return t>=10000000?'∞':fk(u.used)+'/'+fk(t);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),p=u.used/Math.max(t,1)*100;return t>=10000000?'∞ AI Credits':(p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% utilisés';}()) : 'Chargement…'), 'neutral')}
-        ${statCard('Précision IA', displayStat(null, PREVIEW_MODE ? '87%' : '—'), PREVIEW_MODE ? '87% recommandations pertinentes' : 'Analyse en cours', 'neutral')}
+        ${(()=>{ const _unlocked=aiModules.filter(m=>!((m.plan==='Pro'&&isStd)||(m.plan==='Ultra'&&!isUltra))); const _on=_unlocked.filter(m=>m.active).length; return statCard(fpT('Active AI modules'), _on + '/' + _unlocked.length, _unlocked.length<aiModules.length ? fpT('{count} locked by plan', {count:aiModules.length-_unlocked.length}) : fpT('configured modules'), _on>0?'up':'neutral'); })()}
+        ${statCard(fpT('AI intensity'), fpT(_savedIntensity), fpT('measured recommendations'), 'up')}
+        ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return t>=10000000?'∞':fk(u.used)+'/'+fk(t);}()) : '…/…', PREVIEW_MODE ? fpT('{percent}% used this month',{percent:41}) : (STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),p=u.used/Math.max(t,1)*100;return t>=10000000?'∞ AI Credits':(p>0&&p<1?Math.max(p,0.1).toFixed(1):Math.round(p))+'% '+fpT('used');}()) : fpT('Loading…')), 'neutral')}
+        ${statCard(fpT('AI accuracy'), displayStat(null, PREVIEW_MODE ? '87%' : '—'), PREVIEW_MODE ? fpT('87% relevant recommendations') : fpT('Analysis in progress'), 'neutral')}
       </div>
 
       <!-- AI INTENSITY -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🎛️ Intensité des recommandations IA')}</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('🎛️ AI recommendation intensity')}</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
-            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=e.dataset.intensity;}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';const _ok=await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).then(()=>true,()=>false);showToast(_ok?'success':'warning',_ok?fpT('Intensité ${lvl} appliquée'):fpT('Synchronisation serveur échouée'));})(this)">
+            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>{e.classList.remove('fp-ai-int-opt--active');const d=e.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-text)';d.textContent=fpT(e.dataset.intensity);}});el.classList.add('fp-ai-int-opt--active');const d=el.querySelector('[data-int-label]');if(d){d.style.color='var(--fp-accent)';d.textContent=fpT(el.dataset.intensity||'')+' ✓';}if(STATE.settings)STATE.settings.aiIntensity='${lvl}';const _ok=await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).then(()=>true,()=>false);showToast(_ok?'success':'warning',_ok?fpT('AI intensity {intensity} applied',{intensity:fpT('${lvl}')}) : fpT('Server sync failed'));})(this)">
               <div style="font-size:18px;margin-bottom:4px">${['🧘','⚖️','🚀'][i]}</div>
-              <div style="font-size:12px;font-weight:700;color:${lvl === _savedIntensity ? 'var(--fp-accent)' : 'var(--fp-text)'}" data-int-label>${escHtml(lvl)}${lvl === _savedIntensity ? ' ✓' : ''}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i]}</div>
+              <div style="font-size:12px;font-weight:700;color:${lvl === _savedIntensity ? 'var(--fp-accent)' : 'var(--fp-text)'}" data-int-label>${escHtml(fpT(lvl))}${lvl === _savedIntensity ? ' ✓' : ''}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${fpT(['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i])}</div>
             </div>
           `).join('')}
         </div>
-        <div style="font-size:11px;color:var(--fp-text-muted)">L\'intensité «Équilibré» est recommandée pour la plupart des workspaces.</div>
+        <div style="font-size:11px;color:var(--fp-text-muted)">${fpT('Balanced intensity is recommended for most workspaces.')}</div>
       </div>
 
       <!-- AI MODULE TOGGLES -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🤖 Modules IA — Configuration individuelle</div>
+        <div class="fp-card-title" style="margin-bottom:14px">🤖 ${fpT('AI modules — individual settings')}</div>
         <div style="display:flex;flex-direction:column;gap:0">
           ${aiModules.map(m => {
             const locked = (m.plan === 'Pro' && isStd) || (m.plan === 'Ultra' && !isUltra);
@@ -13607,14 +13611,14 @@ function renderSettings() {
               <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${m.active && !locked ? m.color : 'rgba(255,255,255,0.15)'};${m.active && !locked ? 'box-shadow:0 0 6px ' + m.color + '55' : ''}"></div>
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-                  <span style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(m.label)}</span>
+                  <span style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(fpT(m.label))}</span>
                   ${badge(m.plan, m.plan === 'Ultra' ? '#8b5cf6' : m.plan === 'Pro' ? '#2563EB' : '#475569')}
                 </div>
-                <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(m.desc)}</div>
+                <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(fpT(m.desc))}</div>
               </div>
               ${locked
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="fpGoToPricing()">🔒 Upgrader</button>`
-                : `<button class="fp-toggle${m.active ? ' on' : ''}" data-ai-module="${m.key}" onclick="(async(btn)=>{const next=!btn.classList.contains('on');btn.classList.toggle('on',next);btn.setAttribute('aria-pressed',String(next));const mods={};document.querySelectorAll('[data-ai-module]').forEach(b=>{mods[b.dataset.aiModule]=b.classList.contains('on');});const r=await apiAction('PATCH','/api/me/prefs',{settings:{aiModules:mods}}).catch(()=>null);if(r&&r.ok!==false){if(!STATE.settings)STATE.settings={};STATE.settings.aiModules=mods;showToast(next?'success':'info',next?'Module IA activ\u00e9':'Module IA d\u00e9sactiv\u00e9');}else{btn.classList.toggle('on',!next);showToast('error', fpT('Erreur sauvegarde module'));}})(this)"></button>`
+                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="fpGoToPricing()">🔒 ${fpT('Upgrade')}</button>`
+                 : `<button class="fp-toggle${m.active ? ' on' : ''}" data-ai-module="${m.key}" onclick="(async(btn)=>{const next=!btn.classList.contains('on');btn.classList.toggle('on',next);btn.setAttribute('aria-pressed',String(next));const mods={};document.querySelectorAll('[data-ai-module]').forEach(b=>{mods[b.dataset.aiModule]=b.classList.contains('on');});const r=await apiAction('PATCH','/api/me/prefs',{settings:{aiModules:mods}}).catch(()=>null);if(r&&r.ok!==false){if(!STATE.settings)STATE.settings={};STATE.settings.aiModules=mods;showToast(next?'success':'info',fpT(next?'AI module enabled':'AI module disabled'));}else{btn.classList.toggle('on',!next);showToast('error', fpT('Module settings save error'));}})(this)"></button>`
               }
             </div>`;
           }).join('')}
@@ -13659,17 +13663,23 @@ function renderSettings() {
     }
     const totalUsed  = storageItems.reduce((s,i) => s + i.used, 0);
     const totalTotal = storageItems.reduce((s,i) => s + i.total, 0);
+    const retentionDays = isStd ? 30 : isPro && !isUltra ? 90 : 365;
+    const storageLabel = value => {
+      const labels = ['Audits & Historique', 'Rapports PDF stockés', 'Exports & CSV', 'Données monitors', 'Données utilisées'];
+      const match = labels.find(label => value === label || value.startsWith(label + ' ('));
+      return match ? fpT(match) + value.slice(match.length) : value;
+    };
     return `
       ${aiBlock(
-        'Données en bonne santé — <strong>'+totalUsed.toFixed(1)+' GB sur '+totalTotal+' GB utilisés ('+Math.round(totalUsed/totalTotal*100)+'%)</strong>. Rétention actuelle : <strong>'+(isStd?'30 jours':isPro&&!isUltra?'90 jours':'365 jours')+'</strong>. Recommandation : activer le backup automatique mensuel pour garantir la continuité des données historiques.',
-        ['Activer backup auto', 'Exporter toutes les données', 'Voir la rétention']
+        fpT('Data is healthy —')+' <strong>'+totalUsed.toFixed(1)+' GB '+fpT('of')+' '+totalTotal+' GB '+fpT('used')+' ('+Math.round(totalUsed/totalTotal*100)+'%)</strong>. '+fpT('Current retention:')+' <strong>'+fpT('{days} days',{days:retentionDays})+'</strong>. '+fpT('Recommendation: enable monthly automatic backups to preserve historical data.'),
+        [fpT('Enable automatic backup'), fpT('Export all data'), fpT('View retention')]
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Stockage utilisé', totalUsed.toFixed(1) + ' GB', 'sur ' + totalTotal + ' GB disponibles', 'up')}
-        ${statCard('Rétention actuelle', isStd ? '30 jours' : isPro && !isUltra ? '90 jours' : '365 jours', 'selon votre plan', 'neutral')}
-        ${statCard('Dernier backup', displayStat(null, PREVIEW_MODE ? '01/05/2026' : '—'), 'automatique mensuel', 'neutral')}
-        ${statCard('Conformité RGPD', 'En cours', 'données EU · politique active', 'neutral')}
+        ${statCard(fpT('Storage used'), totalUsed.toFixed(1) + ' GB', fpT('{count} GB available',{count:totalTotal}), 'up')}
+        ${statCard(fpT('Current retention'), fpT('{days} days',{days:retentionDays}), fpT('based on your plan'), 'neutral')}
+        ${statCard(fpT('Last backup'), displayStat(null, PREVIEW_MODE ? '01/05/2026' : '—'), fpT('monthly automatic'), 'neutral')}
+        ${statCard(fpT('GDPR compliance'), fpT('In progress'), fpT('EU data · policy active'), 'neutral')}
       </div>
 
       <!-- STORAGE -->
@@ -13677,7 +13687,7 @@ function renderSettings() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('database').replace('stroke="currentColor"','stroke="#2563EB"')}
-            Stockage & Données
+            ${fpT('Storage & Data')}
           </div>
           <span style="font-size:11px;color:var(--fp-text-faint)">${totalUsed.toFixed(1)} GB / ${totalTotal} GB</span>
         </div>
@@ -13689,7 +13699,7 @@ function renderSettings() {
             const pct = Math.round(item.used / item.total * 100);
             return `<div>
               <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(item.l)}</span>
+                <span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(storageLabel(item.l))}</span>
                 <span style="font-size:11px;font-weight:700;color:var(--fp-text)">${item.used} GB / ${item.total} GB (${pct}%)</span>
               </div>
               <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${pct}%;background:${item.color}"></div></div>
@@ -13703,7 +13713,7 @@ function renderSettings() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">
             ${svgIcon('clock').replace('stroke="currentColor"','stroke="#f59e0b"')}
-            Politique de rétention
+            ${fpT('Retention policy')}
           </div>
           ${[
             {label:'Standard',  days:30,  active:isStd,       color:'#475569'},
@@ -13712,9 +13722,9 @@ function renderSettings() {
           ].map(r => `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;background:${r.active ? r.color + '08' : 'rgba(255,255,255,0.01)'};border:1px solid ${r.active ? r.color + '33' : 'rgba(255,255,255,0.05)'};margin-bottom:6px">
             <div style="width:8px;height:8px;border-radius:50%;background:${r.active ? r.color : 'rgba(255,255,255,0.15)'};flex-shrink:0;${r.active ? 'box-shadow:0 0 6px ' + r.color + '55' : ''}"></div>
             <div style="flex:1">
-              <span style="font-size:12px;font-weight:700;color:${r.active ? r.color : 'var(--fp-text-faint)'}">Plan ${r.label} — ${r.days} jours</span>
+              <span style="font-size:12px;font-weight:700;color:${r.active ? r.color : 'var(--fp-text-faint)'}">${fpT('Plan {plan} — {days} days',{plan:r.label,days:r.days})}</span>
             </div>
-            ${r.active ? badge('Actif', r.color) : ''}
+            ${r.active ? badge(fpT('Active'), r.color) : ''}
           </div>`).join('')}
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:8px">${fpT('Les données antérieures à la limite de rétention sont archivées automatiquement.')}</div>
         </div>
@@ -13722,19 +13732,19 @@ function renderSettings() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">
             ${svgIcon('download').replace('stroke="currentColor"','stroke="#22c55e"')}
-            Exports & Backup
+            ${fpT('Exports & Backup')}
           </div>
           <div style="display:flex;flex-direction:column;gap:7px">
             ${[
-              {label:'Exporter toutes mes données',      icon:'download',  onclick:"fpDownloadOrgDataExport()"},
-              {label:'Historique des audits (CSV)',       icon:'file',      onclick:"(function(){const rows=STATE.audits||[];if(!rows.length){showToast('info', fpT('Aucun audit à exporter'));return;}const csv='URL,Score,Date\\n'+rows.map(x=>(x.url||'')+','+(x.score!=null?x.score:'')+','+(x.date||'')).join('\\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='audits-'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('success','CSV exporté — '+rows.length+' audit'+(rows.length>1?'s':''))})()"},
-              {label:'Importer une liste de sites',      icon:'upload',    onclick:"navigate('audits');setTimeout(()=>{document.getElementById('audit-url-input')&&document.getElementById('audit-url-input').focus()},300)"},
-              {label:'Synchroniser GBP maintenant',      icon:'refresh',   onclick:"window.FP_GBP_API?(STATE.gbp&&STATE.gbp.connected?window.FP_GBP_API.load().then(()=>{showToast('success', fpT('GBP synchronisé'));render(STATE.currentSection)}):window.FP_GBP_API.openConnect()):navigate('local-seo')"},
-              {label:'Demander une archive RGPD',        icon:'shield',    onclick:"window.location.href='mailto:support@flowpoint.app?subject='+encodeURIComponent('Demande archive RGPD')"},
+              {label:'Export all my data',      icon:'download',  onclick:"fpDownloadOrgDataExport()"},
+              {label:'Audit history (CSV)',       icon:'file',      onclick:"(function(){const rows=STATE.audits||[];if(!rows.length){showToast('info', fpT('No audits to export'));return;}const csv='URL,Score,Date\\n'+rows.map(x=>(x.url||'')+','+(x.score!=null?x.score:'')+','+(x.date||'')).join('\\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='audits-'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('success',fpT('CSV exported — {count} audits',{count:rows.length}))})()"},
+              {label:'Import a site list',      icon:'upload',    onclick:"navigate('audits');setTimeout(()=>{document.getElementById('audit-url-input')&&document.getElementById('audit-url-input').focus()},300)"},
+              {label:'Sync GBP now',      icon:'refresh',   onclick:"window.FP_GBP_API?(STATE.gbp&&STATE.gbp.connected?window.FP_GBP_API.load().then(()=>{showToast('success', fpT('GBP synced'));render(STATE.currentSection)}):window.FP_GBP_API.openConnect()):navigate('local-seo')"},
+              {label:'Request GDPR archive',        icon:'shield',    onclick:"window.location.href='mailto:support@flowpoint.app?subject='+encodeURIComponent('Demande archive RGPD')"},
             ].map(a => `
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="justify-content:flex-start;gap:8px;width:100%;padding:9px 12px" onclick="${a.onclick.replace(/"/g,'&quot;')}">
                 ${svgIcon(a.icon).replace('stroke="currentColor"','stroke="var(--fp-text-muted)"')}
-                ${escHtml(a.label)}
+                ${fpT(a.label)}
               </button>
             `).join('')}
           </div>
@@ -13743,7 +13753,7 @@ function renderSettings() {
 
       <!-- DANGER ZONE -->
       <div class="fp-card" style="border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.04)">
-        <div class="fp-card-title" style="color:#ef4444;margin-bottom:8px">⚠ Zone de danger</div>
+        <div class="fp-card-title" style="color:#ef4444;margin-bottom:8px">⚠ ${fpT('Danger zone')}</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">${fpT('Ces actions sont irréversibles. Agissez avec précaution.')}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('data')">${fpT('Supprimer toutes les données')}</button>
@@ -13785,7 +13795,7 @@ function renderSettings() {
         c:_typeColor[a.type||'info']||'#2563EB'
       }))
     : (PREVIEW_MODE
-        ? [{d:'09/05/2026',ev:'Workflow «Alerte monitor» activé',c:'#22c55e'},{d:'07/05/2026',ev:'Paramètre notifications mis à jour',c:'#2563EB'},{d:'05/05/2026',ev:'Add-on configuré',c:'#8b5cf6'},{d:'01/05/2026',ev:'Rapport mensuel généré',c:'#22c55e'},{d:'28/04/2026',ev:'Connexion inconnue bloquée',c:'#ef4444'},{d:'15/04/2026',ev:'Branding white-label configuré',c:'#06b6d4'}]
+         ? [{d:'09/05/2026',ev:'Critical monitor alert workflow enabled',c:'#22c55e'},{d:'07/05/2026',ev:'Notification settings updated',c:'#2563EB'},{d:'05/05/2026',ev:'Add-on configured',c:'#8b5cf6'},{d:'01/05/2026',ev:'Monthly report generated',c:'#22c55e'},{d:'28/04/2026',ev:'Unknown sign-in blocked',c:'#ef4444'},{d:'15/04/2026',ev:'White-label branding configured',c:'#06b6d4'}]
         : []);
 
   return `
@@ -13794,17 +13804,17 @@ function renderSettings() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Settings Command Center
         </h1>
-        <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · ${_intAct} ${fpT(_intAct===1?'intégration active':'intégrations actives')} · ${_wfAct} ${fpT(_wfAct===1?'workflow actif':'workflows actifs')}</div>
+         <div class="fp-section-sub">${fpT('Workspace health')} ${workspaceHealth}/100 · ${_intAct} ${fpT(_intAct===1?'integration active':'active integrations')} · ${_wfAct} ${fpT(_wfAct===1?'active workflow':'active workflows')}</div>
       </div>
     </div>
 
     <!-- AI INTELLIGENCE -->
     ${isPro
       ? aiBlock(
-          (()=>{ const _todo=[]; if(!_has2fa)_todo.push(fpT('activer le 2FA')); if(_intAct===0)_todo.push(fpT('connecter vos intégrations (GA4, GSC)')); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} ${fpT(_todo.length>1?'actions prioritaires':'action prioritaire')}</strong> : ${_todo.join(' ' + fpT('et') + ' ')}. `:'')+`${_wfAct} ${fpT(_wfAct===1?'workflow actif':'workflows actifs')}.`; })(),
-          ['Activer le 2FA', 'Connecter GSC', 'Rapport workspace complet']
+           (()=>{ const _todo=[]; if(!_has2fa)_todo.push(fpT('enable 2FA')); if(_intAct===0)_todo.push(fpT('connect your integrations (GA4, GSC)')); return fpT('Workspace health')+' <strong>'+workspaceHealth+'/100</strong>. '+(_todo.length?'<strong>'+_todo.length+' '+fpT(_todo.length>1?'priority actions':'priority action')+'</strong>: '+_todo.join(' '+fpT('and')+' ')+'. ':'')+_wfAct+' '+fpT(_wfAct===1?'active workflow':'active workflows')+'.'; })(),
+           [fpT('Enable 2FA'), fpT('Connect GSC'), fpT('Full workspace report')]
         )
-      : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
+       : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">${fpT('AI Workspace Intelligence — Pro required')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Workspace health analysis, configuration recommendations, and AI security audits.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Upgrade to Pro')}</button></div>`
     }
 
     <!-- WORKSPACE HEALTH + STATUS CARDS -->
@@ -13819,20 +13829,20 @@ function renderSettings() {
             <text x="45" y="51" text-anchor="middle" font-size="20" font-weight="900" fill="${workspaceHealth > 80 ? '#22c55e' : '#f59e0b'}" font-family="Outfit,sans-serif">${workspaceHealth}</text>
           </svg>
           <div>
-            <div style="font-size:16px;font-weight:800;color:var(--fp-text)">Workspace Health</div>
+             <div style="font-size:16px;font-weight:800;color:var(--fp-text)">${fpT('Workspace health')}</div>
             <div style="font-size:11px;color:${workspaceHealth>80?'#22c55e':'#f59e0b'};font-weight:600">${workspaceHealth>80?'✓ '+fpT('Bon état général'):'⚠ '+fpT('Optimisations possibles')}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${(()=>{const _miss=[_wfAct>0,_intAct>0,_monOkS,_billOkS,_hasAudits,_has2fa,_hasReports].filter(x=>!x).length;return _miss>0?_miss+' action'+(_miss>1?'s':'')+' requise'+(_miss>1?'s':'')+' pour atteindre 100':'Toutes les optimisations sont actives';})()}</div>
+             <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${(()=>{const _miss=[_wfAct>0,_intAct>0,_monOkS,_billOkS,_hasAudits,_has2fa,_hasReports].filter(x=>!x).length;return _miss>0?fpT('{count} action(s) required to reach 100',{count:_miss}):fpT('All optimizations are active');})()}</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           ${[
-            {l:'Sécurité',      v:_has2fa?'2FA actif':'2FA requis', ic:_has2fa?'✓':'⚠', c:_has2fa?'#22c55e':'#f59e0b'},
-            {l:'Intégrations',  v:_intAct+' active'+(_intAct===1?'':'s'), ic:_intAct>0?'✓':'○', c:_intAct>0?'#22c55e':'#94a3b8'},
-            {l:'Automatisations',v:_wfAct+' active'+(_wfAct===1?'':'s'), ic:_wfAct>0?'✓':'○', c:_wfAct>0?'#22c55e':'#94a3b8'},
+             {l:'Security',      v:_has2fa?'2FA active':'2FA required', ic:_has2fa?'✓':'⚠', c:_has2fa?'#22c55e':'#f59e0b'},
+             {l:'Integrations',  v:_intAct+' active'+(_intAct===1?'':'s'), ic:_intAct>0?'✓':'○', c:_intAct>0?'#22c55e':'#94a3b8'},
+             {l:'Automations',v:_wfAct+' active'+(_wfAct===1?'':'s'), ic:_wfAct>0?'✓':'○', c:_wfAct>0?'#22c55e':'#94a3b8'},
             {l:'Audits',        v:String((STATE.audits||[]).length), ic:_hasAudits?'✓':'○', c:_hasAudits?'#22c55e':'#94a3b8'},
           ].map(it => `<div style="padding:14px 16px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07)">
-            <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">${escHtml(it.l)}</div>
-            <div style="font-size:14px;font-weight:800;color:${it.c}">${it.ic} ${escHtml(it.v)}</div>
+             <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">${escHtml(fpT(it.l))}</div>
+             <div style="font-size:14px;font-weight:800;color:${it.c}">${it.ic} ${escHtml(fpT(it.v))}</div>
           </div>`).join('')}
         </div>
       </div>
@@ -13841,7 +13851,7 @@ function renderSettings() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('clock').replace('stroke="currentColor"','stroke="#2563EB"')}
-          Timeline des modifications
+           ${fpT('Change timeline')}
         </div>
         <div style="position:relative;padding-left:18px">
           <div style="position:absolute;left:5px;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,#2563EB,transparent)"></div>
@@ -13856,7 +13866,7 @@ function renderSettings() {
 
     <!-- QUICK NAV TO ALL SUB-PAGES -->
     <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">🧭 Centre de configuration — Navigation rapide</div>
+       <div class="fp-card-title" style="margin-bottom:14px">🧭 ${fpT('Settings center — Quick navigation')}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
         ${[
           {label:'Workspace',         sub:'workspace',    icon:'🏢', desc:'Profil, branding, apparence, préréglages',     status:'→',  sc:'#94a3b8'},
@@ -13873,9 +13883,9 @@ function renderSettings() {
           <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="${n.isRoute ? `navigate('${n.sub}')` : `navigateSub('${n.sub}')`}">
             <span style="font-size:16px;flex-shrink:0">${n.icon}</span>
             <div style="flex:1;min-width:0">
-              <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(n.label)}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint);line-height:1.4">${escHtml(n.desc)}</div>
-              <div style="font-size:9px;font-weight:700;color:${n.sc};margin-top:3px">${n.status}</div>
+             <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(fpT(n.label))}</div>
+             <div style="font-size:10px;color:var(--fp-text-faint);line-height:1.4">${escHtml(fpT(n.desc))}</div>
+             <div style="font-size:9px;font-weight:700;color:${n.sc};margin-top:3px">${fpT(n.status)}</div>
             </div>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--fp-text-faint)" stroke-width="2" style="flex-shrink:0;margin-top:2px"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
@@ -24810,6 +24820,16 @@ function bindGlobalEvents() {
         !Object.prototype.hasOwnProperty.call(FP_I18N_EN_EXTRA, k)
       ) {
         FP_I18N_EN_EXTRA[k] = window.FP_I18N_EN_BILLING[k];
+      }
+    });
+  }
+  if (window.FP_I18N_EN_SETTINGS) {
+    Object.keys(window.FP_I18N_EN_SETTINGS).forEach(function(k) {
+      if (
+        !Object.prototype.hasOwnProperty.call(FP_I18N_EN, k) &&
+        !Object.prototype.hasOwnProperty.call(FP_I18N_EN_EXTRA, k)
+      ) {
+        FP_I18N_EN_EXTRA[k] = window.FP_I18N_EN_SETTINGS[k];
       }
     });
   }
@@ -65983,8 +66003,8 @@ function renderSettingsLocation() {
     <div style="background:linear-gradient(135deg,rgba(37,99,235,0.1),rgba(79,70,229,0.08));border:1px solid rgba(37,99,235,0.3);border-radius:12px;padding:20px 22px;margin-bottom:20px;display:flex;align-items:flex-start;gap:14px">
       <div style="font-size:28px;flex-shrink:0">📍</div>
       <div>
-        <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Localisation non configurée</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">Configurez l'adresse de votre entreprise pour personnaliser toutes les fonctionnalités Local SEO : cartes, heatmaps, audits, classements et rapports. Sans localisation, aucune donnée géographique ne sera affichée.</div>
+        <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${fpT('Location not configured')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">${fpT('Configure your business address to personalize all Local SEO features: maps, heatmaps, audits, rankings, and reports. Without a location, no geographic data will be shown.')}</div>
       </div>
     </div>` : '';
 
@@ -65996,23 +66016,23 @@ function renderSettingsLocation() {
     const lat=parseFloat(document.getElementById('fp-loc-lat').value)||null;
     const lng=parseFloat(document.getElementById('fp-loc-lng').value)||null;
     const sa=document.getElementById('fp-loc-service').value.split(',').map(x=>x.trim()).filter(Boolean);
-    if(!c&&!a){showToast('warning', fpT('Renseignez au moins la ville ou l\'adresse'));return;}
+    if(!c&&!a){showToast('warning', fpT('Enter at least a city or address'));return;}
     try{
       const r=await apiAction('PUT','/api/org/location',{address:a,city:c,postalCode:p,country:co,latitude:lat,longitude:lng,serviceArea:sa,locationSource:'manual'});
       if(r.ok){
         if(!STATE.me)STATE.me={};
         if(!STATE.me.location)STATE.me.location={};
         Object.assign(STATE.me.location,r.location||{address:a,city:c,postalCode:p,country:co,latitude:lat,longitude:lng,serviceArea:sa,locationConfigured:true,locationSource:'manual'});
-        showToast('success', fpT('📍 Localisation sauvegardée !'));
+        showToast('success', fpT('📍 Location saved!'));
         render();
-      }else{showToast('error',r.error||'Erreur de sauvegarde');}
-    }catch(e){showToast('error', fpT('Erreur réseau — réessayez'));}
+      }else{showToast('error',r.error||fpT('Save error'));}
+    }catch(e){showToast('error', fpT('Network error — try again'));}
   })()`;
 
   const geocodeBtn = `(async()=>{
     const q=document.getElementById('fp-loc-address').value.trim()||document.getElementById('fp-loc-city').value.trim();
-    if(!q){showToast('warning', fpT('Saisissez une adresse ou une ville à géocoder'));return;}
-    showToast('info', fpT('Géocodage en cours…'));
+    if(!q){showToast('warning', fpT('Enter an address or city to geocode'));return;}
+    showToast('info', fpT('Geocoding…'));
     try{
       const r=await apiAction('POST','/api/org/geocode',{address:q});
       if(r.ok){
@@ -66022,19 +66042,19 @@ function renderSettingsLocation() {
         if(r.country)document.getElementById('fp-loc-country').value=r.country;
         if(r.latitude!=null)document.getElementById('fp-loc-lat').value=r.latitude.toFixed(6);
         if(r.longitude!=null)document.getElementById('fp-loc-lng').value=r.longitude.toFixed(6);
-        showToast('success','✓ Coordonnées obtenues : '+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4));
-      }else{showToast('error',r.error||'Adresse introuvable');}
-    }catch(e){showToast('error', fpT('Erreur de géocodage'));}
+        showToast('success','✓ '+fpT('Coordinates found:')+' '+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4));
+      }else{showToast('error',r.error||fpT('Address not found'));}
+    }catch(e){showToast('error', fpT('Geocoding error'));}
   })()`;
 
   const gpsBtn = `(async()=>{
-    if(!navigator.geolocation){showToast('error', fpT('Géolocalisation non supportée par ce navigateur'));return;}
-    showToast('info', fpT('Demande d\'autorisation GPS…'));
+    if(!navigator.geolocation){showToast('error', fpT('Geolocation is not supported by this browser'));return;}
+    showToast('info', fpT('Requesting GPS permission…'));
     navigator.geolocation.getCurrentPosition(async function(pos){
       const lat=pos.coords.latitude;const lng=pos.coords.longitude;
       document.getElementById('fp-loc-lat').value=lat.toFixed(6);
       document.getElementById('fp-loc-lng').value=lng.toFixed(6);
-      showToast('info', fpT('Position obtenue — géocodage inverse…'));
+      showToast('info', fpT('Position found — reverse geocoding…'));
       try{
         const r=await apiAction('POST','/api/org/geocode',{lat,lng});
         if(r.ok){
@@ -66042,18 +66062,18 @@ function renderSettingsLocation() {
           if(r.city)document.getElementById('fp-loc-city').value=r.city;
           if(r.postalCode)document.getElementById('fp-loc-postal').value=r.postalCode;
           if(r.country)document.getElementById('fp-loc-country').value=r.country;
-          showToast('success','📡 Position détectée : '+r.city+', '+r.country);
+          showToast('success','📡 '+fpT('Location detected:')+' '+r.city+', '+r.country);
         }
       }catch(e){showToast('success','📡 GPS : '+lat.toFixed(4)+', '+lng.toFixed(4));}
     },function(err){
-      const msgs={1:'Autorisation refusée — activez la géolocalisation dans votre navigateur',2:'Position indisponible',3:'Délai dépassé'};
-      showToast('error',msgs[err.code]||'Erreur GPS');
+      const msgs={1:'Permission denied — enable geolocation in your browser',2:'Position unavailable',3:'Timed out'};
+      showToast('error',fpT(msgs[err.code]||'GPS error'));
     },{enableHighAccuracy:true,timeout:10000});
   })()`;
 
   const gbpSyncBtn = gbpConnected ? `
     <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(async()=>{
-      showToast('info', fpT('Synchronisation GBP…'));
+           showToast('info', fpT('Syncing Google Business Profile…'));
       try{
         const r=await apiAction('POST','/api/org/location/sync-gbp',{});
         if(r.ok){
@@ -66063,64 +66083,64 @@ function renderSettingsLocation() {
           if(r.country)document.getElementById('fp-loc-country').value=r.country||'';
           if(r.latitude!=null)document.getElementById('fp-loc-lat').value=r.latitude.toFixed(6);
           if(r.longitude!=null)document.getElementById('fp-loc-lng').value=r.longitude.toFixed(6);
-          showToast('success', fpT('🏢 Données GBP importées !'));
-        }else{showToast('error',r.error||'Erreur sync GBP');}
-      }catch(e){showToast('error', fpT('Erreur réseau'));}
+           showToast('success', fpT('🏢 Google Business Profile data imported!'));
+         }else{showToast('error',r.error||fpT('Google Business Profile sync error'));}
+       }catch(e){showToast('error', fpT('Network error'));}
     })()">🏢 Sync Google Business</button>` : '';
 
   return `
     ${configBanner}
     <div class="fp-card" data-fp-anchor="settings-localisation">
       <div class="fp-card-title" style="margin-bottom:4px">
-        📍 Localisation de l'entreprise
-        ${configured ? `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">✓ Configurée</span>` : `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">Non configurée</span>`}
+        📍 ${fpT('Business location')}
+        ${configured ? `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">✓ ${fpT('Configured')}</span>` : `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">${fpT('Not configured')}</span>`}
       </div>
-      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:18px">${configured ? `Source : ${srcLabel} · Utilisée dans tous les modules Local SEO` : 'Renseignez votre adresse pour activer la personnalisation locale complète'}</div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:18px">${configured ? fpT('Source:') + ' ' + srcLabel + ' · ' + fpT('Used across all Local SEO modules') : fpT('Enter your address to enable full local personalization')}</div>
 
       <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpDetectPos()">📡 Détecter ma position</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpGeocodeAddr()">🔍 Géocoder l'adresse</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpDetectPos()">📡 ${fpT('Detect my location')}</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpGeocodeAddr()">🔍 ${fpT('Geocode address')}</button>
         ${gbpSyncBtn}
       </div>
 
       <div class="fp-grid-2" style="gap:14px;margin-bottom:14px">
         <div class="fp-form-group">
-          <label class="fp-form-label">Adresse complète</label>
-          <input class="fp-input" id="fp-loc-address" type="text" placeholder="Ex : 10 allée des Acacias" value="${escHtml(loc.address||'')}"/>
+          <label class="fp-form-label">${fpT('Full address')}</label>
+          <input class="fp-input" id="fp-loc-address" type="text" placeholder="${fpT('e.g. 10 Acacia Lane')}" value="${escHtml(loc.address||'')}"/>
         </div>
         <div class="fp-form-group">
-          <label class="fp-form-label">Ville *</label>
-          <input class="fp-input" id="fp-loc-city" type="text" placeholder="Ex : Lyon" value="${escHtml(loc.city||'')}"/>
+          <label class="fp-form-label">${fpT('City')} *</label>
+          <input class="fp-input" id="fp-loc-city" type="text" placeholder="${fpT('e.g. Lyon')}" value="${escHtml(loc.city||'')}"/>
         </div>
         <div class="fp-form-group">
-          <label class="fp-form-label">Code postal</label>
-          <input class="fp-input" id="fp-loc-postal" type="text" placeholder="Ex : 69001" value="${escHtml(loc.postalCode||'')}"/>
+          <label class="fp-form-label">${fpT('Postal code')}</label>
+          <input class="fp-input" id="fp-loc-postal" type="text" placeholder="e.g. 69001" value="${escHtml(loc.postalCode||'')}"/>
         </div>
         <div class="fp-form-group">
-          <label class="fp-form-label">Pays</label>
+          <label class="fp-form-label">${fpT('Country')}</label>
           <input class="fp-input" id="fp-loc-country" type="text" placeholder="France" value="${escHtml(loc.country||'')}"/>
         </div>
       </div>
 
 
       <div class="fp-form-group" style="margin-bottom:18px">
-        <label class="fp-form-label">Zone desservie <span style="font-weight:400;color:var(--fp-text-faint)">(zones séparées par des virgules)</span></label>
-        <input class="fp-input" id="fp-loc-service" type="text" placeholder="Paris 1er, Paris 2ème, Saint-Denis, Montreuil…" value="${escHtml(serviceAreas.join(', '))}"/>
+        <label class="fp-form-label">${fpT('Service area')} <span style="font-weight:400;color:var(--fp-text-faint)">(${fpT('comma-separated areas')})</span></label>
+        <input class="fp-input" id="fp-loc-service" type="text" placeholder="Paris 1, Paris 2, Saint-Denis, Montreuil…" value="${escHtml(serviceAreas.join(', '))}"/>
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="fp-btn fp-btn-primary" onclick="${saveBtn.replace(/"/g,"'")}">💾 Sauvegarder la localisation</button>
-        ${configured ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpDarkConfirm('Effacer la localisation ?',async function(){try{const r=await apiAction('PUT','/api/org/location',{address:null,city:null,postalCode:null,country:null,latitude:null,longitude:null,serviceArea:[],locationConfigured:false,locationSource:'manual'});if(r.ok){if(STATE.me&&STATE.me.location)STATE.me.location={locationConfigured:false};showToast('success', fpT('Localisation effacée'));render();}else showToast('error', fpT('Erreur'));}catch(e){showToast('error', fpT('Erreur réseau'));}}, 'Effacer la localisation')">🗑 Effacer</button>` : ''}
+        <button class="fp-btn fp-btn-primary" onclick="${saveBtn.replace(/"/g,"'")}">💾 ${fpT('Save location')}</button>
+        ${configured ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.fpDarkConfirm(fpT('Clear location?'),async function(){try{const r=await apiAction('PUT','/api/org/location',{address:null,city:null,postalCode:null,country:null,latitude:null,longitude:null,serviceArea:[],locationConfigured:false,locationSource:'manual'});if(r.ok){if(STATE.me&&STATE.me.location)STATE.me.location={locationConfigured:false};showToast('success', fpT('Location cleared'));render();}else showToast('error', fpT('Error'));}catch(e){showToast('error', fpT('Network error'));}}, fpT('Clear location'))">🗑 ${fpT('Clear')}</button>` : ''}
       </div>
     </div>
 
     ${configured ? `
     <div class="fp-card" style="margin-top:16px">
-      <div class="fp-card-title" style="margin-bottom:14px">📊 Résumé de la localisation active</div>
+      <div class="fp-card-title" style="margin-bottom:14px">📊 ${fpT('Active location summary')}</div>
       <div style="display:flex;flex-wrap:wrap;gap:10px">
-        ${loc.city ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Ville</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.city)}</div></div>` : ''}
-        ${loc.country ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Pays</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.country)}</div></div>` : ''}
-        ${serviceAreas.length > 0 ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Zones desservies</div><div style="font-weight:600;color:var(--fp-text)">${serviceAreas.slice(0,3).map(z=>escHtml(z)).join(' · ')}${serviceAreas.length>3?' + '+(serviceAreas.length-3):''}</div></div>` : ''}
+        ${loc.city ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">${fpT('City')}</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.city)}</div></div>` : ''}
+        ${loc.country ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">${fpT('Country')}</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.country)}</div></div>` : ''}
+        ${serviceAreas.length > 0 ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">${fpT('Service areas')}</div><div style="font-weight:600;color:var(--fp-text)">${serviceAreas.slice(0,3).map(z=>escHtml(z)).join(' · ')}${serviceAreas.length>3?' + '+(serviceAreas.length-3):''}</div></div>` : ''}
       </div>
     </div>` : ''}
   `;
@@ -66130,8 +66150,8 @@ function renderSettingsAPI() {
   return `
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">Clés API FlowPoint</div>
-        ${aiBlock('Vos clés API permettent d\'intégrer FlowPoint dans vos propres outils. Ne partagez jamais votre clé secrète — régénérez-la immédiatement si elle est compromise.',[])}
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('FlowPoint API keys')}</div>
+        ${aiBlock(fpT('Your API keys let you integrate FlowPoint with your own tools. Never share your secret key — regenerate it immediately if it is compromised.'),[])}
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
           ${(()=>{
             const _pk  = STATE.settings?.publicApiKey  || STATE.me?.publicApiKey  || null;
@@ -66141,30 +66161,30 @@ function renderSettingsAPI() {
             const _pkCreated = _fmtD(STATE.settings?.publicApiKeyCreatedAt) || _acctCreated;
             const _skCreated = _fmtD(STATE.settings?.secretApiKeyCreatedAt) || (_sk ? _acctCreated : '—');
             return [
-              { id:'pub', label:'Clé publique (lecture seule)',  key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(non générée — cliquez Régénérer)'), created: _pkCreated },
-              { id:'sec', label:'Clé secrète (accès complet)',   key: _sk  || 'fp_sec_••••••••••••••••••••••••••••••••••••••••••••',                           created: _skCreated },
+              { id:'pub', label:'Public key (read only)',  key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(not generated — click Regenerate)'), created: _pkCreated },
+              { id:'sec', label:'Secret key (full access)',   key: _sk  || 'fp_sec_••••••••••••••••••••••••••••••••••••••••••••',                           created: _skCreated },
             ];
           })().map(k => `
             <div data-apikey-card="${k.id}" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:14px 16px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${k.label}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${fpT(k.label)}</div>
                 <div style="display:flex;gap:6px">
-                  ${badge('Actif','success')}
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._regenerateApiKey('${k.id}',this)">Régénérer</button>
+                  ${badge(fpT('Active'),'success')}
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._regenerateApiKey('${k.id}',this)">${fpT('Regenerate')}</button>
                 </div>
               </div>
               <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);border-radius:6px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
                 <span data-apikey-val="${k.id}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${k.key}</span>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._copyApiKey('${k.id}',this)" style="padding:2px 8px;font-size:10px;flex-shrink:0">Copier</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._copyApiKey('${k.id}',this)" style="padding:2px 8px;font-size:10px;flex-shrink:0">${fpT('Copy')}</button>
               </div>
-              <div style="font-size:10px;color:var(--fp-text-faint);margin-top:6px">Créée le ${k.created}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);margin-top:6px">${fpT('Created on')} ${k.created}</div>
             </div>
           `).join('')}
         </div>
       </div>
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:6px">Webhooks</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Recevez des événements FlowPoint dans vos outils (Zapier, Make, n8n, Slack…)</div>
+        <div class="fp-card-title" style="margin-bottom:6px">${fpT('Webhooks')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">${fpT('Receive FlowPoint events in your tools (Zapier, Make, n8n, Slack…)')}</div>
         ${[
           ...((()=>{
             // Load saved webhooks from Integration Hub data (FP_DATA) if available
@@ -66183,30 +66203,30 @@ function renderSettingsAPI() {
         ].map(w => `
           <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px" data-wh-card data-wh-id="${escHtml(w.id||'')}">
-              <button class="fp-toggle${w.active?' on':''}" onclick="(function(btn){var on=!btn.classList.contains('on');btn.classList.toggle('on',on);var card=btn.closest('[data-wh-card]');var urlEl=card?card.parentElement.querySelector('input.fp-input'):null;var url=urlEl?urlEl.value.trim():'';var badgeEl=card?card.querySelector('[data-wh-badge]'):null;if(!url&&on){showToast('warning', fpT('Entrez une URL pour activer ce webhook'));btn.classList.toggle('on',false);return;}var wid=card?card.dataset.whId:'';var patchFn=wid?apiAction('PATCH','/api/integrations/connections/'+wid,{active:on}):apiAction('POST','/api/integrations/webhooks',{url:url,active:on});patchFn.then(function(r){if(r&&(r.id||r.ok||r.active!==undefined)){if(badgeEl){badgeEl.textContent=on?'Actif':'Inactif';badgeEl.style.background=on?'rgba(34,197,94,0.15)':'rgba(100,116,139,0.15)';badgeEl.style.color=on?'#22c55e':'#94a3b8';}showToast('success',on?'Webhook activé !':'Webhook désactivé');}else{btn.classList.toggle('on',!on);showToast('error', fpT('Erreur sauvegarde'));}}).catch(function(){btn.classList.toggle('on',!on);showToast('error', fpT('Erreur réseau'));});})(this)"></button>
-              <span data-wh-badge style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:${w.active?'rgba(34,197,94,0.15)':'rgba(100,116,139,0.15)'};color:${w.active?'#22c55e':'#94a3b8'}">${w.active?'Actif':'Inactif'}</span>
+              <button class="fp-toggle${w.active?' on':''}" onclick="(function(btn){var on=!btn.classList.contains('on');btn.classList.toggle('on',on);var card=btn.closest('[data-wh-card]');var urlEl=card?card.parentElement.querySelector('input.fp-input'):null;var url=urlEl?urlEl.value.trim():'';var badgeEl=card?card.querySelector('[data-wh-badge]'):null;if(!url&&on){showToast('warning', fpT('Enter a URL to enable this webhook'));btn.classList.toggle('on',false);return;}var wid=card?card.dataset.whId:'';var patchFn=wid?apiAction('PATCH','/api/integrations/connections/'+wid,{active:on}):apiAction('POST','/api/integrations/webhooks',{url:url,active:on});patchFn.then(function(r){if(r&&(r.id||r.ok||r.active!==undefined)){if(badgeEl){badgeEl.textContent=fpT(on?'Active':'Inactive');badgeEl.style.background=on?'rgba(34,197,94,0.15)':'rgba(100,116,139,0.15)';badgeEl.style.color=on?'#22c55e':'#94a3b8';}showToast('success',fpT(on?'Webhook enabled!':'Webhook disabled'));}else{btn.classList.toggle('on',!on);showToast('error', fpT('Save error'));}}).catch(function(){btn.classList.toggle('on',!on);showToast('error', fpT('Network error'));});})(this)"></button>
+              <span data-wh-badge style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:${w.active?'rgba(34,197,94,0.15)':'rgba(100,116,139,0.15)'};color:${w.active?'#22c55e':'#94a3b8'}">${fpT(w.active?'Active':'Inactive')}</span>
             </div>
-            <input class="fp-input" placeholder="https://votre-endpoint.com/webhook" value="${escHtml(w.url)}" style="font-family:var(--fp-font-mono);font-size:11px;margin-bottom:8px"/>
+            <input class="fp-input" placeholder="https://your-endpoint.com/webhook" value="${escHtml(w.url)}" style="font-family:var(--fp-font-mono);font-size:11px;margin-bottom:8px"/>
             <div style="display:flex;gap:8px">
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){var el=btn.parentElement.parentElement.querySelector('input.fp-input');var url=el?el.value.trim():'';if(!url){showToast('error', fpT('Entrez une URL webhook'));return;}apiAction('POST','/api/integrations/webhooks/test',{url:url}).then(r=>{if(r&&(r.ok||r.success)){showToast('success', fpT('Ping de test envoyé !'))}else{showToast('info', fpT('Test indisponible — enregistrez le webhook'))}}).catch(()=>showToast('info', fpT('Test indisponible — enregistrez le webhook')))})(this)">Tester</button>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var urlEl=btn.parentElement.parentElement.querySelector('input.fp-input');var url=urlEl?urlEl.value.trim():'';if(!url){showToast('error', fpT('Entrez une URL webhook'));return;}apiAction('POST','/api/integrations/webhooks',{url:url}).then(r=>{if(r&&r.id)showToast('success', fpT('Webhook sauvegardé !'));else showToast('error', fpT('Erreur sauvegarde'));}).catch(()=>showToast('error', fpT('Erreur sauvegarde')));})(this)">Sauver</button>
-              ${w.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.25)" onclick="window.fpDarkConfirm&&window.fpDarkConfirm('Supprimer ce webhook ?',function(){apiAction('DELETE','/api/integrations/connections/${escHtml(w.id)}').then(function(){showToast('success', fpT('Webhook supprimé'));window._reloadIntgData&&window._reloadIntgData().then(()=>render(STATE.currentSection));}).catch(()=>showToast('error', fpT('Erreur suppression')));})">Supprimer</button>` : ''}
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){var el=btn.parentElement.parentElement.querySelector('input.fp-input');var url=el?el.value.trim():'';if(!url){showToast('error', fpT('Enter a webhook URL'));return;}apiAction('POST','/api/integrations/webhooks/test',{url:url}).then(r=>{if(r&&(r.ok||r.success)){showToast('success', fpT('Test ping sent!'))}else{showToast('info', fpT('Test unavailable — save the webhook'))}}).catch(()=>showToast('info', fpT('Test unavailable — save the webhook')))})(this)">${fpT('Test')}</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var urlEl=btn.parentElement.parentElement.querySelector('input.fp-input');var url=urlEl?urlEl.value.trim():'';if(!url){showToast('error', fpT('Enter a webhook URL'));return;}apiAction('POST','/api/integrations/webhooks',{url:url}).then(r=>{if(r&&r.id)showToast('success', fpT('Webhook saved!'));else showToast('error', fpT('Save error'));}).catch(()=>showToast('error', fpT('Save error')));})(this)">${fpT('Save')}</button>
+              ${w.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.25)" onclick="window.fpDarkConfirm(fpT('Delete this webhook?'),function(){apiAction('DELETE','/api/integrations/connections/${escHtml(w.id)}').then(function(){showToast('success', fpT('Webhook deleted'));window._reloadIntgData&&window._reloadIntgData().then(()=>render(STATE.currentSection));}).catch(()=>showToast('error', fpT('Delete error')));})">${fpT('Delete')}</button>` : ''}
             </div>
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var u=prompt(fpT('URL du webhook (https://…)'));if(!u||!u.trim())return;apiAction('POST','/api/integrations/webhooks',{url:u.trim()}).then(r=>{if(r&&r.id){showToast('success', fpT('Webhook ajouté !'));render(STATE.currentSection)}else{showToast('error', fpT('Erreur lors de la création'))}}).catch(()=>showToast('error', fpT('Erreur lors de la création')))})()">+ Ajouter un webhook</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var u=prompt(fpT('Webhook URL (https://…)'));if(!u||!u.trim())return;apiAction('POST','/api/integrations/webhooks',{url:u.trim()}).then(r=>{if(r&&r.id){showToast('success', fpT('Webhook added!'));render(STATE.currentSection)}else{showToast('error', fpT('Creation error'))}}).catch(()=>showToast('error', fpT('Creation error')))})()">+ ${fpT('Add a webhook')}</button>
       </div>
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">Authentification à deux facteurs (2FA)</div>
+        <div class="fp-card-title" style="margin-bottom:14px">${fpT('Two-factor authentication (2FA)')}</div>
         <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;margin-bottom:14px">
           <div style="width:36px;height:36px;border-radius:10px;background:rgba(100,116,139,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
             ${svgIcon('shield').replace('stroke="currentColor"','stroke="var(--fp-text-faint)"')}
           </div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:700;color:var(--fp-text)">2FA — bientôt disponible</div>
-            <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Authentification via application TOTP (Google Authenticator, Authy)</div>
+            <div style="font-size:13px;font-weight:700;color:var(--fp-text)">2FA — ${fpT('coming soon')}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${fpT('Authentication via a TOTP app (Google Authenticator, Authy)')}</div>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="Bientôt disponible">Activer (bientôt)</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="${fpT('Coming soon')}">${fpT('Enable (coming soon)')}</button>
         </div>
       </div>
     </div>
@@ -76418,8 +76438,8 @@ function renderSettingsSSO() {
     azure_ad:         {name:'Microsoft Azure AD',protocol:'SAML 2.0', plan:'Ultra',icon:'🏢', roadmap:true},
     okta:             {name:'Okta',              protocol:'SAML 2.0', plan:'Ultra',icon:'🔵', roadmap:true},
     onelogin:         {name:'OneLogin',          protocol:'SAML 2.0', plan:'Ultra',icon:'🔶', roadmap:true},
-    saml:             {name:'SAML générique',    protocol:'SAML 2.0', plan:'Ultra',icon:'🔒', roadmap:true},
-    saml_generic:     {name:'SAML générique',    protocol:'SAML 2.0', plan:'Ultra',icon:'🔒', roadmap:true},
+     saml:             {name:'Generic SAML',      protocol:'SAML 2.0', plan:'Ultra',icon:'🔒', roadmap:true},
+     saml_generic:     {name:'Generic SAML',      protocol:'SAML 2.0', plan:'Ultra',icon:'🔒', roadmap:true},
   };
   const rawCatalog = ssoData.providers_catalog || [];
   const catalog = rawCatalog.map(entry =>
@@ -76436,32 +76456,32 @@ function renderSettingsSSO() {
     <div class="fp-section-header">
       <div>
         <h1>🔐 SSO SAML</h1>
-        <div class="fp-section-sub">Google Workspace · Azure AD · Okta · Auth0 · SAML générique</div>
+       <div class="fp-section-sub">Google Workspace · Azure AD · Okta · Auth0 · Generic SAML</div>
       </div>
-      ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showSSOProviderModal()">+ Configurer SSO</button>` : ''}
+       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showSSOProviderModal()">+ ${fpT('Configure SSO')}</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO SAML — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>` : ''}
+     ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SAML SSO — ${fpT('Pro required')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Google Workspace authentication (Pro) and SAML/Okta/Azure (Ultra).')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Upgrade to Pro')}</button></div>` : ''}
 
     ${aiBlock(
-      `${stats.activeProviders || 0} provider${(stats.activeProviders || 0) > 1 ? 's' : ''} SSO actif${(stats.activeProviders || 0) > 1 ? 's' : ''}. ${stats.failedLogins || 0} tentative${(stats.failedLogins || 0) > 1 ? 's' : ''} échouée${(stats.failedLogins || 0) > 1 ? 's' : ''} détectée${(stats.failedLogins || 0) > 1 ? 's' : ''} (dernière heure). ${stats.suspiciousLogins > 0 ? '<strong>⚠️ ' + stats.suspiciousLogins + ' connexion(s) suspecte(s)</strong>' : 'Aucune activité suspecte.'}`,
-      ['Configurer Google Workspace', 'Activer SAML', 'Auditer les connexions']
+       `${fpT('{count} active SSO provider(s).', { count: stats.activeProviders || 0 })} ${fpT('{count} failed sign-in attempt(s) detected in the last hour.', { count: stats.failedLogins || 0 })} ${stats.suspiciousLogins > 0 ? '<strong>⚠️ ' + fpT('{count} suspicious sign-in(s)', { count: stats.suspiciousLogins }) + '</strong>' : fpT('No suspicious activity.')}`,
+       [fpT('Configure Google Workspace'), fpT('Enable SAML'), fpT('Audit sign-ins')]
     )}
 
     <!-- STATS -->
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Providers SSO', String(stats.totalProviders || 0), `${stats.activeProviders || 0} actif(s)`, 'up')}
-      ${statCard('Connexions loggées', String(stats.totalLogins || 0), `${stats.failedLogins || 0} échec(s)`, stats.failedLogins > 0 ? 'down' : 'up')}
-      ${statCard('Sessions actives', String(stats.activeSessions || 0), 'en ce moment', 'up')}
-      ${statCard('Alertes sécurité', String(stats.suspiciousLogins || 0), 'risque score ≥70', stats.suspiciousLogins > 0 ? 'down' : 'up')}
+       ${statCard(fpT('SSO providers'), String(stats.totalProviders || 0), fpT('{count} active', { count: stats.activeProviders || 0 }), 'up')}
+       ${statCard(fpT('Logged sign-ins'), String(stats.totalLogins || 0), fpT('{count} failures', { count: stats.failedLogins || 0 }), stats.failedLogins > 0 ? 'down' : 'up')}
+       ${statCard(fpT('Active sessions'), String(stats.activeSessions || 0), fpT('currently active'), 'up')}
+       ${statCard(fpT('Security alerts'), String(stats.suspiciousLogins || 0), fpT('risk score ≥70'), stats.suspiciousLogins > 0 ? 'down' : 'up')}
     </div>
 
     <!-- TABS -->
     <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--fp-border)">
-      ${[['providers','🔑 Providers'],['policy','⚙️ Policies'],['audit','🔍 Audit Login'],['sessions','👤 Sessions']].map(([id, label]) => `
+       ${[['providers','🔑 Providers'],['policy','⚙️ Policies'],['audit','🔍 Sign-in audit'],['sessions','👤 Sessions']].map(([id, label]) => `
         <button onclick="window._ssoTab='${id}';render(STATE.currentSection)"
           style="padding:10px 16px;border:none;border-bottom:2px solid ${activeTab === id ? 'var(--fp-accent)' : 'transparent'};background:none;color:${activeTab === id ? 'var(--fp-accent)' : 'var(--fp-text-muted)'};font-size:12px;font-weight:${activeTab === id ? '700' : '500'};cursor:pointer">
-          ${label}
+           ${fpT(label)}
         </button>
       `).join('')}
     </div>
@@ -76470,13 +76490,13 @@ function renderSettingsSSO() {
       <!-- ACTIVE PROVIDERS -->
       ${providers.length > 0 ? `
         <div class="fp-card fp-mb-16">
-          <div class="fp-card-title" style="margin-bottom:12px">✅ Providers configurés</div>
+           <div class="fp-card-title" style="margin-bottom:12px">✅ ${fpT('Configured providers')}</div>
           ${providers.map(p => `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="width:8px;height:8px;border-radius:50%;background:${p.enabled ? 'var(--fp-success)' : 'var(--fp-text-faint)'}"></div>
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700">${escHtml(p.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${p.provider_type} · ${p.domain ? '@' + p.domain : 'Tous domaines'}</div>
+                 <div style="font-size:10px;color:var(--fp-text-faint)">${p.provider_type} · ${p.domain ? '@' + p.domain : fpT('All domains')}</div>
               </div>
               <div style="display:flex;gap:6px;align-items:center">
                 <button class="fp-toggle${p.enabled ? ' on' : ''}" onclick="window.FP_SSO_API?.updateProvider('${p.id}',{enabled:${!p.enabled}}).then(()=>{window.FP_SSO_API.load();render(STATE.currentSection)})"></button>
@@ -76489,7 +76509,7 @@ function renderSettingsSSO() {
 
       <!-- CATALOG -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🔑 Providers disponibles</div>
+       <div class="fp-card-title" style="margin-bottom:14px">🔑 ${fpT('Available providers')}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
           ${[
               {name:'Google Workspace', protocol:'OAuth 2.0', plan:'Pro',   id:'google_workspace', icon:'🏢'},
@@ -76498,13 +76518,13 @@ function renderSettingsSSO() {
               {name:'Auth0',            protocol:'OAuth 2.0',plan:'Ultra', id:'auth0',            icon:'⚡'},
               {name:'OneLogin',         protocol:'SAML 2.0', plan:'Ultra', id:'onelogin',         icon:'🔐'},
               {name:'GitHub OAuth',     protocol:'OAuth 2.0',plan:'Pro',   id:'github',           icon:'🐙'},
-              {name:'SAML générique',   protocol:'SAML 2.0', plan:'Ultra', id:'saml_generic',     icon:'🔑'},
+               {name:'Generic SAML',     protocol:'SAML 2.0', plan:'Ultra', id:'saml_generic',     icon:'🔑'},
             ].concat(catalog||[]).filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i).map(p => `
               <div style="padding:14px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:var(--fp-inner-card)">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                   <span style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">${SSO_LOGOS[p.id] || '<span>'+p.icon+'</span>'}</span>
                   <div style="flex:1">
-                    <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">${escHtml(p.name)}<span style="font-size:9px;font-weight:700;padding:1px 6px;background:rgba(99,102,241,0.12);color:#6366f1;border-radius:8px;border:1px solid rgba(99,102,241,0.3)">Bientôt disponible</span></div>
+                     <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">${escHtml(CATALOG_META[p.id] ? fpT(p.name) : p.name)}<span style="font-size:9px;font-weight:700;padding:1px 6px;background:rgba(99,102,241,0.12);color:#6366f1;border-radius:8px;border:1px solid rgba(99,102,241,0.3)">${fpT('Coming soon')}</span></div>
                     <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.protocol||'SSO')} · ${escHtml(p.plan||'')}</div>
                   </div>
                 </div>
@@ -76515,7 +76535,7 @@ function renderSettingsSSO() {
       </div>
     ` : activeTab === 'policy' ? `
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:16px">⚙️ Politiques d\'authentification enterprise</div>
+       <div class="fp-card-title" style="margin-bottom:16px">⚙️ ${fpT('Enterprise authentication policies')}</div>
         <div style="display:flex;flex-direction:column;gap:12px">
           ${[
             {label:'Forcer le SSO pour tous', desc:'Les membres ne peuvent se connecter que via SSO', id:'enforce_sso', active:false, req:'Pro'},
@@ -76529,8 +76549,8 @@ function renderSettingsSSO() {
             return `
               <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);opacity:${locked ? '0.5' : '1'}">
                 <div style="flex:1">
-                  <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${pol.label}</div>
-                  <div style="font-size:11px;color:var(--fp-text-faint)">${pol.desc}</div>
+                   <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${fpT(pol.label)}</div>
+                   <div style="font-size:11px;color:var(--fp-text-faint)">${fpT(pol.desc)}</div>
                 </div>
                 <span style="font-size:9px;color:var(--fp-text-faint);margin-right:4px">${pol.req}</span>
                 ${locked
@@ -76542,27 +76562,27 @@ function renderSettingsSSO() {
           }).join('')}
         </div>
         <div style="margin-top:14px">
-          <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Domaines autorisés (séparés par virgule)</label>
-          <input class="fp-input" placeholder="votre-domaine.com, filiale.fr" ${isStd ? 'disabled' : ''}/>
+           <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Allowed domains (comma-separated)')}</label>
+           <input class="fp-input" placeholder="your-domain.com, subsidiary.com" ${isStd ? 'disabled' : ''}/>
         </div>
         <div style="margin-top:10px;display:flex;justify-content:flex-end">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){var form=document.querySelector('.fp-sso-policies');var data={};form&&form.querySelectorAll('[data-policy]').forEach(t=>{data[t.dataset.policy]=t.classList.contains('on');});apiAction('PATCH','/api/sso/policies',data).then(r=>showToast('success', fpT('Politiques sauvegardées'))).catch(()=>showToast('error', fpT('Erreur sauvegarde')));})()">Sauvegarder</button>
+           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){var form=document.querySelector('.fp-sso-policies');var data={};form&&form.querySelectorAll('[data-policy]').forEach(t=>{data[t.dataset.policy]=t.classList.contains('on');});apiAction('PATCH','/api/sso/policies',data).then(r=>showToast('success', fpT('Policies saved'))).catch(()=>showToast('error', fpT('Save error')));})()">${fpT('Save')}</button>
         </div>
       </div>
     ` : activeTab === 'audit' ? `
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🔍 Journal de connexions</div>
+         <div class="fp-card-title" style="margin-bottom:14px">🔍 ${fpT('Sign-in log')}</div>
         ${audits.length === 0 ? `
-          <div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">Aucune connexion loggée.</div>
+           <div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">${fpT('No sign-ins logged.')}</div>
         ` : `
           <div style="overflow-x:auto">
             <table class="fp-data-table">
-              <thead><tr><th>Email</th><th>Provider</th><th style="text-align:center">Statut</th><th>IP</th><th style="text-align:center">Risque</th><th>Date</th></tr></thead>
+               <thead><tr><th>Email</th><th>Provider</th><th style="text-align:center">${fpT('Status')}</th><th>IP</th><th style="text-align:center">${fpT('Risk')}</th><th>${fpT('Date')}</th></tr></thead>
               <tbody>
                 ${audits.filter(a => !a.created_at || (Date.now() - new Date(a.created_at).getTime()) < 86400000).slice(0, 20).map(a => `<tr>
                   <td style="font-size:12px">${escHtml(a.email || '—')}</td>
                   <td style="font-size:11px;color:var(--fp-text-faint)">${a.provider || '—'}</td>
-                  <td style="text-align:center"><span style="font-size:10px;font-weight:700;color:${a.success ? 'var(--fp-success)' : 'var(--fp-danger)'}">${a.success ? '✓ OK' : '✗ Échec'}</span></td>
+                   <td style="text-align:center"><span style="font-size:10px;font-weight:700;color:${a.success ? 'var(--fp-success)' : 'var(--fp-danger)'}">${a.success ? '✓ ' + fpT('Success') : '✗ ' + fpT('Failed')}</span></td>
                   <td style="font-size:10px;color:var(--fp-text-faint)">${a.ip_address || '—'}</td>
                   <td style="text-align:center"><span style="font-size:10px;color:${a.risk_score >= 70 ? 'var(--fp-danger)' : a.risk_score >= 40 ? 'var(--fp-warning)' : 'var(--fp-success)'}">${a.risk_score || 0}</span></td>
                   <td style="font-size:10px;color:var(--fp-text-faint)">${a.created_at ? new Date(a.created_at).toLocaleString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
@@ -76572,23 +76592,23 @@ function renderSettingsSSO() {
           </div>
         `}
         <div style="margin-top:12px;display:flex;justify-content:center">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info', fpT('Test de connexion loggé'));window.FP_SSO_API?.load()">🧪 Logger connexion test</button>
+           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info', fpT('Test sign-in logged'));window.FP_SSO_API?.load()">🧪 ${fpT('Log test sign-in')}</button>
         </div>
       </div>
     ` : `
       <!-- SESSIONS -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">👤 Sessions actives</div>
-        ${sessions.length === 0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">Aucune session SSO active.</div>` : `
+         <div class="fp-card-title" style="margin-bottom:14px">👤 ${fpT('Active sessions')}</div>
+         ${sessions.length === 0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">${fpT('No active SSO sessions.')}</div>` : `
           <div style="display:flex;flex-direction:column;gap:6px">
             ${sessions.map(s => `
               <div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:8px;border:1px solid var(--fp-border)">
                 <div style="width:8px;height:8px;border-radius:50%;background:var(--fp-success)"></div>
                 <div style="flex:1">
                   <div style="font-size:12px;font-weight:600">${escHtml(s.email || s.user_id || '—')}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">${s.provider || ''} · ${s.ip_address || ''} · ${s.last_active_at ? 'Actif ' + new Date(s.last_active_at).toLocaleString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+                   <div style="font-size:10px;color:var(--fp-text-faint)">${s.provider || ''} · ${s.ip_address || ''} · ${s.last_active_at ? fpT('Active') + ' ' + new Date(s.last_active_at).toLocaleString(getLocale(),{hour:'2-digit',minute:'2-digit'}) : ''}</div>
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_SSO_API && apiFetch('/api/sso/sessions/${s.id}/invalidate',{method:'POST',body:JSON.stringify({})}).then(()=>{showToast('success', fpT('Session révoquée'));window.FP_SSO_API.load();render(STATE.currentSection)})">Révoquer</button>
+                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_SSO_API && apiFetch('/api/sso/sessions/${s.id}/invalidate',{method:'POST',body:JSON.stringify({})}).then(()=>{showToast('success', fpT('Session revoked'));window.FP_SSO_API.load();render(STATE.currentSection)})">${fpT('Revoke')}</button>
               </div>
             `).join('')}
           </div>
@@ -76599,20 +76619,20 @@ function renderSettingsSSO() {
     <!-- SSO PROVIDER MODAL -->
     <div id="fp-sso-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
       <div class="fp-card" style="width:460px;max-width:92vw;padding:24px">
-        <div id="fp-sso-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">🔐 Configurer SSO</div>
+         <div id="fp-sso-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">🔐 ${fpT('Configure SSO')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          <input id="sso-name" class="fp-input" placeholder="Nom (ex: Google Workspace ACME)"/>
-          <input id="sso-domain" class="fp-input" placeholder="Domaine (ex: acme.com)"/>
+           <input id="sso-name" class="fp-input" placeholder="${fpT('Name (e.g. Google Workspace ACME)')}"/>
+           <input id="sso-domain" class="fp-input" placeholder="${fpT('Domain (e.g. acme.com)')}"/>
           <input id="sso-client-id" class="fp-input" placeholder="Client ID / Entity ID"/>
           <input id="sso-client-secret" class="fp-input" type="password" placeholder="Client Secret / Certificate"/>
           <input id="sso-metadata-url" class="fp-input" placeholder="Metadata URL (SAML) ou Authorization URL"/>
           <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-            ℹ️ En production, le flux SSO redirige vers votre Identity Provider pour authentification sécurisée.
+             ℹ️ ${fpT('In production, SSO redirects to your Identity Provider for secure authentication.')}
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-sso-modal').style.display='none'">Annuler</button>
-          <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">Configurer</button>
+           <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-sso-modal').style.display='none'">${fpT('Cancel')}</button>
+           <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">${fpT('Configure')}</button>
         </div>
       </div>
     </div>

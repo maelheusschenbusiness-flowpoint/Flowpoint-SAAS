@@ -12,6 +12,10 @@ const billingI18nSource = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/billing-i18n-en.js"),
   "utf8",
 );
+const settingsI18nSource = readFileSync(
+  resolve(process.cwd(), "../flowpoint-export/settings-i18n-en.js"),
+  "utf8",
+);
 const dashboardHtml = readFileSync(
   resolve(process.cwd(), "../flowpoint-export/dashboard.html"),
   "utf8",
@@ -57,6 +61,16 @@ const sourceFiles = [
     source: ts.createSourceFile(
       "billing-i18n-en.js",
       billingI18nSource,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    ),
+  },
+  {
+    fileName: "settings-i18n-en.js",
+    source: ts.createSourceFile(
+      "settings-i18n-en.js",
+      settingsI18nSource,
       ts.ScriptTarget.Latest,
       true,
       ts.ScriptKind.JS,
@@ -308,7 +322,7 @@ for (const { source } of sourceFiles) {
     if (
       !ts.isVariableDeclaration(node) ||
       !ts.isIdentifier(node.name) ||
-      !["FP_I18N_EN", "FP_I18N_EN_EXTRA", "FP_I18N_EN_BILLING"].includes(node.name.text) ||
+       !["FP_I18N_EN", "FP_I18N_EN_EXTRA", "FP_I18N_EN_BILLING", "FP_I18N_EN_SETTINGS"].includes(node.name.text) ||
       !node.initializer ||
       !ts.isObjectLiteralExpression(node.initializer)
     ) {
@@ -319,6 +333,36 @@ for (const { source } of sourceFiles) {
       if (
         !ts.isPropertyAssignment(property) ||
         !property.name ||
+        (!ts.isStringLiteral(property.name) && !ts.isIdentifier(property.name))
+      ) {
+        continue;
+      }
+      englishKeys.add(property.name.text);
+      if (
+        (ts.isStringLiteral(property.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(property.initializer)) &&
+        !englishTranslations.has(property.name.text)
+      ) {
+        englishTranslations.set(property.name.text, property.initializer.text);
+      }
+    }
+  });
+}
+for (const { fileName, source } of sourceFiles) {
+  if (fileName !== "settings-i18n-en.js") continue;
+  walk(source, (node) => {
+    if (
+      !ts.isBinaryExpression(node) ||
+      node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+      !ts.isPropertyAccessExpression(node.left) ||
+      node.left.name.text !== "FP_I18N_EN_SETTINGS" ||
+      !ts.isObjectLiteralExpression(node.right)
+    ) {
+      return;
+    }
+    for (const property of node.right.properties) {
+      if (
+        !ts.isPropertyAssignment(property) ||
         (!ts.isStringLiteral(property.name) && !ts.isIdentifier(property.name))
       ) {
         continue;
@@ -383,6 +427,37 @@ function staticTemplateText(node: ts.Expression): string | null {
     node.head,
     ...node.templateSpans.map((span) => span.literal),
   ].map((part) => part.text).join(" __FP_DYNAMIC__ ");
+}
+
+function staticHtmlText(node: ts.Expression): string | null {
+  const raw = staticTemplateText(node);
+  if (raw === null) return null;
+  let text = "";
+  let inTag = false;
+  let quote = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (!inTag && char === "<" && /[a-z/!]/i.test(raw[i + 1] || "")) {
+      inTag = true;
+      continue;
+    }
+    if (inTag) {
+      if (quote) {
+        if (char === quote) quote = "";
+      } else if (char === "'" || char === '"' || char === "`") {
+        quote = char;
+      } else if (char === ">") {
+        inTag = false;
+        text += " ";
+      }
+      continue;
+    }
+    text += char;
+  }
+  return text
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/gi, " ")
+    .replace(/__FP_DYNAMIC__/g, " ");
 }
 
 describe("private dashboard static English localization", () => {
@@ -1958,6 +2033,98 @@ describe("private dashboard static English localization", () => {
     ]) {
       expect(dashboardSource).toContain(binding);
     }
+  });
+
+  it("translates static English-copy gaps across the Settings routes", () => {
+    const settingsFunctions = new Set([
+      "renderSettings",
+      "renderAlertRules",
+      "renderSettingsLocation",
+      "renderSettingsAPI",
+      "renderSettingsSSO",
+    ]);
+    const frenchSettingsCopy =
+      /[àâäçéèêëîïôöùûüÿœæ]|\b(?:de|du|des|la|le|les|votre|vos|pour|avec|dans|sur|et|au|aux|par|tous|toute|actif|actifs|activité|sessions|membres|équipe|rôles|permissions|module|profil|organisation|apparence|personnalisation|thème|langue|format|date|fuseau|horaire|adresse|ville|pays|téléphone|sauvegarder|configurer|activer|désactiver|terminer|historique|connexion|alertes|sécurité|données|stockage|rétention|webhook|intégration|règles|lancer|utiliser|workflow|automatisation|création|résumé|aucune|aucun|disponible|bientôt|prochain|erreur|complet|site|rapport|régénérer|copier|créée|nom|statut|fichier|export|import|corbeille|requis|intensité|préférence)\b/i;
+    const untranslated: Array<{ functionName: string; line: number; text: string }> = [];
+
+    walk(sourceFiles[0].source, (node) => {
+      if (
+        !ts.isFunctionDeclaration(node) ||
+        !node.name ||
+        !settingsFunctions.has(node.name.text) ||
+        !node.body
+      ) {
+        return;
+      }
+      walk(node.body, (child) => {
+        if (!ts.isTemplateExpression(child) && !ts.isNoSubstitutionTemplateLiteral(child)) return;
+        if (hasCompositionAncestor(child, node.body!)) return;
+        const visible = staticHtmlText(child);
+        if (visible === null) return;
+        if (/\b(?:apiAction|showToast|document|window|STATE|const|await|Promise|fetch|function|return|setTimeout)\b/.test(visible)) {
+          return;
+        }
+        if (frenchSettingsCopy.test(visible)) {
+          untranslated.push({
+            functionName: node.name!.text,
+            line: sourceFiles[0].source.getLineAndCharacterOfPosition(child.getStart(sourceFiles[0].source)).line + 1,
+            text: visible.replace(/\s+/g, " ").trim().slice(0, 180),
+          });
+        }
+      });
+    });
+
+    expect(untranslated).toEqual([]);
+  });
+
+  it("translates all app-authored Integration template names and descriptions", () => {
+    const templates: Array<{ name: string; description: string }> = [];
+    walk(sourceFiles[0].source, (node) => {
+      if (
+        !ts.isCallExpression(node) ||
+        callName(node.expression) !== "T" ||
+        node.arguments.length < 8
+      ) {
+        return;
+      }
+      const name = node.arguments[1];
+      const description = node.arguments[7];
+      if (
+        (ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) &&
+        (ts.isStringLiteral(description) ||
+          ts.isNoSubstitutionTemplateLiteral(description))
+      ) {
+        templates.push({ name: name.text, description: description.text });
+      }
+    });
+
+    expect(templates).toHaveLength(288);
+    for (const template of templates) {
+      expect(englishKeys.has(template.name), `Missing English name: ${template.name}`).toBe(true);
+      expect(
+        englishKeys.has(template.description),
+        `Missing English description: ${template.description}`,
+      ).toBe(true);
+    }
+    expect(dashboardSource).toContain("escHtml(fpT(t.name))");
+    expect(dashboardSource).toContain("escHtml(fpT(t.description||''))");
+    expect(dashboardSource).toContain(
+      "window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}')",
+    );
+
+    const settingsScript = dashboardHtml.indexOf('src="settings-i18n-en.js');
+    const dashboardScript = dashboardHtml.indexOf('src="dashboard.js');
+    expect(settingsScript).toBeGreaterThan(-1);
+    expect(settingsScript).toBeLessThan(dashboardScript);
+  });
+
+  it("translates built-in workflow template copy without changing saved workflow names", () => {
+    expect(dashboardSource).toContain("escHtml(fpT(t.name))");
+    expect(dashboardSource).toContain("escHtml(fpT(t.desc))");
+    expect(dashboardSource).toContain("escHtml(wf.name)");
+    expect(dashboardSource).toContain(
+      "window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')",
+    );
   });
 
   it("keeps static dashboard and add-on translation keys in the English catalogue", () => {
