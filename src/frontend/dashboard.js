@@ -10014,10 +10014,10 @@ function renderTeam() {
     <!-- AI BLOCK -->
     ${aiBlock(
       STATE.team && STATE.team.length > 1
-        ? `Équipe de <strong>${STATE.team.length} membres</strong> configurée. ${STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.filter(m=>m.status!=='done').length) + ' mission(s) en cours.' : ''} Vérifiez les permissions et assignez des tâches pour optimiser la collaboration.`
+        ? `${fpT('Équipe de')} <strong>${STATE.team.length} ${fpT('membres')}</strong> ${fpT('configurée.')}${STATE.missions && STATE.missions.length > 0 ? ' ' + fpT('{count} mission(s) en cours.', {count:STATE.missions.filter(m=>m.status!=='done').length}) : ''} ${fpT('Vérifiez les permissions et assignez des tâches pour optimiser la collaboration.')}`
         : STATE.team && STATE.team.length === 1
-          ? "Vous êtes seul dans l'espace de travail. Invitez un collaborateur pour déléguer les audits et rapports — gain estimé : <strong>3h/semaine</strong>."
-          : "Configurez votre équipe pour déléguer audits, rapports et monitoring. Commencez par inviter un collaborateur.",
+          ? fpT("Vous êtes seul dans l'espace de travail. Invitez un collaborateur pour déléguer les audits et rapports — gain estimé : {hours}h/semaine.", {hours:3})
+          : fpT("Configurez votre équipe pour déléguer audits, rapports et monitoring. Commencez par inviter un collaborateur."),
       ['IA : Inviter un membre', 'IA : Configurer les permissions', 'IA : Voir les tâches']
     )}
 
@@ -10034,8 +10034,8 @@ function renderTeam() {
       <div style="display:flex;flex-direction:column">
         <div class="fp-table-wrap fp-mb-16">
           <div style="padding:14px 20px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})()} seats)</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? (STATE.pendingInvitations||[]).length + ' invitation(s) en attente · ' : ''}${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _lm-_us;})()} siège(s) libre(s)</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${fpT('Membres')} (${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})()} seats)</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${(STATE.pendingInvitations||[]).length > 0 ? fpT('{count} invitation(s) en attente · ', {count:(STATE.pendingInvitations||[]).length}) : ''}${fpT('{count} siège(s) libre(s)', {count:(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _lm-_us;})()})}</div>
           </div>
           ${(STATE.team||[]).map((t,i)=>`
             <div class="fp-team-member-row" data-member-id="${t.id}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:${i<STATE.team.length-1?'1px solid rgba(255,255,255,0.04)':'none'}">
@@ -10053,7 +10053,7 @@ function renderTeam() {
           `).join('')}
           <div style="padding:10px 20px;border-top:1px solid var(--fp-border)">
             <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return Math.min(100,_us/_lm*100);})()} %;background:#2563EB"></div></div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})()} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${(function(){var _sc={standard:1,pro:5,ultra:10,agency:10};var _ap=((STATE.billing&&STATE.billing.plan)||(me&&me.plan)||'standard').toLowerCase();var _lm=Math.max((STATE.seatUsage&&STATE.seatUsage.limit)||0,(me&&me.limits&&me.limits.teamMembers)||0,_sc[_ap]||1,1+((me&&me.addons&&me.addons.extraSeats)||0))||1;var _us=(STATE.seatUsage&&STATE.seatUsage.used)||((STATE.team||[]).length||1);return _us+'/'+_lm;})()} seats · ${btn(fpT('Ajouter des sièges'),'fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
           </div>
         </div>
 
@@ -10093,10 +10093,10 @@ function renderTeam() {
       <div style="display:flex;flex-direction:column;gap:14px">
         <div class="fp-card" style="display:flex;flex-direction:column">
           <div class="fp-flex-between" style="margin-bottom:12px">
-            <div class="fp-card-title" style="margin-bottom:0">${svgIcon('message-square').replace('stroke="currentColor"','stroke="#2563EB"')} Chat d\'équipe</div>
+            <div class="fp-card-title" style="margin-bottom:0">${svgIcon('message-square').replace('stroke="currentColor"','stroke="#2563EB"')} ${fpT('Chat d\'équipe')}</div>
             <div style="display:flex;align-items:center;gap:6px">
               <select id="team-chat-channel" onchange="STATE.msgChannel=this.value;showToast('info','Canal : '+this.options[this.selectedIndex].text);render()" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">
-                ${(STATE.channels && STATE.channels.length > 0 ? STATE.channels : ['general','seo','rapports']).map(c => `<option value="${escHtml(c)}" ${(STATE.msgChannel||'general')===c?'selected':''}>#${escHtml(c==='general'?'général':c)}</option>`).join('')}
+                ${(STATE.channels && STATE.channels.length > 0 ? STATE.channels : ['general','seo','rapports']).map(c => `<option value="${escHtml(c)}" ${(STATE.msgChannel||'general')===c?'selected':''}>#${escHtml(c==='general'?fpT('général'):c==='rapports'?fpT('rapports'):c)}</option>`).join('')}
               </select>
               <button onclick="openNewChannelPanel()" title="${fpT('Créer ou gérer les canaux')}" style="font-size:11px;padding:3px 8px;border-radius:8px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.08);color:#2563EB;cursor:pointer;font-weight:600">+ Canal</button>
             </div>
@@ -14016,8 +14016,15 @@ function renderAI() {
 
       ${aiBlock(
         _aiScore != null
-          ? `Score SEO global : <strong>${_aiScore}/100</strong>. ${(STATE.monitors||[]).filter(m=>m.status==='down').length>0?'⚠️ '+((STATE.monitors||[]).filter(m=>m.status==='down').length)+' monitor(s) DOWN. ':''} ${(STATE.missions||[]).filter(m=>m.priority==='critical'&&m.status!=='done').length>0?((STATE.missions||[]).filter(m=>m.priority==='critical'&&m.status!=='done').length)+' mission(s) critique(s) en attente. ':''} L\'IA surveille vos systèmes en temps réel.`
-          : "Configurez vos audits, monitors et analytics pour activer les insights IA personnalisés de votre workspace.",
+          ? [
+              fpT('Score SEO global : {score}.', {score:_aiScore + '/100'}),
+              ...((STATE.monitors||[]).filter(m=>m.status==='down').length > 0
+                ? [fpT('{count} monitor(s) DOWN.', {count:(STATE.monitors||[]).filter(m=>m.status==='down').length})] : []),
+              ...((STATE.missions||[]).filter(m=>m.priority==='critical'&&m.status!=='done').length > 0
+                ? [fpT('{count} mission(s) critique(s) en attente.', {count:(STATE.missions||[]).filter(m=>m.priority==='critical'&&m.status!=='done').length})] : []),
+              fpT("L'IA surveille vos systèmes en temps réel."),
+            ].join(' ')
+          : fpT("Configurez vos audits, monitors et analytics pour activer les insights IA personnalisés de votre workspace."),
         ['Analyser mes audits', 'Voir les missions', 'Rapport IA']
       )}
 
@@ -14140,7 +14147,7 @@ function renderAI() {
         <div><h1>${fpT('Insights & Recommandations IA')}</h1>
         <div class="fp-section-sub">${fpT('Analyse proactive de votre workspace · Mis à jour en temps réel')}</div></div>
         <div class="fp-section-actions">
-          <span style="font-size:11px;color:var(--fp-text-faint)">${insights.length} insight${insights.length>1?'s':''} actif${insights.length>1?'s':''}</span>
+          <span style="font-size:11px;color:var(--fp-text-faint)">${insights.length === 1 ? fpT('1 insight actif') : fpT('{count} insights actifs', {count:insights.length})}</span>
         </div>
       </div>
       <div class="fp-stat-row fp-mb-20">
@@ -24811,6 +24818,192 @@ function bindGlobalEvents() {
     "Logo partenaires": "Partner logos",
     "Titre H2 (zone inactive)": "H2 heading (inactive area)",
     "Colonne prix Pro vs Ultra": "Pro vs Ultra pricing column",
+    "Trafic & Sources": "Traffic & Sources",
+    "Funnels & Parcours": "Funnels & Journeys",
+    "Permissions & Accès": "Permissions & Access",
+    "Présence GBP": "GBP Presence",
+    "IA Analyse": "AI Analysis",
+    "Membres": "Members",
+    "Membres actifs": "Active members",
+    "Chat d'équipe": "Team chat",
+    "général": "General",
+    "rapports": "reports",
+    "Ajouter des sièges": "Add seats",
+    "siège(s) libre(s)": "seats available",
+    "{count} siège(s) libre(s)": "{count} seats available",
+    "{count} invitation(s) en attente · ": "{count} pending invitation(s) · ",
+    "Équipe de": "Team of",
+    "membres": "members",
+    "configurée.": "is set up.",
+    "{count} mission(s) en cours.": "{count} mission(s) in progress.",
+    "Vérifiez les permissions et assignez des tâches pour optimiser la collaboration.": "Check permissions and assign tasks to improve collaboration.",
+    "Vous êtes seul dans l'espace de travail. Invitez un collaborateur pour déléguer les audits et rapports — gain estimé : {hours}h/semaine.": "You're the only member in this workspace. Invite a teammate to delegate audits and reports — estimated time saved: {hours}h/week.",
+    "Configurez votre équipe pour déléguer audits, rapports et monitoring. Commencez par inviter un collaborateur.": "Set up your team to delegate audits, reports, and monitoring. Start by inviting a teammate.",
+    "{name} pilote l'activité ({audits} audit(s) · {reports} rapport(s)). Score SEO moyen : {score}.": "{name} leads activity ({audits} audit(s) · {reports} report(s)). Average SEO score: {score}.",
+    "{audits} audit(s) réalisé(s) · {reports} rapport(s) généré(s). Score SEO moyen : {score}.": "{audits} audit(s) completed · {reports} report(s) generated. Average SEO score: {score}.",
+    "Les métriques d'équipe sont indisponibles pour le moment.": "Team metrics are currently unavailable.",
+    "Activité et contributions individuelles · {month}": "Individual activity and contributions · {month}",
+    "Aucun membre dans l'équipe pour le moment": "No team members yet.",
+    "Échéance : {date}": "Due: {date}",
+    "par": "by",
+    "Score SEO global : {score}.": "Overall SEO score: {score}.",
+    "{count} monitor(s) DOWN.": "{count} monitor(s) DOWN.",
+    "{count} mission(s) critique(s) en attente.": "{count} critical mission(s) pending.",
+    "L'IA surveille vos systèmes en temps réel.": "AI is monitoring your systems in real time.",
+    "Configurez vos audits, monitors et analytics pour activer les insights IA personnalisés de votre workspace.": "Set up audits, monitors, and analytics to enable personalized AI insights for your workspace.",
+    "1 insight actif": "1 active insight",
+    "{count} insights actifs": "{count} active insights",
+    "🔍 Trafic Organique — Analyse SEO": "🔍 Organic Traffic — SEO Analysis",
+    "💰 Trafic Payant — Google Ads, Meta Ads…": "💰 Paid Traffic — Google Ads, Meta Ads…",
+    "Entonnoirs non disponibles": "Funnels unavailable",
+    "🔬 Analyse Root Cause — IA": "🔬 AI Root Cause Analysis",
+    "Incident Response — Pro requis": "Incident Response — Pro required",
+    "Latence par site — Alerte seuil 500ms": "Latency by site — 500 ms threshold alert",
+    "Latence maximale :": "Maximum latency:",
+    ". Uptime moyen :": ". Average uptime:",
+    "— latence > 500ms ou DOWN. Action requise.": "— latency > 500 ms or DOWN. Action required.",
+    "Performance Alerts — Pro requis": "Performance Alerts — Pro required",
+    "⭐ Statistiques avis Google": "⭐ Google review statistics",
+    "Mouvements concurrents — Radar IA": "Competitor movements — AI radar",
+    "Intelligence concurrentielle — Pro requis": "Competitive intelligence — Pro required",
+    "Risques détectés — Données réelles": "Detected risks — real data",
+    "IA Threat Lab — Ultra requis": "AI Threat Lab — Ultra required",
+    "Tableau de bord threat intelligence — 8 scores clés": "Threat intelligence dashboard — 8 key scores",
+    "IA Alert Intelligence — Ultra requis": "AI Alert Intelligence — Ultra required",
+    "SLA & Uptime — Tableau de bord": "SLA & Uptime Dashboard",
+    ". Aucun incident actif. Tous les sites respectent leur SLA.": ". No active incidents. All sites meet their SLA.",
+    "IA & Automations — Ultra requis": "AI & Automations — Ultra required",
+    "Mouvements marché — Timeline mai 2026": "Market movements — May 2026 timeline",
+    "Veille concurrentielle — Pro requis": "Competitor monitoring — Pro required",
+    "Scores opérationnels — Analyse IA": "Operational scores — AI analysis",
+    "Ops Lab — Ultra requis": "Ops Lab — Ultra required",
+    "membres actifs": "active members",
+    "Scores opérationnels — Intelligence workspace": "Operational scores — workspace intelligence",
+    "Évolution du trafic — 8 mois": "Traffic trends — 8 months",
+    "Analyse par source de trafic": "Traffic source analysis",
+    "User Behavior Lab — Pro requis": "User Behavior Lab — Pro required",
+    "Chargement des données mesurées…": "Loading measured data…",
+    "Aucun audit mesuré sur les 90 derniers jours.": "No measured audits in the last 90 days.",
+    "Aucune mission enregistrée sur les 90 derniers jours.": "No missions recorded in the last 90 days.",
+    "Nom du dashboard *": "Dashboard name *",
+    "Icône": "Icon",
+    "🔵 Bleu (défaut)": "🔵 Blue (default)",
+    "Créer le dashboard": "Create dashboard",
+    "Résumé du contenu ou du client cible": "Summary of the content or target client",
+    "Aucun dashboard créé": "No dashboards created",
+    "pour configurer votre premier dashboard personnalisé.": "to set up your first custom dashboard.",
+    "Aucun widget configuré.": "No widgets configured.",
+    "IA Insights Center — Ultra requis": "AI Insights Center — Ultra required",
+    "Prévision de trafic — 6 prochains mois": "Traffic forecast — next 6 months",
+    "Prévision de trafic fondée sur GSC . Confiance :": "GSC-based traffic forecast. Confidence:",
+    "Forecasting Lab — Ultra requis": "Forecasting Lab — Ultra required",
+    "Rapports et exports disponibles": "Available reports and exports",
+    "disponible à l'export.": "available for export.",
+    "Sources de trafic — Répartition": "Traffic sources — breakdown",
+    "Analyse →": "Analyze →",
+    "Corrélations IA inter-métriques": "Cross-metric AI correlations",
+    "Patterns IA détectés": "AI-detected patterns",
+    "IA Business Intelligence — Ultra requis": "AI Business Intelligence — Ultra required",
+    "Historique des rapports": "Report history",
+    "Fils de discussion client": "Client discussion threads",
+    "Répondre à …": "Reply to …",
+    "Démarré le": "Started on",
+    "Engagement client — Analyse détaillée": "Client engagement — detailed analysis",
+    "Risque churn": "Churn risk",
+    "Analytics & Engagement — Ultra requis": "Analytics & Engagement — Ultra required",
+    "🎨 Configuration white-label": "🎨 White-label setup",
+    "Votre agence gère": "Your agency manages",
+    "Impossible de charger les templates enregistrés.": "Unable to load saved templates.",
+    "Aucun template white-label enregistré.": "No saved white-label templates.",
+    "Intelligence client — Scores clés": "Client intelligence — key scores",
+    "Client Intelligence IA — Ultra requis": "AI Client Intelligence — Ultra required",
+    "🚦 Trafic & Sources": "🚦 Traffic & Sources",
+    "sessions · % du total": "sessions · % of total",
+    "📊 Performance par site —": "📊 Performance by site —",
+    "Analyse PageSpeed Insights · Core Web Vitals · Optimisations": "PageSpeed Insights analysis · Core Web Vitals · optimizations",
+    "Lancez une analyse pour voir les données .": "Run an analysis to view the data.",
+    "total · s économisables": "total · s recoverable",
+    "Comparaison →": "Compare →",
+    "Analysé le": "Analyzed on",
+    "Comparaison Mobile vs Desktop": "Mobile vs Desktop comparison",
+    "Audit technique requis": "Technical audit required",
+    "économisables": "recoverable",
+    "problème identifié": "issue identified",
+    "Connectez GitHub": "Connect GitHub",
+    "Connectez Google Search Console": "Connect Google Search Console",
+    "🔑 Tous les mots-clés — requêtes": "🔑 All keywords — queries",
+    "Mobile représente {percent}% de votre trafic.": "Mobile accounts for {percent}% of your traffic.",
+    "Vérifiez les Core Web Vitals mobiles pour vous assurer que l'expérience mobile ne freine pas vos conversions.": "Check mobile Core Web Vitals to make sure the mobile experience is not limiting conversions.",
+    "Aucun monitor configuré. Ajoutez vos sites pour surveiller les performances en temps réel.": "No monitors configured. Add your sites to track performance in real time.",
+    "Latence maximale : {latency}ms sur {site}. {risk} Uptime moyen : {uptime}%.": "Highest latency: {latency} ms on {site}. {risk} Average uptime: {uptime}%.",
+    "{count} site(s) à risque — latence > 500ms ou DOWN. Action requise.": "{count} site(s) at risk — latency > 500 ms or DOWN. Action required.",
+    "Tous les sites sont dans les normes.": "All sites are within normal limits.",
+    "Uptime moyen : {uptime}%.": "Average uptime: {uptime}%.",
+    "Performance surveillée sur {count} site(s).": "Performance tracked across {count} site(s).",
+    "{count} membre(s) avec contributions persistées. {events} événement(s) · Score SEO {score}.": "{count} member(s) with recorded contributions. {events} event(s) · SEO score {score}.",
+    "Aucune contribution individuelle enregistrée. {events} événement(s) · Score SEO {score}.": "No individual contributions recorded. {events} event(s) · SEO score {score}.",
+    "Monitoring globalement sain — uptime moyen {uptime}%. Aucun incident actif. Tous les sites respectent leur SLA.": "Monitoring is healthy overall — average uptime {uptime}%. No active incidents. All sites meet their SLA.",
+    "{count} incident(s) actif(s) — uptime moyen {uptime}%. {down} site(s) DOWN. Action requise.": "{count} active incident(s) — average uptime {uptime}%. {down} site(s) DOWN. Action required.",
+    "Fréquence : {frequency} · Dernier : {last}": "Frequency: {frequency} · Last run: {last}",
+    "score moyen · {count} audits chargés": "average score · {count} audits loaded",
+    "{count} missions enregistrées · 90 jours": "{count} missions recorded · 90 days",
+    "Source de widget non prise en charge : {source}": "Unsupported widget source: {source}",
+    "Risque churn {percent}%": "Churn risk {percent}%",
+    "Jamais": "Never",
+    "Canal principal : {channel} ({share}%).": "Top channel: {channel} ({share}%).",
+    "SEO organique : {percent}% du trafic.": "Organic search: {percent}% of traffic.",
+    "Diversifiez vos sources pour réduire la dépendance à un seul canal.": "Diversify your sources to reduce dependence on a single channel.",
+    "Appareil principal : {device} ({share}%).": "Top device: {device} ({share}%).",
+    "Zone principale : {zone}.": "Top region: {zone}.",
+    "Optimisez l'expérience sur l'appareil dominant pour maximiser vos conversions.": "Optimize the experience on your leading device to maximize conversions.",
+    "{count} campagne(s) analysées.": "{count} campaign(s) analyzed.",
+    "Taux de conversion moyen : {rate}%.": "Average conversion rate: {rate}%.",
+    "Campagne principale : {campaign}.": "Top campaign: {campaign}.",
+    "Optimisez les campagnes à faible taux de conversion.": "Optimize campaigns with low conversion rates.",
+    "{count} utilisateur(s) actif(s) en ce moment.": "{count} active user(s) right now.",
+    "Page la plus visitée : {page} ({count} users).": "Most visited page: {page} ({count} users).",
+    "Localisation principale : {city}.": "Top location: {city}.",
+    "Analysez les pages chaudes pour optimiser le parcours utilisateur en temps réel.": "Analyze popular pages to optimize the user journey in real time.",
+    "résultat(s) — {source}": "result(s) — {source}",
+    "Page {page} / {pages} — {count} résultats": "Page {page} / {pages} — {count} results",
+    "{count} résultat(s)": "{count} result(s)",
+    "connecté": "connected",
+    "Répondre aux avis →": "Reply to reviews →",
+    "Contributions par membre —": "Contributions by member —",
+    "Plateforme d'intelligence business · entrées de données · sessions analysées": "Business intelligence platform · data entries · sessions analyzed",
+    "Sélectionner": "Select",
+    "Charger les sites disponibles": "Load available sites",
+    "Réessayer": "Try again",
+    "critique": "critical",
+    "critiques": "critical",
+    "alerte": "alert",
+    "alertes": "alerts",
+    "Surveillance temps réel · {criticalCount} {criticalLabel} · {warningCount} {warningLabel} · Mis à jour à l'instant": "Real-time monitoring · {criticalCount} {criticalLabel} · {warningCount} {warningLabel} · Updated just now",
+    "{count} client(s) actif(s)": "{count} active client(s)",
+    "Score satisfaction 84/100": "Satisfaction score 84/100",
+    "{amount} économisables": "{amount} recoverable",
+    "Dernière sync : {date} · Contacts : {count}": "Last sync: {date} · Contacts: {count}",
+    "{count} tendance(s) émergente(s) détectée(s). Score opportunité moyen : {score}/100.": "{count} emerging trend(s) detected. Average opportunity score: {score}/100.",
+    "{count} opportunité(s) à saisir dès maintenant.": "{count} opportunity/ies to act on now.",
+    "📈 +{count} visites/mois estimées": "📈 +{count} estimated visits/month",
+    "● Connecté · contacts": "● Connected · contacts",
+    "Données GSC mesurées · Opportunités calculées · Mouvements issus des observations de classement": "Measured GSC data · calculated opportunities · movements from ranking observations",
+    "tendance émergente détectée . Score opportunité moyen :": "emerging trend detected. Average opportunity score:",
+    "à saisir dès maintenant.": "to act on now.",
+    "⚔️ Mouvements concurrents": "⚔️ Competitor movements",
+    "Aucun mouvement mesuré à partir des observations de classement disponibles.": "No movement measured from available ranking observations.",
+    "Requête observée :": "Observed query:",
+    "Comparaison : →": "Comparison: →",
+    "Générez un rapport de synthèse à partir des données marché disponibles.": "Generate a summary report from available market data.",
+    "Consulter les données enregistrées": "View saved data",
+    "membre": "member",
+    "Page / — résultats": "Page / — results",
+    "🔒 Mode Client actif": "🔒 Client Mode active",
+    "📌 Synthèse client": "📌 Client summary",
+    "Une vue prête à présenter, limitée aux résultats et livrables partagés.": "A presentation-ready view limited to shared results and deliverables.",
+    "🔎 Dernier audit à présenter": "🔎 Latest audit to present",
+    "Résultat le plus récent disponible pour le client": "Most recent result available to the client",
+    "· White-label actif": "· White-label active",
     "Optimiser CRO — {page}": "Optimize CRO — {page}",
   };
   if (window.FP_I18N_EN_BILLING) {
@@ -53580,7 +53773,7 @@ function renderSubPageContent(route, sub) {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:10px">⚡ Impact UX mobile</div>
         ${_hasDevData && devDisplay['mobile'] ? `<div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:3px solid #2563EB">
-          Mobile représente <strong>${Math.round((devDisplay['mobile']||0)/totalSess*100)}% de votre trafic</strong>. Vérifiez les Core Web Vitals mobiles pour vous assurer que l'expérience mobile ne freine pas vos conversions.
+          ${fpT('Mobile représente {percent}% de votre trafic.', {percent:Math.round((devDisplay['mobile']||0)/totalSess*100)})} ${fpT("Vérifiez les Core Web Vitals mobiles pour vous assurer que l'expérience mobile ne freine pas vos conversions.")}
         </div>` : `<div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:var(--fp-inner-card);border-radius:8px">
           ${_ga4Connected()?'Actualisez les données GA4 pour voir la répartition mobile/desktop.':'Connectez GA4 pour mesurer l\'impact de l\'expérience mobile sur vos conversions.'}
         </div>`}
@@ -56743,7 +56936,7 @@ function renderTeamFiles() {
           <div class="fp-opp-icon" style="background:${f.color}18;flex-shrink:0">${fileIcon(f.type, f.color)}</div>
           <div class="fp-opp-body">
             <div class="fp-opp-title">${escHtml(f.name)}</div>
-            <div class="fp-opp-desc">${escHtml(f.size)} · par ${escHtml(f.shared)} · ${escHtml(f.date)}</div>
+          <div class="fp-opp-desc">${escHtml(f.size)} · ${fpT('par')} ${escHtml(f.shared)} · ${escHtml(f.date)}</div>
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0">
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('Lien copié !'))).catch(()=>showToast('info',window.location.href))" title="Copier le lien" style="gap:4px;font-size:11px">
@@ -60683,10 +60876,16 @@ function renderAlertsCenter() {
       ${isPro
         ? aiBlock(
             monPerf.length === 0
-              ? 'Aucun monitor configuré. Ajoutez vos sites pour surveiller les performances en temps réel.'
+              ? fpT('Aucun monitor configuré. Ajoutez vos sites pour surveiller les performances en temps réel.')
               : _pWorst
-                ? `Latence maximale : <strong>${_pWorst.lat}ms</strong>sur<strong>${escHtml((_pWorst.url||_pWorst.name||'').replace(/^https?:\/\//,''))}</strong>. ${_pCrit > 0 ? `<strong>${_pCrit} site${_pCrit > 1 ? 's' : ''} à risque</strong> — latence > 500ms ou DOWN. Action requise.` : 'Tous les sites sont dans les normes.'} Uptime moyen : <strong>${_pAvgUp}%</strong>.`
-                : `Performance surveillée sur ${monPerf.length} site${monPerf.length > 1 ? 's' : ''}.`,
+                ? fpT('Latence maximale : {latency}ms sur {site}. {risk} Uptime moyen : {uptime}%.', {
+                    latency:_pWorst.lat, site:escHtml((_pWorst.url||_pWorst.name||'').replace(/^https?:\/\//,'')),
+                    risk:_pCrit > 0
+                      ? fpT('{count} site(s) à risque — latence > 500ms ou DOWN. Action requise.', {count:_pCrit})
+                      : fpT('Tous les sites sont dans les normes.'),
+                    uptime:_pAvgUp,
+                  })
+                : fpT('Performance surveillée sur {count} site(s).', {count:monPerf.length}),
             ['Diagnostiquer les performances', 'Optimiser Core Web Vitals', 'Rapport SLA']
           )
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Performance Alerts — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA des performances, alertes Core Web Vitals et monitoring SLA avancé.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
@@ -61153,7 +61352,10 @@ function renderAlertsCenter() {
           Alert Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:20px;color:#ef4444;animation:pulse 2s infinite">LIVE</span>
         </h1>
-        <div class="fp-section-sub">Surveillance temps réel · ${criticals.length} ${pluralizeFr(criticals.length, 'critique')} · ${warnings.length} ${pluralizeFr(warnings.length, 'alerte')} · Mis à jour à l\'instant</div>
+        <div class="fp-section-sub">${fpT("Surveillance temps réel · {criticalCount} {criticalLabel} · {warningCount} {warningLabel} · Mis à jour à l'instant", {
+          criticalCount:criticals.length, criticalLabel:fpT(criticals.length > 1 ? 'critiques' : 'critique'),
+          warningCount:warnings.length, warningLabel:fpT(warnings.length > 1 ? 'alertes' : 'alerte'),
+        })}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('PATCH','/api/alert-rules/mark-all-read').then(()=>{if(Array.isArray(STATE.notifications))STATE.notifications.forEach(n=>{n.read=true;});STATE.alertUnread=0;showToast('success', fpT('Alertes marquées lues'));render(STATE.currentSection);}).catch(()=>showToast('error', fpT('Erreur')))\"" )}
@@ -61442,8 +61644,12 @@ function renderActivityFeed() {
     return `
       ${isPro
         ? aiBlock((_membersWithContribs > 0
-              ? _membersWithContribs + ' membre(s) avec contributions persistées.'
-              : fpT('Aucune contribution individuelle enregistrée.')) + ' ' + _orgActs + ' ' + fpT('événement(s)') + ' · Score SEO ' + (_orgScore === null ? fpT('N/D') : _orgScore + '/100') + '.',
+              ? fpT('{count} membre(s) avec contributions persistées. {events} événement(s) · Score SEO {score}.', {
+                  count:_membersWithContribs, events:_orgActs, score:_orgScore === null ? fpT('N/D') : _orgScore + '/100',
+                })
+              : fpT('Aucune contribution individuelle enregistrée. {events} événement(s) · Score SEO {score}.', {
+                  events:_orgActs, score:_orgScore === null ? fpT('N/D') : _orgScore + '/100',
+                })),
             ['Rapport équipe complet', 'Assigner des missions', 'Planifier une réunion'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">👥</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analytics équipe — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Scores de productivité, contributions par membre et IA collaboration.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">Passer Pro</button></div>`
       }
@@ -61640,8 +61846,11 @@ function renderActivityFeed() {
     return `
       ${aiBlock(
         _monProbsLog.length === 0
-          ? `Monitoring globalement sain — uptime moyen <strong>${_avgUpLog}%</strong>. Aucun incident actif. Tous les sites respectent leur SLA.`
-          : `<strong>${_monProbsLog.length} incident${_monProbsLog.length > 1 ? 's' : ''} actif${_monProbsLog.length > 1 ? 's' : ''}</strong> — uptime moyen <strong>${_avgUpLog}%</strong>. ${_monProbsLog.filter(m=>m.status==='down').length} site${_monProbsLog.filter(m=>m.status==='down').length > 1 ? 's' : ''} DOWN. Action requise.`,
+          ? fpT('Monitoring globalement sain — uptime moyen {uptime}%. Aucun incident actif. Tous les sites respectent leur SLA.', {uptime:_avgUpLog})
+          : fpT('{count} incident(s) actif(s) — uptime moyen {uptime}%. {down} site(s) DOWN. Action requise.', {
+              count:_monProbsLog.length, uptime:_avgUpLog,
+              down:_monProbsLog.filter(m=>m.status==='down').length,
+            }),
         ['Rapport SLA complet', 'Optimiser les lents', 'Config alertes']
       )}
 
@@ -61790,7 +61999,7 @@ function renderActivityFeed() {
                 <span style="font-size:20px;flex-shrink:0">${escHtml(a.icon)}</span>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(a.name)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-muted)">Fréquence : ${escHtml(a.freq)} · Dernier : ${escHtml(a.last)}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${fpT('Fréquence : {frequency} · Dernier : {last}', {frequency:escHtml(a.freq),last:escHtml(a.last)})}</div>
                 </div>
                 <div style="text-align:right;flex-shrink:0">
                   <div style="font-size:11px;font-weight:700;color:var(--fp-text)">${a.success}/${a.runs} OK</div>
@@ -62700,20 +62909,20 @@ function renderDataExplorer() {
           <div class="fp-card-title">${title}</div>
           ${average === null
             ? `<div style="padding:14px 0;color:var(--fp-text-faint);font-size:12px">Aucun audit mesuré sur les 90 derniers jours.</div>`
-            : `<div style="display:flex;align-items:baseline;gap:8px;margin:12px 0"><strong style="font-size:32px;color:${average < 50 ? '#ef4444' : average < 70 ? '#f59e0b' : '#22c55e'}">${average}</strong><span style="color:var(--fp-text-muted)">score moyen · ${scored.length} audits chargés</span></div>
+            : `<div style="display:flex;align-items:baseline;gap:8px;margin:12px 0"><strong style="font-size:32px;color:${average < 50 ? '#ef4444' : average < 70 ? '#f59e0b' : '#22c55e'}">${average}</strong><span style="color:var(--fp-text-muted)">${fpT('score moyen · {count} audits chargés', {count:scored.length})}</span></div>
               <div style="display:grid;gap:7px">${scored.slice(0,4).map(row => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:11px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(row.url)}</span><strong>${escHtml(row.score)}/100</strong></div>`).join('')}</div>`}
         </div>`;
       }
       if (source === 'missions') {
         return `<div class="fp-card" style="padding:16px">
           <div class="fp-card-title">${title}</div>
-          <div style="margin:10px 0;color:var(--fp-text-muted);font-size:11px">${result.data.total} missions enregistrées · 90 jours</div>
+          <div style="margin:10px 0;color:var(--fp-text-muted);font-size:11px">${fpT('{count} missions enregistrées · 90 jours', {count:result.data.total})}</div>
           ${rows.length
             ? `<div style="display:grid;gap:8px">${rows.slice(0,5).map(row => `<div style="border-left:2px solid #6366f1;padding-left:9px"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(row.title)}</div><div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(row.status)} · ${escHtml(row.priority)}</div></div>`).join('')}</div>`
             : `<div style="padding:10px 0;color:var(--fp-text-faint);font-size:12px">Aucune mission enregistrée sur les 90 derniers jours.</div>`}
         </div>`;
       }
-      return `<div class="fp-card" style="padding:14px"><strong>${title}</strong><div style="margin-top:8px;color:var(--fp-text-faint);font-size:11px">Source de widget non prise en charge : ${escHtml(source || '—')}</div></div>`;
+      return `<div class="fp-card" style="padding:14px"><strong>${title}</strong><div style="margin-top:8px;color:var(--fp-text-faint);font-size:11px">${fpT('Source de widget non prise en charge : {source}', {source:escHtml(source || '—')})}</div></div>`;
     };
     // Fetch from API if not yet loaded or if returning to the page
     if (!Array.isArray(_realDash)) {
@@ -63620,7 +63829,7 @@ function renderClientMode() {
           ${approvals.map(a => `
             <div style="padding:12px 14px;border-radius:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25)">
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(a.title)}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px">${escHtml(a.client)} · Échéance : ${escHtml(a.due)}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px">${escHtml(a.client)} · ${fpT('Échéance : {date}', {date:escHtml(a.due)})}</div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 ${badge('En attente', '#f59e0b')}
                 <div style="display:flex;gap:6px;margin-left:auto">
@@ -63855,7 +64064,7 @@ function renderClientMode() {
           ${engagementData.filter(c=>(c.churnRisk||0)>30).sort((a,b)=>(b.churnRisk||0)-(a.churnRisk||0)).slice(0,3).map(r => { const _col=r.churnRisk>60?'#ef4444':r.churnRisk>40?'#f59e0b':'#64748b'; return `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${_col}07;border:1px solid ${_col}28">
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(r.name||r.client||'Client')} — Risque churn ${r.churnRisk||'?'}%</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(r.name||r.client||'Client')} — ${fpT('Risque churn {percent}%', {percent:r.churnRisk||'?'})}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted)">${r.loginDays<=3?'Dernière connexion : '+r.loginDays+' jour(s). Action urgente recommandée.':'Engagement en baisse — suivre de près.'}</div>
               </div>
               <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;flex-shrink:0" data-cname="${escHtml(r.name||r.client||'Client')}" onclick="_fpMQ('Rétention client : '+this.dataset.cname,'Clients','high')">Action</button>
@@ -63981,7 +64190,7 @@ function renderClientMode() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Client Command Center
         </h1>
-        <div class="fp-section-sub">${clients.length} client${clients.length > 1 ? 's' : ''} actif${clients.length > 1 ? 's' : ''}${PREVIEW_MODE ? ' · Score satisfaction 84/100' : ''} · Mis à jour à l\'instant</div>
+        <div class="fp-section-sub">${fpT('{count} client(s) actif(s)', {count:clients.length})}${PREVIEW_MODE ? ' · ' + fpT('Score satisfaction 84/100') : ''} · ${fpT("Mis à jour à l'instant")}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Partager', 'fp-btn fp-btn-ghost fp-btn-sm', 'link',    "onclick=\"navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success', fpT('Lien copié !'))).catch(()=>showToast('info',window.location.href))\"" )}
@@ -65912,13 +66121,19 @@ function renderTeamPerformance() {
     ? Number(STATE.overview.seoScore ?? STATE.overview.avgScore) : null;
   const topName = metrics.length > 0 ? metrics[0].name.split(' ')[0] : null;
   const aiMsg = topName && totalAudits !== null && totalReports !== null
-    ? `<strong>${escHtml(topName)}</strong> pilote l'activité (${totalAudits} audit(s) · ${totalReports} rapport(s)). Score SEO moyen : <strong>${avgScore === null ? fpT('N/D') : avgScore + '/100'}</strong>.`
+    ? fpT("{name} pilote l'activité ({audits} audit(s) · {reports} rapport(s)). Score SEO moyen : {score}.", {
+        name: topName, audits: totalAudits, reports: totalReports,
+        score: avgScore === null ? fpT('N/D') : avgScore + '/100',
+      })
     : totalAudits !== null && totalReports !== null
-      ? `${totalAudits} audit(s) réalisé(s) · ${totalReports} rapport(s) généré(s). Score SEO moyen : ${avgScore === null ? fpT('N/D') : avgScore + '/100'}.`
-      : 'Les métriques d’équipe sont indisponibles pour le moment.';
+      ? fpT("{audits} audit(s) réalisé(s) · {reports} rapport(s) généré(s). Score SEO moyen : {score}.", {
+          audits: totalAudits, reports: totalReports,
+          score: avgScore === null ? fpT('N/D') : avgScore + '/100',
+        })
+      : fpT("Les métriques d'équipe sont indisponibles pour le moment.");
   return `
     <div class="fp-section-header">
-      <div><h1>Performance Équipe</h1><div class="fp-section-sub">Activité et contributions individuelles · ${CUR_MONTH}</div></div>
+      <div><h1>Performance Équipe</h1><div class="fp-section-sub">${fpT('Activité et contributions individuelles · {month}', {month:CUR_MONTH})}</div></div>
     </div>
     ${aiBlock(aiMsg, [])}
     <div class="fp-stat-row fp-mb-20">
@@ -65929,7 +66144,7 @@ function renderTeamPerformance() {
     </div>
     ${metrics.length === 0 ? `
       <div class="fp-card" style="text-align:center;padding:32px 20px">
-        <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:12px">Aucun membre dans l'équipe pour le moment</div>
+        <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:12px">${fpT("Aucun membre dans l'équipe pour le moment")}</div>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('team');setTimeout(function(){window.fpOpenInvite&&window.fpOpenInvite()},120)">${fpT('Inviter des membres')}</button>
       </div>
     ` : `
@@ -65980,7 +66195,7 @@ function renderTeamPerformance() {
               <div class="fp-opp-icon" style="background:rgba(37,99,235,0.1)">${svgIcon('check-square').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
               <div class="fp-opp-body">
                 <div class="fp-opp-title">${escHtml(m.title||m.name||'Mission')}</div>
-                <div class="fp-opp-desc">${escHtml(_who)} · Échéance : ${_due}</div>
+              <div class="fp-opp-desc">${escHtml(_who)} · ${fpT('Échéance : {date}', {date:_due})}</div>
               </div>
               ${badge(_lbl, _col)}
             </div>`;
@@ -67864,7 +68079,9 @@ function renderGA4Traffic() {
               const _topName = _topCh ? _topCh[0] : 'Organic Search';
               const _topPct  = _topCh ? Math.round((_topCh[1].sessions||0)/Math.max(totalSess,1)*100) : 0;
               const _orgCh   = channels.find(([c])=>c==='Organic Search');
-              return `Canal principal : <strong>${_topName} (${_topPct}%)</strong>. ${_orgCh ? 'SEO organique : '+Math.round((_orgCh[1].sessions||0)/Math.max(totalSess,1)*100)+'% du trafic.' : ''} Diversifiez vos sources pour réduire la dépendance à un seul canal.`;
+              return fpT('Canal principal : {channel} ({share}%).', {channel:_topName,share:_topPct}) + ' ' +
+                (_orgCh ? fpT('SEO organique : {percent}% du trafic.', {percent:Math.round((_orgCh[1].sessions||0)/Math.max(totalSess,1)*100)}) + ' ' : '') +
+                fpT('Diversifiez vos sources pour réduire la dépendance à un seul canal.');
             })()
           : "Données de trafic en cours de chargement. Actualisez pour voir vos sources."
         : "Connectez GA4 pour analyser vos canaux d'acquisition et sources de trafic.",
@@ -68499,7 +68716,9 @@ function renderGA4Audience() {
               const _topDev = Object.entries(devMap).sort((a,b)=>b[1]-a[1])[0];
               const _topPct = _topDev ? Math.round(_topDev[1]/totalSess*100) : 0;
               const _topGeo = Object.entries(Object.fromEntries(geoRows.slice(0,1).map(r=>[r.dimensionValues?.[0]?.value||'—', parseInt(r.metricValues?.[0]?.value||0)]))).map(([k,v])=>k)[0];
-              return `Appareil principal : <strong>${_topDev?.[0]||'mobile'} (${_topPct}%)</strong>. ${_topGeo?'Zone principale : <strong>'+_topGeo+'</strong>. ':''} Optimisez l\'expérience sur l\'appareil dominant pour maximiser vos conversions.`;
+              return fpT('Appareil principal : {device} ({share}%).', {device:_topDev?.[0]||'mobile',share:_topPct}) + ' ' +
+                (_topGeo ? fpT('Zone principale : {zone}.', {zone:_topGeo}) + ' ' : '') +
+                fpT("Optimisez l'expérience sur l'appareil dominant pour maximiser vos conversions.");
             })()
           : "Actualisez vos données GA4 pour voir le profil d\'audience."
         : "Connectez GA4 pour analyser le profil de vos visiteurs : appareils, géographie, démographie.",
@@ -68669,7 +68888,10 @@ function renderGA4Campaigns() {
               const _totConv = rows.reduce((s,r)=>s+parseFloat(r.metricValues?.[2]?.value||0),0);
               const _cr      = _totSess > 0 ? (_totConv/_totSess*100).toFixed(2) : 0;
               const _topCamp = rows[0]?.dimensionValues?.[0]?.value || '—';
-              return `<strong>${rows.length} campagne${rows.length>1?'s':''}</strong>analysées. Taux de conversion moyen :<strong>${_cr}%</strong>. Campagne principale : <strong>${_topCamp}</strong>. Optimisez les campagnes à faible taux de conversion.`;
+              return fpT('{count} campagne(s) analysées.', {count:rows.length}) + ' ' +
+                fpT('Taux de conversion moyen : {rate}%.', {rate:_cr}) + ' ' +
+                fpT('Campagne principale : {campaign}.', {campaign:_topCamp}) + ' ' +
+                fpT('Optimisez les campagnes à faible taux de conversion.');
             })()
           : "Actualisez vos données GA4 pour voir la performance de vos campagnes."
         : "Connectez GA4 pour analyser vos campagnes marketing et leur attribution.",
@@ -68799,7 +69021,10 @@ function renderGA4Live() {
     ${aiBlock(
       _ga4Connected()
         ? totalActive > 0
-          ? `<strong>${totalActive} utilisateur(s) actif(s)</strong> en ce moment. ${topPages.length>0?'Page la plus visitée : <strong>'+topPages[0][0]+'</strong> ('+topPages[0][1]+' users). ':''} ${topCities.length>0&&topCities[0][0]!=='Inconnu'?'Localisation principale : <strong>'+topCities[0][0]+'</strong>. ':''} Analysez les pages chaudes pour optimiser le parcours utilisateur en temps réel.`
+          ? fpT('{count} utilisateur(s) actif(s) en ce moment.', {count:totalActive}) + ' ' +
+            (topPages.length > 0 ? fpT('Page la plus visitée : {page} ({count} users).', {page:topPages[0][0],count:topPages[0][1]}) + ' ' : '') +
+            (topCities.length > 0 && topCities[0][0] !== 'Inconnu' ? fpT('Localisation principale : {city}.', {city:topCities[0][0]}) + ' ' : '') +
+            fpT('Analysez les pages chaudes pour optimiser le parcours utilisateur en temps réel.')
           : "Aucun visiteur actif en ce moment. Vérifiez votre intégration GA4 ou attendez du trafic entrant."
         : "Connectez GA4 pour voir vos visiteurs en temps réel, leurs pages actives et leur localisation.",
       _ga4Connected() ? ['Voir l\'audience', 'Analyser le trafic'] : ['Connecter GA4']
@@ -70601,7 +70826,7 @@ function renderTechnicalAudit() {
       <div style="font-size:11px;font-weight:600;margin-bottom:4px;word-break:break-word;line-height:1.3">${c.label}</div>
       <div style="font-size:12px;color:var(--fp-text-faint)">
         ${c.count!==null ? `<span style="color:${c.color};font-weight:700">${c.count}</span> problème${c.count>1?'s':''}` : 'Analyse complète →'}
-        ${c.savings>0 ? ` · <span style="color:#10b981">${c.sub==='images'?Math.round(c.savings)+'KB':((c.savings/1000).toFixed(1))+'s'} économisables</span>` : ''}
+        ${c.savings>0 ? ` · <span style="color:#10b981">${fpT('{amount} économisables', {amount:c.sub==='images'?Math.round(c.savings)+'KB':((c.savings/1000).toFixed(1))+'s'})}</span>` : ''}
       </div>
     </div>`).join('')}
   </div>
@@ -70635,7 +70860,7 @@ function renderTechSection(title, icon, items, desc) {
   <div class="fp-card">
     <div class="fp-card-header" style="margin-bottom:16px">
       <h3 class="fp-card-title">${items.length} problème${items.length>1?'s':''} identifié${items.length>1?'s':''}</h3>
-      <span class="fp-badge" style="background:rgba(37,99,235,0.12);color:var(--fp-accent)">${(items.reduce((s,o)=>s+(o.savingsMs||0),0)/1000).toFixed(1)}s économisables</span>
+      <span class="fp-badge" style="background:rgba(37,99,235,0.12);color:var(--fp-accent)">${fpT('{amount} économisables', {amount:(items.reduce((s,o)=>s+(o.savingsMs||0),0)/1000).toFixed(1)+'s'})}</span>
     </div>
     ${!items.length ? `<div class="fp-empty-state" style="padding:24px"><p style="color:#10b981">✓ Aucun problème détecté dans cette catégorie !</p></div>` : renderOpportunities(items)}
   </div>`;
@@ -72374,7 +72599,7 @@ function renderGSCIndexing(gsc) {
       <div class="fp-card-title">🔍 Inspection & Indexation d\'URLs</div>
       <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Vérifiez si une URL est indexée par Google et obtenir des détails d\'inspection.</div>
       <div style="display:flex;gap:10px;margin-bottom:20px">
-        <input id="gsc-url-inspect" type="url" placeholder="https://votre-site.com/page" style="flex:1;background:var(--fp-track);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;color:var(--fp-text);font-size:13px;outline:none" />
+        <input id="gsc-url-inspect" type="url" placeholder="https://example.com/page" style="flex:1;background:var(--fp-track);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;color:var(--fp-text);font-size:13px;outline:none" />
         <button class="fp-btn fp-btn-primary" onclick="(async()=>{
           const url = document.getElementById('gsc-url-inspect')?.value?.trim();
           if (!url) return showToast('error', fpT('Entrez une URL valide'));
@@ -74720,7 +74945,7 @@ function renderCRM() {
               <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
                 <div style="flex:1">
                   <div style="font-size:13px;font-weight:600">${escHtml(i.name)}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint)">Dernière sync : ${i.last_sync_at ? new Date(i.last_sync_at).toLocaleDateString(getLocale()) : 'Jamais'} · Contacts : ${i.synced_contacts||0}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Dernière sync : {date} · Contacts : {count}', {date:i.last_sync_at ? new Date(i.last_sync_at).toLocaleDateString(getLocale()) : fpT('Jamais'),count:i.synced_contacts||0})}</div>
                 </div>
                 ${syncEntities.map(ent => `
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
@@ -74868,7 +75093,8 @@ function renderMarketIntelligence() {
 
     ${aiBlock(
       trends.length>0
-        ? `${stats.emergingTrends||0} tendance${(stats.emergingTrends||0)>1?'s':''} émergente${(stats.emergingTrends||0)>1?'s':''} détectée${(stats.emergingTrends||0)>1?'s':''}. Score opportunité moyen : <strong>${stats.avgOpportunityScore||0}/100</strong>. ${opportunities.length>0?`<strong>${opportunities.length} opportunité${opportunities.length>1?'s':''}</strong> à saisir dès maintenant.`:''}`
+        ? fpT('{count} tendance(s) émergente(s) détectée(s). Score opportunité moyen : {score}/100.', {count:stats.emergingTrends||0,score:stats.avgOpportunityScore||0}) +
+          (opportunities.length > 0 ? ' ' + fpT('{count} opportunité(s) à saisir dès maintenant.', {count:opportunities.length}) : '')
         : 'Analyse du marché en cours. Les tendances et opportunités seront détectées automatiquement.',
       ['Voir les opportunités', 'Analyser les concurrents', 'Générer rapport stratégique']
     )}
@@ -74983,7 +75209,7 @@ function renderMarketIntelligence() {
               <span style="font-size:9px;padding:2px 8px;border-radius:8px;background:${diffColor(o.difficulty)}22;color:${diffColor(o.difficulty)}">${o.difficulty}</span>
               ${o.timeframe?`<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:var(--fp-track);color:var(--fp-text-faint)">${o.timeframe}</span>`:''}
             </div>
-            ${o.estimated_traffic?`<div style="font-size:11px;color:var(--fp-success);font-weight:600">📈 +${(o.estimated_traffic).toLocaleString(getLocale())} visites/mois estimées</div>`:''}
+            ${o.estimated_traffic?`<div style="font-size:11px;color:var(--fp-success);font-weight:600">${fpT('📈 +{count} visites/mois estimées', {count:(o.estimated_traffic).toLocaleString(getLocale())})}</div>`:''}
             <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px;margin-top:10px" onclick="_fpMQ(o.title||o.keyword||'Opportunité','Keywords','high',true)">⚡ Créer mission</button>
           </div>
         `).join('')}
@@ -77065,7 +77291,7 @@ function renderGA4DataExplorer() {
   const exportRow = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:12px;color:var(--fp-text-muted)">
-        ${data ? `<strong>${data.total}</strong> résultat${data.total>1?'s':''} — <span style="color:var(--fp-text-faint)">${escHtml(sourceLabel(st.source||'audits'))}</span>` : ''}
+        ${data ? `<strong>${data.total}</strong> ${fpT('résultat(s) — {source}', {source:escHtml(sourceLabel(st.source||'audits'))})}` : ''}
       </div>
       <div style="display:flex;gap:6px">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpDataExplorerAPI.exportData('csv')">⬇ CSV</button>
@@ -77135,10 +77361,10 @@ function renderGA4DataExplorer() {
       ${totalPages > 1 ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--fp-border)">
           <button class="fp-btn fp-btn-ghost fp-btn-sm" ${page<=1?'disabled':''} onclick="window._fpDataExplorerAPI.prevPage()">← Précédent</button>
-          <span style="font-size:12px;color:var(--fp-text-muted)">Page ${page} / ${totalPages} — ${total} résultats</span>
+          <span style="font-size:12px;color:var(--fp-text-muted)">${fpT('Page {page} / {pages} — {count} résultats', {page,totalPages,count:total})}</span>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" ${page>=totalPages?'disabled':''} onclick="window._fpDataExplorerAPI.nextPage()">Suivant →</button>
         </div>
-      ` : `<div style="margin-top:10px;font-size:11px;color:var(--fp-text-faint);text-align:right">${total} résultat${total>1?'s':''}</div>`}
+      ` : `<div style="margin-top:10px;font-size:11px;color:var(--fp-text-faint);text-align:right">${fpT('{count} résultat(s)', {count:total})}</div>`}
     </div>`;
 
   return header + controlsRow + tableHtml;

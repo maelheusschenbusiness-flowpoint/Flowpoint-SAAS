@@ -460,6 +460,66 @@ function staticHtmlText(node: ts.Expression): string | null {
     .replace(/__FP_DYNAMIC__/g, " ");
 }
 
+function visibleHtmlSegments(node: ts.Expression): { kind: "text" | "attribute"; text: string }[] {
+  const raw = staticTemplateText(node);
+  if (raw === null) return [];
+  const visibleMarkup = raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ");
+  const segments: { kind: "text" | "attribute"; text: string }[] = [];
+  let text = "";
+  let inTag = false;
+  let quote = "";
+  for (let i = 0; i < visibleMarkup.length; i += 1) {
+    const char = visibleMarkup[i];
+    if (!inTag && char === "<" && /[a-z/!]/i.test(visibleMarkup[i + 1] || "")) {
+      if (text.trim()) segments.push({ kind: "text", text: text.trim() });
+      text = "";
+      inTag = true;
+      continue;
+    }
+    if (inTag) {
+      if (quote) {
+        if (char === quote) quote = "";
+      } else if (char === "'" || char === '"') {
+        quote = char;
+      } else if (char === ">") {
+        inTag = false;
+      }
+      continue;
+    }
+    text += char;
+  }
+  if (text.trim()) segments.push({ kind: "text", text: text.trim() });
+
+  for (const attribute of visibleMarkup.matchAll(
+    /\b(?:placeholder|title|aria-label|alt)\s*=\s*(["'])(.*?)\1/gi,
+  )) {
+    segments.push({ kind: "attribute", text: attribute[2].trim() });
+  }
+  return segments
+    .map(({ kind, text }) => ({
+      kind,
+      text: text
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/__FP_DYNAMIC__/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    }))
+    .filter(({ text }) => text.length > 0)
+    // Quoted JavaScript inside long inline event attributes can confuse this
+    // lightweight HTML scanner; those handlers are checked separately by the
+    // interaction-copy assertions rather than counted as visible body text.
+    .filter(({ text }) => !/(?:showToast\(|this\.textContent|\.join\(['"]\)|render\(\)\)|setTimeout\()/i.test(text));
+}
+
+const openRouteFrenchCopy =
+  /(?:[àâäçéèêëîïôöùûüÿœæ]|\b(?:membres?|équipe|trafic|parcours|accès|présence|latence|risque|risques|réponse|répondre|actif|active|connectez|configurez|aucun|aucune|données|indisponible|détection|optimisez|votre|vos|prochain|fréquence|requis|mouvements|contributions|statistiques|échéance|enregistré|mesurés|disponibles|réessayer|réessayez|obtenez|choisissez|création|créé|créée|envoyer|envoyé|envoyée|générer|généré|générée|terminé|terminée|chargement|analysé|analyse|comparaison|prévision|prévisions|moyenne|moyen|moyenne|sites|mots-clés|dépôt|dépôts|configuration|évolution|répartition|par|avec|dans|sur|pour|depuis|sans|entre|et|ou|de|du|des|la|le|les|un|une|à|au|aux)\b)/i;
+
 describe("private dashboard static English localization", () => {
   it("translates Missions UI labels while keeping their exact catalog keys", () => {
     const expectedKeys = [
@@ -2415,6 +2475,149 @@ describe("private dashboard static English localization", () => {
         }
       });
     }
+
+    expect(unlocalized).toEqual([]);
+  });
+
+  it("covers every remaining dashboard route and its English navigation labels", () => {
+    const routes: Record<string, string> = {
+      team: "renderTeam",
+      "alerts-center": "renderAlertsCenter",
+      ai: "renderAI",
+      "activity-feed": "renderActivityFeed",
+      analytics: "renderGA4Analytics",
+      traffic: "renderGA4Traffic",
+      funnels: "renderGA4Funnels",
+      audience: "renderGA4Audience",
+      campaigns: "renderGA4Campaigns",
+      live: "renderGA4Live",
+      "data-explorer": "renderDataExplorer",
+      "client-mode": "renderGA4ClientMode",
+      performance: "renderPerformance",
+      "core-web-vitals": "renderCoreWebVitals",
+      "technical-audit": "renderTechnicalAudit",
+      "github-integration": "renderGitHubIntegration",
+      "code-analysis": "renderCodeAnalysis",
+      deployments: "renderDeployments",
+      "repository-health": "renderRepositoryHealth",
+      crm: "renderCRM",
+      "market-intelligence": "renderMarketIntelligence",
+      permissions: "renderPermissions",
+      "search-console": "renderSearchConsole",
+      "seo-change-impact": "seoChangeImpact",
+    };
+    const pageNames = new Set(objectKeysInVariable("PAGE_NAMES").map((key) => key.replace(/^['"]|['"]$/g, "")));
+    expect(pageNames.size).toBe(36);
+    expect(objectKeysInVariable("SUB_NAVS")).toHaveLength(34);
+    expect(objectArrayElementCount("SUB_NAVS")).toBe(201);
+
+    for (const [route, renderer] of Object.entries(routes)) {
+      expect(pageNames.has(route), `PAGE_NAMES should include ${route}`).toBe(true);
+      if (route === "seo-change-impact") {
+        expect(dashboardSource).toContain("FP_ADDON_RENDERERS?.seoChangeImpact");
+      } else {
+        expect(dashboardSource).toContain(`case '${route}'`);
+        expect(dashboardSource).toContain(`function ${renderer}(`);
+      }
+    }
+
+    for (const key of [
+      "Trafic & Sources",
+      "Funnels & Parcours",
+      "Permissions & Accès",
+      "Présence GBP",
+      "IA Analyse",
+      "Sélectionner",
+      "Charger les sites disponibles",
+      "Réessayer",
+    ]) {
+      expect(englishKeys.has(key), `Navigation should translate "${key}"`).toBe(true);
+    }
+  });
+
+  it("does not leave untranslated French in the remaining route templates", () => {
+    const renderers = new Set([
+      "renderTeam",
+      "renderTeamChat",
+      "renderTeamActivity",
+      "renderTeamFiles",
+      "renderTeamFilesSearch",
+      "renderTeamPerformance",
+      "renderAlertsCenter",
+      "renderAI",
+      "renderAIMessages",
+      "renderAIPanelContent",
+      "renderActivityFeed",
+      "renderDataExplorer",
+      "renderGA4DataExplorer",
+      "renderClientMode",
+      "renderGA4ClientMode",
+      "renderGA4Analytics",
+      "_renderGA4Conversions",
+      "renderGA4Traffic",
+      "renderGA4Funnels",
+      "renderGA4Audience",
+      "renderGA4Campaigns",
+      "renderGA4Live",
+      "renderSubPageContent",
+      "renderPerformance",
+      "renderPerformanceUrlBar",
+      "renderPerformanceStrategy",
+      "renderPerformanceHistory",
+      "renderPerformanceOpportunities",
+      "renderPerformanceAIReco",
+      "renderCoreWebVitals",
+      "renderCWVMetricDetail",
+      "renderCWVComparison",
+      "renderCWVCards",
+      "renderTechnicalAudit",
+      "renderTechSection",
+      "renderTechnicalAccessibility",
+      "renderTechnicalSEO",
+      "renderTechnicalAIAudit",
+      "renderGitHubIntegration",
+      "renderCodeAnalysis",
+      "renderDeployments",
+      "renderRepositoryHealth",
+      "renderSearchConsole",
+      "renderGSCOverview",
+      "renderGSCKeywords",
+      "renderGSCPages",
+      "renderGSCImpressions",
+      "renderGSCIndexing",
+      "renderGSCConnect",
+      "renderCRM",
+      "renderMarketIntelligence",
+      "renderPermissions",
+    ]);
+    const unlocalized: Array<{
+      functionName: string;
+      line: number;
+      kind: string;
+      text: string;
+    }> = [];
+
+    walk(sourceFiles[0].source, (node) => {
+      if (!ts.isFunctionDeclaration(node) || !node.name || !renderers.has(node.name.text) || !node.body) {
+        return;
+      }
+      walk(node.body, (child) => {
+        if (!ts.isTemplateExpression(child) && !ts.isNoSubstitutionTemplateLiteral(child)) return;
+        const raw = staticTemplateText(child);
+        if (raw === null || !raw.includes("<")) return;
+        if (isTranslatedWithin(child, node.body!, "dashboard.js")) return;
+        for (const segment of visibleHtmlSegments(child)) {
+          if (openRouteFrenchCopy.test(segment.text) && !englishKeys.has(segment.text)) {
+            unlocalized.push({
+              functionName: node.name!.text,
+              line: sourceFiles[0].source.getLineAndCharacterOfPosition(child.getStart(sourceFiles[0].source)).line + 1,
+              kind: segment.kind,
+              text: segment.text.slice(0, 200),
+            });
+          }
+        }
+      });
+    });
 
     expect(unlocalized).toEqual([]);
   });
