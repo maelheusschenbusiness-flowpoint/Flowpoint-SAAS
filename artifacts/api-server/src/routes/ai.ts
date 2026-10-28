@@ -11,7 +11,6 @@ import {
 } from "../middlewares/rateLimiter.js";
 import { isAiMigrationComplete } from "../services/init-ai-migration.js";
 import {
-  consumeAICredits,
   checkAIQuota,
   getAIUsageStats,
   getOrCreateMonthlyUsage,
@@ -25,11 +24,10 @@ import {
   checkModuleEnabled,
   moduleDisabledResponse,
   selectOptimalModel,
-  resolveAIModel,
   type AIModuleKey,
   type OrgAIPrefs,
 } from "../services/ai-prefs.js";
-import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
+import { aiChat, aiStream, type AIProviderId } from "../services/ai-provider.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { resolveIntensityConfig, isValidProvider, isModelValidForProvider, type AIIntensityMode } from "../services/ai-provider-matrix.js";
 import {
