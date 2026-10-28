@@ -15,6 +15,12 @@ import type {
 
 // ── AI-specific MIME allowlist (stricter than team-files) ─────────────────────
 // ZIP, DOC, PPTX, SVG, GIF are explicitly excluded from the IA pipeline.
+/**
+ * Allowlist of MIME types accepted by the AI pipeline, each mapped to its
+ * canonical file extension. Stricter than the team-files allowlist.
+ *
+ * ZIP, DOC, PPTX, SVG and GIF are explicitly excluded from the IA pipeline.
+ */
 const AI_ALLOWED_MIME: Record<string, string> = {
   "application/pdf":                                                                  "pdf",
   "image/png":                                                                        "png",
