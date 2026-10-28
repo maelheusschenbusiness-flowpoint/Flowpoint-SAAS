@@ -92,6 +92,7 @@ vi.mock("../lib/logger.js", () => ({
 }));
 vi.mock("../services/stripe-factory.js", () => ({
   getStripeKey: vi.fn(() => undefined),
+  isStripeTestMode: vi.fn(() => false),
   createStripeClient: vi.fn(async () => null),
 }));
 vi.mock("../services/org-data.js", () => ({

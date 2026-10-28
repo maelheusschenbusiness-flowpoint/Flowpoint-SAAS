@@ -118,6 +118,7 @@ vi.mock("../lib/logger.js", () => ({
 
 vi.mock("../services/stripe-factory.js", () => ({
   getStripeKey: vi.fn(() => undefined),       // dev path: no signature, no Stripe API calls
+  isStripeTestMode: vi.fn(() => false),
   createStripeClient: vi.fn(async () => null),
 }));
 

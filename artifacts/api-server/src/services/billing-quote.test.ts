@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   process.env["STRIPE_TEST_MODE"] = "true";
+  process.env["STRIPE_TEST_KEY"] = "sk_test_billing_quote_fixture";
   process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_ci_test_standard";
   process.env["STRIPE_TEST_PRICE_ID_PRO"] = "price_ci_test_pro";
   process.env["STRIPE_TEST_PRICE_ID_ULTRA"] = "price_ci_test_ultra";
@@ -197,7 +198,11 @@ describe("billing quote — inclusions", () => {
     const planId = Object.keys(PLAN_DEFINITIONS)[0]!;
 
     const previousMode = process.env["STRIPE_TEST_MODE"];
+    const previousNodeEnv = process.env["NODE_ENV"];
     try {
+      // NODE_ENV=test is intentionally TEST-only; emulate development mode to
+      // verify the explicit LIVE-key branch without making a Stripe call.
+      process.env["NODE_ENV"] = "development";
       process.env["STRIPE_TEST_MODE"] = "false";
       expect(getPlanPriceId(planId, "sk_live_x")).toBe(PLAN_PRICE_IDS[planId]);
 
@@ -208,6 +213,8 @@ describe("billing quote — inclusions", () => {
     } finally {
       if (previousMode === undefined) delete process.env["STRIPE_TEST_MODE"];
       else process.env["STRIPE_TEST_MODE"] = previousMode;
+      if (previousNodeEnv === undefined) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previousNodeEnv;
     }
   });
 
