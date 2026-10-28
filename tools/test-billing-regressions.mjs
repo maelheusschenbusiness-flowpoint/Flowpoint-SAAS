@@ -36,6 +36,8 @@ for (const status of ['canceled', 'ended']) for (const plan of ['standard', 'pro
     billingPoolMock: {query: async () => ({rows: [{stripe_customer_id: 'cus_EXISTING'}]})},
     getStripeKey: () => 'sk_test_fake', process: {env: {PUBLIC_URL: 'https://example.test'}},
     logger: {info() {}, warn() {}, error() {}}, ADDON_PRICE_IDS: {}, PLAN_INCLUDED_ADDONS: {}, PLAN_PRICE_IDS: {standard: 'price_s', pro: 'price_p', ultra: 'price_u'},
+     getPlanPriceId: plan => ({standard: 'price_s', pro: 'price_p', ultra: 'price_u'})[plan],
+     attemptServerSideReactivation: async () => ({ok: false, reason: 'no_payment_method'}),
     createStripeClient: async () => stripe,
   });
   vm.runInContext(handler, context);
