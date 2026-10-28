@@ -7,6 +7,7 @@ export function sanitizeFilename(raw: string): string {
 }
 
 export function extractExtension(filename: string): string {
+  if (!filename.includes(".")) return "";
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
