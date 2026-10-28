@@ -37,6 +37,15 @@ export function setStripeForTesting(s: StripeAlike | null): void {
 }
 
 /**
+ * Treat an explicit test-mode flag or a test Node environment as test-only.
+ * NODE_ENV may be "production" in Replit workspaces, so it is not used to
+ * infer test mode there; an explicit flag still selects the test key.
+ */
+export function isStripeTestMode(): boolean {
+  return process.env["STRIPE_TEST_MODE"] === "true" || process.env["NODE_ENV"] === "test";
+}
+
+/**
  * Create (or return the injected test) Stripe client for the given secret key.
  * In production this returns `new Stripe(key, { apiVersion })`.
  * In tests it returns whatever was last passed to setStripeForTesting().
@@ -50,7 +59,7 @@ export async function createStripeClient(key: string): Promise<StripeAlike> {
 /**
  * Returns the correct Stripe secret key for the current environment.
  *
- * When STRIPE_TEST_MODE=true AND the resolved key starts with sk_test_:
+ * When test mode is active AND the resolved key starts with sk_test_:
  *   • Uses STRIPE_TEST_KEY or STRIPE_TEST_SECRET_KEY — a completely isolated
  *     Stripe test account with its own webhook endpoint and signing secret.
  *   • The sk_test_ prefix is the safety gate: a live key can never be
@@ -66,10 +75,10 @@ export async function createStripeClient(key: string): Promise<StripeAlike> {
  * mode requires only an env-var flip, not code changes.
  */
 export function getStripeKey(): string {
-  // When STRIPE_TEST_MODE=true and a valid sk_test_ key is available,
-  // use it regardless of NODE_ENV. The sk_test_ prefix is the safety gate —
-  // a live key can never be substituted as a test key.
-  if (process.env["STRIPE_TEST_MODE"] === "true") {
+  // A valid sk_test_ prefix is the safety gate — a live key can never be
+  // substituted as a test key, including when STRIPE_TEST_MODE is omitted in
+  // a NODE_ENV=test environment.
+  if (isStripeTestMode()) {
     const testKey = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"];
     if (testKey?.startsWith("sk_test_")) return testKey;
     // A test service with a missing/invalid test key must not silently use LIVE.
@@ -115,9 +124,10 @@ export function getStripeCheckoutModeLog(key: string): {
  */
 export function getPublishableKey(stripeKey?: string): string {
   const activeKey = stripeKey ?? getStripeKey();
-  const isTest = activeKey.startsWith("sk_test_");
+  const isTest = isStripeTestMode() || activeKey.startsWith("sk_test_");
 
   if (isTest) {
+    if (!activeKey.startsWith("sk_test_")) return "";
     const k = process.env["STRIPE_TEST_PUBLISHABLE_KEY"] || "";
     if (!k) return "";
     if (!k.startsWith("pk_test_")) {

@@ -21,7 +21,7 @@ const TEST = { standard: "price_test_std", pro: "price_test_pro" }; // ultra vol
 
 let saved: Record<string, string | undefined>;
 const KEYS = [
-  "STRIPE_TEST_MODE", "STRIPE_TEST_KEY", "STRIPE_TEST_SECRET_KEY",
+  "NODE_ENV", "STRIPE_TEST_MODE", "STRIPE_TEST_KEY", "STRIPE_TEST_SECRET_KEY",
   "STRIPE_SECRET_KEY", "STRIPE_LIVE_API_KEY",
   "STRIPE_PRICE_ID_STANDARD", "STRIPE_PRICE_ID_PRO", "STRIPE_PRICE_ID_ULTRA",
   "STRIPE_TEST_PRICE_ID_STANDARD", "STRIPE_TEST_PRICE_ID_PRO", "STRIPE_TEST_PRICE_ID_ULTRA",
@@ -82,12 +82,22 @@ describe("getPlanPriceId — resolution consciente du mode Stripe", () => {
     expect(getAddonPriceId("monitorsPack10")).toBeTruthy();
   });
 
-  it("STRIPE_TEST_MODE=true sans cle sk_test_ refuse le prix LIVE", async () => {
+  it("STRIPE_TEST_MODE=true sans cle sk_test_ refuse les prix TEST et LIVE", async () => {
     process.env["STRIPE_TEST_MODE"] = "true";
     process.env["STRIPE_SECRET_KEY"] = "sk_live_xyz";   // aucune cle de test fournie
     const { getPlanPriceId, getAddonPriceId } = await load();
-    expect(getPlanPriceId("pro")).toBe(TEST.pro);
+    expect(getPlanPriceId("pro")).toBeUndefined();
     expect(getPlanPriceId("pro")).not.toBe(LIVE.pro);
+    expect(getAddonPriceId("monitorsPack10")).toBeUndefined();
+  });
+
+  it("NODE_ENV=test refuse les prix LIVE si aucune cle de test valide n'existe", async () => {
+    process.env["NODE_ENV"] = "test";
+    process.env["STRIPE_TEST_MODE"] = "false";
+    process.env["STRIPE_SECRET_KEY"] = "sk_live_xyz";
+    process.env["STRIPE_LIVE_API_KEY"] = "sk_live_xyz";
+    const { getPlanPriceId, getAddonPriceId } = await load();
+    expect(getPlanPriceId("pro")).toBeUndefined();
     expect(getAddonPriceId("monitorsPack10")).toBeUndefined();
   });
 

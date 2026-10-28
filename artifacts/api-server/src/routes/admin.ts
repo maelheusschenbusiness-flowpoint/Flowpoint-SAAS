@@ -18,6 +18,7 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
 import { INSERT_QA_TEST_SESSION_SQL } from "../services/qa-test-session.js";
+import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 
 const router = Router();
 
@@ -2087,10 +2088,9 @@ router.post("/admin/adopt-canonical-stripe-customer", async (req: Request, res: 
     const previousCustomerId = orgRow.rows[0].stripe_customer_id ?? null;
 
     // 2 — Verify customer exists in Stripe (read-only probe)
-    const stripeKey = process.env.STRIPE_LIVE_API_KEY ?? process.env.STRIPE_SECRET_KEY ?? "";
+    const stripeKey = getStripeKey();
     if (!stripeKey) { res.status(500).json({ ok: false, error: "No Stripe key configured" }); return; }
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const customer = await stripe.customers.retrieve(canonicalCustomerId).catch((e: Error) => ({ _err: e.message }));
     if ("_err" in customer) {
       res.status(400).json({ ok: false, error: `Stripe retrieve failed: ${customer._err}` });

@@ -31,7 +31,7 @@ const SK_TEST = "sk_test_51AbCdEf";
 const SK_LIVE = "sk_live_51AbCdEf";
 
 const KEYS = [
-  "STRIPE_TEST_MODE", "STRIPE_TEST_KEY", "STRIPE_TEST_SECRET_KEY",
+  "NODE_ENV", "STRIPE_TEST_MODE", "STRIPE_TEST_KEY", "STRIPE_TEST_SECRET_KEY",
   "STRIPE_SECRET_KEY", "STRIPE_LIVE_API_KEY",
   "STRIPE_PUBLISHABLE_KEY", "PUBLIC_STRIPE_API_KEY", "STRIPE_TEST_PUBLISHABLE_KEY",
 ];
@@ -64,6 +64,19 @@ function liveMode(pub?: string) {
 }
 
 describe("getPublishableKey — mode TEST", () => {
+  it("NODE_ENV=test sans cle secrete TEST ne divulgue pas la cle publique LIVE", async () => {
+    process.env["NODE_ENV"] = "test";
+    process.env["STRIPE_PUBLISHABLE_KEY"] = PK_LIVE;
+    process.env["PUBLIC_STRIPE_API_KEY"] = PK_LIVE;
+    const { getPublishableKey, getStripeKeyPairMode } = await load();
+    expect(getPublishableKey()).toBe("");
+    expect(getStripeKeyPairMode()).toEqual({
+      secretMode: "UNKNOWN",
+      publishableMode: "MISSING",
+      coherent: false,
+    });
+  });
+
   it("rend la cle publiable de test", async () => {
     testMode(PK_TEST);
     const { getPublishableKey } = await load();

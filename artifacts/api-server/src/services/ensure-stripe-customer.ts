@@ -64,6 +64,7 @@ import { pool } from "@workspace/db";
 import { loadOrgSettings, upsertOrgSettings } from "./org-settings.js";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
+import { getStripeKey } from "./stripe-factory.js";
 
 // Structural interface covering the pg PoolClient operations used in this module.
 // We cannot import PoolClient from "pg" directly (not hoisted) nor use
@@ -104,7 +105,7 @@ const _inflight = new Map<string, Promise<string>>();
  *
  * @param orgId     — org_settings primary key (user email in production)
  * @param hint      — optional pre-loaded billing context (used for email/name only)
- * @param stripeKey — Stripe secret key (defaults to STRIPE_LIVE_API_KEY / STRIPE_SECRET_KEY)
+ * @param stripeKey — Stripe secret key (defaults to the mode-aware Stripe key)
  * @throws          — if Stripe is unreachable, key is missing, or DB write cannot be confirmed
  */
 export async function ensureStripeCustomer(
@@ -130,9 +131,7 @@ async function _runWithLock(
 ): Promise<string> {
   const key =
     stripeKeyOverride ??
-    process.env["STRIPE_LIVE_API_KEY"] ??
-    process.env["STRIPE_SECRET_KEY"] ??
-    "";
+    getStripeKey();
   if (!key) throw new Error("[ensureStripeCustomer] No Stripe key configured");
 
   // Resolve the Stripe client.  In tests _stripeForTest is injected via
