@@ -214,9 +214,42 @@
         return;
       }
 
-      // Helper: call session-restore and redirect on success, reveal form on failure.
+      // Helper: call session-restore and redirect only after confirmed success.
       // Only runs when there is evidence of a prior session — never for anonymous
       // visitors so they see the form immediately without a round-trip.
+      function _classifySessionRestore(status, hasToken) {
+        if (status === 200 && hasToken) return 'restored';
+        if (status === 401 || status === 403) return 'invalid';
+        return 'temporary';
+      }
+
+      function _showSessionRestoreNotice(message, retry) {
+        var notice = document.getElementById('session-restore-notice');
+        if (!notice) {
+          notice = document.createElement('div');
+          notice.id = 'session-restore-notice';
+          notice.setAttribute('role', 'status');
+          notice.style.cssText = 'max-width:440px;margin:16px auto;padding:12px 14px;border:1px solid rgba(245,158,11,.45);border-radius:8px;background:rgba(245,158,11,.1);color:#fcd34d;font-size:13px;line-height:1.5;text-align:center';
+          var form = document.querySelector('.card');
+          (form || document.body).prepend(notice);
+        }
+        notice.replaceChildren();
+        var text = document.createElement('span');
+        text.textContent = message;
+        notice.appendChild(text);
+        if (retry) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = 'Réessayer';
+          button.style.cssText = 'display:block;margin:10px auto 0;padding:7px 14px;border:1px solid rgba(245,158,11,.6);border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
+          button.addEventListener('click', function() {
+            button.disabled = true;
+            _checkAndRedirect('manual-retry');
+          });
+          notice.appendChild(button);
+        }
+      }
+
       function _checkAndRedirect(source) {
         var _st = null;
         try { _st = sessionStorage.getItem('fp_session_token'); } catch(_) {}
@@ -231,71 +264,57 @@
         // a token (set when we originally redirected to dashboard from this tab).
         if (!_st) {
           // No sessionStorage token → show form, never call session-restore.
-          try {
-            console.log('[SIGNIN AUTH TRACE]', {
-              source: source, credential: 'none',
-              decision: 'STAY_SIGNIN', reason: 'no_sessionStorage_token',
-              timestamp: new Date().toISOString(),
-            });
-          } catch(_) {}
           document.body.style.visibility = 'visible';
           return;
         }
 
         // sessionStorage token present → validate with backend before deciding.
         document.body.style.visibility = 'hidden';
-        var _traceTs = new Date().toISOString();
-
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function() { controller.abort(); }, 10000);
         fetch('/api/auth/session-restore', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _st },
+          signal: controller.signal,
         }).then(function(r) {
-          var httpStatus = r.status;
-          if (r.ok) return r.json().catch(function() { return null; }).then(function(d) { return { data: d, httpStatus: httpStatus }; });
-          return r.json().catch(function() { return null; }).then(function(d) { return { data: null, httpStatus: httpStatus, _noToken: true }; });
-        }).then(function(res) {
-          var httpStatus = res.httpStatus;
-          var data = res.data;
-          var hasToken = !!(data && data.token && !res._noToken);
-          var decision = hasToken ? 'REDIRECT_DASHBOARD' : 'STAY_SIGNIN';
-          try {
-            console.log('[SIGNIN AUTH TRACE]', {
-              source: source,
-              credential: 'sessionStorage_bearer',
-              endpoint: '/api/auth/session-restore',
-              httpStatus: httpStatus,
-              decision: decision,
-              reason: hasToken ? 'backend_confirmed_valid' : 'backend_rejected',
-              referrer: document.referrer || '(direct)',
-              timestamp: _traceTs,
+          if (r.ok) {
+            return r.json().catch(function() { return null; }).then(function(d) {
+              clearTimeout(timeoutId);
+              return { data: d, httpStatus: r.status };
             });
-          } catch(_) {}
-          if (hasToken) {
+          }
+          clearTimeout(timeoutId);
+          return { data: null, httpStatus: r.status };
+        }).then(function(res) {
+          var data = res.data;
+          var hasToken = !!(data && typeof data.token === 'string' && data.token.length > 0);
+          var disposition = _classifySessionRestore(res.httpStatus, hasToken);
+          if (disposition === 'restored') {
             try { sessionStorage.setItem('fp_session_token', data.token); } catch(_) {}
             try { localStorage.setItem('fp_had_session', '1'); } catch(_) {}
             // Clear last-route so a fresh session (or re-registration) always starts
             // at the overview rather than the previous account's last page.
             try { localStorage.removeItem('fp:last-route'); localStorage.removeItem('fp:last-sub'); } catch(_) {}
             window.location.replace('/dashboard.html');
-          } else {
-            // Session-restore failed → purge stale auth so we don't re-check on next visit.
+          } else if (disposition === 'invalid') {
+            // These statuses explicitly mean the supplied session is invalid.
             try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
             try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
             try { localStorage.removeItem('fp_had_session'); } catch(_) {}
             document.body.style.visibility = 'visible';
+            _showSessionRestoreNotice('Votre session a expiré. Connectez-vous à nouveau.', false);
+          } else {
+            // A server/protocol failure is not proof that the session is invalid.
+            document.body.style.visibility = 'visible';
+            _showSessionRestoreNotice('La vérification de votre session est temporairement indisponible. Votre session est conservée.', true);
           }
         }).catch(function(err) {
-          try {
-            console.log('[SIGNIN AUTH TRACE]', {
-              source: source, credential: 'sessionStorage_bearer',
-              endpoint: '/api/auth/session-restore',
-              decision: 'STAY_SIGNIN', reason: 'network_error',
-              error: String(err), timestamp: _traceTs,
-            });
-          } catch(_) {}
-          // Network error → fail-open, show form, do NOT redirect.
+          clearTimeout(timeoutId);
+          // Timeout/network failure → preserve the credential and require a
+          // deliberate user retry; never start an automatic retry loop.
           document.body.style.visibility = 'visible';
+          _showSessionRestoreNotice('Impossible de vérifier votre session pour le moment. Vérifiez votre connexion puis réessayez.', true);
         });
       }
 

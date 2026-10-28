@@ -18,6 +18,7 @@ import adminRouter from "./admin.js";
 const QA_ORG = "10000000-0000-4000-8000-000000000002";
 const QA_USER = "10000000-0000-4000-8000-000000000001";
 const QA_TEST_SESSION_KEY = "test-only-qa-session-key-long-enough";
+let sessionInsertResult: { rows: Array<{ token: string }>; rowCount: number } | null;
 
 function app() {
   const server = express();
@@ -29,16 +30,20 @@ function app() {
 describe("POST /api/admin/test-session", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionInsertResult = null;
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("QA_TEST_SESSION_KEY", QA_TEST_SESSION_KEY);
     mocks.connect.mockResolvedValue({
       query: mocks.query,
       release: vi.fn(),
     });
-    mocks.query.mockImplementation(async (sql: string) => {
+    mocks.query.mockImplementation(async (sql: string, values?: unknown[]) => {
       if (sql.includes("FROM organizations")) return { rows: [{ id: QA_ORG }] };
       if (sql.includes("FROM organization_members")) return { rows: [{ role: "owner" }] };
-      if (sql.includes("INSERT INTO user_sessions")) return { rows: [] };
+      if (sql.includes("INSERT INTO user_sessions")) {
+        if (sessionInsertResult) return sessionInsertResult;
+        return { rows: [{ token: String(values?.[0] ?? "") }], rowCount: 1 };
+      }
       throw new Error("Unexpected SQL in QA session test");
     });
   });
@@ -66,7 +71,20 @@ describe("POST /api/admin/test-session", () => {
     expect(sessionInsert?.[1]).toEqual([response.body.token, QA_USER, QA_ORG, "owner", expect.any(Date), QA_USER]);
     expect(sessionInsert?.[0]).toContain("$2::text");
     expect(sessionInsert?.[0]).toContain("$6::uuid");
+    expect(sessionInsert?.[0]).toContain("RETURNING token");
     expect(mocks.query.mock.calls.some(([sql]) => /INSERT\s+INTO\s+organizations/i.test(String(sql)))).toBe(false);
+  });
+
+  it("does not return a QA token unless the session row was persisted", async () => {
+    sessionInsertResult = { rows: [], rowCount: 0 };
+    const response = await request(app())
+      .post("/api/admin/test-session")
+      .set("x-admin-key", QA_TEST_SESSION_KEY)
+      .send({ orgId: QA_ORG, ttlMinutes: 30 });
+
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({ ok: false, code: "QA_SESSION_NOT_PERSISTED" });
+    expect(response.body).not.toHaveProperty("token");
   });
 
   it("is unavailable outside Test without touching the database", async () => {

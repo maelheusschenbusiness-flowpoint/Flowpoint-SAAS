@@ -894,6 +894,34 @@ function _confirmSessionExpired() {
     });
 }
 
+function _fpClassifySessionRestore(status, hasToken) {
+  if (status === 200 && hasToken) return 'restored';
+  if (status === 401 || status === 403) return 'invalid';
+  return 'temporary';
+}
+
+function _fpShowSessionRestoreRetryNotice() {
+  const _noticeId = 'fp-session-restore-retry';
+  let _notice = document.getElementById(_noticeId);
+  if (!_notice) {
+    _notice = document.createElement('div');
+    _notice.id = _noticeId;
+    _notice.setAttribute('role', 'status');
+    _notice.style.cssText = 'position:fixed;z-index:100000;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 32px));padding:14px 16px;border:1px solid rgba(245,158,11,.55);border-radius:10px;background:#1f2937;color:#f9fafb;font:14px/1.5 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35);text-align:center';
+    document.body.appendChild(_notice);
+  }
+  _notice.replaceChildren();
+  const _noticeText = document.createElement('span');
+  _noticeText.textContent = 'La vérification de votre session est temporairement indisponible. Votre session est conservée.';
+  _notice.appendChild(_noticeText);
+  const _retryButton = document.createElement('button');
+  _retryButton.type = 'button';
+  _retryButton.textContent = 'Réessayer';
+  _retryButton.style.cssText = 'display:block;margin:9px auto 0;padding:6px 13px;border:1px solid #fbbf24;border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
+  _retryButton.addEventListener('click', function() { window.location.reload(); });
+  _notice.appendChild(_retryButton);
+}
+
 async function apiFetch(path, opts = {}) {
   // The session coordinator must settle before selecting the cache partition.
   if (window.__fpSessionReady) await window.__fpSessionReady;
@@ -972,6 +1000,8 @@ async function apiFetch(path, opts = {}) {
       // valid (e.g. server restart flushed in-memory sessions, cookie recreated by
       // another tab's login).  Recovering silently here prevents a false logout.
       if (!opts._retryAfter401) {
+        let _restoreWasTransient = false;
+        let _restoreTimeout = null;
         try {
           // Send the existing sessionStorage Bearer so server can try it first and
           // fall back to the HttpOnly cookie only when they differ.  Mirrors the
@@ -979,24 +1009,47 @@ async function apiFetch(path, opts = {}) {
           const _recToken = _fpCurrentSessionToken();
           const _recHeaders = { 'Content-Type': 'application/json' };
           if (_recToken) _recHeaders['Authorization'] = 'Bearer ' + _recToken;
+          const _restoreController = new AbortController();
+          _restoreTimeout = setTimeout(() => _restoreController.abort(), 10000);
           const _rec = await fetch('/api/auth/session-restore', {
             method: 'POST',
             credentials: 'include',
             headers: _recHeaders,
+            signal: _restoreController.signal,
           });
+          let _restoreData = null;
           if (_rec.ok) {
-            const _rd = await _rec.json().catch(() => null);
-            if (_rd?.token) {
-              try { sessionStorage.setItem('fp_session_token', _rd.token); } catch(_) {}
-              // Clear caches so the retry picks up the new token.
-              _apiFetchCache.delete(_cacheKey);
-              _apiFetchInFlight.delete(_cacheKey);
-              console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— cookie recovery succeeded, retrying with refreshed token.');
-              return apiFetch(path, { ...opts, _retryAfter401: true });
-            }
+            _restoreData = await _rec.json().catch(() => null);
+          }
+          clearTimeout(_restoreTimeout);
+          const _restoreKind = _fpClassifySessionRestore(
+            _rec.status,
+            typeof _restoreData?.token === 'string' && _restoreData.token.length > 0,
+          );
+          if (_restoreKind === 'restored') {
+            try { sessionStorage.setItem('fp_session_token', _restoreData.token); } catch(_) {}
+            // Clear caches so the retry picks up the new token.
+            _apiFetchCache.delete(_cacheKey);
+            _apiFetchInFlight.delete(_cacheKey);
+            console.warn('[FP-AUTH]', _ts, 'Foreground 401 on', path, '— cookie recovery succeeded, retrying with refreshed token.');
+            return apiFetch(path, { ...opts, _retryAfter401: true });
+          } else if (_restoreKind === 'temporary') {
+            // Only explicit authentication rejection invalidates a session.
+            // 5xx and unexpected responses can be temporary infrastructure errors.
+            _restoreWasTransient = true;
           }
         } catch (_recErr) {
-          console.warn('[FP-AUTH]', _ts, 'Cookie recovery attempt failed:', _recErr?.message);
+          _restoreWasTransient = true;
+        } finally {
+          if (_restoreTimeout !== null) clearTimeout(_restoreTimeout);
+        }
+        if (_restoreWasTransient) {
+          _fpShowSessionRestoreRetryNotice();
+          const _restoreError = new Error('Session verification is temporarily unavailable');
+          _restoreError.status = 503;
+          _restoreError.code = 'SESSION_RESTORE_TEMPORARY';
+          if (isGet) _apiFetchInFlight.delete(_cacheKey);
+          throw _restoreError;
         }
       }
       // Recovery failed or already attempted.
@@ -1964,6 +2017,20 @@ async function loadData(options = {}) {
     STATE._cacheRestored = false;
     _401BackgroundCount = 0;
   } catch (e) {
+    if (
+      e?.code === 'SESSION_RESTORE_TEMPORARY'
+      || e?.status >= 500
+      || e?.name === 'AbortError'
+      || e instanceof TypeError
+    ) {
+      clearTimeout(_loadSafetyTimer);
+      STATE.loading = false;
+      _loadDataInProgress = false;
+      window.__fpLoadDataInProgress = false;
+      _fpShowSessionRestoreRetryNotice();
+      _doRender();
+      return;
+    }
     if (PREVIEW_MODE) {
       console.warn('[FP] Preview mode: using mock /api/me', e);
     } else {

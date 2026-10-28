@@ -2840,7 +2840,6 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       intentType,
       planKey,
       hasPreRegToken: !!_fcActToken,
-      tokenPrefix:    _fcActToken?.slice(0, 8) || "(none)",
       hasSessionCookie: !!_fckToken,
       authenticatedOrgId: _authenticatedOrgId?.slice(0, 30),
     }, "[FC] finalize-checkout reached activation gate");
@@ -2852,7 +2851,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const { randomBytes: _fcRb } = await import("crypto");
 
           // ── Step 1: Look up pending_signup ──────────────────────────────
-          logger.info({ step: "FC-1", token: _fcActToken.slice(0, 8) }, "[FC] step-1: querying pending_signups");
+          logger.info({ step: "FC-1" }, "[FC] step-1: querying pending_signups");
           const _fcActC0 = await _fcActPool.connect();
           let _fcSignup: Record<string, string | null> | null = null;
           // _fcPendingRow is saved outside the try so FC-1-skip can read the email
@@ -2880,7 +2879,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             // Token already consumed (webhook already activated the account) or not found.
             // The webhook should have sent the magic link email, but if it failed we must
             // re-send now so the user isn't left with a blank inbox after seeing "check your email".
-            logger.info({ step: "FC-1-skip", token: _fcActToken.slice(0, 8) }, "[FC] step-1: token consumed/missing — attempting email re-send");
+            logger.info({ step: "FC-1-skip" }, "[FC] step-1: token consumed/missing — attempting email re-send");
             const _skipEmail = _fcPendingRow?.["email"] ?? null;
             if (_skipEmail) {
               // ── FC-1-skip resend: find existing valid token or mint a fresh one ──
@@ -2904,9 +2903,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                      ON CONFLICT (token) DO NOTHING`,
                     [_reToken, _skipEmail]
                   );
-                  logger.info({ step: "FC-1-skip-new-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: created fresh magic link token");
+                  logger.info({ step: "FC-1-skip-new-token" }, "[FC] FC-1-skip: created fresh magic link token");
                 } else {
-                  logger.info({ step: "FC-1-skip-reuse-token", tokenPrefix: _reToken.slice(0, 8) }, "[FC] FC-1-skip: reusing existing valid token");
+                  logger.info({ step: "FC-1-skip-reuse-token" }, "[FC] FC-1-skip: reusing existing valid token");
                 }
                 const _rePubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
                 const _reMagicUrl = `${_rePubUrl}/login-verify.html?token=${_reToken}`;
@@ -3161,7 +3160,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _fcMagicToken = _fcRb(32).toString("hex");
 
           // ── ML-2: Insert token into DB ────────────────────────────────────
-          logger.info({ step: "ML-2", tokenPrefix: _fcMagicToken.slice(0, 8), email: _fcAEmail }, "[ML] step-2: inserting magic_link_token into DB");
+          logger.info({ step: "ML-2", email: _fcAEmail }, "[ML] step-2: inserting magic_link_token into DB");
           const _fcTokC = await _fcActPool.connect();
           let _mlTokInserted = false;
           try {
@@ -3171,13 +3170,13 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               [_fcMagicToken, _fcAEmail]
             );
             _mlTokInserted = (_mlTokR.rowCount ?? 0) > 0;
-            logger.info({ step: "ML-2-ok", tokenPrefix: _fcMagicToken.slice(0, 8), inserted: _mlTokInserted }, "[ML] step-2: magic_link_token DB result");
+            logger.info({ step: "ML-2-ok", inserted: _mlTokInserted }, "[ML] step-2: magic_link_token DB result");
           } finally { _fcTokC.release(); }
 
           // ── ML-5: Compose magic link URL (logged before ML-3 for clarity) ─
           const _fcPubUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
           const _fcMagicLinkUrl = `${_fcPubUrl}/login-verify.html?token=${_fcMagicToken}`;
-          logger.info({ step: "ML-5", urlDomain: _fcPubUrl, tokenPrefix: _fcMagicToken.slice(0, 8), path: "/login-verify.html" }, "[ML] step-5: magic link URL composed");
+          logger.info({ step: "ML-5", urlDomain: _fcPubUrl, path: "/login-verify.html" }, "[ML] step-5: magic link URL composed");
 
           // ── ML-2.5: Resend suppression-list pre-check ─────────────────────
           // A hard bounce auto-adds the address to Resend's suppression list.
@@ -3201,7 +3200,6 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                     step: "ML-2.5-SUPPRESSED",
                     email: _fcAEmail,
                     origin: _supData.origin,
-                    tokenPrefix: _fcMagicToken.slice(0, 8),
                   }, "[ML] step-2.5: email suppressed — delivery impossible, returning emailFailed");
                   res.json({
                     success: true,

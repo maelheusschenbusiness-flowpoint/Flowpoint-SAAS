@@ -68,10 +68,10 @@ export async function createSession(opts: {
            opts.userUuid ?? null, opts.ipAddress ?? null, opts.userAgent ?? null]
         );
         if ((result.rowCount ?? 0) === 0) {
-          // ON CONFLICT DO NOTHING fired — token already exists; idempotent, still valid
-          logger.warn({ tokenPrefix: token.slice(0, 8) }, "[sessions] INSERT conflict on token — session already exists (idempotent)");
+          // This generated token must be newly inserted; do not log any part of it.
+          logger.warn({ orgId: opts.orgId }, "[sessions] INSERT conflict — generated session was not confirmed as new");
         } else {
-          logger.info({ tokenPrefix: token.slice(0, 8), orgId: opts.orgId }, "[sessions] Session row inserted successfully");
+          logger.info({ orgId: opts.orgId }, "[sessions] Session row inserted successfully");
         }
         return token;
       } finally {
@@ -115,7 +115,7 @@ export async function getSession(token: string): Promise<SessionData | null> {
         && (rawUserId === String(row.org_id ?? "") || rawUserId.includes("@"))
       ) {
         logger.warn(
-          { tokenPrefix: token.slice(0, 8), orgId: String(row.org_id ?? "").slice(0, 8) },
+          { orgId: String(row.org_id ?? "") },
           "[sessions] Refusing legacy session with user_id equal to org_id",
         );
         return null;

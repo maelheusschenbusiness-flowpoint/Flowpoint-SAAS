@@ -1410,7 +1410,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
   const _ccTransport = process.env["RESEND_API_KEY"]
     ? "resend-sdk"
     : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
-  logger.info({ sessionId, transport: _ccTransport, step: "CC-0-start" },
+  logger.info({ transport: _ccTransport, step: "CC-0-start" },
     "[Auth/CheckoutComplete] ML-0: received checkout-complete request");
 
   try {
@@ -1428,7 +1428,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       (session.payment_status === "paid" || session.payment_status === "no_payment_required");
 
     if (!isConfirmed) {
-      logger.warn({ sessionId, status: session.status, paymentStatus: session.payment_status },
+      logger.warn({ status: session.status, paymentStatus: session.payment_status },
         "[Auth/CheckoutComplete] Session not yet confirmed");
       // Transient — frontend should poll briefly
       res.status(202).json({
@@ -1447,10 +1447,10 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       || meta["email"]
       || (metaOrgId.includes("@") ? metaOrgId : "");
 
-    logger.info({ sessionId, metaOrgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — checking activation status");
+    logger.info({ metaOrgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — checking activation status");
 
     if (!email) {
-      logger.error({ sessionId, meta }, "[Auth/CheckoutComplete] No email found in session — cannot send magic link");
+      logger.error({ meta }, "[Auth/CheckoutComplete] No email found in session — cannot send magic link");
       res.status(400).json({ error: "Email introuvable dans la session de paiement." });
       return;
     }
@@ -1481,7 +1481,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     if (!userCreated) {
       // Webhook not yet processed — tell the frontend to retry.
       // 402 matches the retry guard in checkout-return.html's runCheckoutComplete().
-      logger.info({ sessionId, email }, "[Auth/CheckoutComplete] User not yet created — webhook pending, returning 402");
+      logger.info({ email }, "[Auth/CheckoutComplete] User not yet created — webhook pending, returning 402");
       res.status(402).json({
         pending: true,
         message: "Activation en cours. Veuillez patienter quelques secondes.",
@@ -1513,19 +1513,19 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
           }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
           emailSent = !!fwdResult?.ok;
           emailId   = (fwdResult as { id?: string })?.id;
-          logger.info({ sessionId, email, emailSent, step: "CC-fwd-existing-token" },
+          logger.info({ email, emailSent, step: "CC-fwd-existing-token" },
             "[Auth/CheckoutComplete] Re-sent existing webhook token via checkout-complete");
         } else {
           // Mailer unavailable — cannot deliver the token; flag as failed so the
           // frontend shows the "Connectez-vous directement" fallback instead of
           // the misleading "Vérifiez vos emails" message.
           emailSent = false;
-          logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: mailer unavailable — cannot re-send existing token");
+          logger.error({ email }, "[Auth/CheckoutComplete] ML-FAIL: mailer unavailable — cannot re-send existing token");
         }
       } else {
         // hasToken=true but no valid token row — should not happen; treat as failed.
         emailSent = false;
-        logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: hasToken=true but no valid token row found — cannot send");
+        logger.error({ email }, "[Auth/CheckoutComplete] ML-FAIL: hasToken=true but no valid token row found — cannot send");
       }
     } else {
       // User exists but no token — webhook ran but email failed, or token was consumed.
@@ -1604,11 +1604,11 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       msg.includes("resource_missing") || msg.includes("invalid_request")
     );
     if (isStripeErr) {
-      logger.warn({ err: msg, sessionId }, "[Auth/CheckoutComplete] Invalid Stripe session");
+      logger.warn({ err: msg }, "[Auth/CheckoutComplete] Invalid Stripe session");
       res.status(400).json({ error: "Session de paiement introuvable ou invalide." });
       return;
     }
-    logger.error({ err: msg, sessionId }, "[Auth/CheckoutComplete] Error");
+    logger.error({ err: msg }, "[Auth/CheckoutComplete] Error");
     res.status(500).json({ error: "Erreur lors de la finalisation. Réessayez ou contactez le support." });
   }
 });
@@ -1616,7 +1616,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
 /** Shared handler — called by both GET and POST /auth/login-verify */
 async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res: Response): Promise<void> {
   // ── ML-6: Token consumption entry ────────────────────────────────────────
-  logger.info({ step: "ML-6", tokenPrefix: typeof tokenRaw === "string" ? tokenRaw.trim().slice(0, 8) : "(none)" }, "[ML] step-6: login-verify called — token consumption attempt");
+  logger.info({ step: "ML-6" }, "[ML] step-6: login-verify called — token consumption attempt");
   // ── S0: Token guard ───────────────────────────────────────────────────────
   if (!tokenRaw || typeof tokenRaw !== "string" || !tokenRaw.trim()) {
     res.status(400).json({ error: "Token manquant" });
@@ -1635,11 +1635,8 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   }
 
   if (!peeked.ok) {
-    // Diagnostic: log every failure with token prefix so we can match it
-    // against the email send logs in BetterStack to understand why the token
-    // can't be found (e.g. race condition, cleanup job, RLS, duplicate send).
     logger.warn(
-      { reason: peeked.reason, tokenPrefix: token.slice(0, 8), step: "S1-fail" },
+      { reason: peeked.reason, step: "S1-fail" },
       "[ML] peekToken failed — token not usable"
     );
     switch (peeked.reason) {
@@ -1950,7 +1947,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     .catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: last_login_at update failed"));
 
   // ── ML-7: Session created ────────────────────────────────────────────────
-  logger.info({ step: "ML-7", email, orgIdPrefix: sessionOrgId?.slice(0, 8), tokenPrefix: sessionToken.slice(0, 8) }, "[ML] step-7: session created successfully");
+  logger.info({ step: "ML-7", email }, "[ML] step-7: session created successfully");
 
   // ── S11: Set cookie ───────────────────────────────────────────────────────
   const isProd = isDeployedProd();
@@ -2448,8 +2445,6 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
   const restoreLogBase = {
     hasCookie: !!cookieToken,
     hasBearer: !!bearerToken,
-    cookiePrefix: cookieToken ? cookieToken.slice(0, 8) : null,
-    bearerPrefix: bearerToken ? bearerToken.slice(0, 8) : null,
   };
   logger.debug(restoreLogBase, "[Auth/session-restore] Attempting session lookup");
 
