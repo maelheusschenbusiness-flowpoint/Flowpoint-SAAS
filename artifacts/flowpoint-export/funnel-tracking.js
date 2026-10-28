@@ -6,6 +6,10 @@
   const VISITOR_COOKIE = "fp_visitor_id";
   const SOURCE_KEY = "fp_funnel_source";
   const SOURCE_COOKIE = "fp_source";
+  // Campagne UTM (premiere touche), rangee seulement apres consentement.
+  const CAMPAIGN_KEY = "fp_funnel_campaign";
+  const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign"];
+  const UTM_RE = /^[a-z0-9._-]{1,64}$/;
   const VISITOR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
   const ALLOWED_SOURCES = new Set(["smartlead", "google", "direct", "social", "other_campaign"]);
   const APP_ORIGIN = "https://app.flowpoint.pro";
@@ -65,6 +69,38 @@
     return value;
   }
 
+  function utmValue(raw) {
+    if (typeof raw !== "string") return null;
+    const value = raw.trim().toLowerCase();
+    return UTM_RE.test(value) ? value : null;
+  }
+
+  // Premiere touche : une campagne deja rangee l'emporte sur l'URL. Sans
+  // consentement, rien n'est lu ni range. Renvoie un objet ne contenant que les
+  // cles valides (vide si aucune).
+  function campaign() {
+    if (!hasConsent()) return {};
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem(CAMPAIGN_KEY) || "null"); } catch {}
+    const out = {};
+    if (stored && typeof stored === "object") {
+      for (const key of UTM_KEYS) {
+        const value = utmValue(stored[key]);
+        if (value) out[key] = value;
+      }
+    }
+    if (Object.keys(out).length > 0) return out;
+    try {
+      const params = new URLSearchParams(location.search);
+      for (const key of UTM_KEYS) {
+        const value = utmValue(params.get(key));
+        if (value) out[key] = value;
+      }
+      if (Object.keys(out).length > 0) localStorage.setItem(CAMPAIGN_KEY, JSON.stringify(out));
+    } catch {}
+    return out;
+  }
+
   function carryAttributionToAppLink(anchor) {
     if (!hasConsent()) return;
     try {
@@ -75,6 +111,10 @@
       url.searchParams.set("fp_vid", id);
       const attributionSource = source();
       if (attributionSource) url.searchParams.set("fp_source", attributionSource);
+      const utm = campaign();
+      for (const key of Object.keys(utm)) {
+        if (!url.searchParams.has(key)) url.searchParams.set(key, utm[key]);
+      }
       anchor.href = url.toString();
     } catch {}
   }
@@ -99,7 +139,7 @@
       credentials: "include",
       keepalive: true,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ etape: step, visiteurId: id, source: source(), fp_lid: fpLid() }),
+      body: JSON.stringify({ etape: step, visiteurId: id, source: source(), fp_lid: fpLid(), ...campaign() }),
     }).catch(() => {});
   }
 
@@ -162,7 +202,7 @@
         init = {
           ...init,
           credentials: "include",
-          body: JSON.stringify({ ...body, visiteurId: id, source: source() }),
+          body: JSON.stringify({ ...body, visiteurId: id, source: source(), ...campaign() }),
         };
       }
     } catch {

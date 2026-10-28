@@ -108,6 +108,12 @@ async function migrate() {
     );
     await pool.query(sql);
     console.log("  ✓ funnel_events migration applied");
+    const utmSql = await readFile(
+      new URL("../migrations/020_funnel_events_utm.sql", import.meta.url),
+      "utf8",
+    );
+    await pool.query(utmSql);
+    console.log("  ✓ funnel_events utm columns applied");
   } catch (err: any) {
     console.error(`  ✗ funnel_events migration failed: ${err.message}`);
     process.exit(1);

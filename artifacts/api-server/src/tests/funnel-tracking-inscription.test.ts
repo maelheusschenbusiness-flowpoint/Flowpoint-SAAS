@@ -14,7 +14,7 @@ import { Script } from "node:vm";
 const SCRIPT = readFileSync(join(process.cwd(), "../flowpoint-export/funnel-tracking.js"), "utf8");
 const FP_LID = "TestLeadFp_0000000004D";
 
-interface Options { path?: string; consent?: boolean; fpLid?: string | null; signupHidden?: boolean; withForm?: boolean }
+interface Options { path?: string; consent?: boolean; fpLid?: string | null; signupHidden?: boolean; withForm?: boolean; search?: string; stored?: Record<string, string> }
 
 function executer(o: Options = {}) {
   const envois: Record<string, unknown>[] = [];
@@ -22,7 +22,7 @@ function executer(o: Options = {}) {
   const form = { addEventListener: (type: string, fn: () => void) => { (ecouteurs[type] ??= []).push(fn); } };
   const cookies = new Map<string, string>();
   if (o.consent !== false) cookies.set("fp_analytics_consent", "accepted");
-  const local = new Map<string, string>();
+  const local = new Map<string, string>(Object.entries(o.stored ?? {}));
   const session = new Map<string, string>();
   if (o.fpLid) session.set("fp_lid", o.fpLid);
   const fetch = (_url: string, init: { body: string }) => {
@@ -32,7 +32,7 @@ function executer(o: Options = {}) {
   const contexte: Record<string, unknown> = {
     URL, URLSearchParams, JSON, Set, Element: class {}, HTMLAnchorElement: class {},
     crypto: { randomUUID: () => "11111111-1111-4111-8111-111111111111" },
-    location: { pathname: o.path ?? "/signin.html", search: "", hostname: "app.flowpoint.pro", href: "https://app.flowpoint.pro/signin.html" },
+    location: { pathname: o.path ?? "/signin.html", search: o.search ?? "", hostname: "app.flowpoint.pro", href: "https://app.flowpoint.pro/signin.html" },
     document: {
       // Comme un navigateur : ecrire `document.cookie` AJOUTE un cookie, sans
       // effacer les autres.
@@ -55,7 +55,8 @@ function executer(o: Options = {}) {
   };
   new Script(SCRIPT).runInNewContext(contexte);
   const saisir = () => (ecouteurs["input"] ?? []).forEach((fn) => fn());
-  return { envois, saisir };
+  const fenetre = contexte["window"] as { fetch: (u: string, i: { body: string }) => unknown };
+  return { envois, saisir, local, fenetre };
 }
 
 describe("page d'inscription : formulaire affiche, puis premiere saisie", () => {
@@ -95,5 +96,57 @@ describe("page d'inscription : formulaire affiche, puis premiere saisie", () => 
     expect(executer({ path: "/pricing.html" }).envois.map((e) => e["etape"])).toEqual(["tarifs_vus"]);
     expect(executer({ path: "/checkout.html" }).envois.map((e) => e["etape"])).toEqual(["signup_started"]);
     expect(executer({ path: "/dashboard.html" }).envois).toHaveLength(0);
+  });
+});
+
+describe("campagne UTM (Instagram) : lue de l'URL, gardee en premiere touche, envoyee", () => {
+  const SEARCH = "?fp_vid=fp-abc-123&fp_source=social&utm_source=Instagram&utm_medium=social&utm_campaign=reel_oct";
+
+  it("les utm de l'URL partent normalises avec l'etape, et sont ranges", () => {
+    const { envois, local } = executer({ search: SEARCH });
+    expect(envois[0]).toMatchObject({
+      etape: "signup_started", source: "social",
+      utm_source: "instagram", utm_medium: "social", utm_campaign: "reel_oct",
+    });
+    expect(JSON.parse(local.get("fp_funnel_campaign")!)).toEqual({
+      utm_source: "instagram", utm_medium: "social", utm_campaign: "reel_oct",
+    });
+  });
+
+  it("premiere touche : la campagne deja rangee l'emporte sur l'URL", () => {
+    const { envois } = executer({
+      search: "?utm_source=google&utm_campaign=autre",
+      stored: { fp_funnel_campaign: JSON.stringify({ utm_source: "instagram", utm_campaign: "reel_oct" }) },
+    });
+    expect(envois[0]).toMatchObject({ utm_source: "instagram", utm_campaign: "reel_oct" });
+    expect(envois[0]).not.toHaveProperty("utm_medium");
+  });
+
+  it("une valeur invalide est ignoree, jamais transmise", () => {
+    const { envois } = executer({ search: "?utm_source=instagram&utm_campaign=jean%40example.com" });
+    expect(envois[0]).toMatchObject({ utm_source: "instagram" });
+    expect(envois[0]).not.toHaveProperty("utm_campaign");
+  });
+
+  it("sans consentement : ni envoi, ni stockage", () => {
+    const { envois, local } = executer({ consent: false, search: SEARCH });
+    expect(envois).toHaveLength(0);
+    expect(local.has("fp_funnel_campaign")).toBe(false);
+  });
+
+  it("compatibilite : sans utm, le corps envoye n'a aucune cle utm", () => {
+    const { envois } = executer({});
+    for (const cle of ["utm_source", "utm_medium", "utm_campaign"]) expect(envois[0]).not.toHaveProperty(cle);
+  });
+
+  it("l'inscription (pre-register) et le checkout recoivent la campagne avec visiteurId", () => {
+    for (const chemin of ["/api/auth/pre-register", "/api/public/checkout-session", "/api/public/payment-intent"]) {
+      const { envois, fenetre } = executer({ path: "/dashboard.html", search: SEARCH });
+      fenetre.fetch(chemin, { body: JSON.stringify({ email: "x" }) });
+      expect(envois.at(-1), chemin).toMatchObject({
+        email: "x", source: "social", utm_source: "instagram", utm_medium: "social", utm_campaign: "reel_oct",
+      });
+      expect(envois.at(-1)!["visiteurId"]).toBeTruthy();
+    }
   });
 });

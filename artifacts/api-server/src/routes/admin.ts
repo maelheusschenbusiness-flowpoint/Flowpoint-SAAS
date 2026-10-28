@@ -17,6 +17,7 @@ import { timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
+import { agregerAttribution, validerPlageAttribution } from "../services/funnel-events.js";
 
 const router = Router();
 
@@ -254,6 +255,27 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
         totalKeywords:   kwardsR.rows[0].count,
       },
     });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/acquisition/attribution ────────────────────────────────────
+// Agregats anonymes du tunnel par jour UTC x etape x source x campagne UTM.
+// Contrat fige (importe tel quel par AI Lab) : aucune autre cle dans les lignes,
+// jamais de visiteur_id, org_ref ni e-mail. `visiteurs` = visiteurs distincts.
+// Lecture : visiteurs = landing_vue, inscriptions = signup_form_completed,
+// essais = trial_activated, abonnements payants = subscription_activated.
+router.get("/admin/acquisition/attribution", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  const plage = validerPlageAttribution(req.query["from"], req.query["to"]);
+  if (!plage.ok) {
+    res.status(400).json({ ok: false, error: plage.erreur });
+    return;
+  }
+  try {
+    const lignes = await agregerAttribution(plage.du, plage.au);
+    res.json({ genereLe: new Date().toISOString(), du: plage.du, au: plage.au, lignes });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }

@@ -1294,12 +1294,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     req.cookies?.["fp_analytics_consent"],
     req.body?.visiteurId,
     req.body?.source,
+    req.body,
   );
   if (funnelAttribution) {
     void enregistrerEtape({
       etape: "signup_form_completed",
       visiteurId: funnelAttribution.visiteurId,
       source: funnelAttribution.source,
+      campagne: funnelAttribution.campagne,
       cleIdempotence: `signup_form_completed:${preToken}`,
     });
   }
