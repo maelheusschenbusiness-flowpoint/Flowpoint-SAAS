@@ -55,6 +55,44 @@ window.__fpPageLoadTs = Date.now();
     } catch (_) { return ''; }
   }
 
+  function _classifySessionRestore(status, hasToken) {
+    if (status === 200 && hasToken) return 'restored';
+    if (status === 401 || status === 403) return 'invalid';
+    return 'temporary';
+  }
+
+  function _showSessionRestoreRetryNotice() {
+    var noticeId = 'fp-session-restore-retry';
+    var notice = document.getElementById(noticeId);
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = noticeId;
+      notice.setAttribute('role', 'status');
+      notice.style.cssText = 'position:fixed;z-index:100000;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 32px));padding:14px 16px;border:1px solid rgba(245,158,11,.55);border-radius:10px;background:#1f2937;color:#f9fafb;font:14px/1.5 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35);text-align:center';
+      document.body.appendChild(notice);
+    }
+    notice.replaceChildren();
+    var noticeText = document.createElement('span');
+    noticeText.textContent = _fpBackendText(
+      'La vérification de votre session est temporairement indisponible. Votre session est conservée.',
+      'Session verification is temporarily unavailable. Your session has been preserved.',
+    );
+    notice.appendChild(noticeText);
+    var retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.textContent = _fpBackendText('Réessayer', 'Retry');
+    retryButton.style.cssText = 'display:block;margin:9px auto 0;padding:6px 13px;border:1px solid #fbbf24;border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
+    retryButton.addEventListener('click', function() { window.location.reload(); });
+    notice.appendChild(retryButton);
+  }
+
+  function _temporarySessionRestoreError(status) {
+    var error = new Error('Session verification is temporarily unavailable');
+    error.status = status >= 500 ? status : 503;
+    error.code = 'SESSION_RESTORE_TEMPORARY';
+    return error;
+  }
+
   // Bootstrap the per-tab token before any integration preload starts.
   // fp-backend.js is loaded before dashboard.js, so its timers could otherwise
   // call protected endpoints while dashboard.js was still restoring the token.
@@ -98,6 +136,8 @@ window.__fpPageLoadTs = Date.now();
     _resetTenantCaches();
     var restore = (async function () {
       var _existingToken = _sessionToken();
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function() { controller.abort(); }, 10000);
       try {
         var _headers = { 'Content-Type': 'application/json' };
         if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
@@ -105,23 +145,27 @@ window.__fpPageLoadTs = Date.now();
           method: 'POST',
           credentials: 'include',
           headers: _headers,
+          signal: controller.signal,
         });
-        if (response.ok) {
-          var data = await response.json().catch(function () { return null; });
-          if (data && data.token && restoreGeneration === _fpSessionGeneration) {
+        var data = response.ok ? await response.json().catch(function () { return null; }) : null;
+        var disposition = _classifySessionRestore(
+          response.status,
+          typeof data?.token === 'string' && data.token.length > 0,
+        );
+        if (disposition === 'restored' && restoreGeneration === _fpSessionGeneration) {
             sessionStorage.setItem('fp_session_token', data.token);
             if (!sessionStorage.getItem('fp_tab_uid')) {
               sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
             }
             return true;
-          }
         }
-        // Only an explicit 401 proves the stored bearer and cookie are both gone.
-        if (response.status === 401 && _existingToken) {
+        // Only explicit authentication rejection proves the session is invalid.
+        if (disposition === 'invalid' && _existingToken && restoreGeneration === _fpSessionGeneration) {
           try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
           try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
         }
-      } catch (_) { /* /api/me performs the final auth decision after a network failure */ }
+      } catch (_) { /* /api/me performs the final auth decision after a transient failure */ }
+      finally { clearTimeout(timeoutId); }
       return false;
     })();
     // Clear dedup slot when this restore finishes (success or error).
@@ -347,15 +391,24 @@ window.__fpPageLoadTs = Date.now();
           var _existingTok = _sessionToken();
           var _srHeaders = { 'Content-Type': 'application/json' };
           if (_existingTok) _srHeaders['Authorization'] = 'Bearer ' + _existingTok;
+          var _restoreController = new AbortController();
+          var _restoreTimeout = setTimeout(function() { _restoreController.abort(); }, 10000);
           return fetch('/api/auth/session-restore', {
             method: 'POST', credentials: 'include',
             headers: _srHeaders, body: '{}',
+            signal: _restoreController.signal,
           }).then(function(sr) {
             if (sr.ok) {
               return sr.json().then(function(srData) {
-                if (srData && srData.token) {
-                  try { sessionStorage.setItem('fp_session_token', srData.token); } catch(_) {}
+                var _restoreKind = _classifySessionRestore(
+                  sr.status,
+                  typeof srData?.token === 'string' && srData.token.length > 0,
+                );
+                if (_restoreKind !== 'restored') {
+                  _showSessionRestoreRetryNotice();
+                  throw _temporarySessionRestoreError(sr.status);
                 }
+                try { sessionStorage.setItem('fp_session_token', srData.token); } catch(_) {}
                 // Retry original request once with fresh token
                 var _rHdrs = Object.assign({'Content-Type':'application/json'}, _authHeaders(), (opts && opts.headers) || {});
                 return fetch(_path, Object.assign({}, opts || {}, { credentials: 'include', headers: _rHdrs }))
@@ -401,6 +454,10 @@ window.__fpPageLoadTs = Date.now();
                   });
               });
             }
+            if (_classifySessionRestore(sr.status, false) === 'temporary') {
+              _showSessionRestoreRetryNotice();
+              throw _temporarySessionRestoreError(sr.status);
+            }
             // session-restore response was non-OK. Apply the same structural rule.
             var _isCrit2 = path === '/api/me' || path.startsWith('/api/auth/');
             if (!_isCrit2) {
@@ -423,28 +480,16 @@ window.__fpPageLoadTs = Date.now();
             }
             return null;
           }).catch(function(e) {
+            if (e && e.code === 'SESSION_RESTORE_TEMPORARY') throw e;
             // Network error during session-restore. Apply the same structural rule.
             var _isCrit3 = path === '/api/me' || path.startsWith('/api/auth/');
             if (!_isCrit3) {
               console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on secondary endpoint', path, '— throwing (no global logout).');
               var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
-            if (!window.__fpRedirecting) {
-              var _pageAge3 = Date.now() - (window.__fpPageLoadTs || Date.now());
-              if (_pageAge3 < 8000 && !window.__fpBootstrapRedirectScheduled) {
-                window.__fpBootstrapRedirectScheduled = true;
-                setTimeout(function() {
-                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
-                    window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
-                  }
-                }, 8000 - _pageAge3 + 500);
-                return null;
-              }
-              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
-            }
-            return null;
-          });
+            _showSessionRestoreRetryNotice();
+            throw _temporarySessionRestoreError(503);
+          }).finally(function() { clearTimeout(_restoreTimeout); });
         }
         if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);

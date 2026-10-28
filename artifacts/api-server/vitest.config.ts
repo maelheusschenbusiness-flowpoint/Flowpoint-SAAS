@@ -89,6 +89,7 @@ export default defineConfig({
       "src/tests/dashboard-certification-regressions.test.ts",
       "src/tests/dashboard-render-regressions.test.ts",
       "src/tests/signin-session-restore-regressions.test.ts",
+      "src/tests/fp-backend-session-restore-regressions.test.ts",
       "src/tests/auth-log-credential-redaction.test.ts",
       "src/tests/public-locale-translations.test.ts",
       "src/tests/dashboard-i18n-static-audit.test.ts",
