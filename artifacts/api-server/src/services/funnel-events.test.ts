@@ -8,6 +8,7 @@ vi.mock("@workspace/db", () => ({
 import {
   ETAPES_PUBLIQUES,
   enregistrerEtape,
+  horodatageEtape,
   lireAttributionFunnel,
   metadataAttributionFunnel,
   normaliserAttributionFunnel,
@@ -60,5 +61,18 @@ describe("funnel event consent and privilege boundaries", () => {
     query.mockClear();
     expect(await enregistrerEtape({ etape: "privileged_fake_event" })).toBe(false);
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it("returns the persisted timestamp for an idempotent funnel event", async () => {
+    const createdAt = new Date("2026-10-21T08:15:30.123Z");
+    query.mockResolvedValue({ rows: [{ created_at: createdAt }] });
+
+    await expect(horodatageEtape("landing_vue:visitor:2026-10-21")).resolves.toBe(
+      createdAt.toISOString(),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("SELECT created_at FROM funnel_events"),
+      ["landing_vue:visitor:2026-10-21"],
+    );
   });
 });
