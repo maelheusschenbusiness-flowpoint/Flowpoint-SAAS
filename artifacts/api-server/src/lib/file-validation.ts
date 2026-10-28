@@ -19,6 +19,23 @@ export function buildExtToMimes(allowedMime: Record<string, string>): Record<str
   return map;
 }
 
+/**
+ * Resout le type MIME effectif d'un fichier a partir de son extension et du type MIME
+ * eventuellement fourni par l'appelant.
+ *
+ * Renvoie `null` dans chacun des cas suivants, sans les distinguer :
+ * - l'extension extraite de `filename` n'est pas une cle de `extToMimes`
+ *   (extension inconnue, ou nom de fichier sans extension) ;
+ * - `suppliedMime` est fourni mais n'est pas une cle de `allowedMime`
+ *   (type MIME non autorise globalement) ;
+ * - `suppliedMime` est fourni et autorise globalement, mais n'appartient pas a
+ *   `extToMimes[ext]` (incoherence entre le type MIME et l'extension) ;
+ * - `suppliedMime` est absent (ou vide) et `extToMimes[ext]` est un tableau vide,
+ *   donc aucun type MIME par defaut n'est disponible pour cette extension.
+ *
+ * Sinon, renvoie `suppliedMime` quand il est fourni et coherent, ou le premier type
+ * MIME de `extToMimes[ext]` quand il ne l'est pas.
+ */
 export function validateMimeExtConsistency(
   suppliedMime: string | undefined,
   filename:     string,
