@@ -114,6 +114,9 @@ describe("GET /api/admin/acquisition/attribution", () => {
     await ins("trial_activated", a, "2001-03-02T08:00:00Z", CAMPAGNE_TEST, "org-secret-ref");
     await ins("subscription_activated", null, "2001-03-02T09:00:00Z", CAMPAGNE_TEST, "org-secret-ref");
     await ins("landing_vue", c, "2001-03-03T00:30:00Z", CAMPAGNE_TEST);   // hors plage
+    // Visiteur de test (convention fp-test-, exclue comme dans la surveillance Conversion B) : jamais compte.
+    const testeur = `fp-test-${Date.now().toString(36)}-utmagg`;
+    await ins("landing_vue", testeur, "2001-03-01T12:00:00Z", CAMPAGNE_TEST);
 
     const r = await request(app)
       .get("/api/admin/acquisition/attribution?from=2001-03-01&to=2001-03-02")
@@ -140,5 +143,6 @@ describe("GET /api/admin/acquisition/attribution", () => {
     const brut = JSON.stringify(r.body);
     for (const id of [a, b, c, "org-secret-ref", "fp-utmtest-"]) expect(brut).not.toContain(id);
     expect(brut).not.toMatch(/@/);
+    await pool.query(`DELETE FROM funnel_events WHERE visiteur_id = $1`, [testeur]);
   });
 });

@@ -288,6 +288,8 @@ export async function agregerAttribution(du: string, au: string): Promise<LigneA
        FROM funnel_events
       WHERE created_at >= ($1::date)::timestamp AT TIME ZONE 'UTC'
         AND created_at <  ($2::date + 1)::timestamp AT TIME ZONE 'UTC'
+        -- Visiteurs de test (fp-test-…) exclus, comme dans la surveillance Conversion B.
+        AND (visiteur_id IS NULL OR visiteur_id NOT LIKE 'fp-test-%')
       GROUP BY 1, 2, 3, 4, 5, 6
       ORDER BY 1, array_position($3::text[], etape), 3 NULLS LAST, 4 NULLS LAST, 5 NULLS LAST, 6 NULLS LAST`,
     [du, au, [...ETAPES_TUNNEL]],
