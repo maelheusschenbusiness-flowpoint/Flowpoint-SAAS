@@ -31,9 +31,9 @@ const SOURCE = readFileSync(join(here, "../routes/admin.ts"), "utf8");
 /** Every route declared in admin.ts with the guard that opens its handler. */
 const ROUTES = [...SOURCE.matchAll(/router\.(get|post|put|patch|delete)\("([^"]+)"/g)].map((m) => {
   const after = SOURCE.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 400);
-  // Trois gardes existent desormais : admin complet, vendeurs, et Croissance —
+  // Quatre gardes existent desormais : admin complet, vendeurs, Croissance et Attribution —
   // chacun dans son propre en-tete, chacun n'ouvrant que ses routes.
-  const guard = /require(?:Seller|Growth)?AdminKey/.exec(after)?.[0] ?? null;
+  const guard = /require(?:Seller|Growth|Attribution)?AdminKey/.exec(after)?.[0] ?? null;
   return { method: m[1] as "get" | "post" | "put" | "patch" | "delete", path: m[2], guard };
 });
 const SELLER_ROUTES = [
@@ -42,6 +42,8 @@ const SELLER_ROUTES = [
 ];
 /** La seule route ouverte par GROWTH_ADMIN_KEY, et elle est en lecture seule. */
 const GROWTH_ROUTES = ["GET /admin/growth/daily"];
+/** La seule route ouverte par ATTRIBUTION_EXPORT_KEY (agrégats anonymes pour AI Lab), en lecture seule. */
+const ATTRIBUTION_ROUTES = ["GET /admin/acquisition/attribution"];
 const key = (r: { method: string; path: string }) => `${r.method.toUpperCase()} ${r.path}`;
 const concrete = (p: string) => p.replace(/:code/g, "SELLER-TEST1").replace(/:[a-zA-Z]+/g, "x1");
 
@@ -104,6 +106,11 @@ describe("route inventory", () => {
   });
   it("the growth route is read-only: no write verb carries the growth guard", () => {
     expect(ROUTES.filter((r) => r.guard === "requireGrowthAdminKey" && r.method !== "get")).toEqual([]);
+  });
+  it("the attribution guard opens exactly the one read-only attribution route", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireAttributionAdminKey").map(key).sort()).toEqual([...ATTRIBUTION_ROUTES].sort());
+    expect((SOURCE.match(/requireAttributionAdminKey\(req, res\)/g) ?? []).length).toBe(1);
+    expect(ROUTES.filter((r) => r.guard === "requireAttributionAdminKey" && r.method !== "get")).toEqual([]);
   });
 });
 

@@ -270,7 +270,7 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
 // anonymes seulement, pour AI Lab, sans lui confier ADMIN_KEY. Même modèle que SELLER_ADMIN_KEY :
 // sans l'en-tête dédié, ou avec x-admin-key, c'est le contrôle admin complet, inchangé.
 const ATTRIBUTION_EXPORT_KEY_MIN_LEN = 32;
-function requireAttributionKey(req: Request, res: Response): boolean {
+function requireAttributionAdminKey(req: Request, res: Response): boolean {
   const provided = req.headers["x-attribution-key"];
   if (provided === undefined || req.headers["x-admin-key"] !== undefined) return requireAdminKey(req, res);
   const key = process.env["ATTRIBUTION_EXPORT_KEY"];
@@ -290,7 +290,7 @@ function requireAttributionKey(req: Request, res: Response): boolean {
 }
 
 router.get("/admin/acquisition/attribution", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAttributionKey(req, res)) return;
+  if (!requireAttributionAdminKey(req, res)) return;
   const plage = validerPlageAttribution(req.query["from"], req.query["to"]);
   if (!plage.ok) {
     res.status(400).json({ ok: false, error: plage.erreur });
