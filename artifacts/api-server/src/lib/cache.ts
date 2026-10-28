@@ -55,8 +55,9 @@ class TTLCache {
     ttlSeconds: number,
     fetcher: () => Promise<T>,
   ): Promise<T> {
+    const cacheKey = `${namespace}:${key}`;
     const cached = this.get<T>(namespace, key);
-    if (cached !== null) return cached;
+    if (cached !== null || this.store.has(cacheKey)) return cached as T;
     const value = await fetcher();
     this.set(namespace, key, value, ttlSeconds);
     return value;
