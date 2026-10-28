@@ -238,6 +238,7 @@ export default defineConfig({
       "src/routes/team-list-owner.test.ts",
       "src/routes/monitors-delete.test.ts",
        "src/routes/team-member-removal-security.test.ts",
+       "src/lib/file-validation.test.ts",
       // Account deletion — early session revocation (preKillSessions) patch
       "src/services/account-deletion-session-kill.test.ts",
       // Le mecanisme de suppression cree-t-il encore des orphelins ? (17/10/2026)
