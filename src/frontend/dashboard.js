@@ -45,6 +45,12 @@ function _initLocale() {
     ? window.fpResolveLocale(language)
     : ({'pt-br':'pt-BR',fr:'fr-FR',en:'en-US',es:'es-ES',de:'de-DE',it:'it-IT',pt:'pt-PT',nl:'nl-NL',pl:'pl-PL',sv:'sv-SE',ro:'ro-RO',cs:'cs-CZ'})[String(language).toLowerCase()] || 'en-US';
 }
+function _setDocumentLanguage(language) {
+  var selectedLanguage = String(language || 'en');
+  document.documentElement.lang = typeof window.fpResolveLocale === 'function'
+    ? window.fpResolveLocale(selectedLanguage)
+    : selectedLanguage.split(/[-_]/)[0];
+}
 const CUR_MONTH = new Date().toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear();
 const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString(_initLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear();}());
 function getCurMonth() { return new Date().toLocaleDateString(getLocale(),{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+new Date().getFullYear(); }
@@ -2489,7 +2495,7 @@ async function loadData(options = {}) {
       applyTheme();
       // Apply language preference from server immediately after load
       if (_prefs.settings.language) {
-        try { document.documentElement.lang = String(_prefs.settings.language).split('-')[0]; } catch(_) {}
+        try { _setDocumentLanguage(_prefs.settings.language); } catch(_) {}
       }
     }
   }
@@ -51591,7 +51597,7 @@ function bindGlobalEvents() {
   window.fpApplyTranslations = function() {
     try {
       var lang = String((STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase();
-      document.documentElement.lang = typeof window.fpResolveLocale === 'function' ? window.fpResolveLocale(lang) : lang;
+      _setDocumentLanguage(lang);
       var catalog = FP_I18N[lang] || null; // null/empty ⇒ French ⇒ restore pass
       var roots = [document.getElementById('fp-sidebar'), document.getElementById('fp-page'),
                    document.querySelector('.fp-topbar'), document.getElementById('fp-header'),
@@ -51676,8 +51682,7 @@ function bindGlobalEvents() {
   // ── applyLanguagePref: persist preference and re-render so the select stays on the chosen value ──
   window.applyLanguagePref = function(val) {
     if (!val) return;
-    var langCode = val.split('-')[0];
-    document.documentElement.lang = langCode;
+    _setDocumentLanguage(val);
     if (STATE.settings) STATE.settings.language = val;
     localStorage.setItem('fp:language', val);
     // Re-render applies the chosen locale catalog without mutating user content.
@@ -51693,7 +51698,7 @@ async function init() {
   // Apply stored language preference before first render
   try {
     const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en';
-    document.documentElement.lang = _lang.split('-')[0];
+    _setDocumentLanguage(_lang);
   } catch(_) {}
   // Apply free modules (compact mode, focus mode, etc.)
   applyFreeModules();
