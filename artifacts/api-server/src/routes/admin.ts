@@ -631,10 +631,18 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
 
     const token = `fp_qa_${randomBytes(32).toString("hex")}`;
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
-    await client.query(
+    const inserted = await client.query<{ token: string }>(
       INSERT_QA_TEST_SESSION_SQL,
       [token, QA_USER_UUID, QA_ORG_UUID, role, expiresAt, QA_USER_UUID],
     );
+    if (inserted.rowCount !== 1 || inserted.rows[0]?.token !== token) {
+      res.status(503).json({
+        ok: false,
+        error: "The QA session was not persisted.",
+        code: "QA_SESSION_NOT_PERSISTED",
+      });
+      return;
+    }
     res.json({
       ok: true,
       token,
