@@ -86,6 +86,7 @@ export default defineConfig({
       "src/services/ab-testing-suggestion.test.ts",
       "src/routes/ab-testing-suggest.test.ts",
       "src/routes/ab-testing-lifecycle.test.ts",
+      "src/tests/dashboard-certification-regressions.test.ts",
       "src/tests/dashboard-render-regressions.test.ts",
       "src/tests/public-locale-translations.test.ts",
       "src/tests/dashboard-i18n-static-audit.test.ts",

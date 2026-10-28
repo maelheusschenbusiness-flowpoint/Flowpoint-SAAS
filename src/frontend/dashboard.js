@@ -3088,6 +3088,7 @@ function saveSettings() {
   apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings })
     .catch(() => showToast('warning', fpT('Paramètres enregistrés localement — synchronisation serveur échouée')));
 }
+window.saveSettings = saveSettings;
 function saveChecklist() {
   var _payload = { items: STATE.checklist, extra: STATE.checklistExtra || {} };
   apiAction('PUT', '/api/overview/checklist', _payload)
@@ -13956,25 +13957,31 @@ function renderAI() {
     const _compScore   = STATE.competitors&&STATE.competitors.length>0 ? Math.min(100,Math.round((STATE.competitors[0].domainRating||50)*1.2)) : null;
     const systems = [
       {name:'SEO & Audits', icon:'🔍', score:_mkSysScore(_auditScore), status:_mkSysStatus(_auditScore), color:_mkSysColor(_auditScore), route:'audits',
-        detail:_auditScore!=null?(STATE.audits&&STATE.audits.length>0?STATE.audits.length+' site(s) · Score moyen '+_auditScore+'/100':'Score '+_auditScore+'/100'):PREVIEW_MODE?'4 sites actifs · Score moyen 74/100':'Aucun audit — Lancez votre premier audit'},
+        detail:_auditScore!=null?(STATE.audits&&STATE.audits.length>0
+          ? fpT('{count} site{plural} · Score moyen {score}/100',{count:STATE.audits.length,plural:STATE.audits.length>1?'s':'',score:_auditScore})
+          : fpT('Score {score}/100',{score:_auditScore})):PREVIEW_MODE?'4 sites actifs · Score moyen 74/100':fpT('Aucun audit — Lancez votre premier audit')},
       {name:'Monitors', icon:'📡', score:_mkSysScore(_monScore), status:_mkSysStatus(_monScore), color:_mkSysColor(_monScore), route:'monitors',
-        detail:_monTotal>0?_monDown+' DOWN · '+_monTotal+' monitor(s) actif(s)':PREVIEW_MODE?'3 DOWN · Uptime moyen 97.2%':'Aucun monitor configuré'},
+        detail:_monTotal>0
+          ? fpT('{down} DOWN · {count} monitor{plural} actif{plural}',{down:_monDown,count:_monTotal,plural:_monTotal>1?'s':''})
+          : PREVIEW_MODE?'3 DOWN · Uptime moyen 97.2%':fpT('Aucun monitor configuré')},
       {name:'Local SEO', icon:'📍', score:_mkSysScore(domScore!=null?Math.round(domScore*0.9):null), status:_mkSysStatus(domScore!=null?Math.round(domScore*0.9):null), color:_mkSysColor(domScore!=null?Math.round(domScore*0.9):null), route:'local-seo',
-        detail:STATE.dfsStatus?.configured?'Données de classement disponibles':PREVIEW_MODE?'2 zones non couvertes · GBP actif':'Données locales indisponibles'},
+        detail:STATE.dfsStatus?.configured?fpT('Données de classement disponibles'):PREVIEW_MODE?'2 zones non couvertes · GBP actif':fpT('Données locales indisponibles')},
       {name:'Concurrents', icon:'🏁', score:_mkSysScore(_compScore), status:_mkSysStatus(_compScore), color:_mkSysColor(_compScore), route:'competitor',
-        detail:STATE.competitors&&STATE.competitors.length>0?(STATE.competitors[0].name||'Concurrent #1')+' — '+STATE.competitors.length+' concurrent(s) suivi(s)':PREVIEW_MODE?'Concurrent #1 en progression cette semaine':'Aucun concurrent — Ajoutez des concurrents'},
+        detail:STATE.competitors&&STATE.competitors.length>0
+          ? fpT('{name} — {count} concurrent{plural} suivi{plural}',{name:STATE.competitors[0].name||'Concurrent #1',count:STATE.competitors.length,plural:STATE.competitors.length>1?'s':''})
+          : PREVIEW_MODE?'Concurrent #1 en progression cette semaine':fpT('Aucun concurrent — Ajoutez des concurrents')},
       {name:'Conversion', icon:'💰', score:_mkSysScore(_convScore), status:_mkSysStatus(_convScore), color:_mkSysColor(_convScore), route:'conversion',
-        detail:_convRate!=null?'Taux global : '+(_convRate*100).toFixed(2)+'%':PREVIEW_MODE?'Friction mobile détectée · CTA sous-optimaux':'Connectez GA4 pour analyser la conversion'},
+        detail:_convRate!=null?fpT('Taux global : {rate}',{rate:(_convRate*100).toFixed(2)+'%'}):PREVIEW_MODE?'Friction mobile détectée · CTA sous-optimaux':fpT('Connectez GA4 pour analyser la conversion')},
       {name:'Rapports', icon:'📄', score:_mkSysScore(_repsCount>0?Math.min(99,60+_repsCount*3):null), status:_mkSysStatus(_repsCount>0?Math.min(99,60+_repsCount*3):null), color:_mkSysColor(_repsCount>0?Math.min(99,60+_repsCount*3):null), route:'reports',
-        detail:_repsCount>0?_repsCount+' rapport(s) généré(s)':PREVIEW_MODE?'Rapport mensuel généré · 3 clients actifs':'Aucun rapport généré'},
+        detail:_repsCount>0?fpT('{count} rapport{plural} généré{plural}',{count:_repsCount,plural:_repsCount>1?'s':''}):PREVIEW_MODE?'Rapport mensuel généré · 3 clients actifs':fpT('Aucun rapport généré')},
       {name:'Alertes', icon:'🔔', score:_mkSysScore(_alertScore), status:_mkSysStatus(_alertScore), color:_mkSysColor(_alertScore), route:'alerts-center',
-        detail:_aActive>0?_aActive+' alerte(s) · '+_aFiring+' déclenchée(s)':PREVIEW_MODE?'3 incidents actifs · 2 non résolus':'Aucune alerte configurée'},
-      {name:'Facturation', icon:'💳', score:null, status:_billOk?'Plan '+STATE.me.plan+' actif':'—', color:_billOk?'#22c55e':'var(--fp-text-faint)', route:'billing',
-        detail:_billOk?'Plan '+STATE.me.plan+' actif':PREVIEW_MODE?'Plan Pro actif · Prochain débit 01/06':'Aucun abonnement actif'},
+        detail:_aActive>0?fpT('{active} alerte{activePlural} · {firing} déclenchée{firingPlural}',{active:_aActive,activePlural:_aActive>1?'s':'',firing:_aFiring,firingPlural:_aFiring>1?'s':''}):PREVIEW_MODE?'3 incidents actifs · 2 non résolus':fpT('Aucune alerte configurée')},
+      {name:'Facturation', icon:'💳', score:null, status:_billOk?fpT('Plan {plan} actif',{plan:STATE.me.plan}):'—', color:_billOk?'#22c55e':'var(--fp-text-faint)', route:'billing',
+        detail:_billOk?fpT('Plan {plan} actif',{plan:STATE.me.plan}):PREVIEW_MODE?'Plan Pro actif · Prochain débit 01/06':fpT('Aucun abonnement actif')},
       {name:'Missions IA', icon:'✅', score:_mkSysScore(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), status:_mkSysStatus(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), color:_mkSysColor(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), route:'missions',
-        detail:_missTotal>0?_missTotal+' mission(s) · '+_missDone+' terminée(s)':PREVIEW_MODE?'5 missions actives · 2 terminées ce mois':'Aucune mission IA — Lancez votre première mission'},
+        detail:_missTotal>0?fpT('{total} mission{totalPlural} · {done} terminée{donePlural}',{total:_missTotal,totalPlural:_missTotal>1?'s':'',done:_missDone,donePlural:_missDone>1?'s':''}):PREVIEW_MODE?'5 missions actives · 2 terminées ce mois':fpT('Aucune mission IA — Lancez votre première mission')},
       {name:'Workflows', icon:'⚡', score:_mkSysScore(_wfActive>0?85:null), status:_mkSysStatus(_wfActive>0?85:null), color:_mkSysColor(_wfActive>0?85:null), route:'settings',
-        detail:_wfActive>0?_wfActive+' workflow(s) actif(s)':PREVIEW_MODE?'4 actifs · 0 erreur · ~6h économisées/mois':'Aucun workflow actif'},
+        detail:_wfActive>0?fpT('{count} workflow{plural} actif{plural}',{count:_wfActive,plural:_wfActive>1?'s':''}):PREVIEW_MODE?'4 actifs · 0 erreur · ~6h économisées/mois':fpT('Aucun workflow actif')},
     ];
     const _corrMonDown = STATE.monitors && STATE.monitors.some(m=>m.status==='down');
     const _corrAudits  = STATE.audits && STATE.audits.length > 0;
@@ -19123,25 +19130,6 @@ function bindGlobalEvents() {
   $('#fp-fab')?.addEventListener('click', toggleFAB);
   $('#fp-fab-backdrop')?.addEventListener('click', closeFAB);
 
-  // Mobile hamburger
-  $('#fp-hamburger')?.addEventListener('click', () => {
-    const sidebar = $('#fp-sidebar');
-    const overlay = $('#fp-mobile-overlay');
-    const hamburger = $('#fp-hamburger');
-    const isOpen = sidebar.classList.toggle('mobile-open');
-    overlay.classList.toggle('show', isOpen);
-    hamburger.classList.toggle('open', isOpen);
-    hamburger.setAttribute('aria-expanded', String(isOpen));
-    overlay.setAttribute('aria-hidden', String(!isOpen));
-  });
-  $('#fp-mobile-overlay')?.addEventListener('click', () => {
-    $('#fp-sidebar')?.classList.remove('mobile-open');
-    $('#fp-mobile-overlay')?.classList.remove('show');
-    const h = $('#fp-hamburger');
-    if (h) { h.classList.remove('open'); h.setAttribute('aria-expanded','false'); }
-    $('#fp-mobile-overlay')?.setAttribute('aria-hidden','true');
-  });
-
   // Theme toggle — event delegation survives re-renders
   document.addEventListener('click', function(e) {
     if (e.target.closest('#fp-theme-toggle')) toggleTheme();
@@ -19546,7 +19534,8 @@ function bindGlobalEvents() {
     'Paramètres': 'Settings', 'Facturation': 'Billing', 'Sécurité': 'Security',
     'Intégrations': 'Integrations', 'Notifications': 'Notifications', 'Alertes': 'Alerts',
     'Recommandations': 'Recommendations', 'Croissance': 'Growth', 'Trafic': 'Traffic',
-    'Rechercher': 'Search', 'Rechercher…': 'Search…', 'Nouvel audit': 'New audit',
+    'Rechercher': 'Search', 'Rechercher…': 'Search…', 'Filtrer': 'Filter',
+    'Ouvrir le menu': 'Open menu', 'Nouvel audit': 'New audit',
     'Nouveau monitor': 'New monitor', 'Nouvelle mission': 'New mission',
     'Ajouter': 'Add', 'Annuler': 'Cancel', 'Enregistrer': 'Save', 'Sauvegarder': 'Save',
     'Supprimer': 'Delete', 'Modifier': 'Edit', 'Fermer': 'Close', 'Voir tout': 'View all',
@@ -20401,6 +20390,79 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Aucun concurrent — Ajoutez des concurrents": "No competitors — add competitors",
+    "Connectez GA4 pour analyser la conversion": "Connect GA4 to analyze conversions",
+    "Aucune alerte configurée": "No alerts configured",
+    "Aucun abonnement actif": "No active subscription",
+    "Aucune mission IA — Lancez votre première mission": "No AI missions — start your first mission",
+    "Créer une règle d'alerte": "Create an alert rule",
+    "→ Connectez vos sources": "→ Connect your sources",
+    "Aucun incident actif — tous les sites sont opérationnels.": "No active incidents — all sites are operating normally.",
+    "→ Connectez analytics": "→ Connect analytics",
+    "→ Aucun incident résolu": "→ No resolved incidents",
+    "Données de classement indisponibles pour surveiller les fluctuations de positions de vos mots-clés en temps réel.": "Ranking data is unavailable for monitoring real-time changes in your keyword positions.",
+    "→ Données de classement indisponibles": "→ Ranking data unavailable",
+    "Aucune alerte conversion observée. Connectez le suivi comportemental pour commencer la collecte.": "No conversion alerts detected. Connect behavioral tracking to start collecting data.",
+    "→ Aucun revenu relié aux événements": "→ No revenue linked to events",
+    "→ Aucune friction mesurée": "→ No measured friction",
+    "→ Aucune donnée disponible": "→ No data available",
+    "Aucune alerte locale critique. Connectez Google Business Profile pour une surveillance continue de vos fiches.": "No critical local alerts. Connect Google Business Profile to keep your listings monitored.",
+    "→ Connectez GBP": "→ Connect GBP",
+    "Aucun concurrent configuré. Ajoutez des concurrents pour activer l'intelligence concurrentielle.": "No competitors configured. Add competitors to enable competitive intelligence.",
+    "Aucun concurrent configuré. Ajoutez des concurrents pour activer la veille concurrentielle.": "No competitors configured. Add competitors to enable competitor monitoring.",
+    "→ Aucun concurrent configuré": "→ No competitors configured",
+    "Rapport risques complet": "Full risk report",
+    "Plan défensif IA": "AI defense plan",
+    "Alerter équipe": "Alert the team",
+    "→ basés sur vos données réelles": "→ based on your real data",
+    "Connectez vos mots-clés": "Connect your keywords",
+    "Aucune action Quick Win ne peut être confirmée avec les données disponibles.": "No Quick Win action can be confirmed with the available data.",
+    "Ajoutez vos concurrents pour obtenir une analyse comparative détaillée.": "Add competitors for a detailed comparative analysis.",
+    "Aucun thème récurrent détecté dans les avis enregistrés.": "No recurring themes found in saved reviews.",
+    "Ajouter des attributs alt descriptifs sur toutes les images": "Add descriptive alt attributes to all images",
+    "Données structurées Schema.org": "Schema.org structured data",
+    "Données insuffisantes": "Insufficient data",
+    "Créer un dashboard": "Create a dashboard",
+    "Ajouter des widgets": "Add widgets",
+    "Données historiques insuffisantes pour générer une prévision.": "Not enough historical data to generate a forecast.",
+    "→ Données insuffisantes": "→ Insufficient data",
+    "Aucun rapport généré pour le moment. Créez votre premier rapport depuis la section Rapports.": "No reports generated yet. Create your first report in the Reports section.",
+    "→ Aucun rapport": "→ No reports",
+    "Aucune alerte SSL": "No SSL alerts",
+    "Activité et rôles équipe": "Team activity and roles",
+    "Aucune automatisation configurée. Les actions IA apparaîtront ici dès leur exécution.": "No automations configured. AI actions will appear here once they run.",
+    "Créer une automatisation": "Create an automation",
+    "→ Aucune automatisation": "→ No automations",
+    "Aucun rapport généré ce mois. Créez votre premier rapport pour partager les résultats avec vos clients.": "No reports generated this month. Create your first report to share results with your clients.",
+    "→ Aucune": "→ None",
+    "→ Aucun": "→ None",
+    "📄 Créer un rapport mensuel": "📄 Create a monthly report",
+    "Créer un rapport mensuel pour mon client": "Create a monthly report for my client",
+    "↑ Aucun": "↑ None",
+    "Sans GBP configuré, votre visibilité locale sur Google Maps est limitée. Connectez votre fiche GBP pour surveiller les avis et positions locales.": "Without a configured Google Business Profile, your local Google Maps visibility is limited. Connect your listing to monitor reviews and local rankings.",
+    "Sans suivi de positions, vous ne pouvez pas détecter les chutes de ranking. Ajoutez vos mots-clés cibles pour activer la veille.": "Without rank tracking, you can't detect ranking drops. Add your target keywords to enable monitoring.",
+    "Aucun concurrent configuré": "No competitors configured",
+    "Sans veille concurrentielle, vous ne détectez pas les mouvements de vos concurrents. Ajoutez vos concurrents principaux.": "Without competitor monitoring, you can't detect competitors' moves. Add your main competitors.",
+    "{count} site{plural} · Score moyen {score}/100": "{count} site{plural} · Average score {score}/100",
+    "Score {score}/100": "Score {score}/100",
+    "{down} DOWN · {count} monitor{plural} actif{plural}": "{down} DOWN · {count} active monitor{plural}",
+    "Aucun audit — Lancez votre premier audit": "No audits — run your first audit",
+    "Données de classement disponibles": "Ranking data available",
+    "Données locales indisponibles": "Local data unavailable",
+    "{name} — {count} concurrent{plural} suivi{plural}": "{name} — {count} competitor{plural} tracked",
+    "Taux global : {rate}": "Overall rate: {rate}",
+    "{count} rapport{plural} généré{plural}": "{count} report{plural} generated",
+    "{active} alerte{activePlural} · {firing} déclenchée{firingPlural}": "{active} alert{activePlural} · {firing} triggered{firingPlural}",
+    "{total} mission{totalPlural} · {done} terminée{donePlural}": "{total} mission{totalPlural} · {done} completed",
+    "{count} workflow{plural} actif{plural}": "{count} active workflow{plural}",
+    "Aucun workflow actif": "No active workflows",
+    "{count} avis Google sans réponse{plural}": "{count} unanswered Google review{plural}",
+    "Les avis sans réponse dégradent votre note moyenne et la confiance client. Répondez dans les 48h pour maintenir votre réputation.": "Unanswered reviews lower your average rating and customer trust. Reply within 48 hours to protect your reputation.",
+    "Latence élevée — {count} site{plural}": "High latency — {count} site{plural}",
+    "dépasse le seuil {threshold}ms. Cela impacte les Core Web Vitals et la conversion.": "exceeds the {threshold} ms threshold. This affects Core Web Vitals and conversions.",
+    "{critical} risque{criticalPlural} critique{criticalPlural} et {alerts} alerte{alertPlural} détectée{alertPlural} à partir de vos données réelles.": "{critical} critical risk{criticalPlural} and {alerts} alert{alertPlural} detected from your real data.",
+    "Aucun risque détecté pour le moment — les analyses s'affineront avec vos données.": "No risks detected yet — insights will improve as more data becomes available.",
+    "Les analyses s'affineront avec vos données — ajoutez monitors, mots-clés et concurrents pour activer la détection.": "Insights will improve as you add data — add monitors, keywords, and competitors to enable detection.",
     "Conversion Opportunity Engine": "Conversion Opportunity Engine",
     "Opportunités de conversion": "Conversion opportunities",
     "Pages avec suffisamment de sessions mais un taux de conversion mesuré faible.": "Pages with enough sessions but a measured low conversion rate.",
@@ -20625,13 +20687,13 @@ function bindGlobalEvents() {
     "Aucun membre": "No member",
     "Aucun membre dans l'équipe pour le moment": "No team member at the moment",
     "Aucun message dans ce canal": "No message in this channel",
-    "Aucun monitor configuré": "No monitor configured",
+    "Aucun monitor configuré": "No monitors configured",
     "Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.": "No monitor configured — add one from the Monitors tab.",
     "Aucun monitor à vérifier": "No monitor to check",
-    "Aucun mot-clé suivi": "No Keyword tracked",
+    "Aucun mot-clé suivi": "No keywords tracked",
     "Aucun mot-clé — lancez une synchronisation pour charger les données.": "No Keyword — run a synchronization to load data.",
     "Aucun mouvement concurrent détecté. Lancez une analyse pour commencer.": "No Competitor movement detected. Run an analysis to start.",
-    "Aucun rapport généré": "No Report generated",
+    "Aucun rapport généré": "No reports generated",
     "Aucun rapport généré pour le moment.": "No Report generated for the moment.",
     "Aucun rapport partagé disponible.": "No shared report available.",
     "Aucun rapport planifié": "No scheduled report",
@@ -57080,7 +57142,7 @@ function hasValidTimeSeries(series) {
 }
 
 // Lazy-loads data required by the Growth Command Center that is not fetched
-// globally (keyword stats/opportunities + local-seo).  Fire-and-forget:
+// globally (keyword stats/opportunities + local-seo configuration). Fire-and-forget:
 // guards prevent duplicate requests; re-renders once data arrives.
 function loadGrowthData() {
   var _needKw   = !(STATE.keywordData && STATE.keywordData.stats) && !STATE._growthKwLoading;
@@ -57095,8 +57157,13 @@ function loadGrowthData() {
   }
   if (_needLseo) {
     STATE._growthLseoLoading = true;
-    apiFetch('/api/local-seo')
-      .then(function(r) { if (r && typeof r === 'object') STATE.localSeo = r; })
+    apiFetch('/api/local-seo/status')
+      .then(function(r) {
+        if (r && typeof r === 'object') {
+          STATE.localSeo = Object.assign({}, STATE.localSeo || {}, r);
+          delete STATE.localSeo._status;
+        }
+      })
       .catch(function(err) {
         // Set a sentinel so _needLseo stays false permanently — prevents retry loop on 404/error
         STATE.localSeo = { _status: err && err.message && err.message.includes('404') ? 'unavailable' : 'error' };
@@ -61226,31 +61293,43 @@ function renderAlertsCenter() {
     }
     // Risk: no GBP connected
     if (!STATE.gbp || !STATE.gbp.connected) {
-      _realRisks.push({ icon:'📍', title:'Google Business Profile non connecté', sev:'warning', color:'#f59e0b', desc:'Sans GBP configuré, votre visibilité locale sur Google Maps est limitée. Connectez votre fiche GBP pour surveiller les avis et positions locales.' });
+      _realRisks.push({ icon:'📍', title:fpT('Google Business Profile non connecté'), sev:'warning', color:'#f59e0b', desc:fpT('Sans GBP configuré, votre visibilité locale sur Google Maps est limitée. Connectez votre fiche GBP pour surveiller les avis et positions locales.') });
     }
     // Risk: unanswered GBP reviews
     if (STATE.gbp?.unansweredReviews > 0) {
-      _realRisks.push({ icon:'⭐', title:STATE.gbp.unansweredReviews + ' avis Google sans réponse', sev:'warning', color:'#f59e0b', desc:'Les avis sans réponse dégradent votre note moyenne et la confiance client. Répondez dans les 48h pour maintenir votre réputation.' });
+      _realRisks.push({ icon:'⭐', title:fpT('{count} avis Google sans réponse{plural}',{count:STATE.gbp.unansweredReviews,plural:STATE.gbp.unansweredReviews>1?'s':''}), sev:'warning', color:'#f59e0b', desc:fpT('Les avis sans réponse dégradent votre note moyenne et la confiance client. Répondez dans les 48h pour maintenir votre réputation.') });
     }
     // Risk: no keywords tracked
     const _kwCount = (STATE.keywords||STATE.keywordData?.keywords||[]).length;
     if (_kwCount === 0) {
-      _realRisks.push({ icon:'🔑', title:'Aucun mot-clé suivi', sev:'warning', color:'#f59e0b', desc:'Sans suivi de positions, vous ne pouvez pas détecter les chutes de ranking. Ajoutez vos mots-clés cibles pour activer la veille.' });
+      _realRisks.push({ icon:'🔑', title:fpT('Aucun mot-clé suivi'), sev:'warning', color:'#f59e0b', desc:fpT('Sans suivi de positions, vous ne pouvez pas détecter les chutes de ranking. Ajoutez vos mots-clés cibles pour activer la veille.') });
     }
     // Risk: no competitors
     const _compCount = (STATE.competitors||[]).length;
     if (_compCount === 0) {
-      _realRisks.push({ icon:'🎯', title:'Aucun concurrent configuré', sev:'medium', color:'#2563EB', desc:'Sans veille concurrentielle, vous ne détectez pas les mouvements de vos concurrents. Ajoutez vos concurrents principaux.' });
+      _realRisks.push({ icon:'🎯', title:fpT('Aucun concurrent configuré'), sev:'medium', color:'#2563EB', desc:fpT('Sans veille concurrentielle, vous ne détectez pas les mouvements de vos concurrents. Ajoutez vos concurrents principaux.') });
     }
     // Risk: latent monitors
     const _slowMons = (STATE.monitors||[]).filter(m => (m.latency||0) > 500);
     if (_slowMons.length > 0) {
-      _realRisks.push({ icon:'⚡', title:'Latence élevée — ' + _slowMons.length + ' site' + (_slowMons.length>1?'s':''), sev:'warning', color:'#f59e0b', desc: _slowMons.map(m=>(m.url||m.name||'').replace(/^https?:\/\//,'')+ ' (' + (m.latency||'—') + 'ms)').join(', ') + ' — dépasse le seuil 500ms. Cela impacte les Core Web Vitals et la conversion.' });
+      _realRisks.push({
+        icon:'⚡',
+        title:fpT('Latence élevée — {count} site{plural}',{count:_slowMons.length,plural:_slowMons.length>1?'s':''}),
+        sev:'warning',
+        color:'#f59e0b',
+        desc:_slowMons.map(m=>(m.url||m.name||'').replace(/^https?:\/\//,'')+ ' (' + (m.latency||'—') + 'ms)').join(', ')
+          + ' — ' + fpT('dépasse le seuil {threshold}ms. Cela impacte les Core Web Vitals et la conversion.',{threshold:500})
+      });
     }
     return `
       ${isUltra
         ? aiBlock(_realRisks.length > 0
-            ? _realRisks.filter(r=>r.sev==='critical').length + " risque" + (_realRisks.filter(r=>r.sev==='critical').length>1?'s':'') + " critique" + (_realRisks.filter(r=>r.sev==='critical').length>1?'s':'') + " et " + _realRisks.filter(r=>r.sev!=='critical').length + " alerte" + (_realRisks.filter(r=>r.sev!=='critical').length>1?'s':'') + " détectée" + (_realRisks.filter(r=>r.sev!=='critical').length>1?'s':'') + " à partir de vos données réelles."
+        ? fpT('{critical} risque{criticalPlural} critique{criticalPlural} et {alerts} alerte{alertPlural} détectée{alertPlural} à partir de vos données réelles.',{
+            critical:_realRisks.filter(r=>r.sev==='critical').length,
+            criticalPlural:_realRisks.filter(r=>r.sev==='critical').length>1?'s':'',
+            alerts:_realRisks.filter(r=>r.sev!=='critical').length,
+            alertPlural:_realRisks.filter(r=>r.sev!=='critical').length>1?'s':''
+          })
             : "Aucun risque détecté pour le moment — les analyses s'affineront avec vos données.",
             ['Rapport risques complet', 'Plan défensif IA', 'Alerter équipe'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
@@ -71194,6 +71273,34 @@ document.addEventListener('click', function(e) {
     });
 });
 
+function setMobileNavigationOpen(isOpen) {
+  var open = Boolean(isOpen);
+  var sidebar = document.getElementById('fp-sidebar');
+  var overlay = document.getElementById('fp-mobile-overlay');
+  var hamburger = document.getElementById('fp-hamburger');
+  if (sidebar) sidebar.classList.toggle('mobile-open', open);
+  if (overlay) {
+    overlay.classList.toggle('show', open);
+    overlay.setAttribute('aria-hidden', String(!open));
+  }
+  if (hamburger) {
+    hamburger.classList.toggle('open', open);
+    hamburger.setAttribute('aria-expanded', String(open));
+  }
+}
+
+// Bind mobile controls at IIFE scope so they work while async bootstrap is pending.
+document.addEventListener('click', function _mobileNavigationDelegation(e) {
+  var target = e.target;
+  if (!target || typeof target.closest !== 'function') return;
+  if (target.closest('#fp-hamburger')) {
+    var sidebar = document.getElementById('fp-sidebar');
+    if (sidebar) setMobileNavigationOpen(!sidebar.classList.contains('mobile-open'));
+    return;
+  }
+  if (target.closest('#fp-mobile-overlay')) setMobileNavigationOpen(false);
+});
+
 // ── Sidebar nav item clicks — global document delegation ────────────────────────
 // Registered at IIFE global scope (NOT inside init()) so it fires correctly even
 // when init() is paused at `await loadData()` or encounters an async error before
@@ -71204,12 +71311,7 @@ document.addEventListener('click', function _navDelegation(e) {
   if (!navEl || !navEl.dataset || !navEl.dataset.route) return;
   navigate(navEl.dataset.route);
   if (window.innerWidth <= 768) {
-    var sb = document.getElementById('fp-sidebar');
-    var ov = document.getElementById('fp-mobile-overlay');
-    var hb = document.getElementById('fp-hamburger');
-    if (sb) sb.classList.remove('mobile-open');
-    if (ov) ov.classList.remove('show');
-    if (hb) { hb.classList.remove('open'); hb.setAttribute('aria-expanded', 'false'); }
+    setMobileNavigationOpen(false);
   }
 });
 

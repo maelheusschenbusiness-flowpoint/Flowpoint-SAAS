@@ -173,7 +173,7 @@ async function testLocalSeo() {
   sql(`DELETE FROM user_sessions WHERE token='${token2}'`);
 
   // 2h. Vérifier si DataForSEO est configuré pour cet org
-  const r6 = await api("GET", "/api/local-seo");
+  const r6 = await api("GET", "/api/seo/status");
   const configured = r6.json?.configured || r6.json?.dataforSeoConfigured;
   configured ? ok("DataForSEO configuré pour cet org") : warn("DataForSEO non configuré — rankings réels non disponibles en test (normal pour org de dev)");
 }
