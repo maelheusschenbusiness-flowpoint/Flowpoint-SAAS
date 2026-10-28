@@ -90,6 +90,29 @@ describe("GET /api/admin/acquisition/attribution", () => {
     expect(r.status).toBe(403);
   });
 
+  it("cle restreinte x-attribution-key : lit les agregats, rien d'autre ; absente ou egale a ADMIN_KEY refusee", async () => {
+    const CLE = "attribution-export-key-for-tests-at-least-32-chars";
+    const avant = process.env["ATTRIBUTION_EXPORT_KEY"];
+    try {
+      delete process.env["ATTRIBUTION_EXPORT_KEY"];
+      const sans = await request(app).get("/api/admin/acquisition/attribution?from=2001-03-01&to=2001-03-02").set("x-attribution-key", CLE);
+      expect(sans.status).toBe(503);
+      process.env["ATTRIBUTION_EXPORT_KEY"] = ADMIN;
+      const egale = await request(app).get("/api/admin/acquisition/attribution?from=2001-03-01&to=2001-03-02").set("x-attribution-key", ADMIN);
+      expect(egale.status).toBe(503);
+      process.env["ATTRIBUTION_EXPORT_KEY"] = CLE;
+      const fausse = await request(app).get("/api/admin/acquisition/attribution?from=2001-03-01&to=2001-03-02").set("x-attribution-key", `${CLE}x`);
+      expect(fausse.status).toBe(403);
+      const bonne = await request(app).get("/api/admin/acquisition/attribution?from=2001-03-01&to=2001-03-02").set("x-attribution-key", CLE);
+      expect([200, 500]).toContain(bonne.status); // 500 seulement sans base de test ; jamais 401/403
+      // La cle restreinte n'ouvre aucune autre route admin.
+      const autre = await request(app).get("/api/admin/stats").set("x-attribution-key", CLE);
+      expect([403, 404]).toContain(autre.status);
+    } finally {
+      if (avant === undefined) delete process.env["ATTRIBUTION_EXPORT_KEY"]; else process.env["ATTRIBUTION_EXPORT_KEY"] = avant;
+    }
+  });
+
   it("valide from/to (obligatoires, dates reelles, ordre, 400 jours max)", async () => {
     for (const q of ["", "?from=2001-03-01", "?from=2001-02-30&to=2001-03-01", "?from=2001-03-02&to=2001-03-01",
                      "?from=2001-01-01&to=2002-02-05"]) {

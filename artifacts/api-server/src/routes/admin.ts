@@ -266,8 +266,31 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
 // jamais de visiteur_id, org_ref ni e-mail. `visiteurs` = visiteurs distincts.
 // Lecture : visiteurs = landing_vue, inscriptions = signup_form_completed,
 // essais = trial_activated, abonnements payants = subscription_activated.
+// Clé restreinte ATTRIBUTION_EXPORT_KEY (en-tête x-attribution-key) : lecture de CES agrégats
+// anonymes seulement, pour AI Lab, sans lui confier ADMIN_KEY. Même modèle que SELLER_ADMIN_KEY :
+// sans l'en-tête dédié, ou avec x-admin-key, c'est le contrôle admin complet, inchangé.
+const ATTRIBUTION_EXPORT_KEY_MIN_LEN = 32;
+function requireAttributionKey(req: Request, res: Response): boolean {
+  const provided = req.headers["x-attribution-key"];
+  if (provided === undefined || req.headers["x-admin-key"] !== undefined) return requireAdminKey(req, res);
+  const key = process.env["ATTRIBUTION_EXPORT_KEY"];
+  if (!key || key.length < ATTRIBUTION_EXPORT_KEY_MIN_LEN) {
+    res.status(503).json({ ok: false, error: `ATTRIBUTION_EXPORT_KEY is not configured on this server (minimum ${ATTRIBUTION_EXPORT_KEY_MIN_LEN} chars)` });
+    return false;
+  }
+  if (key === process.env["ADMIN_KEY"]) {
+    res.status(503).json({ ok: false, error: "ATTRIBUTION_EXPORT_KEY must differ from ADMIN_KEY" });
+    return false;
+  }
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
+    res.status(403).json({ ok: false, error: "Invalid x-attribution-key header" });
+    return false;
+  }
+  return true;
+}
+
 router.get("/admin/acquisition/attribution", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
+  if (!requireAttributionKey(req, res)) return;
   const plage = validerPlageAttribution(req.query["from"], req.query["to"]);
   if (!plage.ok) {
     res.status(400).json({ ok: false, error: plage.erreur });
