@@ -16,13 +16,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHmac } from "node:crypto";
 
-// Ce fichier exerce la LOGIQUE METIER du webhook : il invoque le gestionnaire
-// directement, sans identifiants Stripe et sans signature. Il s'appuyait donc,
-// sans le dire, sur le traitement sans verification — celui qui s'activait par
-// la seule absence de `STRIPE_WEBHOOK_SECRET`. Ce traitement demande maintenant
-// une intention declaree : on la declare ici, explicitement.
-vi.hoisted(() => { process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"] = "true"; });
+const TEST_WEBHOOK_SECRET = "whsec_pending_activation_unit";
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "true";
+  process.env["STRIPE_TEST_KEY"] = "sk_test_pending_activation";
+  process.env["STRIPE_TEST_WEBHOOK_SECRET"] = "whsec_pending_activation_unit";
+  delete process.env["STRIPE_WEBHOOK_SECRET"];
+  delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+  delete process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"];
+});
 
 const EMAIL    = "new.signup@example.com";
 const ORG_UUID = "b89babd6-a867-496a-b45c-420841f95e09";
@@ -117,7 +121,7 @@ vi.mock("../lib/logger.js", () => ({
 }));
 
 vi.mock("../services/stripe-factory.js", () => ({
-  getStripeKey: vi.fn(() => undefined),       // dev path: no signature, no Stripe API calls
+  getStripeKey: vi.fn(() => "sk_test_pending_activation"),
   isStripeTestMode: vi.fn(() => false),
   createStripeClient: vi.fn(async () => null),
 }));
@@ -181,7 +185,16 @@ async function deliver(event: Record<string, unknown>): Promise<FakeRes> {
     status(c) { this.statusCode = c; return this; },
     json(b) { this.body = b; return this; },
   };
-  const req = { headers: {}, body: event, rawBody: Buffer.from(JSON.stringify(event)) };
+  const signedEvent = { livemode: false, ...event };
+  const rawBody = Buffer.from(JSON.stringify(signedEvent));
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = `t=${timestamp},v1=${createHmac("sha256", TEST_WEBHOOK_SECRET)
+    .update(`${timestamp}.${rawBody.toString("utf8")}`).digest("hex")}`;
+  const req = {
+    headers: { "stripe-signature": signature },
+    body: signedEvent,
+    rawBody,
+  };
   await layer!.route!.stack[0]!.handle(req, res);
   return res;
 }

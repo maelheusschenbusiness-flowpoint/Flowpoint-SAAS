@@ -1050,87 +1050,52 @@ export async function awaitPendingSignupActivation(
 
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const stripeKey = getStripeKey();
-  // MESURE DU 18/10/2026. Cette ligne exigeait STRIPE_WEBHOOK_SECRET (ou sa
-  // variante _RENDER) pour entrer dans la branche verifiee, et ne consultait
-  // STRIPE_TEST_WEBHOOK_SECRET qu'A L'INTERIEUR de cette branche, en repli.
-  // Un environnement de test configure avec le seul secret de test — ce que
-  // decrit render.yaml pour `flowpoint-test` — tombait donc dans la branche NON
-  // SIGNEE, et chaque evenement etait refuse en 503 : aucun abonnement ne
-  // s'activait, alors que la variable posee par l'operateur etait simplement
-  // ignoree. Le refus etait sur, mais muet sur sa cause.
-  // Les deux secrets sont desormais des candidats de meme rang, essayes dans
-  // l'ordre. Le comportement est inchange quand le secret principal est pose.
-  const secretsCandidats = [
-    process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"],
-    process.env["STRIPE_TEST_WEBHOOK_SECRET"],
-  ].filter((v): v is string => typeof v === "string" && v.length > 0);
-  const webhookSecret = secretsCandidats[0];
+  const configuredMode = process.env["STRIPE_TEST_MODE"] === "true" ? "TEST" : "LIVE";
+  const keyMode = stripeKey.startsWith("sk_test_") ? "TEST"
+    : stripeKey.startsWith("sk_live_") ? "LIVE"
+    : "UNKNOWN";
 
-  let event: { type: string; data: { object: Record<string, unknown> } };
+  if (keyMode === "UNKNOWN" || keyMode !== configuredMode) {
+    logger.error({ configuredMode, keyMode }, "[Webhook] Stripe key mode mismatch — rejecting");
+    res.status(503).json({ error: "Webhook verification unavailable" });
+    return;
+  }
 
-  if (stripeKey && webhookSecret) {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const sig = req.headers["stripe-signature"] as string;
-    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-    if (!rawBody) { res.status(400).json({ error: "Raw body required" }); return; }
-    // Try live webhook secret first. If that fails and STRIPE_TEST_WEBHOOK_SECRET
-    // is configured, try the isolated test endpoint secret.  The secret's presence
-    // is the safety gate — it is a whsec_ issued by Stripe test mode and can only
-    // validate test-mode events.  getStripeKey() ensures sk_test_ is the active key.
-    const testWebhookSecret = secretsCandidats[1];
-    try {
-      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret!) as unknown as typeof event;
-    } catch (liveErr) {
-      if (testWebhookSecret) {
-        try {
-          event = stripe.webhooks.constructEvent(rawBody, sig, testWebhookSecret) as unknown as typeof event;
-          logger.info("[Webhook] Verified with Stripe test webhook secret (isolated env)");
-        } catch {
-          logger.error({ err: liveErr }, "[Webhook] Signature verification failed (live + test secrets both rejected)");
-          res.status(400).json({ error: "Webhook signature verification failed" });
-          return;
-        }
-      } else {
-        logger.error({ err: liveErr }, "[Webhook] Signature verification failed");
-        res.status(400).json({ error: "Webhook signature verification failed" });
-        return;
-      }
-    }
-  } else {
-    if (process.env["NODE_ENV"] === "production") {
-      logger.error("[Webhook] Missing Stripe credentials in production — rejecting");
-      res.status(503).json({ error: "Webhook verification unavailable" });
-      return;
-    }
-    // TRAITEMENT SANS SIGNATURE, SUR DEMANDE EXPLICITE SEULEMENT.
-    //
-    // Mesure du 18/10/2026 : il suffisait que `STRIPE_SECRET_KEY` ou
-    // `STRIPE_WEBHOOK_SECRET` soit absente, et que NODE_ENV ne vaille pas
-    // exactement "production", pour que cet endpoint traite n'importe quel
-    // evenement SANS verifier sa signature. Un `invoice.paid` forge activait
-    // alors un abonnement payant, gratuitement.
-    //
-    // Les deux instances deployees refusent bien — verifie : une signature
-    // invalide recoit 400 sur les deux. Ce n'etait donc pas une faille en
-    // production. Mais l'ouverture dependait de l'ABSENCE d'une variable,
-    // c'est-a-dire d'un oubli, et le webhook de facturation est l'endroit ou
-    // un oubli coute le plus cher.
-    if (process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"] !== "true") {
-      logger.error(
-        "[Webhook] Identifiants Stripe absents — evenement REFUSE. " +
-        "Posez ALLOW_UNSIGNED_STRIPE_WEBHOOKS=true pour accepter des evenements non signes en developpement."
-      );
-      res.status(503).json({ error: "Webhook verification unavailable" });
-      return;
-    }
-    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-    try {
-      event = rawBody ? JSON.parse(rawBody.toString("utf-8")) : req.body;
-    } catch {
-      event = req.body as typeof event;
-    }
-    logger.warn("[Webhook] ALLOW_UNSIGNED_STRIPE_WEBHOOKS=true — signature NON verifiee.");
+  const webhookSecret = configuredMode === "TEST"
+    ? process.env["STRIPE_TEST_WEBHOOK_SECRET"]
+    : process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+
+  if (!webhookSecret) {
+    logger.error({ mode: configuredMode }, "[Webhook] Mode-specific signing secret missing — rejecting");
+    res.status(503).json({ error: "Webhook verification unavailable" });
+    return;
+  }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+  const sig = req.headers["stripe-signature"];
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (!rawBody) { res.status(400).json({ error: "Raw body required" }); return; }
+  if (typeof sig !== "string" || !sig) {
+    res.status(400).json({ error: "Stripe signature required" });
+    return;
+  }
+
+  let event: { type: string; livemode?: unknown; data: { object: Record<string, unknown> } };
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret) as unknown as typeof event;
+  } catch {
+    logger.warn({ mode: configuredMode }, "[Webhook] Signature verification failed");
+    res.status(400).json({ error: "Webhook signature verification failed" });
+    return;
+  }
+
+  const expectedLivemode = configuredMode === "LIVE";
+  if (typeof event.livemode !== "boolean" || event.livemode !== expectedLivemode) {
+    const eventMode = typeof event.livemode === "boolean" ? (event.livemode ? "LIVE" : "TEST") : "MISSING";
+    logger.warn({ mode: configuredMode, eventMode }, "[Webhook] Event mode mismatch — rejecting");
+    res.status(400).json({ error: "Webhook event mode mismatch" });
+    return;
   }
 
   logger.info({ type: event.type }, "[Webhook] Received Stripe event");

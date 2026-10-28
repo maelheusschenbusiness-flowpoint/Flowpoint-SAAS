@@ -140,21 +140,17 @@ async function main() {
 
     // Safe startup log — mode only, never the key value
     const stripeMode   = keyPair.secretMode;
-    // STRIPE_TEST_WEBHOOK_SECRET compte ici : depuis le 18/10/2026 le routeur
-    // de webhook la traite comme un candidat de meme rang que la principale.
-    // Sans elle, ce journal annoncait « NOT CONFIGURED » sur un environnement
-    // de test ou la verification fonctionne.
-    const webhookSec   = process.env["STRIPE_WEBHOOK_SECRET"]
-                      || process.env["STRIPE_WEBHOOK_SECRET_RENDER"]
-                      || process.env["STRIPE_TEST_WEBHOOK_SECRET"]
-                      || "";
-    const webhookMode  = !webhookSec
-      ? "NOT CONFIGURED"
-      : keyPair.secretMode === "TEST"
-        ? "TEST (test-endpoint secret active)"
-        : keyPair.secretMode === "LIVE"
-          ? "LIVE"
-          : "UNKNOWN";
+    // Le journal applique la meme isolation que le routeur : une seule cle
+    // de signature est choisie selon le mode de la cle Stripe active.
+    const isLiveKey    = activeKey.startsWith("sk_live_");
+    const webhookSec   = isTestKey
+      ? process.env["STRIPE_TEST_WEBHOOK_SECRET"]
+      : isLiveKey
+        ? (process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"])
+        : "";
+    const webhookMode  = webhookSec
+      ? (isTestKey ? "TEST" : "LIVE")
+      : "NOT CONFIGURED";
     const pubDisplay   = pubKey
       ? `${keyPair.publishableMode} (${pubKey.slice(0, 7)}…)`
       : keyPair.publishableMode;
