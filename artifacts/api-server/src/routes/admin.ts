@@ -17,7 +17,8 @@ import { timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
-import { agregerAttribution, validerPlageAttribution } from "../services/funnel-events.js";
+import { agregerAttribution, estSchemaUtmAbsent, validerPlageAttribution } from "../services/funnel-events.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -300,7 +301,18 @@ router.get("/admin/acquisition/attribution", async (req: Request, res: Response)
     const lignes = await agregerAttribution(plage.du, plage.au);
     res.json({ genereLe: new Date().toISOString(), du: plage.du, au: plage.au, lignes });
   } catch (err) {
-    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+    // Cause journalisee (code SQL + message), jamais la cle ni de ligne de donnees.
+    const code = (err as { code?: string } | null)?.code ?? null;
+    logger.error({ code, message: safeErrMsg(err) }, "[attribution] aggregate query failed");
+    if (estSchemaUtmAbsent(err)) {
+      res.status(503).json({
+        ok: false,
+        code: "schema_utm_absent",
+        error: "funnel_events utm columns missing (migration 020 not applied)",
+      });
+      return;
+    }
+    res.status(500).json({ ok: false, code: "erreur_interne", error: safeErrMsg(err) });
   }
 });
 

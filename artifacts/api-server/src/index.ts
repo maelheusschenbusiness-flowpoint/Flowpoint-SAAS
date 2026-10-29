@@ -118,6 +118,13 @@ async function main() {
     logger.info("Database connection OK");
   });
 
+  // 1b. Migration 020 (colonnes UTM du tunnel) : appliquee ici, car le service Render
+  // n'a pas d'etape Pre-Deploy. Non fatale : sans elle, l'attribution repond 503 explicite.
+  await import("./services/funnel-events.js")
+    .then(({ assurerColonnesUtm }) => assurerColonnesUtm())
+    .then((r) => logger.info({ etat: r.etat, colonnes: "colonnes" in r ? r.colonnes : [] }, "[startup] funnel_events utm columns"))
+    .catch((err) => logger.error({ code: getErrorCode(err), message: getSafeErrorMessage(err) }, "[startup] funnel_events utm columns NOT ensured"));
+
   // 2. Check if Pre-Deploy already ran all migrations (fast path for Render).
   const migrated = await schemaAlreadyMigrated();
 
