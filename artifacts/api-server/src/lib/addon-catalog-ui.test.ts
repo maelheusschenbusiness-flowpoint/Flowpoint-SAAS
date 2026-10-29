@@ -52,20 +52,39 @@ function loadPolicy(source: string) {
   };
 }
 
-function loadPricingPolicy(document: unknown = {}) {
+function loadPricingPolicy(document: unknown = {}, language: "fr" | "en" = "fr") {
   const match = pricing.match(
     /\/\* addon-pricing-policy:start \*\/([\s\S]*?)\/\* addon-pricing-policy:end \*\//,
   );
   if (!match) throw new Error("Pricing add-on policy block is missing");
   return new Function(
     "document",
-    `${match[1]}\nreturn { _fpPricingAddonState, _fpSetPricingCatalogState };`,
-  )(document) as {
+    "window",
+    `${match[1]}\nreturn { _fpPricingAddonState, _fpPricingText, _fpPricingAddonStateLabel, _fpPricingAddonDisabledDescription, _fpPricingCartRejection, _fpPricingQuantityLabel, _fpSetAddonQuantityControls, _fpSetPricingCatalogState };`,
+  )(document, {
+    fpPublicText: (french: string, english: string) => language === "en" ? english : french,
+  }) as {
     _fpPricingAddonState: (
       addon: Record<string, unknown>,
       plan: string,
       includedKeys?: string[],
     ) => string;
+    _fpPricingText: (french: string, english: string) => string;
+    _fpPricingAddonStateLabel: (state: string) => string;
+    _fpPricingAddonDisabledDescription: (state: string) => string;
+    _fpPricingCartRejection: (state: string) => string;
+    _fpPricingQuantityLabel: (addonName: string, direction: number) => string;
+    _fpSetAddonQuantityControls: (
+      card: { querySelectorAll: (selector: string) => ArrayLike<{
+        disabled: boolean;
+        title?: string;
+        setAttribute: (name: string, value: string) => void;
+        removeAttribute: (name: string) => void;
+      }> },
+      addonName: string,
+      state: string,
+      isActive: boolean,
+    ) => void;
     _fpSetPricingCatalogState: (state: "loading" | "ready" | "error") => void;
   };
 }
@@ -393,7 +412,110 @@ describe("add-on catalogue UI commercial gates", () => {
       allowedPlans: [],
       includedByPlan: {},
     };
-    expect(pricingPolicy._fpPricingAddonState(noTestPrice, "standard")).toBe("catalog_unavailable");
+    for (const plan of ["standard", "pro", "ultra"]) {
+      expect(pricingPolicy._fpPricingAddonState(noTestPrice, plan)).toBe("catalog_unavailable");
+    }
+  });
+
+  it("disables every unavailable quantity control and exposes its accessible state", () => {
+    const pricingPolicy = loadPricingPolicy();
+    const noTestPrice = {
+      key: "aiCreditsPack200k",
+      availability: "available",
+      allowedPlans: [],
+      includedByPlan: {},
+    };
+    const makeSteps = () => [0, 1].map(() => {
+      const attributes: Record<string, string> = {};
+      return {
+        disabled: false,
+        title: "",
+        attributes,
+        setAttribute(name: string, value: string) { attributes[name] = value; },
+        removeAttribute(name: string) {
+          delete attributes[name];
+          if (name === "title") this.title = "";
+        },
+      };
+    });
+
+    for (const plan of ["standard", "pro", "ultra"]) {
+      const state = pricingPolicy._fpPricingAddonState(noTestPrice, plan);
+      const steps = makeSteps();
+      pricingPolicy._fpSetAddonQuantityControls(
+        { querySelectorAll: () => steps },
+        "+200 000 crédits IA",
+        state,
+        false,
+      );
+      for (const [index, step] of steps.entries()) {
+        expect(step.disabled, `${plan} step ${index} is natively disabled`).toBe(true);
+        expect(step.attributes["aria-disabled"]).toBe("true");
+        expect(step.attributes["aria-label"]).toBe(
+          index === 0
+            ? "Réduire la quantité de +200 000 crédits IA"
+            : "Augmenter la quantité de +200 000 crédits IA",
+        );
+        expect(step.title).toBe("Aucun prix achetable n'est configuré pour cet add-on.");
+      }
+    }
+
+    const availableSteps = makeSteps();
+    pricingPolicy._fpSetAddonQuantityControls(
+      { querySelectorAll: () => availableSteps },
+      "Pack crédits IA",
+      "purchasable",
+      false,
+    );
+    expect(availableSteps.every(step => !step.disabled)).toBe(true);
+    expect(availableSteps.every(step => step.attributes["aria-disabled"] === "false")).toBe(true);
+
+    const activeSteps = makeSteps();
+    pricingPolicy._fpSetAddonQuantityControls(
+      { querySelectorAll: () => activeSteps },
+      "Pack crédits IA",
+      "purchasable",
+      true,
+    );
+    expect(activeSteps.every(step => step.disabled)).toBe(true);
+    expect(activeSteps.every(step => step.title === "Cet add-on est déjà actif sur votre compte.")).toBe(true);
+  });
+
+  it("uses the selected language for loading, disabled descriptions, quantity labels, and cart refusals", () => {
+    const english = loadPricingPolicy({}, "en");
+    const french = loadPricingPolicy({}, "fr");
+
+    expect(english._fpPricingText("Chargement des add-ons…", "Loading add-ons…")).toBe("Loading add-ons…");
+    expect(french._fpPricingText("Chargement des add-ons…", "Loading add-ons…")).toBe("Chargement des add-ons…");
+    expect(english._fpPricingAddonStateLabel("catalog_unavailable")).toBe("Unavailable");
+    expect(english._fpPricingAddonDisabledDescription("catalog_unavailable")).toBe(
+      "No purchasable price is configured for this add-on.",
+    );
+    expect(english._fpPricingQuantityLabel("AI credits", 1)).toBe("Increase quantity of AI credits");
+    expect(english._fpPricingCartRejection("included")).toBe("This add-on is already included in your plan.");
+    expect(english._fpPricingCartRejection("catalog_unavailable")).toBe(
+      "This add-on cannot be purchased in the active billing mode.",
+    );
+    expect(french._fpPricingAddonDisabledDescription("catalog_unavailable")).toBe(
+      "Aucun prix achetable n'est configuré pour cet add-on.",
+    );
+    expect(french._fpPricingCartRejection("included")).toBe(
+      "Cet add-on est déjà inclus dans votre forfait.",
+    );
+  });
+
+  it("keeps quantity and cart writes behind the active-mode eligibility guard", () => {
+    const changeQtyStart = pricing.indexOf("window.changeQty = function");
+    const quantityGuard = pricing.indexOf('if (eligibility !== "purchasable" ||', changeQtyStart);
+    const quantityWrite = pricing.indexOf("_cart.addons[addonId] = next", changeQtyStart);
+    expect(quantityGuard).toBeGreaterThan(changeQtyStart);
+    expect(quantityWrite).toBeGreaterThan(quantityGuard);
+
+    const addToCartStart = pricing.indexOf("window.addToCart = function");
+    const cartGuard = pricing.indexOf('if (eligibility !== "purchasable")', addToCartStart);
+    const cartWrite = pricing.indexOf("_cart.addons[addonId] = qty", addToCartStart);
+    expect(cartGuard).toBeGreaterThan(addToCartStart);
+    expect(cartWrite).toBeGreaterThan(cartGuard);
   });
 
   it("announces add-on catalogue loading and changes the accessible view state", () => {
@@ -407,6 +529,7 @@ describe("add-on catalogue UI commercial gates", () => {
       style: { display: string };
       dataset: Record<string, string>;
       attributes: Record<string, string>;
+      textContent: string;
       setAttribute: (name: string, value: string) => void;
     }>();
     for (const id of ["fp-addon-catalog-loading", "fp-addons-grid"]) {
@@ -415,6 +538,7 @@ describe("add-on catalogue UI commercial gates", () => {
         style: { display: "none" },
         dataset: {},
         attributes: {},
+        textContent: "",
         setAttribute(name, value) { this.attributes[name] = value; },
       });
     }
@@ -439,6 +563,12 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(loading.hidden).toBe(true);
     expect(grid.hidden).toBe(true);
     expect(grid.attributes["aria-busy"]).toBe("false");
+
+    const englishPolicy = loadPricingPolicy({
+      getElementById: (id: string) => elements.get(id) ?? null,
+    }, "en");
+    englishPolicy._fpSetPricingCatalogState("loading");
+    expect(loading.textContent).toBe("Loading add-ons…");
   });
 
   it("does not let a retired add-on bypass the server-side quote guard", () => {
