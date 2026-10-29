@@ -24,7 +24,18 @@ let mockPlan = "standard";
 // Configurable sync result — lets tests simulate every unsynced Stripe outcome.
 let mockSyncResult: { synced: boolean; reason: string };
 
+// The route requires an active-mode price before reaching mocked billing. Keep
+// these quantity tests independent of Stripe catalog environment configuration.
+const { mockGetAddonPriceId } = vi.hoisted(() => ({
+  mockGetAddonPriceId: vi.fn((): string | undefined => "price_test_fixture"),
+}));
+
 // ─── Mocks (must precede dynamic import of the router) ────────────────────────
+vi.mock("../lib/plans.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/plans.js")>();
+  return { ...actual, getAddonPriceId: mockGetAddonPriceId };
+});
+
 vi.mock("../services/addon-stripe-sync.js", () => ({
   syncAddonWithStripe: vi.fn(async (_orgId: string, key: string, action: string, quantity?: number) => {
     stripeSyncCalls.push({ key, action, quantity });
@@ -97,6 +108,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("STRIPE_TEST_MODE", "false");
   vi.stubEnv("STRIPE_TEST_KEY", "");
+  mockGetAddonPriceId.mockReturnValue("price_test_fixture");
   stripeSyncCalls = [];
   activateCalls = [];
   mockPlan = "standard";
@@ -200,6 +212,7 @@ describe("POST /addons/:key/activate — quantity carried end-to-end", () => {
     }
     vi.stubEnv("STRIPE_TEST_MODE", "true");
     vi.stubEnv("STRIPE_TEST_KEY", "sk_test_addon_activation_fixture");
+    mockGetAddonPriceId.mockReturnValue(undefined);
     vi.resetModules();
 
     const app = await buildApp();
