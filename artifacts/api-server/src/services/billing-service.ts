@@ -5,7 +5,7 @@ import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchasablePlans, getPlanPriceId } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -126,12 +126,8 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     // to "included" or "active" for an authenticated organisation.
     availability: getAddonAvailability(id),
     status:       getAddonAvailability(id),
-    // allowedPlans: derived from PLAN_ALLOWED_ADDONS (canonical per-plan purchasability matrix).
-    // coming_soon add-ons are not purchasable on any plan.
-    allowedPlans: getAddonAvailability(id) === "coming_soon"
-      ? []
-      : (["standard", "pro", "ultra"] as const)
-          .filter(p => PLAN_ALLOWED_ADDONS[p]?.has(id)),
+    // Same mode-aware purchase eligibility as GET /api/plans/catalog.
+    allowedPlans: getAddonPurchasablePlans(id),
   }];
 });
 

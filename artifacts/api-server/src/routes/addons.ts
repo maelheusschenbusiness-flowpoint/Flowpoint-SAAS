@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice, getAddonPriceId, getAddonPurchasablePlans } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 import { getStripeKey } from "../services/stripe-factory.js";
 
@@ -36,7 +36,7 @@ router.get("/addons", async (req: Request, res: Response) => {
         priceEur: getAddonDisplayPrice(key),
         active,
         includedInPlan,
-        allowedForPlan: isPlanAllowedAddon(plan, key),
+        allowedForPlan: getAddonPurchasablePlans(key).includes(plan.toLowerCase()),
         availability: getAddonAvailability(key),
         status: getAddonStatus(key, { included: includedInPlan, active }),
       }];
@@ -96,6 +96,25 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
       error: `L'add-on "${key}" n'est pas disponible sur le plan ${plan}. Passez à un plan supérieur pour y accéder.`,
       code: "ADDON_PLAN_GATE",
       currentPlan: plan,
+      addonKey: key,
+    });
+    return;
+  }
+  // Reject one-time packs and missing mode-specific prices before creating a
+  // Stripe customer or attempting a subscription mutation.
+  if (CANONICAL_ADDON_DEFINITIONS[key]?.oneTime) {
+    res.status(422).json({
+      error: "Cet add-on s'achète en paiement unique — utilisez le checkout dédié",
+      code: "ADDON_CHECKOUT_REQUIRED",
+      addonKey: key,
+    });
+    return;
+  }
+  if (!getAddonPriceId(key)) {
+    logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — no price in the active Stripe mode");
+    res.status(422).json({
+      error: "Aucun prix Stripe configuré pour cet add-on dans ce mode — contactez le support",
+      code: "ADDON_PRICE_UNAVAILABLE",
       addonKey: key,
     });
     return;

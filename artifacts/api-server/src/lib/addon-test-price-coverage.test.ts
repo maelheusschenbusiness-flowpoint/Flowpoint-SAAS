@@ -137,3 +137,56 @@ it("advertises a TEST add-on for purchase only after a TEST price is configured"
   expect(plans.getAddonPurchasablePlans("keywordDomination")).toEqual(["standard", "pro", "ultra"]);
   expect(plans.getAddonPurchasablePlans("aiCreditsPack50k")).toEqual([]);
 });
+
+it("publishes identical mode-aware purchasable tiers from both catalogue APIs", async () => {
+  const baseline = await loadPlans();
+  const fixtures = [
+    "keywordDomination",
+    "behavioralAI",
+    "aiForecasting",
+    "retention90d",
+    "retention365d",
+    "customDomain",
+    "whiteLabel",
+    "advancedWebhooks",
+    "aiCreditsPack50k",
+  ];
+  const env = Object.fromEntries(fixtures.map((key) => {
+    const priceVariable = baseline.ADDON_TEST_PRICE_ENV_VARS[key]?.[0];
+    expect(priceVariable, `${key} has a TEST price variable`).toBeTruthy();
+    return [priceVariable!, `price_test_${key}`];
+  }));
+  const plans = await loadPlans(env);
+
+  expect(plans.getAddonPurchasablePlans("keywordDomination")).toEqual(["standard", "pro", "ultra"]);
+  expect(plans.getAddonPurchasablePlans("behavioralAI")).toEqual(["standard", "pro"]);
+  expect(plans.getAddonPurchasablePlans("aiForecasting")).toEqual(["standard", "pro"]);
+  expect(plans.getAddonPurchasablePlans("retention90d")).toEqual(["standard"]);
+  expect(plans.getAddonPurchasablePlans("retention365d")).toEqual(["standard", "pro"]);
+  expect(plans.getAddonPurchasablePlans("customDomain")).toEqual([]);
+  expect(plans.getAddonPurchasablePlans("whiteLabel")).toEqual([]);
+  expect(plans.getAddonPurchasablePlans("advancedWebhooks")).toEqual([]);
+  expect(plans.getAddonPurchasablePlans("aiCreditsPack50k")).toEqual(["standard", "pro", "ultra"]);
+
+  const { default: plansRouter } = await import("../routes/plans.js");
+  const { default: publicBillingRouter } = await import("../routes/public-billing.js");
+  const app = express();
+  app.use(plansRouter);
+  app.use(publicBillingRouter);
+
+  const [catalogResponse, billingResponse] = await Promise.all([
+    request(app).get("/plans/catalog").expect(200),
+    request(app).get("/billing/plans").expect(200),
+  ]);
+  const billingByKey = new Map(
+    billingResponse.body.addons.map((addon: { id: string; allowedPlans: string[] }) => [
+      addon.id,
+      addon.allowedPlans,
+    ]),
+  );
+  for (const addon of catalogResponse.body.addons as Array<{ key: string; allowedPlans: string[] }>) {
+    expect(billingByKey.get(addon.key), `${addon.key} eligibility matches in TEST mode`).toEqual(
+      addon.allowedPlans,
+    );
+  }
+});
