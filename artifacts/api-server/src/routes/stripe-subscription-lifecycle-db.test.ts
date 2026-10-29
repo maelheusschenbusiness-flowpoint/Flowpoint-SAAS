@@ -29,7 +29,8 @@ vi.hoisted(() => {
   process.env["STRIPE_TEST_MODE"] = "true";
   process.env["STRIPE_TEST_KEY"] = "sk_test_cle_locale_de_certification";
   process.env["STRIPE_SECRET_KEY"] = "sk_test_cle_locale_de_certification";
-  process.env["STRIPE_WEBHOOK_SECRET"] = "whsec_certification_locale";
+  process.env["STRIPE_TEST_WEBHOOK_SECRET"] = "whsec_certification_locale";
+  delete process.env["STRIPE_WEBHOOK_SECRET"];
   delete process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"];
 });
 
@@ -73,6 +74,7 @@ async function envoyer(type: string, objet: Record<string, unknown>, opts: { id?
   const corps = JSON.stringify({
     id: opts.id ?? `evt_${randomUUID()}`,
     type,
+    livemode: false,
     created: opts.cree ?? Math.floor(Date.now() / 1000),
     data: { object: objet },
   });

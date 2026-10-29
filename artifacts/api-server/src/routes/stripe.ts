@@ -6,12 +6,13 @@
 import Stripe from "stripe";
 import { logger } from "../lib/logger.js";
 import { TIMEOUTS } from "../lib/config.js";
+import { getStripeKey as resolveStripeKey } from "../services/stripe-factory.js";
 
 let _stripe: Stripe | null = null;
 let _stripeKey: string | undefined;
 
 export function getStripeClient(): Stripe | null {
-  const key = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const key = resolveStripeKey();
   if (!key) return null;
   if (!_stripe || _stripeKey !== key) {
     _stripeKey = key;
@@ -25,7 +26,7 @@ export function getStripeClient(): Stripe | null {
 }
 
 export function getStripeKey(): string | null {
-  return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || null;
+  return resolveStripeKey() || null;
 }
 
 export function requireStripe(): Stripe {

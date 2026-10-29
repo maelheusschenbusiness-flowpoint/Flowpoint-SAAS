@@ -1,4 +1,4 @@
-import { getStripeKey } from "../services/stripe-factory.js";
+import { getStripeKey, isStripeTestMode } from "../services/stripe-factory.js";
 export interface PlanLimits {
   audits: number;
   monitors: number;
@@ -239,9 +239,9 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 export function getPlanPriceId(plan: string, stripeKey?: string): string | undefined {
   const key = String(plan ?? "").toLowerCase();
   const activeKey = stripeKey ?? getStripeKey() ?? "";
-  const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
+  const testModeRequested = isStripeTestMode();
   if (testModeRequested) {
-    if (stripeKey && !stripeKey.startsWith("sk_test_")) return undefined;
+    if (!activeKey.startsWith("sk_test_")) return undefined;
     return PLAN_PRICE_IDS_TEST[key] || undefined;
   }
   if (activeKey.startsWith("sk_test_")) {
@@ -284,9 +284,9 @@ export function plansRepliantSurPrixLive(stripeKey?: string): PlanAuPrixLive[] {
 
 export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
   const activeKey = stripeKey ?? getStripeKey() ?? "";
-  const testModeRequested = process.env["STRIPE_TEST_MODE"] === "true";
+  const testModeRequested = isStripeTestMode();
   if (testModeRequested) {
-    if (stripeKey && !stripeKey.startsWith("sk_test_")) return undefined;
+    if (!activeKey.startsWith("sk_test_")) return undefined;
     return ADDON_PRICE_IDS_TEST[key] || undefined;
   }
   if (activeKey.startsWith("sk_test_")) {

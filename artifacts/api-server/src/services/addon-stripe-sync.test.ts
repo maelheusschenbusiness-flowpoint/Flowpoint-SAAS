@@ -85,6 +85,7 @@ let mockBillingCtx: {
 // ─── Mock: stripe-factory ─────────────────────────────────────────────────────
 vi.mock("../services/stripe-factory.js", () => ({
   getStripeKey: vi.fn(() => "sk_live_fake"),
+  isStripeTestMode: vi.fn(() => false),
   createStripeClient: vi.fn(() => mockStripeClient()),
 }));
 

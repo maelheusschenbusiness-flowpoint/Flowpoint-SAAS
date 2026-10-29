@@ -1,6 +1,6 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
-import { getStripeKey } from "./services/stripe-factory.js";
+import { getPublishableKey, getStripeKey, getStripeKeyPairMode } from "./services/stripe-factory.js";
 import { plansRepliantSurPrixLive } from "./lib/plans.js";
 import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
 import { attestResolvedPool } from "./services/db-startup-attestation.js";
@@ -115,9 +115,10 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────────
   {
     const activeKey  = getStripeKey();
-    const pubKey     = process.env["STRIPE_PUBLISHABLE_KEY"] ?? "";
-    const isTestKey  = activeKey.startsWith("sk_test_");
-    const isTestPub  = pubKey.startsWith("pk_test_");
+    const keyPair    = getStripeKeyPairMode(activeKey);
+    const pubKey     = getPublishableKey(activeKey);
+    const isTestKey  = keyPair.secretMode === "TEST";
+    const isTestPub  = keyPair.publishableMode === "TEST";
     const isProd     = env.NODE_ENV === "production";
 
     if (isProd && isTestKey) {
@@ -130,29 +131,29 @@ async function main() {
     }
     if (isProd && isTestPub) {
       logger.fatal(
-        "[Stripe] FATAL: NODE_ENV=production but STRIPE_PUBLISHABLE_KEY " +
-        "starts with pk_test_. Set STRIPE_PUBLISHABLE_KEY to a pk_live_ " +
-        "value before deploying. Server will not start."
+        "[Stripe] FATAL: NODE_ENV=production but the resolved publishable key " +
+        "is in TEST mode. Set STRIPE_PUBLISHABLE_KEY or PUBLIC_STRIPE_API_KEY " +
+        "to a pk_live_ value before deploying. Server will not start."
       );
       process.exit(1);
     }
 
     // Safe startup log — mode only, never the key value
-    const stripeMode   = isTestKey ? "TEST" : "LIVE";
-    // STRIPE_TEST_WEBHOOK_SECRET compte ici : depuis le 18/10/2026 le routeur
-    // de webhook la traite comme un candidat de meme rang que la principale.
-    // Sans elle, ce journal annoncait « NOT CONFIGURED » sur un environnement
-    // de test ou la verification fonctionne.
-    const webhookSec   = process.env["STRIPE_WEBHOOK_SECRET"]
-                      || process.env["STRIPE_WEBHOOK_SECRET_RENDER"]
-                      || process.env["STRIPE_TEST_WEBHOOK_SECRET"]
-                      || "";
+    const stripeMode   = keyPair.secretMode;
+    // Le journal applique la meme isolation que le routeur : une seule cle
+    // de signature est choisie selon le mode de la cle Stripe active.
+    const isLiveKey    = activeKey.startsWith("sk_live_");
+    const webhookSec   = isTestKey
+      ? process.env["STRIPE_TEST_WEBHOOK_SECRET"]
+      : isLiveKey
+        ? (process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"])
+        : "";
     const webhookMode  = webhookSec
-      ? (isTestKey ? "TEST (test-endpoint secret active)" : "LIVE")
+      ? (isTestKey ? "TEST" : "LIVE")
       : "NOT CONFIGURED";
     const pubDisplay   = pubKey
-      ? pubKey.slice(0, 7) + "…"   // e.g. "pk_live"  —  prefix only
-      : "not set";
+      ? `${keyPair.publishableMode} (${pubKey.slice(0, 7)}…)`
+      : keyPair.publishableMode;
 
     logger.info(
       `[Stripe] mode: ${stripeMode} | webhook: ${webhookMode} | publishable: ${pubDisplay}`

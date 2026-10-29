@@ -20,6 +20,12 @@ vi.hoisted(() => {
   process.env["STRIPE_TEST_MODE"] = "false";
 });
 
+vi.mock("../services/stripe-factory.js", () => ({
+  getStripeKey: vi.fn(() => "sk_live_catalog_fixture"),
+  isStripeTestMode: vi.fn(() => false),
+  createStripeClient: vi.fn(async () => null),
+}));
+
 const dashboardPath = fileURLToPath(
   new URL("../../../../src/frontend/dashboard.js", import.meta.url),
 );

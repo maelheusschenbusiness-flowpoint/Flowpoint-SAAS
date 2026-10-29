@@ -94,7 +94,11 @@ vi.mock("../services/org-settings.js", () => ({ loadOrgSettings: vi.fn(async () 
 vi.mock("../services/seller-attribution.js", () => ({
   validateSellerCode: vi.fn(async () => null), resolveSellerIdFromToken: vi.fn(async () => null), recordCommission: vi.fn(async () => {}),
 }));
-vi.mock("../services/stripe-factory.js", () => ({ getStripeKey: vi.fn(() => undefined), createStripeClient: vi.fn(async () => null) }));
+vi.mock("../services/stripe-factory.js", () => ({
+  getStripeKey: vi.fn(() => undefined),
+  isStripeTestMode: vi.fn(() => false),
+  createStripeClient: vi.fn(async () => null),
+}));
 vi.mock("../services/mailer.js", () => ({ mailer: new Proxy({}, { get: () => vi.fn(async () => ({ ok: true })) }) }));
 vi.mock("../services/store.js", () => ({ store: { broadcast: vi.fn(), broadcastPlanUpdate: vi.fn() } }));
 vi.mock("../services/addons-service.js", () => ({ activateAddon: vi.fn(async () => true), deactivateAddon: vi.fn(async () => true), provisionPlanAddons: vi.fn(async () => {}) }));

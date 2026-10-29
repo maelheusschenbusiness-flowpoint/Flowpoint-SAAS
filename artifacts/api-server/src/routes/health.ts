@@ -9,6 +9,7 @@ import { getPlanConfig } from "../lib/config.js";
 import { store } from "../services/store.js";
 import { resolveOpenAIConnection } from "../lib/openai-client.js";
 import { withTimeout } from "../lib/with-timeout.js";
+import { getStripeKey } from "../services/stripe-factory.js";
 import path from "node:path";
 
 const router: IRouter = Router();
@@ -124,8 +125,8 @@ router.get("/healthz/deep", async (_req, res) => {
     checks.database = { status: "down", latencyMs: Date.now() - dbStart, detail: safeErrMsg(err) };
   }
 
-  // ── Stripe — live /v1/balance probe ──────────────────────────────────────
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  // ── Stripe — probe only the key selected for this environment ────────────
+  const stripeKey = getStripeKey();
   if (stripeKey) {
     checks.stripe = await probeUrl(
       "https://api.stripe.com/v1/balance",
@@ -135,7 +136,7 @@ router.get("/healthz/deep", async (_req, res) => {
     );
     if ((checks.stripe as ProbeResult).httpStatus === 401) checks.stripe.detail = "HTTP 401 — invalid Stripe secret key";
   } else {
-    checks.stripe = { status: "degraded", latencyMs: 0, detail: "STRIPE_SECRET_KEY not set — checkout disabled in production" };
+    checks.stripe = { status: "degraded", latencyMs: 0, detail: "Stripe key for the selected mode is not configured" };
   }
 
   // ── OpenAI — live /v1/models probe (Replit AI proxy prioritaire) ─────────

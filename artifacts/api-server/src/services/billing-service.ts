@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
+import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
 import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
@@ -182,11 +183,10 @@ export async function getUsageSummary(orgId = "default") {
 
   // Bug-5 fix: resolve nextBillingDate from Stripe when subscription exists
   let nextBillingDate: string | null = null;
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   if (stripeKey && billingCtx.stripeSubscriptionId) {
     try {
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const stripe = await createStripeClient(stripeKey);
       const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId) as unknown as {
         status: string;
         trial_end: number | null;
@@ -471,10 +471,10 @@ export async function getSubscriptionAnalytics(orgId = "default") {
 
 // ── Trial management ──────────────────────────────────────────────────────────
 export async function startTrial(plan: string = "pro", days: number = 14, orgId = "default") {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
-      throw new Error("STRIPE_LIVE_API_KEY is required in production — cannot activate trial");
+    if (process.env["NODE_ENV"] === "production" || isStripeTestMode()) {
+      throw new Error("Stripe key for the selected mode is required — cannot activate trial");
     }
     const trialEnd = new Date(Date.now() + days * 86400000).toISOString();
     store.broadcastPlanUpdate(plan, orgId);
@@ -483,11 +483,13 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
     const planPriceId = getPlanPriceId(plan, stripeKey);
     if (!planPriceId) {
+      if (isStripeTestMode()) {
+        throw new Error(`No test-mode Stripe price configured for plan: ${plan}`);
+      }
       const trialEnd = new Date(Date.now() + days * 86400000).toISOString();
       store.broadcastPlanUpdate(plan, orgId);
       return { ok: true, trialEndsAt: trialEnd, plan, noPrice: true };
@@ -538,9 +540,9 @@ export async function validateCoupon(code: string): Promise<{
   duration?: string;
   mock?: boolean;
 }> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
+    if (process.env["NODE_ENV"] === "production" || isStripeTestMode()) {
       return { valid: false, error: "Payment service not configured" };
     }
     if (code === "FLOWPOINT20") return { valid: true, discount: 20, type: "percent", name: "Demo coupon (dev)", mock: true };
@@ -548,8 +550,7 @@ export async function validateCoupon(code: string): Promise<{
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const coupon = await stripe.coupons.retrieve(code);
 
     if (!coupon.valid) return { valid: false, error: "Code expiré ou invalide" };
@@ -585,19 +586,30 @@ export async function getInvoices(limit: number = 20, stripeCustomerId?: string)
   mock?: boolean;
   error?: string;
 }> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const customerId = stripeCustomerId ?? null;
   if (!stripeKey || !customerId) {
     return { invoices: [], mock: !stripeKey };
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const invoices = await stripe.invoices.list({ customer: customerId, limit });
 
     return {
-      invoices: invoices.data.map(inv => ({
+      invoices: invoices.data.map((inv: {
+        id: string;
+        number: string | null;
+        amount_paid: number | null;
+        amount_due: number;
+        currency: string;
+        status: string | null;
+        created: number;
+        invoice_pdf: string | null;
+        hosted_invoice_url: string | null;
+        period_start: number | null;
+        period_end: number | null;
+      }) => ({
         id: inv.id,
         number: inv.number,
         amount: (inv.amount_paid || inv.amount_due) / 100,

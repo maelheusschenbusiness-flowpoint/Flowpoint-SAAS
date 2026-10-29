@@ -18,7 +18,7 @@ import { Resend } from "resend";
 import { captureTestMail } from "../services/mailer.js";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
-import { getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
@@ -1002,7 +1002,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
       // ── Fire-and-forget: ensure Stripe customer exists (deduplicates by orgId) ──────────
       // Uses ensureStripeCustomer which checks for an existing customer BEFORE creating,
       // preventing duplicate Stripe customers when the same email re-signs up.
-      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+      const stripeKey = getStripeKey();
       if (stripeKey) {
         const _fn = fn; const _ln = ln; const _company = company;
         const _selectedPlan = selectedPlan; const _orgId = orgId; const _email = normalizedEmail;
@@ -1014,7 +1014,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
               email: _email,
               firstName: `${_fn} ${_ln}`.trim(),
               orgName: _company,
-            });
+            }, stripeKey);
             logger.info({ customerId, plan: _selectedPlan, email: _email }, "[Auth/Signup] Stripe customer ensured (no duplicate)");
           } catch (stripeErr) {
             logger.warn({ err: stripeErr }, "[Auth/Signup] Stripe customer ensure failed (non-fatal)");
@@ -1414,14 +1414,13 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     "[Auth/CheckoutComplete] ML-0: received checkout-complete request");
 
   try {
-    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+    const stripeKey = getStripeKey();
     if (!stripeKey) {
       res.status(503).json({ error: "Service de paiement non configuré." });
       return;
     }
 
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     const isConfirmed = session.status === "complete" &&

@@ -69,6 +69,7 @@ async function monter() {
 const CORPS = JSON.stringify({
   id: "evt_essai",
   type: "flowpoint.type.inexistant.pour.ce.test",
+  livemode: false,
   created: Math.floor(Date.now() / 1000),
   data: { object: {} },
 });
@@ -87,7 +88,8 @@ describe("avec des identifiants Stripe, la signature est exigee", () => {
     process.env["STRIPE_SECRET_KEY"] = "sk_test_cle_de_test_locale";
     process.env["STRIPE_TEST_KEY"] = "sk_test_cle_de_test_locale";
     process.env["STRIPE_TEST_MODE"] = "true";
-    process.env["STRIPE_WEBHOOK_SECRET"] = SECRET;
+    delete process.env["STRIPE_WEBHOOK_SECRET"];
+    process.env["STRIPE_TEST_WEBHOOK_SECRET"] = SECRET;
   });
 
   it("une signature VALIDE est acceptee", async () => {
@@ -160,6 +162,7 @@ describe("sans identifiants Stripe, rien n'est traite sans intention declaree", 
     delete process.env["STRIPE_LIVE_API_KEY"];
     delete process.env["STRIPE_WEBHOOK_SECRET"];
     delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+    delete process.env["STRIPE_TEST_WEBHOOK_SECRET"];
   });
 
   it("par defaut, l'evenement est REFUSE en 503", async () => {
@@ -180,13 +183,13 @@ describe("sans identifiants Stripe, rien n'est traite sans intention declaree", 
     expect(r.status, "le drapeau a ouvert le webhook EN PRODUCTION").toBe(503);
   });
 
-  it("le drapeau explicite ouvre le traitement hors production", async () => {
+  it("le drapeau de developpement ne permet jamais un evenement non signe", async () => {
     process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"] = "true";
     const r = await request(await monter())
       .post("/api/webhooks/stripe")
       .set("Content-Type", "application/json")
       .send(CORPS);
-    expect(r.status, "le drapeau explicite ne permet pas le developpement local").not.toBe(503);
+    expect(r.status, "le drapeau ne doit jamais contourner la signature").toBe(503);
   });
 
   it("une valeur autre que la chaine « true » n'ouvre rien", async () => {

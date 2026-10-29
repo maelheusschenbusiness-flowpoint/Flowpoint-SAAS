@@ -37,7 +37,10 @@ const CUS = "cus_E2E";
 
 process.env["AI_LAB_CONVERSION_URL"] = AILAB;
 process.env["CONVERSION_EVENT_SECRET"] = SECRET;
-process.env["STRIPE_WEBHOOK_SECRET"] = WH_SECRET;
+process.env["STRIPE_TEST_MODE"] = "true";
+process.env["STRIPE_TEST_WEBHOOK_SECRET"] = WH_SECRET;
+delete process.env["STRIPE_WEBHOOK_SECRET"];
+delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
 // ── Postgres factice, cote SaaS uniquement ───────────────────────────────────
 let pending: Array<{ token: string; fp_lid: string | null; created_at: Date }>;
@@ -126,10 +129,11 @@ function signed(event: Record<string, unknown>) {
 }
 
 async function deliverStripe(event: Record<string, unknown>) {
-  const payload = JSON.stringify(event);
+  const signedEvent = { livemode: false, ...event };
+  const payload = JSON.stringify(signedEvent);
   const res = await request(saasApp())
     .post("/webhooks/stripe")
-    .set("stripe-signature", signed(event))
+    .set("stripe-signature", signed(signedEvent))
     .set("content-type", "application/json")
     .send(payload);
   await new Promise((r) => setTimeout(r, 400)); // l'emission est detachee

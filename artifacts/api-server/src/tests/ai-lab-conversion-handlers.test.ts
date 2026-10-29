@@ -19,13 +19,17 @@
  * « payant » un prospect qui n'a rien paye, et definitivement.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHmac } from "node:crypto";
 
-// Ce fichier exerce la LOGIQUE METIER du webhook : il invoque le gestionnaire
-// directement, sans identifiants Stripe et sans signature. Il s'appuyait donc,
-// sans le dire, sur le traitement sans verification — celui qui s'activait par
-// la seule absence de `STRIPE_WEBHOOK_SECRET`. Ce traitement demande maintenant
-// une intention declaree : on la declare ici, explicitement.
-vi.hoisted(() => { process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"] = "true"; });
+const TEST_WEBHOOK_SECRET = "whsec_ai_lab_conversion_unit";
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "true";
+  process.env["STRIPE_TEST_KEY"] = "sk_test_ai_lab_conversion";
+  process.env["STRIPE_TEST_WEBHOOK_SECRET"] = "whsec_ai_lab_conversion_unit";
+  delete process.env["STRIPE_WEBHOOK_SECRET"];
+  delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+  delete process.env["ALLOW_UNSIGNED_STRIPE_WEBHOOKS"];
+});
 
 const EMAIL = "lead@example.com";
 const ORG = "4e4f1f3e-1d6c-4f1a-9b3a-7a2c9c5e1f01";
@@ -91,7 +95,8 @@ vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("../services/stripe-factory.js", () => ({
-  getStripeKey: vi.fn(() => undefined),
+  getStripeKey: vi.fn(() => "sk_test_ai_lab_conversion"),
+  isStripeTestMode: vi.fn(() => false),
   createStripeClient: vi.fn(async () => null),
 }));
 vi.mock("../services/org-data.js", () => ({
@@ -120,7 +125,16 @@ async function deliver(event: Record<string, unknown>): Promise<FakeRes> {
     status(c) { this.statusCode = c; return this; },
     json(b) { this.body = b; return this; },
   };
-  const req = { headers: {}, body: event, rawBody: Buffer.from(JSON.stringify(event)) };
+  const signedEvent = { livemode: false, ...event };
+  const rawBody = Buffer.from(JSON.stringify(signedEvent));
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = `t=${timestamp},v1=${createHmac("sha256", TEST_WEBHOOK_SECRET)
+    .update(`${timestamp}.${rawBody.toString("utf8")}`).digest("hex")}`;
+  const req = {
+    headers: { "stripe-signature": signature },
+    body: signedEvent,
+    rawBody,
+  };
   await layer!.route!.stack[0]!.handle(req, res);
   // L'emission est detachee : on laisse la micro-tache s'executer.
   await new Promise((r) => setTimeout(r, 0));

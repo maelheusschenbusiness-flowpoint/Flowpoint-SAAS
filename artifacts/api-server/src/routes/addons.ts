@@ -5,6 +5,7 @@ import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
 import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
+import { getStripeKey } from "../services/stripe-factory.js";
 
 const router = Router();
 
@@ -106,7 +107,7 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // silent no_live_subscription failure that looks like a Stripe error.
   try {
     const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
-    await ensureStripeCustomer(orgId);
+    await ensureStripeCustomer(orgId, undefined, getStripeKey());
   } catch (_ensureErr) {
     logger.warn({ orgId, addonKey: key, err: String(_ensureErr) },
       "[Addons] ensureStripeCustomer failed — proceeding; syncAddonWithStripe will block if no sub");
