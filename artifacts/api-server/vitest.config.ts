@@ -94,6 +94,7 @@ export default defineConfig({
       "src/tests/auth-log-credential-redaction.test.ts",
       "src/tests/public-locale-translations.test.ts",
       "src/tests/dashboard-i18n-static-audit.test.ts",
+      "src/tests/dashboard-document-language.test.ts",
       // Conversion A — funnel fixes
       "src/routes/seo-quota-gate.test.ts",
       "src/services/dataforseo-quota-db.test.ts",

@@ -370,7 +370,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
     // return an explicit, retryable, non-cacheable 503 so the client retries
     // instead of treating the org as having no plan.
     if (err instanceof BillingDataUnavailableError) {
-      logger.warn({ orgId }, "[me] GET /api/me — billing/entitlement data unavailable, returning 503");
+      logger.warn(
+        { orgId, dependency: err.dependency },
+        "[me] GET /api/me — billing/entitlement data unavailable, returning 503",
+      );
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       res.setHeader("Retry-After", "5");
       res.status(503).json({
@@ -381,7 +384,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       return;
     }
     // Unexpected non-billing error — also fail closed rather than fabricating a plan.
-    logger.error({ err, orgId }, "[me] GET /api/me — unexpected error, returning 503");
+    logger.error(
+      { orgId, dependency: "unexpected" },
+      "[me] GET /api/me — unexpected error, returning 503",
+    );
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Retry-After", "5");
     res.status(503).json({
@@ -396,7 +402,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   // genuinely has no billing/settings row yet (brand-new account). This is a
   // legitimate absence, NOT a failure — but we still must not fabricate a paid or
   // fake entitlement. Treat it as retryable-unavailable so provisioning can catch up.
-  logger.warn({ orgId }, "[me] GET /api/me — no billing/entitlement row for org, returning 503");
+  logger.warn(
+    { orgId, dependency: "no_authoritative_row" },
+    "[me] GET /api/me — no billing/entitlement row for org, returning 503",
+  );
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("Retry-After", "5");
   res.status(503).json({
