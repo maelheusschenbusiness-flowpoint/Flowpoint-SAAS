@@ -219,10 +219,14 @@
     .fp-addon-qty { display: flex; align-items: center; gap: 4px; }
     .fp-addon-qty-btn { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; justify-content: center; transition: border-color 0.1s; }
     .fp-addon-qty-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .fp-addon-qty-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .fp-addon-qty-btn:disabled:hover { border-color: var(--border); color: var(--text-muted); }
     .fp-addon-qty-input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; font-size: 13px; background: var(--surface); color: var(--text); }
     .fp-addon-btn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 600; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 7px; padding: 7px 10px; cursor: pointer; white-space: nowrap; text-align: center; transition: all 0.15s; }
     .fp-addon-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
     .fp-addon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .fp-addon-catalog-loading { margin: 0 0 14px; color: var(--muted, #64748b); font-size: 13px; }
+    .fp-addon-catalog-loading[hidden] { display: none; }
 
     .fp-show-more-wrap { text-align: center; margin-top: 22px; }
     .fp-show-more-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-size: 13px; font-weight: 500; padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
@@ -461,7 +465,8 @@
   <h2 class="fp-section-title">Personnalisez avec des add-ons</h2>
   <p class="fp-section-sub">Activez uniquement ce dont vous avez besoin — facturé immédiatement par Stripe, annulable à tout moment.</p>
 
-  <div class="fp-addons-grid" id="fp-addons-grid" data-catalog-state="loading" style="display:none">
+  <p id="fp-addon-catalog-loading" class="fp-addon-catalog-loading" role="status" aria-live="polite" aria-atomic="true">Chargement des add-ons…</p>
+  <div class="fp-addons-grid" id="fp-addons-grid" data-catalog-state="loading" aria-busy="true" style="display:none">
 
     <!-- ── 8 add-ons toujours visibles ── -->
 
@@ -812,9 +817,9 @@
         <div class="fp-credit-note">✓ Disponibles immédiatement</div>
         <div class="fp-addon-actions">
           <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',-1)">−</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Réduire la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack50k',-1)">−</button>
             <input id="qty-aiCreditsPack50k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',1)">+</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Augmenter la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack50k',1)">+</button>
           </div>
           <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack50k',true)">Acheter →</button>
         </div>
@@ -833,9 +838,9 @@
         <div class="fp-credit-note">✓ Disponibles immédiatement</div>
         <div class="fp-addon-actions">
           <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',-1)">−</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Réduire la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack200k',-1)">−</button>
             <input id="qty-aiCreditsPack200k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',1)">+</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Augmenter la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack200k',1)">+</button>
           </div>
           <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack200k',true)">Acheter →</button>
         </div>
@@ -854,9 +859,9 @@
         <div class="fp-credit-note">✓ Disponibles immédiatement</div>
         <div class="fp-addon-actions">
           <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',-1)">−</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Réduire la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack500k',-1)">−</button>
             <input id="qty-aiCreditsPack500k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',1)">+</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Augmenter la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack500k',1)">+</button>
           </div>
           <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack500k',true)">Acheter →</button>
         </div>
@@ -1265,6 +1270,104 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
     });
   }
+  /* addon-pricing-policy:start */
+  function _fpPricingAddonState(addon, plan, includedKeys) {
+    if (!addon) return "catalog_unavailable";
+    var normalizedPlan = String(plan || "").toLowerCase();
+    var includedByPlan = addon.includedByPlan || {};
+    if (normalizedPlan && (
+      includedByPlan[normalizedPlan] === true ||
+      (Array.isArray(includedKeys) && includedKeys.indexOf(addon.key) !== -1)
+    )) return "included";
+
+    var availability = String(addon.availability || addon.status || "").toLowerCase();
+    if (availability === "coming_soon" || availability === "validation_required") return "coming_soon";
+    if (!["available", "beta", "live"].includes(availability)) return "catalog_unavailable";
+    if (!Array.isArray(addon.allowedPlans) || addon.allowedPlans.length === 0) return "catalog_unavailable";
+    if (!normalizedPlan) return "purchasable";
+    return addon.allowedPlans.some(function (allowedPlan) {
+      return String(allowedPlan).toLowerCase() === normalizedPlan;
+    }) ? "purchasable" : "plan_unavailable";
+  }
+
+  function _fpPricingText(french, english) {
+    return window.fpPublicText ? window.fpPublicText(french, english) : french;
+  }
+
+  function _fpPricingAddonStateLabel(state) {
+    var labels = {
+      active: ["✓ Actif", "✓ Active"],
+      included: ["✓ Inclus", "✓ Included"],
+      coming_soon: ["🚧 Bientôt disponible", "🚧 Coming soon"],
+      plan_unavailable: ["Non disponible avec ce forfait", "Not available on this plan"],
+      catalog_unavailable: ["Indisponible", "Unavailable"]
+    };
+    var label = labels[state] || labels.catalog_unavailable;
+    return _fpPricingText(label[0], label[1]);
+  }
+
+  function _fpPricingAddonDisabledDescription(state) {
+    var descriptions = {
+      active: ["Cet add-on est déjà actif sur votre compte.", "This add-on is already active on your account."],
+      included: ["Cet add-on est inclus dans votre forfait.", "This add-on is included in your plan."],
+      coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
+      plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
+      catalog_unavailable: ["Aucun prix achetable n'est configuré pour cet add-on.", "No purchasable price is configured for this add-on."]
+    };
+    var description = descriptions[state] || descriptions.catalog_unavailable;
+    return _fpPricingText(description[0], description[1]);
+  }
+
+  function _fpPricingCartRejection(state) {
+    var messages = {
+      active: ["Cet add-on est déjà actif sur votre compte.", "This add-on is already active on your account."],
+      included: ["Cet add-on est déjà inclus dans votre forfait.", "This add-on is already included in your plan."],
+      coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
+      plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
+      catalog_unavailable: ["Cet add-on n'est pas achetable dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."]
+    };
+    var message = messages[state] || messages.catalog_unavailable;
+    return _fpPricingText(message[0], message[1]);
+  }
+
+  function _fpPricingQuantityLabel(addonName, direction) {
+    var name = String(addonName || "add-on");
+    return direction < 0
+      ? _fpPricingText("Réduire la quantité de " + name, "Decrease quantity of " + name)
+      : _fpPricingText("Augmenter la quantité de " + name, "Increase quantity of " + name);
+  }
+
+  function _fpSetAddonQuantityControls(card, addonName, state, isActive) {
+    if (!card || typeof card.querySelectorAll !== "function") return;
+    var disabled = state !== "purchasable" || isActive;
+    var reason = _fpPricingAddonDisabledDescription(isActive ? "active" : state);
+    Array.prototype.forEach.call(card.querySelectorAll(".fp-addon-qty-btn"), function (step, index) {
+      step.disabled = disabled;
+      step.setAttribute("aria-disabled", disabled ? "true" : "false");
+      step.setAttribute("aria-label", _fpPricingQuantityLabel(addonName, index === 0 ? -1 : 1));
+      if (disabled) step.title = reason;
+      else step.removeAttribute("title");
+    });
+  }
+
+  function _fpSetPricingCatalogState(state) {
+    var loading = document.getElementById("fp-addon-catalog-loading");
+    var grid = document.getElementById("fp-addons-grid");
+    var isLoading = state === "loading";
+    var isReady = state === "ready";
+    if (loading) {
+      loading.hidden = !isLoading;
+      if (isLoading) loading.textContent = _fpPricingText("Chargement des add-ons…", "Loading add-ons…");
+    }
+    if (grid) {
+      grid.dataset.catalogState = state;
+      grid.setAttribute("aria-busy", isLoading ? "true" : "false");
+      grid.hidden = !isReady;
+      grid.style.display = isReady ? "" : "none";
+    }
+  }
+  /* addon-pricing-policy:end */
+
   function _fpRenderAddonCards(cat) {
     var grid = document.getElementById("fp-addons-grid");
     if (!grid) throw new Error("Conteneur des add-ons introuvable");
@@ -1305,15 +1408,17 @@
       var quantity = !!addon.quantity;
       var soon = addon.availability === "coming_soon";
       var unit = quantity ? " / pack / mois" : " / mois";
+      var decreaseLabel = _fpEscapeHtml(_fpPricingQuantityLabel(addon.name, -1));
+      var increaseLabel = _fpEscapeHtml(_fpPricingQuantityLabel(addon.name, 1));
       var savedQuantity = quantity && _cart && _cart.addons
         ? (_cart.addons[addon.key] === true ? 1 : Number(_cart.addons[addon.key]))
         : 1;
       var qtyValue = Math.max(1, Math.min(20, Math.floor(savedQuantity || 1)));
       var actions = quantity
         ? '<div class="fp-addon-qty">' +
-            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="-1" data-addon-key="' + key + '" aria-label="Réduire la quantité de ' + name + '">−</button>' +
+            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="-1" data-addon-key="' + key + '" aria-label="' + decreaseLabel + '" aria-disabled="true" disabled>−</button>' +
             '<input id="qty-' + key + '" class="fp-addon-qty-input" type="number" value="' + qtyValue + '" min="1" max="20" readonly aria-label="Quantité de ' + name + '">' +
-            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="1" data-addon-key="' + key + '" aria-label="Augmenter la quantité de ' + name + '">+</button>' +
+            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="1" data-addon-key="' + key + '" aria-label="' + increaseLabel + '" aria-disabled="true" disabled>+</button>' +
           '</div>'
         : "";
       var button = soon
@@ -1328,9 +1433,6 @@
 
     grid.innerHTML = html;
     if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(grid);
-    grid.dataset.catalogState = "ready";
-    grid.style.display = "";
-    grid.hidden = false;
     ADDON_DEFAULT_BOTTOM = {};
 
     var label = document.getElementById("fp-addon-label");
@@ -1513,6 +1615,7 @@
         _fpReapplyStateBadge(key, bottom);
       }
     });
+    _fpSyncAddonCartState();
   };
   function setIncludedAddonsFromServer(plan, addons) {
     if (!plan || !addons) return;
@@ -1529,34 +1632,67 @@
   function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
   updateIncludedAddons('');
 
+  function _fpCurrentPricingPlan() {
+    var plan = (_cart && _cart.plan) || (window._fpBillingState && window._fpBillingState.plan) || "";
+    if (!plan) {
+      var selected = document.querySelector(".fp-card.cart-selected, .fp-card.selected");
+      if (selected && selected.id) plan = selected.id.replace("card-", "");
+    }
+    return String(plan || "").toLowerCase();
+  }
+
   function _fpSyncAddonCartState(ignoreActive) {
     var cartAddons = (_cart && _cart.addons) || {};
     var active = ignoreActive ? {} : ((window._fpBillingState && window._fpBillingState.addons) || {});
+    var plan = _fpCurrentPricingPlan();
+    var includedKeys = PLAN_INCLUDED[plan] || [];
+    var catalogStates = window._FP_ADDON_CATALOG_STATES || {};
     Array.prototype.forEach.call(_fpAddonButtons(), function (btn) {
-      if (!btn.closest("#fp-addons-grid")) return;
       var key = _fpAddonKeyForButton(btn);
       if (!key) return;
-      var def = (window._FP_ADDON_CATALOG_STATES || {})[key] || {};
-      if (def.comingSoon) {
+      var def = catalogStates[key];
+      var state = FP_CATALOG
+        ? _fpPricingAddonState(def, plan, includedKeys)
+        : "catalog_unavailable";
+      var isActive = !!active[key];
+      var card = btn.closest(".fp-addon-card, .fp-credit-card");
+      var nameElement = card && card.querySelector(".fp-addon-name, .fp-credit-name");
+      var addonName = nameElement ? nameElement.textContent.trim() : ((def && def.name) || key);
+      _fpSetAddonQuantityControls(card, addonName, state, isActive);
+
+      btn.removeAttribute("title");
+      btn.removeAttribute("aria-label");
+      if (isActive) {
         btn.disabled = true;
-        btn.textContent = '🚧 Bientôt disponible';
-        return;
-      }
-      if (active[key]) {
-        btn.disabled = true;
-        btn.textContent = '✓ Actif';
+        btn.setAttribute("aria-disabled", "true");
+        btn.textContent = _fpPricingAddonStateLabel("active");
+        btn.setAttribute("aria-label", _fpPricingAddonDisabledDescription("active"));
+        btn.title = _fpPricingAddonDisabledDescription("active");
         btn.style.background = 'rgba(16,185,129,0.12)';
         btn.style.borderColor = 'rgba(16,185,129,0.3)';
         btn.style.color = '#34d399';
+      } else if (state !== "purchasable") {
+        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
+        btn.textContent = _fpPricingAddonStateLabel(state);
+        btn.setAttribute("aria-label", _fpPricingAddonDisabledDescription(state));
+        btn.title = _fpPricingAddonDisabledDescription(state);
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
       } else if (cartAddons[key]) {
         btn.disabled = false;
-        btn.textContent = '✓ Dans le panier';
+        btn.setAttribute("aria-disabled", "false");
+        btn.textContent = _fpPricingText("✓ Dans le panier", "✓ In cart");
         btn.style.background = 'rgba(16,185,129,0.15)';
         btn.style.borderColor = 'rgba(16,185,129,0.35)';
         btn.style.color = '#34d399';
       } else {
         btn.disabled = false;
-        btn.textContent = 'Activer →';
+        btn.setAttribute("aria-disabled", "false");
+        btn.textContent = key.indexOf("aiCreditsPack") === 0
+          ? _fpPricingText("Acheter →", "Buy →")
+          : _fpPricingText("Activer →", "Activate →");
         btn.style.background = '';
         btn.style.borderColor = '';
         btn.style.color = '';
@@ -1565,6 +1701,8 @@
   }
 
   /* Canonical catalogue — sole source of add-on prices and plan inclusions. */
+  _fpSetPricingCatalogState("loading");
+  _fpSyncAddonCartState();
   fetch('/api/plans/catalog')
     .then(function (r) {
       if (!r.ok) throw new Error("Catalogue add-ons indisponible (HTTP " + r.status + ")");
@@ -1582,14 +1720,19 @@
       var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
       updateIncludedAddons(selId);
       _fpSyncAddonCartState();
+      _fpSetPricingCatalogState("ready");
     })
     .catch(function (error) {
       var grid = document.getElementById("fp-addons-grid");
-      if (grid) { grid.hidden = true; grid.dataset.catalogState = "error"; }
+      _fpSetPricingCatalogState("error");
+      _fpSyncAddonCartState();
       var message = document.createElement("p");
       message.className = "fp-addon-catalog-error";
       message.setAttribute("role", "alert");
-      message.textContent = "Impossible de charger les add-ons. Actualisez la page pour réessayer.";
+      message.textContent = _fpPricingText(
+        "Impossible de charger les add-ons. Actualisez la page pour réessayer.",
+        "Unable to load add-ons. Refresh the page to try again."
+      );
       if (grid && grid.parentNode) {
         var previous = grid.parentNode.querySelector(".fp-addon-catalog-error");
         if (previous) previous.remove();
@@ -1766,6 +1909,19 @@
   window.changeQty = function (addonId, delta) {
     var input = document.getElementById('qty-' + addonId);
     if (!input) return;
+    var currentPlan = _fpCurrentPricingPlan();
+    var eligibility = FP_CATALOG
+      ? _fpPricingAddonState(
+          (window._FP_ADDON_CATALOG_STATES || {})[addonId],
+          currentPlan,
+          PLAN_INCLUDED[currentPlan] || []
+        )
+      : "catalog_unavailable";
+    if (eligibility !== "purchasable" ||
+        (window._fpBillingState && window._fpBillingState.addons && window._fpBillingState.addons[addonId])) {
+      _fpSyncAddonCartState();
+      return;
+    }
     var min = parseInt(input.min) || 1;
     var max = parseInt(input.max) || 99;
     var wasPresent = _cart.addons[addonId] !== undefined;
@@ -1799,7 +1955,20 @@
     /* Backend-authoritative guard: block if add-on already active */
     var bs = window._fpBillingState;
     if (bs && bs.addons && bs.addons[addonId]) {
-      showToast('Cet add-on est déjà actif sur votre compte', true);
+      showToast(_fpPricingCartRejection("active"), true);
+      return;
+    }
+    var currentPlan = _fpCurrentPricingPlan();
+    var eligibility = FP_CATALOG
+      ? _fpPricingAddonState(
+          (window._FP_ADDON_CATALOG_STATES || {})[addonId],
+          currentPlan,
+          PLAN_INCLUDED[currentPlan] || []
+        )
+      : "catalog_unavailable";
+    if (eligibility !== "purchasable") {
+      showToast(_fpPricingCartRejection(eligibility), true);
+      _fpSyncAddonCartState();
       return;
     }
 
@@ -1820,14 +1989,44 @@
     btn.style.color = '#34d399';
     updateCartBadge();
     var _isCredits = addonId.indexOf('aiCreditsPack') === 0;
-    showToast(_isCredits ? 'Crédits IA ajoutés au panier ✓' : 'Add-on ajouté au panier ✓');
+    showToast(_isCredits
+      ? _fpPricingText("Crédits IA ajoutés au panier ✓", "AI credits added to cart ✓")
+      : _fpPricingText("Add-on ajouté au panier ✓", "Add-on added to cart ✓"));
   };
 
   /* ── Go to checkout ── */
   window.goToCheckout = function () {
+    if (!FP_CATALOG) {
+      showToast(_fpPricingText(
+        "Le catalogue des add-ons est indisponible. Actualisez la page avant de continuer.",
+        "The add-on catalog is unavailable. Refresh the page before continuing."
+      ), true);
+      return;
+    }
+    var currentPlan = _fpCurrentPricingPlan();
+    var includedKeys = PLAN_INCLUDED[currentPlan] || [];
+    var unavailableInCart = Object.keys(_cart.addons || {}).find(function (key) {
+      var state = _fpPricingAddonState(
+        (window._FP_ADDON_CATALOG_STATES || {})[key],
+        currentPlan,
+        includedKeys
+      );
+      return state !== "purchasable" && state !== "included";
+    });
+    if (unavailableInCart) {
+      showToast(_fpPricingText(
+        "Un add-on du panier n’est plus disponible avec le forfait sélectionné.",
+        "An add-on in your cart is no longer available with the selected plan."
+      ), true);
+      _fpSyncAddonCartState();
+      return;
+    }
     var count = (_cart.plan ? 1 : 0) + Object.keys(_cart.addons).length;
     if (count === 0) {
-      showToast('Sélectionnez d\'abord un plan, un add-on ou des crédits IA', true);
+      showToast(_fpPricingText(
+        "Sélectionnez d'abord un plan, un add-on ou des crédits IA",
+        "Select a plan, add-on, or AI credits first."
+      ), true);
       return;
     }
     _cart._v = 1; _cart._updatedAt = Date.now();

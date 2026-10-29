@@ -843,17 +843,18 @@ export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
 
 /**
  * Purchase eligibility for the public catalogue, including the active Stripe
- * mode. TEST mode must not advertise a standalone purchase when its TEST price
- * is unset; included entitlements remain in PLAN_INCLUDED_ADDONS and are not
- * affected by this catalogue-only check.
+ * mode. An offer is purchasable only when it has an active-mode price, the
+ * plan matrix allows it, and that plan does not already include the feature.
  */
 export function getAddonPurchasablePlans(addonKey: string): string[] {
   const stripeKey = getStripeKey() ?? "";
-  const testMode = process.env["STRIPE_TEST_MODE"] === "true" || stripeKey.startsWith("sk_test_");
-  if (getAddonAvailability(addonKey) === "coming_soon") return [];
-  if (testMode && !getAddonPriceId(addonKey, stripeKey)) return [];
+  const availability = getAddonAvailability(addonKey);
+  if (!["available", "beta"].includes(availability)) return [];
+  if (REMOVED_ADDONS.has(addonKey) || RETIRED_ADDONS.has(addonKey)) return [];
+  if (!getAddonPriceId(addonKey, stripeKey)) return [];
   return (["standard", "pro", "ultra"] as const).filter((plan) =>
-    isPlanAllowedAddon(plan, addonKey),
+    isPlanAllowedAddon(plan, addonKey) &&
+    !(PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
   );
 }
 

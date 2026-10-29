@@ -13,17 +13,29 @@
  * DB/Stripe connection is needed.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
 // ─── Recorded calls ───────────────────────────────────────────────────────────
 let stripeSyncCalls: Array<{ key: string; action: string; quantity?: number }>;
 let activateCalls: Array<{ key: string; orgId: string; quantity?: number }>;
+let mockPlan = "standard";
 // Configurable sync result — lets tests simulate every unsynced Stripe outcome.
 let mockSyncResult: { synced: boolean; reason: string };
 
+// The route requires an active-mode price before reaching mocked billing. Keep
+// these quantity tests independent of Stripe catalog environment configuration.
+const { mockGetAddonPriceId } = vi.hoisted(() => ({
+  mockGetAddonPriceId: vi.fn((): string | undefined => "price_test_fixture"),
+}));
+
 // ─── Mocks (must precede dynamic import of the router) ────────────────────────
+vi.mock("../lib/plans.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/plans.js")>();
+  return { ...actual, getAddonPriceId: mockGetAddonPriceId };
+});
+
 vi.mock("../services/addon-stripe-sync.js", () => ({
   syncAddonWithStripe: vi.fn(async (_orgId: string, key: string, action: string, quantity?: number) => {
     stripeSyncCalls.push({ key, action, quantity });
@@ -46,11 +58,20 @@ vi.mock("../services/addons-service.js", () => ({
     auditsPack200:   { name: "+200 Audits" },
     extraSeats:      { name: "+5 Seats" },
     whiteLabel:      { name: "White Label" },
+    retention90d:    { name: "90-day retention" },
+    advancedSeoLab: { name: "Advanced SEO Lab" },
+    advancedWebhooks: { name: "Advanced Webhooks" },
+    aiCreditsPack50k: { name: "50k AI credits" },
+    keywordDomination: { name: "Keyword Domination" },
   },
 }));
 
 vi.mock("../services/org-data.js", () => ({
-  loadOrgData: vi.fn(async () => ({ plan: "standard", addons: {} })),
+  loadOrgData: vi.fn(async () => ({ plan: mockPlan, addons: {} })),
+}));
+
+vi.mock("../services/ensure-stripe-customer.js", () => ({
+  ensureStripeCustomer: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("../services/store.js", () => ({
@@ -84,9 +105,18 @@ async function buildApp() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv("STRIPE_TEST_MODE", "false");
+  vi.stubEnv("STRIPE_TEST_KEY", "");
+  mockGetAddonPriceId.mockReturnValue("price_test_fixture");
   stripeSyncCalls = [];
   activateCalls = [];
+  mockPlan = "standard";
   mockSyncResult = { synced: true, reason: "item_added" };
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -150,6 +180,57 @@ describe("POST /addons/:key/activate — quantity carried end-to-end", () => {
     const app = await buildApp();
     const res = await request(app).post("/addons/notARealAddon/activate").send({ quantity: 3 });
     expect(res.status).toBe(400);
+    expect(stripeSyncCalls).toHaveLength(0);
+    expect(activateCalls).toHaveLength(0);
+  });
+
+  it("rejects an add-on outside the current plan before customer creation or billing", async () => {
+    const app = await buildApp();
+    const res = await request(app).post("/addons/advancedSeoLab/activate").send({});
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("ADDON_PLAN_GATE");
+    const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+    expect(ensureStripeCustomer).not.toHaveBeenCalled();
+    expect(stripeSyncCalls).toHaveLength(0);
+    expect(activateCalls).toHaveLength(0);
+  });
+
+  it("routes one-time credit packs through checkout before any subscription mutation", async () => {
+    const app = await buildApp();
+    const res = await request(app).post("/addons/aiCreditsPack50k/activate").send({});
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("ADDON_CHECKOUT_REQUIRED");
+    const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+    expect(ensureStripeCustomer).not.toHaveBeenCalled();
+    expect(stripeSyncCalls).toHaveLength(0);
+    expect(activateCalls).toHaveLength(0);
+  });
+
+  it("rejects an add-on with no TEST price before creating a Stripe customer", async () => {
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith("STRIPE_TEST_PRICE")) vi.stubEnv(key, "");
+    }
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "sk_test_addon_activation_fixture");
+    mockGetAddonPriceId.mockReturnValue(undefined);
+    vi.resetModules();
+
+    const app = await buildApp();
+    const res = await request(app).post("/addons/keywordDomination/activate").send({});
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("ADDON_PRICE_UNAVAILABLE");
+    const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+    expect(ensureStripeCustomer).not.toHaveBeenCalled();
+    expect(stripeSyncCalls).toHaveLength(0);
+    expect(activateCalls).toHaveLength(0);
+  });
+
+  it("grants an included entitlement without a separate Stripe mutation", async () => {
+    mockPlan = "pro";
+    const app = await buildApp();
+    const res = await request(app).post("/addons/retention90d/activate").send({});
+    expect(res.status).toBe(200);
+    expect(res.body.includedInPlan).toBe(true);
     expect(stripeSyncCalls).toHaveLength(0);
     expect(activateCalls).toHaveLength(0);
   });
