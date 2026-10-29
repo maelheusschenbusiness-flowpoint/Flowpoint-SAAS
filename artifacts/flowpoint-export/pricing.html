@@ -791,7 +791,7 @@
   </div>
 
   <div class="fp-show-more-wrap">
-    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()" hidden>
+    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()" aria-expanded="false" aria-controls="fp-addons-grid" hidden>
       <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
       <span id="fp-addon-label">Chargement du catalogue…</span>
     </button>
@@ -1282,6 +1282,7 @@
 
     var availability = String(addon.availability || addon.status || "").toLowerCase();
     if (availability === "coming_soon" || availability === "validation_required") return "coming_soon";
+    if (addon.purchaseStatus === "price_unavailable") return "price_unavailable";
     if (!["available", "beta", "live"].includes(availability)) return "catalog_unavailable";
     if (!Array.isArray(addon.allowedPlans) || addon.allowedPlans.length === 0) return "catalog_unavailable";
     if (!normalizedPlan) return "purchasable";
@@ -1294,12 +1295,22 @@
     return window.fpPublicText ? window.fpPublicText(french, english) : french;
   }
 
+  function _fpIncludedAddonBadgeText(planLabel, definition) {
+    var parts = [_fpPricingText("✓ Inclus dans " + planLabel, "✓ Included in " + planLabel)];
+    if (definition && definition.beta) parts.push(_fpPricingText("🧪 Bêta", "🧪 Beta"));
+    if (definition && definition.comingSoon) {
+      parts.push(_fpPricingText("🚧 Bientôt disponible", "🚧 Coming soon"));
+    }
+    return parts.join(" · ");
+  }
+
   function _fpPricingAddonStateLabel(state) {
     var labels = {
       active: ["✓ Actif", "✓ Active"],
       included: ["✓ Inclus", "✓ Included"],
       coming_soon: ["🚧 Bientôt disponible", "🚧 Coming soon"],
       plan_unavailable: ["Non disponible avec ce forfait", "Not available on this plan"],
+      price_unavailable: ["Prix indisponible dans ce mode", "No price available in this mode"],
       catalog_unavailable: ["Indisponible", "Unavailable"]
     };
     var label = labels[state] || labels.catalog_unavailable;
@@ -1312,6 +1323,7 @@
       included: ["Cet add-on est inclus dans votre forfait.", "This add-on is included in your plan."],
       coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
       plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
+      price_unavailable: ["Aucun prix Stripe achetable n'est configuré pour cet add-on dans ce mode.", "No purchasable Stripe price is configured for this add-on in this mode."],
       catalog_unavailable: ["Aucun prix achetable n'est configuré pour cet add-on.", "No purchasable price is configured for this add-on."]
     };
     var description = descriptions[state] || descriptions.catalog_unavailable;
@@ -1324,6 +1336,7 @@
       included: ["Cet add-on est déjà inclus dans votre forfait.", "This add-on is already included in your plan."],
       coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
       plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
+      price_unavailable: ["Cet add-on ne peut pas être acheté dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."],
       catalog_unavailable: ["Cet add-on n'est pas achetable dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."]
     };
     var message = messages[state] || messages.catalog_unavailable;
@@ -1441,7 +1454,12 @@
     if (label) label.textContent = hiddenCount
       ? (window.fpPublicText ? window.fpPublicText("Voir tous les add-ons (" + hiddenCount + " de plus)", "View all add-ons (" + hiddenCount + " more)") : "Voir tous les add-ons (" + hiddenCount + " de plus)")
       : (window.fpPublicText ? window.fpPublicText("Tous les add-ons", "All add-ons") : "Tous les add-ons");
-    if (toggle) toggle.hidden = hiddenCount === 0;
+    if (toggle) {
+      toggle.hidden = hiddenCount === 0;
+      toggle.dataset.hiddenCount = String(hiddenCount);
+      toggle.setAttribute("aria-expanded", "false");
+      toggle.setAttribute("aria-controls", "fp-addons-grid");
+    }
 
     if (!grid.dataset.catalogClickBound) {
       grid.dataset.catalogClickBound = "true";
@@ -1580,12 +1598,9 @@
       var bottom = btn.closest('.fp-addon-bottom');
       if (!bottom) return;
       if (isIncluded && planLabel) {
-        // Build combined badge: Inclus Plan [· 🧪 Bêta] [· 🚧 Bientôt disponible]
         var def = states[key] || {};
-        var parts = ['\u2713 Inclus ' + planLabel];
-        if (def.beta) parts.push('\uD83E\uDDEA B\u00eata');
-        if (def.comingSoon) parts.push('\uD83D\uDEA7 Bient\u00f4t disponible');
-        bottom.innerHTML = '<div class="fp-addon-price-incl">' + parts.join(' \u00b7 ') + '</div>';
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' +
+          _fpIncludedAddonBadgeText(planLabel, def) + '</div>';
       } else if (!isIncluded && bottom.querySelector('.fp-addon-price-incl')) {
         bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
         // Re-inject comingSoon/beta state badges that were cleared by the above reset
@@ -1606,10 +1621,8 @@
       if (!bottom) return;
       if (included.indexOf(key) !== -1 && planLabel) {
         var def = states[key] || {};
-        var parts = ['\u2713 Inclus ' + planLabel];
-        if (def.beta) parts.push('\uD83E\uDDEA B\u00eata');
-        if (def.comingSoon) parts.push('\uD83D\uDEA7 Bient\u00f4t disponible');
-        bottom.innerHTML = '<div class="fp-addon-price-incl">' + parts.join(' \u00b7 ') + '</div>';
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' +
+          _fpIncludedAddonBadgeText(planLabel, def) + '</div>';
       } else if (bottom.querySelector('.fp-addon-price-incl')) {
         bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
         _fpReapplyStateBadge(key, bottom);
@@ -2078,11 +2091,21 @@
   window.toggleAddons = function () {
     var hidden   = document.querySelectorAll('.fp-addon-hidden');
     var icon     = document.getElementById('fp-addon-icon');
+    var toggle   = document.getElementById('fp-addon-toggle');
     var label    = document.getElementById('fp-addon-label');
-    var expanded = icon && icon.classList.contains('open');
-    hidden.forEach(function (el) { expanded ? el.classList.remove('visible') : el.classList.add('visible'); });
-    if (icon)  icon.classList.toggle('open', !expanded);
-    if (label) label.textContent = expanded ? 'Voir tous les add-ons (24 de plus)' : 'Voir moins';
+    var expanded = toggle
+      ? toggle.getAttribute('aria-expanded') === 'true'
+      : !!(icon && icon.classList.contains('open'));
+    var nextExpanded = !expanded;
+    hidden.forEach(function (el) { nextExpanded ? el.classList.add('visible') : el.classList.remove('visible'); });
+    if (icon) icon.classList.toggle('open', nextExpanded);
+    if (toggle) toggle.setAttribute('aria-expanded', String(nextExpanded));
+    var hiddenCount = toggle
+      ? Math.max(0, Number(toggle.dataset.hiddenCount) || 0)
+      : Math.max(0, document.querySelectorAll('#fp-addons-grid .fp-addon-card').length - 8);
+    if (label) label.textContent = nextExpanded
+      ? _fpPricingText("Voir moins", "See less")
+      : _fpPricingText("Voir tous les add-ons (" + hiddenCount + " de plus)", "View all add-ons (" + hiddenCount + " more)");
   };
 
   /* ── Expand/collapse comparison table ── */

@@ -102,6 +102,18 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(exportedDashboard).toBe(dashboard);
   });
 
+  it("keeps pricing availability and purchase readiness distinct and localizes add-on expansion", () => {
+    expect(pricing).toContain('purchaseStatus === "price_unavailable"');
+    expect(pricing).toContain('_fpPricingText("Voir moins", "See less")');
+    expect(pricing).toContain('aria-controls="fp-addons-grid"');
+    const toggleBlock = pricing.match(
+      /window\.toggleAddons = function \(\) \{([\s\S]*?)\n  \};/,
+    )?.[1];
+    expect(toggleBlock).toContain("dataset.hiddenCount");
+    expect(toggleBlock).not.toContain("'Voir moins'");
+    expect(toggleBlock).not.toContain("24 de plus");
+  });
+
   it("shows an accessible GBP state for missing entitlement and provider failures", () => {
     expect(dashboard).toContain("gbpPerformanceError");
     expect(dashboard).toContain("status === 402");

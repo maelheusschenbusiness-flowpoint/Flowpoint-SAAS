@@ -5,6 +5,7 @@ import {
   PLAN_INCLUDED_ADDONS,
   QTY_ADDONS,
   getAddonAvailability,
+  getAddonPurchaseStatus,
   getAddonPurchasablePlans,
   REMOVED_ADDONS,
   RETIRED_ADDONS,
@@ -37,10 +38,10 @@ router.get("/plans/definitions", (_req: Request, res: Response): void => {
 });
 
 // ── GET /api/plans/catalog ───────────────────────────────────────────────────
-// Public, canonical catalogue: every plan, every add-on, and the plan-inclusion
-// matrix. This is the ONLY place a browser may learn a name, a price or whether
-// an add-on is bundled. Amounts are in minor EUR units so no surface has to do
-// float arithmetic; billable totals still come from POST /api/billing/quote.
+// Public, canonical catalogue: every sellable add-on and the plan-inclusion
+// matrix. Some includedAddons are retired/internal entitlements and therefore
+// intentionally have no matching entry in the commercial `addons` array.
+// Amounts are in minor EUR units; billable totals come from POST /api/billing/quote.
 router.get("/plans/catalog", (_req: Request, res: Response): void => {
   const plans = Object.values(PLAN_DEFINITIONS).map(def => ({
     id:              def.id,
@@ -72,6 +73,7 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
       quantity:      def.quantity || QTY_ADDONS.has(key),
       availability,
       status:        availability,
+      purchaseStatus: getAddonPurchaseStatus(key),
       comingSoon:    availability === "coming_soon",
       beta:          availability === "beta",
       allowedPlans:  getAddonPurchasablePlans(key),

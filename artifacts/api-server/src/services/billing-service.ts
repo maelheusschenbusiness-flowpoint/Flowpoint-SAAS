@@ -5,9 +5,11 @@ import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchasablePlans, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId } from "../lib/plans.js";
 
-/* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
+/* ── Presentation-only fields not in PLAN_DEFINITIONS ──
+   `addons` below is a legacy plan-card highlight list, not an entitlement map.
+   PLAN_INCLUDED_ADDONS is the sole source for contractual plan inclusions. */
 const _PLAN_PRESENTATION: Record<string, {
   color: string; popular: boolean; annualPrice: number;
   addons: string[]; highlighted: string[];
@@ -128,6 +130,7 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     status:       getAddonAvailability(id),
     // Same mode-aware purchase eligibility as GET /api/plans/catalog.
     allowedPlans: getAddonPurchasablePlans(id),
+    purchaseStatus: getAddonPurchaseStatus(id),
   }];
 });
 

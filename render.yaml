@@ -137,7 +137,7 @@ services:
 
     envVars:
       - key: NODE_ENV
-        value: production
+        value: test
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
@@ -154,6 +154,40 @@ services:
       - key: STRIPE_TEST_WEBHOOK_SECRET
         sync: false
       - key: STRIPE_TEST_PUBLISHABLE_KEY
+        sync: false
+      - key: QA_TEST_SESSION_KEY
+        sync: false
+      # Price IDs are supplied only in the Render Test environment. Keep values
+      # in Render, never in Git; missing TEST prices remain non-purchasable.
+      - key: STRIPE_TEST_PRICE_ID_ADDON_MONITORS10
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_MONITORS50
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_SEATS
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_AUDITS200
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_PDF200
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_EXPORTS1000
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_SEOLA
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_KDE
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_BACKLINK
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_RET90
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_RET365
+        sync: false
+      - key: STRIPE_TEST_PRICE_AI_50K
+        sync: false
+      - key: STRIPE_TEST_PRICE_AI_200K
+        sync: false
+      - key: STRIPE_TEST_PRICE_AI_500K
         sync: false
       - key: RESEND_API_KEY
         sync: false
