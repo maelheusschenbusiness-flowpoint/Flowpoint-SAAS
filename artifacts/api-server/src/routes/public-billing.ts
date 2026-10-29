@@ -17,6 +17,7 @@ import {
   enregistrerEtape,
   lireAttributionFunnel,
   metadataAttributionFunnel,
+  metadataDepuisAttribution,
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
 
@@ -57,6 +58,7 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     cookieConsentement ?? req.body?.consentement,
     visiteurId,
     req.body?.source,
+    req.body,
   );
   if (!attribution) {
     res.status(204).end();
@@ -68,6 +70,7 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
+    campagne: attribution.campagne,
     plan: typeof req.body?.plan === "string" ? req.body.plan : null,
     cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
   });
@@ -939,6 +942,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         req.cookies?.["fp_analytics_consent"],
         req.body?.visiteurId,
         req.body?.source,
+        req.body,
       ),
     };
 
@@ -997,6 +1001,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
           etape: "checkout_started",
           visiteurId: attribution.visiteurId,
           source: attribution.source,
+          campagne: attribution.campagne,
           plan: metadata["selected_plan"],
           orgId: signupOrgId ?? authOrgId,
           cleIdempotence: `checkout_started:${session.id}`,
@@ -1269,6 +1274,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       req.cookies?.["fp_analytics_consent"],
       req.body?.visiteurId,
       req.body?.source,
+      req.body,
     ),
   };
 
@@ -1563,6 +1569,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           etape: "checkout_started",
           visiteurId: attribution.visiteurId,
           source: attribution.source,
+          campagne: attribution.campagne,
           plan: planKey,
           orgId: _piReqOrgId ?? piOrgId,
           cleIdempotence: `checkout_started:${pi.id}`,
@@ -1598,6 +1605,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           etape: "checkout_started",
           visiteurId: attribution.visiteurId,
           source: attribution.source,
+          campagne: attribution.campagne,
           plan: planKey,
           orgId: _piReqOrgId ?? piOrgId,
           cleIdempotence: `checkout_started:${si.id}`,
@@ -2500,11 +2508,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             flowpoint_cart: "true",
             org_id:         _authenticatedOrgId,
             orgId:          _authenticatedOrgId,
-            ...metadataAttributionFunnel(
-              intentMeta["fp_analytics_consent"],
-              intentMeta["fp_visitor_id"],
-              intentMeta["fp_source"],
-            ),
+            ...metadataDepuisAttribution(lireAttributionFunnel(intentMeta)),
             ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
             ...(preRegisterToken || intentMeta["pre_register_token"]
               ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
@@ -2520,6 +2524,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         etape: "checkout_completed",
         visiteurId: finalizedAttribution.visiteurId,
         source: finalizedAttribution.source,
+        campagne: finalizedAttribution.campagne,
         plan: planKey,
         orgId: _authenticatedOrgId,
         cleIdempotence: `checkout_completed:${intentId}`,

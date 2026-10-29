@@ -17,6 +17,7 @@ import { timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
+import { agregerAttribution, validerPlageAttribution } from "../services/funnel-events.js";
 
 const router = Router();
 
@@ -254,6 +255,50 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
         totalKeywords:   kwardsR.rows[0].count,
       },
     });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/acquisition/attribution ────────────────────────────────────
+// Agregats anonymes du tunnel par jour UTC x etape x source x campagne UTM.
+// Contrat fige (importe tel quel par AI Lab) : aucune autre cle dans les lignes,
+// jamais de visiteur_id, org_ref ni e-mail. `visiteurs` = visiteurs distincts.
+// Lecture : visiteurs = landing_vue, inscriptions = signup_form_completed,
+// essais = trial_activated, abonnements payants = subscription_activated.
+// Clé restreinte ATTRIBUTION_EXPORT_KEY (en-tête x-attribution-key) : lecture de CES agrégats
+// anonymes seulement, pour AI Lab, sans lui confier ADMIN_KEY. Même modèle que SELLER_ADMIN_KEY :
+// sans l'en-tête dédié, ou avec x-admin-key, c'est le contrôle admin complet, inchangé.
+const ATTRIBUTION_EXPORT_KEY_MIN_LEN = 32;
+function requireAttributionAdminKey(req: Request, res: Response): boolean {
+  const provided = req.headers["x-attribution-key"];
+  if (provided === undefined || req.headers["x-admin-key"] !== undefined) return requireAdminKey(req, res);
+  const key = process.env["ATTRIBUTION_EXPORT_KEY"];
+  if (!key || key.length < ATTRIBUTION_EXPORT_KEY_MIN_LEN) {
+    res.status(503).json({ ok: false, error: `ATTRIBUTION_EXPORT_KEY is not configured on this server (minimum ${ATTRIBUTION_EXPORT_KEY_MIN_LEN} chars)` });
+    return false;
+  }
+  if (key === process.env["ADMIN_KEY"]) {
+    res.status(503).json({ ok: false, error: "ATTRIBUTION_EXPORT_KEY must differ from ADMIN_KEY" });
+    return false;
+  }
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
+    res.status(403).json({ ok: false, error: "Invalid x-attribution-key header" });
+    return false;
+  }
+  return true;
+}
+
+router.get("/admin/acquisition/attribution", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAttributionAdminKey(req, res)) return;
+  const plage = validerPlageAttribution(req.query["from"], req.query["to"]);
+  if (!plage.ok) {
+    res.status(400).json({ ok: false, error: plage.erreur });
+    return;
+  }
+  try {
+    const lignes = await agregerAttribution(plage.du, plage.au);
+    res.json({ genereLe: new Date().toISOString(), du: plage.du, au: plage.au, lignes });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   }

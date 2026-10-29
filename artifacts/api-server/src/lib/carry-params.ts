@@ -17,7 +17,11 @@
 
 /** Parameters that identify where a prospect came from, and what they chose. */
 // `fp_lid` (Conversion B) is the opaque 22-character lead id from an outreach email.
-export const CARRIED_PARAMS = ["fp_ref", "ref", "plan", "fp_lid"] as const;
+// `utm_*` are campaign labels (no personal data); the API re-validates them and
+// only records them after analytics consent.
+export const CARRIED_PARAMS = [
+  "fp_ref", "ref", "plan", "fp_lid", "utm_source", "utm_medium", "utm_campaign",
+] as const;
 
 /** Values stay short and opaque: anything longer is not one of ours. */
 const MAX_VALUE_LENGTH = 128;

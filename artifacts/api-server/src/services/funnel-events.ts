@@ -34,15 +34,60 @@ const SOURCES_AUTORISEES = new Set([
   "other_campaign",
 ]);
 
+/**
+ * Campagne d'acquisition (UTM) : trois libelles courts, en minuscules, sans
+ * donnee personnelle. Une valeur hors du motif est ignoree, pas tronquee : un
+ * libelle de campagne n'est jamais un texte libre.
+ */
+export interface CampagneUtm {
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+}
+
 export interface AttributionFunnel {
   visiteurId: string;
   source: string | null;
+  /** Absente (et non `null`) quand aucune valeur UTM valide n'a ete fournie. */
+  campagne?: CampagneUtm;
+}
+
+const UTM_RE = /^[a-z0-9._-]{1,64}$/;
+
+function normaliserValeurUtm(valeur: unknown): string | null {
+  if (typeof valeur !== "string") return null;
+  const v = valeur.trim().toLowerCase();
+  return UTM_RE.test(v) ? v : null;
+}
+
+/**
+ * Lit `utm_source`, `utm_medium` et `utm_campaign` d'un objet brut (corps de
+ * requete). Meme regle que l'attribution : rien sans consentement `accepted`.
+ * Renvoie `null` si aucune des trois valeurs n'est valide.
+ */
+export function normaliserCampagne(
+  consentement: unknown,
+  brut: unknown,
+): CampagneUtm | null {
+  if (consentement !== "accepted" || !brut || typeof brut !== "object") {
+    return null;
+  }
+  const b = brut as Record<string, unknown>;
+  const campagne: CampagneUtm = {
+    utmSource: normaliserValeurUtm(b["utm_source"]),
+    utmMedium: normaliserValeurUtm(b["utm_medium"]),
+    utmCampaign: normaliserValeurUtm(b["utm_campaign"]),
+  };
+  return campagne.utmSource || campagne.utmMedium || campagne.utmCampaign
+    ? campagne
+    : null;
 }
 
 export function normaliserAttributionFunnel(
   consentement: unknown,
   visiteurId: unknown,
   source: unknown,
+  campagneBrute?: unknown,
 ): AttributionFunnel | null {
   if (
     consentement !== "accepted" ||
@@ -51,12 +96,30 @@ export function normaliserAttributionFunnel(
   ) {
     return null;
   }
+  const campagne = normaliserCampagne(consentement, campagneBrute);
   return {
     visiteurId,
     source:
       typeof source === "string" && SOURCES_AUTORISEES.has(source)
         ? source
         : null,
+    ...(campagne ? { campagne } : {}),
+  };
+}
+
+/** Les seules cles Stripe ecrites par l'attribution du tunnel. */
+export function metadataDepuisAttribution(
+  attribution: AttributionFunnel | null,
+): Record<string, string> {
+  if (!attribution) return {};
+  const c = attribution.campagne;
+  return {
+    fp_analytics_consent: "accepted",
+    fp_visitor_id: attribution.visiteurId,
+    ...(attribution.source ? { fp_source: attribution.source } : {}),
+    ...(c?.utmSource ? { fp_utm_source: c.utmSource } : {}),
+    ...(c?.utmMedium ? { fp_utm_medium: c.utmMedium } : {}),
+    ...(c?.utmCampaign ? { fp_utm_campaign: c.utmCampaign } : {}),
   };
 }
 
@@ -64,18 +127,11 @@ export function metadataAttributionFunnel(
   consentement: unknown,
   visiteurId: unknown,
   source: unknown,
+  campagneBrute?: unknown,
 ): Record<string, string> {
-  const attribution = normaliserAttributionFunnel(
-    consentement,
-    visiteurId,
-    source,
+  return metadataDepuisAttribution(
+    normaliserAttributionFunnel(consentement, visiteurId, source, campagneBrute),
   );
-  if (!attribution) return {};
-  return {
-    fp_analytics_consent: "accepted",
-    fp_visitor_id: attribution.visiteurId,
-    ...(attribution.source ? { fp_source: attribution.source } : {}),
-  };
 }
 
 export function lireAttributionFunnel(
@@ -85,6 +141,11 @@ export function lireAttributionFunnel(
     metadata["fp_analytics_consent"],
     metadata["fp_visitor_id"],
     metadata["fp_source"],
+    {
+      utm_source: metadata["fp_utm_source"],
+      utm_medium: metadata["fp_utm_medium"],
+      utm_campaign: metadata["fp_utm_campaign"],
+    },
   );
 }
 
@@ -95,6 +156,7 @@ export interface EvenementTunnel {
   plan?: string | null;
   source?: string | null;
   cleIdempotence?: string | null;
+  campagne?: CampagneUtm | null;
 }
 
 function tronquer(value: string | null | undefined): string | null {
@@ -103,29 +165,143 @@ function tronquer(value: string | null | undefined): string | null {
   return trimmed ? trimmed.slice(0, 120) : null;
 }
 
+const INSERT_ETAPE = `INSERT INTO funnel_events
+         (etape, visiteur_id, org_ref, plan, source, cle_idempotence)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (cle_idempotence)
+         WHERE cle_idempotence IS NOT NULL DO NOTHING`;
+
+const INSERT_ETAPE_CAMPAGNE = `INSERT INTO funnel_events
+         (etape, visiteur_id, org_ref, plan, source, cle_idempotence,
+          utm_source, utm_medium, utm_campaign)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (cle_idempotence)
+         WHERE cle_idempotence IS NOT NULL DO NOTHING`;
+
 export async function enregistrerEtape(
   event: EvenementTunnel,
 ): Promise<boolean> {
   if (!ETAPES.has(event.etape)) return false;
+  const base = [
+    event.etape,
+    tronquer(event.visiteurId),
+    tronquer(event.orgId),
+    tronquer(event.plan),
+    tronquer(event.source),
+    tronquer(event.cleIdempotence),
+  ];
+  // Re-normalise : une campagne n'entre en base que sous sa forme valide.
+  const campagne = event.campagne
+    ? normaliserCampagne("accepted", {
+        utm_source: event.campagne.utmSource,
+        utm_medium: event.campagne.utmMedium,
+        utm_campaign: event.campagne.utmCampaign,
+      })
+    : null;
   try {
-    const result = await pool.query(
-      `INSERT INTO funnel_events
-         (etape, visiteur_id, org_ref, plan, source, cle_idempotence)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (cle_idempotence)
-         WHERE cle_idempotence IS NOT NULL DO NOTHING`,
-      [
-        event.etape,
-        tronquer(event.visiteurId),
-        tronquer(event.orgId),
-        tronquer(event.plan),
-        tronquer(event.source),
-        tronquer(event.cleIdempotence),
-      ],
-    );
-    return (result.rowCount ?? 0) > 0;
+    if (!campagne) {
+      // Sans campagne : la requete d'origine, a l'identique.
+      const result = await pool.query(INSERT_ETAPE, base);
+      return (result.rowCount ?? 0) > 0;
+    }
+    try {
+      const result = await pool.query(INSERT_ETAPE_CAMPAGNE, [
+        ...base,
+        campagne.utmSource,
+        campagne.utmMedium,
+        campagne.utmCampaign,
+      ]);
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      // Migration 020 pas encore appliquee (colonne absente, 42703) : on garde
+      // l'etape, sans la campagne, plutot que de la perdre.
+      if ((error as { code?: string } | null)?.code !== "42703") throw error;
+      logger.warn({ etape: event.etape }, "[Tunnel] utm columns missing — event stored without campaign");
+      const result = await pool.query(INSERT_ETAPE, base);
+      return (result.rowCount ?? 0) > 0;
+    }
   } catch (error) {
     logger.warn({ error, etape: event.etape }, "[Tunnel] event write failed");
     return false;
   }
+}
+
+// ── Agregats d'attribution (admin) ───────────────────────────────────────────
+
+export const PLAGE_ATTRIBUTION_MAX_JOURS = 400;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function dateUtcValide(valeur: unknown): Date | null {
+  if (typeof valeur !== "string" || !DATE_RE.test(valeur)) return null;
+  const d = new Date(`${valeur}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== valeur
+    ? null
+    : d;
+}
+
+export type PlageAttribution =
+  | { ok: true; du: string; au: string }
+  | { ok: false; erreur: string };
+
+/** `from`/`to` obligatoires, dates calendaires UTC, `from <= to`, 400 jours au plus (bornes incluses). */
+export function validerPlageAttribution(from: unknown, to: unknown): PlageAttribution {
+  const du = dateUtcValide(from);
+  const au = dateUtcValide(to);
+  if (!du || !au) {
+    return { ok: false, erreur: "from and to are required, as YYYY-MM-DD calendar dates" };
+  }
+  if (du.getTime() > au.getTime()) {
+    return { ok: false, erreur: "from must be on or before to" };
+  }
+  const jours = Math.round((au.getTime() - du.getTime()) / 86_400_000) + 1;
+  if (jours > PLAGE_ATTRIBUTION_MAX_JOURS) {
+    return { ok: false, erreur: `range exceeds ${PLAGE_ATTRIBUTION_MAX_JOURS} days` };
+  }
+  return { ok: true, du: from as string, au: to as string };
+}
+
+export interface LigneAttribution {
+  jour: string;
+  etape: string;
+  source: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  evenements: number;
+  visiteurs: number;
+}
+
+/**
+ * Comptes par jour UTC x etape x source x campagne. Ne selectionne aucun
+ * identifiant : ni visiteur_id, ni org_ref, ni cle d'idempotence.
+ */
+export async function agregerAttribution(du: string, au: string): Promise<LigneAttribution[]> {
+  const r = await pool.query<LigneAttribution>(
+    `SELECT to_char((created_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS jour,
+            etape,
+            source,
+            utm_source,
+            utm_medium,
+            utm_campaign,
+            count(*)::int                    AS evenements,
+            count(DISTINCT visiteur_id)::int AS visiteurs
+       FROM funnel_events
+      WHERE created_at >= ($1::date)::timestamp AT TIME ZONE 'UTC'
+        AND created_at <  ($2::date + 1)::timestamp AT TIME ZONE 'UTC'
+        -- Visiteurs de test (fp-test-…) exclus, comme dans la surveillance Conversion B.
+        AND (visiteur_id IS NULL OR visiteur_id NOT LIKE 'fp-test-%')
+      GROUP BY 1, 2, 3, 4, 5, 6
+      ORDER BY 1, array_position($3::text[], etape), 3 NULLS LAST, 4 NULLS LAST, 5 NULLS LAST, 6 NULLS LAST`,
+    [du, au, [...ETAPES_TUNNEL]],
+  );
+  return r.rows.map((l) => ({
+    jour: l.jour,
+    etape: l.etape,
+    source: l.source ?? null,
+    utm_source: l.utm_source ?? null,
+    utm_medium: l.utm_medium ?? null,
+    utm_campaign: l.utm_campaign ?? null,
+    evenements: Number(l.evenements),
+    visiteurs: Number(l.visiteurs),
+  }));
 }
