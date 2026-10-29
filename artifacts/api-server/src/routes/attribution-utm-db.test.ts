@@ -84,6 +84,15 @@ describe("route publique : la campagne entre en base normalisee", () => {
   });
 });
 
+describe("migration 020 au demarrage (assurerColonnesUtm)", () => {
+  it("base deja migree : rien a ajouter, appel idempotent", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const { assurerColonnesUtm } = await import("../services/funnel-events.js");
+    expect(await assurerColonnesUtm()).toEqual({ etat: "deja_presentes" });
+    expect(await assurerColonnesUtm()).toEqual({ etat: "deja_presentes" });
+  });
+});
+
 describe("GET /api/admin/acquisition/attribution", () => {
   it("refuse sans x-admin-key, comme les autres routes admin", async () => {
     const r = await request(app).get("/api/admin/acquisition/attribution?from=2001-03-01&to=2001-03-02");

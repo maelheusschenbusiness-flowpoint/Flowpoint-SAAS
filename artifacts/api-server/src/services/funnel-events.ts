@@ -226,6 +226,61 @@ export async function enregistrerEtape(
   }
 }
 
+// ── Schema UTM (migration 020) ──────────────────────────────────────────────
+
+/** Colonnes de campagne exigees par l'attribution (migration 020_funnel_events_utm.sql). */
+export const COLONNES_UTM = ["utm_source", "utm_medium", "utm_campaign"] as const;
+
+export type EtatColonnesUtm =
+  | { etat: "table_absente" }
+  | { etat: "deja_presentes" }
+  | { etat: "ajoutees"; colonnes: string[] };
+
+/**
+ * Applique la migration 020 au demarrage, quel que soit le chemin (Pre-Deploy ou non) :
+ * le service Render n'execute pas `migrate.mjs` (aucune etape Pre-Deploy constatee le
+ * 29/10), si bien que 020 n'etait appliquee nulle part. Additive et idempotente : les
+ * colonnes deja presentes ne sont pas retouchees (aucun verrou pris dans ce cas), et
+ * `lock_timeout` borne l'attente si la table est occupee. Sans table, rien n'est cree.
+ */
+export async function assurerColonnesUtm(): Promise<EtatColonnesUtm> {
+  const client = await pool.connect();
+  try {
+    const t = await client.query<{ t: string | null }>(
+      `SELECT to_regclass('public.funnel_events')::text AS t`,
+    );
+    if (!t.rows[0]?.t) return { etat: "table_absente" };
+    const c = await client.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'funnel_events'
+          AND column_name = ANY($1::text[])`,
+      [[...COLONNES_UTM]],
+    );
+    const presentes = new Set(c.rows.map((r) => r.column_name));
+    const manquantes = COLONNES_UTM.filter((k) => !presentes.has(k));
+    if (manquantes.length === 0) return { etat: "deja_presentes" };
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL lock_timeout = '5s'");
+      for (const k of manquantes) {
+        await client.query(`ALTER TABLE public.funnel_events ADD COLUMN IF NOT EXISTS ${k} TEXT NULL`);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
+    return { etat: "ajoutees", colonnes: manquantes };
+  } finally {
+    client.release();
+  }
+}
+
+/** Colonne absente (42703) : le schema n'a pas la migration 020. */
+export function estSchemaUtmAbsent(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "42703";
+}
+
 // ── Agregats d'attribution (admin) ───────────────────────────────────────────
 
 export const PLAGE_ATTRIBUTION_MAX_JOURS = 400;

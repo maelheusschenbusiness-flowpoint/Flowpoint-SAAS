@@ -29,6 +29,9 @@ export default defineConfig({
       "src/services/funnel-events.test.ts",
       // Attribution fine Instagram (UTM) : route, webhook, agregats admin.
       "src/routes/attribution-utm-db.test.ts",
+      // Migration 020 au demarrage + reponses d echec distinctes (HTTP 500 du 29/10).
+      "src/services/funnel-events-schema-utm.test.ts",
+      "src/routes/attribution-erreurs.test.ts",
       "src/tests/attribution-utm-webhook.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
       "src/tests/conversion-a-funnel-guards.test.ts",
