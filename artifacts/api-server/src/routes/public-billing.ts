@@ -369,6 +369,9 @@ function getPublicStripeKey(stripeKey: string): string {
 router.get("/billing/plans", async (req: Request, res: Response): Promise<void> => {
   const plans = Object.values(PLAN_CONFIG).map((p) => ({
     ...p,
+    // `addons` remains the legacy plan-card highlight list. Contractual
+    // entitlements are explicit here and derive only from PLAN_INCLUDED_ADDONS.
+    includedAddons: [...(PLAN_INCLUDED_ADDONS[p.id] ?? new Set<string>())],
     // Catalogue expose au client : le priceId doit suivre le mode actif,
     // sinon le navigateur recoit un prix live avec une cle de test.
     priceId: getPlanPriceId(p.id) ?? "",

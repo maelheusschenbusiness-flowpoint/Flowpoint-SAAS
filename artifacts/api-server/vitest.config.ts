@@ -14,6 +14,7 @@ export default defineConfig({
     include: [
       "src/services/stripe-factory.test.ts",
       "src/routes/admin-test-session.test.ts",
+      "src/services/render-test-migration-guard.test.ts",
        "src/routes/admin-test-session-postgres.test.ts",
       "src/services/keyword-domination.test.ts",
       "src/services/organic-campaign-tracker.test.ts",

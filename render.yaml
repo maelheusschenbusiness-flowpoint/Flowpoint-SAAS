@@ -129,15 +129,13 @@ services:
     # pas distinguer un demarrage reussi d'un demarrage degrade.
     healthCheckPath: /api/healthz/ready
 
-    # Pre-Deploy actif ICI, et seulement ici : un refus de la porte bloque un
-    # deploiement de test, pas la production. C'est l'environnement ou l'on
-    # observe ce que migrate.mjs dit d'un schema reel avant d'y soumettre la
-    # production.
-    preDeployCommand: cd artifacts/api-server && pnpm run migrate
+    # Aucun deploiement Test ne lance de migration PostgreSQL.
+    # Ce changement ne modifie pas le schema; les migrations restent hors du
+    # cycle de deploiement et necessitent une autorisation distincte.
 
     envVars:
       - key: NODE_ENV
-        value: production
+        value: test
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
@@ -154,6 +152,40 @@ services:
       - key: STRIPE_TEST_WEBHOOK_SECRET
         sync: false
       - key: STRIPE_TEST_PUBLISHABLE_KEY
+        sync: false
+      - key: QA_TEST_SESSION_KEY
+        sync: false
+      # Price IDs are supplied only in the Render Test environment. Keep values
+      # in Render, never in Git; missing TEST prices remain non-purchasable.
+      - key: STRIPE_TEST_PRICE_ID_ADDON_MONITORS10
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_MONITORS50
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_SEATS
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_AUDITS200
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_PDF200
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_EXPORTS1000
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_SEOLA
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_KDE
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_BACKLINK
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_RET90
+        sync: false
+      - key: STRIPE_TEST_PRICE_ID_ADDON_RET365
+        sync: false
+      - key: STRIPE_TEST_PRICE_AI_50K
+        sync: false
+      - key: STRIPE_TEST_PRICE_AI_200K
+        sync: false
+      - key: STRIPE_TEST_PRICE_AI_500K
         sync: false
       - key: RESEND_API_KEY
         sync: false

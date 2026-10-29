@@ -15,9 +15,8 @@
  * La creation d'une session Checkout etait donc impossible pour `pro` et
  * `ultra`, et rien ne le signalait avant l'echec cote Stripe.
  *
- * Le repli sur le prix live reste un choix assume (`plan-price-mode.test.ts`).
- * Ce qui manquait, c'est de le dire. `plansRepliantSurPrixLive()` le dit, et
- * nomme la variable a poser.
+ * Un prix LIVE ne sert jamais de repli avec une cle TEST. `plansRepliantSurPrixLive()`
+ * expose seulement le plan et la variable de TEST manquante pour le corriger.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 

@@ -116,6 +116,7 @@ it("does not advertise an unpriced TEST add-on as purchasable and keeps bundled 
     availability: string;
     allowedPlans: string[];
     includedByPlan: Record<string, boolean>;
+    purchaseStatus: string;
   };
   const entries = new Map<string, CatalogAddon>(
     response.body.addons.map((entry: CatalogAddon) => [entry.key, entry]),
@@ -125,9 +126,61 @@ it("does not advertise an unpriced TEST add-on as purchasable and keeps bundled 
 
   expect(keyword).toMatchObject({ availability: "available", allowedPlans: [] });
   expect(behavioral).toMatchObject({ availability: "beta", allowedPlans: [] });
+  expect(keyword.purchaseStatus).toBe("price_unavailable");
+  expect(behavioral.purchaseStatus).toBe("price_unavailable");
   expect(behavioral.includedByPlan).toEqual({ ultra: true });
   expect(plans.PLAN_INCLUDED_ADDONS.ultra.has("behavioralAI")).toBe(true);
   expect(plans.getAddonStatus("behavioralAI", { included: true })).toBe("included");
+});
+
+it("keeps offer lifecycle separate from active-mode purchase readiness", async () => {
+  const plans = await loadPlans();
+  expect(plans.getAddonAvailability("monitorsPack10")).toBe("available");
+  expect(plans.getAddonPurchaseStatus("monitorsPack10")).toBe("price_unavailable");
+  expect(plans.getAddonPurchaseStatus("customDomain")).toBe("coming_soon");
+  expect(plans.getAddonPurchaseStatus("whiteLabel")).toBe("included");
+  expect(plans.getAddonPurchaseStatus("advancedWebhooks")).toBe("retired");
+});
+
+it("keeps the twelve monthly offers and three credit packs blocked without TEST prices", async () => {
+  const plans = await loadPlans();
+  const missingOffers = [
+    "monitorsPack10",
+    "monitorsPack50",
+    "extraSeats",
+    "auditsPack200",
+    "auditsPack1000",
+    "pdfPack200",
+    "exportsPack1000",
+    "advancedSeoLab",
+    "keywordDomination",
+    "backlinkIntelligence",
+    "retention90d",
+    "retention365d",
+    "aiCreditsPack50k",
+    "aiCreditsPack200k",
+    "aiCreditsPack500k",
+  ];
+  for (const key of missingOffers) {
+    expect(plans.getAddonPurchaseStatus(key), key).toBe("price_unavailable");
+    expect(plans.getAddonPurchasablePlans(key), key).toEqual([]);
+  }
+
+  const app = express();
+  const { default: plansRouter } = await import("../routes/plans.js");
+  const { default: billingRouter } = await import("../routes/public-billing.js");
+  app.use(plansRouter);
+  app.use(billingRouter);
+  const [catalog, billing] = await Promise.all([
+    request(app).get("/plans/catalog").expect(200),
+    request(app).get("/billing/plans").expect(200),
+  ]);
+  for (const key of missingOffers) {
+    expect(catalog.body.addons.find((addon: { key: string }) => addon.key === key))
+      .toMatchObject({ purchaseStatus: "price_unavailable", allowedPlans: [] });
+    expect(billing.body.addons.find((addon: { id: string }) => addon.id === key))
+      .toMatchObject({ purchaseStatus: "price_unavailable", allowedPlans: [] });
+  }
 });
 
 it("advertises a TEST add-on for purchase only after a TEST price is configured", async () => {
@@ -179,14 +232,54 @@ it("publishes identical mode-aware purchasable tiers from both catalogue APIs", 
     request(app).get("/billing/plans").expect(200),
   ]);
   const billingByKey = new Map(
-    billingResponse.body.addons.map((addon: { id: string; allowedPlans: string[] }) => [
+    billingResponse.body.addons.map((addon: {
+      id: string;
+      allowedPlans: string[];
+      purchaseStatus: string;
+    }) => [
       addon.id,
-      addon.allowedPlans,
+      { allowedPlans: addon.allowedPlans, purchaseStatus: addon.purchaseStatus },
     ]),
   );
-  for (const addon of catalogResponse.body.addons as Array<{ key: string; allowedPlans: string[] }>) {
-    expect(billingByKey.get(addon.key), `${addon.key} eligibility matches in TEST mode`).toEqual(
-      addon.allowedPlans,
-    );
+  for (const addon of catalogResponse.body.addons as Array<{
+    key: string;
+    allowedPlans: string[];
+    purchaseStatus: string;
+  }>) {
+    expect(billingByKey.get(addon.key), `${addon.key} eligibility matches in TEST mode`).toEqual({
+      allowedPlans: addon.allowedPlans,
+      purchaseStatus: addon.purchaseStatus,
+    });
   }
+  const plansById = new Map(
+    billingResponse.body.plans.map((plan: { id: string; includedAddons: string[] }) => [
+      plan.id,
+      plan.includedAddons,
+    ]),
+  );
+  expect(plansById.get("standard")).toContain("whiteLabel");
+  expect(plansById.get("pro")).toEqual(expect.arrayContaining([
+    "whiteLabel",
+    "advancedWebhooks",
+    "retention90d",
+    "advancedSeoLab",
+    "backlinkIntelligence",
+    "enterprisePermissions",
+  ]));
+  expect(plansById.get("ultra")).toEqual(expect.arrayContaining([
+    "customDomain",
+    "behavioralAI",
+    "aiForecasting",
+    "retention365d",
+  ]));
+  const proPlan = billingResponse.body.plans.find((plan: { id: string }) => plan.id === "pro");
+  expect(proPlan.addons).toEqual(["whiteLabel", "extraSeats", "monitorsPack50"]);
+  expect(proPlan.addons).not.toEqual(proPlan.includedAddons);
+  expect(catalogResponse.body.addons.find((addon: { key: string }) => addon.key === "customDomain"))
+    .toMatchObject({ availability: "coming_soon", includedByPlan: { ultra: true }, purchaseStatus: "coming_soon" });
+  expect(catalogResponse.body.addons.some((addon: { key: string }) => addon.key === "advancedWebhooks")).toBe(false);
+  expect(catalogResponse.body.plans.find((plan: { id: string }) => plan.id === "pro").includedAddons)
+    .toContain("advancedWebhooks");
+  expect(catalogResponse.body.plans.find((plan: { id: string }) => plan.id === "pro").includedAddons)
+    .toContain("enterprisePermissions");
 });

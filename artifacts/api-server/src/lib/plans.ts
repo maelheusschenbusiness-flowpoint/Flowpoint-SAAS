@@ -494,6 +494,11 @@ export const RETIRED_ADDONS = new Set<string>([
   "zapierIntegration",
 ]);
 
+// These retired keys remain plan entitlements and are still enforced by
+// backend capability gates. They are intentionally absent from the public
+// sellable-add-on list; do not remove their plan inclusion without migrating
+// those consumers and validating the plan contract.
+
 /**
  * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
  * available for purchase.  Activation is blocked at every layer:
@@ -856,6 +861,35 @@ export function getAddonPurchasablePlans(addonKey: string): string[] {
     isPlanAllowedAddon(plan, addonKey) &&
     !(PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
   );
+}
+
+export type AddonPurchaseStatus =
+  | "purchasable"
+  | "price_unavailable"
+  | "included"
+  | "coming_soon"
+  | "validation_required"
+  | "retired"
+  | "removed"
+  | "unknown";
+
+/**
+ * Separates the offer's lifecycle/contract from whether this Stripe mode can
+ * actually sell it. Included entitlements stay visible even when their module
+ * is not yet operational or the offer is retired from separate purchase.
+ */
+export function getAddonPurchaseStatus(addonKey: string): AddonPurchaseStatus {
+  if (!ADDON_DEFINITIONS[addonKey]) return "unknown";
+  if (REMOVED_ADDONS.has(addonKey)) return "removed";
+  if (RETIRED_ADDONS.has(addonKey)) return "retired";
+  if (VALIDATION_REQUIRED_ADDONS.has(addonKey)) return "validation_required";
+  if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (getAddonPurchasablePlans(addonKey).length > 0) return "purchasable";
+
+  const includedOnEveryPlan = Object.keys(PLAN_DEFINITIONS).every((plan) =>
+    (PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
+  );
+  return includedOnEveryPlan ? "included" : "price_unavailable";
 }
 
 export function getPlanForPriceId(priceId: string): string | null {
