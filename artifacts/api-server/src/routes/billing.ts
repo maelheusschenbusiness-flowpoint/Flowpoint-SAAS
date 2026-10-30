@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
@@ -1263,7 +1263,14 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     if (pid) addonPriceToKey[pid] = key;
   }
   const targetIncluded = PLAN_INCLUDED_ADDONS[targetPlan] ?? new Set<string>();
-  const planPriceIdSet  = new Set(Object.values(PLAN_PRICE_IDS).filter(Boolean));
+  // A subscription can contain either LIVE or TEST plan prices. The target
+  // price is mode-aware via getPlanPriceId(); classification must be too, or a
+  // TEST upgrade treats the existing plan item as an add-on and appends a
+  // second recurring plan price instead of replacing it.
+  const planPriceIdSet = new Set([
+    ...Object.values(PLAN_PRICE_IDS),
+    ...Object.values(PLAN_PRICE_IDS_TEST),
+  ].filter(Boolean));
 
   type SubItem = { id: string; price: { id: string }; quantity?: number; current_period_end?: number | null };
 
@@ -1476,7 +1483,9 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         const priceId    = getPlanPriceId(targetPlan);
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
 
-        const planItem = sub.items.data.find((item: SubItem) => planPriceIdSet.has(item.price.id));
+        const planItems = sub.items.data.filter((item: SubItem) => planPriceIdSet.has(item.price.id));
+        const planItem = planItems[0];
+        const duplicatePlanItems = planItems.slice(1);
 
         // Add-on items now included in the new plan (to be removed from billing)
         const removedIncludedItems = sub.items.data
@@ -1705,7 +1714,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         const prorationBehavior = isUpgrade && !isTrialing ? "create_prorations" : "none";
         await stripe.subscriptions.update(sub.id, {
           items: [
-            { id: planItem?.id, price: priceId },
+            { id: planItem?.id, price: priceId, quantity: 1 },
+            ...duplicatePlanItems.map((item: SubItem) => ({ id: item.id, deleted: true as const })),
             ...keptAddonItems.map((item: SubItem) => ({ id: item.id })),
           ],
           proration_behavior: prorationBehavior,

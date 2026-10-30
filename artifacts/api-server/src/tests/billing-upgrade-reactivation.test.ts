@@ -34,6 +34,11 @@ const SUB_ID   = "sub_test_existing_abc";
 const NEW_SUB  = "sub_test_new_created_xyz";
 const PRICE_STD = "price_standard_live";
 const PRICE_PRO = "price_pro_live";
+const PRICE_ULTRA = "price_ultra_live";
+const PRICE_STD_TEST = "price_standard_test";
+const PRICE_PRO_TEST = "price_pro_test";
+const PRICE_ULTRA_TEST = "price_ultra_test";
+let _useTestPlanPrices = false;
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
 
@@ -117,15 +122,22 @@ vi.mock("../lib/plans.js", () => {
   const PLAN_PRICE_IDS = {
     standard: PRICE_STD,
     pro:      PRICE_PRO,
-    ultra:    "price_ultra_live",
+    ultra:    PRICE_ULTRA,
+  } as Record<string, string>;
+  const PLAN_PRICE_IDS_TEST = {
+    standard: PRICE_STD_TEST,
+    pro:      PRICE_PRO_TEST,
+    ultra:    PRICE_ULTRA_TEST,
   } as Record<string, string>;
   return {
     PLAN_PRICE_IDS,
-    // billing.ts resout desormais le prix du plan par getPlanPriceId(), qui
-    // bascule sur les prix de TEST quand la cle active est sk_test_. Ces cas
-    // portent sur le comportement en mode LIVE : le mock rend donc les memes
-    // identifiants que PLAN_PRICE_IDS, quelle que soit la cle.
-    getPlanPriceId: (plan: string) => PLAN_PRICE_IDS[String(plan ?? "").toLowerCase()],
+    PLAN_PRICE_IDS_TEST,
+    // Existing route tests use LIVE IDs by default. Dedicated regressions can
+    // switch this mock to TEST IDs to exercise mode-aware plan replacement.
+    getPlanPriceId: (plan: string) => {
+      const key = String(plan ?? "").toLowerCase();
+      return _useTestPlanPrices ? PLAN_PRICE_IDS_TEST[key] : PLAN_PRICE_IDS[key];
+    },
     ADDON_PRICE_IDS:     {},
     FLAG_ADDONS:         [],
     QTY_ADDONS:          [],
@@ -195,6 +207,7 @@ async function getUpgradeHandler() {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  _useTestPlanPrices = false;
   // Re-apply pool implementations after clearAllMocks (implementations are preserved
   // by clearAllMocks, but resetModules forces a fresh import, so we seed them here).
   mockPoolQuery.mockResolvedValue({ rows: [{ stripe_customer_id: CUS_ID }], rowCount: 1 });
@@ -593,6 +606,124 @@ describe("CAS 3 — active + plan change (standard → pro) → immediate update
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ ok: true, upgraded: true }),
     );
+  });
+});
+
+describe("plan-price replacement in TEST mode", () => {
+  it("replaces Standard → Pro → Ultra and leaves exactly the Ultra recurring plan price", async () => {
+    _useTestPlanPrices = true;
+    mockLoadBillingContext
+      .mockResolvedValueOnce({ plan: "standard", subscriptionStatus: "active", stripeCustomerId: CUS_ID })
+      .mockResolvedValueOnce({ plan: "pro", subscriptionStatus: "active", stripeCustomerId: CUS_ID });
+
+    let subscription = makeActiveSub({
+      items: { data: [{ id: "si_standard_test", price: { id: PRICE_STD_TEST }, quantity: 1 }] },
+    });
+    const subUpdate = vi.fn().mockImplementation(async (
+      _subId: string,
+      params: { items: Array<{ id?: string; price?: string; deleted?: boolean; quantity?: number }> },
+    ) => {
+      const nextItems = [...subscription.items.data];
+      for (const change of params.items) {
+        const index = change.id ? nextItems.findIndex(item => item.id === change.id) : -1;
+        if (change.deleted) {
+          if (index >= 0) nextItems.splice(index, 1);
+        } else if (index >= 0 && change.price) {
+          nextItems[index] = {
+            ...nextItems[index],
+            price: { id: change.price },
+            quantity: change.quantity ?? 1,
+          };
+        } else if (!change.id && change.price) {
+          nextItems.push({
+            id: `si_new_${nextItems.length}`,
+            price: { id: change.price },
+            quantity: change.quantity ?? 1,
+          });
+        }
+      }
+      subscription = { ...subscription, items: { data: nextItems } };
+      return subscription;
+    });
+    const subsList = vi.fn().mockImplementation(({ status }: { status: string }) =>
+      Promise.resolve({ data: status === "active" ? [subscription] : [] }),
+    );
+    const sessionCreate = vi.fn();
+    _stripeMock = {
+      subscriptions: { list: subsList, update: subUpdate, create: vi.fn() },
+      checkout: { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: sessionCreate } },
+      subscriptionSchedules: { release: vi.fn(), create: vi.fn(), retrieve: vi.fn() },
+    };
+
+    const first = makeReqRes({ plan: "pro" });
+    await (await getUpgradeHandler())(first.req, first.res, vi.fn());
+    const second = makeReqRes({ plan: "ultra" });
+    await (await getUpgradeHandler())(second.req, second.res, vi.fn());
+
+    expect(sessionCreate).not.toHaveBeenCalled();
+    expect(subUpdate).toHaveBeenCalledTimes(2);
+    expect(subUpdate.mock.calls[0][1].items).toEqual([
+      { id: "si_standard_test", price: PRICE_PRO_TEST, quantity: 1 },
+    ]);
+    expect(subUpdate.mock.calls[1][1].items).toEqual([
+      { id: "si_standard_test", price: PRICE_ULTRA_TEST, quantity: 1 },
+    ]);
+
+    const planAmounts = new Map([
+      [PRICE_STD_TEST, 2900],
+      [PRICE_PRO_TEST, 7900],
+      [PRICE_ULTRA_TEST, 14900],
+    ]);
+    const finalPlanItems = subscription.items.data.filter(item => planAmounts.has(item.price.id));
+    const finalMonthlyPlanTotal = finalPlanItems.reduce(
+      (total, item) => total + (planAmounts.get(item.price.id) ?? 0) * (item.quantity ?? 1),
+      0,
+    );
+    expect(finalPlanItems.map(item => item.price.id)).toEqual([PRICE_ULTRA_TEST]);
+    expect(finalMonthlyPlanTotal).toBe(14900);
+    expect(first.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, upgraded: true }));
+    expect(second.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, upgraded: true }));
+  });
+
+  it("deletes duplicate plan items while preserving independent add-ons", async () => {
+    _useTestPlanPrices = true;
+    mockLoadBillingContext.mockResolvedValue({
+      plan: "pro",
+      subscriptionStatus: "active",
+      stripeCustomerId: CUS_ID,
+    });
+    const sub = makeActiveSub({
+      items: {
+        data: [
+          { id: "si_pro_test", price: { id: PRICE_PRO_TEST }, quantity: 1 },
+          { id: "si_duplicate_ultra_test", price: { id: PRICE_ULTRA_TEST }, quantity: 1 },
+          { id: "si_retention_addon", price: { id: "price_retention_test" }, quantity: 1 },
+        ],
+      },
+    });
+    const subUpdate = vi.fn().mockResolvedValue(sub);
+    _stripeMock = {
+      subscriptions: {
+        list: vi.fn().mockImplementation(({ status }: { status: string }) =>
+          Promise.resolve({ data: status === "active" ? [sub] : [] }),
+        ),
+        update: subUpdate,
+        create: vi.fn(),
+      },
+      checkout: { sessions: { list: vi.fn().mockResolvedValue({ data: [] }), create: vi.fn() } },
+      subscriptionSchedules: { release: vi.fn(), create: vi.fn(), retrieve: vi.fn() },
+    };
+
+    const { req, res } = makeReqRes({ plan: "ultra" });
+    await (await getUpgradeHandler())(req, res, vi.fn());
+
+    expect(subUpdate).toHaveBeenCalledWith(SUB_ID, expect.objectContaining({
+      items: [
+        { id: "si_pro_test", price: PRICE_ULTRA_TEST, quantity: 1 },
+        { id: "si_duplicate_ultra_test", deleted: true },
+        { id: "si_retention_addon" },
+      ],
+    }));
   });
 });
 
