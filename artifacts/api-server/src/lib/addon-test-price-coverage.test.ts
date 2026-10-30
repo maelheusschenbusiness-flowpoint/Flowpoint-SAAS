@@ -72,7 +72,11 @@ it("uses the verified Conversion Opportunity Engine TEST price over a stale envi
   });
 });
 
-it("uses the verified Local Presence Optimizer TEST price over a stale environment value", async () => {
+it("corrects the stale Local Presence Optimizer TEST price only when configured", async () => {
+  const unconfigured = await loadPlans();
+  expect(unconfigured.getAddonPriceId("localPresenceOptimizer")).toBeUndefined();
+  expect(unconfigured.getAddonPurchaseStatus("localPresenceOptimizer")).toBe("validation_required");
+
   const plans = await loadPlans({
     STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE: "price_1UUTPc9eqtbj6iPB5PEFUk5",
   });
