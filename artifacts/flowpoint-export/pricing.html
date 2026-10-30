@@ -1282,6 +1282,7 @@
 
     var availability = String(addon.availability || addon.status || "").toLowerCase();
     if (availability === "coming_soon" || availability === "validation_required") return "coming_soon";
+    if (addon.purchaseStatus === "not_sold_separately") return "not_sold_separately";
     if (addon.purchaseStatus === "price_unavailable") return "price_unavailable";
     if (!["available", "beta", "live"].includes(availability)) return "catalog_unavailable";
     if (!Array.isArray(addon.allowedPlans) || addon.allowedPlans.length === 0) return "catalog_unavailable";
@@ -1293,6 +1294,33 @@
 
   function _fpPricingText(french, english) {
     return window.fpPublicText ? window.fpPublicText(french, english) : french;
+  }
+
+  function _fpPricingIncludedPlanNames(addon) {
+    var includedByPlan = addon && addon.includedByPlan || {};
+    var names = ["standard", "pro", "ultra"].filter(function (plan) {
+      return includedByPlan[plan] === true;
+    });
+    var labels = { standard: "Standard", pro: "Pro", ultra: "Ultra" };
+    var french = names.map(function (plan) { return labels[plan]; });
+    var english = names.map(function (plan) { return labels[plan]; });
+    return {
+      french: french.length > 1
+        ? french.slice(0, -1).join(", ") + " et " + french[french.length - 1]
+        : french.join(""),
+      english: english.length > 1
+        ? english.slice(0, -1).join(", ") + " and " + english[english.length - 1]
+        : english.join("")
+    };
+  }
+
+  function _fpPricingNotSoldIncludedLabel(addon) {
+    var plans = _fpPricingIncludedPlanNames(addon);
+    if (!plans.french) return _fpPricingText("Non vendu séparément", "Not sold separately");
+    return _fpPricingText(
+      "Inclus dans " + plans.french,
+      "Included in " + plans.english
+    );
   }
 
   function _fpIncludedAddonBadgeText(planLabel, definition) {
@@ -1309,6 +1337,7 @@
       active: ["✓ Actif", "✓ Active"],
       included: ["✓ Inclus", "✓ Included"],
       coming_soon: ["🚧 Bientôt disponible", "🚧 Coming soon"],
+      not_sold_separately: ["Non vendu séparément", "Not sold separately"],
       plan_unavailable: ["Non disponible avec ce forfait", "Not available on this plan"],
       price_unavailable: ["Prix indisponible dans ce mode", "No price available in this mode"],
       catalog_unavailable: ["Indisponible", "Unavailable"]
@@ -1317,7 +1346,16 @@
     return _fpPricingText(label[0], label[1]);
   }
 
-  function _fpPricingAddonDisabledDescription(state) {
+  function _fpPricingAddonDisabledDescription(state, addon) {
+    if (state === "not_sold_separately") {
+      var plans = _fpPricingIncludedPlanNames(addon);
+      return plans.french
+        ? _fpPricingText(
+            "Inclus dans " + plans.french + " — cet add-on n'est pas vendu séparément.",
+            "Included in " + plans.english + " — this add-on is not sold separately."
+          )
+        : _fpPricingText("Cet add-on n'est pas vendu séparément.", "This add-on is not sold separately.");
+    }
     var descriptions = {
       active: ["Cet add-on est déjà actif sur votre compte.", "This add-on is already active on your account."],
       included: ["Cet add-on est inclus dans votre forfait.", "This add-on is included in your plan."],
@@ -1335,6 +1373,7 @@
       active: ["Cet add-on est déjà actif sur votre compte.", "This add-on is already active on your account."],
       included: ["Cet add-on est déjà inclus dans votre forfait.", "This add-on is already included in your plan."],
       coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
+      not_sold_separately: ["Cet add-on n'est pas vendu séparément.", "This add-on is not sold separately."],
       plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
       price_unavailable: ["Cet add-on ne peut pas être acheté dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."],
       catalog_unavailable: ["Cet add-on n'est pas achetable dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."]
@@ -1350,10 +1389,10 @@
       : _fpPricingText("Augmenter la quantité de " + name, "Increase quantity of " + name);
   }
 
-  function _fpSetAddonQuantityControls(card, addonName, state, isActive) {
+  function _fpSetAddonQuantityControls(card, addonName, state, isActive, addon) {
     if (!card || typeof card.querySelectorAll !== "function") return;
     var disabled = state !== "purchasable" || isActive;
-    var reason = _fpPricingAddonDisabledDescription(isActive ? "active" : state);
+    var reason = _fpPricingAddonDisabledDescription(isActive ? "active" : state, addon);
     Array.prototype.forEach.call(card.querySelectorAll(".fp-addon-qty-btn"), function (step, index) {
       step.disabled = disabled;
       step.setAttribute("aria-disabled", disabled ? "true" : "false");
@@ -1420,7 +1459,11 @@
       var icon = icons[addon.key] || "✦";
       var quantity = !!addon.quantity;
       var soon = addon.availability === "coming_soon";
-      var unit = quantity ? " / pack / mois" : " / mois";
+      var notSoldSeparately = addon.purchaseStatus === "not_sold_separately";
+      var priceLabel = notSoldSeparately
+        ? _fpPricingNotSoldIncludedLabel(addon)
+        : _fpEur(addon.priceMinor);
+      var unit = notSoldSeparately ? "" : (quantity ? " / pack / mois" : " / mois");
       var decreaseLabel = _fpEscapeHtml(_fpPricingQuantityLabel(addon.name, -1));
       var increaseLabel = _fpEscapeHtml(_fpPricingQuantityLabel(addon.name, 1));
       var savedQuantity = quantity && _cart && _cart.addons
@@ -1440,7 +1483,7 @@
       return '<div class="fp-addon-card' + (index >= 8 ? ' fp-addon-hidden' : '') + '" data-addon-card-key="' + key + '">' +
         '<div class="fp-addon-top"><span class="fp-addon-icon">' + icon + '</span><div class="fp-addon-name">' + name + '</div></div>' +
         '<div class="fp-addon-desc">' + description + '</div>' +
-        '<div class="fp-addon-bottom"><div class="fp-addon-price">' + _fpEur(addon.priceMinor) + '<span>' + unit + '</span></div>' +
+        '<div class="fp-addon-bottom"><div class="fp-addon-price">' + priceLabel + '<span>' + unit + '</span></div>' +
         '<div class="fp-addon-actions">' + actions + button + '</div></div></div>';
     }).join("");
 
@@ -1491,14 +1534,20 @@
       var bottom = btn.closest('.fp-addon-bottom');
       if (!def || !bottom) return;
       var priceEl = bottom.querySelector('.fp-addon-price');
-      // Keep the unit wording already in the markup ("/ pack / mois", "/ mois"…);
-      // only the amount is authoritative and comes from the catalogue.
+      var notSoldSeparately = def.purchaseStatus === "not_sold_separately";
+      var priceLabel = notSoldSeparately
+        ? _fpPricingNotSoldIncludedLabel(def)
+        : _fpEur(def.priceMinor);
+      // Keep catalogue pricing for separate offers, but never show a numeric
+      // standalone price for bundled-only offers.
       var unitSpan = priceEl ? priceEl.querySelector('span') : null;
-      var unit = unitSpan ? unitSpan.outerHTML : (def.oneTime ? '' : '<span> / mois</span>');
-      if (priceEl) priceEl.innerHTML = _fpEur(def.priceMinor) + unit;
+      var unit = notSoldSeparately
+        ? ''
+        : (unitSpan ? unitSpan.outerHTML : (def.oneTime ? '' : '<span> / mois</span>'));
+      if (priceEl) priceEl.innerHTML = priceLabel + unit;
       var actions = bottom.querySelector('.fp-addon-actions');
       ADDON_DEFAULT_BOTTOM[key] =
-        '<div class="fp-addon-price">' + _fpEur(def.priceMinor) + unit + '</div>' +
+        '<div class="fp-addon-price">' + priceLabel + unit + '</div>' +
         '<div class="fp-addon-actions">' + (actions ? actions.innerHTML : '') + '</div>';
     });
   }
@@ -1671,7 +1720,7 @@
       var card = btn.closest(".fp-addon-card, .fp-credit-card");
       var nameElement = card && card.querySelector(".fp-addon-name, .fp-credit-name");
       var addonName = nameElement ? nameElement.textContent.trim() : ((def && def.name) || key);
-      _fpSetAddonQuantityControls(card, addonName, state, isActive);
+      _fpSetAddonQuantityControls(card, addonName, state, isActive, def);
 
       btn.removeAttribute("title");
       btn.removeAttribute("aria-label");
@@ -1688,8 +1737,8 @@
         btn.disabled = true;
         btn.setAttribute("aria-disabled", "true");
         btn.textContent = _fpPricingAddonStateLabel(state);
-        btn.setAttribute("aria-label", _fpPricingAddonDisabledDescription(state));
-        btn.title = _fpPricingAddonDisabledDescription(state);
+        btn.setAttribute("aria-label", _fpPricingAddonDisabledDescription(state, def));
+        btn.title = _fpPricingAddonDisabledDescription(state, def);
         btn.style.background = '';
         btn.style.borderColor = '';
         btn.style.color = '';
@@ -2018,19 +2067,21 @@
     }
     var currentPlan = _fpCurrentPricingPlan();
     var includedKeys = PLAN_INCLUDED[currentPlan] || [];
-    var unavailableInCart = Object.keys(_cart.addons || {}).find(function (key) {
+    var unavailableInCart = null;
+    Object.keys(_cart.addons || {}).some(function (key) {
       var state = _fpPricingAddonState(
         (window._FP_ADDON_CATALOG_STATES || {})[key],
         currentPlan,
         includedKeys
       );
-      return state !== "purchasable" && state !== "included";
+      if (state !== "purchasable" && state !== "included") {
+        unavailableInCart = { key: key, state: state };
+        return true;
+      }
+      return false;
     });
     if (unavailableInCart) {
-      showToast(_fpPricingText(
-        "Un add-on du panier n’est plus disponible avec le forfait sélectionné.",
-        "An add-on in your cart is no longer available with the selected plan."
-      ), true);
+      showToast(_fpPricingCartRejection(unavailableInCart.state), true);
       _fpSyncAddonCartState();
       return;
     }

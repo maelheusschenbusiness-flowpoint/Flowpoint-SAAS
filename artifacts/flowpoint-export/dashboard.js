@@ -10828,12 +10828,19 @@ function renderBilling() {
       }
       a.priceMinor     = d ? d.priceMinor : null;
       a.oneTime        = d ? !!d.oneTime : false;
-      a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : fpT('/mois')) : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
       a.allowedPlans   = d && Array.isArray(d.allowedPlans) ? d.allowedPlans : null;
+      a.purchaseStatus = d && d.purchaseStatus || '';
       // availability from server catalog — 'coming_soon' | 'beta' | 'available' | 'live'
       // Missing catalog state is fail-closed; do not guess that an add-on can be bought.
       a.availability   = (d && (d.status || d.availability)) || '';
+      a.price = !d
+        ? '—'
+        : a.purchaseStatus === 'not_sold_separately'
+          ? fpT('Non vendu séparément')
+          : a.purchaseStatus === 'price_unavailable'
+            ? fpT('Prix indisponible dans ce mode')
+            : _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : fpT('/mois'));
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
@@ -10853,6 +10860,8 @@ function renderBilling() {
       if (!Array.isArray(addon.allowedPlans)) return 'catalog_unavailable';
       if (!['available', 'beta', 'live'].includes(status)) return 'catalog_unavailable';
       if (included) return 'included';
+       if (addon.purchaseStatus === 'not_sold_separately') return 'not_sold_separately';
+       if (addon.purchaseStatus === 'price_unavailable') return 'price_unavailable';
       const normalizedPlan = String(plan || '').toLowerCase();
       return addon.allowedPlans.some(value => String(value).toLowerCase() === normalizedPlan)
         ? 'purchasable'
@@ -10864,6 +10873,8 @@ function renderBilling() {
         included: fpT('Inclus'),
         coming_soon: fpT('Bientôt'),
         validation_required: fpT('Bientôt'),
+        not_sold_separately: fpT('Non vendu séparément'),
+        price_unavailable: fpT('Prix indisponible dans ce mode'),
         plan_unavailable: fpT('Non disponible avec votre forfait'),
         catalog_unavailable: fpT('Indisponible'),
       })[state] || '';
@@ -11029,13 +11040,14 @@ function renderBilling() {
       if (!key) { showToast('error', fpT('Add-on absent du catalogue.')); return; }
       const purchaseState = _fpAddonPurchaseState(_a, currentPlan, isIncluded(_a));
       if (purchaseState !== 'purchasable') {
-        const message = purchaseState === 'included'
-          ? fpT('Cet add-on est déjà inclus dans votre plan.')
-          : purchaseState === 'coming_soon'
-            ? fpT('Cet add-on sera bientôt disponible.')
-            : purchaseState === 'plan_unavailable'
-              ? fpT('Cet add-on n’est pas disponible avec votre forfait.')
-              : fpT('Le catalogue des add-ons est indisponible.');
+        const messageByState = {
+          included: fpT('Cet add-on est déjà inclus dans votre plan.'),
+          coming_soon: fpT('Cet add-on sera bientôt disponible.'),
+          not_sold_separately: fpT('Cet add-on n’est pas vendu séparément.'),
+          price_unavailable: fpT('Aucun prix achetable n’est configuré dans le mode de facturation actif.'),
+          plan_unavailable: fpT('Cet add-on n’est pas disponible avec votre forfait.'),
+        };
+        const message = messageByState[purchaseState] || fpT('Le catalogue des add-ons est indisponible.');
         showToast(purchaseState === 'included' ? 'info' : 'error', message);
         return;
       }

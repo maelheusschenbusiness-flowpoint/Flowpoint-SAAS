@@ -6,6 +6,7 @@ import {
   REMOVED_ADDONS,
   RETIRED_ADDONS,
   isPlanAllowedAddon,
+  getAddonPurchaseStatus,
   getAddonPriceId,
   getPlanPriceId,
 } from "../lib/plans.js";
@@ -165,10 +166,13 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     const definition = ADDON_DEFINITIONS[key];
     if (!definition) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
     const includedInPlan = included.has(key);
-    const priceId = getAddonPriceId(key);
-    if (!priceId && !includedInPlan) throw new Error("MISSING_PRICE_ID");
     const quantity = typeof rawQuantity === "number" ? rawQuantity : 1;
     if (!Number.isInteger(quantity) || quantity < 1) throw new Error("INVALID_ADDON_QUANTITY");
+    if (!includedInPlan && getAddonPurchaseStatus(key) === "not_sold_separately") {
+      throw new Error("ADDON_NOT_SOLD_SEPARATELY");
+    }
+    const priceId = getAddonPriceId(key);
+    if (!priceId && !includedInPlan) throw new Error("MISSING_PRICE_ID");
     // Included addons are always compatible with the plan (they're free).
     // Only block addons that are neither included nor purchasable on this tier.
     const gatingPlan = plan || (selection.inclusionPlan ?? "").trim().toLowerCase();

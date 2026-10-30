@@ -857,6 +857,11 @@ export function getAddonPurchasablePlans(addonKey: string): string[] {
   if (!["available", "beta"].includes(availability)) return [];
   if (REMOVED_ADDONS.has(addonKey) || RETIRED_ADDONS.has(addonKey)) return [];
   if (!getAddonPriceId(addonKey, stripeKey)) return [];
+  return getAddonSeparateSalePlans(addonKey);
+}
+
+/** Tiers where the add-on is permitted as a separate purchase, before Stripe readiness. */
+export function getAddonSeparateSalePlans(addonKey: string): string[] {
   return (["standard", "pro", "ultra"] as const).filter((plan) =>
     isPlanAllowedAddon(plan, addonKey) &&
     !(PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
@@ -866,6 +871,7 @@ export function getAddonPurchasablePlans(addonKey: string): string[] {
 export type AddonPurchaseStatus =
   | "purchasable"
   | "price_unavailable"
+  | "not_sold_separately"
   | "included"
   | "coming_soon"
   | "validation_required"
@@ -886,10 +892,14 @@ export function getAddonPurchaseStatus(addonKey: string): AddonPurchaseStatus {
   if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
   if (getAddonPurchasablePlans(addonKey).length > 0) return "purchasable";
 
-  const includedOnEveryPlan = Object.keys(PLAN_DEFINITIONS).every((plan) =>
-    (PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
-  );
-  return includedOnEveryPlan ? "included" : "price_unavailable";
+  if (getAddonSeparateSalePlans(addonKey).length === 0) {
+    const includedOnEveryPlan = Object.keys(PLAN_DEFINITIONS).every((plan) =>
+      (PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
+    );
+    return includedOnEveryPlan ? "included" : "not_sold_separately";
+  }
+
+  return "price_unavailable";
 }
 
 export function getPlanForPriceId(priceId: string): string | null {

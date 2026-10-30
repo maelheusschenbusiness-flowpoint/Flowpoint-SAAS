@@ -11,6 +11,7 @@
   <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
   <title>Récapitulatif — FlowPoint</title>
   <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
+  <script src="/fp-locale.js?v=20261030"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -502,7 +503,16 @@
     });
     var data;
     try { data = await resp.json(); } catch (e) { throw new Error('Réponse serveur illisible (' + resp.status + ').'); }
-    if (!resp.ok || !data.quote) throw new Error(data.error || 'Devis indisponible (' + resp.status + ').');
+    if (!resp.ok || !data.quote) {
+      var errorMessage = data.error || 'Devis indisponible (' + resp.status + ').';
+      if (data.code === 'ADDON_NOT_SOLD_SEPARATELY' && window.fpPublicText) {
+        errorMessage = window.fpPublicText(
+          "Cet add-on n'est pas vendu séparément.",
+          "This add-on is not sold separately."
+        );
+      }
+      throw new Error(errorMessage);
+    }
     return data.quote;
   }
 

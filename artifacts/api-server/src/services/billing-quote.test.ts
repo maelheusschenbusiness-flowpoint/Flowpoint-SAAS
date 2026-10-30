@@ -280,12 +280,24 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     }
   });
 
-  it("still blocks a protected add-on outside its existing purchase tiers", () => {
+  it("distinguishes a bundled add-on from an add-on sold separately", () => {
     expect(() => createBillingQuote({
       plan: "",
       inclusionPlan: "standard",
       addons: { advancedSeoLab: true },
-    })).toThrow("ADDON_NOT_ALLOWED_FOR_PLAN");
+    })).toThrow("ADDON_NOT_SOLD_SEPARATELY");
+
+    for (const plan of ["pro", "ultra"]) {
+      const quote = createBillingQuote({
+        plan: "",
+        inclusionPlan: plan,
+        addons: { advancedSeoLab: true, backlinkIntelligence: true },
+      });
+      expect(quote.lines.filter(line => line.kind === "addon")).toMatchObject([
+        { key: "advancedSeoLab", includedInPlan: true, amountMinor: 0 },
+        { key: "backlinkIntelligence", includedInPlan: true, amountMinor: 0 },
+      ]);
+    }
   });
 
   it("allowedPlans in PLAN_ALLOWED_ADDONS never includes coming_soon addons", () => {

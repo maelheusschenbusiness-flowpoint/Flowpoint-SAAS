@@ -426,7 +426,12 @@ router.post("/billing/quote", async (req: Request, res: Response): Promise<void>
     res.json({ quote });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
-    res.status(400).json({ error: "Sélection non facturable.", code });
+    const errorMessage = code === "ADDON_NOT_SOLD_SEPARATELY"
+      ? (req.acceptsLanguages("en", "fr") === "en"
+        ? "This add-on is not sold separately."
+        : "Cet add-on n'est pas vendu séparément.")
+      : "Sélection non facturable.";
+    res.status(400).json({ error: errorMessage, code });
   }
 });
 
