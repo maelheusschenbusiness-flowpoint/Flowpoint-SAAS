@@ -6,7 +6,7 @@ import {
   REMOVED_ADDONS,
   RETIRED_ADDONS,
   isPlanAllowedAddon,
-  getAddonSeparateSalePlans,
+  getAddonPurchaseStatus,
   getAddonPriceId,
   getPlanPriceId,
 } from "../lib/plans.js";
@@ -168,7 +168,7 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     const includedInPlan = included.has(key);
     const quantity = typeof rawQuantity === "number" ? rawQuantity : 1;
     if (!Number.isInteger(quantity) || quantity < 1) throw new Error("INVALID_ADDON_QUANTITY");
-    if (!includedInPlan && getAddonSeparateSalePlans(key).length === 0) {
+    if (!includedInPlan && getAddonPurchaseStatus(key) === "not_sold_separately") {
       throw new Error("ADDON_NOT_SOLD_SEPARATELY");
     }
     const priceId = getAddonPriceId(key);
