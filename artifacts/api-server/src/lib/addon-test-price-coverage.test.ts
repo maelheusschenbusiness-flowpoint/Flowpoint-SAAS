@@ -72,6 +72,25 @@ it("uses the verified Conversion Opportunity Engine TEST price over a stale envi
   });
 });
 
+it("uses the verified Local Presence Optimizer TEST price over a stale environment value", async () => {
+  const plans = await loadPlans({
+    STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE: "price_1UUTPc9eqtbj6iPB5PEFUk5",
+  });
+  expect(plans.getAddonPriceId("localPresenceOptimizer")).toBe("price_1UUTPc9eqtbj6iPBb5PEFUk5");
+  const { createBillingQuote } = await import("../services/billing-quote.js");
+  const quote = createBillingQuote({
+    plan: "",
+    inclusionPlan: "standard",
+    addons: { localPresenceOptimizer: true },
+    trialEligible: false,
+  });
+  expect(quote.lines.find((line) => line.key === "localPresenceOptimizer")).toMatchObject({
+    kind: "addon",
+    priceId: "price_1UUTPc9eqtbj6iPBb5PEFUk5",
+    amountMinor: 900,
+  });
+});
+
 it("builds quote-only lines for all eight replacement add-ons with TEST price mappings", async () => {
   const variables: Record<string, string> = {
     gbpPerformanceLeads: "STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE",
