@@ -148,7 +148,7 @@ export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 
 // ── Add-on price IDs — test-mode overrides (Stripe CLI / test dashboard) ─────
 // Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to configure an add-on price in test mode.
-// Verified catalog IDs below take precedence for the four replacement offers
+// Verified catalog IDs below take precedence for the five replacement offers
 // whose Render TEST variables were found to contain incorrect values.
 /**
  * Variables d'environnement TEST de chaque add-on. Registre explicite : un
@@ -203,6 +203,7 @@ export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
 /** Read-only Stripe TEST catalog verification; never used with LIVE keys. */
 export const VERIFIED_TEST_ADDON_PRICE_IDS: Readonly<Record<string, string>> = {
   localLandingOpportunities: "price_1UUTPc9eqtbj6iPBKZ9Zlbay",
+  localPresenceOptimizer: "price_1UUTPc9eqtbj6iPBb5PEFUk5",
   conversionOpportunityEngine: "price_1UUTPc9eqtbj6iPBcsDZykLW",
   seoChangeImpact: "price_1UUTPd9eqtbj6iPB18duKFQq",
   organicCampaignTracker: "price_1UUTPd9eqtbj6iPB6fNR5kLx",
