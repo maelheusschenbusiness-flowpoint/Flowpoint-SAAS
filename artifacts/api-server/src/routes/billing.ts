@@ -312,39 +312,143 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }
 
     // ── Detect checkout type from metadata ─────────────────────────────────────
-    // AI credits-only sessions must not be treated as plan subscriptions;
-    // the caller (checkout-return.html) uses checkoutType to show the right UI.
+    // Hosted add-on/credit checkouts must never fall through to the legacy
+    // default-plan path below. Their entitlement is written by the webhook.
     const sessionMeta = (session.metadata ?? {}) as Record<string, string>;
     const checkoutType: string = sessionMeta["flowpoint_checkout_type"] ?? sessionMeta["type"] ?? "subscription";
-    const isAiCredits = checkoutType === "ai_credits_only" || checkoutType === "ai_credits";
-
-    // Credits field: parse from ai_credits metadata or credits field
-    let creditsGranted = 0;
-    if (isAiCredits) {
-      const rawCredits = sessionMeta["credits"] ?? "0";
-      creditsGranted = parseInt(rawCredits, 10) || 0;
-      if (!creditsGranted) {
-        // Try resolving from ai_credits pack key list
-        const AI_CREDITS_FROM_PACK: Record<string, number> = {
-          aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000,
-        };
-        const packKey = (sessionMeta["ai_credits"] ?? "").split(",").find(k => k.startsWith("aiCreditsPack"));
-        if (packKey) creditsGranted = AI_CREDITS_FROM_PACK[packKey] ?? 0;
-        if (!creditsGranted) {
-          const packName = sessionMeta["pack"] ?? "";
-          creditsGranted = AI_CREDITS_FROM_PACK[packName] ?? 0;
-        }
-      }
-    }
+    const sessionAddonKey = String(sessionMeta["addonKey"] ?? "").trim();
+    const sessionPackKey = String(sessionMeta["pack"] ?? "").trim();
+    const immediateAddonKeys = String(sessionMeta["immediate_addons"] ?? "")
+      .split(",")
+      .map(key => key.trim())
+      .filter(Boolean);
+    const aiCreditPacks = String(sessionMeta["ai_credits"] ?? "")
+      .split(",")
+      .map(key => key.trim())
+      .filter(key => AI_CREDIT_PACK_KEYS.has(key));
+    const isAiCreditsOnly =
+      checkoutType === "ai_credits_only" ||
+      checkoutType === "ai_credits" ||
+      sessionMeta["type"] === "ai_credits" ||
+      AI_CREDIT_PACK_KEYS.has(sessionAddonKey) ||
+      AI_CREDIT_PACK_KEYS.has(sessionPackKey);
+    const hasAiCreditPurchase = isAiCreditsOnly || aiCreditPacks.length > 0;
+    const isAddonCheckout = !isAiCreditsOnly &&
+      (checkoutType === "addon_only" || Boolean(sessionAddonKey));
 
     const orgIdVerify = req.orgId ?? "default";
+    const billingCtx = await loadBillingContext(orgIdVerify);
 
-    // For AI credits: no plan update needed; webhook already credited the org.
-    // Return early with credits info so checkout-return.html can show proper confirmation.
-    if (isAiCredits) {
-      logger.info({ checkoutType, creditsGranted, sessionId, orgId: orgIdVerify }, "[Billing] AI credits session verified");
-      res.json({ ok: true, checkoutType, credits: creditsGranted });
+    // Bind the Stripe Checkout session to this authenticated organization
+    // before reporting or persisting any purchased entitlement.
+    const sessionOrgId = String(sessionMeta["orgId"] ?? "").trim();
+    const sessionCustomerId = typeof session.customer === "string"
+      ? session.customer
+      : session.customer && typeof session.customer === "object" && "id" in session.customer
+        ? String(session.customer.id)
+        : "";
+    const metadataOrgMatches = !!sessionOrgId && sessionOrgId === orgIdVerify;
+    const customerMatches = !!sessionCustomerId &&
+      !!billingCtx.stripeCustomerId &&
+      sessionCustomerId === billingCtx.stripeCustomerId;
+
+    if ((sessionOrgId && !metadataOrgMatches) ||
+        (sessionCustomerId && billingCtx.stripeCustomerId && !customerMatches) ||
+        (!metadataOrgMatches && !customerMatches)) {
+      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify },
+        "[Billing] Checkout verification rejected — session does not match authenticated organization");
+      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation." });
       return;
+    }
+
+    const requestedAddonKeys = Array.from(new Set([
+      ...(sessionAddonKey && !isAiCreditsOnly ? [sessionAddonKey] : []),
+      ...immediateAddonKeys,
+    ]));
+    if (requestedAddonKeys.some(key => !KNOWN_ADDON_KEYS.has(key))) {
+      res.status(422).json({ error: "Add-on inconnu dans la session de paiement." });
+      return;
+    }
+
+    // AI credit packs can be combined with a plan or add-ons in public Checkout.
+    // Do not acknowledge any part of such a purchase until its session/org-scoped
+    // purchase ledger row exists.
+    let verifiedAiCredits = 0;
+    if (hasAiCreditPurchase) {
+      if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+        res.status(session.status === "complete" ? 202 : 402).json({
+          ok: false,
+          pending: session.status === "complete",
+          status: session.status === "complete" ? "processing" : session.status,
+          checkoutType,
+        });
+        return;
+      }
+      const { pool: verifyPool } = await import("@workspace/db");
+      const purchase = await verifyPool.query<{ credits: number | string }>(
+        `SELECT COALESCE(SUM(credits), 0)::text AS credits
+           FROM ai_credit_purchases
+          WHERE stripe_session_id = $1 AND org_id::text = $2
+        `,
+        [sessionId, orgIdVerify],
+      );
+      verifiedAiCredits = Number(purchase.rows[0]?.credits ?? 0);
+      if (verifiedAiCredits <= 0) {
+        res.status(202).json({ ok: false, pending: true, status: "processing", checkoutType });
+        return;
+      }
+      logger.info({ checkoutType, credits: verifiedAiCredits, sessionId, orgId: orgIdVerify }, "[Billing] AI credits session verified from purchase ledger");
+    }
+
+    // Credit-only sessions have no subscription state to persist.
+    if (isAiCreditsOnly) {
+      res.json({ ok: true, checkoutType, credits: verifiedAiCredits });
+      return;
+    }
+
+    // Direct add-on checkouts and hosted add-on-only carts are activated by
+    // Stripe's webhook. Never infer a plan or show success while that write is
+    // still pending.
+    if (isAddonCheckout || immediateAddonKeys.length > 0) {
+      const addonKeys = requestedAddonKeys;
+      if (!addonKeys.length) {
+        res.status(422).json({ error: "Add-ons inconnus dans la session de paiement." });
+        return;
+      }
+      if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+        res.status(session.status === "complete" ? 202 : 402).json({
+          ok: false,
+          pending: session.status === "complete",
+          status: session.status === "complete" ? "processing" : session.status,
+          checkoutType: isAddonCheckout ? "addon_only" : checkoutType,
+        });
+        return;
+      }
+      const requestedQuantity = Math.max(1, parseInt(sessionMeta["quantity"] ?? "1", 10) || 1);
+      const missingAddons = addonKeys.filter(key => {
+        const value = billingCtx.addons[key];
+        if (value !== true && !(typeof value === "number" && value > 0)) return true;
+        return key === sessionAddonKey && QTY_ADDONS.has(key) &&
+          typeof value === "number" && value < requestedQuantity;
+      });
+      if (missingAddons.length) {
+        res.status(202).json({
+          ok: false,
+          pending: true,
+          status: "processing",
+          checkoutType: isAddonCheckout ? "addon_only" : checkoutType,
+        });
+        return;
+      }
+      if (isAddonCheckout) {
+        res.json({
+          ok: true,
+          checkoutType: "addon_only",
+          addonKeys,
+          ...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {}),
+        });
+        return;
+      }
     }
 
     const planMeta = (sessionMeta["selected_plan"] || sessionMeta["plan"] || "pro").toLowerCase();
@@ -363,8 +467,6 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       if (addonsMeta[key] !== undefined) activatedAddons[key] = Number(addonsMeta[key] || 0);
     }
 
-    const billingCtx = await loadBillingContext(orgIdVerify);
-
     // Persist billing state to organizations (new source of truth) + mirror to org_settings
     const subscription = typeof session.subscription === "object" && session.subscription
       ? session.subscription as { id?: string; status?: string; trial_end?: number | null }
@@ -381,7 +483,12 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }).catch(err => logger.error({ err }, "[Billing] Failed to persist billing state after checkout verify"));
     logger.info({ plan: planMeta, sessionId, orgId: orgIdVerify }, "[Billing] Checkout verified — plan activated");
 
-    res.json({ ok: true, plan: planMeta, checkoutType });
+    res.json({
+      ok: true,
+      plan: planMeta,
+      checkoutType,
+      ...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {}),
+    });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to verify checkout session");
     res.status(500).json({ error: "Failed to verify checkout session" });
@@ -2423,9 +2530,9 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
       mode: "payment",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      // checkout-return.html handles ai_credits type via billing/verify checkoutType field
-      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${publicUrl}/dashboard.html#billing`,
+      // The return page restores the existing browser session before verification.
+      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}&kind=ai_credits`,
+      cancel_url:  `${publicUrl}/checkout-return.html?cancelled=1&kind=ai_credits`,
       metadata: {
         type:           "ai_credits",
         pack,
@@ -2644,13 +2751,34 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
     }
 
     const isAiCreditPack = AI_CREDIT_PACK_KEYS.has(addonKey);
+    const aiCreditDetails: Record<string, { credits: number; amountEurCents: number }> = {
+      aiCreditsPack50k: { credits: 50000, amountEurCents: 400 },
+      aiCreditsPack200k: { credits: 200000, amountEurCents: 900 },
+      aiCreditsPack500k: { credits: 500000, amountEurCents: 1900 },
+    };
+    const aiCreditPurchase = aiCreditDetails[addonKey];
+    const checkoutKind = isAiCreditPack ? "ai_credits" : "addon";
     const session = await stripe.checkout.sessions.create({
       mode: isAiCreditPack ? "payment" : "subscription",
       ...(addonCustomerId ? { customer: addonCustomerId } : {}),
       line_items: [{ price: priceId, quantity: checkoutQty }],
-      success_url: `${publicUrl}/billing?addon_success=${encodeURIComponent(addonKey)}`,
-      cancel_url:  `${publicUrl}/billing?addon_cancel=1`,
-      metadata: { addonKey, addonName, orgId, quantity: String(checkoutQty) },
+      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}&kind=${checkoutKind}`,
+      cancel_url:  `${publicUrl}/checkout-return.html?cancelled=1&kind=${checkoutKind}`,
+      metadata: isAiCreditPack
+        ? {
+            type: "ai_credits",
+            pack: addonKey,
+            credits: String(aiCreditPurchase?.credits ?? 0),
+            amountEurCents: String(aiCreditPurchase?.amountEurCents ?? 0),
+            orgId,
+          }
+        : {
+            flowpoint_checkout_type: "addon_only",
+            addonKey,
+            addonName,
+            orgId,
+            quantity: String(checkoutQty),
+          },
     });
 
     const sessionId: string = typeof session.id === "string" ? session.id : String(session.id ?? "");
