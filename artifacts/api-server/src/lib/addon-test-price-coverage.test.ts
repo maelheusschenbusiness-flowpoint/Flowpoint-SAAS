@@ -137,6 +137,8 @@ it("keeps offer lifecycle separate from active-mode purchase readiness", async (
   const plans = await loadPlans();
   expect(plans.getAddonAvailability("monitorsPack10")).toBe("available");
   expect(plans.getAddonPurchaseStatus("monitorsPack10")).toBe("price_unavailable");
+  expect(plans.getAddonAvailability("backlinkIntelligence")).toBe("beta");
+  expect(plans.getAddonPurchaseStatus("backlinkIntelligence")).toBe("not_sold_separately");
   expect(plans.getAddonPurchaseStatus("customDomain")).toBe("coming_soon");
   expect(plans.getAddonPurchaseStatus("whiteLabel")).toBe("included");
   expect(plans.getAddonPurchaseStatus("advancedWebhooks")).toBe("retired");
@@ -162,7 +164,10 @@ it("keeps the twelve monthly offers and three credit packs blocked without TEST 
     "aiCreditsPack500k",
   ];
   for (const key of missingOffers) {
-    expect(plans.getAddonPurchaseStatus(key), key).toBe("price_unavailable");
+    const expectedStatus = ["advancedSeoLab", "backlinkIntelligence"].includes(key)
+      ? "not_sold_separately"
+      : "price_unavailable";
+    expect(plans.getAddonPurchaseStatus(key), key).toBe(expectedStatus);
     expect(plans.getAddonPurchasablePlans(key), key).toEqual([]);
   }
 
@@ -177,9 +182,19 @@ it("keeps the twelve monthly offers and three credit packs blocked without TEST 
   ]);
   for (const key of missingOffers) {
     expect(catalog.body.addons.find((addon: { key: string }) => addon.key === key))
-      .toMatchObject({ purchaseStatus: "price_unavailable", allowedPlans: [] });
+      .toMatchObject({
+        purchaseStatus: ["advancedSeoLab", "backlinkIntelligence"].includes(key)
+          ? "not_sold_separately"
+          : "price_unavailable",
+        allowedPlans: [],
+      });
     expect(billing.body.addons.find((addon: { id: string }) => addon.id === key))
-      .toMatchObject({ purchaseStatus: "price_unavailable", allowedPlans: [] });
+      .toMatchObject({
+        purchaseStatus: ["advancedSeoLab", "backlinkIntelligence"].includes(key)
+          ? "not_sold_separately"
+          : "price_unavailable",
+        allowedPlans: [],
+      });
   }
 });
 
@@ -282,4 +297,22 @@ it("publishes identical mode-aware purchasable tiers from both catalogue APIs", 
     .toContain("advancedWebhooks");
   expect(catalogResponse.body.plans.find((plan: { id: string }) => plan.id === "pro").includedAddons)
     .toContain("enterprisePermissions");
+});
+
+it("marks Advanced SEO Lab and Backlink Intelligence as bundled, not separately sold", async () => {
+  const baseline = await loadPlans();
+  const env = Object.fromEntries(["advancedSeoLab", "backlinkIntelligence"].map((key) => {
+    const priceVariable = baseline.ADDON_TEST_PRICE_ENV_VARS[key]?.[0];
+    expect(priceVariable, `${key} has a TEST price variable`).toBeTruthy();
+    return [priceVariable!, `price_test_${key}`];
+  }));
+  const plans = await loadPlans(env);
+
+  for (const key of ["advancedSeoLab", "backlinkIntelligence"]) {
+    expect(plans.getAddonPriceId(key)).toBe(`price_test_${key}`);
+    expect(plans.getAddonSeparateSalePlans(key)).toEqual([]);
+    expect(plans.getAddonPurchasablePlans(key)).toEqual([]);
+    expect(plans.getAddonPurchaseStatus(key)).toBe("not_sold_separately");
+  }
+  expect(plans.getAddonPurchaseStatus("keywordDomination")).toBe("price_unavailable");
 });
