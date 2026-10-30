@@ -107,6 +107,8 @@ export default defineConfig({
       "src/services/betterstack-creation-guards-db.test.ts",
       "src/lib/logger-redaction.test.ts",
       "src/lib/carry-params.test.ts",
+      // Ce que les reponses HTTP laissent voir d'une erreur interne.
+      "src/lib/safe-error.test.ts",
       // Resilience des APIs externes : toute sortie reseau est bornee (17/10/2026).
       "src/lib/fetch-borne.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
