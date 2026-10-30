@@ -208,11 +208,19 @@ export const VERIFIED_TEST_ADDON_PRICE_IDS: Readonly<Record<string, string>> = {
   organicCampaignTracker: "price_1UUTPd9eqtbj6iPB6fNR5kLx",
 };
 
+/** Corrects a known stale Render TEST value without making an unconfigured offer sellable. */
+export const VERIFIED_TEST_ADDON_PRICE_CORRECTIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  localPresenceOptimizer: {
+    "price_1UUTPc9eqtbj6iPB5PEFUk5": "price_1UUTPc9eqtbj6iPBb5PEFUk5",
+  },
+};
+
 export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
   Object.entries(ADDON_TEST_PRICE_ENV_VARS)
     .map(([key, names]) => {
       const configured = names.map((name) => process.env[name] ?? "").find((value) => value !== "") ?? "";
-      return [key, VERIFIED_TEST_ADDON_PRICE_IDS[key] ?? configured] as const;
+      const corrected = VERIFIED_TEST_ADDON_PRICE_CORRECTIONS[key]?.[configured] ?? configured;
+      return [key, VERIFIED_TEST_ADDON_PRICE_IDS[key] ?? corrected] as const;
     })
     .filter(([, value]) => value !== "")
 );
