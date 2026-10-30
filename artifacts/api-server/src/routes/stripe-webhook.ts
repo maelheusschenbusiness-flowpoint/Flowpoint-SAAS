@@ -1417,12 +1417,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       // ── One-time AI credit pack purchase ──────────────────────────────────
-      // Matches sessions from /billing/checkout-ai-credits (type=ai_credits) AND
-      // from /public/checkout-session for ai_credits_only checkout type.
-      if (meta["type"] === "ai_credits" || meta["flowpoint_checkout_type"] === "ai_credits_only") {
-        // For ai_credits_only (public checkout), parse pack key from ai_credits field.
-        const rawAiCreditsField = meta["ai_credits"] ?? "";
-        const packFromField = rawAiCreditsField.split(",").find(k => k.startsWith("aiCreditsPack"));
+      // Public Checkout can combine credits with a plan or recurring add-ons.
+      const rawAiCreditsField = meta["ai_credits"] ?? "";
+      const packFromField = rawAiCreditsField
+        .split(",")
+        .map(k => k.trim())
+        .find(k => k.startsWith("aiCreditsPack"));
+      const aiCreditsOnlyCheckout =
+        meta["type"] === "ai_credits" ||
+        meta["flowpoint_checkout_type"] === "ai_credits_only";
+      if (aiCreditsOnlyCheckout || packFromField) {
         const AI_CREDITS_FROM_PACK: Record<string, number> = {
           aiCreditsPack50k:  50000,
           aiCreditsPack200k: 200000,
@@ -1436,7 +1440,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
         // P0-3: removed store.me.stripeCustomerId mutation
 
-        if (credits > 0 && orgId) {
+        if (sessionPaid && credits > 0 && orgId) {
           try {
             const { pool: pgPool } = await import("@workspace/db");
             const client = await pgPool.connect();
@@ -1461,11 +1465,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             logger.info({ pack, credits, orgId }, "[Webhook] AI credits credited to org");
           } catch (e) {
             logger.error({ e, orgId }, "[Webhook] Failed to credit AI credits to org");
+            throw e;
           }
         } else if (credits > 0 && !orgId) {
           logger.error({ pack, credits }, "[Webhook] AI credits purchase: orgId unresolved — credits NOT credited");
+        } else if (!sessionPaid && credits > 0) {
+          logger.info({ pack, credits, sessionId }, "[Webhook] AI credits not credited — Checkout session is not paid");
         }
-        break;
+        // Credit-only sessions have no subscription work below. Combined
+        // sessions must continue so the subscription/add-on webhook logic runs.
+        if (aiCreditsOnlyCheckout) break;
       }
 
       // ── Subscription checkout ──────────────────────────────────────────────

@@ -1130,9 +1130,17 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     }
 
     /* ── Helper: build embedded vs redirect params, optionally pre-attach customer ── */
-    const returnUrl  = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
-    const successUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl  = `${publicUrl}/cancel.html`;
+    const returnKind = finalCheckoutType === "ai_credits_only"
+      ? "ai_credits"
+      : finalCheckoutType === "addon_only"
+        ? "addon"
+        : "";
+    const returnKindQuery = returnKind ? `&kind=${returnKind}` : "";
+    const returnUrl  = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}${returnKindQuery}`;
+    const successUrl = returnUrl;
+    const cancelUrl  = returnKind
+      ? `${publicUrl}/checkout-return.html?cancelled=1&kind=${returnKind}`
+      : `${publicUrl}/cancel.html`;
 
     const customerParam = stripeCustomerId ? {
       customer: stripeCustomerId,
