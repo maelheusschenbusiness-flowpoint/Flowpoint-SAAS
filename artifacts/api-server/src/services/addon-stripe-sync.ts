@@ -173,7 +173,7 @@ export async function syncAddonWithStripe(
         limit: 10,
         expand: ["data.items.data.price"],
       });
-      type StripeSub = { id: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
+      type StripeSub = { id: string; status?: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
       const isFlowPointPlanSub = (s: StripeSub) => {
         if (s.metadata?.["addonSub"]) return false;
         const items = s.items?.data ?? [];
@@ -217,20 +217,30 @@ export async function syncAddonWithStripe(
     // Check the dedicated add-on subscription
     let itemOnAddonSub: StripeSubItem | undefined;
     let addonSubId: string | null = null;
+    const addonSubItems: Array<{ subscriptionId: string; item: StripeSubItem }> = [];
     {
       const existingAddonSubs = await stripe.subscriptions.list({
         customer: ctx.stripeCustomerId,
-        status: "active",
-        limit: 10,
+        status: "all",
+        limit: 100,
         expand: ["data.items.data.price"],
       });
-      type StripeSub = { id: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
-      const addonSub = (existingAddonSubs.data as StripeSub[]).find(
-        s => s.metadata?.["addonSub"] === "true" && s.metadata?.["orgId"] === orgId,
+      type StripeSub = { id: string; status?: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
+      const addonSubs = (existingAddonSubs.data as StripeSub[]).filter(
+        s =>
+          s.metadata?.["addonSub"] === "true" &&
+          s.metadata?.["orgId"] === orgId &&
+          (s.status === "active" || s.status === "trialing" || s.status === "past_due"),
       );
+      const addonSub = addonSubs[0];
       if (addonSub) {
         addonSubId = addonSub.id;
         itemOnAddonSub = (addonSub.items?.data ?? []).find(it => it.price?.id === priceId);
+      }
+      for (const sub of addonSubs) {
+        for (const item of sub.items?.data ?? []) {
+          if (item.price?.id === priceId) addonSubItems.push({ subscriptionId: sub.id, item });
+        }
       }
     }
 
@@ -292,31 +302,36 @@ export async function syncAddonWithStripe(
     // ── DEACTIVATE ────────────────────────────────────────────────────────────
 
     // Remove from whichever subscription holds the item
-    const targetItem = itemOnPlanSub ?? itemOnAddonSub;
-    const targetSubId = itemOnPlanSub ? planSubId : addonSubId;
-
-    if (!targetItem || !targetSubId) {
+    const targets = [
+      ...(itemOnPlanSub && planSubId ? [{ subscriptionId: planSubId, item: itemOnPlanSub, addonSub: false }] : []),
+      ...addonSubItems.map(({ subscriptionId, item }) => ({ subscriptionId, item, addonSub: true })),
+    ];
+    if (targets.length === 0) {
       return { synced: true, reason: "not_on_subscription" };
     }
 
-    await stripe.subscriptionItems.del(targetItem.id, { proration_behavior: "create_prorations" });
-    logger.info({ orgId, addonKey, priceId, subId: targetSubId },
-      "[AddonSync] Addon item removed from subscription");
+    for (const target of targets) {
+      await stripe.subscriptionItems.del(target.item.id, { proration_behavior: "create_prorations" });
+      logger.info({ orgId, addonKey, priceId, subId: target.subscriptionId },
+        "[AddonSync] Addon item removed from subscription");
+    }
 
-    // If this was the add-on subscription and it's now empty, cancel it immediately
-    if (itemOnAddonSub && addonSubId) {
+    // Cancel every now-empty dedicated add-on subscription, leaving unrelated
+    // add-ons and the base plan subscription untouched.
+    const emptiedAddonSubIds = [...new Set(targets.filter(t => t.addonSub).map(t => t.subscriptionId))];
+    for (const emptyCandidateId of emptiedAddonSubIds) {
       try {
-        const refreshed = await stripe.subscriptions.retrieve(addonSubId, {
+        const refreshed = await stripe.subscriptions.retrieve(emptyCandidateId, {
           expand: ["items.data.price"],
         });
         if (refreshed.items.data.length === 0) {
-          await stripe.subscriptions.cancel(addonSubId);
-          logger.info({ orgId, subId: addonSubId },
+          await stripe.subscriptions.cancel(emptyCandidateId);
+          logger.info({ orgId, subId: emptyCandidateId },
             "[AddonSync] Add-on subscription cancelled (no remaining items)");
         }
       } catch (e) {
         // Non-critical: log and continue (subscription may already be gone)
-        logger.warn({ err: e, orgId, addonSubId },
+        logger.warn({ err: e, orgId, addonSubId: emptyCandidateId },
           "[AddonSync] Could not check/cancel empty add-on subscription");
       }
     }

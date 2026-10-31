@@ -145,6 +145,7 @@ function makeFakeStripe(opts?: {
   existingPlanSubId?: string;
   intentCustomerId?: string;
   intentMetadata?: Record<string, string>;
+  failAddonSubCreate?: boolean;
 }) {
   const created: any[] = [];
   const setupCreated: any[] = [];
@@ -184,10 +185,39 @@ function makeFakeStripe(opts?: {
       }),
     },
     subscriptions: {
-      list: vi.fn(async () => ({ data: existingSubData })),
+      list: vi.fn(async () => ({
+        data: [
+          ...existingSubData,
+          ...subsCreated.map((params: any, index: number) => ({
+            id: `sub_fake_addon_${index + 1}`,
+            status: "trialing",
+            metadata: params.metadata,
+            items: {
+              data: (params.items ?? []).map((item: any, itemIndex: number) => ({
+                id: `si_fake_${index}_${itemIndex}`,
+                price: { id: item.price },
+                quantity: item.quantity,
+              })),
+            },
+          })),
+        ],
+      })),
       create: vi.fn(async (params: any) => {
+        if (opts?.failAddonSubCreate) throw new Error("stripe addon subscription unavailable");
         subsCreated.push(params);
-        return { id: "sub_fake_addon_1", ...params };
+        return {
+          id: `sub_fake_addon_${subsCreated.length}`,
+          status: "trialing",
+          metadata: params.metadata,
+          items: {
+            data: (params.items ?? []).map((item: any, index: number) => ({
+              id: `si_fake_created_${index}`,
+              price: { id: item.price },
+              quantity: item.quantity,
+            })),
+          },
+          ...params,
+        };
       }),
     },
     subscriptionItems: {
@@ -368,8 +398,8 @@ describe("authenticated plan finalize — canonical Customer invariant", () => {
 describe("active subscriber — finalize-checkout provisions the add-on (no plan)", () => {
   beforeEach(() => { activatedAddons.length = 0; dbQueries.length = 0; });
 
-  it("creates the month-2 add-on subscription when no existing plan sub is found (fallback)", async () => {
-    // No existing plan sub (list returns []) → falls back to creating a new subscription.
+  it("creates a dedicated add-on subscription without moving items onto the plan", async () => {
+    // Plan subscription is not modified; each checkout gets an independently renewing add-on sub.
     const fake = makeFakeStripe();
     setStripeForTesting(fake);
     const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
@@ -384,14 +414,14 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
     expect(fake.subsCreated[0].items).toEqual([{ price: expect.stringMatching(/^price_/), quantity: 1 }]);
     expect(fake.subsCreated[0].trial_end).toBeGreaterThan(Math.floor(Date.now() / 1000));
     expect(fake.subsCreated[0].metadata.org_id).toBe("org-uuid-1");
+    expect(fake.subsCreated[0].metadata.addonSub).toBe("true");
     // No subscriptionItems.create called (no existing sub to add to).
     expect(fake.subsItemsCreated).toHaveLength(0);
     // Entitlement granted immediately, not left to webhook latency.
     expect(activatedAddons).toEqual([{ key: PAID_ADDON, orgId: "org-uuid-1", qty: 1 }]);
   });
 
-  it("adds add-on items to existing plan subscription instead of creating a second sub", async () => {
-    // Has existing plan sub → must add items to it, NOT create a second subscription.
+  it("leaves the existing plan subscription unchanged when buying an add-on", async () => {
     const fake = makeFakeStripe({ existingPlanSubId: "sub_existing_plan" });
     setStripeForTesting(fake);
     const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
@@ -400,15 +430,39 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
     expect(r.status).toBe(200);
     expect(r.body.success).toBe(true);
     expect(r.body.checkoutType).toBe("addon_only");
-    // No second subscription must be created.
-    expect(fake.subsCreated).toHaveLength(0);
-    // Item was added to the existing plan subscription.
-    expect(fake.subsItemsCreated).toHaveLength(1);
-    expect(fake.subsItemsCreated[0].subscription).toBe("sub_existing_plan");
-    expect(fake.subsItemsCreated[0].proration_behavior).toBe("none");
-    expect(fake.subsItemsCreated[0].price).toMatch(/^price_/);
+    expect(fake.subsCreated).toHaveLength(1);
+    expect(fake.subsCreated[0].metadata.addonSub).toBe("true");
+    expect(fake.subsItemsCreated).toHaveLength(0);
     // Entitlement granted immediately regardless of which Stripe path was taken.
     expect(activatedAddons.some(a => a.key === PAID_ADDON && a.orgId === "org-uuid-1")).toBe(true);
+  });
+
+  it("sums the same quantity add-on across independent monthly subscriptions", async () => {
+    const fake = makeFakeStripe({ existingPlanSubId: "sub_existing_plan" });
+    setStripeForTesting(fake);
+
+    for (const intentId of ["pi_qty_purchase_1", "pi_qty_purchase_2"]) {
+      const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+        .post("/api/public/finalize-checkout")
+        .send({ intentId, intentType: "payment", plan: "", addons: { monitorsPack10: 1 } });
+      expect(r.status).toBe(200);
+    }
+
+    expect(fake.subsCreated).toHaveLength(2);
+    expect(fake.subsCreated.every((sub: any) => sub.metadata.addonSub === "true")).toBe(true);
+    expect(activatedAddons.filter(a => a.key === "monitorsPack10").at(-1)?.qty).toBe(2);
+  });
+
+  it("does not grant an entitlement when Stripe cannot create the recurring subscription", async () => {
+    const fake = makeFakeStripe({ failAddonSubCreate: true });
+    setStripeForTesting(fake);
+    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+      .post("/api/public/finalize-checkout")
+      .send({ intentId: "pi_failed_addon_sub", intentType: "payment", plan: "", addons: { [PAID_ADDON]: true } });
+
+    expect(r.status).toBe(500);
+    expect(r.body.addonProvisioningFailed).toBe(true);
+    expect(activatedAddons).toHaveLength(0);
   });
 
   it("credits AI packs idempotently for a credits-only cart", async () => {

@@ -61,12 +61,14 @@ const calls: {
 
 // State controlling what mock Stripe returns
 let mockPlanSubItems: Array<{ id: string; price: { id: string }; quantity: number }> = [];
-let mockAddonSub: null | {
+type MockAddonSub = {
   id: string;
   metadata: Record<string, string>;
   status: string;
   items: { data: Array<{ id: string; price: { id: string }; quantity: number }> };
-} = null;
+};
+let mockAddonSub: MockAddonSub | null = null;
+let mockAdditionalAddonSubs: MockAddonSub[] = [];
 let mockAddonSubAfterDel: { items: { data: Array<unknown> } } | null = null;
 let mockStripeListThrows = false;
 let mockStripeCreateThrows = false;
@@ -154,6 +156,7 @@ function mockStripeClient() {
           },
         ];
         if (mockAddonSub) data.push(mockAddonSub);
+        data.push(...mockAdditionalAddonSubs);
         return { data };
       }),
 
@@ -244,6 +247,7 @@ beforeEach(() => {
   resetCalls();
   mockPlanSubItems = [];
   mockAddonSub = null;
+  mockAdditionalAddonSubs = [];
   mockAddonSubAfterDel = null;
   mockStripeListThrows = false;
   mockStripeCreateThrows = false;
@@ -400,6 +404,28 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     // Plan sub not touched
     const planDeletes = calls.subscriptionItemsDel.filter(c => c.id === "si_plan_item");
     expect(planDeletes).toHaveLength(0);
+  });
+
+  it("deactivation removes a retired add-on from every dedicated subscription", async () => {
+    const priceId = (await import("../lib/plans.js")).ADDON_PRICE_IDS["monitorsPack10"]!;
+    mockAddonSub = makeAddonSub(priceId, 1, "si_addon_first");
+    mockAdditionalAddonSubs = [{
+      ...makeAddonSub(priceId, 1, "si_addon_second"),
+      id: "sub_ADDON_SECOND",
+      status: "trialing",
+    }];
+
+    const result = await sync("deactivate", 1, "org-test-uuid", "monitorsPack10");
+
+    expect(result.synced).toBe(true);
+    expect(calls.subscriptionItemsDel.map(call => call.id).sort()).toEqual([
+      "si_addon_first",
+      "si_addon_second",
+    ]);
+    expect(calls.subscriptionsCancel.map(call => call.id).sort()).toEqual([
+      "sub_ADDON_EXISTING",
+      "sub_ADDON_SECOND",
+    ]);
   });
 
   // ── C-10: Deactivation cancels addon sub when empty ──────────────────

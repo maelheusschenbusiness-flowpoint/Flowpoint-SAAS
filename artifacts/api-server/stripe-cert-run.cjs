@@ -287,12 +287,13 @@ async function sectionB(subs) {
     const okDb = dbV !== undefined && dbV !== false;
     const okMe = meV !== undefined && meV !== false;
     const okQty = !info.qty || Number(dbV) === 2;
+    const okEnt = !ent.startsWith('FAIL');
     let ent = 'N/A';
     if (info.qty && key==='monitorsPack10') { const exp=MON_BASE_PRO+20; ent=lim1.monitors===exp?`PASS(mon=${lim1.monitors})`:`FAIL(${lim1.monitors}≠${exp})`; }
     else if (info.qty && key==='extraSeats')   { ent=lim1.teamMembers>5?`PASS(seats=${lim1.teamMembers})`:`FAIL(${lim1.teamMembers})`; }
     else if (info.qty && key==='auditsPack200') { ent=lim1.audits>300?`PASS(aud=${lim1.audits})`:`FAIL(${lim1.audits})`; }
-    if (wh1.status===200 && okDb && okMe && okQty) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
-    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, wh1.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}`);
+    if (wh1.status===200 && okDb && okMe && okQty && okEnt) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
+    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, wh1.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}okEnt=${okEnt}`);
   }
 
   // ── Batch 2: create second subscription (addon-only, no plan price) ─────────
@@ -318,11 +319,12 @@ async function sectionB(subs) {
     const okDb = dbV !== undefined && dbV !== false;
     const okMe = meV !== undefined && meV !== false;
     const okQty = !info.qty || Number(dbV) === 2;
+    const okEnt = !ent.startsWith('FAIL');
     let ent = 'N/A';
     if (info.qty && key==='monitorsPack50') { ent=lim2.monitors>50?`PASS(mon=${lim2.monitors})`:`FAIL(${lim2.monitors})`; }
     else if (info.qty && key==='gbpSlots10') { ent=lim2.gbpSlots>=0?`PASS(gbp=${lim2.gbpSlots})`:'N/A'; }
-    if (wh2.status===200 && okDb && okMe && okQty) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
-    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, wh2.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}`);
+    if (wh2.status===200 && okDb && okMe && okQty && okEnt) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
+    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, wh2.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}okEnt=${okEnt}`);
   }
 
   // ── Deactivate batch1: remove all 19 addon items from pro sub ───────────────

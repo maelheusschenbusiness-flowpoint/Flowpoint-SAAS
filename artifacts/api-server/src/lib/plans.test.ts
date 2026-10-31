@@ -31,23 +31,21 @@ import {
   REMOVED_ADDONS,
   RETIRED_ADDONS,
   isPlanAllowedAddon,
+  getAddonPurchasablePlans,
   ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
 
 const ONE_TIME_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+const expectedReplacementAvailability = (key: string) =>
+  ADDON_PRICE_IDS_TEST[key] && getAddonPurchasablePlans(key).length > 0 ? "available" : "coming_soon";
 
 describe("V1 add-on catalogue contract", () => {
-  it("uses working prices only as non-production catalogue display values", () => {
-    expect(DEVELOPMENT_ADDON_DISPLAY_PRICES).toEqual({
-      marketIntelligence: 12,
-      aiCro: 12,
-      revenueLeak: 12,
-      aiForecasting: 15,
-    });
-    expect(getAddonDisplayPrice("marketIntelligence", "development")).toBe(12);
-    expect(getAddonDisplayPrice("aiForecasting", "test")).toBe(15);
+  it("uses canonical display prices consistently across runtime modes", () => {
+    expect(DEVELOPMENT_ADDON_DISPLAY_PRICES).toEqual({});
+    expect(getAddonDisplayPrice("marketIntelligence", "development")).toBe(49);
+    expect(getAddonDisplayPrice("aiForecasting", "test")).toBe(39);
     expect(getAddonDisplayPrice("marketIntelligence", "production")).toBe(49);
     expect(getAddonDisplayPrice("aiCro", "production")).toBe(34);
     expect(getAddonDisplayPrice("revenueLeak", "production")).toBe(29);
@@ -55,9 +53,9 @@ describe("V1 add-on catalogue contract", () => {
     expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
   });
 
-  it("keeps 40 non-retired product slots, preserving retired metadata for existing entitlements", () => {
+  it("keeps 36 non-retired product slots, preserving retired metadata for existing entitlements", () => {
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(48);
-    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(40);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(36);
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
       expect.arrayContaining([
         "monitorsPack10",
@@ -74,7 +72,7 @@ describe("V1 add-on catalogue contract", () => {
     );
   });
 
-  it("retires the eight replaced offers without removing their legacy entitlement keys", () => {
+  it("retires old offers without removing their legacy entitlement keys", () => {
     const retired = [
       "gbpSlots10",
       "reviewIntelligence",
@@ -84,6 +82,10 @@ describe("V1 add-on catalogue contract", () => {
       "enterprisePermissions",
       "advancedWebhooks",
       "zapierIntegration",
+      "auditsPack200",
+      "auditsPack1000",
+      "pdfPack200",
+      "exportsPack1000",
     ];
     for (const key of retired) {
       expect(RETIRED_ADDONS.has(key), `${key} remains recognized`).toBe(true);
@@ -142,15 +144,15 @@ describe("V1 add-on catalogue contract", () => {
       !RETIRED_ADDONS.has(key) &&
       ["available", "beta"].includes(getAddonAvailability(key))
     );
-    expect(nonProtectedAddons).toHaveLength(36);
+    expect(nonProtectedAddons).toHaveLength(32);
     expect(CANONICAL_ADDON_DEFINITIONS.agencyPortfolioPriorities.priceEur).toBe(19);
-    expect(getAddonAvailability("agencyPortfolioPriorities")).toBe("coming_soon");
+    expect(getAddonAvailability("agencyPortfolioPriorities")).toBe(expectedReplacementAvailability("agencyPortfolioPriorities"));
     expect(ADDON_PRICE_IDS.agencyPortfolioPriorities).toBe("");
     expect(CANONICAL_ADDON_DEFINITIONS.technicalSeoFixVerification.priceEur).toBe(19);
-    expect(getAddonAvailability("technicalSeoFixVerification")).toBe("coming_soon");
+    expect(getAddonAvailability("technicalSeoFixVerification")).toBe(expectedReplacementAvailability("technicalSeoFixVerification"));
     expect(ADDON_PRICE_IDS.technicalSeoFixVerification).toBe("");
     expect(CANONICAL_ADDON_DEFINITIONS.organicCampaignTracker.priceEur).toBe(12);
-    expect(getAddonAvailability("organicCampaignTracker")).toBe("coming_soon");
+    expect(getAddonAvailability("organicCampaignTracker")).toBe(expectedReplacementAvailability("organicCampaignTracker"));
     expect(ADDON_PRICE_IDS.organicCampaignTracker).toBe("");
     expect(sellableAddons.length).toBeGreaterThan(0);
     for (const plan of ["standard", "pro", "ultra"]) {
@@ -195,7 +197,7 @@ describe("V1 add-on catalogue contract", () => {
       expect(getAddonStatus(key)).toBe("coming_soon");
       expect(getAddonStatus(key, { included: true })).toBe("included");
     }
-    expect(getAddonAvailability("localLandingOpportunities")).toBe("coming_soon");
+    expect(getAddonAvailability("localLandingOpportunities")).toBe(expectedReplacementAvailability("localLandingOpportunities"));
   });
 });
 
@@ -360,13 +362,16 @@ describe("canonical add-on availability", () => {
     expect(getAddonAvailability("globalMonitoring")).toBe("coming_soon");
     expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
     expect(getAddonAvailability("abTestingAI")).toBe("coming_soon");
-    expect(getAddonAvailability("seoChangeImpact")).toBe("coming_soon");
+    expect(getAddonAvailability("seoChangeImpact")).toBe(expectedReplacementAvailability("seoChangeImpact"));
     expect(COMING_SOON_ADDONS.has("abTestingAI")).toBe(true);
     const gbpTestPriceReady = Boolean(ADDON_PRICE_IDS_TEST.gbpPerformanceLeads) &&
       (process.env["STRIPE_TEST_MODE"] === "true") &&
       (process.env["STRIPE_TEST_KEY"] ?? "").startsWith("sk_test_");
     expect(getAddonAvailability("gbpPerformanceLeads")).toBe(gbpTestPriceReady ? "available" : "coming_soon");
-    expect(getAddonAvailability("marketIntelligence")).toBe("beta");
+    for (const key of ["behavioralAI", "aiCro", "revenueLeak", "aiForecasting", "marketIntelligence"]) {
+      expect(getAddonAvailability(key)).toBe("coming_soon");
+      expect(getAddonPurchasablePlans(key)).toEqual([]);
+    }
     expect(getAddonAvailability("monitorsPack10")).toBe("available");
   });
 
@@ -375,7 +380,7 @@ describe("canonical add-on availability", () => {
     expect(getAddonStatus("aiWorkspaceLaunch", { active: true })).toBe("coming_soon");
     expect(getAddonStatus("whiteLabel", { included: true, active: true })).toBe("included");
     expect(getAddonStatus("monitorsPack10", { active: 2 })).toBe("active");
-    expect(getAddonStatus("marketIntelligence")).toBe("beta");
+    expect(getAddonStatus("marketIntelligence")).toBe("coming_soon");
     expect(getAddonStatus("monitorsPack10")).toBe("available");
   });
 });
