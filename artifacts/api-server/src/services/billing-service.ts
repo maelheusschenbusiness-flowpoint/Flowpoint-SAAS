@@ -16,7 +16,7 @@ const _PLAN_PRESENTATION: Record<string, {
 }> = {
   standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
   pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
-  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois","SLA 99.9%"] },
+  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["2 000 audits/mois","SLA 99.9%"] },
 };
 
 // ── Plan configuration (public) — derived from plans.ts PLAN_DEFINITIONS ─────
@@ -639,7 +639,7 @@ export const PLAN_FEATURES: Record<string, string[]> = {
     "keyword-tracking", "behavioral-ai", "cro",
   ],
   ultra: [
-    "audits:1000", "monitors:300", "reports:1000", "exports:1000", "team:10",
+    "audits:2000", "monitors:300", "reports:2000", "exports:2000", "team:10",
     "ai-strategist", "white-label-portal", "sso-enterprise", "custom-domain", "sla-999",
     "retention:365", "multi-workspace", "agency-lab", "client-billing", "dedicated-onboarding",
     "forecasting", "revenue-leak", "automation", "market-intelligence",

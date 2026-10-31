@@ -103,6 +103,9 @@ describe("public English localization", () => {
     expect(window.fpPublicText("Agency Lab complet")).toBe("Full Agency Lab");
     expect(window.fpPublicText("100 000")).toBe("100,000");
     expect(window.fpPublicText("500 000")).toBe("500,000");
+    expect(window.fpPublicText("2 000 audits/mois")).toBe("2,000 audits/month");
+    expect(window.fpPublicText("2 000 rapports PDF/mois")).toBe("2,000 PDF reports/month");
+    expect(window.fpPublicText("2 000 exports/mois")).toBe("2,000 exports/month");
     expect(window.fpPublicText("4€")).toBe("€4");
     expect(window.fpPublicText("9€")).toBe("€9");
     expect(window.fpPublicText("19€")).toBe("€19");
@@ -148,7 +151,7 @@ describe("public English localization", () => {
     };
     const description = makeMeta({
       name: "description",
-      content: "Plans FlowPoint : Standard 29€ (30 audits, 10 monitors), Pro 79€ (300 audits, 50 monitors), Ultra 149€ (1000 audits, 300 monitors). Essai 14 jours.",
+      content: "Plans FlowPoint : Standard 29€ (30 audits, 10 monitors), Pro 79€ (300 audits, 50 monitors), Ultra 149€ (2000 audits, 300 monitors). Essai 14 jours.",
     });
     const openGraphTitle = makeMeta({
       property: "og:title",
@@ -170,7 +173,7 @@ describe("public English localization", () => {
     });
 
     expect(description.readAttribute("content")).toBe(
-      "FlowPoint plans: Standard €29 (30 audits, 10 monitors), Pro €79 (300 audits, 50 monitors), and Ultra €149 (1,000 audits, 300 monitors). Includes a 14-day trial.",
+      "FlowPoint plans: Standard €29 (30 audits, 10 monitors), Pro €79 (300 audits, 50 monitors), and Ultra €149 (2,000 audits, 300 monitors). Includes a 14-day trial.",
     );
     expect(openGraphTitle.readAttribute("content")).toBe("FlowPoint pricing — SEO, monitoring & AI");
     expect(openGraphDescription.readAttribute("content")).toBe(

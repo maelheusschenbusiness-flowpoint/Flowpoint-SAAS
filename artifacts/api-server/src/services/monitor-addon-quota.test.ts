@@ -18,6 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PLAN_LIMITS } from "../lib/plans.js";
+import { getQuota } from "../lib/config.js";
 
 // ─── Mock billing context (getUsageSummary source of truth) ──────────────────
 type MockCtx = {
@@ -297,5 +298,54 @@ describe("getUsageSummary — audit/report/export/seat packs expand display limi
     const { getUsageSummary } = await import("./billing-service.js");
     const s = await getUsageSummary("org-u3");
     expect(s.usage.seats.limit).toBe(PRO.teamMembers + 10);
+  });
+});
+
+describe("Ultra base quota contract", () => {
+  it("keeps Ultra aligned in billing and middleware quota sources", () => {
+    expect(PLAN_LIMITS["ultra"]).toMatchObject({
+      audits: 2_000,
+      monitors: 300,
+      reports: 2_000,
+      exports: 2_000,
+      teamMembers: 10,
+    });
+    expect(getQuota("ultra", "audits")).toBe(2_000);
+    expect(getQuota("ultra", "monitors")).toBe(300);
+    expect(getQuota("ultra", "reports")).toBe(2_000);
+    expect(getQuota("ultra", "exports")).toBe(2_000);
+    expect(getQuota("ultra", "teamMembers")).toBe(10);
+
+    expect(PLAN_LIMITS["standard"]).toMatchObject({
+      audits: 30, monitors: 10, reports: 30, exports: 30, teamMembers: 1,
+    });
+    expect(PLAN_LIMITS["pro"]).toMatchObject({
+      audits: 300, monitors: 50, reports: 300, exports: 300, teamMembers: 5,
+    });
+    expect(getQuota("agency", "audits")).toBe(1_000);
+  });
+
+  it("applies the Ultra base quota in dashboard usage and resource enforcement", async () => {
+    mockCtx.plan = "ultra";
+    mockOrgAddonRows = [];
+    const { getUsageSummary, checkQuota } = await import("./billing-service.js");
+    const summary = await getUsageSummary("org-ultra");
+    expect(summary.usage.audits.limit).toBe(2_000);
+    expect(summary.usage.monitors.limit).toBe(300);
+    expect(summary.usage.reports.limit).toBe(2_000);
+    expect(summary.usage.exports.limit).toBe(2_000);
+    expect(summary.usage.seats.limit).toBe(10);
+
+    const expectedLimits = {
+      audits: 2_000,
+      monitors: 300,
+      reports: 2_000,
+      exports: 2_000,
+      seats: 10,
+    } as const;
+    for (const [resource, limit] of Object.entries(expectedLimits)) {
+      const result = await checkQuota(resource as keyof typeof expectedLimits, "org-ultra");
+      expect(result.limit).toBe(limit);
+    }
   });
 });
