@@ -28,9 +28,11 @@ import {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Simulate the me.ts limits expansion for monitors on Ultra plan. */
-function computeMonitorLimit(orgAddonsRows: Array<{ addon_key: string; active: boolean; quantity: number }>): number {
-  // Ultra base limit for monitors
-  const base = PLAN_LIMITS["ultra"]!;
+function computeMonitorLimit(
+  orgAddonsRows: Array<{ addon_key: string; active: boolean; quantity: number }>,
+  plan: string = "ultra",
+): number {
+  const base = PLAN_LIMITS[plan]!;
   const limits: Record<string, number> = {
     audits: base.audits, monitors: base.monitors, reports: base.reports,
     exports: base.exports, teamMembers: base.teamMembers,
@@ -103,6 +105,14 @@ describe("monitorsPack10 quantity expansion", () => {
   it("Ultra + monitorsPack10 × 5 = 350 monitors", () => {
     const rows = [{ addon_key: "monitorsPack10", active: true, quantity: 5 }];
     expect(computeMonitorLimit(rows)).toBe(350);
+  });
+
+  it("Pro + monitorsPack10 × 2 and monitorsPack50 × 2 = 170 monitors", () => {
+    const rows = [
+      { addon_key: "monitorsPack10", active: true, quantity: 2 },
+      { addon_key: "monitorsPack50", active: true, quantity: 2 },
+    ];
+    expect(computeMonitorLimit(rows, "pro")).toBe(170);
   });
 
   it("Deactivated pack (active=false) contributes 0 extra monitors", () => {
