@@ -4,9 +4,9 @@ const errStatus = (err: unknown): number => (err && typeof err === "object" && t
 const errMsg = (err: unknown): string => errStatus(err) === 500 ? safeErrMsg(err) : (err instanceof Error ? err.message : String(err));
 import { requireAdmin } from "../middlewares/requireAdmin.js";
 import {
-  SSO_PROVIDER_TYPES, getSSODashboard, createSSOProvider,
+  SSO_PROVIDER_TYPES, SSO_PROVIDER_CATALOG, getSSODashboard,
   updateSSOProvider, deleteSSOProvider, getOrgAuthConfig,
-  upsertOrgAuthConfig, logLoginAttempt, invalidateSession, getLoginAudits,
+  logLoginAttempt, invalidateSession, getLoginAudits,
 } from "../services/sso-service.js";
 
 // ── publicSsoRouter — no auth required ────────────────────────────────────────
@@ -17,50 +17,37 @@ export const publicSsoRouter = Router();
 // GET /sso/capabilities — public disclosure of available vs roadmap providers
 publicSsoRouter.get("/sso/capabilities", (_req, res) => {
   res.json({
-    available: [
-      { provider: "google_workspace", status: "available", note: "OAuth 2.0 Google — production ready" },
-      { provider: "github", status: "available", note: "OAuth 2.0 GitHub — production ready" },
-    ],
-    roadmap: [
-      { provider: "saml", status: "not_implemented", eta: "Q3 2026", note: "SAML 2.0 générique — Enterprise roadmap" },
-      { provider: "okta", status: "not_implemented", eta: "Q3 2026", note: "Okta SAML/OIDC — Enterprise roadmap" },
-      { provider: "azure_ad", status: "not_implemented", eta: "Q3 2026", note: "Azure AD — Enterprise roadmap" },
-      { provider: "onelogin", status: "not_implemented", eta: "Q3 2026", note: "OneLogin — Enterprise roadmap" },
-    ],
+    available: [],
+    roadmap: SSO_PROVIDER_CATALOG.map(({ id, protocol }) => ({
+      provider: id,
+      protocol,
+      status: "not_implemented",
+      note: "Aucun flux de connexion SSO n’est actuellement disponible.",
+    })),
   });
 });
 
-// SAML Metadata endpoint (public — IdPs fetch it during setup)
-publicSsoRouter.get("/sso/saml/metadata", (req, res) => {
-  const orgId = (req as any).orgId ?? "default";
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : 'https://app.flowpoint.io';
-  res.set('Content-Type', 'application/xml');
-  // NOTE: ACS endpoint listed here is NOT yet active (returns 501).
-  res.send(`<?xml version="1.0"?>
-<EntityDescriptor entityID="${baseUrl}/api/sso/saml/${orgId}" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
-  <SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${baseUrl}/api/sso/saml/${orgId}/acs" index="1"/>
-  </SPSSODescriptor>
-</EntityDescriptor>`);
+// Do not publish metadata for an ACS that cannot process SAML assertions.
+publicSsoRouter.get("/sso/saml/metadata", (_req, res) => {
+  res.status(501).json({
+    error: "SSO_NOT_IMPLEMENTED",
+    message: "Les métadonnées SAML seront disponibles avec le flux ACS opérationnel.",
+  });
 });
 
-// SAML ACS — NOT IMPLEMENTED (roadmap Q3 2026)
+// SAML ACS — not implemented.
 publicSsoRouter.post("/sso/saml/:orgId/acs", (_req, res) => {
   res.status(501).json({
-    error: "Not Implemented",
-    message: "SAML ACS (Assertion Consumer Service) n'est pas encore implémenté. Roadmap Enterprise Q3 2026.",
-    roadmap: "SAML 2.0 complet — Enterprise Q3 2026",
+    error: "SSO_NOT_IMPLEMENTED",
+    message: "Le service SAML ACS n’est pas encore implémenté.",
   });
 });
 
-// SAML SP-initiated login — NOT IMPLEMENTED (roadmap Q3 2026)
+// SAML SP-initiated login — not implemented.
 publicSsoRouter.get("/sso/saml/:orgId/init", (_req, res) => {
   res.status(501).json({
-    error: "Not Implemented",
-    message: "SAML SP-initiated login n'est pas encore implémenté.",
-    roadmap: "SAML 2.0 complet — Enterprise Q3 2026",
+    error: "SSO_NOT_IMPLEMENTED",
+    message: "La connexion SAML initiée par le fournisseur de service n’est pas implémentée.",
   });
 });
 
@@ -78,22 +65,23 @@ async function getPlan(req: import("express").Request): Promise<string> {
   return "Standard";
 }
 
-// ── SAML provider types that are NOT yet production-ready ─────────────────────
-// TODO: Implement full SAML 2.0 flow (AuthnRequest, ACS, SAMLResponse parsing)
-//       using a SAML library (node-saml or samlify). Until then, these return 501.
-const SAML_ROADMAP_PROVIDERS = new Set(['saml', 'okta', 'azure_ad', 'onelogin', 'saml_generic']);
-
 router.get("/sso", requireAdmin, async (req, res) => {
   try {
     const data = await getSSODashboard(org(req));
-    res.json({ ...data, providers_catalog: SSO_PROVIDER_TYPES, plan: await getPlan(req) });
+    res.json({ ...data, providers_catalog: SSO_PROVIDER_CATALOG, plan: await getPlan(req) });
   } catch {
-    res.json({ providers: [], auth_config: null, login_audits: [], providers_catalog: SSO_PROVIDER_TYPES, plan: await getPlan(req) });
+    res.json({ providers: [], auth_config: null, login_audits: [], providers_catalog: SSO_PROVIDER_CATALOG, plan: await getPlan(req) });
   }
 });
 
 router.get("/sso/providers-catalog", (_req, res) => {
-  res.json({ providers: SSO_PROVIDER_TYPES });
+  res.json({
+    available: [],
+    providers: SSO_PROVIDER_CATALOG.map(provider => ({
+      ...provider,
+      status: "not_implemented",
+    })),
+  });
 });
 
 router.get("/sso/providers", requireAdmin, async (req, res) => {
@@ -104,34 +92,26 @@ router.get("/sso/providers", requireAdmin, async (req, res) => {
 });
 
 router.post("/sso/providers", requireAdmin, async (req, res) => {
-  const { providerType, name, domain, clientId, clientSecret, metadataUrl, ssoUrl, scopes, autoProvision, defaultRoleId } = req.body as {
-    providerType?: string; name?: string; domain?: string; clientId?: string;
-    clientSecret?: string; metadataUrl?: string; ssoUrl?: string;
-    scopes?: string[]; autoProvision?: boolean; defaultRoleId?: string;
-  };
+  const { providerType, name } = req.body as { providerType?: string; name?: string };
   if (!providerType || !name) { res.status(400).json({ error: "providerType et name requis" }); return; }
-
-  // Guard: SAML/Okta/Azure not yet production-ready
-  if (SAML_ROADMAP_PROVIDERS.has(providerType)) {
-    res.status(501).json({
-      error: "Not Implemented",
-      message: `Le provider SAML "${name}" (${providerType}) est sur la roadmap Enterprise. L'implémentation complète (AuthnRequest / ACS / SAMLResponse) n'est pas encore disponible.`,
-      roadmap: "SAML 2.0 complet (Okta, Azure AD, OneLogin) — Enterprise Q3 2026",
-      availableNow: ["google_workspace"],
-    });
+  if (!SSO_PROVIDER_TYPES.includes(providerType as typeof SSO_PROVIDER_TYPES[number])) {
+    res.status(400).json({ error: "SSO_PROVIDER_UNSUPPORTED" });
     return;
   }
-
-  try {
-    const provider = await createSSOProvider(org(req), await getPlan(req), { providerType, name, domain, clientId, clientSecret, metadataUrl, ssoUrl, scopes, autoProvision, defaultRoleId });
-    res.status(201).json({ ok: true, provider });
-  } catch (err) {
-    const msg = safeErrMsg(err);
-    res.status(msg.includes("requis") ? 403 : 500).json({ error: msg });
-  }
+  res.status(501).json({
+    error: "SSO_NOT_IMPLEMENTED",
+    message: "Aucun fournisseur SSO ne peut encore créer une configuration de connexion.",
+  });
 });
 
 router.patch("/sso/providers/:id", requireAdmin, async (req, res) => {
+  if ((req.body as { enabled?: unknown }).enabled === true) {
+    res.status(501).json({
+      error: "SSO_NOT_IMPLEMENTED",
+      message: "Un fournisseur SSO ne peut pas être activé avant la disponibilité du flux de connexion.",
+    });
+    return;
+  }
   try {
     await updateSSOProvider(org(req), req.params["id"] as string, req.body as Partial<{ enabled: boolean; enforce_sso: boolean; domain: string; auto_provision: boolean }>);
     res.json({ ok: true });
@@ -153,14 +133,10 @@ router.get("/sso/auth-config", requireAdmin, async (req, res) => {
 });
 
 router.put("/sso/auth-config", requireAdmin, async (req, res) => {
-  const { allowedDomains, enforceSso, enforceMfa, sessionTimeout, ipWhitelist, loginMessage } = req.body as {
-    allowedDomains?: string[]; enforceSso?: boolean; enforceMfa?: boolean;
-    sessionTimeout?: number; ipWhitelist?: string[]; loginMessage?: string;
-  };
-  try {
-    await upsertOrgAuthConfig(org(req), { allowedDomains, enforceSso, enforceMfa, sessionTimeout, ipWhitelist, loginMessage });
-    res.json({ ok: true });
-  } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
+  res.status(501).json({
+    error: "SSO_NOT_IMPLEMENTED",
+    message: "La configuration de politiques SSO ne peut pas être enregistrée avant le flux de connexion.",
+  });
 });
 
 router.get("/sso/login-audits", requireAdmin, async (req, res) => {
@@ -212,7 +188,10 @@ router.get("/sso/policies", requireAdmin, async (req, res) => {
 });
 
 router.patch("/sso/policies", requireAdmin, async (req, res) => {
-  res.json({ ok: true, policies: req.body });
+  res.status(501).json({
+    error: "SSO_NOT_IMPLEMENTED",
+    message: "Les politiques SSO ne sont pas modifiables tant qu’aucun fournisseur n’est opérationnel.",
+  });
 });
 
 export default router;

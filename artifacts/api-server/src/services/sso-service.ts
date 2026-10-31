@@ -1,8 +1,17 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-export const SSO_PROVIDER_TYPES = ["google_workspace", "github", "saml", "okta", "azure_ad"] as const;
-export type SSOProviderType = typeof SSO_PROVIDER_TYPES[number];
+export const SSO_PROVIDER_CATALOG = [
+  { id: "google_workspace", name: "Google Workspace", protocol: "OIDC" },
+  { id: "github", name: "GitHub", protocol: "OAuth" },
+  { id: "saml", name: "Generic SAML", protocol: "SAML 2.0" },
+  { id: "okta", name: "Okta", protocol: "SAML / OIDC" },
+  { id: "azure_ad", name: "Microsoft Entra ID", protocol: "SAML / OIDC" },
+  { id: "onelogin", name: "OneLogin", protocol: "SAML" },
+  { id: "auth0", name: "Auth0", protocol: "OIDC" },
+] as const;
+export const SSO_PROVIDER_TYPES = SSO_PROVIDER_CATALOG.map(provider => provider.id);
+export type SSOProviderType = typeof SSO_PROVIDER_CATALOG[number]["id"];
 
 export interface SSOProvider {
   id: string; orgId: string; type: SSOProviderType; name: string;
@@ -41,7 +50,13 @@ export async function getSSODashboard(orgId: string): Promise<{
     const logins: LoginAudit[] = auditRes.rows;
     const successLogins = logins.filter(l => l.success).length;
     return {
-      providers: provRes.rows,
+      // Provider records may exist from earlier setup attempts, but no SSO
+      // authentication flow is implemented. Never report them as active.
+      providers: provRes.rows.map(provider => ({
+        ...provider,
+        enabled: false,
+        availability: "not_implemented" as const,
+      })),
       config: cfgRes.rows[0] ?? null,
       recentLogins: logins,
       stats: {
