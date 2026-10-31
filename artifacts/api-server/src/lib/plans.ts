@@ -553,8 +553,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "marketIntelligence",
 
   // ── Routes exist but not commercially released ─────────────────────────────
-  // crmIntegration: crm.ts routes are complete but addon not yet sold.
-  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
+  // CRM OAuth, provider health checks, synchronization, and signed webhooks are
+  // not implemented yet. Keep unavailable for purchase until those paths exist.
   "crmIntegration",
 
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
