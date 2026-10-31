@@ -281,17 +281,27 @@ async function sectionB(subs) {
   const mA1  = me1.body?.addons ?? {};
   const lim1 = me1.body?.limits ?? {};
   const MON_BASE_PRO = 50;
+  const MONITOR_PACK_GRANTS = { monitorsPack10: 10, monitorsPack50: 50 };
 
   for (const [key, info] of batch1) {
     const dbV = db1.addons[key]; const meV = mA1[key];
     const okDb = dbV !== undefined && dbV !== false;
     const okMe = meV !== undefined && meV !== false;
     const okQty = !info.qty || Number(dbV) === 2;
-    const okEnt = !ent.startsWith('FAIL');
     let ent = 'N/A';
-    if (info.qty && key==='monitorsPack10') { const exp=MON_BASE_PRO+20; ent=lim1.monitors===exp?`PASS(mon=${lim1.monitors})`:`FAIL(${lim1.monitors}≠${exp})`; }
+    if (info.qty && MONITOR_PACK_GRANTS[key]) {
+      const expectedMonitors = MON_BASE_PRO + batch1.reduce(
+        (total, [batchKey, batchInfo]) =>
+          total + (MONITOR_PACK_GRANTS[batchKey] || 0) * (batchInfo.qty ? 2 : 1),
+        0,
+      );
+      ent = lim1.monitors === expectedMonitors
+        ? `PASS(mon=${lim1.monitors})`
+        : `FAIL(${lim1.monitors}≠${expectedMonitors})`;
+    }
     else if (info.qty && key==='extraSeats')   { ent=lim1.teamMembers>5?`PASS(seats=${lim1.teamMembers})`:`FAIL(${lim1.teamMembers})`; }
     else if (info.qty && key==='auditsPack200') { ent=lim1.audits>300?`PASS(aud=${lim1.audits})`:`FAIL(${lim1.audits})`; }
+    const okEnt = !ent.startsWith('FAIL');
     if (wh1.status===200 && okDb && okMe && okQty && okEnt) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
     else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, wh1.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}okEnt=${okEnt}`);
   }

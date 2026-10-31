@@ -131,12 +131,25 @@ describe("POST /addons/:key/activate — quantity carried end-to-end", () => {
     expect(activateCalls).toEqual([{ key: "monitorsPack10", orgId: "org-qty-test", quantity: 3 }]);
   });
 
-  it("quantity 5 for auditsPack200 flows through identically", async () => {
+  it("blocks new auditsPack200 purchases after retirement", async () => {
     const app = await buildApp();
     const res = await request(app).post("/addons/auditsPack200/activate").send({ quantity: 5 });
+    expect(res.status).toBe(410);
+    expect(res.body.code).toBe("ADDON_RETIRED");
+    expect(stripeSyncCalls).toHaveLength(0);
+    expect(activateCalls).toHaveLength(0);
+  });
+
+  it("still lets existing auditsPack200 entitlements be deactivated", async () => {
+    const app = await buildApp();
+    const { deactivateAddon } = await import("../services/addons-service.js");
+    const res = await request(app).post("/addons/auditsPack200/deactivate");
     expect(res.status).toBe(200);
-    expect(stripeSyncCalls[0]?.quantity).toBe(5);
-    expect(activateCalls[0]?.quantity).toBe(5);
+    expect(res.body.ok).toBe(true);
+    expect(deactivateAddon).toHaveBeenCalledWith("auditsPack200", "org-qty-test");
+    expect(stripeSyncCalls).toEqual([
+      { key: "auditsPack200", action: "deactivate", quantity: undefined },
+    ]);
   });
 
   it("missing quantity defaults to 1", async () => {
