@@ -96,6 +96,8 @@ export default defineConfig({
       "src/tests/public-locale-translations.test.ts",
       "src/tests/dashboard-i18n-static-audit.test.ts",
       "src/tests/dashboard-document-language.test.ts",
+      // Pluralisation francaise des libelles du tableau de bord (0/1 au singulier).
+      "src/tests/dashboard-pluralize-fr.test.ts",
       // Conversion A — funnel fixes
       "src/routes/seo-quota-gate.test.ts",
       "src/services/dataforseo-quota-db.test.ts",

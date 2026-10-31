@@ -217,7 +217,15 @@ function fpUpdateTenantNs(orgId) {
 // ─────────────────────────────────────────────────────────────────
 // M13-fix: all console.log gated — never fires in production (app.flowpoint.pro)
 window.__DEV__ = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-function pluralizeFr(n, sg, pl) { return n === 1 ? sg : (pl || sg + 's'); }
+// Regle francaise : 0, 1, 1.5 et -1 prennent le singulier ; une valeur absente
+// ou non numerique retombe sur le pluriel. Accepte un nombre recu en chaine.
+function pluralizeFr(n, sg, pl) {
+  var plural = pl || sg + 's';
+  if (n === null || n === undefined || n === '') return plural;
+  var num = Number(n);
+  if (!Number.isFinite(num)) return plural;
+  return Math.abs(num) < 2 ? sg : plural;
+}
 
 // ─────────────────────────────────────────────────────────────────
 // STATE
