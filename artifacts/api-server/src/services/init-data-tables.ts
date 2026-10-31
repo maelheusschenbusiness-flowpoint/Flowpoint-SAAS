@@ -748,10 +748,20 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS domain             TEXT        NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS status             TEXT        NOT NULL DEFAULT 'pending_dns';`);
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS ssl_active         BOOLEAN     NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS verification_token TEXT;`);
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS verified_at        TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS render_domain_id  TEXT;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS render_target_host TEXT;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS last_checked_at   TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS last_error        TEXT;`);
     await run(client, `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS custom_domains_org_id_idx ON custom_domains(org_id);`);
+    // A custom hostname must be globally claimable by one organization only.
+    // If legacy duplicates exist, index creation fails non-fatally and the
+    // domain-create route refuses new claims until the data is reviewed.
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS custom_domains_domain_unique_idx ON custom_domains (lower(domain));`);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS custom_domains_org_unique_idx ON custom_domains (org_id);`);
 
     // ── custom_domains — ENABLE + FORCE RLS + 4 tenant isolation policies ─────
     // Supabase Security Advisor flagged custom_domains as public without RLS.

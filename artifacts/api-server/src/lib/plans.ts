@@ -441,7 +441,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   advancedWebhooks:     { name: "Webhooks Avancés",          category: "API",          description: "Webhooks configurables", priceEur: 14, oneTime: false, quantity: false },
   zapierIntegration:    { name: "Zapier / Make",             category: "API",          description: "Intégration Zapier et Make", priceEur: 19, oneTime: false, quantity: false },
   crmIntegration:       { name: "Intégration CRM",           category: "API",          description: "Synchronisation CRM", priceEur: 29, oneTime: false, quantity: false },
-  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Domaine personnalisé pour le portail", priceEur: 9, oneTime: false, quantity: false },
+  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Domaine personnalisé sur sous-domaine ; activation masquée jusqu’à la certification Beta.", priceEur: 9, oneTime: false, quantity: false },
   ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "SSO SAML et OIDC", priceEur: 49, oneTime: false, quantity: false },
   aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Roadmap et missions IA personnalisées à partir du profil renseigné", priceEur: 15, oneTime: false, quantity: false },
   prioritySupport:      { name: "Support Prioritaire",       category: "Support",      description: "Canal prioritaire", priceEur: 29, oneTime: false, quantity: false },

@@ -10806,7 +10806,7 @@ function renderBilling() {
       // ── API ──
       { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
+      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Domaine personnalisé sur sous-domaine ; activation masquée jusqu’à la certification Beta.', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Preuve de propriété DNS TXT avant provisionnement','Provisionnement Render, HTTPS et routage isolé en certification Beta'] },
       { key:'ssoEnterprise', cat:'Ultra', name:'SSO SAML', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), tag:'Enterprise',     roi:'SAML 2.0 / OIDC', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
       { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), tag:'IA Setup',        roi:'Préparation d’un espace de travail',    desc:'Assistant de configuration de l’espace de travail FlowPoint.', features:['Configuration de l’espace de travail','Préparation de tableaux de bord','Suggestions de KPI et alertes','Préparation de missions et de stratégies','Assistance IA'], wizardFn:'openAIWorkspaceLaunch' },
     ];
@@ -25179,6 +25179,59 @@ function bindGlobalEvents() {
     "Résultat le plus récent disponible pour le client": "Most recent result available to the client",
     "· White-label actif": "· White-label active",
     "Optimiser CRO — {page}": "Optimize CRO — {page}",
+    "Chargement des domaines…": "Loading domains…",
+    "Aucun domaine personnalisé configuré.": "No custom domain configured.",
+    "DNS uniquement, sans proxy ; supprimez les records AAAA.": "DNS only, with no proxy; remove any AAAA records.",
+    "TXT à vérifier": "TXT verification required",
+    "Propriété confirmée": "Ownership confirmed",
+    "Routage DNS en attente": "DNS routing pending",
+    "DNS Render vérifié": "Render DNS verified",
+    "HTTPS en attente": "HTTPS pending",
+    "Suppression en attente": "Deletion pending",
+    "Ajoutez le TXT de propriété, puis relancez la vérification.": "Add the ownership TXT record, then verify again.",
+    "Propriété prouvée. Le provisionnement Render attend la configuration serveur Beta.": "Ownership proven. Render provisioning is waiting for Beta server configuration.",
+    "Ajoutez le CNAME indiqué en DNS uniquement, supprimez les AAAA, puis relancez la vérification.": "Add the CNAME as DNS-only, remove AAAA records, then verify again.",
+    "Render a confirmé le DNS. Le certificat HTTPS et le routage sont en cours de vérification.": "Render confirmed DNS. The HTTPS certificate and routing are being checked.",
+    "Le DNS est vérifié. HTTPS ou le routage de cette organisation n’est pas encore prêt.": "DNS is verified. HTTPS or this organization’s routing is not ready yet.",
+    "HTTPS et le routage vers cette organisation sont vérifiés.": "HTTPS and routing to this organization are verified.",
+    "Le routage est coupé. La suppression côté Render doit encore être terminée.": "Routing is disabled. Render still needs to finish removing the domain.",
+    "Render Test n’est pas configuré. Aucune demande de domaine n’a été envoyée.": "Render Test is not configured. No domain request was sent.",
+    "Le TXT de propriété est introuvable. Vérifiez le nom et la valeur du record.": "The ownership TXT record was not found. Check its name and value.",
+    "Ce domaine est déjà enregistré par une organisation.": "This domain is already registered to an organization.",
+    "Render indique que ce domaine est déjà attaché à un autre service.": "Render reports that this domain is attached to another service.",
+    "La protection d’unicité n’est pas prête. Contactez le support avant de réessayer.": "The uniqueness guard is not ready. Contact support before trying again.",
+    "Beta accepte uniquement un sous-domaine, par exemple portal.votreagence.fr. Les domaines racine et www ne sont pas acceptés.": "Beta accepts subdomains only, such as portal.youragency.com. Root and www domains are not accepted.",
+    "Cette organisation a déjà un domaine. Supprimez-le avant d’en ajouter un autre.": "This organization already has a domain. Remove it before adding another.",
+    "Render ne peut pas terminer la demande pour le moment. Vérifiez la configuration Beta et réessayez.": "Render cannot complete the request right now. Check the Beta configuration and try again.",
+    "Ajoutez le TXT {host} → {value}, puis cliquez sur Vérifier.": "Add TXT {host} → {value}, then click Verify.",
+    "Ajoutez le TXT puis vérifiez la propriété.": "Add the TXT record, then verify ownership.",
+    "Enregistrement du sous-domaine…": "Saving subdomain…",
+    "Vérification en cours…": "Verification in progress…",
+    "Vérification terminée.": "Verification complete.",
+    "Supprimer le domaine {domain} ? Le routage sera coupé immédiatement.": "Remove domain {domain}? Routing will be disabled immediately.",
+    "Suppression du domaine…": "Removing domain…",
+    "Domaine supprimé.": "Domain removed.",
+    "Réessayer la suppression": "Retry removal",
+    "Aucun domaine": "No domain",
+    "Sous-domaines uniquement (ex. portal.votreagence.fr). Le TXT prouve la propriété avant tout appel à Render ; HTTPS est géré automatiquement après validation DNS.": "Subdomains only (e.g. portal.youragency.com). TXT proves ownership before Render is contacted; HTTPS is managed automatically after DNS verification.",
+    "Sous-domaine personnalisé": "Custom subdomain",
+    "Ajouter un sous-domaine": "Add subdomain",
+    "Beta — vérification requise": "Beta — verification required",
+    "Cette fonctionnalité est incluse avec Ultra.": "This feature is included with Ultra.",
+    "Revérifier": "Verify again",
+    "🌐 Domaine personnalisé": "🌐 Custom domain",
+    "Domaine custom": "Custom domain",
+    "HTTPS actif": "HTTPS active",
+    "TXT requis": "TXT required",
+    "À vérifier": "Needs verification",
+    "À configurer": "Needs setup",
+    "Chargement…": "Loading…",
+    "Seuls les administrateurs peuvent gérer les domaines.": "Only administrators can manage domains.",
+    "Saisissez un nom de domaine valide, sans protocole ni chemin.": "Enter a valid domain name without a protocol or path.",
+    "Sous-domaine enregistré. Ajoutez le TXT puis vérifiez la propriété.": "Subdomain saved. Add the TXT record, then verify ownership.",
+    "Domaine personnalisé sur sous-domaine ; activation masquée jusqu’à la certification Beta.": "Custom subdomain; activation remains unavailable until Beta certification.",
+    "Preuve de propriété DNS TXT avant provisionnement": "DNS TXT ownership verification before provisioning",
+    "Provisionnement Render, HTTPS et routage isolé en certification Beta": "Render provisioning, HTTPS, and tenant-isolated routing in Beta certification",
   };
   if (window.FP_I18N_EN_BILLING) {
     Object.keys(window.FP_I18N_EN_BILLING).forEach(function(k) {
@@ -64268,6 +64321,237 @@ function renderClientMode() {
   // SUB: AGENCY LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'agency') {
+    if (!window.FP_CUSTOM_DOMAINS) {
+      const state = { domains: [], loaded: false, loading: false, busy: false, message: '', error: false };
+      const statusLabels = {
+        pending_dns: 'TXT à vérifier',
+        ownership_verified: 'Propriété confirmée',
+        render_pending: 'Routage DNS en attente',
+        render_verified: 'DNS Render vérifié',
+        tls_pending: 'HTTPS en attente',
+        active: 'Actif',
+        deletion_pending: 'Suppression en attente',
+      };
+      const statusColors = {
+        pending_dns: '#f59e0b',
+        ownership_verified: '#60a5fa',
+        render_pending: '#f59e0b',
+        render_verified: '#60a5fa',
+        tls_pending: '#f59e0b',
+        active: '#22c55e',
+        deletion_pending: '#ef4444',
+      };
+      function statusMessage(status) {
+        return ({
+          pending_dns: 'Ajoutez le TXT de propriété, puis relancez la vérification.',
+          ownership_verified: 'Propriété prouvée. Le provisionnement Render attend la configuration serveur Beta.',
+          render_pending: 'Ajoutez le CNAME indiqué en DNS uniquement, supprimez les AAAA, puis relancez la vérification.',
+          render_verified: 'Render a confirmé le DNS. Le certificat HTTPS et le routage sont en cours de vérification.',
+          tls_pending: 'Le DNS est vérifié. HTTPS ou le routage de cette organisation n’est pas encore prêt.',
+          active: 'HTTPS et le routage vers cette organisation sont vérifiés.',
+          deletion_pending: 'Le routage est coupé. La suppression côté Render doit encore être terminée.',
+        })[status] || '';
+      }
+      function friendlyError(err) {
+        const code = err && err.code;
+        if (err?.status === 403) return fpT('Seuls les administrateurs peuvent gérer les domaines.');
+        if (code === 'RENDER_DOMAIN_PROVISIONING_NOT_CONFIGURED') return fpT('Render Test n’est pas configuré. Aucune demande de domaine n’a été envoyée.');
+        if (code === 'DOMAIN_TXT_NOT_VERIFIED') return fpT('Le TXT de propriété est introuvable. Vérifiez le nom et la valeur du record.');
+        if (code === 'DOMAIN_ALREADY_CLAIMED') return fpT('Ce domaine est déjà enregistré par une organisation.');
+        if (code === 'RENDER_DOMAIN_CONFLICT') return fpT('Render indique que ce domaine est déjà attaché à un autre service.');
+        if (code === 'DOMAIN_UNIQUENESS_GUARD_UNAVAILABLE') return fpT('La protection d’unicité n’est pas prête. Contactez le support avant de réessayer.');
+        if (code === 'SUBDOMAIN_REQUIRED') return fpT('Beta accepte uniquement un sous-domaine, par exemple portal.votreagence.fr. Les domaines racine et www ne sont pas acceptés.');
+        if (code === 'DOMAIN_LIMIT_REACHED') return fpT('Cette organisation a déjà un domaine. Supprimez-le avant d’en ajouter un autre.');
+        if (code === 'RENDER_API_UNAVAILABLE' || code === 'RENDER_API_ERROR') return fpT('Render ne peut pas terminer la demande pour le moment. Vérifiez la configuration Beta et réessayez.');
+        if (code === 'INVALID_DOMAIN' || code === 'RESERVED_DOMAIN') return fpT('Saisissez un nom de domaine valide, sans protocole ni chemin.');
+        return fpT((err && err.message) || 'La demande a échoué. Réessayez plus tard.');
+      }
+      function renderDomainManager() {
+        const list = document.getElementById('fp-custom-domain-list');
+        const message = document.getElementById('fp-custom-domain-message');
+        const form = document.getElementById('fp-custom-domain-form');
+        const stat = document.querySelector('[data-custom-domain-stat]');
+        if (stat) {
+          const active = state.domains.find(domain => domain.status === 'active');
+          const current = active || state.domains[0];
+          const value = !state.loaded && !state.domains.length ? 'Chargement…'
+            : active ? 'Actif' : current ? fpT(({
+              pending_dns: 'TXT requis', ownership_verified: 'Propriété confirmée',
+              render_pending: 'DNS en attente', render_verified: 'HTTPS en attente',
+              tls_pending: 'HTTPS en attente', deletion_pending: 'Suppression en attente',
+            })[current.status] || 'À vérifier')
+            : 'Non configuré';
+          const valueNode = stat.querySelector('.fp-stat-card-value');
+          const deltaNode = stat.querySelector('.fp-stat-card-delta');
+          if (valueNode) valueNode.textContent = fpT(value);
+          if (deltaNode) {
+            deltaNode.textContent = '→ ' + (current?.domain || (state.loaded ? fpT('Aucun domaine') : fpT('Chargement…')));
+            deltaNode.classList.toggle('up', !!active);
+            deltaNode.classList.toggle('neutral', !active);
+          }
+        }
+        if (message) {
+          message.textContent = state.message;
+          message.style.color = state.error ? '#f87171' : 'var(--fp-text-muted)';
+        }
+        if (list) {
+          if (state.loading && !state.loaded) {
+            list.innerHTML = `<div style="padding:14px;color:var(--fp-text-muted)">${fpT('Chargement des domaines…')}</div>`;
+          } else if (!state.domains.length) {
+            list.innerHTML = `<div style="padding:14px;color:var(--fp-text-muted)">${state.loaded ? fpT('Aucun domaine personnalisé configuré.') : fpT('Chargement des domaines…')}</div>`;
+          } else {
+            list.innerHTML = state.domains.map(domain => {
+              const status = String(domain.status || 'pending_dns');
+              const token = status === 'pending_dns' || status === 'ownership_verified'
+                ? domain.verification_token : '';
+              const cname = ['render_pending', 'render_verified', 'tls_pending'].includes(status)
+                ? domain.render_target_host : '';
+              const record = token
+                ? `<div style="font-size:11px;margin-top:10px;word-break:break-word"><strong>TXT</strong> <code>${escHtml('_flowpoint-verify.' + domain.domain)}</code> → <code>${escHtml(token)}</code></div>`
+                : cname
+                  ? `<div style="font-size:11px;margin-top:10px;word-break:break-word"><strong>CNAME</strong> <code>${escHtml(domain.domain)}</code> → <code>${escHtml(cname)}</code><div style="color:var(--fp-text-muted);margin-top:4px">${fpT('DNS uniquement, sans proxy ; supprimez les records AAAA.')}</div></div>`
+                  : '';
+              const lastError = domain.last_error
+                ? `<div style="font-size:10px;color:#f87171;margin-top:6px">${escHtml(domain.last_error)}</div>` : '';
+              const actions = status === 'deletion_pending'
+                ? `<div style="display:flex;gap:6px;flex-shrink:0">
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" data-domain-id="${escHtml(domain.id)}" ${state.busy ? 'disabled' : ''} onclick="window.FP_CUSTOM_DOMAINS.remove(this.dataset.domainId)">${fpT('Réessayer la suppression')}</button>
+                  </div>`
+                : `<div style="display:flex;gap:6px;flex-shrink:0">
+                    <button class="fp-btn fp-btn-primary fp-btn-sm" data-domain-id="${escHtml(domain.id)}" ${state.busy ? 'disabled' : ''} onclick="window.FP_CUSTOM_DOMAINS.verify(this.dataset.domainId)">${fpT(status === 'active' ? 'Revérifier' : 'Vérifier')}</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" data-domain-id="${escHtml(domain.id)}" ${state.busy ? 'disabled' : ''} onclick="window.FP_CUSTOM_DOMAINS.remove(this.dataset.domainId)">${fpT('Supprimer')}</button>
+                  </div>`;
+              return `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:14px;border:1px solid var(--fp-border);border-radius:10px;background:var(--fp-inner-card)">
+                <div style="flex:1;min-width:220px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <strong style="font-size:13px;color:var(--fp-text)">${escHtml(domain.domain)}</strong>
+                    <span style="font-size:10px;font-weight:700;color:${statusColors[status] || '#94a3b8'}">${fpT(statusLabels[status] || statusLabels.pending_dns)}</span>
+                  </div>
+                  <div style="font-size:11px;color:var(--fp-text-muted);margin-top:5px">${fpT(statusMessage(status))}</div>
+                  ${record}${lastError}
+                </div>${actions}
+              </div>`;
+            }).join('');
+          }
+        }
+        if (form) {
+          const alreadyClaimed = state.domains.length > 0;
+          const input = form.querySelector('input');
+          const button = form.querySelector('button[type="submit"]');
+          if (input) input.disabled = alreadyClaimed || state.loading || state.busy;
+          if (button) button.disabled = alreadyClaimed || state.loading || state.busy;
+        }
+      }
+      window.FP_CUSTOM_DOMAINS = {
+        state,
+        render: renderDomainManager,
+        async load(options = {}) {
+          if (state.loading) return;
+          state.loading = true;
+          if (!options.keepMessage) {
+            state.message = '';
+            state.error = false;
+          }
+          renderDomainManager();
+          try {
+            const result = await apiFetch('/api/white-label/domains', { force: true });
+            state.domains = Array.isArray(result?.domains) ? result.domains : [];
+            state.loaded = true;
+            if (!options.keepMessage) state.error = false;
+          } catch (err) {
+            state.loaded = true;
+            state.error = true;
+            state.message = friendlyError(err);
+          } finally {
+            state.loading = false;
+            renderDomainManager();
+          }
+        },
+        async create(event) {
+          event.preventDefault();
+          const input = document.getElementById('fp-custom-domain-input');
+          const domain = input?.value?.trim();
+          if (!domain) return false;
+          state.busy = true;
+          state.message = fpT('Enregistrement du sous-domaine…');
+          state.error = false;
+          renderDomainManager();
+          try {
+            const result = await apiFetch('/api/white-label/domains', {
+              method: 'POST',
+              body: JSON.stringify({ domain }),
+            });
+            const record = result?.instructions?.record;
+            state.message = record
+              ? fpT('Ajoutez le TXT {host} → {value}, puis cliquez sur Vérifier.', { host: record.host, value: record.value })
+              : fpT('Sous-domaine enregistré. Ajoutez le TXT puis vérifiez la propriété.');
+            state.error = false;
+            if (input) input.value = '';
+            state.busy = false;
+            await this.load({ keepMessage: true });
+          } catch (err) {
+            state.busy = false;
+            state.message = friendlyError(err);
+            state.error = true;
+            renderDomainManager();
+          }
+          return false;
+        },
+        async verify(id) {
+          if (state.busy) return;
+          state.busy = true;
+          state.message = fpT('Vérification en cours…');
+          state.error = false;
+          renderDomainManager();
+          try {
+            const result = await apiFetch(`/api/white-label/domains/${encodeURIComponent(id)}/verify`, {
+              method: 'POST',
+              body: '{}',
+            });
+            state.message = fpT(statusMessage(result?.status) || 'Vérification terminée.');
+            state.busy = false;
+            await this.load({ keepMessage: true });
+          } catch (err) {
+            state.busy = false;
+            state.message = friendlyError(err);
+            state.error = true;
+            await this.load({ keepMessage: true });
+          }
+        },
+        async remove(id) {
+          if (state.busy) return;
+          const row = state.domains.find(domain => domain.id === id);
+          if (!row || !window.confirm(fpT('Supprimer le domaine {domain} ? Le routage sera coupé immédiatement.', { domain: row.domain }))) return;
+          state.busy = true;
+          state.message = fpT('Suppression du domaine…');
+          state.error = false;
+          renderDomainManager();
+          try {
+            await apiFetch(`/api/white-label/domains/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            state.message = fpT('Domaine supprimé.');
+            state.busy = false;
+            await this.load({ keepMessage: true });
+          } catch (err) {
+            state.busy = false;
+            state.message = friendlyError(err);
+            state.error = true;
+            await this.load({ keepMessage: true });
+          }
+        },
+      };
+    }
+    const customDomainApi = window.FP_CUSTOM_DOMAINS;
+    const customDomainState = customDomainApi.state;
+    if (isUltra && !customDomainState.loaded && !customDomainState.loading) setTimeout(() => customDomainApi.load(), 0);
+    const currentCustomDomain = customDomainState.domains.find(domain => domain.status === 'active') || customDomainState.domains[0];
+    const customDomainStat = !isUltra ? fpT('Ultra requis')
+      : currentCustomDomain?.status === 'active' ? fpT('Actif')
+      : currentCustomDomain ? fpT(({
+        pending_dns: 'TXT requis', ownership_verified: 'Propriété confirmée',
+        render_pending: 'DNS en attente', render_verified: 'HTTPS en attente',
+        tls_pending: 'HTTPS en attente', deletion_pending: 'Suppression en attente',
+      })[currentCustomDomain.status] || 'À vérifier')
+      : customDomainState.loaded ? fpT('Non configuré') : fpT('Chargement…');
     const templates = (Array.isArray(STATE.whiteLabelTemplates) ? STATE.whiteLabelTemplates : []).map(t => ({
       id: t.id || '',
       name: t.name || 'Template',
@@ -64304,7 +64588,7 @@ function renderClientMode() {
         ${statCard('Clients actifs', String(clients.length), 'gérés ce mois', 'up')}
         ${statCard('Templates agence', STATE.whiteLabelTemplatesError ? '—' : String(templates.length), STATE.whiteLabelTemplatesError ? 'Chargement indisponible' : 'enregistrés', STATE.whiteLabelTemplatesError ? 'neutral' : 'up')}
         ${statCard('Rapports générés', displayStat(STATE.reports && STATE.reports.length > 0 ? String(STATE.reports.length) : null, null), PREVIEW_MODE ? 'ce mois toute agence' : 'Générez des rapports', 'neutral')}
-        ${statCard('Domaine custom', isUltra ? 'Actif' : 'Non configuré', isUltra ? 'white-label actif' : 'Ultra requis', isUltra ? 'up' : 'neutral')}
+        ${statCard(fpT('Domaine custom'), customDomainStat, currentCustomDomain?.domain || (isUltra ? fpT('À configurer') : fpT('Ultra requis')), currentCustomDomain?.status === 'active' ? 'up' : 'neutral').replace('<div class="fp-stat-card">', '<div class="fp-stat-card" data-custom-domain-stat>')}
       </div>
 
       <!-- BRANDING CONFIG -->
@@ -64315,7 +64599,7 @@ function renderClientMode() {
             { label:"Logo agence",        val:agencyBranding.logoUrl ? "Configuré" : "Non configuré", icon:"🖼️", locked:false },
             { label:"Couleur primaire",   val:agencyBranding.primaryColor || "Non configurée", icon:"🎨", locked:false },
             { label:"Nom de la marque",   val:agencyBranding.agencyName || me?.org?.name || "Non configuré", icon:"✏️", locked:false },
-            { label:"Domaine client",     val:agencyBranding.customDomain || "Non configuré", icon:"🌐", locked:false },
+            { label:"Domaine client",     val:currentCustomDomain?.domain || "Non configuré", icon:"🌐", locked:false },
             { label:"Pied de page",       val:agencyBranding.footerMsg || "Non configuré", icon:"📝", locked:false },
             { label:"Couleur secondaire", val:agencyBranding.secondaryColor || "Non configurée", icon:"🎭", locked:false },
             { label:"Email d'envoi",      val:me?.email || "Non configuré", icon:"📧", locked:false },
@@ -64330,6 +64614,28 @@ function renderClientMode() {
               : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;width:100%;opacity:0.55;cursor:not-allowed" title="Personnalisation bientôt disponible">Modifier (bientôt)</button>`}
           </div>`).join('')}
         </div>
+      </div>
+
+      <!-- CUSTOM DOMAIN -->
+      <div class="fp-card fp-mb-20">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <div class="fp-card-title">${fpT('🌐 Domaine personnalisé')}</div>
+          ${currentCustomDomain?.status === 'active' ? badge(fpT('HTTPS actif'),'#22c55e') : badge(fpT('Beta — vérification requise'),'#f59e0b')}
+        </div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:14px">
+          ${fpT('Sous-domaines uniquement (ex. portal.votreagence.fr). Le TXT prouve la propriété avant tout appel à Render ; HTTPS est géré automatiquement après validation DNS.')}
+        </div>
+        ${isUltra ? `
+          <form id="fp-custom-domain-form" onsubmit="return window.FP_CUSTOM_DOMAINS.create(event)" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <input id="fp-custom-domain-input" type="text" autocomplete="off" placeholder="portal.votreagence.fr" aria-label="${escHtml(fpT('Sous-domaine personnalisé'))}" style="flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--fp-border);border-radius:8px;background:var(--fp-inner-card);color:var(--fp-text)">
+            <button class="fp-btn fp-btn-primary" type="submit">${fpT('Ajouter un sous-domaine')}</button>
+            <button class="fp-btn fp-btn-ghost" type="button" onclick="window.FP_CUSTOM_DOMAINS.load()">${fpT('Actualiser')}</button>
+          </form>
+          <div id="fp-custom-domain-message" role="status" aria-live="polite" style="font-size:11px;min-height:16px;margin-bottom:8px"></div>
+          <div id="fp-custom-domain-list" style="display:flex;flex-direction:column;gap:8px">
+            <div style="padding:14px;color:var(--fp-text-muted)">${fpT('Chargement des domaines…')}</div>
+          </div>`
+          : `<div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Cette fonctionnalité est incluse avec Ultra.')}</div>`}
       </div>
 
       <!-- TEMPLATES -->

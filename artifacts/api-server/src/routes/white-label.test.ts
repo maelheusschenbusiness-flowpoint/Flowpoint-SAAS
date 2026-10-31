@@ -42,7 +42,11 @@ vi.mock("../services/init-data-tables.js", () => ({
 // orgDbImpl lets a test control what the orgDb query does (rows / throw).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let orgDbImpl: (sql: string, vals?: unknown[]) => Promise<any> =
-  async (_sql: string, _vals?: unknown[]) => ({ rows: [] as unknown[] });
+  async (sql: string, _vals?: unknown[]) => {
+    if (sql.includes("custom_domains_domain_unique_idx")) return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+    return { rows: [] as unknown[] };
+  };
+let mockRole = "owner";
 
 async function buildApp() {
   const { default: whiteLabelRouter } = await import("./white-label.js");
@@ -51,7 +55,15 @@ async function buildApp() {
 
   // Inject orgId + orgDb (delegates to the test-controlled orgDbImpl)
   app.use((req, _res, next) => {
-    (req as express.Request & { orgId: string; orgDb: unknown }).orgId = "test-org";
+    const contextualReq = req as express.Request & {
+      orgId: string;
+      orgDb: unknown;
+      userId: string;
+      orgContext: { orgId: string; role: string };
+    };
+    contextualReq.orgId = "test-org";
+    contextualReq.userId = "test-user";
+    contextualReq.orgContext = { orgId: "test-org", role: mockRole };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (req as express.Request & { orgDb: any }).orgDb =
       (sql: string, vals?: unknown[]) => orgDbImpl(sql, vals);
@@ -74,6 +86,11 @@ describe("POST /white-label/templates — entitlement gate", () => {
   let app: express.Express;
 
   beforeEach(async () => {
+    mockRole = "owner";
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("custom_domains_domain_unique_idx")) return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      return { rows: [] };
+    };
     app = await buildApp();
   });
 
@@ -112,6 +129,14 @@ describe("POST /white-label/domains — entitlement gate", () => {
   let app: express.Express;
 
   beforeEach(async () => {
+    mockRole = "owner";
+    mockCtx = { addons: {} };
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("custom_domains_domain_unique_idx")) {
+        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      }
+      return { rows: [] };
+    };
     app = await buildApp();
   });
 
@@ -129,12 +154,32 @@ describe("POST /white-label/domains — entitlement gate", () => {
     mockCtx = { addons: { whiteLabel: true, customDomain: true } };
     const res = await request(app)
       .post("/white-label/domains")
-      .send({ domain: "myagency.io" });
+      .send({ domain: "portal.myagency.io" });
     // 201 means the gate passed; the route attempts an INSERT into custom_domains.
     // orgDb stub returns empty rows so INSERT "succeeds" (stub returns {rows:[]}).
     expect(res.status).toBe(201);
     expect(res.body.ok).toBe(true);
     expect(res.body.verificationToken).toMatch(/^fpv_/);
+    expect(res.body.instructions.record.type).toBe("TXT");
+    expect(res.body.instructions.record.host).toBe("_flowpoint-verify.portal.myagency.io");
+  });
+
+  it("rejects root and www domains before saving a claim", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    const apex = await request(app).post("/white-label/domains").send({ domain: "myagency.io" });
+    const www = await request(app).post("/white-label/domains").send({ domain: "www.myagency.io" });
+    expect(apex.status).toBe(400);
+    expect(apex.body.code).toBe("SUBDOMAIN_REQUIRED");
+    expect(www.status).toBe(400);
+    expect(www.body.code).toBe("SUBDOMAIN_REQUIRED");
+  });
+
+  it("fails closed when the global domain uniqueness index is unavailable", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    orgDbImpl = async () => ({ rows: [{ domain_index_is_unique: true, org_index_is_unique: false }] });
+    const res = await request(app).post("/white-label/domains").send({ domain: "portal.myagency.io" });
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("DOMAIN_UNIQUENESS_GUARD_UNAVAILABLE");
   });
 
   it("returns 403 for a Standard subscriber (customDomain not bundled)", async () => {
@@ -143,6 +188,31 @@ describe("POST /white-label/domains — entitlement gate", () => {
       .post("/white-label/domains")
       .send({ domain: "mysite.com" });
     expect(res.status).toBe(403);
+  });
+
+  it("requires an admin-level role for domain management", async () => {
+    mockRole = "member";
+    const res = await request(app).get("/white-label/domains");
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/admin access required/i);
+  });
+
+  it("enforces the one-domain-per-organization limit", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("custom_domains_domain_unique_idx")) {
+        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      }
+      if (sql.includes("SELECT id FROM custom_domains WHERE org_id")) {
+        return { rows: [{ id: "existing-domain" }] };
+      }
+      return { rows: [] };
+    };
+    const res = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "portal.myagency.io" });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("DOMAIN_LIMIT_REACHED");
   });
 });
 
