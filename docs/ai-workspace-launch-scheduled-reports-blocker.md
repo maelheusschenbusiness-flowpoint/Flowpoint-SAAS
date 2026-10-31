@@ -1,4 +1,4 @@
-# AI Workspace Launch — scheduled-report implementation proposal
+# AI Workspace Launch — scheduled-report behavior
 
 ## Entitlement boundary
 
@@ -9,17 +9,16 @@ AI Workspace Launch must not create or execute an automation workflow unless the
 - Agency Reporting Packs creates and verifies three persisted reports in one organization-scoped transaction.
 - AI Executive Reporting can generate and persist an on-demand report, subject to its existing add-on and report/AI quotas.
 - The scheduler supports cron expressions and IANA timezones, with duplicate-run claims, recovery, and an entitlement check.
-- The `generate_report` automation action consumes AI quota and sends an email, but currently does not persist a `reports` record or enforce the report quota.
+- AI Workspace Launch scheduling is an explicit opt-in. The weekly schedule is persisted in the organization’s IANA timezone.
+- The `generate_report` automation action consumes AI and report quotas, persists a tenant-scoped `reports` row, and uses idempotent run/action handling.
 
-## Proposed implementation
+## Current delivery limit
 
-1. Make report scheduling an explicit opt-in after AI Workspace Launch succeeds; do not schedule during onboarding by default.
-2. Offer a weekly schedule in the organization’s chosen IANA timezone and persist it as an `automation_workflows` record using the existing workflow scheduler.
-3. Use a dedicated schedule endpoint guarded by both `aiWorkspaceLaunch` and `aiWorkflows`. It must verify the session belongs to the organization and return the persisted workflow only after reading it back.
-4. Make the existing `generate_report` action persist a tenant-scoped `reports` row, enforce the existing report and AI quotas, and use a stable run/action idempotency key so scheduler recovery cannot create duplicate reports.
-5. Send the report link only after persistence succeeds. A missing audit, exhausted quota, missing recipient, or failed AI generation must produce an explicit failed run—not a successful zero-report run.
-6. Return and display `reportsScheduled: 1` only after the workflow is confirmed in storage. Otherwise keep it at zero and explain that `aiWorkflows` access is required.
+- Scheduled reports are saved in FlowPoint’s Reports list; the workflow does not send email or Slack.
+- Both add-on entitlements remain required when a schedule is created and when it runs. `aiWorkflows` remains unavailable for purchase.
+- Do not advertise scheduled email delivery or change either entitlement gate until delivery is implemented and verified.
 
-## Release proof required
+## Existing verification
 
-Keep `reportsScheduled` at zero until the persisted schedule, due execution, stored report, email link, duplicate recovery, and entitlement-loss behavior are verified. `aiWorkflows` is currently unavailable for purchase; this implementation proposal does not change that status.
+- `automation-service-awl-report-postgres.test.ts` covers both missing-entitlement cases, report/AI quota failures, tenant isolation, and weekly schedule persistence/disable behavior.
+- Email or Slack delivery is not covered because it is not implemented.

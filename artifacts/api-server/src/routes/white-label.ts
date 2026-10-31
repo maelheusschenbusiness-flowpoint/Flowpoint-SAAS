@@ -209,7 +209,7 @@ router.post("/white-label/domains/:id/ssl-check", async (req: Request, res: Resp
     const r = await db(req)(`SELECT domain, status FROM custom_domains WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     if (!r.rows.length) { res.status(404).json({ error: "Domain not found" }); return; }
     const { domain, status } = r.rows[0] as Record<string, string>;
-    if (status !== "dns_verified" && status !== "ssl_pending") {
+    if (status !== "dns_verified" && status !== "ssl_pending" && status !== "ssl_active" && status !== "tls_verified") {
       res.status(400).json({ error: "DNS must be verified before SSL check", status }); return;
     }
 
@@ -223,14 +223,14 @@ router.post("/white-label/domains/:id/ssl-check", async (req: Request, res: Resp
       req2.end();
     });
 
-    const newStatus = sslOk ? "ssl_active" : "ssl_pending";
-    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=$2, updated_at=now() WHERE id=$3 AND org_id=$4`, [newStatus, sslOk, id, org(req)]);
+    const newStatus = sslOk ? "tls_verified" : "ssl_pending";
+    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=false, updated_at=now() WHERE id=$2 AND org_id=$3`, [newStatus, id, org(req)]);
     res.json({
-      ok: true, status: newStatus, sslActive: sslOk,
+      ok: true, status: newStatus, tlsVerified: sslOk, sslActive: false,
       message: sslOk
-        ? "SSL actif — votre domaine personnalisé est opérationnel."
+        ? "Le certificat TLS est valide sur l’hôte testé. Cela ne confirme pas le routage vers FlowPoint ni l’activation du portail."
         : "SSL non détecté. Configurez votre proxy (Cloudflare, Caddy, ou Nginx + Let's Encrypt) pour activer HTTPS sur ce domaine.",
-      note: "La provisioning SSL automatique n'est pas disponible. Configuration manuelle requise côté hébergeur/proxy.",
+      note: "Cette vérification teste uniquement la négociation TLS. Le routage et la mise en service du domaine ne sont pas automatisés.",
     });
   } catch (err) {
     logger.error({ err }, "[WhiteLabel] SSL check failed");

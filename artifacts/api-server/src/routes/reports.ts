@@ -151,8 +151,12 @@ router.get("/reports", async (req, res) => {
       [org(req)]
     );
     res.json(r.rows);
-  } catch {
-    res.json([]);
+  } catch (err) {
+    logger.warn({ err, orgId: org(req) }, "[reports] report list unavailable");
+    res.status(503).json({
+      error: "Impossible de charger les rapports de cette organisation.",
+      code: "REPORTS_UNAVAILABLE",
+    });
   }
 });
 

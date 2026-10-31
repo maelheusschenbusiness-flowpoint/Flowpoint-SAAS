@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   orgDbMock, poolConnectMock, streamReportPdfMock, aiChatMock, loadOrgAIPrefsMock,
-  resolveAIModelMock, checkAIQuotaMock, recordCompletedUsageDeferredMock,
+  resolveAIModelMock, checkAIQuotaMock, checkQuotaMock, recordCompletedUsageDeferredMock,
 } = vi.hoisted(() => ({
   orgDbMock: vi.fn(),
   poolConnectMock: vi.fn(),
@@ -13,6 +13,7 @@ const {
   loadOrgAIPrefsMock: vi.fn(),
   resolveAIModelMock: vi.fn(),
   checkAIQuotaMock: vi.fn(),
+  checkQuotaMock: vi.fn(),
   recordCompletedUsageDeferredMock: vi.fn(),
 }));
 
@@ -38,7 +39,7 @@ vi.mock("../services/store.js", () => ({
   store: { logActivity: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock("../services/billing-service.js", () => ({
-  checkQuota: vi.fn().mockResolvedValue({ allowed: true, limit: 20, used: 0 }),
+  checkQuota: checkQuotaMock,
 }));
 vi.mock("../services/ai-provider.js", () => ({ aiChat: aiChatMock }));
 vi.mock("../services/ai-prefs.js", () => ({
@@ -73,7 +74,10 @@ function makeApp() {
 }
 
 describe("Agency Reporting Packs", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
+  });
 
   it("loads audits scoped to the requesting organization", async () => {
     const audits = [{
@@ -94,6 +98,15 @@ describe("Agency Reporting Packs", () => {
       expect.stringContaining("WHERE org_id=$1"),
       ["org-a"],
     );
+  });
+
+  it("returns a retryable error instead of an empty report list when storage fails", async () => {
+    orgDbMock.mockRejectedValue(new Error("reports table unavailable"));
+
+    const response = await request(makeApp()).get("/api/reports");
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("REPORTS_UNAVAILABLE");
   });
 
   it("rejects an audit that is not owned by the requesting organization", async () => {

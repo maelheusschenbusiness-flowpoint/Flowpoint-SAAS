@@ -9,9 +9,10 @@
  * mock loadBillingContext so no real DB connection is needed.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
+import https from "node:https";
 
 // ─── Mock billing-context before importing the router ────────────────────────
 // The router dynamically imports loadBillingContext; we stub the module so it
@@ -143,6 +144,42 @@ describe("POST /white-label/domains — entitlement gate", () => {
       .post("/white-label/domains")
       .send({ domain: "mysite.com" });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /white-label/domains/:id/ssl-check — readiness state", () => {
+  let app: express.Express;
+  let httpsSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    orgDbImpl = async sql => sql.includes("SELECT domain, status")
+      ? { rows: [{ domain: "myagency.io", status: "dns_verified" }] }
+      : { rows: [] };
+    app = await buildApp();
+  });
+
+  afterEach(() => httpsSpy?.mockRestore());
+
+  it("does not report a successful TLS handshake as an operational FlowPoint domain", async () => {
+    const tlsRequest = { on: vi.fn().mockReturnThis(), end: vi.fn(), destroy: vi.fn() };
+    httpsSpy = vi.spyOn(https, "request").mockImplementation(((
+      _options: unknown,
+      callback?: (response: unknown) => void,
+    ) => {
+      callback?.({ statusCode: 200 });
+      return tlsRequest;
+    }) as unknown as typeof https.request);
+
+    const response = await request(app).post("/white-label/domains/domain-1/ssl-check");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: "tls_verified",
+      tlsVerified: true,
+      sslActive: false,
+    });
+    expect(response.body.message).toContain("ne confirme pas le routage vers FlowPoint");
+    expect(response.body.message).not.toContain("opérationnel");
   });
 });
 

@@ -1436,7 +1436,7 @@ describe("private dashboard static English localization", () => {
       "Vérif. panier + paiement · LCP <2s · SSL",
       "Endpoints + webhooks + latence <200ms",
       "GBP + avis + présence locale + speed mobile",
-      "Multi-régions + SLA 99.9% + alertes équipe",
+      "Multi-régions + statistiques Better Stack + alertes équipe",
       "Uptime",
       "Checkout",
       "Stripe",

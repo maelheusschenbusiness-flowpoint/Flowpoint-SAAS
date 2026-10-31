@@ -10346,9 +10346,9 @@ function renderBilling() {
     }
     // fallback canonical (identique au backend)
     return [
-      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h','White-label de l’espace'], locked:['API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
-      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h','White-label'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
-      { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['2 000 audits','300 monitors','2 000 rapports PDF','10 utilisateurs','∞ AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','SLA 99.9%','SSO SAML','White-label portail'], locked:[], limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
+      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h','White-label de l’espace'], locked:['API Access','Analytics concurrents','Multi-workspace','Onboarding dédié','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
+      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h','White-label'], locked:['Multi-workspace (5 max)','Onboarding dédié'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
+      { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['2 000 audits','300 monitors','2 000 rapports PDF','10 utilisateurs','∞ AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','White-label portail'], locked:[], limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
     ];
   })();
   const _getDef = (id) => _planDefs.find(p => p.id === id) || _planDefs[1];
@@ -10677,11 +10677,10 @@ function renderBilling() {
                   ]},
                   { group:'Ultra', rows:[
                     ['Multi-workspace', '—', '—', '✓'],
-                    ['SSO SAML', '—', '—', '✓'],
-                    ['Custom domain', '—', '—', '✓'],
+                    ['SSO SAML', 'Bientôt disponible', 'Bientôt disponible', 'Bientôt disponible'],
+                    ['Custom domain', 'Bientôt disponible', 'Bientôt disponible', 'Bientôt disponible'],
                     ['Facturation client', '—', '—', '✓'],
                     ['Onboarding dédié', '—', '—', '✓'],
-                    ['SLA garanti', '—', '—', '99.9%'],
                   ]},
                   { group:'Infrastructure', rows:[
                     ['Support', 'Email 48h', 'Prioritaire 4h', 'Dédié <1h'],
@@ -10771,7 +10770,7 @@ function renderBilling() {
       { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'Pack de monitors supplémentaires',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime','Cumulable avec les autres packs'] },
       { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'Pack de monitors supplémentaires',    desc:'Pack de monitors supplémentaires avec suivi de disponibilité et rapports.', features:['50 monitors simultanés','Alertes SMS — bientôt disponible','Suivi SLA','Rapport PDF de disponibilité','Escalade par équipe'] },
       { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), tag:'Ultra',      roi:'Vue agrégée des monitors Better Stack', desc:'Synthèse des statuts des monitors configurés dans les régions Better Stack. Les résultats ne sont pas des mesures indépendantes par région.', features:['Régions configurées sur les monitors','Statuts et disponibilité agrégés','Détail des monitors concernés','Aucune mesure régionale indépendante'] },
-      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), tag:'Pro',             roi:'Suivi des engagements de disponibilité',    desc:'Rapports SLA, incidents et analytics de disponibilité.', features:['Suivi SLA par client','Rapport incidents horodaté','Historique de disponibilité','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
+      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.', features:['Bientôt disponible'] },
       // ── SEO ──
       { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:!!(me.addons?.advancedSeoLab), tag:'Pro inclus',      roi:'Analyse sémantique des pages',    desc:'Lab SEO IA : analyse sémantique, gap analysis et topical authority.', features:['Analyse sémantique IA par page','Analyse des écarts dans les résultats de recherche','Score topical authority','Suggestions de silos thématiques','Rapport de couverture sémantique'] },
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'Suivi et analyse des mots-clés', desc:'Suivi des mots-clés, clustering, fonctionnalités SERP et cannibalisation.', features:['Suivi de mots-clés','Clustering sémantique','Détection de cannibalisation','Suivi des fonctionnalités SERP','Alertes de volatilité des résultats'] },
@@ -10792,8 +10791,8 @@ function renderBilling() {
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), availability:'coming_soon', tag:'Données requises', roi:'Aucune perte estimée sans preuve', desc:'Les pertes financières restent masquées tant que des événements de conversion réels ne les mesurent pas.', features:['Aucune perte financière inventée','Aucune estimation sans événements réels','Données comportementales requises'] },
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
-      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'Modèles de rapports agence',    desc:'Modèles de rapports réutilisables pour vos clients.', features:['Modèles de rapports Executive, KPI et Local SEO','Personnalisation par client','Envoi de rapports PDF','Rapports multi-sites consolidés','Tableau de bord client'] },
-      { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
+      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.', features:['Bientôt disponible'] },
+      { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.', features:['Bientôt disponible'] },
       { key:'agencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), availability:'coming_soon', tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), availability:'coming_soon', tag:'Validation requise', roi:'Prévisions non encore certifiées', desc:'Les prévisions restent indisponibles tant que les historiques mesurés et le modèle ne sont pas validés.', features:['Aucune courbe historique inventée','Aucune projection sans données suffisantes','Validation du modèle requise'] },
@@ -10806,9 +10805,9 @@ function renderBilling() {
       // ── API ──
       { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
-      { key:'ssoEnterprise', cat:'Ultra', name:'SSO SAML', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), tag:'Enterprise',     roi:'SAML 2.0 / OIDC', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
-      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), tag:'IA Setup',        roi:'Préparation d’un espace de travail',    desc:'Assistant de configuration de l’espace de travail FlowPoint.', features:['Configuration de l’espace de travail','Préparation de tableaux de bord','Suggestions de KPI et alertes','Préparation de missions et de stratégies','Assistance IA'], wizardFn:'openAIWorkspaceLaunch' },
+      { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Vérification du TXT DNS et de la négociation TLS uniquement; le routage FlowPoint et le certificat géré ne sont pas fournis.', features:['Bientôt disponible'] },
+      { key:'ssoEnterprise', cat:'Ultra', name:'SSO Enterprise', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.', features:['Bientôt disponible'] },
+      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.', features:['Bientôt disponible'], wizardFn:'openAIWorkspaceLaunch' },
     ];
 
     // ── Money and bundling are injected from the server catalogue; this file
@@ -11689,7 +11688,7 @@ function renderBilling() {
               </div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
-              ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${fpT(f)}</div>`).join('')}
+              ${['🏢 Multi-workspace','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${fpT(f)}</div>`).join('')}
             </div>
             <button class="fp-btn fp-btn-primary" onclick="fpUpgradeCta('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${fpT('Débloquer Agency Lab → Passer Ultra ({price})', { price: fpPlanPriceLabel('ultra') })}</button>
           </div>`
@@ -18353,7 +18352,7 @@ function bindSectionEvents() {
       const plans = [
         {name:'Standard', price:'29€', features:['30 audits/mois','10 monitors','1 utilisateur','White Label']},
         {name:'Pro',      price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
-        {name:'Ultra',    price:'149€',features:['2 000 audits/mois','300 monitors','10 utilisateurs','API accès','SLA 99.9%']},
+        {name:'Ultra',    price:'149€',features:['2 000 audits/mois','300 monitors','10 utilisateurs','API accès']},
       ];
       openFloatPanel(fpT('Changer de plan'), `
         <div style="display:flex;flex-direction:column;gap:12px">
@@ -20502,6 +20501,12 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.": "Creates three saved reports (Executive, SEO, and Local) from a selected audit; no scheduled delivery, client portal, or multi-site consolidation.",
+    "Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.": "Generates an on-demand AI summary from measured audits and monitors and saves it in Reports; no email, Slack, or weekly schedule.",
+    "Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.": "Better Stack availability statistics by monitor and period; no SLA alert rules or dedicated export.",
+    "Vérification du TXT DNS et de la négociation TLS uniquement; le routage FlowPoint et le certificat géré ne sont pas fournis.": "Checks DNS TXT and TLS negotiation only; FlowPoint routing and managed certificates are not provided.",
+    "Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.": "No SSO provider is operational; SAML and OIDC sign-in flows are not yet available.",
+    "Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.": "Generates a strategy and missions from the workspace profile. Scheduled reports also require AI Workflows and are saved without email or Slack delivery.",
     "Aucun concurrent — Ajoutez des concurrents": "No competitors — add competitors",
     "Connectez GA4 pour analyser la conversion": "Connect GA4 to analyze conversions",
     "Aucune alerte configurée": "No alerts configured",
@@ -24462,7 +24467,7 @@ function bindGlobalEvents() {
     "Vérif. panier + paiement · LCP <2s · SSL": "Cart + payment checks · LCP <2s · SSL",
     "Endpoints + webhooks + latence <200ms": "Endpoints + webhooks + latency <200ms",
     "GBP + avis + présence locale + speed mobile": "GBP + reviews + local presence + mobile speed",
-    "Multi-régions + SLA 99.9% + alertes équipe": "Multi-region + SLA 99.9% + team alerts",
+    "Multi-régions + statistiques Better Stack + alertes équipe": "Multi-region + Better Stack statistics + team alerts",
     "Checkout": "Checkout",
     "Stripe": "Stripe",
     "SSL": "SSL",
@@ -56066,7 +56071,7 @@ function renderMonitorsConfig() {
     { icon: '🛒', name: 'E-commerce',  desc: 'Vérif. panier + paiement · LCP <2s · SSL', checks: ['Uptime', 'Checkout', 'Stripe', 'SSL', 'CWV'], color: '#22c55e', pro: false },
     { icon: '⚡', name: 'API / SaaS',  desc: 'Endpoints + webhooks + latence <200ms',      checks: ['Endpoints', 'Webhooks', 'Auth', 'Rate limits'], color: '#2563EB', pro: false },
     { icon: '📍', name: 'Local Biz',   desc: 'GBP + avis + présence locale + speed mobile', checks: ['Uptime', 'Mobile', 'GBP', 'DNS'], color: '#f59e0b', pro: false },
-    { icon: '🏢', name: 'Corporate',   desc: 'Multi-régions + SLA 99.9% + alertes équipe',  checks: ['Uptime', 'Régions', 'SLA', 'SSL', 'Incidents'], color: '#8b5cf6', pro: true },
+    { icon: '🏢', name: 'Corporate',   desc: 'Multi-régions + statistiques Better Stack + alertes équipe',  checks: ['Uptime', 'Régions', 'SLA', 'SSL', 'Incidents'], color: '#8b5cf6', pro: true },
   ];
   const channels = [
     { icon: '📧', name: 'Email',    active: true,    detail: fpT('{count} monitors configurés', {count:STATE.monitors.filter(m => m.alertEmail).length}), color: '#22c55e', gate: null },
@@ -76850,22 +76855,8 @@ const SSO_LOGOS = {
 };
 
 function renderSettingsSSO() {
-  const plan  = STATE.me?.plan || '';
-  const planLc = plan.toLowerCase();
-  const isStd = planLc === 'standard';
-  const isUltra = planLc === 'agency' || planLc === 'ultra';
   const ssoData = window.FP_DATA?.sso || {};
   const providers = ssoData.providers || [];
-  const rawStats = ssoData.stats || {};
-  // Normalize stats field names (API uses different keys)
-  const stats = {
-    totalProviders:   rawStats.totalProviders   ?? rawStats.providers       ?? providers.length,
-    activeProviders:  rawStats.activeProviders  ?? providers.filter(p=>p.enabled!==false).length,
-    totalLogins:      rawStats.totalLogins      ?? rawStats.total           ?? 0,
-    failedLogins:     rawStats.failedLogins     ?? rawStats.failed          ?? 0,
-    activeSessions:   rawStats.activeSessions   ?? rawStats.sessions        ?? 0,
-    suspiciousLogins: rawStats.suspiciousLogins ?? rawStats.suspicious      ?? 0,
-  };
   // API returns recentLogins, code expects login_audits
   const audits = ssoData.login_audits || ssoData.recentLogins || [];
   // API returns providers_catalog as array of strings OR objects — normalize to objects
@@ -76895,24 +76886,13 @@ function renderSettingsSSO() {
     <div class="fp-section-header">
       <div>
         <h1>🔐 SSO SAML</h1>
-       <div class="fp-section-sub">Google Workspace · Azure AD · Okta · Auth0 · Generic SAML</div>
+       <div class="fp-section-sub">${fpT('Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.')}</div>
       </div>
-       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showSSOProviderModal()">+ ${fpT('Configure SSO')}</button>` : ''}
     </div>
 
-     ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SAML SSO — ${fpT('Pro required')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Google Workspace authentication (Pro) and SAML/Okta/Azure (Ultra).')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Upgrade to Pro')}</button></div>` : ''}
-
-    ${aiBlock(
-       `${fpT('{count} active SSO provider(s).', { count: stats.activeProviders || 0 })} ${fpT('{count} failed sign-in attempt(s) detected in the last hour.', { count: stats.failedLogins || 0 })} ${stats.suspiciousLogins > 0 ? '<strong>⚠️ ' + fpT('{count} suspicious sign-in(s)', { count: stats.suspiciousLogins }) + '</strong>' : fpT('No suspicious activity.')}`,
-       [fpT('Configure Google Workspace'), fpT('Enable SAML'), fpT('Audit sign-ins')]
-    )}
-
-    <!-- STATS -->
-    <div class="fp-stat-row fp-mb-16">
-       ${statCard(fpT('SSO providers'), String(stats.totalProviders || 0), fpT('{count} active', { count: stats.activeProviders || 0 }), 'up')}
-       ${statCard(fpT('Logged sign-ins'), String(stats.totalLogins || 0), fpT('{count} failures', { count: stats.failedLogins || 0 }), stats.failedLogins > 0 ? 'down' : 'up')}
-       ${statCard(fpT('Active sessions'), String(stats.activeSessions || 0), fpT('currently active'), 'up')}
-       ${statCard(fpT('Security alerts'), String(stats.suspiciousLogins || 0), fpT('risk score ≥70'), stats.suspiciousLogins > 0 ? 'down' : 'up')}
+    <div class="fp-card fp-mb-16" style="border-color:rgba(245,158,11,0.3)">
+      <div class="fp-card-title">${fpT('Bientôt disponible')}</div>
+      <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.')}</div>
     </div>
 
     <!-- TABS -->
@@ -76929,7 +76909,7 @@ function renderSettingsSSO() {
       <!-- ACTIVE PROVIDERS -->
       ${providers.length > 0 ? `
         <div class="fp-card fp-mb-16">
-           <div class="fp-card-title" style="margin-bottom:12px">✅ ${fpT('Configured providers')}</div>
+           <div class="fp-card-title" style="margin-bottom:12px">🔒 ${fpT('Bientôt disponible')}</div>
           ${providers.map(p => `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="width:8px;height:8px;border-radius:50%;background:${p.enabled ? 'var(--fp-success)' : 'var(--fp-text-faint)'}"></div>
@@ -76938,7 +76918,7 @@ function renderSettingsSSO() {
                  <div style="font-size:10px;color:var(--fp-text-faint)">${p.provider_type} · ${p.domain ? '@' + p.domain : fpT('All domains')}</div>
               </div>
               <div style="display:flex;gap:6px;align-items:center">
-                <button class="fp-toggle${p.enabled ? ' on' : ''}" onclick="window.FP_SSO_API?.updateProvider('${p.id}',{enabled:${!p.enabled}}).then(()=>{window.FP_SSO_API.load();render(STATE.currentSection)})"></button>
+                <span style="font-size:10px;color:var(--fp-text-faint)">${fpT('Bientôt disponible')}</span>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_SSO_API?.deleteProvider('${p.id}').then(()=>{showToast('success', fpT('Provider supprimé'));window.FP_SSO_API.load();render(STATE.currentSection)})">✕</button>
               </div>
             </div>
@@ -76948,7 +76928,7 @@ function renderSettingsSSO() {
 
       <!-- CATALOG -->
       <div class="fp-card">
-       <div class="fp-card-title" style="margin-bottom:14px">🔑 ${fpT('Available providers')}</div>
+       <div class="fp-card-title" style="margin-bottom:14px">🔑 ${fpT('Bientôt disponible')}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
           ${[
               {name:'Google Workspace', protocol:'OAuth 2.0', plan:'Pro',   id:'google_workspace', icon:'🏢'},
@@ -76964,7 +76944,7 @@ function renderSettingsSSO() {
                   <span style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">${SSO_LOGOS[p.id] || '<span>'+p.icon+'</span>'}</span>
                   <div style="flex:1">
                      <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">${escHtml(CATALOG_META[p.id] ? fpT(p.name) : p.name)}<span style="font-size:9px;font-weight:700;padding:1px 6px;background:rgba(99,102,241,0.12);color:#6366f1;border-radius:8px;border:1px solid rgba(99,102,241,0.3)">${fpT('Coming soon')}</span></div>
-                    <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.protocol||'SSO')} · ${escHtml(p.plan||'')}</div>
+                    <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(p.protocol||'SSO')} · ${fpT('Bientôt disponible')}</div>
                   </div>
                 </div>
                 <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;padding:3px 0">🔜 ${fpT('Bientôt disponible')}</div>
@@ -76974,39 +76954,8 @@ function renderSettingsSSO() {
       </div>
     ` : activeTab === 'policy' ? `
       <div class="fp-card">
-       <div class="fp-card-title" style="margin-bottom:16px">⚙️ ${fpT('Enterprise authentication policies')}</div>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          ${[
-            {label:'Forcer le SSO pour tous', desc:'Les membres ne peuvent se connecter que via SSO', id:'enforce_sso', active:false, req:'Pro'},
-            {label:'Restreindre aux domaines autorisés', desc:'Seuls les emails @votre-domaine.com sont acceptés', id:'domain_restrict', active:false, req:'Pro'},
-            {label:'Forcer MFA', desc:'Multi-facteur obligatoire pour tous les membres', id:'enforce_mfa', active:false, req:'Ultra'},
-            {label:'Provisioning automatique', desc:'Créer des comptes automatiquement via SSO', id:'auto_provision', active:true, req:'Pro'},
-            {label:'Détection d\'IP suspecte', desc:'Bloquer automatiquement les IP à risque élevé', id:'ip_block', active:false, req:'Ultra'},
-            {label:'Session timeout', desc:'Déconnexion automatique après inactivité (8h)', id:'session_timeout', active:true, req:'Pro'},
-          ].map(pol => {
-            const locked = (pol.req === 'Ultra' && !isUltra) || (pol.req === 'Pro' && isStd);
-            return `
-              <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);opacity:${locked ? '0.5' : '1'}">
-                <div style="flex:1">
-                   <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${fpT(pol.label)}</div>
-                   <div style="font-size:11px;color:var(--fp-text-faint)">${fpT(pol.desc)}</div>
-                </div>
-                <span style="font-size:9px;color:var(--fp-text-faint);margin-right:4px">${pol.req}</span>
-                ${locked
-                  ? `<span style="font-size:10px;color:var(--fp-text-faint)">🔒</span>`
-                  : `<button class="fp-toggle${pol.active ? ' on' : ''}" onclick="(function(btn){var active=btn.classList.contains('on');apiAction('PATCH','/api/sso/policies',{[btn.dataset.policy||'policy']:!active}).then(r=>{if(r)btn.classList.toggle('on');else showToast('error', fpT('Erreur'));}).catch(()=>showToast('error', fpT('Erreur')));})(this)"></button>`
-                }
-              </div>
-            `;
-          }).join('')}
-        </div>
-        <div style="margin-top:14px">
-           <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Allowed domains (comma-separated)')}</label>
-           <input class="fp-input" placeholder="your-domain.com, subsidiary.com" ${isStd ? 'disabled' : ''}/>
-        </div>
-        <div style="margin-top:10px;display:flex;justify-content:flex-end">
-           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){var form=document.querySelector('.fp-sso-policies');var data={};form&&form.querySelectorAll('[data-policy]').forEach(t=>{data[t.dataset.policy]=t.classList.contains('on');});apiAction('PATCH','/api/sso/policies',data).then(r=>showToast('success', fpT('Policies saved'))).catch(()=>showToast('error', fpT('Save error')));})()">${fpT('Save')}</button>
-        </div>
+        <div class="fp-card-title" style="margin-bottom:8px">⚙️ ${fpT('Bientôt disponible')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.')}</div>
       </div>
     ` : activeTab === 'audit' ? `
       <div class="fp-card">
@@ -77030,9 +76979,6 @@ function renderSettingsSSO() {
             </table>
           </div>
         `}
-        <div style="margin-top:12px;display:flex;justify-content:center">
-           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info', fpT('Test sign-in logged'));window.FP_SSO_API?.load()">🧪 ${fpT('Log test sign-in')}</button>
-        </div>
       </div>
     ` : `
       <!-- SESSIONS -->
@@ -77055,53 +77001,6 @@ function renderSettingsSSO() {
       </div>
     `}
 
-    <!-- SSO PROVIDER MODAL -->
-    <div id="fp-sso-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px">
-         <div id="fp-sso-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">🔐 ${fpT('Configure SSO')}</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-           <input id="sso-name" class="fp-input" placeholder="${fpT('Name (e.g. Google Workspace ACME)')}"/>
-           <input id="sso-domain" class="fp-input" placeholder="${fpT('Domain (e.g. acme.com)')}"/>
-          <input id="sso-client-id" class="fp-input" placeholder="Client ID / Entity ID"/>
-          <input id="sso-client-secret" class="fp-input" type="password" placeholder="Client Secret / Certificate"/>
-          <input id="sso-metadata-url" class="fp-input" placeholder="Metadata URL (SAML) ou Authorization URL"/>
-          <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-             ℹ️ ${fpT('In production, SSO redirects to your Identity Provider for secure authentication.')}
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-           <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-sso-modal').style.display='none'">${fpT('Cancel')}</button>
-           <button class="fp-btn fp-btn-primary" onclick="window._submitSSOProvider()">${fpT('Configure')}</button>
-        </div>
-      </div>
-    </div>
-    <script>
-    window._ssoTab = window._ssoTab || 'providers';
-    window._currentSSOType = null;
-    window._showSSOProviderModal = function(type, name) {
-      window._currentSSOType = type || 'google_workspace';
-      document.getElementById('fp-sso-modal-title').textContent = '🔐 Configurer ' + (name || 'SSO');
-      document.getElementById('fp-sso-modal').style.display = 'flex';
-    };
-    window._submitSSOProvider = async function() {
-      const name = document.getElementById('sso-name').value.trim();
-      const domain = document.getElementById('sso-domain').value.trim();
-      const clientId = document.getElementById('sso-client-id').value.trim();
-      const secret = document.getElementById('sso-client-secret').value.trim();
-      const metadataUrl = document.getElementById('sso-metadata-url').value.trim();
-      if (!name) { showToast('error', fpT('Nom requis')); return; }
-      showToast('info', fpT('Configuration SSO en cours…'));
-      try {
-        const r = await window.FP_SSO_API.createProvider({ providerType: window._currentSSOType, name, domain, clientId, clientSecret: secret, metadataUrl });
-        if (r?.ok) {
-          document.getElementById('fp-sso-modal').style.display = 'none';
-          showToast('success', fpT('Provider SSO configuré !'));
-          await window.FP_SSO_API.load();
-          render(STATE.currentSection);
-        } else showToast('error', r?.error || 'Erreur');
-      } catch(e) { showToast('error', String(e)); }
-    };
-    </script>
   `;
 }
 

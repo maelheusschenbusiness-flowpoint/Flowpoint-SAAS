@@ -36,6 +36,7 @@ import {
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
+import { hasFeature } from "../services/billing-service.js";
 
 const ONE_TIME_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 const expectedReplacementAvailability = (key: string) =>
@@ -287,9 +288,20 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["pro"].customDomain).toBe(false);
   });
 
-  it("FEATURE_FLAGS.ultra.customDomain is true (customDomain bundled in Ultra)", () => {
+  it("preserves Ultra's customDomain entitlement without advertising operational routing", () => {
     expect(PLAN_INCLUDED_ADDONS["ultra"]?.has("customDomain")).toBe(true);
-    expect(FEATURE_FLAGS["ultra"].customDomain).toBe(true);
+    expect(FEATURE_FLAGS["ultra"].customDomain).toBe(false);
+  });
+
+  it("keeps SSO and SLA plan features unavailable until their flows are implemented", () => {
+    for (const tier of ["standard", "pro", "ultra", "agency"] as const) {
+      expect(FEATURE_FLAGS[tier].sso).toBe(false);
+      expect(FEATURE_FLAGS[tier].saml).toBe(false);
+    }
+    expect(hasFeature("sso-enterprise", "ultra")).toBe(false);
+    expect(hasFeature("saml", "ultra")).toBe(false);
+    expect(hasFeature("custom-domain", "ultra")).toBe(false);
+    expect(hasFeature("sla-999", "ultra")).toBe(false);
   });
 
   it("prioritySupport is neither bundled nor enabled because it is not implemented", () => {
