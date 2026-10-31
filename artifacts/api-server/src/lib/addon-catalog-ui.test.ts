@@ -200,12 +200,12 @@ describe("add-on catalogue UI commercial gates", () => {
     );
   });
 
-  it("keeps the UI button and backend authorization aligned for all 36 non-protected add-ons on all plans", () => {
+  it("keeps the UI button and backend authorization aligned for all 32 non-protected add-ons on all plans", () => {
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
-    expect(keys).toHaveLength(36);
+    expect(keys).toHaveLength(32);
 
     for (const key of keys) {
       const removed = REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key);
@@ -238,7 +238,7 @@ describe("add-on catalogue UI commercial gates", () => {
     }
   });
 
-  it("publishes the exact 36-key non-protected plan matrix and omits retired offers", async () => {
+  it("publishes the canonical catalogue and omits retired offers", async () => {
     const app = express();
     app.use(plansRouter);
     const response = await request(app).get("/plans/catalog").expect(200);
@@ -250,7 +250,7 @@ describe("add-on catalogue UI commercial gates", () => {
       addon.key,
       addon,
     ]));
-    expect(entries.size).toBe(39);
+    expect(entries.size).toBe(35);
     const billingPlansById = new Map(
       ADDON_CATALOG.map(addon => [addon.id, addon.allowedPlans]),
     );
@@ -263,7 +263,7 @@ describe("add-on catalogue UI commercial gates", () => {
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
-    expect(keys).toHaveLength(36);
+    expect(keys).toHaveLength(32);
     expect(entries.has("prioritySupport")).toBe(false);
 
     for (const key of keys) {
@@ -306,6 +306,10 @@ describe("add-on catalogue UI commercial gates", () => {
       "enterprisePermissions",
       "advancedWebhooks",
       "zapierIntegration",
+      "auditsPack200",
+      "auditsPack1000",
+      "pdfPack200",
+      "exportsPack1000",
     ];
     const replacements = [
       ["gbpPerformanceLeads", 15],
@@ -323,6 +327,7 @@ describe("add-on catalogue UI commercial gates", () => {
       expect(ADDON_DEFINITIONS[key], `${key} remains defined for existing entitlements`).toBeDefined();
       expect(entries.has(key), `${key} is absent from new sales`).toBe(false);
     }
+    expect(response.body.retiredAddonKeys).toEqual(expect.arrayContaining(retired));
     for (const [key, priceEur] of replacements) {
       expect(entries.has(key), `${key} is present in the canonical catalog`).toBe(true);
       expect(ADDON_DEFINITIONS[key]?.priceEur, `${key} has the approved price`).toBe(priceEur);
@@ -349,16 +354,16 @@ describe("add-on catalogue UI commercial gates", () => {
     }
 
     const publicBillingIds = new Set(ADDON_CATALOG.map(addon => addon.id));
-    expect(ADDON_CATALOG).toHaveLength(39);
+    expect(ADDON_CATALOG).toHaveLength(35);
     for (const key of retired) expect(publicBillingIds.has(key)).toBe(false);
     for (const [key] of replacements) expect(publicBillingIds.has(key)).toBe(true);
   });
 
-  it("matches the marketplace cards to the purchasable monthly backend catalogue", () => {
+  it("keeps retired capacity packs out of the marketplace and matches the monthly catalogue", () => {
     const match = dashboard.match(/const allAddons = \[([\s\S]*?)\n\s*\];/);
     expect(match, "add-on card definitions should be present").not.toBeNull();
     const keys = [...(match?.[1] ?? "").matchAll(/key:\s*'([^']+)'/g)].map(item => item[1]);
-    expect(keys).toHaveLength(36);
+    expect(keys).toHaveLength(32);
     expect(new Set(keys).size).toBe(keys.length);
     expect(exportedDashboard).toBe(dashboard);
     const monthlyCatalogKeys = Object.entries(ADDON_DEFINITIONS)
@@ -367,7 +372,9 @@ describe("add-on catalogue UI commercial gates", () => {
       .sort();
     expect([...keys].sort()).toEqual(monthlyCatalogKeys);
     for (const key of ["auditsPack200", "auditsPack1000", "pdfPack200", "exportsPack1000"]) {
-      expect(keys, `${key} is present in the backend catalogue`).toContain(key);
+      expect(RETIRED_ADDONS.has(key)).toBe(true);
+      expect(keys, `${key} must not be listed for new purchases`).not.toContain(key);
+      expect(dashboard, `${key} remains manageable as a historical entitlement`).toContain(key);
     }
     for (const key of [
       "gbpSlots10",
@@ -397,6 +404,8 @@ describe("add-on catalogue UI commercial gates", () => {
 
   it("renders the pricing cards from the canonical API catalogue, not retired static offers", () => {
     expect(pricing).toContain("_fpRenderAddonCards(cat)");
+    expect(pricing).toContain("cat.retiredAddonKeys");
+    expect(pricing).toContain("retiredCartItemsRemoved");
     expect(pricing).toContain("cat.addons.filter(function (addon) { return !addon.oneTime; })");
     expect(pricing).toContain("data-addon-key");
     expect(pricing).toContain("role=\"alert\"");
@@ -599,6 +608,10 @@ describe("add-on catalogue UI commercial gates", () => {
       "enterprisePermissions",
       "advancedWebhooks",
       "zapierIntegration",
+      "auditsPack200",
+      "auditsPack1000",
+      "pdfPack200",
+      "exportsPack1000",
     ];
     for (const key of retired) {
       expect(RETIRED_ADDONS.has(key)).toBe(true);

@@ -2103,7 +2103,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
              and grant nothing.                                                */
       const _aoKeys = Object.keys(addonsResolved).filter(k => addonsResolved[k]);
       const _aoCreditPacks = _aoKeys.filter(k => AI_CREDIT_PACKS.has(k));
-      const _aoRecurring   = _aoKeys.filter(k => !AI_CREDIT_PACKS.has(k) && getAddonPriceId(k));
+       const _aoRecurringCandidates = _aoKeys.filter(k => !AI_CREDIT_PACKS.has(k) && getAddonPriceId(k));
+       let _aoRecurring: string[] = [];
 
       if (_aoKeys.length === 0) {
         logger.info({ planKey }, "[PublicBilling] finalize: empty cart, nothing to provision");
@@ -2149,7 +2150,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
       /* Recurring add-ons — add to existing plan subscription, or create new as fallback.
          Month 1 was already charged via the PaymentIntent. */
-      if (_aoRecurring.length > 0) {
+      if (_aoRecurringCandidates.length > 0) {
         try {
           /* Ensure _authenticatedOrgId is a UUID — legacy email-keyed sessions must be
              resolved to their canonical organizations.id before DB writes that have a UUID FK. */
@@ -2175,176 +2176,111 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           /* Resolve the subscriber's Stripe customer (recovers deleted customers). */
           const { loadBillingContext: _aoLbc } = await import("../services/billing-context.js");
           const _aoCtx = await _aoLbc(_authenticatedOrgId);
-          const { ensureStripeCustomer: _aoEnsure } = await import("../services/ensure-stripe-customer.js");
-          const _aoCustomerId = intentCustomerId || await _aoEnsure(_authenticatedOrgId, _aoCtx, stripeKey);
-          if (!_aoCustomerId) throw new Error("no_stripe_customer");
+          const _aoPlanIncluded = PLAN_INCLUDED_ADDONS[String(_aoCtx.plan ?? "").toLowerCase()] ?? new Set<string>();
+          _aoRecurring = _aoRecurringCandidates.filter(k => !_aoPlanIncluded.has(k));
+          if (_aoRecurring.length === 0) {
+            logger.info({ orgId: _authenticatedOrgId, addonKeys: _aoRecurringCandidates },
+              "[PublicBilling] finalize: selected add-ons already included in the subscriber plan");
+          }
+          if (_aoRecurring.length > 0) {
+            const { ensureStripeCustomer: _aoEnsure } = await import("../services/ensure-stripe-customer.js");
+            const _aoCustomerId = intentCustomerId || await _aoEnsure(_authenticatedOrgId, _aoCtx, stripeKey);
+            if (!_aoCustomerId) throw new Error("no_stripe_customer");
 
-          await stripe.paymentMethods.attach(paymentMethodId!, { customer: _aoCustomerId }).catch(() => {});
+            await stripe.paymentMethods.attach(paymentMethodId!, { customer: _aoCustomerId }).catch(() => {});
 
-          const _aoItems = _aoRecurring.map(k => ({
-            price: getAddonPriceId(k)!,
-            quantity: typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1,
-          }));
-
-          /* List all subscriptions for the customer once — used for both idempotency check
-             and finding the existing plan subscription. */
-          const _aoExisting = await stripe.subscriptions.list({ customer: _aoCustomerId, status: "all", limit: 20 });
-          const _aoWanted = new Set(_aoItems.map(i => i.price));
-
-          /* Idempotency: reuse a live add-on sub that matches this exact intent + price set. */
-          const _aoReusable = _aoExisting.data.find((s: Stripe.Subscription) =>
-            (s.status === "active" || s.status === "trialing") &&
-            s.metadata?.["source"] === "checkout_payment_addons" &&
-            s.metadata?.["origin_intent"] === intentId &&
-            s.items.data.every((i: { price: { id: string } }) => _aoWanted.has(i.price.id)));
-
-          /* Existing plan subscription: any active/trialing sub that is NOT an add-on-only sub
-             created by a previous finalize-checkout. Adding items here avoids a second subscription. */
-          const _aoPlanSub = !_aoReusable
-            ? _aoExisting.data.find((s: Stripe.Subscription) =>
-                (s.status === "active" || s.status === "trialing") &&
-                !s.metadata?.["source"]?.toString().startsWith("checkout_payment_addons"))
-            : null;
-
-          let _aoSubId: string;
-          if (_aoReusable) {
-            _aoSubId = _aoReusable.id;
-            logger.info({ subscriptionId: _aoSubId }, "[PublicBilling] finalize: reusing addon subscription (idempotent)");
-          } else if (_aoPlanSub) {
-            /* Add add-on items to the subscriber's existing plan subscription so no second
-               subscription is created. proration_behavior:"none" because month 1 was already
-               collected via the PaymentIntent — Stripe will bill the add-on at next renewal.
-               CRITICAL: check for an existing item with the same Price ID before creating —
-               Stripe rejects a duplicate create with "already using that Price". Use UPDATE
-               (quantity++) instead. */
-            for (const item of _aoItems) {
-              type SubItem = { id: string; price?: { id?: string }; quantity?: number };
-              const _existingAoItem: SubItem | undefined = (_aoPlanSub.items?.data ?? []).find(
-                (it: SubItem) => it.price?.id === item.price
-              );
-              if (_existingAoItem) {
-                // Price already on this subscription — increment quantity
-                const _newQty = ((_existingAoItem as SubItem).quantity ?? 0) + (item.quantity ?? 1);
-                await stripe.subscriptionItems.update(_existingAoItem.id, {
-                  quantity:           _newQty,
-                  proration_behavior: "none",
-                });
-                logger.info({ subscriptionId: _aoPlanSub.id, priceId: item.price, oldQty: _existingAoItem.quantity, newQty: _newQty },
-                  "[PublicBilling] finalize: addon quantity updated on existing subscription item (idempotent create-vs-update)");
-              } else {
-                await (stripe as unknown as { subscriptionItems: { create: (p: Record<string, unknown>) => Promise<unknown> } })
-                  .subscriptionItems.create({
-                    subscription:       _aoPlanSub.id,
-                    price:              item.price,
-                    quantity:           item.quantity,
-                    proration_behavior: "none",
-                  });
-              }
-            }
-            _aoSubId = _aoPlanSub.id;
-            logger.info({ subscriptionId: _aoSubId, addons: _aoRecurring },
-              "[PublicBilling] finalize: addon items added to existing plan subscription (no second sub created)");
-          } else {
-            /* No existing plan subscription found — create a new add-on subscription as fallback.
-               This covers non-plan subscribers or edge cases where no active sub was found. */
+            const _aoItems = _aoRecurring.map(k => ({
+              price: getAddonPriceId(k)!,
+              quantity: typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1,
+            }));
+            const _aoNow = Math.floor(Date.now() / 1000);
+            const _aoRenewal = Math.max(
+              (intentCreatedUnix ?? _aoNow) + 30 * 24 * 60 * 60,
+              _aoNow + 30 * 24 * 60 * 60,
+            );
             const _aoSub = await createSubscriptionForAttempt({
               stripe,
-              intentId: intentId,
-              scope:    "addon_only",
-              plan:     "addon_only",
-              priceId:  _aoItems.map(i => String(i.price)).sort().join("+"),
-              orgRef:   _authenticatedOrgId,
+              intentId,
+              scope: "addon_only",
+              plan: "addon_only",
+              priceId: _aoItems.map(i => `${i.price}:${i.quantity}`).sort().join("+"),
+              orgRef: _authenticatedOrgId,
               params: {
-                customer:               _aoCustomerId,
-                items:                  _aoItems,
-                trial_end:              (intentCreatedUnix ?? Math.floor(Date.now() / 1000)) + 30 * 24 * 60 * 60,
+                customer: _aoCustomerId,
+                items: _aoItems,
+                trial_end: _aoRenewal,
                 default_payment_method: paymentMethodId!,
                 metadata: {
-                  addons:         JSON.stringify(Object.fromEntries(_aoRecurring.map(k => [k, addonsResolved[k]]))),
-                  source:         "checkout_payment_addons",
-                  origin_intent:  intentId,
+                  addonSub: "true",
+                  addons: JSON.stringify(Object.fromEntries(_aoRecurring.map(k => [k, addonsResolved[k]]))),
+                  source: "checkout_payment_addons",
+                  origin_intent: intentId,
                   flowpoint_cart: "true",
-                  org_id:         _authenticatedOrgId,
-                  orgId:          _authenticatedOrgId,
+                  org_id: _authenticatedOrgId,
+                  orgId: _authenticatedOrgId,
                 },
               },
             });
-            _aoSubId = _aoSub.id;
-          }
+            if (!["active", "trialing", "past_due"].includes(_aoSub.status)) {
+              throw new Error(`addon_subscription_not_live:${_aoSub.status}`);
+            }
+            const _aoSubId = _aoSub.id;
 
-          /* Immediate entitlement — the webhook reconciliation remains the
-             long-term source of truth, but the user just paid and must not
-             wait on webhook latency to use what they bought. */
-          const { activateAddon: _aoActivate } = await import("../services/addons-service.js");
-          for (const k of _aoRecurring) {
-            const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
-            await _aoActivate(k, _authenticatedOrgId, qty);
-            // Broadcast so any open dashboard tab reflects the new entitlement immediately.
-            try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
-          }
-          logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring, subscriptionId: _aoSubId },
-            "[PublicBilling] finalize: addon-only purchase provisioned");
-        } catch (aoErr) {
-          logger.error({ aoErr, orgId: _authenticatedOrgId, addons: _aoRecurring },
-            "[PublicBilling] finalize: Stripe addon sub step failed after payment — attempting local activation fallback");
-          // Payment was already received. Attempt direct DB entitlement so the user
-          // gets access immediately; the Stripe webhook will reconcile the subscription.
-          // FK-aware: if the session org_id has no organizations row (FK 23503), retry
-          // with the orgId embedded in the PaymentIntent metadata (set at PI creation time).
-          const _piMetaOrgId: string | null = (intentMeta["org_id"] || intentMeta["orgId"]) ?? null;
-          const _uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          // Candidate org IDs to try in order (deduplicated, UUIDs only)
-          const _fallbackCandidates: string[] = [];
-          if (_authenticatedOrgId) _fallbackCandidates.push(_authenticatedOrgId);
-          if (_piMetaOrgId && _uuidRe.test(_piMetaOrgId) && _piMetaOrgId !== _authenticatedOrgId) {
-            _fallbackCandidates.push(_piMetaOrgId);
-          }
-          try {
-            const { activateAddon: _aoFallback } = await import("../services/addons-service.js");
-            let _fallbackSucceeded = false;
-            let _usedOrgId: string | null = null;
-            for (const _candidateOrgId of _fallbackCandidates) {
-              const _candidateResults = await Promise.all(_aoRecurring.map(async k => {
-                const qty = typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1;
-                return _aoFallback(k, _candidateOrgId, qty).catch(() => false as boolean | false);
-              }));
-              if (_candidateResults.every(Boolean)) {
-                _fallbackSucceeded = true;
-                _usedOrgId = _candidateOrgId;
-                // Broadcast to the org that actually received the entitlement
-                for (const k of _aoRecurring) {
-                  try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _candidateOrgId); } catch (_) { /* non-fatal */ }
+            /* Entitlement quantities are the sum of the same item across all
+               live subscriptions, including legacy plan-subscription items.
+               This preserves independent renewal dates per checkout and avoids
+               migrating historical add-on lines onto the plan subscription. */
+            const _aoAllSubs = await stripe.subscriptions.list({
+              customer: _aoCustomerId,
+              status: "all",
+              limit: 100,
+              expand: ["data.items.data.price"],
+            });
+            const _aoLiveSubs = [..._aoAllSubs.data] as Stripe.Subscription[];
+            if (!_aoLiveSubs.some(s => s.id === _aoSubId)) {
+              _aoLiveSubs.push(_aoSub as Stripe.Subscription);
+            }
+            const _aoLive = _aoLiveSubs.filter(s =>
+              s.status === "active" || s.status === "trialing" || s.status === "past_due"
+            );
+            const { activateAddon: _aoActivate } = await import("../services/addons-service.js");
+            for (const k of _aoRecurring) {
+              const expectedPriceId = getAddonPriceId(k);
+              let totalQuantity = 0;
+              for (const sub of _aoLive) {
+                for (const item of sub.items?.data ?? []) {
+                  const rawPrice = item.price as unknown;
+                  const itemPriceId = typeof rawPrice === "string"
+                    ? rawPrice
+                    : (rawPrice as { id?: string } | null)?.id ?? "";
+                  const metadataKey = (item as Stripe.SubscriptionItem & { metadata?: Record<string, string> }).metadata?.["addonKey"];
+                  if (itemPriceId !== expectedPriceId && metadataKey !== k) continue;
+                  totalQuantity += Math.max(1, Math.floor(Number(item.quantity) || 1));
                 }
-                break;
               }
-              logger.warn({ candidateOrgId: _candidateOrgId ? String(_candidateOrgId).slice(0,8)+"…" : null, addons: _aoRecurring },
-                "[PublicBilling] finalize: fallback candidate failed — trying next");
+              const quantity = totalQuantity || (typeof addonsResolved[k] === "number" ? (addonsResolved[k] as number) : 1);
+              await _aoActivate(k, _authenticatedOrgId, quantity);
+              try { store.broadcast({ type: "fp:addon:activated", addonKey: k }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
             }
-            if (_fallbackSucceeded) {
-              logger.info({ orgId: _usedOrgId ? String(_usedOrgId).slice(0,8)+"…" : null, addons: _aoRecurring },
-                "[PublicBilling] finalize: local addon activation succeeded as fallback (webhook will reconcile Stripe)");
-              // Update _authenticatedOrgId to the one that worked for the success response
-              if (_usedOrgId && _usedOrgId !== _authenticatedOrgId) _authenticatedOrgId = _usedOrgId;
-              // Fall through to the res.json success below
-            } else {
-              logger.error({ addons: _aoRecurring, candidates: _fallbackCandidates.map(c => c.slice(0,8)+"…") },
-                "[PublicBilling] finalize: local addon activation failed for all candidates");
-              res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
-              return;
-            }
-          } catch (fallbackErr) {
-            logger.error({ fallbackErr, orgId: _authenticatedOrgId },
-              "[PublicBilling] finalize: fallback activation threw");
-            res.status(500).json({ error: "Paiement reçu mais add-on non activé. Contactez le support.", addonProvisioningFailed: true });
-            return;
+            logger.info({ orgId: _authenticatedOrgId, addons: _aoRecurring, subscriptionId: _aoSubId },
+              "[PublicBilling] finalize: dedicated add-on subscription provisioned");
           }
+        } catch (aoErr) {
+          logger.error({ aoErr, orgId: _authenticatedOrgId, addons: _aoRecurringCandidates },
+            "[PublicBilling] finalize: paid add-on could not be provisioned — entitlement withheld for safe retry");
+          res.status(500).json({
+            error: "Paiement reçu, mais l'abonnement de l'add-on n'a pas pu être confirmé. Réessayez ou contactez le support.",
+            addonProvisioningFailed: true,
+            retryable: true,
+          });
+          return;
         }
       }
 
       res.json({
         success: true,
-        checkoutType: _aoRecurring.length > 0 ? "addon_only" : "ai_credits_only",
-        message:      _aoRecurring.length > 0 ? "Add-on activé." : "Crédits activés.",
+        checkoutType: _aoRecurring.length > 0 ? "addon_only" : _aoCreditPacks.length > 0 ? "ai_credits_only" : "addon_only",
+        message:      _aoRecurring.length > 0 ? "Add-on activé." : _aoCreditPacks.length > 0 ? "Crédits activés." : "Add-on déjà inclus.",
         // Include purchased amounts for the confirmation UI in checkout-return.html
         ..._aoTotalCredits > 0 ? { credits: _aoTotalCredits } : {},
         ..._aoRecurring.length > 0 ? { addons: _aoRecurring } : {},

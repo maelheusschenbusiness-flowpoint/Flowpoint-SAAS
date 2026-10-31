@@ -148,12 +148,12 @@ it("does not advertise an unpriced TEST add-on as purchasable and keeps bundled 
   const behavioral = entries.get("behavioralAI")!;
 
   expect(keyword).toMatchObject({ availability: "available", allowedPlans: [] });
-  expect(behavioral).toMatchObject({ availability: "beta", allowedPlans: [] });
+  expect(behavioral).toMatchObject({ availability: "coming_soon", allowedPlans: [] });
   expect(keyword.purchaseStatus).toBe("price_unavailable");
-  expect(behavioral.purchaseStatus).toBe("price_unavailable");
+  expect(behavioral.purchaseStatus).toBe("coming_soon");
   expect(behavioral.includedByPlan).toEqual({ ultra: true });
   expect(plans.PLAN_INCLUDED_ADDONS.ultra.has("behavioralAI")).toBe(true);
-  expect(plans.getAddonStatus("behavioralAI", { included: true })).toBe("included");
+  expect(plans.getAddonStatus("behavioralAI", { included: true })).toBe("coming_soon");
 });
 
 it("keeps offer lifecycle separate from active-mode purchase readiness", async () => {
@@ -167,7 +167,7 @@ it("keeps offer lifecycle separate from active-mode purchase readiness", async (
   expect(plans.getAddonPurchaseStatus("advancedWebhooks")).toBe("retired");
 });
 
-it("keeps the twelve monthly offers and three credit packs blocked without TEST prices", async () => {
+it("keeps historical packs absent and unpriced TEST purchases blocked", async () => {
   const plans = await loadPlans();
   const missingOffers = [
     "monitorsPack10",
@@ -187,9 +187,11 @@ it("keeps the twelve monthly offers and three credit packs blocked without TEST 
     "aiCreditsPack500k",
   ];
   for (const key of missingOffers) {
-    const expectedStatus = ["advancedSeoLab", "backlinkIntelligence"].includes(key)
-      ? "not_sold_separately"
-      : "price_unavailable";
+    const expectedStatus = plans.RETIRED_ADDONS.has(key)
+      ? "retired"
+      : ["advancedSeoLab", "backlinkIntelligence"].includes(key)
+        ? "not_sold_separately"
+        : "price_unavailable";
     expect(plans.getAddonPurchaseStatus(key), key).toBe(expectedStatus);
     expect(plans.getAddonPurchasablePlans(key), key).toEqual([]);
   }
@@ -204,18 +206,24 @@ it("keeps the twelve monthly offers and three credit packs blocked without TEST 
     request(app).get("/billing/plans").expect(200),
   ]);
   for (const key of missingOffers) {
+    if (plans.RETIRED_ADDONS.has(key)) {
+      expect(catalog.body.retiredAddonKeys).toContain(key);
+      expect(catalog.body.addons.find((addon: { key: string }) => addon.key === key)).toBeUndefined();
+      expect(billing.body.addons.find((addon: { id: string }) => addon.id === key)).toBeUndefined();
+      continue;
+    }
     expect(catalog.body.addons.find((addon: { key: string }) => addon.key === key))
       .toMatchObject({
         purchaseStatus: ["advancedSeoLab", "backlinkIntelligence"].includes(key)
-          ? "not_sold_separately"
-          : "price_unavailable",
+            ? "not_sold_separately"
+            : "price_unavailable",
         allowedPlans: [],
       });
     expect(billing.body.addons.find((addon: { id: string }) => addon.id === key))
       .toMatchObject({
         purchaseStatus: ["advancedSeoLab", "backlinkIntelligence"].includes(key)
-          ? "not_sold_separately"
-          : "price_unavailable",
+            ? "not_sold_separately"
+            : "price_unavailable",
         allowedPlans: [],
       });
   }
@@ -250,8 +258,10 @@ it("publishes identical mode-aware purchasable tiers from both catalogue APIs", 
   const plans = await loadPlans(env);
 
   expect(plans.getAddonPurchasablePlans("keywordDomination")).toEqual(["standard", "pro", "ultra"]);
-  expect(plans.getAddonPurchasablePlans("behavioralAI")).toEqual(["standard", "pro"]);
-  expect(plans.getAddonPurchasablePlans("aiForecasting")).toEqual(["standard", "pro"]);
+  expect(plans.getAddonPurchasablePlans("behavioralAI")).toEqual([]);
+  expect(plans.getAddonPurchasablePlans("aiForecasting")).toEqual([]);
+  expect(plans.getAddonPurchaseStatus("behavioralAI")).toBe("coming_soon");
+  expect(plans.getAddonPurchaseStatus("aiForecasting")).toBe("coming_soon");
   expect(plans.getAddonPurchasablePlans("retention90d")).toEqual(["standard"]);
   expect(plans.getAddonPurchasablePlans("retention365d")).toEqual(["standard", "pro"]);
   expect(plans.getAddonPurchasablePlans("customDomain")).toEqual([]);

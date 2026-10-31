@@ -353,14 +353,10 @@ async function persistAddonsFromSubscription(
       }
     }
 
-    // ── 2. Deactivate stale paid addons — only for subscription.updated / deleted ──
-    // Never run on subscription.created: the newly-created add-on subscription
-    // would only contain the new addon, causing all other valid addons to be revoked.
-    if (!reconcileDeactivations) return;
-
-    // Build the UNION of all addon keys across ALL live subscriptions for this customer.
-    // "Live" = active | trialing | past_due (customer still has access).
-    let aggregateAddonKeys: Set<string>;
+    // Build the aggregate add-on quantities across every live subscription.
+    // New PaymentIntent checkouts can have separate renewal dates, so the same
+    // quantity add-on may exist on more than one dedicated subscription.
+    let aggregateAddonQuantities: Map<string, number>;
     try {
       if (!stripeCustomerId) {
         // No customer ID available — cannot safely aggregate; skip deactivation (fail-open).
@@ -397,7 +393,7 @@ async function persistAddonsFromSubscription(
         s.status === "active" || s.status === "trialing" || s.status === "past_due"
       );
 
-      aggregateAddonKeys = new Set<string>();
+      aggregateAddonQuantities = new Map<string, number>();
       for (const sub of liveSubs) {
         for (const item of sub.items.data) {
           // Defensive: price may be an object OR a bare string depending on expand status
@@ -419,18 +415,61 @@ async function persistAddonsFromSubscription(
               addonKey = metaKey;
             }
           }
-          if (addonKey) aggregateAddonKeys.add(addonKey);
+          if (addonKey) {
+            const itemQuantity = QTY_ADDONS.has(addonKey)
+              ? Math.max(1, Math.floor(Number(item.quantity) || 1))
+              : 1;
+            aggregateAddonQuantities.set(
+              addonKey,
+              (aggregateAddonQuantities.get(addonKey) ?? 0) + itemQuantity,
+            );
+          }
         }
       }
-      logger.info({ orgId, stripeCustomerId, liveSubCount: liveSubs.length, addonUnion: Array.from(aggregateAddonKeys) },
-        "[Webhook] reconcile: built aggregate addon key union across all live subscriptions");
+      // Stripe can briefly omit a just-created subscription from list results.
+      // Include the event object itself when it is live, without double-counting.
+      const eventSubId = String(subscription["id"] ?? "");
+      if (
+        eventSubId &&
+        liveSubs.every(s => s.id !== eventSubId) &&
+        (subscription["status"] === "active" || subscription["status"] === "trialing" || subscription["status"] === "past_due")
+      ) {
+        for (const [key, value] of Object.entries(addons)) {
+          if (value !== true && !(typeof value === "number" && value > 0)) continue;
+          const quantity = QTY_ADDONS.has(key)
+            ? Math.max(1, Math.floor(Number(value) || 1))
+            : 1;
+          aggregateAddonQuantities.set(key, (aggregateAddonQuantities.get(key) ?? 0) + quantity);
+        }
+      }
+      logger.info({
+        orgId,
+        stripeCustomerId,
+        liveSubCount: liveSubs.length,
+        addonQuantities: Object.fromEntries(aggregateAddonQuantities),
+      }, "[Webhook] reconcile: aggregated add-on quantities across all live subscriptions");
     } catch (stripeErr) {
       // Stripe API failure — fail-open: skip deactivation entirely, never revoke on incomplete data
       logger.error({ stripeErr, orgId, stripeCustomerId }, "[Webhook] reconcile: Stripe subscription list failed — skipping deactivation (fail-open)");
       return;
     }
 
-    // ── 3. Deactivate paid addons absent from the aggregate union ────────────
+    // Reconcile DB quantities from the live Stripe aggregate. This also runs on
+    // subscription.created so a second pack purchase cannot overwrite the
+    // cumulative entitlement with only the latest subscription's quantity.
+    for (const [key, quantity] of aggregateAddonQuantities) {
+      if (planIncluded.has(key)) continue;
+      const activated = await activateAddon(key, orgId, quantity);
+      if (!activated) {
+        logger.warn({ key, orgId, quantity }, "[Webhook] aggregate add-on activation returned false");
+      }
+    }
+
+    // Deactivate stale paid addons only for subscription.updated / deleted.
+    // Created events aggregate quantities but never revoke unrelated add-ons.
+    if (!reconcileDeactivations) return;
+
+    // ── 3. Deactivate paid addons absent from the aggregate set ───────────────
     const { pool: pgPool } = await import("@workspace/db");
     const client = await pgPool.connect();
     try {
@@ -445,7 +484,7 @@ async function persistAddonsFromSubscription(
         // Only deactivate addons that have a Stripe price ID (paid add-ons)
         if (!APIDS[key]) continue;
         // If not found in ANY live subscription → deactivate
-        if (!aggregateAddonKeys.has(key)) {
+        if (!aggregateAddonQuantities.has(key)) {
           await deactivateAddon(key, orgId).catch(err =>
             logger.warn({ err, key, orgId }, "[Webhook] reconcile: Failed to deactivate removed addon")
           );

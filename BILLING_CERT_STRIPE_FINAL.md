@@ -1,7 +1,7 @@
 # Certification Finale Billing FlowPoint — Stripe Test
 
 Date: 2026-08-15T21:53:41.156Z
-**Total: 107 | PASS: 107 | FAIL: 0**
+**Total: 107 | PASS: 106 | FAIL: 1**
 
 | Sec | Scénario | Stripe Test | Webhook | DB | Entitlement | API | RÉSULTAT |
 |-----|----------|-------------|---------|-----|-------------|-----|----------|
@@ -32,7 +32,7 @@ Date: 2026-08-15T21:53:41.156Z
 | B | B-incl: ultra→keywordDomination | N/A(bundled) | N/A | N/A | PASS | PASS | **PASS** |
 | B | B-incl: ultra→behavioralAI | N/A(bundled) | N/A | N/A | PASS | PASS | **PASS** |
 | B | B-incl: ultra→aiForecasting | N/A(bundled) | N/A | N/A | PASS | PASS | **PASS** |
-| B | B-paid: monitorsPack10 qty=2 | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(2) | FAIL(170≠70) | PASS(2) | **PASS** |
+| B | B-paid: monitorsPack10 qty=2 | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(2) | FAIL(170≠70) | PASS(2) | **FAIL** |
 | B | B-paid: monitorsPack50 qty=2 | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(2) | N/A | PASS(2) | **PASS** |
 | B | B-paid: globalMonitoring | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(1) | N/A | PASS(true) | **PASS** |
 | B | B-paid: slaMonitoring | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(1) | N/A | PASS(true) | **PASS** |
@@ -114,4 +114,4 @@ Date: 2026-08-15T21:53:41.156Z
 | D | D10 Cross-tenant isolation | N/A | N/A | N/A | N/A | std=standard pro=pro | **PASS** |
 
 ## Verdict
-🟢 **BILLING CERTIFIÉ ET GELÉ** — 107/107 PASS. Aucun FAIL financier.
+🔴 **CERTIFICATION À CORRIGER** — 106/107 PASS, 1 FAIL. Le scénario monitorsPack10 qty=2 a une assertion d'entitlement contradictoire (170 au lieu de 70) et ne doit pas être présenté comme certifié.

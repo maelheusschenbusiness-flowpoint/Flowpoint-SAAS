@@ -92,7 +92,14 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
     ])
   );
 
-  res.json({ catalogVersion: 1, currency: "EUR", plans, addons, includedByPlan });
+  res.json({
+    catalogVersion: 1,
+    currency: "EUR",
+    plans,
+    addons,
+    includedByPlan,
+    retiredAddonKeys: [...RETIRED_ADDONS],
+  });
 });
 
 export default router;

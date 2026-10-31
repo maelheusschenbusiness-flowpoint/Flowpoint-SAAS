@@ -455,12 +455,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
 };
 
 /** Development-only catalogue labels; billing quotes continue using canonical prices. */
-export const DEVELOPMENT_ADDON_DISPLAY_PRICES: Readonly<Record<string, number>> = {
-  marketIntelligence: 12,
-  aiCro: 12,
-  revenueLeak: 12,
-  aiForecasting: 15,
-};
+export const DEVELOPMENT_ADDON_DISPLAY_PRICES: Readonly<Record<string, number>> = {};
 
 export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NODE_ENV"]): number | undefined {
   const canonicalPrice = ADDON_DEFINITIONS[addonKey]?.priceEur;
@@ -500,6 +495,12 @@ export const RETIRED_ADDONS = new Set<string>([
   "enterprisePermissions",
   "advancedWebhooks",
   "zapierIntegration",
+  // Historical capacity packs remain recognized for existing subscriptions
+  // and quota grants, but are no longer offered for new purchases.
+  "auditsPack200",
+  "auditsPack1000",
+  "pdfPack200",
+  "exportsPack1000",
 ]);
 
 // These retired keys remain plan entitlements and are still enforced by
@@ -543,6 +544,13 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "agencyPacks",
   "aiExecutiveReport",
   "aiWorkflows",
+  // Keep modules unavailable until their real data/integration paths are
+  // validated. Existing plan entitlements and historical billing records stay.
+  "behavioralAI",
+  "aiCro",
+  "revenueLeak",
+  "aiForecasting",
+  "marketIntelligence",
 
   // ── Routes exist but not commercially released ─────────────────────────────
   // crmIntegration: crm.ts routes are complete but addon not yet sold.
@@ -595,26 +603,9 @@ if (typeof activeStripeKey === "string" && activeStripeKey.startsWith("sk_test_"
 }
 
 /**
- * Audit fonctionnel (2026-08-24) — critère BETA :
- * "route réelle, activable, mais partielle ou dépendante d'une intégration externe."
- *
- *   behavioralAI      → behavioral.ts:377 gate réelle. Mais dépend du snippet JS
- *                        installé côté client (intégration externe). Sans snippet,
- *                        les insights sont vides. → BETA
- *
- *   aiForecasting     → forecast.ts:11 gate réelle. Memory documente "fabricated
- *                        past curves" pour les pages forecast. Couverture données
- *                        limitée. → BETA
- *
- *   marketIntelligence → market-intelligence.ts:12 gate réelle. Task PROPOSÉE
- *                        "Remplacer données concurrentes hardcodées par vraies DFS"
- *                        non terminée. Données partiellement mockées. → BETA
- *
- *   revenueLeak       → revenue-leak.ts:15 gate réelle. Dépend de behavioral data
- *                        (snippet onsite requis). Sans snippet = détection vide. → BETA
- *
- *   aiCro             → cro.ts:17 gate réelle. Dépend de behavioral data (snippet).
- *                        Recommandations génériques sans données visiteurs. → BETA
+ * Audit fonctionnel — seuls les modules réellement disponibles restent en beta.
+ * Features requiring unvalidated telemetry, mocked market data, or forecast
+ * curves stay in COMING_SOON_ADDONS until their real data path is certified.
  *
  *   reviewIntelligence → review-intelligence.ts:23 gate réelle. Analyse DFS/GBP
  *                        reviews — intégration DFS partielle. → BETA
@@ -631,13 +622,8 @@ export const BETA_ADDONS = new Set<string>([
   // "🧪 Beta — Inclus dans votre plan" and cannot be re-purchased.
   // BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS is a valid non-empty set by design.
   //
-  // Dépendance snippet onsite
-  "behavioralAI",
-  "revenueLeak",
-  "aiCro",
-  // Couverture données partielle / DFS non complète
-  "aiForecasting",
-  "marketIntelligence",
+  // Partial third-party coverage remains explicitly beta; unavailable offers
+  // are listed in COMING_SOON_ADDONS instead.
   "reviewIntelligence",
   // Dépendance OAuth externe
   "aiGbpPosting",
@@ -782,8 +768,6 @@ const _STANDARD_PURCHASABLE = new Set<string>([
   "monitorsPack10", "monitorsPack50",
   "gbpSlots10",
   "extraSeats",
-  "auditsPack200", "auditsPack1000",
-  "pdfPack200", "exportsPack1000",
   "aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k",
   "retention90d",
   // NOTE: "prioritySupport" removed — feature not implemented
@@ -795,9 +779,7 @@ const _PRO_EXCLUSIVE = new Set<string>([
   //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
   "keywordDomination",
   "aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer",
-  "aiCro", "behavioralAI", "revenueLeak",
   "zapierIntegration",
-  "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
 ]);
 

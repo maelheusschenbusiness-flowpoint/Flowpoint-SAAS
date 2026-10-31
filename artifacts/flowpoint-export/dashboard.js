@@ -10757,6 +10757,15 @@ function renderBilling() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'addons') {
     // includedFrom: 'pro' = included in Pro & Ultra | 'ultra' = Ultra only | null = always paid
+    const _FP_LEGACY_RETIRED_ADDONS = [
+      { key:'auditsPack200', name:'Pack audits +200' },
+      { key:'auditsPack1000', name:'Pack audits +1 000' },
+      { key:'pdfPack200', name:'Pack PDF +200' },
+      { key:'exportsPack1000', name:'Pack exports +1 000' },
+    ];
+    const _fpLegacyActiveAddons = _FP_LEGACY_RETIRED_ADDONS
+      .map(a => ({ ...a, quantity: Math.max(0, Number(me.addons?.[a.key]) || 0) }))
+      .filter(a => a.quantity > 0);
     const allAddons = [
       // ── Monitoring ──
       { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'Pack de monitors supplémentaires',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime','Cumulable avec les autres packs'] },
@@ -10768,8 +10777,6 @@ function renderBilling() {
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'Suivi et analyse des mots-clés', desc:'Suivi des mots-clés, clustering, fonctionnalités SERP et cannibalisation.', features:['Suivi de mots-clés','Clustering sémantique','Détection de cannibalisation','Suivi des fonctionnalités SERP','Alertes de volatilité des résultats'] },
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
       { key:'aiContentStrategist', cat:'SEO',        name:'SEO Content Decay Radar', icon:'📉', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'GSC',             roi:'Détection des baisses de performance',    desc:'Repère les baisses de clics, de positions et les CTR faibles par rapport aux pages GSC comparables.', features:['Comparaison de périodes GSC','Détection des pertes de clics et de positions','Détection des CTR faibles par position moyenne','Priorisation selon les données observées','Aucune génération IA ni appel externe'] },
-      { key:'auditsPack200', cat:'SEO', name:'Pack audits +200', icon:'🔎', color:'#2563EB', active:Number(me.addons?.auditsPack200) > 0, tag:'Usage', roi:'+200 audits mensuels', desc:'+200 audits mensuels', features:['200 audits supplémentaires par pack','Quantité cumulable'] },
-      { key:'auditsPack1000', cat:'SEO', name:'Pack audits +1 000', icon:'🔎', color:'#2563EB', active:Number(me.addons?.auditsPack1000) > 0, tag:'Usage', roi:'+1 000 audits mensuels', desc:'+1 000 audits mensuels', features:['1 000 audits supplémentaires par pack','Quantité cumulable'] },
         { key:'seoChangeImpact', cat:'SEO',             name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), availability:'coming_soon', tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
         { key:'technicalSeoFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), availability:'coming_soon', tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
         { key:'organicCampaignTracker', cat:'SEO', name:'Organic Campaign Tracker', icon:'🎯', color:'#2563EB', active:!!(me.addons?.organicCampaignTracker), availability:'coming_soon', tag:'GSC', roi:'Suivi des objectifs de campagnes organiques', desc:'Suivez les objectifs de clics et de position à partir des données GSC mesurées.', features:['Objectifs configurables par mot-clé','Clics et position moyenne sur 28 jours','Statuts fondés sur les données GSC','Aucune performance estimée'] },
@@ -10779,20 +10786,18 @@ function renderBilling() {
       { key:'localPresenceOptimizer', cat:'Local SEO', name:'Local Presence Optimizer', icon:'📍', color:'#22c55e', active:!!(me.addons?.localPresenceOptimizer), tag:'GBP', roi:'Informations de fiches à compléter', desc:'Priorisez les informations manquantes ou incomplètes sur vos fiches Google Business Profile.', features:['État de complétude des fiches','Priorités fondées sur les données disponibles','Recommandations par établissement'] },
       { key:'localLandingOpportunities', cat:'Local SEO', name:'Local Landing Opportunities', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localLandingOpportunities), tag:'Local SEO', roi:'Recherches locales propices à une page', desc:'Repérez les recherches locales réelles qui justifient une page de service ou de zone.', features:['Opportunités fondées sur les recherches disponibles','Pages de service ou de zone à examiner','Priorisation par opportunité locale'] },
       // ── Conversion ──
-      { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'Analyse UX et recommandations CRO',    desc:'Recommandations CRO, hypothèses de tests A/B et analyse des frictions.', features:['Analyse UX des pages','Hypothèses A/B générées par IA','Plan d’action conversion priorisé','Analyse des parcours utilisateurs','Rapports fondés sur les données disponibles'] },
+      { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), availability:'coming_soon', tag:'Données requises', roi:'En attente de données comportementales', desc:'Les recommandations resteront indisponibles tant que les événements visiteurs réels ne sont pas connectés.', features:['Aucune recommandation générique','Aucun score CRO simulé','Données comportementales réelles requises'] },
       { key:'conversionOpportunityEngine', cat:'Conversion', name:'Conversion Opportunity Engine', icon:'🎯', color:'#f97316', active:!!(me.addons?.conversionOpportunityEngine), tag:'GA4', roi:'Pages avec faible conversion observée', desc:'Priorisez les pages à optimiser à partir des sessions et conversions GA4 réellement mesurées.', features:['Sessions et conversions GA4 mesurées','Seuils de sessions configurables','Taux de conversion maximal configurable','Aucune estimation de revenus non mesurés'], },
-      { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse des interactions visiteurs', desc:'Analyse comportementale à partir des événements collectés par le snippet installé sur votre site.', features:['Heatmaps clics et scroll lorsque les données sont disponibles','Session replay anonymisé','Analyse comportementale','Segmentation des utilisateurs','Alertes de friction'] },
-      { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'Analyse',             roi:'Analyse des frictions de conversion',    desc:'Analyse des abandons et des points de friction de conversion observés.', features:['Détection des abandons de panier ou de formulaire','Priorisation des points de friction observés','Analyse des parcours de conversion','Alertes de dégradation de conversion','Rapport d’analyse'] },
+      { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), availability:'coming_soon', tag:'Configuration requise', roi:'Snippet de collecte requis', desc:'Les insights ne seront disponibles qu’après installation et validation du snippet sur votre site.', features:['Aucune donnée sans snippet actif','Aucun insight comportemental simulé','Collecte réelle requise'] },
+      { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), availability:'coming_soon', tag:'Données requises', roi:'Aucune perte estimée sans preuve', desc:'Les pertes financières restent masquées tant que des événements de conversion réels ne les mesurent pas.', features:['Aucune perte financière inventée','Aucune estimation sans événements réels','Données comportementales requises'] },
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'Modèles de rapports agence',    desc:'Modèles de rapports réutilisables pour vos clients.', features:['Modèles de rapports Executive, KPI et Local SEO','Personnalisation par client','Envoi de rapports PDF','Rapports multi-sites consolidés','Tableau de bord client'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
-      { key:'pdfPack200', cat:'Reporting', name:'Pack PDF +200', icon:'📄', color:'#eab308', active:Number(me.addons?.pdfPack200) > 0, tag:'Usage', roi:'+200 exports PDF', desc:'+200 exports PDF', features:['200 exports PDF supplémentaires par pack','Quantité cumulable'] },
-      { key:'exportsPack1000', cat:'Reporting', name:'Pack exports +1 000', icon:'📦', color:'#eab308', active:Number(me.addons?.exportsPack1000) > 0, tag:'Usage', roi:'+1 000 exports', desc:'+1 000 exports', features:['1 000 exports supplémentaires par pack','Quantité cumulable'] },
       { key:'agencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), availability:'coming_soon', tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
       // ── IA ──
-      { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions de trafic et de positions', desc:'Prévisions fondées sur l’historique disponible de trafic et de positions.', features:['Prévisions de trafic','Prévisions de positions par mot-clé','Analyse de l’historique SEO disponible','Alertes sur les risques de baisse','Rapports prévisionnels'] },
-      { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Suivi des concurrents et du marché',    desc:'Veille concurrentielle, tendances de marché et alertes sectorielles à partir des données disponibles.', features:['Veille concurrentielle','Analyse des tendances sectorielles','Alertes sur les nouveaux concurrents','Repérage d’opportunités de marché','Synthèses sectorielles'] },
+      { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), availability:'coming_soon', tag:'Validation requise', roi:'Prévisions non encore certifiées', desc:'Les prévisions restent indisponibles tant que les historiques mesurés et le modèle ne sont pas validés.', features:['Aucune courbe historique inventée','Aucune projection sans données suffisantes','Validation du modèle requise'] },
+      { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), availability:'coming_soon', tag:'Données réelles requises', roi:'Sources concurrentielles à valider', desc:'Les résultats restent indisponibles tant que les données concurrentielles réelles ne sont pas connectées.', features:['Aucun concurrent fictif','Aucune tendance fabriquée','Données DFS réelles requises'] },
       // ── Team ──
       { key:'extraSeats', cat:'Équipe',     name:'+5 Sièges', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
       // ── Storage ──
@@ -11077,6 +11082,15 @@ function renderBilling() {
         ? window.fpDarkConfirm(fpT('Désactiver cet add-on ? La facturation Stripe correspondante sera arrêtée.'), function() { window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key); }, fpT('Désactiver'))
         : (window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(key));
     };
+    window.fpDeactivateLegacyAddon = function(addonKey) {
+      if (!_FP_LEGACY_RETIRED_ADDONS.some(a => a.key === addonKey)) return;
+      const deactivate = function() {
+        window.FP_ADDONS_API && window.FP_ADDONS_API.deactivate(addonKey);
+      };
+      window.fpDarkConfirm
+        ? window.fpDarkConfirm(fpT('Désactiver cet add-on ? La facturation Stripe correspondante sera arrêtée.'), deactivate, fpT('Désactiver'))
+        : deactivate();
+    };
     window._fpAllAddons = allAddons;
     window.fpShowAddonDetail = function(idx) {
       const a = window._fpAllAddons[idx];
@@ -11165,25 +11179,27 @@ function renderBilling() {
 
     const cats = ['Tous', 'Monitoring', 'SEO', 'Local SEO', 'Conversion', 'Reporting', 'IA', 'Équipe', 'Storage', 'API', 'Ultra'];
     // Count includes: hardcoded isIncluded() + backend includedInPlan:true items from billing API
+    const _fpLegacyAddonKeys = new Set(_FP_LEGACY_RETIRED_ADDONS.map(a => a.key));
     const _backendIncluded = Array.isArray(STATE.billing?.addons)
-      ? STATE.billing.addons.filter(a => a.includedInPlan).length : 0;
+      ? STATE.billing.addons.filter(a => a.includedInPlan && !_fpLegacyAddonKeys.has(a.key)).length : 0;
     const _frontendIncluded = allAddons.filter(a => isIncluded(a)).length;
     const includedCount = Math.max(_frontendIncluded, _backendIncluded);
     // "Active" derives from the canonical plan catalogue: a plan-included add-on is
     // active for that plan even with no manual purchase. With no extra add-ons an
     // Ultra workspace therefore shows exactly its 10 included = 10 active.
     const _backendActive = Array.isArray(STATE.billing?.addons)
-      ? STATE.billing.addons.filter(a => a.active || a.includedInPlan).length : 0;
+      ? STATE.billing.addons.filter(a => (a.active || a.includedInPlan) && !_fpLegacyAddonKeys.has(a.key)).length : 0;
+    const _fpLegacyCount = _fpLegacyActiveAddons.length;
     const activeCount = Math.max(
-      allAddons.filter(a => a.active || isIncluded(a)).length,
-      _backendActive,
+      allAddons.filter(a => a.active || isIncluded(a)).length + _fpLegacyCount,
+      _backendActive + _fpLegacyCount,
     );
     // Manual (paid) extras only — never counts plan-included ones twice.
     const _backendManualActive = Array.isArray(STATE.billing?.addons)
-      ? STATE.billing.addons.filter(a => a.active && !a.includedInPlan).length : 0;
+      ? STATE.billing.addons.filter(a => a.active && !a.includedInPlan && !_fpLegacyAddonKeys.has(a.key)).length : 0;
     const manualActiveCount = Math.max(
-      allAddons.filter(a => a.active && !isIncluded(a)).length,
-      _backendManualActive,
+      allAddons.filter(a => a.active && !isIncluded(a)).length + _fpLegacyCount,
+      _backendManualActive + _fpLegacyCount,
     );
 
     return `
@@ -11255,6 +11271,17 @@ function renderBilling() {
         }).join('')}
       </div>`;
       })()}
+      ${_fpLegacyActiveAddons.length ? `
+        <section style="margin-top:20px;padding:16px;border:1px solid var(--fp-border);border-radius:12px;background:var(--fp-inner-card)">
+          <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('Add-ons actifs')} — ${fpT('gestion historique')}</div>
+          <p style="margin:6px 0 12px;font-size:11px;color:var(--fp-text-muted)">${fpT('Ces packs ne sont plus proposés à l’achat. Les droits existants restent actifs jusqu’à leur désactivation.')}</p>
+          <div style="display:grid;gap:8px">
+            ${_fpLegacyActiveAddons.map(a => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--fp-border);border-radius:8px">
+              <span style="font-size:12px;color:var(--fp-text)">${escHtml(fpT(a.name))} · ×${a.quantity}</span>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-key="${a.key}" onclick="window.fpDeactivateLegacyAddon(this.dataset.addonKey)">${fpT('Désactiver')}</button>
+            </div>`).join('')}
+          </div>
+        </section>` : ''}
     `;
   }
 

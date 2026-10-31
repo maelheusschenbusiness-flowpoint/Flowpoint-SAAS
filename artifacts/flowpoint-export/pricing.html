@@ -1423,6 +1423,26 @@
   function _fpRenderAddonCards(cat) {
     var grid = document.getElementById("fp-addons-grid");
     if (!grid) throw new Error("Conteneur des add-ons introuvable");
+    var retiredAddonKeys = Array.isArray(cat.retiredAddonKeys) ? cat.retiredAddonKeys : [];
+    var retiredCartItemsRemoved = false;
+    if (_cart && _cart.addons) {
+      retiredAddonKeys.forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(_cart.addons, key)) {
+          delete _cart.addons[key];
+          retiredCartItemsRemoved = true;
+        }
+      });
+    }
+    if (retiredCartItemsRemoved) {
+      try {
+        var persistedCart = JSON.parse(localStorage.getItem("fp_cart") || "null");
+        if (persistedCart && persistedCart.addons) {
+          retiredAddonKeys.forEach(function (key) { delete persistedCart.addons[key]; });
+          localStorage.setItem("fp_cart", JSON.stringify(persistedCart));
+        }
+      } catch (_cartCleanupError) {}
+      updateCartBadge();
+    }
 
     var featuredKeys = [
       "gbpPerformanceLeads", "localPresenceOptimizer", "localLandingOpportunities",
