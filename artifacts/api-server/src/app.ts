@@ -13,6 +13,7 @@ import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { requestId } from "./middlewares/requestId.js";
 import { orgContext }    from "./middlewares/orgContext.js";
+import { customDomainHost } from "./middlewares/customDomainHost.js";
 import { requirePaidAccess } from "./middlewares/requirePaidAccess.js";
 import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
@@ -168,7 +169,7 @@ app.use(cookieParser());
 // ── 7. Org/User context extraction from JWT or X-Org-Id header ───────────────
 app.use(orgContext);
 
-// ── 7b. Per-request RLS-scoped DB helper (req.orgDb) ─────────────────────────
+// ── 7a. Per-request RLS-scoped DB helper (req.orgDb) ─────────────────────────
 // Must run after orgContext so req.orgId is already populated.
 app.use(dbContext);
 
@@ -179,6 +180,9 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Frame-Options", "DENY");
   next();
 });
+// Custom-domain mapping runs after API rate limiting. The proof path is under
+// /api so anonymous probes are rate-limited before this middleware can query.
+app.use(customDomainHost);
 
 // ── 9. Static file serving ────────────────────────────────────────────────────
 // express.static only intercepts actual files, so /api/* routes are never blocked.

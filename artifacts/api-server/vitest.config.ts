@@ -213,6 +213,8 @@ export default defineConfig({
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",
+      "src/services/custom-domain-service.test.ts",
+      "src/middlewares/customDomainHost.test.ts",
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
       "src/routes/stripe-webhook-ordering-db.test.ts",
