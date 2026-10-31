@@ -56,6 +56,9 @@ vi.mock("../services/addons-service.js", () => ({
     monitorsPack10:  { name: "+10 Monitors" },
     monitorsPack50:  { name: "+50 Monitors" },
     auditsPack200:   { name: "+200 Audits" },
+    auditsPack1000:  { name: "+1,000 Audits" },
+    pdfPack200:      { name: "+200 PDF exports" },
+    exportsPack1000: { name: "+1,000 exports" },
     extraSeats:      { name: "+5 Seats" },
     whiteLabel:      { name: "White Label" },
     retention90d:    { name: "90-day retention" },
@@ -131,25 +134,31 @@ describe("POST /addons/:key/activate — quantity carried end-to-end", () => {
     expect(activateCalls).toEqual([{ key: "monitorsPack10", orgId: "org-qty-test", quantity: 3 }]);
   });
 
-  it("blocks new auditsPack200 purchases after retirement", async () => {
+  it("blocks new purchases of all four retired capacity packs", async () => {
     const app = await buildApp();
-    const res = await request(app).post("/addons/auditsPack200/activate").send({ quantity: 5 });
-    expect(res.status).toBe(410);
-    expect(res.body.code).toBe("ADDON_RETIRED");
+    const retiredPacks = ["auditsPack200", "auditsPack1000", "pdfPack200", "exportsPack1000"];
+    for (const key of retiredPacks) {
+      const res = await request(app).post(`/addons/${key}/activate`).send({ quantity: 5 });
+      expect(res.status).toBe(410);
+      expect(res.body.code).toBe("ADDON_RETIRED");
+    }
     expect(stripeSyncCalls).toHaveLength(0);
     expect(activateCalls).toHaveLength(0);
   });
 
-  it("still lets existing auditsPack200 entitlements be deactivated", async () => {
+  it("still lets existing entitlements for all four packs be deactivated", async () => {
     const app = await buildApp();
     const { deactivateAddon } = await import("../services/addons-service.js");
-    const res = await request(app).post("/addons/auditsPack200/deactivate");
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-    expect(deactivateAddon).toHaveBeenCalledWith("auditsPack200", "org-qty-test");
-    expect(stripeSyncCalls).toEqual([
-      { key: "auditsPack200", action: "deactivate", quantity: undefined },
-    ]);
+    const retiredPacks = ["auditsPack200", "auditsPack1000", "pdfPack200", "exportsPack1000"];
+    for (const key of retiredPacks) {
+      const res = await request(app).post(`/addons/${key}/deactivate`);
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      expect(deactivateAddon).toHaveBeenCalledWith(key, "org-qty-test");
+    }
+    expect(stripeSyncCalls).toEqual(retiredPacks.map(key => ({
+      key, action: "deactivate", quantity: undefined,
+    })));
   });
 
   it("missing quantity defaults to 1", async () => {
