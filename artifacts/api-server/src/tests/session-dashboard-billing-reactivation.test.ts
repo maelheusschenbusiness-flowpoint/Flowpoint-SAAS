@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const apiRoot = process.cwd();
 const dashboardSource = readFileSync(resolve(apiRoot, "../../src/frontend/dashboard.js"), "utf8");
 const dashboardExport = readFileSync(resolve(apiRoot, "../flowpoint-export/dashboard.js"), "utf8");
+const pricing = readFileSync(resolve(apiRoot, "../flowpoint-export/pricing.html"), "utf8");
 const backendSource = readFileSync(resolve(apiRoot, "../../src/frontend/fp-backend.js"), "utf8");
 const backend = readFileSync(resolve(apiRoot, "../flowpoint-export/fp-backend.js"), "utf8");
 const config = readFileSync(resolve(apiRoot, "../flowpoint-export/fp-config.js"), "utf8");
@@ -76,5 +77,18 @@ describe("dashboard Stripe reactivation contracts", () => {
     expect(backend).not.toContain("apiAction('POST', '/api/billing/checkout'");
     expect((backend.match(/apiAction\('POST', '\/api\/billing\/upgrade'/g) || []).length).toBeGreaterThanOrEqual(2);
     expect(checkoutReturn).toContain("isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/pricing.html'");
+  });
+});
+
+describe("Ultra quota presentation contract", () => {
+  it("keeps the public pricing and dashboard fallbacks at 2,000/300/2,000/2,000/10", () => {
+    expect(pricing).toContain("limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10");
+    expect(pricing).toContain("<td>2 000</td>");
+    expect(dashboardSource).toContain("limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10");
+    expect(dashboardSource).toContain("_val('ultra','audits',2000)");
+    expect(dashboardSource).toContain("_val('ultra','reports',2000)");
+    expect(dashboardSource).toContain("_val('ultra','exports',2000)");
+    expect(dashboardSource).toContain("ultra:    { audit: 2000, monitor: 300, pdf: 2000 }");
+    expect(dashboardSource).toContain("ultra:2000");
   });
 });
