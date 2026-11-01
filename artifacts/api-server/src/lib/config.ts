@@ -126,7 +126,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
   },
   pro: {
     // prioritySupport is intentionally disabled: the feature has no commercial implementation.
-    sso:true, saml:false, whiteLabel:true, customDomain:false,
+    sso:false, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:false,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
@@ -135,7 +135,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:true, multiLocation:false, prioritySupport:false,
   },
   ultra: {
-    sso:true, saml:true, whiteLabel:true, customDomain:true,
+    sso:false, saml:false, whiteLabel:true, customDomain:true,
     localDominationMaps:true, geoGridSize9x9:true, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
@@ -144,7 +144,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:true, multiLocation:true, prioritySupport:false,
   },
   agency: {
-    sso:true, saml:true, whiteLabel:true, customDomain:true,
+    sso:false, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:true, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,

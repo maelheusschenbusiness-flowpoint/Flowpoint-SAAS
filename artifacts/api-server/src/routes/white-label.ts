@@ -1,6 +1,7 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { randomBytes, randomUUID } from "node:crypto";
 import { logger } from "../lib/logger.js";
+import { isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
 import {
   CustomDomainError,
@@ -51,6 +52,25 @@ async function requireCustomDomainEntitlement(orgId: string): Promise<boolean> {
   const { loadBillingContext } = await import("../services/billing-context.js");
   const ctx = await loadBillingContext(orgId).catch(() => null);
   return Boolean(ctx?.addons?.["customDomain"]);
+}
+
+async function requireCustomDomainAccess(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (!await requireCustomDomainEntitlement(org(req))) {
+    res.status(403).json({ error: "Custom domain entitlement required" });
+    return;
+  }
+  if (!isCustomDomainTestBetaEnabled()) {
+    res.status(503).json({
+      error: "Custom domain provisioning is unavailable in this environment",
+      code: "CUSTOM_DOMAIN_NOT_AVAILABLE",
+    });
+    return;
+  }
+  next();
 }
 
 // ── SQL error classification ────────────────────────────────────────────────
@@ -165,7 +185,7 @@ router.patch("/white-label/templates/:id", async (req: Request, res: Response) =
 
 // ── Custom domains ────────────────────────────────────────────────────────────
 
-router.get("/white-label/domains", requireAdmin, async (req: Request, res: Response) => {
+router.get("/white-label/domains", requireAdmin, requireCustomDomainAccess, async (req: Request, res: Response) => {
   try {
     const r = await db(req)(
       `SELECT id, org_id, domain, status, ssl_active, verification_token,
@@ -180,11 +200,8 @@ router.get("/white-label/domains", requireAdmin, async (req: Request, res: Respo
   }
 });
 
-router.post("/white-label/domains", requireAdmin, async (req: Request, res: Response) => {
+router.post("/white-label/domains", requireAdmin, requireCustomDomainAccess, async (req: Request, res: Response) => {
   const orgId = org(req);
-  if (!await requireCustomDomainEntitlement(orgId)) {
-    res.status(403).json({ error: "Custom domain add-on required" }); return;
-  }
 
   let domain: string;
   try {
@@ -262,9 +279,6 @@ async function verifyCustomDomain(req: Request, res: Response): Promise<void> {
   const rawId = req.params.id;
   const id = Array.isArray(rawId) ? rawId[0] ?? "" : rawId;
   const orgId = org(req);
-  if (!await requireCustomDomainEntitlement(orgId)) {
-    res.status(403).json({ error: "Custom domain entitlement required" }); return;
-  }
 
   try {
     const read = await db(req)(
@@ -397,6 +411,7 @@ async function verifyCustomDomain(req: Request, res: Response): Promise<void> {
         res.status(202).json({
           ok: true,
           status: "tls_pending",
+          sslActive: false,
           domain: row.domain,
           dns: { host: row.domain, type: "CNAME", value: refreshed.targetHost },
           removeAaaa: true,
@@ -435,11 +450,11 @@ async function verifyCustomDomain(req: Request, res: Response): Promise<void> {
   }
 }
 
-router.post("/white-label/domains/:id/verify", requireAdmin, verifyCustomDomain);
+router.post("/white-label/domains/:id/verify", requireAdmin, requireCustomDomainAccess, verifyCustomDomain);
 // Preserve the older endpoint as an alias while the dashboard moves to /verify.
-router.post("/white-label/domains/:id/ssl-check", requireAdmin, verifyCustomDomain);
+router.post("/white-label/domains/:id/ssl-check", requireAdmin, requireCustomDomainAccess, verifyCustomDomain);
 
-router.delete("/white-label/domains/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/white-label/domains/:id", requireAdmin, requireCustomDomainAccess, async (req: Request, res: Response) => {
   const { id } = req.params;
   const orgId = org(req);
   try {

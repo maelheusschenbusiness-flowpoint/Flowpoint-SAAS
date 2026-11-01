@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 import { normalizeRequestHost } from "../services/custom-domain-service.js";
 
 declare global {
@@ -28,6 +29,10 @@ export function customDomainHost(req: Request, res: Response, next: NextFunction
 async function resolveCustomDomainHost(req: Request, res: Response, next: NextFunction): Promise<void> {
   const isPortalPage = ["/", "/dashboard", "/dashboard.html", "/signin.html"].includes(req.path);
   if (!req.path.startsWith("/api/") && !isPortalPage) {
+    next();
+    return;
+  }
+  if (!isCustomDomainTestBetaEnabled()) {
     next();
     return;
   }

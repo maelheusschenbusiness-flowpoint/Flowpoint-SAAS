@@ -14,7 +14,7 @@
  * PLAN_INCLUDED_ADDONS or this suite will fail.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   PLAN_INCLUDED_ADDONS,
   ADDON_PRICE_IDS,
@@ -33,9 +33,11 @@ import {
   isPlanAllowedAddon,
   getAddonPurchasablePlans,
   ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
+  isCustomDomainTestBetaEnabled,
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
+import { hasFeature } from "../services/billing-service.js";
 
 const ONE_TIME_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 const expectedReplacementAvailability = (key: string) =>
@@ -287,9 +289,51 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["pro"].customDomain).toBe(false);
   });
 
-  it("FEATURE_FLAGS.ultra.customDomain is true (customDomain bundled in Ultra)", () => {
+  it("keeps customDomain as an Ultra entitlement and does not enable it for Pro", () => {
     expect(PLAN_INCLUDED_ADDONS["ultra"]?.has("customDomain")).toBe(true);
     expect(FEATURE_FLAGS["ultra"].customDomain).toBe(true);
+    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("customDomain")).toBe(false);
+    expect(FEATURE_FLAGS["pro"].customDomain).toBe(false);
+  });
+
+  it("keeps SSO and SLA plan features unavailable until their flows are implemented", () => {
+    for (const tier of ["standard", "pro", "ultra", "agency"] as const) {
+      expect(FEATURE_FLAGS[tier].sso).toBe(false);
+      expect(FEATURE_FLAGS[tier].saml).toBe(false);
+    }
+    expect(hasFeature("sso-enterprise", "ultra")).toBe(false);
+    expect(hasFeature("saml", "ultra")).toBe(false);
+    expect(hasFeature("custom-domain", "ultra")).toBe(false);
+    expect(hasFeature("sla-999", "ultra")).toBe(false);
+  });
+
+  it("enables Custom Domain for Ultra only on a configured Stripe TEST target", () => {
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "sk_test_custom_domain_fixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "true");
+    vi.stubEnv("RENDER_API_KEY", "render-test-fixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "srv-testfixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
+    try {
+      expect(hasFeature("custom-domain", "ultra")).toBe(true);
+      expect(hasFeature("custom-domain", "pro")).toBe(false);
+      expect(CANONICAL_ADDON_DEFINITIONS.customDomain.description)
+        .toBe("Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps the Custom Domain beta disabled when no Stripe TEST key is available", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "");
+    vi.stubEnv("STRIPE_TEST_SECRET_KEY", "");
+    try {
+      expect(isCustomDomainTestBetaEnabled()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("prioritySupport is neither bundled nor enabled because it is not implemented", () => {

@@ -54,6 +54,7 @@ export default defineConfig({
       "src/services/integration-response.test.ts",
       "src/services/executive-report-facts.test.ts",
       "src/routes/agency-packs.test.ts",
+      "src/routes/sso-readiness.test.ts",
       "src/services/crm-service.test.ts",
       "src/routes/crm-readiness.test.ts",
        "src/routes/agency-packs-postgres.test.ts",

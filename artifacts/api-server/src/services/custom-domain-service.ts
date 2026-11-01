@@ -128,7 +128,30 @@ function renderConfig(env: NodeJS.ProcessEnv = process.env): RenderConfig {
   if (!/^srv-[a-zA-Z0-9]+$/.test(serviceId)) {
     throw new CustomDomainError("Invalid Render service configuration", "RENDER_CONFIGURATION_INVALID", 503);
   }
+  if (!/(^|[^a-z0-9])test($|[^a-z0-9])/i.test(expectedServiceName)) {
+    throw new CustomDomainError(
+      "The configured Render service must be explicitly named as a test service",
+      "RENDER_CONFIGURATION_NOT_TEST",
+      503,
+    );
+  }
   return { apiKey, serviceId, expectedServiceName };
+}
+
+/**
+ * True only when the service has the explicit enable flag and a complete,
+ * structurally valid Render target configuration. This is a local check; it
+ * never calls Render or exposes the configured API key.
+ */
+export function isRenderDomainProvisioningConfigured(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  try {
+    renderConfig(env);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function renderRequest<T>(

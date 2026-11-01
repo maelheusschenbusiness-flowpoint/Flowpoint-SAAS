@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 
@@ -29,6 +29,16 @@ function buildApp() {
 describe("custom-domain tenant routing", () => {
   beforeEach(() => {
     mockQuery.mockReset();
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "sk_test_custom_domain_fixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "true");
+    vi.stubEnv("RENDER_API_KEY", "render-test-fixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "srv-testfixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("keeps the matching workspace on its verified HTTPS host", async () => {
@@ -58,6 +68,18 @@ describe("custom-domain tenant routing", () => {
     const res = await request(buildApp())
       .get("/dashboard")
       .set("Host", "flowpoint-test.onrender.com")
+      .set("X-Forwarded-Proto", "https");
+
+    expect(res.status).toBe(200);
+    expect(res.body.domainContext).toBeNull();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not resolve or route custom hosts when the Test beta is disabled", async () => {
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "false");
+    const res = await request(buildApp())
+      .get("/dashboard")
+      .set("Host", "portal.example.com")
       .set("X-Forwarded-Proto", "https");
 
     expect(res.status).toBe(200);

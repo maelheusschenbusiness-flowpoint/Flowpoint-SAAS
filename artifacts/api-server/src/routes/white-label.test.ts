@@ -9,7 +9,7 @@
  * mock loadBillingContext so no real DB connection is needed.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
@@ -37,6 +37,40 @@ const mockInitDataTables = vi.fn(async () => {});
 vi.mock("../services/init-data-tables.js", () => ({
   initDataTables: () => mockInitDataTables(),
 }));
+
+vi.mock("../services/custom-domain-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/custom-domain-service.js")>();
+  return {
+    ...actual,
+    verifyDomainTxtRecord: vi.fn(async () => ({ verified: true, dnsCode: null })),
+    ensureRenderCustomDomain: vi.fn(async (domain: string) => ({
+      id: "render-domain-1",
+      name: domain,
+      verificationStatus: "unverified" as const,
+      targetHost: "flowpoint-test.onrender.com",
+    })),
+    refreshRenderCustomDomain: vi.fn(async (domain: string, id: string) => ({
+      id,
+      name: domain,
+      verificationStatus: "verified" as const,
+      targetHost: "flowpoint-test.onrender.com",
+    })),
+    verifyHttpsDomainRoute: vi.fn(async () => false),
+  };
+});
+
+beforeEach(() => {
+  vi.stubEnv("STRIPE_TEST_MODE", "true");
+  vi.stubEnv("STRIPE_TEST_KEY", "sk_test_custom_domain_fixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "true");
+  vi.stubEnv("RENDER_API_KEY", "render-test-fixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "srv-testfixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 // ─── Build minimal Express app with orgId + orgDb stubs ──────────────────────
 // orgDbImpl lets a test control what the orgDb query does (rows / throw).
@@ -164,6 +198,28 @@ describe("POST /white-label/domains — entitlement gate", () => {
     expect(res.body.instructions.record.host).toBe("_flowpoint-verify.portal.myagency.io");
   });
 
+  it("fails closed before creating a claim when Render Test is not configured", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "false");
+
+    const res = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "portal.myagency.io" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("CUSTOM_DOMAIN_NOT_AVAILABLE");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("requires Ultra entitlement before listing domains", async () => {
+    mockCtx = { addons: {} };
+    const res = await request(app).get("/white-label/domains");
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/entitlement/i);
+  });
+
   it("rejects root and www domains before saving a claim", async () => {
     mockCtx = { addons: { customDomain: true } };
     const apex = await request(app).post("/white-label/domains").send({ domain: "myagency.io" });
@@ -213,6 +269,42 @@ describe("POST /white-label/domains — entitlement gate", () => {
       .send({ domain: "portal.myagency.io" });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("DOMAIN_LIMIT_REACHED");
+  });
+});
+
+describe("POST /white-label/domains/:id/ssl-check — readiness state", () => {
+  let app: express.Express;
+
+  beforeEach(async () => {
+    mockRole = "owner";
+    mockCtx = { addons: { customDomain: true } };
+    orgDbImpl = async sql => sql.includes("SELECT id, org_id, domain, status")
+      ? { rows: [{
+        id: "domain-1",
+        org_id: "test-org",
+        domain: "portal.myagency.io",
+        status: "ownership_verified",
+        ssl_active: false,
+        verification_token: "fpv_test-token",
+        verified_at: null,
+        render_domain_id: null,
+        render_target_host: null,
+        last_error: null,
+      }] }
+      : { rows: [] };
+    app = await buildApp();
+  });
+
+  it("does not activate a domain until HTTPS also proves FlowPoint routing", async () => {
+    const response = await request(app).post("/white-label/domains/domain-1/ssl-check");
+
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({
+      status: "tls_pending",
+      sslActive: false,
+    });
+    expect(response.body.message).toContain("successful route check");
+    expect(response.body.message).not.toContain("active");
   });
 });
 

@@ -139,6 +139,30 @@ describe("SEO Content Decay Radar routes", () => {
     );
   });
 
+  it("returns no opportunities when the organization has no measured GSC rows", async () => {
+    mocks.orgDb.mockResolvedValue({ rows: [] });
+
+    const response = await request(makeApp()).get("/api/keywords/content-decay");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      source: "google_search_console",
+      opportunities: [],
+    });
+    expect(mocks.aiChat).not.toHaveBeenCalled();
+  });
+
+  it("does not turn a GSC database failure into an empty success response", async () => {
+    mocks.orgDb.mockRejectedValue(new Error("GSC data query unavailable"));
+
+    const response = await request(makeApp()).get("/api/keywords/content-decay");
+
+    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(response.body.ok).not.toBe(true);
+    expect(response.body.opportunities).toBeUndefined();
+  });
+
   it("generates a strategy only for an observed page opportunity", async () => {
     const page = "https://site.example/guide";
     mocks.orgDb.mockResolvedValue({ rows: pageRows(page) });

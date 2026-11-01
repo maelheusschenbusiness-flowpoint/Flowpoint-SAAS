@@ -102,6 +102,14 @@ describe("add-on catalogue UI commercial gates", () => {
     expect(exportedDashboard).toBe(dashboard);
   });
 
+  it("describes Custom Domain as a restricted Stripe TEST beta", () => {
+    const betaCopy = "Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.";
+    expect(dashboard).toContain(betaCopy);
+    expect(dashboard).toContain(`"${betaCopy}": "Stripe TEST beta; authorized Ultra organizations only."`);
+    expect(dashboard).not.toContain("activation masquée jusqu’à la certification Beta");
+    expect(ADDON_DEFINITIONS.customDomain.description).toBe(betaCopy);
+  });
+
   it("keeps pricing availability and purchase readiness distinct and localizes add-on expansion", () => {
     expect(pricing).toContain('purchaseStatus === "price_unavailable"');
     expect(pricing).toContain('_fpPricingText("Voir moins", "See less")');

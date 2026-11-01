@@ -14,6 +14,10 @@ async function loadPlans(env: Record<string, string> = {}) {
   }
   vi.stubEnv("STRIPE_TEST_MODE", "true");
   vi.stubEnv("STRIPE_TEST_KEY", "sk_test_addon_coverage_fixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "false");
+  vi.stubEnv("RENDER_API_KEY", "");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "");
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
   vi.resetModules();
   return import("./plans.js");
@@ -70,6 +74,75 @@ it("uses the verified Conversion Opportunity Engine TEST price over a stale envi
     priceId: plans.VERIFIED_TEST_ADDON_PRICE_IDS.conversionOpportunityEngine,
     amountMinor: 1200,
   });
+});
+
+it("enables Custom Domain beta only on a configured TEST target and keeps it Ultra-only", async () => {
+  const disabled = await loadPlans();
+  expect(disabled.getAddonAvailability("customDomain")).toBe("coming_soon");
+
+  const plans = await loadPlans({
+    CUSTOM_DOMAIN_RENDER_API_ENABLED: "true",
+    RENDER_API_KEY: "render-test-fixture",
+    CUSTOM_DOMAIN_RENDER_SERVICE_ID: "srv-testfixture",
+    CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: "flowpoint-test",
+    STRIPE_TEST_PRICE_ID_ADDON_CD: "price_test_custom_domain_fixture",
+  });
+  const { FEATURE_FLAGS } = await import("./config.js");
+
+  expect(plans.getAddonAvailability("customDomain")).toBe("beta");
+  expect(plans.COMING_SOON_ADDONS.has("customDomain")).toBe(false);
+  expect(plans.BETA_ADDONS.has("customDomain")).toBe(true);
+  expect(plans.PLAN_INCLUDED_ADDONS.ultra.has("customDomain")).toBe(true);
+  expect(plans.PLAN_INCLUDED_ADDONS.pro.has("customDomain")).toBe(false);
+  expect(FEATURE_FLAGS.ultra.customDomain).toBe(true);
+  expect(FEATURE_FLAGS.pro.customDomain).toBe(false);
+  expect(plans.getAddonPurchaseStatus("customDomain")).toBe("not_sold_separately");
+  expect(plans.getAddonSeparateSalePlans("customDomain")).toEqual([]);
+  expect(plans.getAddonPurchasablePlans("customDomain")).toEqual([]);
+  expect(plans.isPlanAllowedAddon("standard", "customDomain")).toBe(false);
+  expect(plans.isPlanAllowedAddon("pro", "customDomain")).toBe(false);
+  expect(plans.isPlanAllowedAddon("ultra", "customDomain")).toBe(false);
+
+  // Opening this beta must not release unrelated roadmap add-ons.
+  expect(plans.getAddonAvailability("aiContentStrategist")).toBe("coming_soon");
+  expect(plans.getAddonAvailability("ssoEnterprise")).toBe("coming_soon");
+  expect(plans.getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
+
+  const { createBillingQuote } = await import("../services/billing-quote.js");
+  for (const plan of ["standard", "pro"]) {
+    expect(() => createBillingQuote({
+      plan: "",
+      inclusionPlan: plan,
+      addons: { customDomain: true },
+      trialEligible: false,
+    })).toThrow("ADDON_NOT_SOLD_SEPARATELY");
+  }
+  const ultraQuote = createBillingQuote({
+    plan: "",
+    inclusionPlan: "ultra",
+    addons: { customDomain: true },
+    trialEligible: false,
+  });
+  expect(ultraQuote.lines.find((line) => line.key === "customDomain")).toMatchObject({
+    kind: "addon",
+    includedInPlan: true,
+    amountMinor: 0,
+  });
+});
+
+it("keeps Custom Domain Coming Soon on a LIVE Stripe key even with Render configuration", async () => {
+  const plans = await loadPlans({
+    NODE_ENV: "production",
+    STRIPE_TEST_MODE: "false",
+    STRIPE_TEST_KEY: "",
+    STRIPE_LIVE_API_KEY: "sk_live_custom_domain_fixture",
+    CUSTOM_DOMAIN_RENDER_API_ENABLED: "true",
+    RENDER_API_KEY: "render-test-fixture",
+    CUSTOM_DOMAIN_RENDER_SERVICE_ID: "srv-testfixture",
+    CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: "flowpoint-test",
+  });
+  expect(plans.getAddonAvailability("customDomain")).toBe("coming_soon");
+  expect(plans.BETA_ADDONS.has("customDomain")).toBe(false);
 });
 
 it("corrects the stale Local Presence Optimizer TEST price only when configured", async () => {

@@ -1,4 +1,5 @@
 import { getStripeKey, isStripeTestMode } from "../services/stripe-factory.js";
+import { isRenderDomainProvisioningConfigured } from "../services/custom-domain-service.js";
 export interface PlanLimits {
   audits: number;
   monitors: number;
@@ -53,7 +54,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
     locked: [
       "IA Insights", "API Access",
       "Analytics concurrents", "Multi-workspace",
-      "SSO SAML", "Onboarding dédié", "Facturation client",
+      "Onboarding dédié", "Facturation client",
     ],
   },
   pro: {
@@ -80,8 +81,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
       "API Access", "Support prioritaire 4h", "Analytics concurrents",
     ],
     locked: [
-      "Multi-workspace", "SSO SAML",
-      "Onboarding dédié", "SLA garanti 99.9%",
+      "Multi-workspace", "Onboarding dédié",
     ],
   },
   ultra: {
@@ -105,8 +105,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
       "2 000 audits/mois", "300 monitors", "2 000 rapports PDF/mois",
       "2 000 exports/mois", "10 membres d'équipe", "∞ crédits IA/mois",
       "Multi-workspace", "IA Stratégiste complet", "White-label portail",
-      "SSO SAML", "API illimitée", "Custom domain",
-      "SLA 99.9% garanti", "Support dédié < 1h", "Rétention 365 jours",
+      "API illimitée", "Support dédié < 1h", "Rétention 365 jours",
       "Onboarding dédié", "Agency Lab complet", "Facturation client",
     ],
     locked: [],
@@ -407,7 +406,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   monitorsPack10:       { name: "+10 Monitors",             category: "Monitoring",   description: "+10 monitors actifs", priceEur: 9, oneTime: false, quantity: true },
   monitorsPack50:       { name: "+50 Monitors",             category: "Monitoring",   description: "+50 monitors actifs", priceEur: 19, oneTime: false, quantity: true },
   globalMonitoring:     { name: "Global Monitoring",        category: "Monitoring",   description: "Synthèse des régions de contrôle Better Stack configurées", priceEur: 15, oneTime: false, quantity: false },
-  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Suivi SLA et rapports de disponibilité", priceEur: 19, oneTime: false, quantity: false },
+  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.", priceEur: 19, oneTime: false, quantity: false },
   advancedSeoLab:       { name: "Advanced SEO Lab",         category: "SEO",          description: "Audit SEO avancé et recommandations IA", priceEur: 29, oneTime: false, quantity: false },
   keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
@@ -429,8 +428,8 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Opportunités de conversion observées; pertes financières uniquement si mesurées", priceEur: 29, oneTime: false, quantity: false },
   abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Variantes servies et résultats statistiques fondés sur des expositions réelles", priceEur: 24, oneTime: false, quantity: false },
   whiteLabel:           { name: "White-Label Exports",      category: "Reporting",    description: "Exports PDF à votre marque", priceEur: 17, oneTime: false, quantity: false },
-  agencyPacks:          { name: "Agency Reporting Packs",   category: "Reporting",    description: "Packs de rapports clients réutilisables", priceEur: 12, oneTime: false, quantity: false },
-  aiExecutiveReport:    { name: "AI Executive Reporting",   category: "Reporting",    description: "Résumés exécutifs IA", priceEur: 24, oneTime: false, quantity: false },
+  agencyPacks:          { name: "Agency Reporting Packs",   category: "Reporting",    description: "Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.", priceEur: 12, oneTime: false, quantity: false },
+  aiExecutiveReport:    { name: "AI Executive Reporting",   category: "Reporting",    description: "Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.", priceEur: 24, oneTime: false, quantity: false },
   aiForecasting:        { name: "AI Forecasting Engine",    category: "IA",           description: "Prévisions SEO, trafic et conversion", priceEur: 39, oneTime: false, quantity: false },
   marketIntelligence:   { name: "AI Market Intelligence",   category: "IA",           description: "Veille concurrentielle IA", priceEur: 49, oneTime: false, quantity: false },
   aiWorkflows:          { name: "AI Automation Workflows",  category: "IA",           description: "Workflows IA multi-étapes", priceEur: 34, oneTime: false, quantity: false },
@@ -441,9 +440,9 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   advancedWebhooks:     { name: "Webhooks Avancés",          category: "API",          description: "Webhooks configurables", priceEur: 14, oneTime: false, quantity: false },
   zapierIntegration:    { name: "Zapier / Make",             category: "API",          description: "Intégration Zapier et Make", priceEur: 19, oneTime: false, quantity: false },
   crmIntegration:       { name: "Intégration CRM",           category: "API",          description: "Synchronisation CRM", priceEur: 29, oneTime: false, quantity: false },
-  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Domaine personnalisé sur sous-domaine ; activation masquée jusqu’à la certification Beta.", priceEur: 9, oneTime: false, quantity: false },
-  ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "SSO SAML et OIDC", priceEur: 49, oneTime: false, quantity: false },
-  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Roadmap et missions IA personnalisées à partir du profil renseigné", priceEur: 15, oneTime: false, quantity: false },
+  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.", priceEur: 9, oneTime: false, quantity: false },
+  ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.", priceEur: 49, oneTime: false, quantity: false },
+  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.", priceEur: 15, oneTime: false, quantity: false },
   prioritySupport:      { name: "Support Prioritaire",       category: "Support",      description: "Canal prioritaire", priceEur: 29, oneTime: false, quantity: false },
   auditsPack200:        { name: "Pack audits +200",          category: "SEO",          description: "+200 audits mensuels", priceEur: 12, oneTime: false, quantity: true },
   auditsPack1000:       { name: "Pack audits +1 000",        category: "SEO",          description: "+1 000 audits mensuels", priceEur: 39, oneTime: false, quantity: true },
@@ -566,9 +565,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // Still not commercially released pending functional certification.
   "aiWorkspaceLaunch",
 
-  // customDomain: route exists but feature is not commercially available yet for
-  // Standard/Pro. Included in Ultra but still "coming soon" functionally.
-  // getAddonStatus returns "included" first for Ultra users so this is safe.
+  // Custom Domain is test-beta only when the Render test target is configured.
+  // Otherwise it remains unavailable everywhere.
   "customDomain",
 ]);
 
@@ -632,6 +630,21 @@ export const BETA_ADDONS = new Set<string>([
   // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
   "backlinkIntelligence",
 ]);
+
+/**
+ * Custom Domain can leave the global roadmap gate only on a Stripe TEST
+ * instance with the explicit, complete Render service configuration. The
+ * separate domain routes use this same predicate before any mutation.
+ */
+export function isCustomDomainTestBetaEnabled(): boolean {
+  const stripeKey = getStripeKey() ?? "";
+  return stripeKey.startsWith("sk_test_") && isRenderDomainProvisioningConfigured();
+}
+
+if (isCustomDomainTestBetaEnabled()) {
+  COMING_SOON_ADDONS.delete("customDomain");
+  BETA_ADDONS.add("customDomain");
+}
 
 /** Product lifecycle independent of an organisation's current entitlements. */
 export function getAddonAvailability(addonKey: string): AddonAvailability {
@@ -810,9 +823,13 @@ export const PROTECTED_ADDON_KEYS = new Set<string>([
   "enterprisePermissions",
 ]);
 
+/** Entitled only through its Ultra bundle; never sold as a standalone add-on. */
+export const PLAN_INCLUDED_ONLY_ADDONS = new Set<string>(["customDomain"]);
+
 const SELLABLE_ADDON_AVAILABILITIES = new Set<AddonAvailability>(["available", "beta"]);
 const SELLABLE_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
   !PROTECTED_ADDON_KEYS.has(key) &&
+  !PLAN_INCLUDED_ONLY_ADDONS.has(key) &&
   !REMOVED_ADDONS.has(key) &&
   !RETIRED_ADDONS.has(key) &&
   SELLABLE_ADDON_AVAILABILITIES.has(getAddonAvailability(key))
@@ -852,6 +869,7 @@ export function getAddonPurchasablePlans(addonKey: string): string[] {
 
 /** Tiers where the add-on is permitted as a separate purchase, before Stripe readiness. */
 export function getAddonSeparateSalePlans(addonKey: string): string[] {
+  if (PLAN_INCLUDED_ONLY_ADDONS.has(addonKey)) return [];
   return (["standard", "pro", "ultra"] as const).filter((plan) =>
     isPlanAllowedAddon(plan, addonKey) &&
     !(PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),

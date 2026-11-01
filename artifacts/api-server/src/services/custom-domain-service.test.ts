@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CustomDomainError,
   ensureRenderCustomDomain,
+  isRenderDomainProvisioningConfigured,
   isCustomSubdomain,
   normalizeCustomDomain,
   normalizeRequestHost,
@@ -47,6 +48,28 @@ describe("custom-domain hostname validation", () => {
 });
 
 describe("Render API fail-closed configuration", () => {
+  it("recognizes only a complete, valid service configuration without making a request", () => {
+    const configured = {
+      CUSTOM_DOMAIN_RENDER_API_ENABLED: "true",
+      RENDER_API_KEY: "render-test-fixture",
+      CUSTOM_DOMAIN_RENDER_SERVICE_ID: "srv-testfixture",
+      CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: "flowpoint-test",
+    };
+    expect(isRenderDomainProvisioningConfigured(configured)).toBe(true);
+    expect(isRenderDomainProvisioningConfigured({
+      ...configured,
+      CUSTOM_DOMAIN_RENDER_API_ENABLED: "false",
+    })).toBe(false);
+    expect(isRenderDomainProvisioningConfigured({
+      ...configured,
+      CUSTOM_DOMAIN_RENDER_SERVICE_ID: "not-a-render-service",
+    })).toBe(false);
+    expect(isRenderDomainProvisioningConfigured({
+      ...configured,
+      CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: "flowpoint-production",
+    })).toBe(false);
+  });
+
   it("does not make a network request while provisioning is disabled", async () => {
     vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "false");
     vi.stubEnv("RENDER_API_KEY", "not-a-real-key");

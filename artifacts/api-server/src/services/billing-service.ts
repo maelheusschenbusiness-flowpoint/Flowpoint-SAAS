@@ -5,7 +5,7 @@ import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId, isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ──
    `addons` below is a legacy plan-card highlight list, not an entitlement map.
@@ -16,7 +16,7 @@ const _PLAN_PRESENTATION: Record<string, {
 }> = {
   standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
   pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
-  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["2 000 audits/mois","SLA 99.9%"] },
+  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["2 000 audits/mois"] },
 };
 
 // ── Plan configuration (public) — derived from plans.ts PLAN_DEFINITIONS ─────
@@ -93,7 +93,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   crmIntegration:        { icon: "🤝", unit: "CRM intégré"           },
   // ── Enterprise ─────────────────────────────────────────────────────────────
   customDomain:          { icon: "🌐", unit: "domaine personnalisé"  },
-  ssoEnterprise:         { icon: "🔑", unit: "SSO SAML/OIDC"        },
+  ssoEnterprise:         { icon: "🔑", unit: "SSO Enterprise — à venir" },
   aiWorkspaceLaunch:     { icon: "🎯", unit: "lancement IA"          },
   // ── Packs audits / exports ─────────────────────────────────────────────────
   auditsPack200:         { icon: "🔍", unit: "+200 audits"           },
@@ -640,7 +640,7 @@ export const PLAN_FEATURES: Record<string, string[]> = {
   ],
   ultra: [
     "audits:2000", "monitors:300", "reports:2000", "exports:2000", "team:10",
-    "ai-strategist", "white-label-portal", "sso-enterprise", "custom-domain", "sla-999",
+    "ai-strategist", "white-label-portal",
     "retention:365", "multi-workspace", "agency-lab", "client-billing", "dedicated-onboarding",
     "forecasting", "revenue-leak", "automation", "market-intelligence",
   ],
@@ -648,6 +648,12 @@ export const PLAN_FEATURES: Record<string, string[]> = {
 
 export function hasFeature(feature: string, plan?: string): boolean {
   const p = (plan || "standard").toLowerCase();
+  const normalizedFeature = feature.toLowerCase();
+  if (normalizedFeature === "custom-domain") {
+    return p === "ultra" && isCustomDomainTestBetaEnabled();
+  }
+  const notOperational = new Set(["sso", "saml", "sso-enterprise", "sla-999"]);
+  if (notOperational.has(normalizedFeature)) return false;
   const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
   if (p === "ultra") return true;
   return features.some(f => f === feature || f.startsWith(feature + ":"));

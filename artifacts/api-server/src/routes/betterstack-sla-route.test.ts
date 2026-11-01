@@ -169,6 +169,15 @@ describe("Better Stack SLA report route", () => {
     expect(mocks.getMonitorSLA).toHaveBeenCalledWith("monitor-other", QA_ORG_A, undefined, undefined);
   });
 
+  it("returns an explicit provider failure instead of an empty SLA result", async () => {
+    mocks.getMonitorSLA.mockRejectedValue(new Error("Better Stack temporarily unavailable"));
+
+    const response = await request(makeApp()).get("/api/betterstack/monitors/monitor-42/sla");
+
+    expect(response.status).toBe(500);
+    expect(response.body.data).toBeUndefined();
+  });
+
   it("fails explicitly when Better Stack is not configured and makes no provider call", async () => {
     mocks.isBSConfigured.mockReturnValue(false);
 
@@ -214,6 +223,16 @@ describe("Better Stack SLA report route", () => {
     expect(response.status).toBe(503);
     expect(response.body).toMatchObject({ configured: false });
     expect(mocks.listMonitors).not.toHaveBeenCalled();
+  });
+
+  it("returns an explicit provider failure instead of fabricated global regions", async () => {
+    mocks.listMonitors.mockRejectedValue(new Error("Better Stack temporarily unavailable"));
+
+    const response = await request(makeApp()).get("/api/betterstack/global-overview");
+
+    expect(response.status).toBe(500);
+    expect(response.body.regions).toBeUndefined();
+    expect(mocks.summarizeGlobalMonitoring).not.toHaveBeenCalled();
   });
 
   it("keeps the Global Monitoring endpoint behind its existing add-on gate", () => {
