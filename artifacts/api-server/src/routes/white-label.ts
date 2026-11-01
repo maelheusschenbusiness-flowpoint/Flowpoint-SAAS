@@ -1,7 +1,18 @@
-import { Router, type Request, type Response } from "express";
-import { promises as dns } from "node:dns";
-import https from "node:https";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import { randomBytes, randomUUID } from "node:crypto";
 import { logger } from "../lib/logger.js";
+import { isCustomDomainTestBetaEnabled } from "../lib/plans.js";
+import { requireAdmin } from "../middlewares/requireAdmin.js";
+import {
+  CustomDomainError,
+  isCustomSubdomain,
+  normalizeCustomDomain,
+  ensureRenderCustomDomain,
+  refreshRenderCustomDomain,
+  deleteRenderCustomDomain,
+  verifyDomainTxtRecord,
+  verifyHttpsDomainRoute,
+} from "../services/custom-domain-service.js";
 
 const router = Router();
 
@@ -11,6 +22,56 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+const PG_UNIQUE_VIOLATION = "23505";
+
+type CustomDomainRow = {
+  id: string;
+  org_id: string;
+  domain: string;
+  status: string;
+  ssl_active: boolean;
+  verification_token: string | null;
+  verified_at: string | null;
+  render_domain_id: string | null;
+  render_target_host: string | null;
+  last_error: string | null;
+};
+
+function domainError(err: unknown): { statusCode: number; code: string; message: string } {
+  if (err instanceof CustomDomainError) {
+    return { statusCode: err.statusCode, code: err.code, message: err.message };
+  }
+  const code = pgCode(err);
+  if (code === PG_UNIQUE_VIOLATION) {
+    return { statusCode: 409, code: "DOMAIN_ALREADY_CLAIMED", message: "This domain is already registered." };
+  }
+  return { statusCode: 500, code: "CUSTOM_DOMAIN_ERROR", message: "The custom-domain request could not be completed." };
+}
+
+async function requireCustomDomainEntitlement(orgId: string): Promise<boolean> {
+  const { loadBillingContext } = await import("../services/billing-context.js");
+  const ctx = await loadBillingContext(orgId).catch(() => null);
+  return Boolean(ctx?.addons?.["customDomain"]);
+}
+
+async function requireCustomDomainAccess(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (!await requireCustomDomainEntitlement(org(req))) {
+    res.status(403).json({ error: "Custom domain entitlement required" });
+    return;
+  }
+  if (!isCustomDomainTestBetaEnabled()) {
+    res.status(503).json({
+      error: "Custom domain provisioning is unavailable in this environment",
+      code: "CUSTOM_DOMAIN_NOT_AVAILABLE",
+    });
+    return;
+  }
+  next();
+}
 
 // ── SQL error classification ────────────────────────────────────────────────
 // Reliability: never disguise a schema/SQL failure as a legitimate empty
@@ -124,117 +185,313 @@ router.patch("/white-label/templates/:id", async (req: Request, res: Response) =
 
 // ── Custom domains ────────────────────────────────────────────────────────────
 
-router.get("/white-label/domains", async (req: Request, res: Response) => {
+router.get("/white-label/domains", requireAdmin, requireCustomDomainAccess, async (req: Request, res: Response) => {
   try {
-    const r = await db(req)(`SELECT * FROM custom_domains WHERE org_id=$1 ORDER BY created_at DESC`, [org(req)]);
+    const r = await db(req)(
+      `SELECT id, org_id, domain, status, ssl_active, verification_token,
+              verified_at, render_domain_id, render_target_host, last_error,
+              created_at, updated_at
+         FROM custom_domains WHERE org_id=$1 ORDER BY created_at DESC`,
+      [org(req)],
+    );
     res.json({ domains: r.rows });
   } catch {
     res.status(500).json({ error: "Failed to fetch domains" });
   }
 });
 
-router.post("/white-label/domains", async (req: Request, res: Response) => {
-  // Feature gate — loadBillingContext overlays plan-bundled add-ons so Ultra
-  // subscribers are granted access without a manual org_addons row.
-  const { loadBillingContext } = await import("../services/billing-context.js");
-  const ctx = await loadBillingContext(org(req)).catch(() => null);
-  if (!ctx?.addons?.["customDomain"]) {
-    res.status(403).json({ error: "Custom domain add-on required" }); return;
-  }
-  const { domain } = req.body ?? {};
-  if (!domain) { res.status(400).json({ error: "domain required" }); return; }
-  const { randomBytes } = await import("node:crypto");
-  const id    = `cd_${Date.now()}_${randomBytes(3).toString("hex")}`;
-  const token = `fpv_${randomBytes(16).toString("hex")}`;
+router.post("/white-label/domains", requireAdmin, requireCustomDomainAccess, async (req: Request, res: Response) => {
+  const orgId = org(req);
+
+  let domain: string;
   try {
+    domain = normalizeCustomDomain(req.body?.domain);
+  } catch (err) {
+    const failure = domainError(err);
+    res.status(failure.statusCode).json({ error: failure.message, code: failure.code });
+    return;
+  }
+  if (!isCustomSubdomain(domain)) {
+    res.status(400).json({
+      error: "Beta supports a client subdomain such as portal.example.com; root and www domains are not accepted.",
+      code: "SUBDOMAIN_REQUIRED",
+    });
+    return;
+  }
+
+  try {
+    const indexCheck = await db(req)(
+      `SELECT
+         COALESCE((SELECT i.indisunique FROM pg_index i
+                    WHERE i.indexrelid=to_regclass('public.custom_domains_domain_unique_idx')
+                    LIMIT 1), false) AS domain_index_is_unique,
+         COALESCE((SELECT i.indisunique FROM pg_index i
+                    WHERE i.indexrelid=to_regclass('public.custom_domains_org_unique_idx')
+                    LIMIT 1), false) AS org_index_is_unique`,
+    );
+    if (indexCheck.rows[0]?.domain_index_is_unique !== true || indexCheck.rows[0]?.org_index_is_unique !== true) {
+      res.status(503).json({
+        error: "Domain ownership protection is not ready. Contact support before trying again.",
+        code: "DOMAIN_UNIQUENESS_GUARD_UNAVAILABLE",
+      });
+      return;
+    }
+
+    const existing = await db(req)(
+      `SELECT id FROM custom_domains WHERE org_id=$1 LIMIT 1`,
+      [orgId],
+    );
+    if (existing.rows.length > 0) {
+      res.status(409).json({
+        error: "This organization already has a custom domain. Remove it before replacing it.",
+        code: "DOMAIN_LIMIT_REACHED",
+      });
+      return;
+    }
+
+    const id = `cd_${randomUUID()}`;
+    const token = `fpv_${randomBytes(32).toString("hex")}`;
     await db(req)(
-      `INSERT INTO custom_domains (id, org_id, domain, status, ssl_active, verification_token)
-       VALUES ($1,$2,$3,'pending_dns',false,$4)`,
-      [id, org(req), domain, token]
+      `INSERT INTO custom_domains
+         (id, org_id, domain, status, ssl_active, verification_token, created_at, updated_at)
+       VALUES ($1,$2,$3,'pending_dns',false,$4,NOW(),NOW())`,
+      [id, orgId, domain, token],
     );
     res.status(201).json({
-      ok: true, id, verificationToken: token, status: "pending_dns",
+      ok: true,
+      id,
+      domain,
+      status: "pending_dns",
+      verificationToken: token,
       instructions: {
-        step1: `Ajoutez un enregistrement DNS TXT sur votre domaine :`,
-        record: `_flowpoint-verify.${domain}`, value: token,
-        note: "La propagation DNS peut prendre jusqu'à 24h. Cliquez 'Vérifier' une fois le record ajouté.",
+        record: { host: `_flowpoint-verify.${domain}`, type: "TXT", value: token },
+        note: "Add this TXT record first. Render is not contacted until ownership is verified.",
       },
     });
-  } catch {
-    res.status(500).json({ error: "Failed to add domain" });
-  }
-});
-
-router.post("/white-label/domains/:id/verify", async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    const r = await db(req)(`SELECT * FROM custom_domains WHERE id=$1 AND org_id=$2`, [id, org(req)]);
-    if (!r.rows.length) { res.status(404).json({ error: "Domain not found" }); return; }
-    const { domain, verification_token } = r.rows[0] as Record<string, string>;
-
-    let verified = false;
-    let dnsError: string | null = null;
-    try {
-      const txtRecords = await dns.resolveTxt(`_flowpoint-verify.${domain}`);
-      verified = txtRecords.flat().includes(verification_token ?? "");
-    } catch (err) {
-      dnsError = String((err as NodeJS.ErrnoException).code ?? err);
-      logger.info({ domain, dnsError }, "[WhiteLabel] DNS TXT lookup failed");
-    }
-
-    if (!verified) {
-      await db(req)(`UPDATE custom_domains SET status='pending_dns', updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org(req)]);
-      res.status(422).json({
-        ok: false, status: "pending_dns", verified: false, dnsError,
-        message: `Enregistrement DNS TXT introuvable. Ajoutez _flowpoint-verify.${domain} → ${verification_token ?? ""} et réessayez dans quelques minutes.`,
-        required: { host: `_flowpoint-verify.${domain}`, type: "TXT", value: verification_token },
-      }); return;
-    }
-
-    await db(req)(`UPDATE custom_domains SET status='dns_verified', ssl_active=false, verified_at=now(), updated_at=now() WHERE id=$1 AND org_id=$2`, [id, org(req)]);
-    res.json({
-      ok: true, status: "dns_verified", sslActive: false,
-      message: "DNS vérifié avec succès. SSL doit être configuré manuellement via votre hébergeur ou proxy (Cloudflare, Caddy, Nginx + Let's Encrypt).",
-      nextStep: "Configurez votre proxy/hébergeur pour pointer ce domaine vers FlowPoint, puis utilisez /ssl-check pour confirmer le SSL.",
-    });
   } catch (err) {
-    logger.error({ err }, "[WhiteLabel] Verify failed");
-    res.status(500).json({ error: "Failed to verify domain" });
+    const failure = domainError(err);
+    if (failure.statusCode >= 500) logger.error({ err, orgId }, "[WhiteLabel] Domain claim creation failed");
+    res.status(failure.statusCode).json({ error: failure.message, code: failure.code });
   }
 });
 
-router.post("/white-label/domains/:id/ssl-check", async (req: Request, res: Response) => {
-  const { id } = req.params;
+async function verifyCustomDomain(req: Request, res: Response): Promise<void> {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] ?? "" : rawId;
+  const orgId = org(req);
+
   try {
-    const r = await db(req)(`SELECT domain, status FROM custom_domains WHERE id=$1 AND org_id=$2`, [id, org(req)]);
-    if (!r.rows.length) { res.status(404).json({ error: "Domain not found" }); return; }
-    const { domain, status } = r.rows[0] as Record<string, string>;
-    if (status !== "dns_verified" && status !== "ssl_pending" && status !== "ssl_active" && status !== "tls_verified") {
-      res.status(400).json({ error: "DNS must be verified before SSL check", status }); return;
+    const read = await db(req)(
+      `SELECT id, org_id, domain, status, ssl_active, verification_token,
+              verified_at, render_domain_id, render_target_host, last_error
+         FROM custom_domains WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [id, orgId],
+    );
+    const row = read.rows[0] as CustomDomainRow | undefined;
+    if (!row) { res.status(404).json({ error: "Domain not found" }); return; }
+    if (row.status === "active" && row.ssl_active) {
+      res.json({ ok: true, status: "active", sslActive: true, domain: row.domain, message: "HTTPS and workspace routing are active." });
+      return;
     }
 
-    const sslOk = await new Promise<boolean>((resolve) => {
-      const req2 = https.request(
-        { hostname: domain, path: "/", method: "HEAD", timeout: 8000, rejectUnauthorized: true },
-        () => resolve(true)
+    let token = row.verification_token;
+    if (!token) {
+      token = `fpv_${randomBytes(32).toString("hex")}`;
+      await db(req)(
+        `UPDATE custom_domains
+            SET verification_token=$1, status='pending_dns', ssl_active=false,
+                render_domain_id=NULL, render_target_host=NULL, last_error=NULL, updated_at=NOW()
+          WHERE id=$2 AND org_id=$3`,
+        [token, id, orgId],
       );
-      req2.on("error", () => resolve(false));
-      req2.on("timeout", () => { req2.destroy(); resolve(false); });
-      req2.end();
-    });
+      res.json({
+        ok: true,
+        status: "pending_dns",
+        instructions: { record: { host: `_flowpoint-verify.${row.domain}`, type: "TXT", value: token } },
+        message: "Add the TXT ownership record, then verify again.",
+      });
+      return;
+    }
 
-    const newStatus = sslOk ? "tls_verified" : "ssl_pending";
-    await db(req)(`UPDATE custom_domains SET status=$1, ssl_active=false, updated_at=now() WHERE id=$2 AND org_id=$3`, [newStatus, id, org(req)]);
-    res.json({
-      ok: true, status: newStatus, tlsVerified: sslOk, sslActive: false,
-      message: sslOk
-        ? "Le certificat TLS est valide sur l’hôte testé. Cela ne confirme pas le routage vers FlowPoint ni l’activation du portail."
-        : "SSL non détecté. Configurez votre proxy (Cloudflare, Caddy, ou Nginx + Let's Encrypt) pour activer HTTPS sur ce domaine.",
-      note: "Cette vérification teste uniquement la négociation TLS. Le routage et la mise en service du domaine ne sont pas automatisés.",
-    });
+    const txt = await verifyDomainTxtRecord(row.domain, token);
+    if (!txt.verified) {
+      await db(req)(
+        `UPDATE custom_domains SET status='pending_dns', ssl_active=false, last_checked_at=NOW(),
+                last_error=NULL, updated_at=NOW()
+          WHERE id=$1 AND org_id=$2`,
+        [id, orgId],
+      );
+      res.status(422).json({
+        ok: false,
+        status: "pending_dns",
+        code: "DOMAIN_TXT_NOT_VERIFIED",
+        dnsCode: txt.dnsCode,
+        required: { host: `_flowpoint-verify.${row.domain}`, type: "TXT", value: token },
+        message: "Ownership TXT record was not found yet. Check the value and retry after DNS propagation.",
+      });
+      return;
+    }
+
+    let renderDomain: {
+      id: string;
+      name: string;
+      verificationStatus: "verified" | "unverified";
+      targetHost: string;
+    } | null = row.render_domain_id
+      ? { id: row.render_domain_id, name: row.domain, verificationStatus: "unverified", targetHost: row.render_target_host ?? "" }
+      : null;
+    if (!renderDomain) {
+      try {
+        renderDomain = await ensureRenderCustomDomain(row.domain);
+        await db(req)(
+          `UPDATE custom_domains
+              SET status='render_pending', ssl_active=false, render_domain_id=$1,
+                  render_target_host=$2, verified_at=COALESCE(verified_at,NOW()),
+                  last_checked_at=NOW(), last_error=NULL, updated_at=NOW()
+            WHERE id=$3 AND org_id=$4`,
+          [renderDomain.id, renderDomain.targetHost, id, orgId],
+        );
+      } catch (err) {
+        const failure = domainError(err);
+        await db(req)(
+          `UPDATE custom_domains SET status='ownership_verified', ssl_active=false,
+                  last_checked_at=NOW(), last_error=$1, updated_at=NOW()
+            WHERE id=$2 AND org_id=$3`,
+          [failure.code, id, orgId],
+        ).catch(() => undefined);
+        res.status(failure.statusCode).json({
+          error: failure.message,
+          code: failure.code,
+          status: "ownership_verified",
+          message: "Domain ownership is proven, but Render provisioning is not complete.",
+        });
+        return;
+      }
+    }
+
+    if (!renderDomain) {
+      throw new CustomDomainError("Render domain was not resolved", "RENDER_DOMAIN_INVALID_RESPONSE", 502);
+    }
+
+    try {
+      const refreshed = await refreshRenderCustomDomain(row.domain, renderDomain.id);
+      if (refreshed.verificationStatus !== "verified") {
+        await db(req)(
+          `UPDATE custom_domains SET status='render_pending', ssl_active=false,
+                  render_target_host=$1, last_checked_at=NOW(), last_error=NULL, updated_at=NOW()
+            WHERE id=$2 AND org_id=$3`,
+          [refreshed.targetHost, id, orgId],
+        );
+        res.status(202).json({
+          ok: true,
+          status: "render_pending",
+          domain: row.domain,
+          dns: { host: row.domain, type: "CNAME", value: refreshed.targetHost },
+          removeAaaa: true,
+          message: "Render has not verified the DNS route yet. Add the CNAME record and retry.",
+        });
+        return;
+      }
+
+      await db(req)(
+        `UPDATE custom_domains SET status='render_verified', ssl_active=false,
+                render_target_host=$1, last_checked_at=NOW(), last_error=NULL, updated_at=NOW()
+          WHERE id=$2 AND org_id=$3`,
+        [refreshed.targetHost, id, orgId],
+      );
+
+      const routed = await verifyHttpsDomainRoute(row.domain, id, refreshed.targetHost);
+      if (!routed) {
+        await db(req)(
+          `UPDATE custom_domains SET status='tls_pending', ssl_active=false,
+                  last_checked_at=NOW(), last_error='https_route_not_ready', updated_at=NOW()
+            WHERE id=$1 AND org_id=$2`,
+          [id, orgId],
+        );
+        res.status(202).json({
+          ok: true,
+          status: "tls_pending",
+          sslActive: false,
+          domain: row.domain,
+          dns: { host: row.domain, type: "CNAME", value: refreshed.targetHost },
+          removeAaaa: true,
+          message: "Render verified DNS. Waiting for a valid HTTPS certificate and a successful route check.",
+        });
+        return;
+      }
+
+      await db(req)(
+        `UPDATE custom_domains SET status='active', ssl_active=true,
+                last_checked_at=NOW(), last_error=NULL, updated_at=NOW()
+          WHERE id=$1 AND org_id=$2`,
+        [id, orgId],
+      );
+      res.json({
+        ok: true,
+        status: "active",
+        sslActive: true,
+        domain: row.domain,
+        message: "HTTPS and organization routing were verified.",
+      });
+    } catch (err) {
+      const failure = domainError(err);
+      logger.warn({ code: failure.code, domainId: id, orgId }, "[WhiteLabel] Render domain verification failed");
+      await db(req)(
+        `UPDATE custom_domains SET status='render_pending', ssl_active=false,
+                last_checked_at=NOW(), last_error=$1, updated_at=NOW()
+          WHERE id=$2 AND org_id=$3`,
+        [failure.code, id, orgId],
+      ).catch(() => undefined);
+      res.status(failure.statusCode).json({ error: failure.message, code: failure.code, status: "render_pending" });
+    }
   } catch (err) {
-    logger.error({ err }, "[WhiteLabel] SSL check failed");
-    res.status(500).json({ error: "Failed to perform SSL check" });
+    logger.error({ err, domainId: id, orgId }, "[WhiteLabel] Domain verification failed");
+    res.status(500).json({ error: "Failed to verify custom domain", code: "CUSTOM_DOMAIN_VERIFY_FAILED" });
+  }
+}
+
+router.post("/white-label/domains/:id/verify", requireAdmin, requireCustomDomainAccess, verifyCustomDomain);
+// Preserve the older endpoint as an alias while the dashboard moves to /verify.
+router.post("/white-label/domains/:id/ssl-check", requireAdmin, requireCustomDomainAccess, verifyCustomDomain);
+
+router.delete("/white-label/domains/:id", requireAdmin, requireCustomDomainAccess, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const orgId = org(req);
+  try {
+    const read = await db(req)(
+      `SELECT render_domain_id FROM custom_domains WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [id, orgId],
+    );
+    if (!read.rows[0]) { res.status(404).json({ error: "Domain not found" }); return; }
+    const renderDomainId = (read.rows[0] as { render_domain_id?: string | null }).render_domain_id ?? null;
+
+    // Revoke tenant routing before asking Render to remove the hostname. If
+    // Render is unavailable, the row remains non-routable and can be retried.
+    await db(req)(
+      `UPDATE custom_domains SET status='deletion_pending', ssl_active=false,
+              last_error=NULL, updated_at=NOW()
+        WHERE id=$1 AND org_id=$2`,
+      [id, orgId],
+    );
+    if (renderDomainId) {
+      try {
+        await deleteRenderCustomDomain(renderDomainId);
+      } catch (err) {
+        const failure = domainError(err);
+        await db(req)(
+          `UPDATE custom_domains SET last_error=$1, updated_at=NOW()
+            WHERE id=$2 AND org_id=$3`,
+          [failure.code, id, orgId],
+        ).catch(() => undefined);
+        res.status(failure.statusCode).json({ error: failure.message, code: failure.code, status: "deletion_pending" });
+        return;
+      }
+    }
+    await db(req)(`DELETE FROM custom_domains WHERE id=$1 AND org_id=$2`, [id, orgId]);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, domainId: id, orgId }, "[WhiteLabel] Domain deletion failed");
+    res.status(500).json({ error: "Failed to remove custom domain" });
   }
 });
 

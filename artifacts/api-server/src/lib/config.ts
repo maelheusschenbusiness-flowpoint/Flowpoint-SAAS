@@ -135,7 +135,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:true, multiLocation:false, prioritySupport:false,
   },
   ultra: {
-    sso:false, saml:false, whiteLabel:true, customDomain:false,
+    sso:false, saml:false, whiteLabel:true, customDomain:true,
     localDominationMaps:true, geoGridSize9x9:true, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,

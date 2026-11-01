@@ -1,4 +1,5 @@
 import { getStripeKey, isStripeTestMode } from "../services/stripe-factory.js";
+import { isRenderDomainProvisioningConfigured } from "../services/custom-domain-service.js";
 export interface PlanLimits {
   audits: number;
   monitors: number;
@@ -439,7 +440,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   advancedWebhooks:     { name: "Webhooks Avancés",          category: "API",          description: "Webhooks configurables", priceEur: 14, oneTime: false, quantity: false },
   zapierIntegration:    { name: "Zapier / Make",             category: "API",          description: "Intégration Zapier et Make", priceEur: 19, oneTime: false, quantity: false },
   crmIntegration:       { name: "Intégration CRM",           category: "API",          description: "Synchronisation CRM", priceEur: 29, oneTime: false, quantity: false },
-  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Vérification du TXT DNS et de la négociation TLS uniquement; le routage FlowPoint et le certificat géré ne sont pas fournis.", priceEur: 9, oneTime: false, quantity: false },
+  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.", priceEur: 9, oneTime: false, quantity: false },
   ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.", priceEur: 49, oneTime: false, quantity: false },
   aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.", priceEur: 15, oneTime: false, quantity: false },
   prioritySupport:      { name: "Support Prioritaire",       category: "Support",      description: "Canal prioritaire", priceEur: 29, oneTime: false, quantity: false },
@@ -551,8 +552,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "marketIntelligence",
 
   // ── Routes exist but not commercially released ─────────────────────────────
-  // crmIntegration: crm.ts routes are complete but addon not yet sold.
-  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
+  // CRM OAuth, provider health checks, synchronization, and signed webhooks are
+  // not implemented yet. Keep unavailable for purchase until those paths exist.
   "crmIntegration",
 
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
@@ -564,9 +565,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // Still not commercially released pending functional certification.
   "aiWorkspaceLaunch",
 
-  // customDomain: route exists but feature is not commercially available yet for
-  // Standard/Pro. Included in Ultra but still "coming soon" functionally.
-  // getAddonStatus returns "included" first for Ultra users so this is safe.
+  // Custom Domain is test-beta only when the Render test target is configured.
+  // Otherwise it remains unavailable everywhere.
   "customDomain",
 ]);
 
@@ -630,6 +630,21 @@ export const BETA_ADDONS = new Set<string>([
   // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
   "backlinkIntelligence",
 ]);
+
+/**
+ * Custom Domain can leave the global roadmap gate only on a Stripe TEST
+ * instance with the explicit, complete Render service configuration. The
+ * separate domain routes use this same predicate before any mutation.
+ */
+export function isCustomDomainTestBetaEnabled(): boolean {
+  const stripeKey = getStripeKey();
+  return stripeKey.startsWith("sk_test_") && isRenderDomainProvisioningConfigured();
+}
+
+if (isCustomDomainTestBetaEnabled()) {
+  COMING_SOON_ADDONS.delete("customDomain");
+  BETA_ADDONS.add("customDomain");
+}
 
 /** Product lifecycle independent of an organisation's current entitlements. */
 export function getAddonAvailability(addonKey: string): AddonAvailability {
@@ -808,9 +823,13 @@ export const PROTECTED_ADDON_KEYS = new Set<string>([
   "enterprisePermissions",
 ]);
 
+/** Entitled only through its Ultra bundle; never sold as a standalone add-on. */
+export const PLAN_INCLUDED_ONLY_ADDONS = new Set<string>(["customDomain"]);
+
 const SELLABLE_ADDON_AVAILABILITIES = new Set<AddonAvailability>(["available", "beta"]);
 const SELLABLE_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
   !PROTECTED_ADDON_KEYS.has(key) &&
+  !PLAN_INCLUDED_ONLY_ADDONS.has(key) &&
   !REMOVED_ADDONS.has(key) &&
   !RETIRED_ADDONS.has(key) &&
   SELLABLE_ADDON_AVAILABILITIES.has(getAddonAvailability(key))
@@ -850,6 +869,7 @@ export function getAddonPurchasablePlans(addonKey: string): string[] {
 
 /** Tiers where the add-on is permitted as a separate purchase, before Stripe readiness. */
 export function getAddonSeparateSalePlans(addonKey: string): string[] {
+  if (PLAN_INCLUDED_ONLY_ADDONS.has(addonKey)) return [];
   return (["standard", "pro", "ultra"] as const).filter((plan) =>
     isPlanAllowedAddon(plan, addonKey) &&
     !(PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),

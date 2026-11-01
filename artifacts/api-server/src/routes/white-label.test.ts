@@ -12,7 +12,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
-import https from "node:https";
 
 // ─── Mock billing-context before importing the router ────────────────────────
 // The router dynamically imports loadBillingContext; we stub the module so it
@@ -39,11 +38,49 @@ vi.mock("../services/init-data-tables.js", () => ({
   initDataTables: () => mockInitDataTables(),
 }));
 
+vi.mock("../services/custom-domain-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/custom-domain-service.js")>();
+  return {
+    ...actual,
+    verifyDomainTxtRecord: vi.fn(async () => ({ verified: true, dnsCode: null })),
+    ensureRenderCustomDomain: vi.fn(async (domain: string) => ({
+      id: "render-domain-1",
+      name: domain,
+      verificationStatus: "unverified" as const,
+      targetHost: "flowpoint-test.onrender.com",
+    })),
+    refreshRenderCustomDomain: vi.fn(async (domain: string, id: string) => ({
+      id,
+      name: domain,
+      verificationStatus: "verified" as const,
+      targetHost: "flowpoint-test.onrender.com",
+    })),
+    verifyHttpsDomainRoute: vi.fn(async () => false),
+  };
+});
+
+beforeEach(() => {
+  vi.stubEnv("STRIPE_TEST_MODE", "true");
+  vi.stubEnv("STRIPE_TEST_KEY", "sk_test_custom_domain_fixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "true");
+  vi.stubEnv("RENDER_API_KEY", "render-test-fixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "srv-testfixture");
+  vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 // ─── Build minimal Express app with orgId + orgDb stubs ──────────────────────
 // orgDbImpl lets a test control what the orgDb query does (rows / throw).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let orgDbImpl: (sql: string, vals?: unknown[]) => Promise<any> =
-  async (_sql: string, _vals?: unknown[]) => ({ rows: [] as unknown[] });
+  async (sql: string, _vals?: unknown[]) => {
+    if (sql.includes("custom_domains_domain_unique_idx")) return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+    return { rows: [] as unknown[] };
+  };
+let mockRole = "owner";
 
 async function buildApp() {
   const { default: whiteLabelRouter } = await import("./white-label.js");
@@ -52,7 +89,15 @@ async function buildApp() {
 
   // Inject orgId + orgDb (delegates to the test-controlled orgDbImpl)
   app.use((req, _res, next) => {
-    (req as express.Request & { orgId: string; orgDb: unknown }).orgId = "test-org";
+    const contextualReq = req as express.Request & {
+      orgId: string;
+      orgDb: unknown;
+      userId: string;
+      orgContext: { orgId: string; role: string };
+    };
+    contextualReq.orgId = "test-org";
+    contextualReq.userId = "test-user";
+    contextualReq.orgContext = { orgId: "test-org", role: mockRole };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (req as express.Request & { orgDb: any }).orgDb =
       (sql: string, vals?: unknown[]) => orgDbImpl(sql, vals);
@@ -75,6 +120,11 @@ describe("POST /white-label/templates — entitlement gate", () => {
   let app: express.Express;
 
   beforeEach(async () => {
+    mockRole = "owner";
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("custom_domains_domain_unique_idx")) return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      return { rows: [] };
+    };
     app = await buildApp();
   });
 
@@ -113,6 +163,14 @@ describe("POST /white-label/domains — entitlement gate", () => {
   let app: express.Express;
 
   beforeEach(async () => {
+    mockRole = "owner";
+    mockCtx = { addons: {} };
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("custom_domains_domain_unique_idx")) {
+        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      }
+      return { rows: [] };
+    };
     app = await buildApp();
   });
 
@@ -130,12 +188,54 @@ describe("POST /white-label/domains — entitlement gate", () => {
     mockCtx = { addons: { whiteLabel: true, customDomain: true } };
     const res = await request(app)
       .post("/white-label/domains")
-      .send({ domain: "myagency.io" });
+      .send({ domain: "portal.myagency.io" });
     // 201 means the gate passed; the route attempts an INSERT into custom_domains.
     // orgDb stub returns empty rows so INSERT "succeeds" (stub returns {rows:[]}).
     expect(res.status).toBe(201);
     expect(res.body.ok).toBe(true);
     expect(res.body.verificationToken).toMatch(/^fpv_/);
+    expect(res.body.instructions.record.type).toBe("TXT");
+    expect(res.body.instructions.record.host).toBe("_flowpoint-verify.portal.myagency.io");
+  });
+
+  it("fails closed before creating a claim when Render Test is not configured", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "false");
+
+    const res = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "portal.myagency.io" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("CUSTOM_DOMAIN_NOT_AVAILABLE");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("requires Ultra entitlement before listing domains", async () => {
+    mockCtx = { addons: {} };
+    const res = await request(app).get("/white-label/domains");
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/entitlement/i);
+  });
+
+  it("rejects root and www domains before saving a claim", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    const apex = await request(app).post("/white-label/domains").send({ domain: "myagency.io" });
+    const www = await request(app).post("/white-label/domains").send({ domain: "www.myagency.io" });
+    expect(apex.status).toBe(400);
+    expect(apex.body.code).toBe("SUBDOMAIN_REQUIRED");
+    expect(www.status).toBe(400);
+    expect(www.body.code).toBe("SUBDOMAIN_REQUIRED");
+  });
+
+  it("fails closed when the global domain uniqueness index is unavailable", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    orgDbImpl = async () => ({ rows: [{ domain_index_is_unique: true, org_index_is_unique: false }] });
+    const res = await request(app).post("/white-label/domains").send({ domain: "portal.myagency.io" });
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("DOMAIN_UNIQUENESS_GUARD_UNAVAILABLE");
   });
 
   it("returns 403 for a Standard subscriber (customDomain not bundled)", async () => {
@@ -145,41 +245,66 @@ describe("POST /white-label/domains — entitlement gate", () => {
       .send({ domain: "mysite.com" });
     expect(res.status).toBe(403);
   });
+
+  it("requires an admin-level role for domain management", async () => {
+    mockRole = "member";
+    const res = await request(app).get("/white-label/domains");
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/admin access required/i);
+  });
+
+  it("enforces the one-domain-per-organization limit", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("custom_domains_domain_unique_idx")) {
+        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      }
+      if (sql.includes("SELECT id FROM custom_domains WHERE org_id")) {
+        return { rows: [{ id: "existing-domain" }] };
+      }
+      return { rows: [] };
+    };
+    const res = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "portal.myagency.io" });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("DOMAIN_LIMIT_REACHED");
+  });
 });
 
 describe("POST /white-label/domains/:id/ssl-check — readiness state", () => {
   let app: express.Express;
-  let httpsSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
-    orgDbImpl = async sql => sql.includes("SELECT domain, status")
-      ? { rows: [{ domain: "myagency.io", status: "dns_verified" }] }
+    mockRole = "owner";
+    mockCtx = { addons: { customDomain: true } };
+    orgDbImpl = async sql => sql.includes("SELECT id, org_id, domain, status")
+      ? { rows: [{
+        id: "domain-1",
+        org_id: "test-org",
+        domain: "portal.myagency.io",
+        status: "ownership_verified",
+        ssl_active: false,
+        verification_token: "fpv_test-token",
+        verified_at: null,
+        render_domain_id: null,
+        render_target_host: null,
+        last_error: null,
+      }] }
       : { rows: [] };
     app = await buildApp();
   });
 
-  afterEach(() => httpsSpy?.mockRestore());
-
-  it("does not report a successful TLS handshake as an operational FlowPoint domain", async () => {
-    const tlsRequest = { on: vi.fn().mockReturnThis(), end: vi.fn(), destroy: vi.fn() };
-    httpsSpy = vi.spyOn(https, "request").mockImplementation(((
-      _options: unknown,
-      callback?: (response: unknown) => void,
-    ) => {
-      callback?.({ statusCode: 200 });
-      return tlsRequest;
-    }) as unknown as typeof https.request);
-
+  it("does not activate a domain until HTTPS also proves FlowPoint routing", async () => {
     const response = await request(app).post("/white-label/domains/domain-1/ssl-check");
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     expect(response.body).toMatchObject({
-      status: "tls_verified",
-      tlsVerified: true,
+      status: "tls_pending",
       sslActive: false,
     });
-    expect(response.body.message).toContain("ne confirme pas le routage vers FlowPoint");
-    expect(response.body.message).not.toContain("opérationnel");
+    expect(response.body.message).toContain("successful route check");
+    expect(response.body.message).not.toContain("active");
   });
 });
 

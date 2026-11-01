@@ -5,7 +5,7 @@ import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId, isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ──
    `addons` below is a legacy plan-card highlight list, not an entitlement map.
@@ -648,8 +648,12 @@ export const PLAN_FEATURES: Record<string, string[]> = {
 
 export function hasFeature(feature: string, plan?: string): boolean {
   const p = (plan || "standard").toLowerCase();
-  const notOperational = new Set(["sso", "saml", "sso-enterprise", "custom-domain", "sla-999"]);
-  if (notOperational.has(feature.toLowerCase())) return false;
+  const normalizedFeature = feature.toLowerCase();
+  if (normalizedFeature === "custom-domain") {
+    return p === "ultra" && isCustomDomainTestBetaEnabled();
+  }
+  const notOperational = new Set(["sso", "saml", "sso-enterprise", "sla-999"]);
+  if (notOperational.has(normalizedFeature)) return false;
   const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
   if (p === "ultra") return true;
   return features.some(f => f === feature || f.startsWith(feature + ":"));
