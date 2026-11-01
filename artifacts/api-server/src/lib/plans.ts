@@ -637,7 +637,7 @@ export const BETA_ADDONS = new Set<string>([
  * separate domain routes use this same predicate before any mutation.
  */
 export function isCustomDomainTestBetaEnabled(): boolean {
-  const stripeKey = getStripeKey();
+  const stripeKey = getStripeKey() ?? "";
   return stripeKey.startsWith("sk_test_") && isRenderDomainProvisioningConfigured();
 }
 

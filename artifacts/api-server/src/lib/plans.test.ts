@@ -33,6 +33,7 @@ import {
   isPlanAllowedAddon,
   getAddonPurchasablePlans,
   ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
+  isCustomDomainTestBetaEnabled,
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
@@ -318,6 +319,18 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
       expect(hasFeature("custom-domain", "pro")).toBe(false);
       expect(CANONICAL_ADDON_DEFINITIONS.customDomain.description)
         .toBe("Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps the Custom Domain beta disabled when no Stripe TEST key is available", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "");
+    vi.stubEnv("STRIPE_TEST_SECRET_KEY", "");
+    try {
+      expect(isCustomDomainTestBetaEnabled()).toBe(false);
     } finally {
       vi.unstubAllEnvs();
     }
