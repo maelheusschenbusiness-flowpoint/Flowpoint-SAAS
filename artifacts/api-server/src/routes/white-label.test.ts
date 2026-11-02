@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
+import * as customDomainService from "../services/custom-domain-service.js";
 
 // ─── Mock billing-context before importing the router ────────────────────────
 // The router dynamically imports loadBillingContext; we stub the module so it
@@ -56,8 +57,12 @@ vi.mock("../services/custom-domain-service.js", async (importOriginal) => {
       targetHost: "flowpoint-test.onrender.com",
     })),
     verifyHttpsDomainRoute: vi.fn(async () => false),
+    isQaCustomDomainCertificationEnabled: vi.fn(async () => false),
   };
 });
+
+let mockOrgId = "test-org";
+const QA_ORG_ID = "10000000-0000-4000-8000-000000000002";
 
 beforeEach(() => {
   vi.stubEnv("STRIPE_TEST_MODE", "true");
@@ -66,6 +71,8 @@ beforeEach(() => {
   vi.stubEnv("RENDER_API_KEY", "render-test-fixture");
   vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "srv-testfixture");
   vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
+  mockOrgId = "test-org";
+  vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockReset().mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -95,9 +102,9 @@ async function buildApp() {
       userId: string;
       orgContext: { orgId: string; role: string };
     };
-    contextualReq.orgId = "test-org";
+    contextualReq.orgId = mockOrgId;
     contextualReq.userId = "test-user";
-    contextualReq.orgContext = { orgId: "test-org", role: mockRole };
+    contextualReq.orgContext = { orgId: mockOrgId, role: mockRole };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (req as express.Request & { orgDb: any }).orgDb =
       (sql: string, vals?: unknown[]) => orgDbImpl(sql, vals);
@@ -230,6 +237,132 @@ describe("POST /white-label/domains — entitlement gate", () => {
     expect(www.body.code).toBe("SUBDOMAIN_REQUIRED");
   });
 
+  it("continues to reserve flowpoint.pro and every subdomain before any database write", async () => {
+    mockCtx = { addons: { customDomain: true } };
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+
+    const apex = await request(app).post("/white-label/domains").send({ domain: "flowpoint.pro" });
+    const child = await request(app).post("/white-label/domains").send({ domain: "client.flowpoint.pro" });
+
+    expect(apex.status).toBe(400);
+    expect(apex.body.code).toBe("RESERVED_DOMAIN");
+    expect(child.status).toBe(400);
+    expect(child.body.code).toBe("RESERVED_DOMAIN");
+    expect(query).not.toHaveBeenCalled();
+    expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it("allows only the exact QA hostname when the server confirms the QA organization and Test service", async () => {
+    mockOrgId = QA_ORG_ID;
+    mockCtx = { addons: { customDomain: true } };
+    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    const writes: string[] = [];
+    orgDbImpl = async (sql: string) => {
+      if (sql.includes("FROM organizations")) {
+        return { rows: [{ id: QA_ORG_ID, is_internal_qa: true, status: "active" }] };
+      }
+      if (sql.includes("custom_domains_domain_unique_idx")) {
+        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      }
+      if (sql.includes("SELECT id FROM custom_domains WHERE org_id")) return { rows: [] };
+      writes.push(sql);
+      return { rows: [] };
+    };
+
+    const response = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "Custom-Test.FlowPoint.Pro." });
+
+    expect(response.status).toBe(201);
+    expect(response.body.domain).toBe("custom-test.flowpoint.pro");
+    expect(response.body.instructions.record).toMatchObject({
+      host: "_flowpoint-verify.custom-test.flowpoint.pro",
+      type: "TXT",
+    });
+    expect(writes.some((sql) => sql.includes("INSERT INTO custom_domains"))).toBe(true);
+    expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it("does not allow a browser-supplied QA org ID to authorize the reserved hostname", async () => {
+    mockOrgId = "another-org";
+    mockCtx = { addons: { customDomain: true } };
+    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+
+    const response = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "custom-test.flowpoint.pro", orgId: QA_ORG_ID });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("RESERVED_DOMAIN");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("requires the QA organization database marker before creating its exact test claim", async () => {
+    mockOrgId = QA_ORG_ID;
+    mockCtx = { addons: { customDomain: true } };
+    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM organizations")) {
+        return { rows: [{ id: QA_ORG_ID, is_internal_qa: false, status: "active" }] };
+      }
+      if (sql.includes("custom_domains_domain_unique_idx")) {
+        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
+      }
+      return { rows: [] as unknown[] };
+    });
+    orgDbImpl = query;
+
+    const response = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "custom-test.flowpoint.pro" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("RESERVED_DOMAIN");
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[0]).toContain("is_internal_qa=true");
+  });
+
+  it("does not extend the QA exception to any other FlowPoint subdomain", async () => {
+    mockOrgId = QA_ORG_ID;
+    mockCtx = { addons: { customDomain: true } };
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+
+    const response = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "client.custom-test.flowpoint.pro" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("RESERVED_DOMAIN");
+    expect(query).not.toHaveBeenCalled();
+    expect(customDomainService.isQaCustomDomainCertificationEnabled).not.toHaveBeenCalled();
+  });
+
+  it("keeps administrator and Ultra entitlement gates ahead of the exact QA exception", async () => {
+    mockOrgId = QA_ORG_ID;
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+
+    mockRole = "member";
+    mockCtx = { addons: { customDomain: true } };
+    const roleDenied = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "custom-test.flowpoint.pro" });
+    expect(roleDenied.status).toBe(403);
+
+    mockRole = "owner";
+    mockCtx = { addons: {} };
+    const entitlementDenied = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "custom-test.flowpoint.pro" });
+    expect(entitlementDenied.status).toBe(403);
+    expect(query).not.toHaveBeenCalled();
+    expect(customDomainService.isQaCustomDomainCertificationEnabled).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the global domain uniqueness index is unavailable", async () => {
     mockCtx = { addons: { customDomain: true } };
     orgDbImpl = async () => ({ rows: [{ domain_index_is_unique: true, org_index_is_unique: false }] });
@@ -305,6 +438,79 @@ describe("POST /white-label/domains/:id/ssl-check — readiness state", () => {
     });
     expect(response.body.message).toContain("successful route check");
     expect(response.body.message).not.toContain("active");
+  });
+
+  it("does not contact Render unless the ownership TXT record is verified", async () => {
+    vi.clearAllMocks();
+    vi.mocked(customDomainService.verifyDomainTxtRecord).mockResolvedValueOnce({
+      verified: false,
+      dnsCode: "ENODATA",
+    });
+
+    const response = await request(app).post("/white-label/domains/domain-1/verify");
+
+    expect(response.status).toBe(422);
+    expect(response.body).toMatchObject({
+      code: "DOMAIN_TXT_NOT_VERIFIED",
+      status: "pending_dns",
+      required: {
+        host: "_flowpoint-verify.portal.myagency.io",
+        type: "TXT",
+        value: "fpv_test-token",
+      },
+    });
+    expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
+    expect(customDomainService.refreshRenderCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it("scopes verification lookup to the current organization", async () => {
+    vi.clearAllMocks();
+    const queries: Array<{ sql: string; values?: unknown[] }> = [];
+    orgDbImpl = async (sql, values) => {
+      queries.push({ sql, values });
+      return { rows: [] };
+    };
+
+    const response = await request(app).post("/white-label/domains/domain-1/verify");
+
+    expect(response.status).toBe(404);
+    expect(queries[0]?.sql).toContain("WHERE id=$1 AND org_id=$2");
+    expect(queries[0]?.values).toEqual(["domain-1", "test-org"]);
+    expect(customDomainService.verifyDomainTxtRecord).not.toHaveBeenCalled();
+    expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the QA org marker before verifying the reserved certification hostname", async () => {
+    vi.clearAllMocks();
+    mockOrgId = QA_ORG_ID;
+    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    const queries: string[] = [];
+    orgDbImpl = async (sql) => {
+      queries.push(sql);
+      if (sql.includes("SELECT id, org_id, domain, status")) {
+        return { rows: [{
+          id: "domain-qa",
+          org_id: QA_ORG_ID,
+          domain: "custom-test.flowpoint.pro",
+          status: "ownership_verified",
+          ssl_active: false,
+          verification_token: "fpv_test-token",
+          verified_at: null,
+          render_domain_id: null,
+          render_target_host: null,
+          last_error: null,
+        }] };
+      }
+      return { rows: [] };
+    };
+
+    const response = await request(app).post("/white-label/domains/domain-qa/verify");
+
+    expect(response.status).toBe(404);
+    expect(queries[0]).toContain("WHERE id=$1 AND org_id=$2");
+    expect(queries[1]).toContain("is_internal_qa=true");
+    expect(customDomainService.verifyDomainTxtRecord).not.toHaveBeenCalled();
+    expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
   });
 });
 

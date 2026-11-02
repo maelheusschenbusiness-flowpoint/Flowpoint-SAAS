@@ -216,6 +216,7 @@ export default defineConfig({
       "src/routes/white-label.test.ts",
       "src/services/custom-domain-service.test.ts",
       "src/middlewares/customDomainHost.test.ts",
+      "tools/custom-domain-cert-preflight.test.ts",
       "src/services/addons-provisioning.test.ts",
       "src/routes/stripe-webhook-addon-reconcile.test.ts",
       "src/routes/stripe-webhook-ordering-db.test.ts",
