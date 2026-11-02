@@ -12,6 +12,10 @@ import {
   deleteRenderCustomDomain,
   verifyDomainTxtRecord,
   verifyHttpsDomainRoute,
+  isExactQaCustomDomainCertificationHost,
+  isQaCustomDomainCertificationEnabled,
+  QA_CUSTOM_DOMAIN_CERT_DOMAIN,
+  QA_CUSTOM_DOMAIN_CERT_ORG_ID,
 } from "../services/custom-domain-service.js";
 
 const router = Router();
@@ -71,6 +75,25 @@ async function requireCustomDomainAccess(
     return;
   }
   next();
+}
+
+async function isAuthorizedQaCustomDomainOrganization(req: Request, orgId: string): Promise<boolean> {
+  if (orgId.toLowerCase() !== QA_CUSTOM_DOMAIN_CERT_ORG_ID) return false;
+  try {
+    const result = await db(req)(
+      `SELECT id::text AS id, is_internal_qa, status
+         FROM organizations
+        WHERE id=$1::uuid AND is_internal_qa=true AND status='active'
+        LIMIT 1`,
+      [QA_CUSTOM_DOMAIN_CERT_ORG_ID],
+    );
+    const row = result.rows[0];
+    return String(row?.id ?? "").toLowerCase() === QA_CUSTOM_DOMAIN_CERT_ORG_ID &&
+      row?.is_internal_qa === true &&
+      row?.status === "active";
+  } catch {
+    return false;
+  }
 }
 
 // ── SQL error classification ────────────────────────────────────────────────
@@ -207,9 +230,28 @@ router.post("/white-label/domains", requireAdmin, requireCustomDomainAccess, asy
   try {
     domain = normalizeCustomDomain(req.body?.domain);
   } catch (err) {
-    const failure = domainError(err);
-    res.status(failure.statusCode).json({ error: failure.message, code: failure.code });
-    return;
+    const exactQaCertificationHost =
+      err instanceof CustomDomainError &&
+      err.code === "RESERVED_DOMAIN" &&
+      isExactQaCustomDomainCertificationHost(req.body?.domain);
+    if (exactQaCertificationHost) {
+      const testServiceConfirmed = await isQaCustomDomainCertificationEnabled();
+      const qaOrganizationConfirmed = testServiceConfirmed &&
+        await isAuthorizedQaCustomDomainOrganization(req, orgId);
+      if (qaOrganizationConfirmed) {
+        domain = QA_CUSTOM_DOMAIN_CERT_DOMAIN;
+      } else {
+        res.status(400).json({
+          error: "This platform domain cannot be claimed",
+          code: "RESERVED_DOMAIN",
+        });
+        return;
+      }
+    } else {
+      const failure = domainError(err);
+      res.status(failure.statusCode).json({ error: failure.message, code: failure.code });
+      return;
+    }
   }
   if (!isCustomSubdomain(domain)) {
     res.status(400).json({
@@ -289,6 +331,14 @@ async function verifyCustomDomain(req: Request, res: Response): Promise<void> {
     );
     const row = read.rows[0] as CustomDomainRow | undefined;
     if (!row) { res.status(404).json({ error: "Domain not found" }); return; }
+    if (
+      row.domain.toLowerCase() === QA_CUSTOM_DOMAIN_CERT_DOMAIN &&
+      (!await isQaCustomDomainCertificationEnabled() ||
+        !await isAuthorizedQaCustomDomainOrganization(req, orgId))
+    ) {
+      res.status(404).json({ error: "Domain not found" });
+      return;
+    }
     if (row.status === "active" && row.ssl_active) {
       res.json({ ok: true, status: "active", sslActive: true, domain: row.domain, message: "HTTPS and workspace routing are active." });
       return;

@@ -7,6 +7,11 @@ import { isPrivateIpv4Address, isPrivateIpv6Address } from "./url-fetcher.js";
 const RENDER_API = "https://api.render.com/v1";
 const RENDER_API_TIMEOUT_MS = 10_000;
 const DOMAIN_PROOF_PATH = "/api/.well-known/flowpoint-domain-proof";
+export const QA_CUSTOM_DOMAIN_CERT_DOMAIN = "custom-test.flowpoint.pro";
+export const QA_CUSTOM_DOMAIN_CERT_ORG_ID = "10000000-0000-4000-8000-000000000002";
+export const QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID = "srv-danup5egekts73a8og7g";
+export const QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME = "flowpoint-test";
+const QA_CUSTOM_DOMAIN_CERT_RENDER_HOST = "flowpoint-test.onrender.com";
 const RESERVED_SUFFIXES = [
   "onrender.com",
   "flowpoint.pro",
@@ -60,7 +65,7 @@ function normalizeHostname(value: string): string {
   return ascii;
 }
 
-export function normalizeCustomDomain(value: unknown): string {
+function normalizeHostnameCandidate(value: unknown): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new CustomDomainError("A domain is required", "INVALID_DOMAIN", 400);
   }
@@ -68,11 +73,28 @@ export function normalizeCustomDomain(value: unknown): string {
   if (/[\s/@?#:*\\]/.test(raw) || raw.includes("://")) {
     throw new CustomDomainError("Enter a hostname, not a URL or wildcard", "INVALID_DOMAIN", 400);
   }
-  const domain = normalizeHostname(raw);
+  return normalizeHostname(raw);
+}
+
+export function normalizeCustomDomain(value: unknown): string {
+  const domain = normalizeHostnameCandidate(value);
   if (RESERVED_SUFFIXES.some((suffix) => domain === suffix || domain.endsWith(`.${suffix}`))) {
     throw new CustomDomainError("This platform domain cannot be claimed", "RESERVED_DOMAIN", 400);
   }
   return domain;
+}
+
+/**
+ * Identifies only the one reserved hostname used by the internal QA
+ * certification. This does not authorize a claim; callers must also verify
+ * the QA organization and the live Render Test service identity.
+ */
+export function isExactQaCustomDomainCertificationHost(value: unknown): boolean {
+  try {
+    return normalizeHostnameCandidate(value) === QA_CUSTOM_DOMAIN_CERT_DOMAIN;
+  } catch {
+    return false;
+  }
 }
 
 export function isCustomSubdomain(domain: string): boolean {
@@ -237,6 +259,46 @@ async function getCurrentRenderService(config: RenderConfig): Promise<{ targetHo
     throw new CustomDomainError("Render service URL is unavailable", "RENDER_SERVICE_URL_UNAVAILABLE", 503);
   }
   return { targetHost };
+}
+
+/**
+ * Server-side, read-only identity gate for the single internal QA hostname.
+ * The opt-in flag is only a kill switch: it cannot enable the exception unless
+ * Stripe is in test mode, Render's injected runtime identity is Test, the
+ * configured service ID is the authorized Test service, and Render's API
+ * confirms that exact service and URL.
+ */
+export async function isQaCustomDomainCertificationEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  const testStripeKey = env["STRIPE_TEST_KEY"] ?? env["STRIPE_TEST_SECRET_KEY"] ?? "";
+  let runtimeHost = "";
+  try {
+    runtimeHost = new URL(env["RENDER_EXTERNAL_URL"] ?? "").hostname.toLowerCase();
+  } catch {
+    // Fail closed below.
+  }
+
+  if (
+    env["CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED"] !== "true" ||
+    env["STRIPE_TEST_MODE"] !== "true" ||
+    !testStripeKey.startsWith("sk_test_") ||
+    env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME ||
+    runtimeHost !== QA_CUSTOM_DOMAIN_CERT_RENDER_HOST ||
+    env["CUSTOM_DOMAIN_RENDER_SERVICE_ID"]?.trim() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID ||
+    env["CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME"]?.trim() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME
+  ) {
+    return false;
+  }
+
+  try {
+    const config = renderConfig(env);
+    const { targetHost } = await getCurrentRenderService(config);
+    return config.serviceId === QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID &&
+      targetHost === QA_CUSTOM_DOMAIN_CERT_RENDER_HOST;
+  } catch {
+    return false;
+  }
 }
 
 type RenderDomainResponse = {

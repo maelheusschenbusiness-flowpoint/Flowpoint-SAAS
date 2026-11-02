@@ -2,7 +2,12 @@ import type { Request, Response, NextFunction } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { isCustomDomainTestBetaEnabled } from "../lib/plans.js";
-import { normalizeRequestHost } from "../services/custom-domain-service.js";
+import {
+  isQaCustomDomainCertificationEnabled,
+  normalizeRequestHost,
+  QA_CUSTOM_DOMAIN_CERT_DOMAIN,
+  QA_CUSTOM_DOMAIN_CERT_ORG_ID,
+} from "../services/custom-domain-service.js";
 
 declare global {
   namespace Express {
@@ -32,30 +37,53 @@ async function resolveCustomDomainHost(req: Request, res: Response, next: NextFu
     next();
     return;
   }
+  const domain = normalizeRequestHost(req.headers.host);
   if (!isCustomDomainTestBetaEnabled()) {
+    if (domain === QA_CUSTOM_DOMAIN_CERT_DOMAIN) {
+      res.status(404).json({ error: "Custom QA domain is disabled" });
+      return;
+    }
     next();
     return;
   }
 
-  const domain = normalizeRequestHost(req.headers.host);
   if (!domain) {
     next();
     return;
   }
-  if (PLATFORM_SUFFIXES.some((suffix) => domain === suffix || domain.endsWith(`.${suffix}`))) {
+  const isQaCertificationHost = domain === QA_CUSTOM_DOMAIN_CERT_DOMAIN;
+  if (
+    PLATFORM_SUFFIXES.some((suffix) => domain === suffix || domain.endsWith(`.${suffix}`)) &&
+    !isQaCertificationHost
+  ) {
     next();
+    return;
+  }
+  if (isQaCertificationHost && !await isQaCustomDomainCertificationEnabled()) {
+    res.status(404).json({ error: "Custom QA domain is disabled" });
     return;
   }
 
   if (req.method === "GET" && req.path === DOMAIN_PROOF_PATH) {
-    const proof = await pool.query<{ id: string; domain: string }>(
-      `SELECT id, domain
-         FROM custom_domains
-        WHERE lower(domain)=$1
-          AND status IN ('render_verified','active')
-        LIMIT 1`,
-      [domain],
-    );
+    const proof = isQaCertificationHost
+      ? await pool.query<{ id: string; domain: string }>(
+        `SELECT d.id, d.domain
+           FROM custom_domains d
+           JOIN organizations o ON o.id::text=d.org_id
+          WHERE lower(d.domain)=$1 AND d.org_id=$2
+            AND o.id=$2::uuid AND o.is_internal_qa=true AND o.status='active'
+            AND d.status IN ('render_verified','active')
+          LIMIT 1`,
+        [domain, QA_CUSTOM_DOMAIN_CERT_ORG_ID],
+      )
+      : await pool.query<{ id: string; domain: string }>(
+        `SELECT id, domain
+           FROM custom_domains
+          WHERE lower(domain)=$1
+            AND status IN ('render_verified','active')
+          LIMIT 1`,
+        [domain],
+      );
     const row = proof.rows[0];
     if (!row) {
       res.status(404).json({ error: "Domain route not found" });
@@ -67,17 +95,32 @@ async function resolveCustomDomainHost(req: Request, res: Response, next: NextFu
     return;
   }
 
-  const result = await pool.query<{ org_id: string }>(
-    `SELECT org_id
-       FROM custom_domains
-      WHERE lower(domain)=$1
-        AND status='active'
-        AND ssl_active=true
-      LIMIT 1`,
-    [domain],
-  );
+  const result = isQaCertificationHost
+    ? await pool.query<{ org_id: string }>(
+      `SELECT d.org_id
+         FROM custom_domains d
+         JOIN organizations o ON o.id::text=d.org_id
+        WHERE lower(d.domain)=$1 AND d.org_id=$2
+          AND o.id=$2::uuid AND o.is_internal_qa=true AND o.status='active'
+          AND d.status='active' AND d.ssl_active=true
+        LIMIT 1`,
+      [domain, QA_CUSTOM_DOMAIN_CERT_ORG_ID],
+    )
+    : await pool.query<{ org_id: string }>(
+      `SELECT org_id
+         FROM custom_domains
+        WHERE lower(domain)=$1
+          AND status='active'
+          AND ssl_active=true
+        LIMIT 1`,
+      [domain],
+    );
   const row = result.rows[0];
   if (!row) {
+    if (isQaCertificationHost) {
+      res.status(404).json({ error: "Custom QA domain route is not active" });
+      return;
+    }
     next();
     return;
   }

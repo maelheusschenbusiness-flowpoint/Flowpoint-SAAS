@@ -2,10 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CustomDomainError,
   ensureRenderCustomDomain,
+  isExactQaCustomDomainCertificationHost,
+  isQaCustomDomainCertificationEnabled,
   isRenderDomainProvisioningConfigured,
   isCustomSubdomain,
   normalizeCustomDomain,
   normalizeRequestHost,
+  QA_CUSTOM_DOMAIN_CERT_DOMAIN,
+  QA_CUSTOM_DOMAIN_CERT_ORG_ID,
+  QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID,
+  QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
 } from "./custom-domain-service.js";
 
 afterEach(() => {
@@ -45,6 +51,16 @@ describe("custom-domain hostname validation", () => {
     expect(normalizeRequestHost("Portal.Example.com:443")).toBe("portal.example.com");
     expect(normalizeRequestHost(undefined)).toBeNull();
   });
+
+  it("recognizes only the exact QA certification hostname without changing the general reserved-host rule", () => {
+    expect(isExactQaCustomDomainCertificationHost("Custom-Test.FlowPoint.Pro.")).toBe(true);
+    expect(isExactQaCustomDomainCertificationHost("client.custom-test.flowpoint.pro")).toBe(false);
+    expect(isExactQaCustomDomainCertificationHost("flowpoint.pro")).toBe(false);
+    expect(() => normalizeCustomDomain(QA_CUSTOM_DOMAIN_CERT_DOMAIN)).toThrow(
+      expect.objectContaining({ code: "RESERVED_DOMAIN" }),
+    );
+    expect(QA_CUSTOM_DOMAIN_CERT_ORG_ID).toBe("10000000-0000-4000-8000-000000000002");
+  });
 });
 
 describe("Render API fail-closed configuration", () => {
@@ -83,5 +99,81 @@ describe("Render API fail-closed configuration", () => {
       statusCode: 503,
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires the server flag, test runtime identity, exact configured service, and live Render identity", async () => {
+    const env = {
+      CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED: "true",
+      STRIPE_TEST_MODE: "true",
+      STRIPE_TEST_KEY: "sk_test_cert_fixture",
+      RENDER_SERVICE_NAME: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+      RENDER_EXTERNAL_URL: "https://flowpoint-test.onrender.com",
+      CUSTOM_DOMAIN_RENDER_API_ENABLED: "true",
+      RENDER_API_KEY: "render-fixture-not-a-secret",
+      CUSTOM_DOMAIN_RENDER_SERVICE_ID: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID,
+      CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID,
+      name: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+      type: "web_service",
+      serviceDetails: { url: "https://flowpoint-test.onrender.com" },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(isQaCustomDomainCertificationEnabled(env)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.render.com/v1/services/${QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID}`,
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it.each([
+    ["exception toggle is off", { CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED: "false" }],
+    ["runtime service is not Test", { RENDER_SERVICE_NAME: "flowpoint-production" }],
+    ["runtime URL is not Test", { RENDER_EXTERNAL_URL: "https://app.flowpoint.pro" }],
+    ["configured ID is not the authorized Test service", { CUSTOM_DOMAIN_RENDER_SERVICE_ID: "srv-other" }],
+    ["Stripe is not in test mode", { STRIPE_TEST_MODE: "false" }],
+  ])("fails closed when %s", async (_reason, override) => {
+    const env = {
+      CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED: "true",
+      STRIPE_TEST_MODE: "true",
+      STRIPE_TEST_KEY: "sk_test_cert_fixture",
+      RENDER_SERVICE_NAME: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+      RENDER_EXTERNAL_URL: "https://flowpoint-test.onrender.com",
+      CUSTOM_DOMAIN_RENDER_API_ENABLED: "true",
+      RENDER_API_KEY: "render-fixture-not-a-secret",
+      CUSTOM_DOMAIN_RENDER_SERVICE_ID: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID,
+      CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+      ...override,
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(isQaCustomDomainCertificationEnabled(env)).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mismatched service identity returned by Render", async () => {
+    const env = {
+      CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED: "true",
+      STRIPE_TEST_MODE: "true",
+      STRIPE_TEST_KEY: "sk_test_cert_fixture",
+      RENDER_SERVICE_NAME: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+      RENDER_EXTERNAL_URL: "https://flowpoint-test.onrender.com",
+      CUSTOM_DOMAIN_RENDER_API_ENABLED: "true",
+      RENDER_API_KEY: "render-fixture-not-a-secret",
+      CUSTOM_DOMAIN_RENDER_SERVICE_ID: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID,
+      CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: "srv-not-the-authorized-test-service",
+      name: QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME,
+      type: "web_service",
+      serviceDetails: { url: "https://flowpoint-test.onrender.com" },
+    }), { status: 200 })));
+
+    await expect(isQaCustomDomainCertificationEnabled(env)).resolves.toBe(false);
   });
 });
