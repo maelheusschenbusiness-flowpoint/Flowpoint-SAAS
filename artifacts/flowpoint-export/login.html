@@ -419,8 +419,7 @@
         setLoading(false);
         if (r.ok) {
           form.style.display = 'none';
-          var _safeEmail = email.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + _safeEmail + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
+          showSuccess('\u2709\uFE0F Si cette adresse correspond \u00E0 un compte autoris\u00E9, un lien de connexion peut \u00EAtre envoy\u00E9.<br>V\u00E9rifiez aussi les spams.');
         } else if (r.status === 503) {
           showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {

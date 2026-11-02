@@ -1702,7 +1702,7 @@ function openPasswordChangePanel() {
       if (btn) { btn.disabled = true; btn.textContent = fpT('Envoi…'); }
       const r = await apiAction('POST', '/api/auth/login-request', { email: emailVal }).catch(() => null);
       if (btn) { btn.disabled = false; btn.textContent = fpT('Envoyer un nouveau lien de connexion'); }
-      if (r && !r.error) { showToast('success', fpT('Lien de connexion envoyé à') + ' ' + emailVal + ' !'); closeFloatPanel(); }
+      if (r && !r.error) { showToast('success', fpT('Si cette adresse correspond à un compte autorisé, un lien de connexion peut être envoyé.')); closeFloatPanel(); }
       else { showToast('error', r?.error || fpT("Erreur lors de l'envoi")); }
     });
   }, 60);
@@ -18504,7 +18504,7 @@ function bindSectionEvents() {
       if (btn) { btn.disabled = true; btn.textContent = fpT('Envoi…'); }
       const r = await apiAction('POST', '/api/auth/login-request', { email }).catch(() => null);
       if (btn) { btn.disabled = false; btn.textContent = fpT('Renvoyer le lien'); }
-      if (r && !r.error) showToast('success', fpT('Lien de connexion envoyé à') + ' ' + email);
+      if (r && !r.error) showToast('success', fpT('Si cette adresse correspond à un compte autorisé, un lien de connexion peut être envoyé.'));
       else showToast('error', r?.error || fpT("Erreur lors de l'envoi"));
     });
 
@@ -21395,6 +21395,7 @@ function bindGlobalEvents() {
     "Lien copié :": "Link copied:",
     "Lien créé et copié ! Valable 30 jours.": "Link created and copied! Valid for 30 days.",
     "Lien de connexion envoyé à": "Login link sent to",
+    "Si cette adresse correspond à un compte autorisé, un lien de connexion peut être envoyé.": "If this address belongs to an eligible account, a login link may be sent. Please check your spam folder as well.",
     "Limite du plan atteinte. Passez à un plan supérieur.": "Plan limit reached. Upgrade to a higher plan.",
     "Live Analytics — Temps réel": "Live Analytics — Real-time",
     "Live actualisé ✓": "Live updated ✓",
