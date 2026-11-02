@@ -16,6 +16,13 @@ import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
 import { captureTestMail } from "../services/mailer.js";
+import {
+  hasLoginEmailTransport,
+  isLoginEmailAllowed,
+  LOGIN_REQUEST_ACCEPTED_RESPONSE,
+  loginEmailFailureCode,
+  maskEmailForAuthLog,
+} from "../services/login-request-policy.js";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
@@ -57,6 +64,13 @@ async function storeMagicToken(token: string, email: string): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+async function deleteMagicToken(token: string): Promise<void> {
+  await pool.query(
+    "DELETE FROM magic_link_tokens WHERE token = $1",
+    [token],
+  );
 }
 
 /**
@@ -450,7 +464,7 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
     "FlowPoint <noreply@flowpoint.pro>";
 
   logger.info({
-    email,
+    email: maskEmailForAuthLog(email),
     from: fromEmail,
     transport: resendKey ? "resend-sdk" : "smtp",
     publicBaseUrl: process.env["PUBLIC_BASE_URL"] || "(not set)",
@@ -612,12 +626,28 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email, from: fromEmail }, "[Auth] Resend SDK threw error");
+      logger.error({
+        failureCode: "RESEND_SDK_ERROR",
+        errorName: err instanceof Error ? err.name : "UnknownError",
+        email: maskEmailForAuthLog(email),
+        from: fromEmail,
+      }, "[Auth] Resend SDK threw error");
       throw new Error("EMAIL_SEND_FAILED: " + msg);
     }
     if (result.error) {
       const errMsg = (result.error as { message?: string }).message || JSON.stringify(result.error);
-      logger.error({ error: result.error, email }, "[Auth] Resend API error");
+      const resendError = result.error as { name?: string; statusCode?: number; code?: string };
+      logger.error({
+        failureCode: errMsg.toLowerCase().includes("domain") ||
+          errMsg.toLowerCase().includes("not verified") ||
+          errMsg.toLowerCase().includes("sender")
+          ? "DOMAIN_NOT_VERIFIED"
+          : "RESEND_API_ERROR",
+        errorName: resendError.name ?? "ResendError",
+        statusCode: resendError.statusCode,
+        errorCode: resendError.code,
+        email: maskEmailForAuthLog(email),
+      }, "[Auth] Resend API error");
       if (
         errMsg.toLowerCase().includes("domain") ||
         errMsg.toLowerCase().includes("not verified") ||
@@ -627,7 +657,11 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
       }
       throw new Error("RESEND_ERROR: " + errMsg);
     }
-    logger.info({ email, id: result.data?.id, from: fromEmail }, "[Auth] Magic link sent (Resend SDK)");
+    logger.info({
+      email: maskEmailForAuthLog(email),
+      id: result.data?.id,
+      from: fromEmail,
+    }, "[Auth] Magic link sent (Resend SDK)");
   } else {
     // ── SMTP path (nodemailer) — used when RESEND_API_KEY absent ────────────
     const { createTransport } = await import("nodemailer");
@@ -639,10 +673,19 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
     });
     try {
       const info = await smtp.sendMail({ from: fromEmail, to: email, subject: _emailSubject, html: _emailHtml });
-      logger.info({ messageId: info.messageId, email, from: fromEmail }, "[Auth] Magic link sent (SMTP)");
+      logger.info({
+        messageId: info.messageId,
+        email: maskEmailForAuthLog(email),
+        from: fromEmail,
+      }, "[Auth] Magic link sent (SMTP)");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email, from: fromEmail }, "[Auth] SMTP send failed");
+      logger.error({
+        failureCode: "SMTP_SEND_FAILED",
+        errorName: err instanceof Error ? err.name : "UnknownError",
+        email: maskEmailForAuthLog(email),
+        from: fromEmail,
+      }, "[Auth] SMTP send failed");
       throw new Error("EMAIL_SEND_FAILED: " + msg);
     }
   }
@@ -657,7 +700,7 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 
   // ── Entry diagnostic log — always visible in Render logs ─────────────────────
   logger.info({
-    emailReceived: rawEmail ? String(rawEmail).replace(/(.{2}).+(@.+)/, "$1***$2") : "(none)",
+    emailReceived: maskEmailForAuthLog(rawEmail),
     fromEmail: process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>",
     publicBaseUrl: process.env["PUBLIC_BASE_URL"] || process.env["PUBLIC_URL"] || "(not set)",
     resendKeyPresent: !!(process.env["RESEND_API_KEY"]),
@@ -673,9 +716,25 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 
   const email = String(rawEmail).toLowerCase().trim();
 
-  if (!isEmailAllowed(email)) {
-    logger.warn({ email }, "[Auth] Login rejected — email not on allowlist");
-    res.json({ ok: true, message: "Si cette adresse est autorisée, vous recevrez un lien par email." });
+  const isProduction = isDeployedProd();
+  const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
+  const emailTransportConfigured = hasLoginEmailTransport(isProduction ? {
+    RESEND_API_KEY: process.env["RESEND_API_KEY"],
+    SMTP_HOST: process.env["SMTP_HOST"],
+    SMTP_PASS: process.env["SMTP_PASS"],
+  } : process.env);
+  if (isProduction && !emailTransportConfigured) {
+    logger.error({
+      failureCode: "EMAIL_TRANSPORT_MISSING",
+      email: maskEmailForAuthLog(email),
+    }, "[Auth] login-request: production email transport unavailable");
+    res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
+    return;
+  }
+
+  if (!isLoginEmailAllowed(email)) {
+    logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] Login rejected — email not on allowlist");
+    res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     return;
   }
 
@@ -694,35 +753,25 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     if (userRow.rows.length > 0) {
       const userStatus = userRow.rows[0].status;
       if (userStatus === "pending") {
-        logger.warn({ email }, "[Auth] login-request: user pending activation (Stripe not completed)");
-        // /signin.html can now accept this email again (pre-register no longer
-        // refuses a pending row), so sending the prospect there resumes the
-        // signup instead of bouncing them back here.
-        res.status(402).json({
-          error: "Votre inscription n'a pas été finalisée. Reprenez-la pour activer votre compte.",
-          code: "SIGNUP_PENDING",
-          redirectTo: "/signin.html",
-          resumable: true,
-        });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: user pending activation (Stripe not completed)");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       if (userStatus === "suspended") {
-        logger.warn({ email }, "[Auth] login-request: user suspended");
-        res.status(403).json({
-          error: "Votre compte a été suspendu. Contactez le support.",
-        });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: user suspended");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       if (userStatus !== "active") {
-        logger.warn({ email, status: userStatus }, "[Auth] login-request: user not active");
-        res.status(403).json({ error: "Votre compte n'est plus actif. Contactez le support." });
+        logger.warn({ email: maskEmailForAuthLog(email), status: userStatus }, "[Auth] login-request: user not active");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       // User is active in new architecture — allow magic link
     } else {
       // 2. Fallback: legacy org_settings check for accounts not yet in users table
       const { loadOrgSettings: _checkAccount } = await import("../services/org-settings.js");
-      const _existingAccount = await _checkAccount(email).catch(() => undefined);
+      const _existingAccount = await _checkAccount(email);
       if (_existingAccount === null) {
         // ENUMERATION DE COMPTES — corrigee le 18/10/2026.
         //
@@ -732,28 +781,27 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
         // pouvait donc tester une liste d'adresses et savoir lesquelles sont
         // clientes de FlowPoint.
         //
-        // La reponse est desormais IDENTIQUE a celle d'un envoi reussi : meme
-        // code, meme forme. Aucun courriel n'est envoye, et le client affiche
-        // « Lien envoye » comme pour un compte existant — le parcours de
-        // connexion est donc inchange du point de vue du code appelant.
+        // La reponse est identique a celle d'un envoi accepte : elle reste
+        // volontairement neutre pour eviter l'enumeration et ne pretend pas
+        // qu'un email a ete envoye.
         //
         // La limite de debit reste en place (`authRateLimit`), donc cette
         // uniformite n'ouvre aucune porte au balayage.
-        logger.warn({ email }, "[Auth] login-request: aucun compte — reponse uniforme, aucun envoi");
-        res.json({ ok: true, message: "Si un compte existe pour cette adresse, un lien de connexion vient d'etre envoye." });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: aucun compte — reponse uniforme, aucun envoi");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       if (_existingAccount && _existingAccount.subscriptionStatus === "pending_billing") {
-        logger.warn({ email }, "[Auth] login-request: pending_billing account (legacy) — rejected");
-        res.status(402).json({
-          error: "Votre inscription est en attente de paiement. Veuillez finaliser votre abonnement.",
-          redirectTo: "/signin.html",
-        });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: pending_billing account (legacy) — rejected");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
     }
   } catch (_accountGuardErr) {
-    logger.error({ err: _accountGuardErr, email }, "[Auth] login-request: DB unreachable during account guard — 503");
+    logger.error({
+      errorName: _accountGuardErr instanceof Error ? _accountGuardErr.name : "UnknownError",
+      email: maskEmailForAuthLog(email),
+    }, "[Auth] login-request: DB unreachable during account guard — 503");
     res.status(503).json({
       error: "Service temporairement indisponible. Veuillez réessayer dans quelques instants.",
     });
@@ -767,54 +815,58 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 
   try {
     await storeMagicToken(token, email);
-    logger.info({ email }, "[Auth] Magic token stored in PostgreSQL");
+    logger.info({ email: maskEmailForAuthLog(email) }, "[Auth] Magic token stored in PostgreSQL");
   } catch (dbErr) {
-    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-    logger.error({ err: msg, email }, "[Auth] DB error — cannot store magic token");
-    res.status(500).json({ error: "Impossible de créer le lien de connexion\u00a0: base de données indisponible." });
+    logger.error({
+      failureCode: "MAGIC_TOKEN_STORE_FAILED",
+      errorName: dbErr instanceof Error ? dbErr.name : "UnknownError",
+      email: maskEmailForAuthLog(email),
+    }, "[Auth] DB error — cannot store magic token");
+    // A token-store failure is still account-dependent; keep the public response
+    // identical to the ignored and accepted paths.
+    res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     return;
   }
 
   // ── Send via configured email transport ───────────────────────────────────────
-  const resendKey = process.env["RESEND_API_KEY"];
-  const isProduction = isDeployedProd();
-  const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
-
-  const smtpConfigured = !!(process.env["SMTP_HOST"] && process.env["SMTP_PASS"]);
-  const testCaptureRequested = Boolean(process.env["TEST_MAIL_DIR"]);
-  if (resendKey || smtpConfigured || testCaptureRequested) {
+  if (emailTransportConfigured) {
     try {
       await sendMagicEmail(email, verifyPath);
-      logger.info({ email }, "[Auth] login-request: magic link sent successfully");
+      logger.info({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: email accepted by transport");
       // In dev workspace always include debugLink so Playwright tests can auth
       if (isDevWorkspace || process.env["TEST_MAIL_DIR"]) {
-        res.json({ ok: true, debugLink: verifyPath, message: "Lien de connexion envoyé par email." });
+        res.json({ ...LOGIN_REQUEST_ACCEPTED_RESPONSE, debugLink: verifyPath });
       } else {
-        res.json({ ok: true, message: "Lien de connexion envoyé par email." });
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email }, "[Auth] login-request: Resend failed");
-
-      if (msg.startsWith("EMAIL_TRANSPORT_MISSING")) {
-        res.status(503).json({ error: "Service email non configuré." });
-      } else if (msg.startsWith("DOMAIN_NOT_VERIFIED")) {
-        // 503 = service unavailable (external config issue, not internal error)
-        res.status(503).json({
-          error: "Service email indisponible\u00a0: le domaine expéditeur n\u2019est pas vérifié dans Resend.",
-          hint:  "Vérifiez les enregistrements DNS (SPF, DKIM) pour le domaine configuré dans RESEND_FROM.",
-          from:  process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>",
-        });
-      } else {
-        res.status(503).json({ error: "Service email temporairement indisponible\u00a0: " + msg.substring(0, 120) });
+      try {
+        await deleteMagicToken(token);
+        logger.info(
+          { email: maskEmailForAuthLog(email) },
+          "[Auth] login-request: token removed after email delivery failure",
+        );
+      } catch (cleanupErr) {
+        logger.error({
+          failureCode: "MAGIC_TOKEN_CLEANUP_FAILED",
+          errorName: cleanupErr instanceof Error ? cleanupErr.name : "UnknownError",
+          email: maskEmailForAuthLog(email),
+        }, "[Auth] login-request: could not remove token after email delivery failure");
       }
+      logger.error({
+        failureCode: loginEmailFailureCode(err),
+        email: maskEmailForAuthLog(email),
+      }, "[Auth] login-request: email delivery failed");
+      // Keep account-dependent delivery failures indistinguishable from an
+      // ignored request; the structured logs retain the internal failure code.
+      res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     }
     return;
   }
 
   if (!isProduction) {
-    logger.warn({ email, debugLink: verifyPath }, "[Auth] No configured email transport — returning debugLink");
-    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
+    logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] No configured email transport — returning debugLink");
+    res.json({ ...LOGIN_REQUEST_ACCEPTED_RESPONSE, debugLink: verifyPath });
   } else {
     logger.error("[Auth] RESEND_API_KEY not set in production");
     res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });

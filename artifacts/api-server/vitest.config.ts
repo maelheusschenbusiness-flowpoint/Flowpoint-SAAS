@@ -155,6 +155,7 @@ export default defineConfig({
       "src/lib/conversion-outbox-db.test.ts",
       // Enumeration de comptes sur login-request (18/10/2026).
       "src/routes/login-request-enumeration.test.ts",
+      "src/routes/login-request-behavior.test.ts",
       // Mesure du tunnel posee sur la page d'inscription (18/10/2026).
       "src/tests/signin-mesure-tunnel.test.ts",
       "src/services/schema-reconcile-db.test.ts",

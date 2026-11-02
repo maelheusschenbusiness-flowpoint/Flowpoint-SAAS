@@ -21,9 +21,14 @@ describe("pending signup can be resumed instead of bouncing", () => {
     expect(guard).toContain("/login.html");
   });
 
-  it("the login refusal tells the caller the signup is resumable", () => {
-    expect(authSrc).toMatch(/code:\s*"SIGNUP_PENDING"/);
-    expect(authSrc).toMatch(/resumable:\s*true/);
+  it("keeps pending-signup login responses neutral without blocking re-registration", () => {
+    const routeStart = authSrc.indexOf('router.post("/auth/login-request"');
+    const routeEnd = authSrc.indexOf("\n});", routeStart);
+    const loginRequest = authSrc.slice(routeStart, routeEnd);
+    expect(loginRequest).toContain("LOGIN_REQUEST_ACCEPTED_RESPONSE");
+    expect(loginRequest).not.toMatch(/code:\s*"SIGNUP_PENDING"/);
+    expect(loginRequest).not.toMatch(/resumable:\s*true/);
+    expect(authSrc).toMatch(/_existingStatus\s*!==\s*"pending"/);
   });
 
   it("leaves the invited-team-member guard untouched", () => {
