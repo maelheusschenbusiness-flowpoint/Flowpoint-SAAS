@@ -11,6 +11,31 @@ const persistenceStart = dashboard.indexOf("async function loadAIWorkspaceLast()
 const persistence = dashboard.slice(persistenceStart, end);
 
 describe("AI Workspace Launch frontend", () => {
+  it("collects scoped module settings without a closure leak and renders readiness checks", () => {
+    const wizardStart = dashboard.indexOf("function openAIWorkspaceLaunch()");
+    const wizardEnd = dashboard.indexOf("window.openAIWorkspaceLaunch", wizardStart);
+    const wizard = dashboard.slice(wizardStart, wizardEnd);
+    const animateStart = dashboard.indexOf("async function _awlAnimate()");
+    const animateEnd = dashboard.indexOf("window.openAIWorkspaceLaunch", animateStart);
+    const flow = dashboard.slice(animateStart, animateEnd);
+    const servedFlowStart = servedDashboard.indexOf("async function _awlAnimate()");
+    const servedFlowEnd = servedDashboard.indexOf("window.openAIWorkspaceLaunch", servedFlowStart);
+    const servedFlow = servedDashboard.slice(servedFlowStart, servedFlowEnd);
+
+    expect(wizard).toContain('data-awl-module="seo_dashboard"');
+    expect(wizard).toContain('data-awl-module="seo_alert"');
+    expect(wizard).toContain('data-awl-stack');
+    expect(wizard).toContain('data-awl-priority');
+    expect(flow).toContain("data-awl-stack]:checked");
+    expect(flow).toContain("data-awl-priority]:checked");
+    expect(flow).toContain("alertThreshold");
+    expect(flow).toContain("result.readinessChecks");
+    expect(flow).not.toContain("STACKS.includes");
+    expect(servedFlow).toContain("data-awl-stack]:checked");
+    expect(servedFlow).toContain("result.readinessChecks");
+    expect(servedFlow).not.toContain("STACKS.includes");
+  });
+
   it("renders only the API result and surfaces failed requests instead of demo metrics", () => {
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);

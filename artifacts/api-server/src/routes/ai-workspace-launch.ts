@@ -16,6 +16,31 @@ import { isValidSchedule } from "../services/workflow-schedule-cron.js";
 
 const router = Router();
 
+const WORKSPACE_MODULES = ["seo_dashboard", "seo_alert"] as const;
+type WorkspaceModule = (typeof WORKSPACE_MODULES)[number];
+
+function parseWorkspaceModules(value: unknown): WorkspaceModule[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > WORKSPACE_MODULES.length) return null;
+  if (value.some(module => typeof module !== "string" || !WORKSPACE_MODULES.includes(module as WorkspaceModule))) return null;
+  const modules = value as WorkspaceModule[];
+  return new Set(modules).size === modules.length ? modules : null;
+}
+
+function readSessionMetadata(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), canWrite, async (req: Request, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
@@ -31,6 +56,8 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       competitors = [],
       stack = [],
       priorities = [],
+      modules = ["seo_dashboard", "seo_alert"],
+      alertThreshold = 50,
       scheduleWeeklyReport = false,
       reportTimezone = "UTC",
     } = req.body as {
@@ -42,6 +69,8 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       competitors?: string[];
       stack?: string[];
       priorities?: string[];
+      modules?: string[];
+      alertThreshold?: number;
       scheduleWeeklyReport?: boolean;
       reportTimezone?: string;
     };
@@ -51,13 +80,26 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
     const validList = (value: unknown) =>
       value === undefined || (Array.isArray(value) && value.length <= 12 && value.every((item: unknown) =>
         typeof item === "string" && item.trim().length > 0 && item.length <= 160));
+    const validSiteUrl = (value: unknown) => {
+      if (value === undefined || value === null || value === "") return true;
+      try {
+        const url = new URL(String(value));
+        return (url.protocol === "https:" || url.protocol === "http:") && !!url.hostname;
+      } catch {
+        return false;
+      }
+    };
     if (!validText(siteUrl, 500) || !validText(businessName, 160) || !validText(niche, 120) || !validText(location, 120) ||
+        !validSiteUrl(siteUrl) ||
         typeof scheduleWeeklyReport !== "boolean" || typeof reportTimezone !== "string" || reportTimezone.length > 80 ||
         (scheduleWeeklyReport && !isValidSchedule("0 9 * * 1", reportTimezone)) ||
-        !validList(goals) || !validList(competitors) || !validList(stack) || !validList(priorities)) {
+        !validList(goals) || !validList(competitors) || !validList(stack) || !validList(priorities) ||
+        !parseWorkspaceModules(modules) ||
+        !Number.isInteger(alertThreshold) || alertThreshold < 1 || alertThreshold > 100) {
       res.status(400).json({ ok: false, code: "INVALID_PROFILE", error: "Le profil contient un champ invalide ou trop long." });
       return;
     }
+    const selectedModules = parseWorkspaceModules(modules)!;
 
     const orgId = req.orgId;
     if (!orgId || orgId === "default") {
@@ -88,16 +130,15 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
     const now = new Date();
     const sessionId = `ows_${randomUUID()}`;
     const profileId = `awp_${randomUUID()}`;
-    const dashboardId = `awl_dash_${randomUUID()}`;
-    const alertRuleId = `awl_alert_${randomUUID()}`;
+    const dashboardId = selectedModules.includes("seo_dashboard") ? `awl_dash_${randomUUID()}` : null;
+    const alertRuleId = selectedModules.includes("seo_alert") ? `awl_alert_${randomUUID()}` : null;
     const dashboardName = `${businessName ?? "Workspace"} — lancement IA`;
     const dashboardDescription = "Dashboard configuré depuis les audits et missions réellement enregistrés.";
     const alertName = `Score SEO critique — ${businessName ?? "Workspace"}`;
-    const dashboardWidgets = [
+    const dashboardWidgets = dashboardId ? [
       { id: "seo-score", name: "Score SEO", source: "audits", visualization: "metric" },
       { id: "ai-missions", name: "Missions IA", source: "missions", visualization: "list" },
-    ];
-
+    ] : [];
     const client = await pool.connect();
 
     const requestId = `req_${randomUUID()}`;
@@ -113,6 +154,39 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
     let persistedRoadmap = roadmap;
     let persistedStrategy = strategy;
     let persistedMissions = missionTemplates;
+
+    const buildReadinessChecks = () => [
+      {
+        id: "profile",
+        label: "Business profile",
+        status: siteUrl && businessName ? "ready" : "needs_attention",
+        detail: siteUrl && businessName ? "Business name and website are set." : "Add a business name and website before relying on workspace recommendations.",
+      },
+      {
+        id: "objectives",
+        label: "Business objectives",
+        status: goals.length ? "ready" : "needs_attention",
+        detail: goals.length ? `${goals.length} objective(s) saved.` : "No objective was selected; add one to guide future priorities.",
+      },
+      {
+        id: "missions",
+        label: "Initial missions",
+        status: "ready",
+        detail: `${missionTemplates.length} AI-generated mission(s) will be verified before success is returned.`,
+      },
+      {
+        id: "seo_dashboard",
+        label: "SEO starter dashboard",
+        status: dashboardId ? "ready" : "not_selected",
+        detail: dashboardId ? "Configured from audits and saved missions." : "Not selected.",
+      },
+      {
+        id: "seo_alert",
+        label: "Critical SEO alert",
+        status: alertRuleId ? "ready" : "not_selected",
+        detail: alertRuleId ? `Enabled at a score below ${alertThreshold}.` : "Not selected.",
+      },
+    ];
 
     try {
       const prefs = await loadOrgAIPrefs(orgId);
@@ -140,7 +214,7 @@ Génère un JSON avec EXACTEMENT cette structure (pas de markdown, juste le JSON
 {
   "strategy": "string (2 phrases sur la stratégie spécifique à ce client)",
   "roadmap": [
-    { "priority": 1, "label": "string (action spécifique au secteur)", "impact": "string (ex: +20% trafic local)", "tag": "string" },
+     { "priority": 1, "label": "string (action spécifique au secteur)", "impact": "string (indicateur à suivre, résultat à mesurer)", "tag": "string" },
     { "priority": 2, "label": "...", "impact": "...", "tag": "..." },
     { "priority": 3, "label": "...", "impact": "...", "tag": "..." },
     { "priority": 4, "label": "...", "impact": "...", "tag": "..." },
@@ -155,7 +229,7 @@ Génère un JSON avec EXACTEMENT cette structure (pas de markdown, juste le JSON
 RÈGLES IMPORTANTES :
 - Chaque action doit être spécifique au secteur "${niche ?? "général"}" et à la localisation "${location ?? "France"}".
 - Les missions doivent varier en catégories (SEO, perf, contenu, local, etc.).
-- Les impacts doivent être réalistes et quantifiés.
+   - N'invente aucun pourcentage, revenu, volume, score ou résultat chiffré : aucune mesure analytics n'est fournie ici. Décris un indicateur à suivre et indique qu'il reste à mesurer.
 - Réponds UNIQUEMENT avec le JSON, aucun autre texte.`;
 
       const aiResult = await aiChat({
@@ -197,6 +271,7 @@ RÈGLES IMPORTANTES :
       res.status(502).json({ ok: false, code: "AI_GENERATION_FAILED", error: "Aucune stratégie personnalisée n'a été générée; aucune donnée de démonstration n'a été enregistrée." });
       return;
     }
+    const readinessChecks = buildReadinessChecks();
 
     try {
       await client.query("BEGIN");
@@ -214,10 +289,13 @@ RÈGLES IMPORTANTES :
           location ?? null,
           now,
           now,
-           JSON.stringify({
-             goals, competitors, stack, priorities, aiGenerated: aiGenerationSucceeded,
-             dashboardId, alertRuleId, dashboardsCreated: 1, alertsConfigured: 1,
-           }),
+          JSON.stringify({
+            goals, competitors, stack, priorities, aiGenerated: aiGenerationSucceeded,
+            selectedModules, alertThreshold, dashboardId, alertRuleId,
+            dashboardsCreated: dashboardId ? 1 : 0,
+            alertsConfigured: alertRuleId ? 1 : 0,
+            readinessChecks,
+          }),
         ]
       );
 
@@ -289,31 +367,32 @@ RÈGLES IMPORTANTES :
       if (verifiedMissions.rows.length !== actionableMissionIds.length) {
         throw new Error(`Workspace mission verification failed: expected ${actionableMissionIds.length}, got ${verifiedMissions.rows.length}`);
       }
-      await client.query(
-        `INSERT INTO custom_dashboards
-           (id, org_id, name, description, widgets, icon, color, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5::jsonb,'📊','#6366f1',NOW(),NOW())`,
-        [
-          dashboardId,
-          orgId,
-          dashboardName,
-          dashboardDescription,
-          JSON.stringify(dashboardWidgets),
-        ],
-      );
-      await client.query(
-        `INSERT INTO alert_rules
-           (id, org_id, name, type, operator, threshold, duration_min, channels, site_urls, enabled)
-         VALUES ($1,$2,$3,'seo_score','lt',50,0,'["email"]'::jsonb,$4::jsonb,true)`,
-        [alertRuleId, orgId, alertName, JSON.stringify(siteUrl ? [siteUrl] : [])],
-      );
+      if (dashboardId) {
+        await client.query(
+          `INSERT INTO custom_dashboards
+             (id, org_id, name, description, widgets, icon, color, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5::jsonb,'📊','#6366f1',NOW(),NOW())`,
+          [dashboardId, orgId, dashboardName, dashboardDescription, JSON.stringify(dashboardWidgets)],
+        );
+      }
+      if (alertRuleId) {
+        await client.query(
+          `INSERT INTO alert_rules
+             (id, org_id, name, type, operator, threshold, duration_min, channels, site_urls, enabled)
+           VALUES ($1,$2,$3,'seo_score','lt',$4,0,'["email"]'::jsonb,$5::jsonb,true)`,
+          [alertRuleId, orgId, alertName, alertThreshold, JSON.stringify(siteUrl ? [siteUrl] : [])],
+        );
+      }
       const persistedSetup = await client.query(
         `SELECT
            (SELECT COUNT(*)::int FROM custom_dashboards WHERE org_id=$1 AND id=$2) AS dashboards,
            (SELECT COUNT(*)::int FROM alert_rules WHERE org_id=$1 AND id=$3) AS alerts`,
         [orgId, dashboardId, alertRuleId],
       );
-      if (Number(persistedSetup.rows[0]?.dashboards) !== 1 || Number(persistedSetup.rows[0]?.alerts) !== 1) {
+      const expectedDashboards = dashboardId ? 1 : 0;
+      const expectedAlerts = alertRuleId ? 1 : 0;
+      if (Number(persistedSetup.rows[0]?.dashboards) !== expectedDashboards ||
+          Number(persistedSetup.rows[0]?.alerts) !== expectedAlerts) {
         throw new Error("Workspace dashboard or alert persistence verification failed");
       }
       const persistedProfile = await client.query<{
@@ -392,19 +471,21 @@ RÈGLES IMPORTANTES :
       missionsGenerated: persistedMissions.length,
       missionsVerified: persistedMissions.length,
       roadmapSteps: persistedRoadmap.length,
-       alertsConfigured: 1,
-       dashboardsCreated: 1,
+      alertsConfigured: alertRuleId ? 1 : 0,
+      dashboardsCreated: dashboardId ? 1 : 0,
       reportsScheduled,
       ...(reportScheduleError ? { reportScheduleError } : {}),
-       dashboard: {
-         id: dashboardId, name: dashboardName, description: dashboardDescription,
-         widgets: dashboardWidgets, icon: "📊", color: "#6366f1", created_at: now,
-       },
-       alertRule: {
-         id: alertRuleId, name: alertName, type: "seo_score",
-         operator: "lt", threshold: 50, duration_min: 0,
-         channels: ["email"], site_urls: siteUrl ? [siteUrl] : [], enabled: true,
-       },
+      configuredModules: selectedModules,
+      readinessChecks,
+      dashboard: dashboardId ? {
+        id: dashboardId, name: dashboardName, description: dashboardDescription,
+        widgets: dashboardWidgets, icon: "📊", color: "#6366f1", created_at: now,
+      } : null,
+      alertRule: alertRuleId ? {
+        id: alertRuleId, name: alertName, type: "seo_score",
+        operator: "lt", threshold: alertThreshold, duration_min: 0,
+        channels: ["email"], site_urls: siteUrl ? [siteUrl] : [], enabled: true,
+      } : null,
       aiGenerated: aiGenerationSucceeded,
       message: `Plan de lancement personnalisé généré et missions enregistrées pour ${businessName ?? "votre workspace"}.`,
       _ai: aiGenerationSucceeded ? { provider: actualProvider, model: actualModel } : null,
@@ -417,7 +498,7 @@ RÈGLES IMPORTANTES :
 
 router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
   const { sessionId } = req.params;
-    const orgId = req.orgId;
+  const orgId = req.orgId;
 
   logger.info({ orgId, sessionId }, "[AWL-GET] incoming request");
 
@@ -477,7 +558,15 @@ router.get("/ai-workspace-launch/:sessionId", requireAddon("aiWorkspaceLaunch", 
     } catch (scheduleStatusErr) {
       logger.warn({ err: scheduleStatusErr, orgId, sessionId }, "[AWL-GET] schedule status unavailable; reporting zero");
     }
-    return res.json({ ok: true, session, missions: missions.rows, reportsScheduled });
+    const metadata = readSessionMetadata(session.metadata);
+    return res.json({
+      ok: true,
+      session,
+      missions: missions.rows,
+      reportsScheduled,
+      configuredModules: Array.isArray(metadata["selectedModules"]) ? metadata["selectedModules"] : [],
+      readinessChecks: Array.isArray(metadata["readinessChecks"]) ? metadata["readinessChecks"] : [],
+    });
   } catch (err: any) {
     logger.error({
       orgId,
