@@ -20,6 +20,15 @@ const router = Router();
 const getOrgId = (req: Request) => (req as OrgRequest).orgId;
 const getOrgDb = (req: Request) => (req as OrgRequest).orgDb;
 
+function measuredNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 router.use("/seo-change-impact", requireAddon("seoChangeImpact", "SEO Change Impact"));
 
 router.get("/seo-change-impact", async (req, res) => {
@@ -41,17 +50,41 @@ router.get("/seo-change-impact", async (req, res) => {
        LIMIT 2000`,
       [orgId, settings.lookbackDays],
     );
-    const snapshots: SEOAuditSnapshot[] = auditRows.rows.map(row => ({
-      auditId: String(row["id"]),
-      siteUrl: String(row["url"]),
-      capturedAt: new Date(String(row["created_at"])).toISOString(),
-      score: Number(row["score"] ?? 0),
-      criticalIssues: Number(row["issues"] ?? 0),
-      speed: Number(row["speed"] ?? 0),
-      status: String(row["status"] ?? ""),
-    }));
+    const snapshots: SEOAuditSnapshot[] = [];
+    let excludedIncompleteAudits = 0;
+    for (const row of auditRows.rows) {
+      const score = measuredNumber(row["score"]);
+      const criticalIssues = measuredNumber(row["issues"]);
+      const speed = measuredNumber(row["speed"]);
+      const capturedAt = new Date(String(row["created_at"]));
+      if (
+        score === null || score < 0 || score > 100
+        || criticalIssues === null || !Number.isInteger(criticalIssues) || criticalIssues < 0
+        || speed === null || speed < 0
+        || !Number.isFinite(capturedAt.getTime())
+      ) {
+        excludedIncompleteAudits += 1;
+        continue;
+      }
+      snapshots.push({
+        auditId: String(row["id"]),
+        siteUrl: String(row["url"]),
+        capturedAt: capturedAt.toISOString(),
+        score,
+        criticalIssues,
+        speed,
+        status: String(row["status"] ?? ""),
+      });
+    }
     const comparisons = buildSEOChangeImpacts(snapshots, settings);
-    res.json({ ok: true, source: "audits", settings, comparisons, count: comparisons.length });
+    res.json({
+      ok: true,
+      source: "audits",
+      settings,
+      comparisons,
+      count: comparisons.length,
+      excludedIncompleteAudits,
+    });
   } catch (error) {
     res.status(500).json({ error: safeErrMsg(error) });
   }

@@ -13,7 +13,10 @@ vi.mock("../middlewares/requireRole.js", () => ({
 
 import router from "./seo-change-impact.js";
 
-function appFor(orgId: string) {
+function appFor(orgId: string, auditRows: Record<string, unknown>[] = [
+  { id: "audit-new", url: "https://example.com", score: 78, issues: 2, speed: 71, status: "ok", created_at: "2026-10-22T10:00:00.000Z" },
+  { id: "audit-old", url: "https://example.com", score: 63, issues: 8, speed: 55, status: "warn", created_at: "2026-10-10T10:00:00.000Z" },
+]) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -22,10 +25,7 @@ function appFor(orgId: string) {
       orgDb: async (sql: string, values: unknown[] = []) => {
         dbCalls.push({ orgId, sql, values });
         if (sql.includes("seo_change_impact_settings")) return { rows: [] };
-        return { rows: [
-          { id: "audit-new", url: "https://example.com", score: 78, issues: 2, speed: 71, status: "ok", created_at: "2026-10-22T10:00:00.000Z" },
-          { id: "audit-old", url: "https://example.com", score: 63, issues: 8, speed: 55, status: "warn", created_at: "2026-10-10T10:00:00.000Z" },
-        ] };
+        return { rows: auditRows };
       },
     });
     next();
@@ -51,6 +51,23 @@ describe("seo-change-impact routes", () => {
     expect(dbCalls).toHaveLength(2);
     expect(dbCalls.every(call => call.values[0] === "org-a")).toBe(true);
     expect(dbCalls.every(call => call.sql.includes("org_id=$1"))).toBe(true);
+  });
+
+  it("does not treat missing audit metrics as measured zeros", async () => {
+    const response = await request(appFor("org-a", [
+      { id: "audit-incomplete", url: "https://example.com", score: null, issues: 0, speed: 0, status: "ok", created_at: "2026-10-23T10:00:00.000Z" },
+      { id: "audit-new", url: "https://example.com", score: 78, issues: 2, speed: 71, status: "ok", created_at: "2026-10-22T10:00:00.000Z" },
+      { id: "audit-old", url: "https://example.com", score: 63, issues: 8, speed: 55, status: "warn", created_at: "2026-10-10T10:00:00.000Z" },
+    ])).get("/seo-change-impact").expect(200);
+
+    expect(response.body.excludedIncompleteAudits).toBe(1);
+    expect(response.body.comparisons[0]).toMatchObject({
+      beforeAuditId: "audit-old",
+      afterAuditId: "audit-new",
+      scoreDelta: 15,
+      criticalIssueDelta: -6,
+      speedDelta: 16,
+    });
   });
 
   it("persists validated settings for the authenticated organization", async () => {
