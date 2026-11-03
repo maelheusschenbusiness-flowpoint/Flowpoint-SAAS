@@ -13,7 +13,7 @@
  * seule facon de prouver qu'un appel se coupe : un `fetch` simule ne prouve
  * rien sur le comportement du reseau.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -76,6 +76,87 @@ describe("un fournisseur qui ne repond jamais est coupe dans le delai", () => {
       await new Promise<void>((ok) => vif.close(() => ok()));
     }
   });
+});
+
+/**
+ * Un `signal` d'appelant ne desarme plus le delai : les deux annulations sont
+ * combinees. Ici un `fetch` simule remplace le reseau — il ne repond JAMAIS
+ * mais il respecte le signal recu, comme `fetch` de Node : c'est ce qui permet
+ * d'observer LEQUEL des deux signaux a coupe l'appel, et de verifier qu'aucune
+ * requete ne part quand `msDelai` est invalide.
+ */
+describe("un signal de l'appelant est combine au delai, pas substitue", () => {
+  /** Ce que le `fetch` simule a recu. */
+  type Suivi = { appels: number; signaux: (AbortSignal | null)[] };
+
+  /** Un `fetch` qui n'aboutit jamais et rejette quand son signal est annule. */
+  function fetchMuet(suivi: Suivi) {
+    return (_entree: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      suivi.appels += 1;
+      const signal = init?.signal ?? null;
+      suivi.signaux.push(signal);
+      return new Promise<Response>((_ok, ko) => {
+        if (!signal) return; // aucune reponse, aucune annulation possible
+        if (signal.aborted) { ko(signal.reason); return; }
+        signal.addEventListener("abort", () => ko(signal.reason), { once: true });
+      });
+    };
+  }
+
+  function installe(): Suivi {
+    const suivi: Suivi = { appels: 0, signaux: [] };
+    vi.stubGlobal("fetch", fetchMuet(suivi));
+    return suivi;
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("avec un signal d'appelant, le delai coupe quand meme la reponse qui n'arrive pas", async () => {
+    const suivi = installe();
+    const ctrl = new AbortController();
+    const t = Date.now();
+    await expect(fetchBorne("https://exemple.test/jeton", { signal: ctrl.signal }, 80))
+      .rejects.toSatisfy(estDepassementDeDelai);
+    const ecoule = Date.now() - t;
+    expect(ecoule, `l'appel a tenu ${ecoule} ms`).toBeLessThan(400);
+    expect(suivi.appels).toBe(1);
+    // Le signal passe a `fetch` est le signal combine, pas celui de l'appelant,
+    // qui lui n'a jamais ete annule.
+    expect(suivi.signaux[0]).not.toBe(ctrl.signal);
+    expect(suivi.signaux[0]?.aborted).toBe(true);
+    expect(ctrl.signal.aborted).toBe(false);
+  });
+
+  it("le signal de l'appelant annule avant le delai rejette avec une AbortError", async () => {
+    const suivi = installe();
+    const ctrl = new AbortController();
+    const p = fetchBorne("https://exemple.test/jeton", { signal: ctrl.signal }, 5_000);
+    setTimeout(() => ctrl.abort(), 40);
+    const err = await p.then(() => null, (e: unknown) => e);
+    expect((err as { name?: string } | null)?.name).toBe("AbortError");
+    expect(suivi.appels).toBe(1);
+  });
+
+  it("sans signal d'appelant, le delai s'applique toujours", async () => {
+    const suivi = installe();
+    await expect(fetchBorne("https://exemple.test/jeton", {}, 80))
+      .rejects.toSatisfy(estDepassementDeDelai);
+    expect(suivi.appels).toBe(1);
+    expect(suivi.signaux[0]).not.toBeNull();
+    expect(suivi.signaux[0]?.aborted).toBe(true);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "un msDelai de %s est refuse par une TypeError, sans lancer de requete",
+    async (msDelai) => {
+      const suivi = installe();
+      const err = await fetchBorne("https://exemple.test/jeton", {}, msDelai)
+        .then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(TypeError);
+      expect((err as TypeError).message).toContain("msDelai");
+      expect(suivi.appels, "une requete est partie malgre un msDelai invalide").toBe(0);
+    },
+  );
 });
 
 describe("les delais sont courts sur les chemins ou un humain attend", () => {
