@@ -36,6 +36,7 @@ export default defineConfig({
       "src/services/workspace-launch-output.test.ts",
       "src/routes/ai-workspace-launch.test.ts",
       "src/routes/ai-workspace-launch-postgres.test.ts",
+      "src/routes/gbp-performance-postgres.test.ts",
       "src/tests/workspace-launch-frontend.test.ts",
       "src/services/monitor-cron.test.ts",
       "src/routes/data-explorer.test.ts",
