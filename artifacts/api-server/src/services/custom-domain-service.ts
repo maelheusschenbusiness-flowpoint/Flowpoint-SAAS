@@ -271,34 +271,52 @@ async function getCurrentRenderService(config: RenderConfig): Promise<{ targetHo
 export function isQaCustomDomainClaimEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const testStripeKey = env["STRIPE_TEST_KEY"] ?? env["STRIPE_TEST_SECRET_KEY"] ?? "";
+  return getQaCustomDomainClaimBlockers(env).length === 0;
+}
+
+/**
+ * Safe, non-secret reasons why the exact QA claim exception is unavailable.
+ * The route exposes these only to an authenticated admin of the fixed QA org,
+ * so a failed certification attempt can be corrected without revealing values.
+ */
+export function getQaCustomDomainClaimBlockers(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const blockers: string[] = [];
+  const testStripeKey = env["STRIPE_TEST_KEY"]?.trim() || env["STRIPE_TEST_SECRET_KEY"]?.trim() || "";
   let runtimeHost = "";
   try {
     runtimeHost = new URL(env["RENDER_EXTERNAL_URL"] ?? "").hostname.toLowerCase();
   } catch {
-    // Fail closed below.
+    // Add a safe blocker below.
   }
 
-  if (
-    env["NODE_ENV"] !== "test" ||
-    env["CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED"] !== "true" ||
-    env["STRIPE_TEST_MODE"] !== "true" ||
-    !testStripeKey.startsWith("sk_test_") ||
-    env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME ||
-    runtimeHost !== QA_CUSTOM_DOMAIN_CERT_RENDER_HOST ||
-    env["CUSTOM_DOMAIN_RENDER_SERVICE_ID"]?.trim() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID ||
-    env["CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME"]?.trim() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME
-  ) {
-    return false;
+  if (env["NODE_ENV"] !== "test") blockers.push("node_env_not_test");
+  if (env["CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED"] !== "true") blockers.push("qa_exception_disabled");
+  if (env["STRIPE_TEST_MODE"] !== "true") blockers.push("stripe_test_mode_disabled");
+  if (!testStripeKey.startsWith("sk_test_")) blockers.push("stripe_test_key_not_test");
+  if (env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME) {
+    blockers.push("render_runtime_service_mismatch");
+  }
+  if (runtimeHost !== QA_CUSTOM_DOMAIN_CERT_RENDER_HOST) blockers.push("render_runtime_url_mismatch");
+  if (env["CUSTOM_DOMAIN_RENDER_SERVICE_ID"]?.trim() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID) {
+    blockers.push("render_configured_service_id_mismatch");
+  }
+  if (env["CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME"]?.trim() !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME) {
+    blockers.push("render_expected_service_name_mismatch");
   }
 
   try {
     const config = renderConfig(env);
-    return config.serviceId === QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID &&
-      config.expectedServiceName === QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME;
+    if (config.serviceId !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID ||
+      config.expectedServiceName !== QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME) {
+      blockers.push("render_provisioning_target_mismatch");
+    }
   } catch {
-    return false;
+    blockers.push("render_provisioning_configuration_incomplete");
   }
+
+  return blockers;
 }
 
 /**

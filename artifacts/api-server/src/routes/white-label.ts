@@ -13,7 +13,7 @@ import {
   verifyDomainTxtRecord,
   verifyHttpsDomainRoute,
   isExactQaCustomDomainCertificationHost,
-  isQaCustomDomainClaimEnabled,
+  getQaCustomDomainClaimBlockers,
   isQaCustomDomainCertificationEnabled,
   QA_CUSTOM_DOMAIN_CERT_DOMAIN,
   QA_CUSTOM_DOMAIN_CERT_ORG_ID,
@@ -239,18 +239,30 @@ router.post("/white-label/domains", requireAdmin, requireCustomDomainAccess, asy
       // Claim creation only writes a pending_dns DB row. Defer Render's live
       // service identity lookup until ownership verification, immediately
       // before any Render domain operation.
-      const qaClaimEnvironmentConfirmed = isQaCustomDomainClaimEnabled();
-      const qaOrganizationConfirmed = qaClaimEnvironmentConfirmed &&
-        await isAuthorizedQaCustomDomainOrganization(req, orgId);
-      if (qaOrganizationConfirmed) {
-        domain = QA_CUSTOM_DOMAIN_CERT_DOMAIN;
-      } else {
+      if (orgId.toLowerCase() !== QA_CUSTOM_DOMAIN_CERT_ORG_ID) {
         res.status(400).json({
           error: "This platform domain cannot be claimed",
           code: "RESERVED_DOMAIN",
         });
         return;
       }
+      const claimBlockers = getQaCustomDomainClaimBlockers();
+      if (claimBlockers.length > 0) {
+        res.status(503).json({
+          error: "The QA custom-domain claim is not enabled for this Test environment.",
+          code: "QA_CUSTOM_DOMAIN_CLAIM_GATE_BLOCKED",
+          failedChecks: claimBlockers,
+        });
+        return;
+      }
+      if (!await isAuthorizedQaCustomDomainOrganization(req, orgId)) {
+        res.status(403).json({
+          error: "The internal QA organization could not be verified for this claim.",
+          code: "QA_CUSTOM_DOMAIN_ORGANIZATION_NOT_AUTHORIZED",
+        });
+        return;
+      }
+      domain = QA_CUSTOM_DOMAIN_CERT_DOMAIN;
     } else {
       const failure = domainError(err);
       res.status(failure.statusCode).json({ error: failure.message, code: failure.code });
