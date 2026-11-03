@@ -1,5 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { randomBytes, randomUUID } from "node:crypto";
+import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
@@ -78,10 +79,13 @@ async function requireCustomDomainAccess(
   next();
 }
 
-async function isAuthorizedQaCustomDomainOrganization(req: Request, orgId: string): Promise<boolean> {
+async function isAuthorizedQaCustomDomainOrganization(orgId: string): Promise<boolean> {
   if (orgId.toLowerCase() !== QA_CUSTOM_DOMAIN_CERT_ORG_ID) return false;
   try {
-    const result = await db(req)(
+    // orgDb uses the request's tenant role and may not see the organizations
+    // marker row under RLS. Use the system pool only for this fixed QA UUID;
+    // neither the SQL parameter nor the queried tenant comes from the browser.
+    const result = await pool.query(
       `SELECT id::text AS id, is_internal_qa, status
          FROM organizations
         WHERE id=$1::uuid AND is_internal_qa=true AND status='active'
@@ -255,7 +259,7 @@ router.post("/white-label/domains", requireAdmin, requireCustomDomainAccess, asy
         });
         return;
       }
-      if (!await isAuthorizedQaCustomDomainOrganization(req, orgId)) {
+      if (!await isAuthorizedQaCustomDomainOrganization(orgId)) {
         res.status(403).json({
           error: "The internal QA organization could not be verified for this claim.",
           code: "QA_CUSTOM_DOMAIN_ORGANIZATION_NOT_AUTHORIZED",
@@ -350,7 +354,7 @@ async function verifyCustomDomain(req: Request, res: Response): Promise<void> {
     if (
       row.domain.toLowerCase() === QA_CUSTOM_DOMAIN_CERT_DOMAIN &&
       (!await isQaCustomDomainCertificationEnabled() ||
-        !await isAuthorizedQaCustomDomainOrganization(req, orgId))
+        !await isAuthorizedQaCustomDomainOrganization(orgId))
     ) {
       res.status(404).json({ error: "Domain not found" });
       return;

@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
+import { pool } from "@workspace/db";
 import * as customDomainService from "../services/custom-domain-service.js";
 
 // ─── Mock billing-context before importing the router ────────────────────────
@@ -78,6 +79,7 @@ beforeEach(() => {
   vi.mocked(customDomainService.getQaCustomDomainClaimBlockers)
     .mockReset().mockReturnValue(["qa_exception_disabled"]);
   vi.mocked(customDomainService.isQaCustomDomainClaimEnabled).mockReset().mockReturnValue(false);
+  vi.mocked(pool.query).mockReset().mockImplementation(async () => ({ rows: [] }) as any);
 });
 
 afterEach(() => {
@@ -271,11 +273,13 @@ describe("POST /white-label/domains — entitlement gate", () => {
     mockOrgId = QA_ORG_ID;
     mockCtx = { addons: { customDomain: true } };
     vi.mocked(customDomainService.getQaCustomDomainClaimBlockers).mockReturnValueOnce([]);
+    vi.mocked(pool.query).mockResolvedValueOnce({
+      rows: [{ id: QA_ORG_ID, is_internal_qa: true, status: "active" }],
+    } as any);
     const writes: string[] = [];
+    const orgQueries: string[] = [];
     orgDbImpl = async (sql: string) => {
-      if (sql.includes("FROM organizations")) {
-        return { rows: [{ id: QA_ORG_ID, is_internal_qa: true, status: "active" }] };
-      }
+      orgQueries.push(sql);
       if (sql.includes("custom_domains_domain_unique_idx")) {
         return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
       }
@@ -294,6 +298,11 @@ describe("POST /white-label/domains — entitlement gate", () => {
       host: "_flowpoint-verify.custom-test.flowpoint.pro",
       type: "TXT",
     });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1::uuid AND is_internal_qa=true AND status='active'"),
+      [QA_ORG_ID],
+    );
+    expect(orgQueries.some((sql) => sql.includes("FROM organizations"))).toBe(false);
     expect(writes.some((sql) => sql.includes("INSERT INTO custom_domains"))).toBe(true);
     expect(customDomainService.isQaCustomDomainCertificationEnabled).not.toHaveBeenCalled();
     expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
@@ -337,15 +346,10 @@ describe("POST /white-label/domains — entitlement gate", () => {
     mockOrgId = QA_ORG_ID;
     mockCtx = { addons: { customDomain: true } };
     vi.mocked(customDomainService.getQaCustomDomainClaimBlockers).mockReturnValueOnce([]);
-    const query = vi.fn(async (sql: string) => {
-      if (sql.includes("FROM organizations")) {
-        return { rows: [{ id: QA_ORG_ID, is_internal_qa: false, status: "active" }] };
-      }
-      if (sql.includes("custom_domains_domain_unique_idx")) {
-        return { rows: [{ domain_index_is_unique: true, org_index_is_unique: true }] };
-      }
-      return { rows: [] as unknown[] };
-    });
+    vi.mocked(pool.query).mockResolvedValueOnce({
+      rows: [{ id: QA_ORG_ID, is_internal_qa: false, status: "active" }],
+    } as any);
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
     orgDbImpl = query;
 
     const response = await request(app)
@@ -354,8 +358,12 @@ describe("POST /white-label/domains — entitlement gate", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.code).toBe("QA_CUSTOM_DOMAIN_ORGANIZATION_NOT_AUTHORIZED");
-    expect(query).toHaveBeenCalledTimes(1);
-    expect(query.mock.calls[0]?.[0]).toContain("is_internal_qa=true");
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1::uuid AND is_internal_qa=true AND status='active'"),
+      [QA_ORG_ID],
+    );
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("does not extend the QA exception to any other FlowPoint subdomain", async () => {
@@ -518,6 +526,7 @@ describe("POST /white-label/domains/:id/ssl-check — readiness state", () => {
     vi.clearAllMocks();
     mockOrgId = QA_ORG_ID;
     vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [] } as any);
     const queries: string[] = [];
     orgDbImpl = async (sql) => {
       queries.push(sql);
@@ -542,7 +551,11 @@ describe("POST /white-label/domains/:id/ssl-check — readiness state", () => {
 
     expect(response.status).toBe(404);
     expect(queries[0]).toContain("WHERE id=$1 AND org_id=$2");
-    expect(queries[1]).toContain("is_internal_qa=true");
+    expect(queries).toHaveLength(1);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1::uuid AND is_internal_qa=true AND status='active'"),
+      [QA_ORG_ID],
+    );
     expect(customDomainService.verifyDomainTxtRecord).not.toHaveBeenCalled();
     expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
   });
