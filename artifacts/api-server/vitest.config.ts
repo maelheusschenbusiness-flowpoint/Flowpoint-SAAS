@@ -109,6 +109,8 @@ export default defineConfig({
       // Gardes de creation, migration autonome, non-regression du natif.
       "src/services/betterstack-creation-guards-db.test.ts",
       "src/lib/logger-redaction.test.ts",
+      // getOrSet : un seul chargement partage par les appels simultanes.
+      "src/lib/cache.test.ts",
       "src/lib/carry-params.test.ts",
       // Resilience des APIs externes : toute sortie reseau est bornee (17/10/2026).
       "src/lib/fetch-borne.test.ts",

@@ -14,6 +14,8 @@ interface CacheEntry<T> {
 
 class TTLCache {
   private store = new Map<string, CacheEntry<unknown>>();
+  /** Chargements en cours, par cle de cache : un seul fetcher par cle. */
+  private inflight = new Map<string, Promise<unknown>>();
   private stats = { hits: 0, misses: 0, sets: 0, evictions: 0 };
   private sweepInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -57,9 +59,21 @@ class TTLCache {
   ): Promise<T> {
     const cached = this.get<T>(namespace, key);
     if (cached !== null) return cached;
-    const value = await fetcher();
-    this.set(namespace, key, value, ttlSeconds);
-    return value;
+    const cacheKey = `${namespace}:${key}`;
+    const pending = this.inflight.get(cacheKey) as Promise<T> | undefined;
+    if (pending) return pending;
+    const load: Promise<T> = (async () => {
+      try {
+        const value = await fetcher();
+        this.set(namespace, key, value, ttlSeconds);
+        return value;
+      } finally {
+        // Un rejet ne met rien en cache : l'appel suivant relance fetcher.
+        this.inflight.delete(cacheKey);
+      }
+    })();
+    this.inflight.set(cacheKey, load);
+    return load;
   }
 
   /** Invalidate a specific key */
