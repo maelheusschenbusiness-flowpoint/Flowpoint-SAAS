@@ -13,6 +13,7 @@ import {
   verifyDomainTxtRecord,
   verifyHttpsDomainRoute,
   isExactQaCustomDomainCertificationHost,
+  isQaCustomDomainClaimEnabled,
   isQaCustomDomainCertificationEnabled,
   QA_CUSTOM_DOMAIN_CERT_DOMAIN,
   QA_CUSTOM_DOMAIN_CERT_ORG_ID,
@@ -235,8 +236,11 @@ router.post("/white-label/domains", requireAdmin, requireCustomDomainAccess, asy
       err.code === "RESERVED_DOMAIN" &&
       isExactQaCustomDomainCertificationHost(req.body?.domain);
     if (exactQaCertificationHost) {
-      const testServiceConfirmed = await isQaCustomDomainCertificationEnabled();
-      const qaOrganizationConfirmed = testServiceConfirmed &&
+      // Claim creation only writes a pending_dns DB row. Defer Render's live
+      // service identity lookup until ownership verification, immediately
+      // before any Render domain operation.
+      const qaClaimEnvironmentConfirmed = isQaCustomDomainClaimEnabled();
+      const qaOrganizationConfirmed = qaClaimEnvironmentConfirmed &&
         await isAuthorizedQaCustomDomainOrganization(req, orgId);
       if (qaOrganizationConfirmed) {
         domain = QA_CUSTOM_DOMAIN_CERT_DOMAIN;

@@ -57,6 +57,7 @@ vi.mock("../services/custom-domain-service.js", async (importOriginal) => {
       targetHost: "flowpoint-test.onrender.com",
     })),
     verifyHttpsDomainRoute: vi.fn(async () => false),
+    isQaCustomDomainClaimEnabled: vi.fn(() => false),
     isQaCustomDomainCertificationEnabled: vi.fn(async () => false),
   };
 });
@@ -73,6 +74,7 @@ beforeEach(() => {
   vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
   mockOrgId = "test-org";
   vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockReset().mockResolvedValue(false);
+  vi.mocked(customDomainService.isQaCustomDomainClaimEnabled).mockReset().mockReturnValue(false);
 });
 
 afterEach(() => {
@@ -237,26 +239,35 @@ describe("POST /white-label/domains — entitlement gate", () => {
     expect(www.body.code).toBe("SUBDOMAIN_REQUIRED");
   });
 
-  it("continues to reserve flowpoint.pro and every subdomain before any database write", async () => {
+  it("continues to reserve platform domains and every subdomain before any database write", async () => {
     mockCtx = { addons: { customDomain: true } };
     const query = vi.fn(async () => ({ rows: [] as unknown[] }));
     orgDbImpl = query;
 
     const apex = await request(app).post("/white-label/domains").send({ domain: "flowpoint.pro" });
     const child = await request(app).post("/white-label/domains").send({ domain: "client.flowpoint.pro" });
+    const flowpointIo = await request(app).post("/white-label/domains").send({ domain: "client.flowpoint.io" });
+    const renderPlatform = await request(app).post("/white-label/domains").send({ domain: "client.onrender.com" });
+    const replitPlatform = await request(app).post("/white-label/domains").send({ domain: "client.replit.app" });
 
     expect(apex.status).toBe(400);
     expect(apex.body.code).toBe("RESERVED_DOMAIN");
     expect(child.status).toBe(400);
     expect(child.body.code).toBe("RESERVED_DOMAIN");
+    expect(flowpointIo.status).toBe(400);
+    expect(flowpointIo.body.code).toBe("RESERVED_DOMAIN");
+    expect(renderPlatform.status).toBe(400);
+    expect(renderPlatform.body.code).toBe("RESERVED_DOMAIN");
+    expect(replitPlatform.status).toBe(400);
+    expect(replitPlatform.body.code).toBe("RESERVED_DOMAIN");
     expect(query).not.toHaveBeenCalled();
     expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
   });
 
-  it("allows only the exact QA hostname when the server confirms the QA organization and Test service", async () => {
+  it("allows only the exact QA hostname when the claim gate and QA organization are confirmed", async () => {
     mockOrgId = QA_ORG_ID;
     mockCtx = { addons: { customDomain: true } };
-    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    vi.mocked(customDomainService.isQaCustomDomainClaimEnabled).mockReturnValueOnce(true);
     const writes: string[] = [];
     orgDbImpl = async (sql: string) => {
       if (sql.includes("FROM organizations")) {
@@ -281,13 +292,31 @@ describe("POST /white-label/domains — entitlement gate", () => {
       type: "TXT",
     });
     expect(writes.some((sql) => sql.includes("INSERT INTO custom_domains"))).toBe(true);
+    expect(customDomainService.isQaCustomDomainCertificationEnabled).not.toHaveBeenCalled();
+    expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
+  });
+
+  it("refuses the exact QA hostname when the temporary Test claim gate is disabled", async () => {
+    mockOrgId = QA_ORG_ID;
+    mockCtx = { addons: { customDomain: true } };
+    const query = vi.fn(async () => ({ rows: [] as unknown[] }));
+    orgDbImpl = query;
+
+    const response = await request(app)
+      .post("/white-label/domains")
+      .send({ domain: "custom-test.flowpoint.pro" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("RESERVED_DOMAIN");
+    expect(query).not.toHaveBeenCalled();
+    expect(customDomainService.isQaCustomDomainCertificationEnabled).not.toHaveBeenCalled();
     expect(customDomainService.ensureRenderCustomDomain).not.toHaveBeenCalled();
   });
 
   it("does not allow a browser-supplied QA org ID to authorize the reserved hostname", async () => {
     mockOrgId = "another-org";
     mockCtx = { addons: { customDomain: true } };
-    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    vi.mocked(customDomainService.isQaCustomDomainClaimEnabled).mockReturnValueOnce(true);
     const query = vi.fn(async () => ({ rows: [] as unknown[] }));
     orgDbImpl = query;
 
@@ -303,7 +332,7 @@ describe("POST /white-label/domains — entitlement gate", () => {
   it("requires the QA organization database marker before creating its exact test claim", async () => {
     mockOrgId = QA_ORG_ID;
     mockCtx = { addons: { customDomain: true } };
-    vi.mocked(customDomainService.isQaCustomDomainCertificationEnabled).mockResolvedValueOnce(true);
+    vi.mocked(customDomainService.isQaCustomDomainClaimEnabled).mockReturnValueOnce(true);
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM organizations")) {
         return { rows: [{ id: QA_ORG_ID, is_internal_qa: false, status: "active" }] };
@@ -338,7 +367,7 @@ describe("POST /white-label/domains — entitlement gate", () => {
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("RESERVED_DOMAIN");
     expect(query).not.toHaveBeenCalled();
-    expect(customDomainService.isQaCustomDomainCertificationEnabled).not.toHaveBeenCalled();
+    expect(customDomainService.isQaCustomDomainClaimEnabled).not.toHaveBeenCalled();
   });
 
   it("keeps administrator and Ultra entitlement gates ahead of the exact QA exception", async () => {

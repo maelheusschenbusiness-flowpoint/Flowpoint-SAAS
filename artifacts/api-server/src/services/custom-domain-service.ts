@@ -262,15 +262,15 @@ async function getCurrentRenderService(config: RenderConfig): Promise<{ targetHo
 }
 
 /**
- * Server-side, read-only identity gate for the single internal QA hostname.
- * The opt-in flag is only a kill switch: it cannot enable the exception unless
- * Stripe is in test mode, Render's injected runtime identity is Test, the
- * configured service ID is the authorized Test service, and Render's API
- * confirms that exact service and URL.
+ * Local, fail-closed gate for creating the database-only pending_dns claim for
+ * the single internal QA hostname. Claim creation must not depend on a live
+ * Render API read: no Render domain is created at this stage. The exact live
+ * service identity is checked again before ownership verification can reach
+ * any Render domain operation.
  */
-export async function isQaCustomDomainCertificationEnabled(
+export function isQaCustomDomainClaimEnabled(
   env: NodeJS.ProcessEnv = process.env,
-): Promise<boolean> {
+): boolean {
   const testStripeKey = env["STRIPE_TEST_KEY"] ?? env["STRIPE_TEST_SECRET_KEY"] ?? "";
   let runtimeHost = "";
   try {
@@ -280,6 +280,7 @@ export async function isQaCustomDomainCertificationEnabled(
   }
 
   if (
+    env["NODE_ENV"] !== "test" ||
     env["CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED"] !== "true" ||
     env["STRIPE_TEST_MODE"] !== "true" ||
     !testStripeKey.startsWith("sk_test_") ||
@@ -290,6 +291,25 @@ export async function isQaCustomDomainCertificationEnabled(
   ) {
     return false;
   }
+
+  try {
+    const config = renderConfig(env);
+    return config.serviceId === QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_ID &&
+      config.expectedServiceName === QA_CUSTOM_DOMAIN_CERT_RENDER_SERVICE_NAME;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Full live identity gate for the single internal QA hostname. This remains
+ * mandatory before verification/provisioning; only the initial DB-only claim
+ * uses the local configuration gate above.
+ */
+export async function isQaCustomDomainCertificationEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  if (!isQaCustomDomainClaimEnabled(env)) return false;
 
   try {
     const config = renderConfig(env);
