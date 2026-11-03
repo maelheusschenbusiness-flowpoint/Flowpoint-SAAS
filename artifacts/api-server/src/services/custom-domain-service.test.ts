@@ -3,6 +3,7 @@ import {
   CustomDomainError,
   ensureRenderCustomDomain,
   isExactQaCustomDomainCertificationHost,
+  getQaCustomDomainClaimBlockers,
   isQaCustomDomainClaimEnabled,
   isQaCustomDomainCertificationEnabled,
   isRenderDomainProvisioningConfigured,
@@ -169,6 +170,26 @@ describe("QA custom-domain claim gate", () => {
 
     expect(isQaCustomDomainClaimEnabled(qaCertificationEnv)).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the legacy Stripe TEST key when the primary test-key variable is empty", () => {
+    expect(isQaCustomDomainClaimEnabled({
+      ...qaCertificationEnv,
+      STRIPE_TEST_KEY: "",
+      STRIPE_TEST_SECRET_KEY: "sk_test_legacy_fixture",
+    })).toBe(true);
+  });
+
+  it("reports safe blocker labels without exposing configured values", () => {
+    expect(getQaCustomDomainClaimBlockers({
+      ...qaCertificationEnv,
+      CUSTOM_DOMAIN_QA_CERT_EXCEPTION_ENABLED: "false",
+      CUSTOM_DOMAIN_RENDER_SERVICE_ID: "srv-privatevalue",
+    })).toEqual([
+      "qa_exception_disabled",
+      "render_configured_service_id_mismatch",
+      "render_provisioning_target_mismatch",
+    ]);
   });
 
   it.each([
