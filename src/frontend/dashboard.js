@@ -67148,11 +67148,27 @@ function openAIWorkspaceLaunch() {
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Stack technique</label>
-            <div style="display:flex;flex-wrap:wrap;gap:7px">${STACKS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:6px 11px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:var(--fp-inner-card);font-size:11px;color:#94a3b8"><input type="checkbox" value="${s}" style="accent-color:#8b5cf6;margin:0"/>${s}</label>`).join('')}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:7px">${STACKS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:6px 11px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:var(--fp-inner-card);font-size:11px;color:#94a3b8"><input type="checkbox" data-awl-stack value="${s}" style="accent-color:#8b5cf6;margin:0"/>${s}</label>`).join('')}</div>
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Priorités business</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">${PRIOS.map((p,i)=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,0.07);background:var(--fp-inner-card);font-size:11px;color:#e2e8f0"><input type="checkbox" value="${p}" ${i<4?'checked':''} style="accent-color:#8b5cf6;margin:0"/>${p}</label>`).join('')}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">${PRIOS.map((p,i)=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,0.07);background:var(--fp-inner-card);font-size:11px;color:#e2e8f0"><input type="checkbox" data-awl-priority value="${p}" ${i<4?'checked':''} style="accent-color:#8b5cf6;margin:0"/>${p}</label>`).join('')}</div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Modules to configure</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:9px;border:1px solid rgba(139,92,246,0.25);background:rgba(139,92,246,0.06);font-size:11px;color:#e2e8f0">
+                <input type="checkbox" data-awl-module="seo_dashboard" value="seo_dashboard" checked style="accent-color:#8b5cf6;margin-top:2px"/>
+                <span><strong>SEO starter dashboard</strong><br/><span style="color:#94a3b8">Tracks saved audits and launch missions.</span></span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.05);font-size:11px;color:#e2e8f0">
+                <input type="checkbox" data-awl-module="seo_alert" value="seo_alert" checked style="accent-color:#ef4444;margin-top:2px"/>
+                <span><strong>Critical SEO score alert</strong><br/><span style="color:#94a3b8">Creates a tenant-scoped alert rule.</span></span>
+              </label>
+            </div>
+            <label style="display:block;margin-top:10px;font-size:11px;color:#94a3b8">SEO alert threshold
+              <input id="awl-alert-threshold" type="number" min="1" max="100" step="1" value="50" class="fp-input" style="margin-top:5px;max-width:150px"/>
+            </label>
           </div>
           <label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.25);background:rgba(34,197,94,0.05);font-size:11px;color:#cbd5e1;line-height:1.5">
             <input id="awl-weekly-report" type="checkbox" style="accent-color:#22c55e;margin-top:2px"/>
@@ -67201,7 +67217,7 @@ function openAIWorkspaceLaunch() {
          <div id="awl-missions" style="display:grid;gap:7px"></div>
        </div>
       <div style="background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:16px">
-         <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">🔔 État des autres éléments</div>
+          <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">Workspace readiness checks</div>
         <div id="awl-alerts" style="display:flex;flex-wrap:wrap;gap:7px"></div>
       </div>
       <div style="display:flex;gap:10px">
@@ -67257,6 +67273,8 @@ async function loadAIWorkspaceLast() {
       dashboardsCreated: Number(session.dashboards_created ?? 0),
       alertsConfigured: Number(session.alerts_configured ?? 0),
       reportsScheduled: Number(result.reportsScheduled ?? 0),
+      configuredModules: Array.isArray(result.configuredModules) ? result.configuredModules : [],
+      readinessChecks: Array.isArray(result.readinessChecks) ? result.readinessChecks : [],
     });
   } catch (error) {
     if (typeof showToast === 'function') showToast(error?.message || 'Impossible de charger cette configuration.', 'error');
@@ -67266,6 +67284,11 @@ async function loadAIWorkspaceLast() {
 
 function awlGo(step) {
   if (step === 4) {
+    if (!document.querySelector('#fp-awl-s3 input[data-awl-module]:checked')) {
+      if (typeof showToast === 'function') showToast('Select at least one module to configure.', 'error');
+      else window.alert('Select at least one module to configure.');
+      return;
+    }
     const url = document.getElementById('awl-url')?.value?.trim() || '';
     const businessName = document.getElementById('awl-biz')?.value?.trim() || '';
     let parsedUrl;
@@ -67312,8 +67335,10 @@ async function _awlAnimate() {
     location: loc,
     goals: checked('#fp-awl-s2 input[type=checkbox]:checked').slice(0, 8),
     competitors: (document.getElementById('awl-comp')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 10),
-    stack: checked('#fp-awl-s3 input[type=checkbox]:checked').filter(value => STACKS.includes(value)).slice(0, 10),
-    priorities: checked('#fp-awl-s3 input[value*="SEO"]:checked,#fp-awl-s3 input[value*="Conversion"]:checked').slice(0, 8),
+    stack: checked('#fp-awl-s3 input[data-awl-stack]:checked').slice(0, 10),
+    priorities: checked('#fp-awl-s3 input[data-awl-priority]:checked').slice(0, 8),
+    modules: checked('#fp-awl-s3 input[data-awl-module]:checked'),
+    alertThreshold: Number(document.getElementById('awl-alert-threshold')?.value || 50),
     scheduleWeeklyReport: !!document.getElementById('awl-weekly-report')?.checked,
     reportTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   };
@@ -67403,7 +67428,7 @@ function _awlResults(result) {
       <div style="width:22px;height:22px;border-radius:50%;background:#8b5cf622;border:1px solid #8b5cf644;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#a78bfa;flex-shrink:0">${escHtml(r.priority)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;color:#e2e8f0;font-weight:600">${escHtml(r.label)}</div>
-        <div style="font-size:10px;color:#64748b;margin-top:1px">Impact estimé : ${escHtml(r.impact)}</div>
+         <div style="font-size:10px;color:#64748b;margin-top:1px">Measure to track: ${escHtml(r.impact)}</div>
       </div>
       <span style="font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;background:#8b5cf622;color:#a78bfa;flex-shrink:0">${escHtml(r.tag)}</span>
     </div>`).join('');
@@ -67413,15 +67438,27 @@ function _awlResults(result) {
 
   const missions = Array.isArray(result.missions) ? result.missions : [];
   const missionsEl = document.getElementById('awl-missions');
-  if (missionsEl) missionsEl.innerHTML = missions.map(m => `<div style="padding:9px 11px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px"><strong>${escHtml(m.priority)}. ${escHtml(m.title)}</strong><span style="display:block;color:#64748b;margin-top:3px">${escHtml(m.category)} · ${escHtml(m.effort)} · ${escHtml(m.impact)}</span></div>`).join('');
+   if (missionsEl) missionsEl.innerHTML = missions.map(m => `<div style="padding:9px 11px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px"><strong>${escHtml(m.priority)}. ${escHtml(m.title)}</strong><span style="display:block;color:#64748b;margin-top:3px">${escHtml(m.category)} · Effort: ${escHtml(m.effort)} · Measure: ${escHtml(m.impact)}</span></div>`).join('');
   const alertsEl = document.getElementById('awl-alerts');
   if (alertsEl) {
-    const notConfigured = [
-      (result.dashboardsCreated ?? 0) === 0 ? 'Aucun dashboard créé' : `${result.dashboardsCreated} dashboard(s) créé(s)`,
-      (result.alertsConfigured ?? 0) === 0 ? 'Aucune alerte configurée' : `${result.alertsConfigured} alerte(s) configurée(s)`,
-      (result.reportsScheduled ?? 0) === 0 ? 'Aucun rapport planifié' : `${result.reportsScheduled} rapport(s) planifié(s)`,
-    ];
-    alertsEl.innerHTML = notConfigured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
+    const checks = Array.isArray(result.readinessChecks) ? result.readinessChecks : [];
+    if (checks.length) {
+      alertsEl.innerHTML = checks.map(check => {
+        const status = check.status === 'ready' ? 'Ready' : check.status === 'not_selected' ? 'Not selected' : 'Needs attention';
+        const color = check.status === 'ready' ? '#22c55e' : check.status === 'not_selected' ? '#94a3b8' : '#f59e0b';
+        return `<div role="status" style="flex:1 1 220px;padding:9px 11px;border-radius:9px;background:${color}0d;border:1px solid ${color}33;color:${color};font-size:10px">
+          <strong>${escHtml(status)} · ${escHtml(check.label || '')}</strong>
+          <div style="color:#94a3b8;margin-top:4px">${escHtml(check.detail || '')}</div>
+        </div>`;
+      }).join('');
+    } else {
+      const notConfigured = [
+        (result.dashboardsCreated ?? 0) === 0 ? 'No dashboard created' : `${result.dashboardsCreated} dashboard(s) created`,
+        (result.alertsConfigured ?? 0) === 0 ? 'No alert configured' : `${result.alertsConfigured} alert(s) configured`,
+        (result.reportsScheduled ?? 0) === 0 ? 'No report scheduled' : `${result.reportsScheduled} report(s) scheduled`,
+      ];
+      alertsEl.innerHTML = notConfigured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
+    }
   }
 }
 

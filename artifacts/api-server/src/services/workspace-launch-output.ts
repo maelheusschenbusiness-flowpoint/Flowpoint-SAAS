@@ -38,6 +38,10 @@ function boundedText(value: unknown, maxLength: number): string | null {
   return normalized.length > 0 && normalized.length <= maxLength ? normalized : null;
 }
 
+function hasUnsupportedQuantifiedClaim(value: string): boolean {
+  return /(?:[$€£]\s*\d+(?:[.,]\d+)?|\b\d+(?:[.,]\d+)?\s*(?:%|[$€£]|\b(?:EUR|USD|GBP|percent(?:age)?|points?|clicks?|leads?|visits?|sessions?|conversions?)\b))/i.test(value);
+}
+
 function hasCompletePriorities(values: number[], count: number): boolean {
   return values.length === count &&
     new Set(values).size === count &&
@@ -58,7 +62,8 @@ export function parseWorkspaceLaunchOutput(text: string): WorkspaceLaunchOutput 
   const roadmapInput = candidate["roadmap"];
   const missionsInput = candidate["missions"];
   if (!strategy || !Array.isArray(roadmapInput) || roadmapInput.length !== 5 ||
-      !Array.isArray(missionsInput) || missionsInput.length !== 12) return null;
+      !Array.isArray(missionsInput) || missionsInput.length !== 12 ||
+      hasUnsupportedQuantifiedClaim(strategy)) return null;
 
   const roadmap: WorkspaceLaunchRoadmapStep[] = [];
   for (const value of roadmapInput) {
@@ -67,7 +72,9 @@ export function parseWorkspaceLaunchOutput(text: string): WorkspaceLaunchOutput 
     const label = boundedText(row["label"], 240);
     const impact = boundedText(row["impact"], 160);
     const tag = boundedText(row["tag"], 60);
-    if (!label || !impact || !tag || typeof row["priority"] !== "number") return null;
+    if (!label || !impact || !tag || typeof row["priority"] !== "number" ||
+        hasUnsupportedQuantifiedClaim(label) || hasUnsupportedQuantifiedClaim(impact) ||
+        hasUnsupportedQuantifiedClaim(tag)) return null;
     roadmap.push({ priority: row["priority"], label, impact, tag });
   }
 
@@ -80,7 +87,8 @@ export function parseWorkspaceLaunchOutput(text: string): WorkspaceLaunchOutput 
     const impact = boundedText(row["impact"], 160);
     const effort = boundedText(row["effort"], 40);
     const category = typeof row["category"] === "string" ? row["category"].trim().toLowerCase() : "";
-    if (!title || !impact || !effort || !allowedCategories.has(category) || typeof row["priority"] !== "number") return null;
+    if (!title || !impact || !effort || !allowedCategories.has(category) || typeof row["priority"] !== "number" ||
+        hasUnsupportedQuantifiedClaim(title) || hasUnsupportedQuantifiedClaim(impact)) return null;
     missions.push({ title, category: category as WorkspaceMissionCategory, priority: row["priority"], impact, effort });
   }
 
