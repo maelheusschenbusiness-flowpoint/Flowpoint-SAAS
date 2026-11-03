@@ -13,9 +13,10 @@
  * degradation silencieuse : le symptome est « le site ne repond plus », la
  * cause est chez un tiers.
  *
- * Cette fonction ne fait qu'une chose : poser un delai quand l'appelant n'en a
- * pas pose. Un `signal` fourni par l'appelant est respecte tel quel — on ne
- * remplace jamais une annulation voulue.
+ * Cette fonction ne fait qu'une chose : poser un delai. Un `signal` fourni par
+ * l'appelant n'est jamais remplace — il est COMBINE au delai : la requete part
+ * des que l'une des deux annulations survient, l'annulation voulue comme le
+ * depassement de delai. Un `signal` d'appelant ne desarme donc plus le delai.
  */
 
 /** Delai par defaut. Court : ces appels sont tous sur un chemin de requete. */
@@ -51,6 +52,14 @@ export async function fetchBorne(
   init: RequestInit = {},
   msDelai: number = DELAI_SORTIE_MS,
 ): Promise<Response> {
-  if (init.signal) return fetch(entree, init);
-  return fetch(entree, { ...init, signal: AbortSignal.timeout(msDelai) });
+  if (!Number.isFinite(msDelai) || msDelai <= 0) {
+    throw new TypeError(
+      `msDelai doit etre un nombre fini strictement positif (recu : ${String(msDelai)})`,
+    );
+  }
+  const delai = AbortSignal.timeout(msDelai);
+  if (init.signal) {
+    return fetch(entree, { ...init, signal: AbortSignal.any([init.signal, delai]) });
+  }
+  return fetch(entree, { ...init, signal: delai });
 }
