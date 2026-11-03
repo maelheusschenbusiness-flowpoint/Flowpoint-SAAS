@@ -9371,8 +9371,8 @@ function _fpSafeColor(v) {
 
 /* ── LOCAL SEO ── */
 window.FP_LOCAL_PRESENCE_API = {
-  async load() {
-    const data = await apiFetch('/api/local-presence');
+  async load(force = false) {
+    const data = await apiFetch('/api/local-presence', { force });
     window.FP_DATA = window.FP_DATA || {};
     window.FP_DATA.localPresence = data;
     return data;
@@ -9393,7 +9393,7 @@ function renderLocalPresenceOptimizer() {
       window._fpLocalPresenceError = String(error?.message || error);
     }).finally(() => {
       window._fpLocalPresenceLoading = false;
-      if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
+      if (STATE.route === 'local-seo') render();
     });
   }
   if (!data) return `<section class="fp-card"><div class="fp-card-title">Local Presence Optimizer</div><p style="color:var(--fp-text-muted)">${escHtml(window._fpLocalPresenceError || fpT('Analyse des fiches GBP…'))}</p>${window._fpLocalPresenceError ? `<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-billing>${fpT('Gérer les add-ons')}</button>` : ''}</section>`;
@@ -9443,7 +9443,7 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('[data-fp-local-presence-refresh]');
   if (!button) return;
   button.disabled = true;
-  try { await window.FP_LOCAL_PRESENCE_API.load(); render(STATE.currentSection); }
+  try { await window.FP_LOCAL_PRESENCE_API.load(true); render(STATE.currentSection); }
   catch (error) { showToast('error', String(error?.message || error)); }
   finally { button.disabled = false; }
 });
@@ -9459,7 +9459,7 @@ document.addEventListener('submit', async event => {
       trackedFields: formData.getAll('trackedFields').map(String),
     });
     if (!result?.ok) throw new Error(result?.error || 'Enregistrement impossible.');
-    await window.FP_LOCAL_PRESENCE_API.load();
+    await window.FP_LOCAL_PRESENCE_API.load(true);
     showToast('success', 'Critères de présence enregistrés.');
     render(STATE.currentSection);
   } catch (error) { showToast('error', String(error?.message || error)); }
@@ -56684,17 +56684,17 @@ let _fpLocalLandingData = null;
 let _fpLocalLandingLoading = false;
 let _fpLocalLandingError = '';
 
-function loadLocalLandingOpportunities() {
+function loadLocalLandingOpportunities(force = false) {
   if (_fpLocalLandingLoading) return;
   _fpLocalLandingLoading = true;
-  apiFetch('/api/local-landing-opportunities').then(data => {
+  apiFetch('/api/local-landing-opportunities', { force }).then(data => {
     _fpLocalLandingData = data;
     _fpLocalLandingError = '';
   }).catch(error => {
     _fpLocalLandingError = String(error?.message || error);
   }).finally(() => {
     _fpLocalLandingLoading = false;
-    if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
+    if (STATE.route === 'local-seo') render();
   });
 }
 
@@ -56738,7 +56738,7 @@ function renderLocalLandingOpportunities() {
 document.addEventListener('click', event => {
   if (!event.target.closest('[data-fp-local-landing-retry]')) return;
   _fpLocalLandingError = '';
-  loadLocalLandingOpportunities();
+  loadLocalLandingOpportunities(true);
 });
 
 document.addEventListener('submit', async event => {
@@ -56760,7 +56760,7 @@ document.addEventListener('submit', async event => {
     if (!saved?.ok) throw new Error(saved?.error || fpT('Enregistrement impossible.'));
     _fpLocalLandingData = null;
     _fpLocalLandingError = '';
-    loadLocalLandingOpportunities();
+    loadLocalLandingOpportunities(true);
     showToast('success', fpT('Critères locaux enregistrés.'));
   } catch (error) { showToast('error', String(error?.message || error)); }
 });
@@ -75232,9 +75232,9 @@ window.FP_REVIEW_INTEL_API = {
 // FP GBP POSTS API
 // ═══════════════════════════════════════════════════════════════════════════════
 window.FP_GBP_PERFORMANCE_API = {
-  async load() {
+  async load(force = false) {
     try {
-      const data = await apiFetch('/api/gbp-performance');
+      const data = await apiFetch('/api/gbp-performance', { force });
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.gbpPerformance = { ...data, loadedAt: Date.now() };
       window.FP_DATA.gbpPerformanceError = null;
@@ -75346,7 +75346,7 @@ document.addEventListener('click', async event => {
   if (!button) return;
   button.disabled = true;
   try {
-    await window.FP_GBP_PERFORMANCE_API.load();
+    await window.FP_GBP_PERFORMANCE_API.load(true);
     render(STATE.currentSection);
   } finally {
     button.disabled = false;
@@ -75374,7 +75374,7 @@ document.addEventListener('submit', async event => {
   try {
     const result = await window.FP_GBP_PERFORMANCE_API.save(settings);
     if (!result?.ok) throw new Error(result?.error || 'Impossible d’enregistrer ces paramètres.');
-    await window.FP_GBP_PERFORMANCE_API.load();
+    await window.FP_GBP_PERFORMANCE_API.load(true);
     showToast('success', 'Objectifs GBP enregistrés.');
     render(STATE.currentSection);
   } catch (error) {

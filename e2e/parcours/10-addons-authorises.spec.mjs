@@ -5,7 +5,7 @@ import { test, expect } from "@playwright/test";
 
 const apiRequire = createRequire(new URL("../../artifacts/api-server/package.json", import.meta.url));
 const { Pool } = apiRequire("pg");
-const addonKeys = ["agencyPacks", "aiExecutiveReport", "aiWorkspaceLaunch", "abTestingAI", "aiContentStrategist"];
+const addonKeys = ["agencyPacks", "aiExecutiveReport", "aiWorkspaceLaunch", "abTestingAI", "aiContentStrategist", "gbpPerformanceLeads", "localPresenceOptimizer", "localLandingOpportunities"];
 const databaseUrl = process.env["FLOWPOINT_ADDON_CERT_DATABASE_URL"];
 const expectedDb = process.env["FLOWPOINT_ADDON_CERT_EXPECTED_DB"];
 const expectedHost = process.env["FLOWPOINT_ADDON_CERT_EXPECTED_HOST"];
@@ -17,6 +17,8 @@ const orgB = randomUUID();
 const sessionA = `e2e-awl-${randomUUID()}`;
 const profileA = `e2e-awl-${randomUUID()}`;
 const missionA = `e2e-awl-${randomUUID()}`;
+const gbpLocationA = `e2e-gbp-${randomUUID()}`;
+const gbpLocationB = `e2e-gbp-${randomUUID()}`;
 const experimentA = randomUUID();
 const experimentB = randomUUID();
 const siteA = "https://addon-a.qa-fixture.invalid";
@@ -57,6 +59,11 @@ test.beforeAll(async () => {
      VALUES (gen_random_uuid(),$1::uuid,$2::uuid,'owner','active',NOW())`,
     [orgA, userId],
   );
+  await db.query(
+    `INSERT INTO user_prefs (org_id,settings)
+     VALUES ($1,$2::jsonb)`,
+    [orgA, JSON.stringify({ onboardingCompletedAt: new Date().toISOString() })],
+  );
   for (const key of addonKeys) {
     await db.query(
       `INSERT INTO org_addons (id,org_id,addon_key,active,quantity,activated_at)
@@ -74,12 +81,37 @@ test.beforeAll(async () => {
     `INSERT INTO ai_workspace_profiles
       (id,org_id,session_id,business_name,generated_roadmap,generated_strategy,seo_score)
      VALUES ($1,$2,$3,'Synthetic workspace',$4::jsonb,'Synthetic strategy',73)`,
-    [profileA, orgA, sessionA, JSON.stringify([{ title: "Fixture mission roadmap" }])],
+    [profileA, orgA, sessionA, JSON.stringify([{ priority: 1, label: "Fixture mission roadmap", title: "Fixture mission roadmap" }])],
   );
   await db.query(
     `INSERT INTO ai_generated_missions (id,org_id,profile_id,title,category,priority)
      VALUES ($1,$2,$3,'Synthetic persisted mission','seo',1)`,
     [missionA, orgA, profileA],
+  );
+  await db.query(
+    `INSERT INTO google_locations (id,org_id,location_id,name,raw_data)
+     VALUES ($1,$2,'locations/e2e-a','Synthetic GBP location A',$3::jsonb),
+            ($4,$5,'locations/e2e-b','Foreign GBP location B','{"name":"locations/e2e-b"}'::jsonb)`,
+    [
+      gbpLocationA,
+      orgA,
+      JSON.stringify({
+        name: "locations/e2e-a",
+        title: "Synthetic Dentist",
+        primaryCategory: { displayName: "Dentist" },
+        websiteUri: "https://addon-a.qa-fixture.invalid",
+        regularHours: { periods: [{ openDay: "MONDAY" }] },
+        profile: { description: "Synthetic business profile for certification." },
+      }),
+      gbpLocationB,
+      orgB,
+    ],
+  );
+  await db.query(
+    `INSERT INTO gsc_keyword_data (id,org_id,keyword,date,impressions,clicks,ctr,position)
+     VALUES ($1,$2,'dentiste urgence Bruxelles',to_char(CURRENT_DATE - INTERVAL '2 days','YYYY-MM-DD'),120,12,0.1,8),
+            ($3,$4,'dentiste urgence Bruxelles',to_char(CURRENT_DATE - INTERVAL '2 days','YYYY-MM-DD'),999,99,0.099,7)`,
+    [randomUUID(), orgA, randomUUID(), orgB],
   );
 
   for (const [orgId, page, date, clicks, position] of [
@@ -124,6 +156,10 @@ test.afterAll(async () => {
     await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
     await db.query("DELETE FROM cro_experiments WHERE org_id=$1", [orgId]);
     await db.query("DELETE FROM gsc_page_data WHERE org_id=$1", [orgId]);
+    await db.query("DELETE FROM gsc_keyword_data WHERE org_id=$1", [orgId]);
+    await db.query("DELETE FROM gbp_performance_settings WHERE org_id=$1", [orgId]);
+    await db.query("DELETE FROM google_locations WHERE org_id=$1", [orgId]);
+    await db.query("DELETE FROM user_prefs WHERE org_id=$1", [orgId]);
     await db.query("DELETE FROM ai_generated_missions WHERE org_id=$1", [orgId]);
     await db.query("DELETE FROM ai_workspace_profiles WHERE org_id=$1", [orgId]);
     await db.query("DELETE FROM onboarding_sessions WHERE org_id=$1", [orgId]);
@@ -147,7 +183,7 @@ test.afterAll(async () => {
   await db.end();
 });
 
-test("authentifie normalement et certifie les cinq add-ons avec données synthétiques tenant-isolées", async ({ page }) => {
+test("authentifie normalement et certifie les add-ons historiques avec des données synthétiques tenant-isolées", async ({ page }) => {
   const login = await page.request.post("/api/auth/login-request", { data: { email } });
   expect(login.ok()).toBe(true);
   const loginBody = await login.json();
@@ -200,4 +236,209 @@ test("authentifie normalement et certifie les cinq add-ons avec données synthé
   const decayPages = (await decay.json()).opportunities.map(row => row.page);
   expect(decayPages).toContain("https://addon-a.qa-fixture.invalid/decay");
   expect(decayPages).not.toContain("https://addon-b.qa-fixture.invalid/foreign");
+});
+
+async function signInToDashboard(page) {
+  const login = await page.request.post("/api/auth/login-request", { data: { email } });
+  expect(login.ok()).toBe(true);
+  const loginBody = await login.json();
+  expect(loginBody.debugLink).toBeTruthy();
+  await page.goto(loginBody.debugLink);
+  await page.waitForURL(/dashboard\.html/, { timeout: 20_000 });
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.waitForFunction(() => typeof window.navigate === "function");
+  const meResponse = await page.request.get("/api/me");
+  expect(meResponse.status()).toBe(200);
+  const me = await meResponse.json();
+  expect(me.addons?.gbpPerformanceLeads).toBe(true);
+  expect(me.addons?.localPresenceOptimizer).toBe(true);
+  expect(me.addons?.localLandingOpportunities).toBe(true);
+  await page.waitForFunction(
+    () => Boolean(window.STATE?.me?.orgId && window.STATE?.me?.userId),
+    null,
+    { timeout: 20_000 },
+  );
+  await page.evaluate(() => window.navigate("overview"));
+  await page.waitForFunction(() => window.STATE?.route === "overview", null, { timeout: 20_000 });
+  await page.waitForFunction(
+    () => Boolean(window.FP_DATA?.gbpPerformance || window.FP_DATA?.gbpPerformanceError),
+    null,
+    { timeout: 20_000 },
+  );
+  return me;
+}
+
+test("AI Workspace Launch restores a persisted strategy through the browser UI", async ({ page }) => {
+  const me = await signInToDashboard(page);
+  await page.evaluate(({ orgId, userId, sessionId }) => {
+    localStorage.setItem(`fp:${orgId}:${userId}:ai-workspace-launch:last-session`, sessionId);
+  }, { orgId: me.orgId, userId: me.userId, sessionId: sessionA });
+  await page.waitForFunction(() => typeof window.openAIWorkspaceLaunch === "function");
+  await page.evaluate(() => window.openAIWorkspaceLaunch());
+  await expect(page.locator("#fp-awl-overlay")).toBeVisible();
+  await expect(page.locator("#awl-load-last")).toBeVisible();
+
+  const responsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/ai-workspace-launch/${sessionA}` &&
+    response.request().method() === "GET"
+  );
+  await page.locator("#awl-load-last").click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  await expect(page.locator("#fp-awl-s5")).toBeVisible();
+  await expect(page.locator("#awl-res-sub")).toContainText("Synthetic workspace");
+  await expect(page.locator("#awl-roadmap")).toContainText("Fixture mission roadmap");
+});
+
+test("GBP settings save from the dashboard and survive reload without cross-tenant locations", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => { window.location.hash = "#reports/local"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "reports" && window.STATE?.subRoute === "local",
+    null,
+    { timeout: 20_000 },
+  );
+  const panel = page.locator('section[aria-labelledby="fp-gbp-performance-title"]');
+  await expect(panel).toBeVisible();
+  const form = panel.locator("form[data-fp-gbp-performance-settings]");
+  await expect(form).toBeVisible();
+  await expect(form.locator('select[name="locationId"] option')).toHaveText(["Synthetic GBP location A"]);
+  await expect(panel.getByRole("status")).toContainText("Connectez Google Business Profile");
+
+  await form.locator('select[name="locationId"]').selectOption(gbpLocationA);
+  await form.locator('select[name="periodDays"]').selectOption("7");
+  await form.locator('input[name="alertDropPercent"]').fill("15");
+  await form.locator('input[name="CALL_CLICKS"]').fill("12");
+  await form.locator('input[name="WEBSITE_CLICKS"]').fill("20");
+  const savePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/gbp-performance/settings" &&
+    response.request().method() === "PUT"
+  );
+  await form.getByRole("button", { name: "Enregistrer les objectifs" }).click();
+  const saveResponse = await savePromise;
+  expect(saveResponse.status()).toBe(200);
+  await expect(form.locator('select[name="locationId"]')).toHaveValue(gbpLocationA);
+  await expect(form.locator('select[name="periodDays"]')).toHaveValue("7");
+  await expect(form.locator('input[name="alertDropPercent"]')).toHaveValue("15");
+  await expect(form.locator('input[name="CALL_CLICKS"]')).toHaveValue("12");
+  await expect(form.locator('input[name="WEBSITE_CLICKS"]')).toHaveValue("20");
+
+  await page.reload();
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.evaluate(() => { window.location.hash = "#reports/local"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "reports" && window.STATE?.subRoute === "local",
+    null,
+    { timeout: 20_000 },
+  );
+  const reloadedForm = page.locator('form[data-fp-gbp-performance-settings]');
+  await expect(reloadedForm).toBeVisible();
+  await expect(reloadedForm.locator('select[name="locationId"]')).toHaveValue(gbpLocationA);
+  await expect(reloadedForm.locator('select[name="periodDays"]')).toHaveValue("7");
+  await expect(reloadedForm.locator('input[name="alertDropPercent"]')).toHaveValue("15");
+  await expect(reloadedForm.locator('input[name="CALL_CLICKS"]')).toHaveValue("12");
+  await expect(reloadedForm.locator('input[name="WEBSITE_CLICKS"]')).toHaveValue("20");
+
+  const persisted = await page.request.get("/api/gbp-performance");
+  expect(persisted.status()).toBe(200);
+  const data = await persisted.json();
+  expect(data.settings).toMatchObject({
+    locationId: gbpLocationA,
+    periodDays: 7,
+    alertDropPercent: 15,
+    goals: { CALL_CLICKS: 12, WEBSITE_CLICKS: 20 },
+  });
+});
+
+test("Local Presence Optimizer saves tracked GBP criteria and reloads them", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => { window.location.hash = "#local-seo/presence"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "local-seo" && window.STATE?.subRoute === "presence",
+    null,
+    { timeout: 20_000 },
+  );
+  const panel = page.locator('section[aria-labelledby="fp-local-presence-title"]');
+  await expect(panel).toBeVisible();
+  const form = panel.locator("form[data-fp-local-presence-settings]");
+  await expect(form).toBeVisible();
+  await expect(form.locator('select[name="locationId"] option')).toHaveText(["Synthetic GBP location A"]);
+
+  for (const checkbox of await form.locator('input[name="trackedFields"]').all()) {
+    const key = await checkbox.getAttribute("value");
+    if (key === "title" || key === "phone") await checkbox.check();
+    else await checkbox.uncheck();
+  }
+  await form.locator('select[name="locationId"]').selectOption(gbpLocationA);
+  const savePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/local-presence/settings" &&
+    response.request().method() === "PUT"
+  );
+  await form.locator('button[type="submit"]').click();
+  const saveResponse = await savePromise;
+  expect(saveResponse.status()).toBe(200);
+  await expect(panel).toContainText("50%");
+
+  await page.reload();
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.evaluate(() => { window.location.hash = "#local-seo/presence"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "local-seo" && window.STATE?.subRoute === "presence",
+    null,
+    { timeout: 20_000 },
+  );
+  const reloadedForm = page.locator('form[data-fp-local-presence-settings]');
+  await expect(reloadedForm).toBeVisible();
+  await expect(reloadedForm.locator('select[name="locationId"]')).toHaveValue(gbpLocationA);
+  await expect(reloadedForm.locator('input[name="trackedFields"][value="title"]')).toBeChecked();
+  await expect(reloadedForm.locator('input[name="trackedFields"][value="phone"]')).toBeChecked();
+  await expect(reloadedForm.locator('input[name="trackedFields"]:checked')).toHaveCount(2);
+  await expect(page.locator('section[aria-labelledby="fp-local-presence-title"]')).toContainText("50%");
+});
+
+test("Local Landing Opportunities saves filters and reloads tenant-scoped GSC signals", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => { window.location.hash = "#local-seo/opportunities"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "local-seo" && window.STATE?.subRoute === "opportunities",
+    null,
+    { timeout: 20_000 },
+  );
+  const panel = page.locator('section[aria-labelledby="fp-local-landing-title"]');
+  await expect(panel).toBeVisible();
+  const form = panel.locator("form[data-fp-local-landing-settings]");
+  await expect(form).toBeVisible();
+  await form.locator('input[name="services"]').fill("dentiste");
+  await form.locator('input[name="locations"]').fill("Bruxelles");
+  await form.locator('input[name="minimumImpressions"]').fill("20");
+  await form.locator('input[name="maximumPosition"]').fill("20");
+  const savePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/local-landing-opportunities/settings" &&
+    response.request().method() === "PUT"
+  );
+  await form.locator('button[type="submit"]').click();
+  const saveResponse = await savePromise;
+  expect(saveResponse.status()).toBe(200);
+  await expect(panel).toContainText("dentiste urgence Bruxelles");
+  await expect(panel).toContainText("120 impressions");
+  await expect(panel).not.toContainText("999 impressions");
+
+  await page.reload();
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.evaluate(() => { window.location.hash = "#local-seo/opportunities"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "local-seo" && window.STATE?.subRoute === "opportunities",
+    null,
+    { timeout: 20_000 },
+  );
+  const reloadedPanel = page.locator('section[aria-labelledby="fp-local-landing-title"]');
+  const reloadedForm = reloadedPanel.locator("form[data-fp-local-landing-settings]");
+  await expect(reloadedForm).toBeVisible();
+  await expect(reloadedForm.locator('input[name="services"]')).toHaveValue("dentiste");
+  await expect(reloadedForm.locator('input[name="locations"]')).toHaveValue("Bruxelles");
+  await expect(reloadedForm.locator('input[name="minimumImpressions"]')).toHaveValue("20");
+  await expect(reloadedForm.locator('input[name="maximumPosition"]')).toHaveValue("20");
+  await expect(reloadedPanel).toContainText("dentiste urgence Bruxelles");
+  await expect(reloadedPanel).toContainText("120 impressions");
+  await expect(reloadedPanel).not.toContainText("999 impressions");
 });
