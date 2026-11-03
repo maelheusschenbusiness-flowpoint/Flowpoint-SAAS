@@ -304,16 +304,16 @@ describe("getUsageSummary — audit/report/export/seat packs expand display limi
 describe("Ultra base quota contract", () => {
   it("keeps Ultra aligned in billing and middleware quota sources", () => {
     expect(PLAN_LIMITS["ultra"]).toMatchObject({
-      audits: 2_000,
+      audits: 1_000,
       monitors: 300,
-      reports: 2_000,
-      exports: 2_000,
+      reports: 1_000,
+      exports: 1_000,
       teamMembers: 10,
     });
-    expect(getQuota("ultra", "audits")).toBe(2_000);
+    expect(getQuota("ultra", "audits")).toBe(1_000);
     expect(getQuota("ultra", "monitors")).toBe(300);
-    expect(getQuota("ultra", "reports")).toBe(2_000);
-    expect(getQuota("ultra", "exports")).toBe(2_000);
+    expect(getQuota("ultra", "reports")).toBe(1_000);
+    expect(getQuota("ultra", "exports")).toBe(1_000);
     expect(getQuota("ultra", "teamMembers")).toBe(10);
 
     expect(PLAN_LIMITS["standard"]).toMatchObject({
@@ -330,17 +330,17 @@ describe("Ultra base quota contract", () => {
     mockOrgAddonRows = [];
     const { getUsageSummary, checkQuota } = await import("./billing-service.js");
     const summary = await getUsageSummary("org-ultra");
-    expect(summary.usage.audits.limit).toBe(2_000);
+    expect(summary.usage.audits.limit).toBe(1_000);
     expect(summary.usage.monitors.limit).toBe(300);
-    expect(summary.usage.reports.limit).toBe(2_000);
-    expect(summary.usage.exports.limit).toBe(2_000);
+    expect(summary.usage.reports.limit).toBe(1_000);
+    expect(summary.usage.exports.limit).toBe(1_000);
     expect(summary.usage.seats.limit).toBe(10);
 
     const expectedLimits = {
-      audits: 2_000,
+      audits: 1_000,
       monitors: 300,
-      reports: 2_000,
-      exports: 2_000,
+      reports: 1_000,
+      exports: 1_000,
       seats: 10,
     } as const;
     for (const [resource, limit] of Object.entries(expectedLimits)) {

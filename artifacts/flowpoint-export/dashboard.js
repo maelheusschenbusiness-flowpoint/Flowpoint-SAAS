@@ -9371,8 +9371,8 @@ function _fpSafeColor(v) {
 
 /* ── LOCAL SEO ── */
 window.FP_LOCAL_PRESENCE_API = {
-  async load() {
-    const data = await apiFetch('/api/local-presence');
+  async load(force = false) {
+    const data = await apiFetch('/api/local-presence', { force });
     window.FP_DATA = window.FP_DATA || {};
     window.FP_DATA.localPresence = data;
     return data;
@@ -9393,7 +9393,7 @@ function renderLocalPresenceOptimizer() {
       window._fpLocalPresenceError = String(error?.message || error);
     }).finally(() => {
       window._fpLocalPresenceLoading = false;
-      if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
+      if (STATE.route === 'local-seo') render();
     });
   }
   if (!data) return `<section class="fp-card"><div class="fp-card-title">Local Presence Optimizer</div><p style="color:var(--fp-text-muted)">${escHtml(window._fpLocalPresenceError || fpT('Analyse des fiches GBP…'))}</p>${window._fpLocalPresenceError ? `<button type="button" class="fp-btn fp-btn-secondary fp-btn-sm" data-fp-local-presence-billing>${fpT('Gérer les add-ons')}</button>` : ''}</section>`;
@@ -9443,7 +9443,7 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('[data-fp-local-presence-refresh]');
   if (!button) return;
   button.disabled = true;
-  try { await window.FP_LOCAL_PRESENCE_API.load(); render(STATE.currentSection); }
+  try { await window.FP_LOCAL_PRESENCE_API.load(true); render(STATE.currentSection); }
   catch (error) { showToast('error', String(error?.message || error)); }
   finally { button.disabled = false; }
 });
@@ -9459,7 +9459,7 @@ document.addEventListener('submit', async event => {
       trackedFields: formData.getAll('trackedFields').map(String),
     });
     if (!result?.ok) throw new Error(result?.error || 'Enregistrement impossible.');
-    await window.FP_LOCAL_PRESENCE_API.load();
+    await window.FP_LOCAL_PRESENCE_API.load(true);
     showToast('success', 'Critères de présence enregistrés.');
     render(STATE.currentSection);
   } catch (error) { showToast('error', String(error?.message || error)); }
@@ -10348,7 +10348,7 @@ function renderBilling() {
     return [
       { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h','White-label de l’espace'], locked:['API Access','Analytics concurrents','Multi-workspace','Onboarding dédié','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
       { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h','White-label'], locked:['Multi-workspace (5 max)','Onboarding dédié'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
-      { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['2 000 audits','300 monitors','2 000 rapports PDF','10 utilisateurs','∞ AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','White-label portail'], locked:[], limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
+      { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['1 000 audits','300 monitors','1 000 rapports PDF','10 utilisateurs','∞ AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','White-label portail'], locked:[], limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
     ];
   })();
   const _getDef = (id) => _planDefs.find(p => p.id === id) || _planDefs[1];
@@ -10662,11 +10662,11 @@ function renderBilling() {
                 const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'∞':_fmtNum(c); };
                 return [
                   { group:'Core', rows:[
-                    ['Audits / mois',  _val('standard','audits',30),  _val('pro','audits',300),  _val('ultra','audits',2000)],
+                    ['Audits / mois',  _val('standard','audits',30),  _val('pro','audits',300),  _val('ultra','audits',1000)],
                     ['Monitors',       _val('standard','monitors',10), _val('pro','monitors',50), _val('ultra','monitors',300)],
                     ['Utilisateurs',   _val('standard','teamMembers',1), _val('pro','teamMembers',5), _val('ultra','teamMembers',10)],
-                    ['Rapports PDF',   _val('standard','reports',30),  _val('pro','reports',300),   _val('ultra','reports',2000)],
-                    ['Exports',        _val('standard','exports',30),  _val('pro','exports',300),   _val('ultra','exports',2000)],
+                    ['Rapports PDF',   _val('standard','reports',30),  _val('pro','reports',300),   _val('ultra','reports',1000)],
+                    ['Exports',        _val('standard','exports',30),  _val('pro','exports',300),   _val('ultra','exports',1000)],
                     ['Workspaces',     _val('standard','workspaces',1), _val('pro','workspaces',5),  _val('ultra','workspaces',10)],
                   ]},
                   { group:'IA & SEO', rows:[
@@ -11665,7 +11665,7 @@ function renderBilling() {
       { name:fpT('2FA / MFA'),             active:true, desc:fpT('Authentification à deux facteurs obligatoire pour sécuriser chaque connexion'),     icon:'🔐', color:'#ef4444' },
       { name:fpT('Analytics Temps Réel'),  active:true, desc:fpT('Tableaux de bord live, graphiques instantanés et alertes en temps réel'),          icon:'📊', color:'#2563EB' },
       { name:fpT('RGPD Compliance'),       active:true, desc:fpT("Droit à l’oubli, exports de données, consentements et DPA disponibles"),          icon:'🛡️', color:'#22c55e' },
-      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:2000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return fpT('Exports {count}/mois',{count:_q>=1000?_fmt(_q):_q});}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:2000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return fpT('Exportez vos données en CSV, PDF ou JSON — quota: {count} exports/mois selon votre plan',{count:_q});}()), icon:'📤', color:'#8b5cf6' },
+      { name:(function(){var _el=STATE.me?.limits?.exports;var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=_el||_map[_pl]||30;var _fmt=function(n){return n>=1000?(Math.round(n/1000))+'k':String(n);};return fpT('Exports {count}/mois',{count:_q>=1000?_fmt(_q):_q});}()), active:true, desc:(function(){var _pl=(STATE.me?.plan||'standard').toLowerCase();var _map={standard:30,pro:300,ultra:1000};var _q=STATE.me?.limits?.exports||_map[_pl]||30;return fpT('Exportez vos données en CSV, PDF ou JSON — quota: {count} exports/mois selon votre plan',{count:_q});}()), icon:'📤', color:'#8b5cf6' },
       { name:fpT('API GraphQL'),           active:true, desc:fpT("Accès complet à l’API GraphQL pour intégrer FlowPoint dans vos outils métier"),   icon:'⚡', color:'#06b6d4' },
     ];
     return `
@@ -16498,7 +16498,7 @@ function _getPlanLimits(planName) {
   const map = {
     standard: { audit: 30,  monitor: 10,  pdf: 30  },
     pro:      { audit: 300, monitor: 50,  pdf: 300 },
-    ultra:    { audit: 2000, monitor: 300, pdf: 2000 },
+    ultra:    { audit: 1000, monitor: 300, pdf: 1000 },
     starter:  { audit: 30,  monitor: 10,  pdf: 30  },
     agency:   { audit: 1000, monitor: 300, pdf: 1000 },
   };
@@ -18357,7 +18357,7 @@ function bindSectionEvents() {
       const plans = [
         {name:'Standard', price:'29€', features:['30 audits/mois','10 monitors','1 utilisateur','White Label']},
         {name:'Pro',      price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
-        {name:'Ultra',    price:'149€',features:['2 000 audits/mois','300 monitors','10 utilisateurs','API accès']},
+        {name:'Ultra',    price:'149€',features:['1 000 audits/mois','300 monitors','10 utilisateurs','API accès']},
       ];
       openFloatPanel(fpT('Changer de plan'), `
         <div style="display:flex;flex-direction:column;gap:12px">
@@ -20331,13 +20331,13 @@ function bindGlobalEvents() {
     '/mois · sans engagement': '/month · no commitment',
     '30 audits/mois': '30 audits/month',
     '300 audits/mois': '300 audits/month',
-    '2 000 audits/mois': '2,000 audits/month',
+    '1 000 audits/mois': '1,000 audits/month',
     '30 rapports PDF/mois': '30 PDF reports/month',
     '300 rapports PDF/mois': '300 PDF reports/month',
-    '2 000 rapports PDF/mois': '2,000 PDF reports/month',
+    '1 000 rapports PDF/mois': '1,000 PDF reports/month',
     '30 exports/mois': '30 exports/month',
     '300 exports/mois': '300 exports/month',
-    '2 000 exports/mois': '2,000 exports/month',
+    '1 000 exports/mois': '1,000 exports/month',
     "1 membre d'équipe": '1 team member',
     "5 membres d'équipe": '5 team members',
     "10 membres d'équipe": '10 team members',
@@ -25330,9 +25330,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 días",
     "-23% du potentiel mensuel": "-23% del potencial mensual",
     "/mois · sans engagement": "/mes · sin compromiso",
-    "2 000 audits/mois": "2.000 auditorías/mes",
-    "2 000 exports/mois": "2.000 exportaciones/mes",
-    "2 000 rapports PDF/mois": "2.000 informes PDF/mes",
+    "1 000 audits/mois": "1.000 auditorías/mes",
+    "1 000 exports/mois": "1.000 exportaciones/mes",
+    "1 000 rapports PDF/mois": "1.000 informes PDF/mes",
     "1 jour": "1 día",
     "1 semaine": "1 semana",
     "1-2 jours": "1-2 días",
@@ -28292,9 +28292,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 Tage",
     "-23% du potentiel mensuel": "-23% des monatlichen Potenzials",
     "/mois · sans engagement": "/Monat · keine Verpflichtung",
-    "2 000 audits/mois": "2.000 Audits/Monat",
-    "2 000 exports/mois": "2.000 Exporte/Monat",
-    "2 000 rapports PDF/mois": "2.000 PDF-Berichte/Monat",
+    "1 000 audits/mois": "1.000 Audits/Monat",
+    "1 000 exports/mois": "1.000 Exporte/Monat",
+    "1 000 rapports PDF/mois": "1.000 PDF-Berichte/Monat",
     "1 jour": "1 Tag",
     "1 semaine": "1 Woche",
     "1-2 jours": "1-2 Tage",
@@ -31227,9 +31227,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 giorni",
     "-23% du potentiel mensuel": "-23% del potenziale mensile",
     "/mois · sans engagement": "/mese · senza impegno",
-    "2 000 audits/mois": "2.000 audit/mese",
-    "2 000 exports/mois": "2.000 esportazioni/mese",
-    "2 000 rapports PDF/mois": "2.000 rapporti PDF/mese",
+    "1 000 audits/mois": "1.000 audit/mese",
+    "1 000 exports/mois": "1.000 esportazioni/mese",
+    "1 000 rapports PDF/mois": "1.000 rapporti PDF/mese",
     "1 jour": "1 giorno",
     "1 semaine": "1 settimana",
     "1-2 jours": "1-2 giorni",
@@ -34181,9 +34181,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 dias",
     "-23% du potentiel mensuel": "-23% do potencial mensal",
     "/mois · sans engagement": "/mês · sem compromisso",
-    "2 000 audits/mois": "2.000 auditorias/m��s",
-    "2 000 exports/mois": "2.000 exportações/mês",
-    "2 000 rapports PDF/mois": "2.000 relatórios PDF/mês",
+    "1 000 audits/mois": "1.000 auditorias/mês",
+    "1 000 exports/mois": "1.000 exportações/mês",
+    "1 000 rapports PDF/mois": "1.000 relatórios PDF/mês",
     "1 jour": "1 dia",
     "1 semaine": "1 semana",
     "1-2 jours": "1-2 dias",
@@ -37116,9 +37116,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 dagen",
     "-23% du potentiel mensuel": "-23% van het maandelijkse potentieel",
     "/mois · sans engagement": "/maand · geen verplichtingen",
-    "2 000 audits/mois": "2.000 audits/maand",
-    "2 000 exports/mois": "2.000 exports/maand",
-    "2 000 rapports PDF/mois": "2.000 PDF-rapporten/maand",
+    "1 000 audits/mois": "1.000 audits/maand",
+    "1 000 exports/mois": "1.000 exports/maand",
+    "1 000 rapports PDF/mois": "1.000 PDF-rapporten/maand",
     "1 jour": "1 dag",
     "1 semaine": "1 week",
     "1-2 jours": "1-2 dagen",
@@ -40051,9 +40051,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 dni",
     "-23% du potentiel mensuel": "-23% miesięcznego potencjału",
     "/mois · sans engagement": "/miesiąc · bez zobowiązań",
-    "2 000 audits/mois": "2 000 audytów/miesiąc",
-    "2 000 exports/mois": "2 000 eksportów/miesiąc",
-    "2 000 rapports PDF/mois": "2 000 raportów PDF/miesiąc",
+    "1 000 audits/mois": "1 000 audytów/miesiąc",
+    "1 000 exports/mois": "1 000 eksportów/miesiąc",
+    "1 000 rapports PDF/mois": "1 000 raportów PDF/miesiąc",
     "1 jour": "1 dzień",
     "1 semaine": "1 tydzień",
     "1-2 jours": "1-2 dni",
@@ -42986,9 +42986,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 dagar",
     "-23% du potentiel mensuel": "-23% av månatlig potential",
     "/mois · sans engagement": "/månad · ingen bindning",
-    "2 000 audits/mois": "2 000 granskningar/månad",
-    "2 000 exports/mois": "2 000 exporter/månad",
-    "2 000 rapports PDF/mois": "2 000 PDF-rapporter/månad",
+    "1 000 audits/mois": "1 000 granskningar/månad",
+    "1 000 exports/mois": "1 000 exporter/månad",
+    "1 000 rapports PDF/mois": "1 000 PDF-rapporter/månad",
     "1 jour": "1 dag",
     "1 semaine": "1 vecka",
     "1-2 jours": "1-2 dagar",
@@ -45921,9 +45921,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 zile",
     "-23% du potentiel mensuel": "-23% din potențialul lunar",
     "/mois · sans engagement": "/lună · fără angajament",
-    "2 000 audits/mois": "2.000 audituri/lună",
-    "2 000 exports/mois": "2.000 exporturi/lună",
-    "2 000 rapports PDF/mois": "2.000 rapoarte PDF/lună",
+    "1 000 audits/mois": "1.000 audituri/lună",
+    "1 000 exports/mois": "1.000 exporturi/lună",
+    "1 000 rapports PDF/mois": "1.000 rapoarte PDF/lună",
     "1 jour": "1 zi",
     "1 semaine": "1 săptămână",
     "1-2 jours": "1-2 zile",
@@ -48856,9 +48856,9 @@ function bindGlobalEvents() {
     "+90 jours": "+90 dní",
     "-23% du potentiel mensuel": "-23% měsíčního potenciálu",
     "/mois · sans engagement": "/měsíc · bez závazku",
-    "2 000 audits/mois": "2 000 auditů/měsíc",
-    "2 000 exports/mois": "2 000 exportů/měsíc",
-    "2 000 rapports PDF/mois": "2 000 PDF zpráv/měsíc",
+    "1 000 audits/mois": "1 000 auditů/měsíc",
+    "1 000 exports/mois": "1 000 exportů/měsíc",
+    "1 000 rapports PDF/mois": "1 000 PDF zpráv/měsíc",
     "1 jour": "1 den",
     "1 semaine": "1 týden",
     "1-2 jours": "1-2 dny",
@@ -56684,17 +56684,17 @@ let _fpLocalLandingData = null;
 let _fpLocalLandingLoading = false;
 let _fpLocalLandingError = '';
 
-function loadLocalLandingOpportunities() {
+function loadLocalLandingOpportunities(force = false) {
   if (_fpLocalLandingLoading) return;
   _fpLocalLandingLoading = true;
-  apiFetch('/api/local-landing-opportunities').then(data => {
+  apiFetch('/api/local-landing-opportunities', { force }).then(data => {
     _fpLocalLandingData = data;
     _fpLocalLandingError = '';
   }).catch(error => {
     _fpLocalLandingError = String(error?.message || error);
   }).finally(() => {
     _fpLocalLandingLoading = false;
-    if (STATE.currentSection === 'local-seo') render(STATE.currentSection);
+    if (STATE.route === 'local-seo') render();
   });
 }
 
@@ -56738,7 +56738,7 @@ function renderLocalLandingOpportunities() {
 document.addEventListener('click', event => {
   if (!event.target.closest('[data-fp-local-landing-retry]')) return;
   _fpLocalLandingError = '';
-  loadLocalLandingOpportunities();
+  loadLocalLandingOpportunities(true);
 });
 
 document.addEventListener('submit', async event => {
@@ -56760,7 +56760,7 @@ document.addEventListener('submit', async event => {
     if (!saved?.ok) throw new Error(saved?.error || fpT('Enregistrement impossible.'));
     _fpLocalLandingData = null;
     _fpLocalLandingError = '';
-    loadLocalLandingOpportunities();
+    loadLocalLandingOpportunities(true);
     showToast('success', fpT('Critères locaux enregistrés.'));
   } catch (error) { showToast('error', String(error?.message || error)); }
 });
@@ -67148,11 +67148,27 @@ function openAIWorkspaceLaunch() {
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Stack technique</label>
-            <div style="display:flex;flex-wrap:wrap;gap:7px">${STACKS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:6px 11px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:var(--fp-inner-card);font-size:11px;color:#94a3b8"><input type="checkbox" value="${s}" style="accent-color:#8b5cf6;margin:0"/>${s}</label>`).join('')}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:7px">${STACKS.map(s=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:6px 11px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:var(--fp-inner-card);font-size:11px;color:#94a3b8"><input type="checkbox" data-awl-stack value="${s}" style="accent-color:#8b5cf6;margin:0"/>${s}</label>`).join('')}</div>
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Priorités business</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">${PRIOS.map((p,i)=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,0.07);background:var(--fp-inner-card);font-size:11px;color:#e2e8f0"><input type="checkbox" value="${p}" ${i<4?'checked':''} style="accent-color:#8b5cf6;margin:0"/>${p}</label>`).join('')}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">${PRIOS.map((p,i)=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 11px;border-radius:9px;border:1px solid rgba(255,255,255,0.07);background:var(--fp-inner-card);font-size:11px;color:#e2e8f0"><input type="checkbox" data-awl-priority value="${p}" ${i<4?'checked':''} style="accent-color:#8b5cf6;margin:0"/>${p}</label>`).join('')}</div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#94a3b8;display:block;margin-bottom:8px">Modules to configure</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:9px;border:1px solid rgba(139,92,246,0.25);background:rgba(139,92,246,0.06);font-size:11px;color:#e2e8f0">
+                <input type="checkbox" data-awl-module="seo_dashboard" value="seo_dashboard" checked style="accent-color:#8b5cf6;margin-top:2px"/>
+                <span><strong>SEO starter dashboard</strong><br/><span style="color:#94a3b8">Tracks saved audits and launch missions.</span></span>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.05);font-size:11px;color:#e2e8f0">
+                <input type="checkbox" data-awl-module="seo_alert" value="seo_alert" checked style="accent-color:#ef4444;margin-top:2px"/>
+                <span><strong>Critical SEO score alert</strong><br/><span style="color:#94a3b8">Creates a tenant-scoped alert rule.</span></span>
+              </label>
+            </div>
+            <label style="display:block;margin-top:10px;font-size:11px;color:#94a3b8">SEO alert threshold
+              <input id="awl-alert-threshold" type="number" min="1" max="100" step="1" value="50" class="fp-input" style="margin-top:5px;max-width:150px"/>
+            </label>
           </div>
           <label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.25);background:rgba(34,197,94,0.05);font-size:11px;color:#cbd5e1;line-height:1.5">
             <input id="awl-weekly-report" type="checkbox" style="accent-color:#22c55e;margin-top:2px"/>
@@ -67201,7 +67217,7 @@ function openAIWorkspaceLaunch() {
          <div id="awl-missions" style="display:grid;gap:7px"></div>
        </div>
       <div style="background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:16px">
-         <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">🔔 État des autres éléments</div>
+          <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px">Workspace readiness checks</div>
         <div id="awl-alerts" style="display:flex;flex-wrap:wrap;gap:7px"></div>
       </div>
       <div style="display:flex;gap:10px">
@@ -67257,6 +67273,8 @@ async function loadAIWorkspaceLast() {
       dashboardsCreated: Number(session.dashboards_created ?? 0),
       alertsConfigured: Number(session.alerts_configured ?? 0),
       reportsScheduled: Number(result.reportsScheduled ?? 0),
+      configuredModules: Array.isArray(result.configuredModules) ? result.configuredModules : [],
+      readinessChecks: Array.isArray(result.readinessChecks) ? result.readinessChecks : [],
     });
   } catch (error) {
     if (typeof showToast === 'function') showToast(error?.message || 'Impossible de charger cette configuration.', 'error');
@@ -67266,6 +67284,11 @@ async function loadAIWorkspaceLast() {
 
 function awlGo(step) {
   if (step === 4) {
+    if (!document.querySelector('#fp-awl-s3 input[data-awl-module]:checked')) {
+      if (typeof showToast === 'function') showToast('Select at least one module to configure.', 'error');
+      else window.alert('Select at least one module to configure.');
+      return;
+    }
     const url = document.getElementById('awl-url')?.value?.trim() || '';
     const businessName = document.getElementById('awl-biz')?.value?.trim() || '';
     let parsedUrl;
@@ -67312,8 +67335,10 @@ async function _awlAnimate() {
     location: loc,
     goals: checked('#fp-awl-s2 input[type=checkbox]:checked').slice(0, 8),
     competitors: (document.getElementById('awl-comp')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 10),
-    stack: checked('#fp-awl-s3 input[type=checkbox]:checked').filter(value => STACKS.includes(value)).slice(0, 10),
-    priorities: checked('#fp-awl-s3 input[value*="SEO"]:checked,#fp-awl-s3 input[value*="Conversion"]:checked').slice(0, 8),
+    stack: checked('#fp-awl-s3 input[data-awl-stack]:checked').slice(0, 10),
+    priorities: checked('#fp-awl-s3 input[data-awl-priority]:checked').slice(0, 8),
+    modules: checked('#fp-awl-s3 input[data-awl-module]:checked'),
+    alertThreshold: Number(document.getElementById('awl-alert-threshold')?.value || 50),
     scheduleWeeklyReport: !!document.getElementById('awl-weekly-report')?.checked,
     reportTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   };
@@ -67403,7 +67428,7 @@ function _awlResults(result) {
       <div style="width:22px;height:22px;border-radius:50%;background:#8b5cf622;border:1px solid #8b5cf644;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#a78bfa;flex-shrink:0">${escHtml(r.priority)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;color:#e2e8f0;font-weight:600">${escHtml(r.label)}</div>
-        <div style="font-size:10px;color:#64748b;margin-top:1px">Impact estimé : ${escHtml(r.impact)}</div>
+         <div style="font-size:10px;color:#64748b;margin-top:1px">Measure to track: ${escHtml(r.impact)}</div>
       </div>
       <span style="font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;background:#8b5cf622;color:#a78bfa;flex-shrink:0">${escHtml(r.tag)}</span>
     </div>`).join('');
@@ -67413,15 +67438,27 @@ function _awlResults(result) {
 
   const missions = Array.isArray(result.missions) ? result.missions : [];
   const missionsEl = document.getElementById('awl-missions');
-  if (missionsEl) missionsEl.innerHTML = missions.map(m => `<div style="padding:9px 11px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px"><strong>${escHtml(m.priority)}. ${escHtml(m.title)}</strong><span style="display:block;color:#64748b;margin-top:3px">${escHtml(m.category)} · ${escHtml(m.effort)} · ${escHtml(m.impact)}</span></div>`).join('');
+   if (missionsEl) missionsEl.innerHTML = missions.map(m => `<div style="padding:9px 11px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px"><strong>${escHtml(m.priority)}. ${escHtml(m.title)}</strong><span style="display:block;color:#64748b;margin-top:3px">${escHtml(m.category)} · Effort: ${escHtml(m.effort)} · Measure: ${escHtml(m.impact)}</span></div>`).join('');
   const alertsEl = document.getElementById('awl-alerts');
   if (alertsEl) {
-    const notConfigured = [
-      (result.dashboardsCreated ?? 0) === 0 ? 'Aucun dashboard créé' : `${result.dashboardsCreated} dashboard(s) créé(s)`,
-      (result.alertsConfigured ?? 0) === 0 ? 'Aucune alerte configurée' : `${result.alertsConfigured} alerte(s) configurée(s)`,
-      (result.reportsScheduled ?? 0) === 0 ? 'Aucun rapport planifié' : `${result.reportsScheduled} rapport(s) planifié(s)`,
-    ];
-    alertsEl.innerHTML = notConfigured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
+    const checks = Array.isArray(result.readinessChecks) ? result.readinessChecks : [];
+    if (checks.length) {
+      alertsEl.innerHTML = checks.map(check => {
+        const status = check.status === 'ready' ? 'Ready' : check.status === 'not_selected' ? 'Not selected' : 'Needs attention';
+        const color = check.status === 'ready' ? '#22c55e' : check.status === 'not_selected' ? '#94a3b8' : '#f59e0b';
+        return `<div role="status" style="flex:1 1 220px;padding:9px 11px;border-radius:9px;background:${color}0d;border:1px solid ${color}33;color:${color};font-size:10px">
+          <strong>${escHtml(status)} · ${escHtml(check.label || '')}</strong>
+          <div style="color:#94a3b8;margin-top:4px">${escHtml(check.detail || '')}</div>
+        </div>`;
+      }).join('');
+    } else {
+      const notConfigured = [
+        (result.dashboardsCreated ?? 0) === 0 ? 'No dashboard created' : `${result.dashboardsCreated} dashboard(s) created`,
+        (result.alertsConfigured ?? 0) === 0 ? 'No alert configured' : `${result.alertsConfigured} alert(s) configured`,
+        (result.reportsScheduled ?? 0) === 0 ? 'No report scheduled' : `${result.reportsScheduled} report(s) scheduled`,
+      ];
+      alertsEl.innerHTML = notConfigured.map(text=>`<span style="font-size:10px;padding:5px 10px;border-radius:20px;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.18);color:#94a3b8">${escHtml(text)}</span>`).join('');
+    }
   }
 }
 
@@ -75195,9 +75232,9 @@ window.FP_REVIEW_INTEL_API = {
 // FP GBP POSTS API
 // ═══════════════════════════════════════════════════════════════════════════════
 window.FP_GBP_PERFORMANCE_API = {
-  async load() {
+  async load(force = false) {
     try {
-      const data = await apiFetch('/api/gbp-performance');
+      const data = await apiFetch('/api/gbp-performance', { force });
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.gbpPerformance = { ...data, loadedAt: Date.now() };
       window.FP_DATA.gbpPerformanceError = null;
@@ -75309,7 +75346,7 @@ document.addEventListener('click', async event => {
   if (!button) return;
   button.disabled = true;
   try {
-    await window.FP_GBP_PERFORMANCE_API.load();
+    await window.FP_GBP_PERFORMANCE_API.load(true);
     render(STATE.currentSection);
   } finally {
     button.disabled = false;
@@ -75337,7 +75374,7 @@ document.addEventListener('submit', async event => {
   try {
     const result = await window.FP_GBP_PERFORMANCE_API.save(settings);
     if (!result?.ok) throw new Error(result?.error || 'Impossible d’enregistrer ces paramètres.');
-    await window.FP_GBP_PERFORMANCE_API.load();
+    await window.FP_GBP_PERFORMANCE_API.load(true);
     showToast('success', 'Objectifs GBP enregistrés.');
     render(STATE.currentSection);
   } catch (error) {
