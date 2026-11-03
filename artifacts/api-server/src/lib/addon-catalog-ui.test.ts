@@ -250,6 +250,22 @@ describe("add-on catalogue UI commercial gates", () => {
     const app = express();
     app.use(plansRouter);
     const response = await request(app).get("/plans/catalog").expect(200);
+    const definitions = await request(app).get("/plans/definitions").expect(200);
+    const ultraLimits = {
+      audits: 1_000,
+      monitors: 300,
+      reports: 1_000,
+      exports: 1_000,
+      teamMembers: 10,
+    };
+    expect(definitions.body.ultra).toMatchObject({
+      priceEur: 149,
+      limits: ultraLimits,
+    });
+    expect(response.body.plans.find((plan: { id: string }) => plan.id === "ultra")).toMatchObject({
+      priceEur: 149,
+      limits: ultraLimits,
+    });
     const entries = new Map<string, {
       key: string;
       availability: string;

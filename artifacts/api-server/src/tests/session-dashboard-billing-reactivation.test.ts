@@ -81,14 +81,14 @@ describe("dashboard Stripe reactivation contracts", () => {
 });
 
 describe("Ultra quota presentation contract", () => {
-  it("keeps the public pricing and dashboard fallbacks at 2,000/300/2,000/2,000/10", () => {
-    expect(pricing).toContain("limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10");
-    expect(pricing).toContain("<td>2 000</td>");
-    expect(dashboardSource).toContain("limits:{audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10");
-    expect(dashboardSource).toContain("_val('ultra','audits',2000)");
-    expect(dashboardSource).toContain("_val('ultra','reports',2000)");
-    expect(dashboardSource).toContain("_val('ultra','exports',2000)");
-    expect(dashboardSource).toContain("ultra:    { audit: 2000, monitor: 300, pdf: 2000 }");
-    expect(dashboardSource).toContain("ultra:2000");
+  it("keeps the public pricing and dashboard fallbacks at 1,000/300/1,000/1,000/10", () => {
+    expect(pricing).toContain("limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10");
+    expect(pricing).toContain("<td>1 000</td>");
+    expect(dashboardSource).toContain("limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10");
+    expect(dashboardSource).toContain("_val('ultra','audits',1000)");
+    expect(dashboardSource).toContain("_val('ultra','reports',1000)");
+    expect(dashboardSource).toContain("_val('ultra','exports',1000)");
+    expect(dashboardSource).toContain("ultra:    { audit: 1000, monitor: 300, pdf: 1000 }");
+    expect(dashboardSource).toContain("ultra:1000");
   });
 });
