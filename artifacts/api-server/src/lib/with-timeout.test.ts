@@ -139,3 +139,50 @@ describe("withTimeout timer lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("withTimeout immediate rejection keeps the abandoned operation handled", () => {
+  // The operation is abandoned when withTimeout rejects at once. If it rejects
+  // later and nothing listens, Node raises `unhandledRejection`, which stops the
+  // process by default. Real timers: the late rejection must actually happen.
+  const watchUnhandled = () => {
+    const seen: unknown[] = [];
+    const listener = (reason: unknown) => seen.push(reason);
+    process.on("unhandledRejection", listener);
+    return { seen, stop: () => process.off("unhandledRejection", listener) };
+  };
+  const lateRejection = () =>
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("late operation failure")), 20);
+    });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 80));
+
+  it.each([
+    ["0", 0, Error, "timeout"],
+    ["a negative delay", -5, Error, "timeout"],
+    ["NaN", Number.NaN, TypeError, "timeoutMs"],
+    ["a non-numeric delay", "500" as unknown as number, TypeError, "timeoutMs"],
+  ])("leaves no unhandled rejection when timeoutMs is %s and the operation rejects afterwards", async (_label, timeoutMs, errorType, message) => {
+    const watch = watchUnhandled();
+    try {
+      await expect(withTimeout(lateRejection(), timeoutMs, new Error("timeout"))).rejects.toThrow(errorType);
+      await expect(withTimeout(lateRejection(), timeoutMs, new Error("timeout"))).rejects.toThrow(message);
+      await settle();
+      expect(watch.seen).toEqual([]);
+    } finally {
+      watch.stop();
+    }
+  });
+
+  it("still propagates the operation's own rejection when timeoutMs is Infinity", async () => {
+    const watch = watchUnhandled();
+    try {
+      await expect(withTimeout(lateRejection(), Number.POSITIVE_INFINITY, new Error("timeout"))).rejects.toThrow(
+        "late operation failure",
+      );
+      await settle();
+      expect(watch.seen).toEqual([]);
+    } finally {
+      watch.stop();
+    }
+  });
+});

@@ -2,6 +2,14 @@
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
+ * The caller has already been answered: keep a late rejection of the abandoned
+ * operation from surfacing as an `unhandledRejection`, which stops Node.
+ */
+function abandon(operation: Promise<unknown>): void {
+  Promise.resolve(operation).catch(() => {});
+}
+
+/**
  * Race an operation against a deadline without leaving a live timer when the
  * operation settles first.
  *
@@ -15,12 +23,14 @@ export async function withTimeout<T>(
   timeoutError: Error,
 ): Promise<T> {
   if (typeof timeoutMs !== "number" || Number.isNaN(timeoutMs)) {
+    abandon(operation);
     throw new TypeError(`withTimeout: timeoutMs must be a number, received ${String(timeoutMs)}`);
   }
   if (timeoutMs === Number.POSITIVE_INFINITY) {
     return await operation;
   }
   if (timeoutMs <= 0) {
+    abandon(operation);
     throw timeoutError;
   }
 
