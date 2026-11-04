@@ -60,21 +60,23 @@ router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agenc
   ];
   const orgId = org(req);
   const selectedAuditId = typeof auditId === "string" ? auditId.trim().slice(0, 200) : "";
-  if (selectedAuditId) {
-    try {
-      const ownedAudit = await db(req)(
-        `SELECT id FROM audits WHERE id=$1 AND org_id=$2 LIMIT 1`,
-        [selectedAuditId, orgId],
-      );
-      if (!ownedAudit.rows.length) {
-        res.status(404).json({ error: "Audit introuvable pour cette organisation.", code: "AUDIT_NOT_FOUND" });
-        return;
-      }
-    } catch (err) {
-      logger.warn({ err, orgId }, "[reports] agency pack audit validation failed");
-      res.status(503).json({ error: "Impossible de vérifier l’audit sélectionné." });
+  if (!selectedAuditId) {
+    res.status(400).json({ error: "Un audit doit être sélectionné pour générer le pack agence.", code: "AUDIT_REQUIRED" });
+    return;
+  }
+  try {
+    const ownedAudit = await db(req)(
+      `SELECT id FROM audits WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [selectedAuditId, orgId],
+    );
+    if (!ownedAudit.rows.length) {
+      res.status(404).json({ error: "Audit introuvable pour cette organisation.", code: "AUDIT_NOT_FOUND" });
       return;
     }
+  } catch (err) {
+    logger.warn({ err, orgId }, "[reports] agency pack audit validation failed");
+    res.status(503).json({ error: "Impossible de vérifier l’audit sélectionné." });
+    return;
   }
   const { pool: reportPool } = await import("@workspace/db");
   const client = await reportPool.connect();

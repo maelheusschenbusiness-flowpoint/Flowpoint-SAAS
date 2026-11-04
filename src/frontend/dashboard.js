@@ -1178,7 +1178,11 @@ async function apiAction(method, path, body, options = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
+      const result = await apiFetch(path, {
+        method,
+        body: body ? JSON.stringify(body) : undefined,
+        force: options.force === true,
+      });
       const ms = Math.round(performance.now() - _t0);
       if(window.__DEV__) console.log('[FP_ACTION] method=' + method + ' route=' + path + ' status=ok ms=' + ms + ' attempt=' + attempt);
       return result;
@@ -74115,7 +74119,13 @@ window.FP_V1_ADDON_PANELS = {
         const health = region.health || {};
         const alerts = (health.down || 0) + (health.degraded || 0);
         const statusText = alerts > 0 ? fpT('{count} monitor(s) en alerte', {count:alerts}) : (health.unknown || 0) > 0 ? fpT('{count} statuts inconnus', {count:health.unknown}) : fpT('Aucun monitor en alerte');
-        row.textContent = region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ');
+        const monitorDetails = region.monitors.map(m => {
+          const uptime = m.uptimePercentage !== null && m.uptimePercentage !== undefined && Number.isFinite(Number(m.uptimePercentage))
+            ? `${Number(m.uptimePercentage).toFixed(2)}%`
+            : '—';
+          return `${m.monitorName} (${m.status}; ${fpT('Disponibilité')}: ${uptime})`;
+        }).join(', ');
+        row.textContent = region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + monitorDetails;
         target.appendChild(row);
       }
       const note = document.createElement('small');
@@ -74140,10 +74150,13 @@ window.FP_V1_ADDON_PANELS = {
       clientInput.setAttribute('aria-label', fpT('Nom du client'));
       const auditSelect = document.createElement('select');
       auditSelect.setAttribute('aria-label', fpT('Audit à inclure dans les rapports'));
-      const noAuditOption = document.createElement('option');
-      noAuditOption.value = '';
-      noAuditOption.textContent = fpT('Sans audit lié');
-      auditSelect.appendChild(noAuditOption);
+      auditSelect.required = true;
+      const auditPlaceholder = document.createElement('option');
+      auditPlaceholder.value = '';
+      auditPlaceholder.disabled = true;
+      auditPlaceholder.selected = true;
+      auditPlaceholder.textContent = fpT('Sélectionnez un audit');
+      auditSelect.appendChild(auditPlaceholder);
       const audits = Array.isArray(result?.audits) ? result.audits : [];
       for (const audit of audits) {
         const option = document.createElement('option');
@@ -74159,9 +74172,11 @@ window.FP_V1_ADDON_PANELS = {
       const bundleButton = document.createElement('button');
       bundleButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
       bundleButton.textContent = fpT('Créer le pack complet (3 rapports)');
+      bundleButton.disabled = audits.length === 0;
       bundleButton.addEventListener('click', async () => {
         const clientName = clientInput.value.trim();
         if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
+        if (!auditSelect.value) { showToast('error', fpT('Sélectionnez un audit')); return; }
         bundleButton.disabled = true;
         try {
           const bundle = await apiFetch('/api/reports/agency-packs/generate', {
@@ -74183,6 +74198,12 @@ window.FP_V1_ADDON_PANELS = {
       });
       bundleControls.append(clientInput, auditSelect, bundleButton);
       target.appendChild(bundleControls);
+      if (!audits.length) {
+        const auditNotice = document.createElement('p');
+        auditNotice.className = 'fp-text-muted';
+        auditNotice.textContent = fpT('Lancez d’abord un audit pour générer les rapports.');
+        target.appendChild(auditNotice);
+      }
       for (const pack of (result?.packs || [])) {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)';
@@ -74191,14 +74212,16 @@ window.FP_V1_ADDON_PANELS = {
         const button = document.createElement('button');
         button.className = 'fp-btn fp-btn-primary fp-btn-sm';
         button.textContent = fpT('Créer le rapport');
+        button.disabled = audits.length === 0;
         button.addEventListener('click', async () => {
+          if (!auditSelect.value) { showToast('error', fpT('Sélectionnez un audit')); return; }
           button.disabled = true;
           try {
             const created = await window._fpReportsAPI.create({
               name: pack.name,
               templateKey: pack.templateKey,
               format: 'PDF',
-              auditId: auditSelect.value || undefined,
+              auditId: auditSelect.value,
             });
             if (!created?.id) throw new Error('Rapport non confirmé');
             render();

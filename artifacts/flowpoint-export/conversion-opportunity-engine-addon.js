@@ -5,7 +5,7 @@
   const t = value => typeof window.fpT === "function" ? window.fpT(value) : value;
 
   window.FP_ADDON_RENDERERS = window.FP_ADDON_RENDERERS || {};
-  window.FP_ADDON_RENDERERS.conversionOpportunityEngine = async function renderConversionOpportunities(root) {
+  window.FP_ADDON_RENDERERS.conversionOpportunityEngine = async function renderConversionOpportunities(root, force = false) {
     if (!root) return;
     root.innerHTML = `<section class="fp-card">
       <h2 class="fp-card-title">${t("Opportunités de conversion")}</h2>
@@ -24,7 +24,7 @@
             minimumSessions: Number(values.get("minimumSessions")),
             maximumConversionRate: Number(values.get("maximumConversionRate")) / 100,
           });
-          await window.FP_ADDON_RENDERERS.conversionOpportunityEngine(root);
+          await window.FP_ADDON_RENDERERS.conversionOpportunityEngine(root, true);
           window.showToast?.("success", t("Paramètres enregistrés."));
         } catch (error) {
           window.showToast?.("error", String(error?.message || error));
@@ -33,7 +33,7 @@
     }
     const state = root.querySelector("[data-coe-state]");
     try {
-      const data = await window.apiAction("GET", "/api/conversion-opportunity-engine");
+      const data = await window.apiAction("GET", "/api/conversion-opportunity-engine", undefined, force ? { force: true } : {});
       const settings = data.settings || {};
       const items = data.opportunities || [];
       state.innerHTML = `<form data-coe-settings class="fp-grid fp-grid-2">
