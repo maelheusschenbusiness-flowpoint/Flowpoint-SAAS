@@ -333,6 +333,8 @@ export default defineConfig({
       "src/services/workflow-schedule-cron.test.ts",
       "src/services/workflow-schedule-cron-db.test.ts",
       "src/services/automation-service-awl-report-postgres.test.ts",
+      // Troncature d'un texte joint : jamais une demi-paire de substitution.
+      "src/services/file-parsers/text-parser.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.
