@@ -8831,16 +8831,7 @@ function renderReports() {
       { name: 'Montmartre',         vis: 44, prev: 38, kw: 6,  reviews: 4.6, comp: 'Tres fort',trend: +6, dominant: false },
       { name: 'Marais',             vis: 31, prev: 33, kw: 4,  reviews: 3.8, comp: 'Moyen',   trend: -2,  dominant: false },
     ] : []);
-    const _gbpStatsRaw = _lseo.gbpStats && _lseo.gbpStats.length > 0 ? _lseo.gbpStats : null;
-    const _gbpStatsArePreview = !_gbpStatsRaw && PREVIEW_MODE;
-    const gbpStats = _gbpStatsRaw || (_gbpStatsArePreview ? [
-      { label: 'Appels depuis GBP',   val: 47,  trend: +12, unit: '',   color: '#22c55e' },
-      { label: 'Itineraires demandes',val: 134, trend: +28, unit: '',   color: '#2563EB' },
-      { label: 'Visites fiche',       val: 2840,trend: +21, unit: '',   color: '#8b5cf6' },
-      { label: 'Note moyenne',        val: 4.4, trend: +0.2,unit: '★', color: '#f59e0b' },
-      { label: 'Avis sans reponse',   val: 14,  trend: +5,  unit: '',   color: '#ef4444' },
-      { label: 'Photos publiées',     val: 8,   trend: +3,  unit: '',   color: '#8b5cf6' },
-    ] : []);
+    const gbpStats = Array.isArray(_lseo.gbpStats) ? _lseo.gbpStats : [];
     return `
       ${aiBlock(PREVIEW_MODE
         ? fpT("Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>{label}</strong> peuvent menacer votre note moyenne.", { label: fpT('Avis sans réponse') })
@@ -8897,6 +8888,7 @@ function renderReports() {
 
       <!-- GBP PERFORMANCE -->
       ${renderGbpPerformanceAddon()}
+      ${gbpStats.length ? `
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">📍 ${fpT('Performance Google Business Profile')} — ${CUR_MONTH}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
@@ -8905,12 +8897,12 @@ function renderReports() {
             const nc = g.color === '#ef4444' ? '#ef4444' : '#22c55e';
             return `<div style="padding:14px;border-radius:10px;border:1px solid ${g.color}28;background:${g.color}07;text-align:center">
               <div style="font-size:22px;font-weight:800;color:${g.color};margin-bottom:4px">${g.val}${g.unit}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(_gbpStatsArePreview ? fpT(g.label) : g.label)}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(g.label)}</div>
               <div style="font-size:11px;font-weight:700;color:${nc}">${nt} vs M-1</div>
             </div>`;
           }).join('')}
         </div>
-      </div>
+      </div>` : ''
     `;
   }
 

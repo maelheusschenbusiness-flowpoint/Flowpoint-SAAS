@@ -1511,6 +1511,10 @@ describe("private dashboard static English localization", () => {
     expect(dashboardSource).toContain("m.uptimePercentage !== null && m.uptimePercentage !== undefined");
     expect(dashboardSource).toContain("fpT('Disponibilité')");
     expect(dashboardSource).toContain("return `${m.monitorName} (${m.status}; ${fpT('Disponibilité')}: ${uptime})`;");
+    expect(dashboardSource).toContain("const gbpStats = Array.isArray(_lseo.gbpStats) ? _lseo.gbpStats : [];");
+    expect(dashboardSource).toContain("${gbpStats.length ? `");
+    expect(dashboardSource).not.toContain("const _gbpStatsArePreview");
+    expect(dashboardSource).not.toContain("{ label: 'Appels depuis GBP',   val: 47");
     expect(dashboardSource).toContain("data-pchecks=\"${p.checks.map(c => escHtml(c)).join(',')}\"");
     expect(dashboardSource).toContain("apiAction('PATCH', `/api/monitors/${id}`, { alertEmail: emailVal })");
     expect(dashboardSource).toContain("apiAction('POST', `/api/monitors/${m.id}/check`)");

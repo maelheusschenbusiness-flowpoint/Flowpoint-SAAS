@@ -30,7 +30,7 @@ Le total historique **8/24** est attribué aux huit remplacements explicitement 
 | 14 | SEO Content Decay Radar | — | Présent | Non relancé | — | Oui | À confirmer | Certification antérieure non répétée conformément à la consigne. |
 | 15 | Backlink Intelligence | — | Partiel | Non relancé | — | Oui | À confirmer | Qualité et provenance des données à certifier. |
 | 16 | Agency Reporting Packs | — | Partiel | Réussi — création, quota et refus viewer | Non | Oui — version de base; correctifs locaux en attente de PR | Non | API : audit appartenant à l'organisation obligatoire; pack atomique de trois rapports. Unit tests : 9 réussis. E2E local : 1 scénario réussi. CI #346 a révélé un fixture sans audit et deux assertions de traduction; corrections préparées, nouveau résultat CI requis. L'achat reste `coming_soon`. |
-| 17 | GBP Performance & Leads | Oui | Présent | Non relancé dans cette session | — | Oui | À confirmer | Validation historique selon la source citée; reprise technique séparée sans recompter ce parcours. |
+| 17 | GBP Performance & Leads | Oui | Présent | 9 tests API/service réussis; pas de navigateur ni compte Google réel | — | Oui | À confirmer | Le fallback GBP avec valeurs d’aperçu a été retiré; le panneau réel reste alimenté par l’API. Aucune nouvelle certification complète ni donnée Google réelle revendiquée. |
 | 18 | Local Presence Optimizer | Oui | Présent | Non relancé | — | Oui | À confirmer | Validation historique selon la source citée; certification non rejouée. |
 | 19 | Local Landing Opportunities | Oui | Présent | Non relancé | — | Oui | À confirmer | Validation historique selon la source citée; certification non rejouée. |
 | 20 | Conversion Opportunity Engine | Oui | Présent | Non relancé | — | Oui | À confirmer | Validation historique selon la source citée; certification non rejouée. |
@@ -47,6 +47,7 @@ Le rapport archivé du 3 novembre nomme exactement les huit remplacements marqu�
 
 - Total conservé : **8/24 certifiés historiquement**, attribués aux huit lignes marquées `Oui`; aucune certification nouvelle ni double comptage.
 - Agency Reporting Packs : parcours local réussi; pas encore certifié complètement et toujours indisponible à l'achat.
+- GBP Performance & Leads : 9 tests API/service ciblés réussis; les valeurs d’aperçu inventées ne sont plus affichées en absence de données GBP réelles.
 - Global Monitoring : aucune ressource QA autorisée identifiée; procédure de création en QA préparée séparément, sans création externe.
 - La branche courante contient les correctifs Agency Packs et la mise à jour de cette matrice; rien n'est fusionné.
 - Prochaine priorité après cette PR : **GBP Performance & Leads**, sur une branche/PR isolée.
