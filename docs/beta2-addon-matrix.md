@@ -17,7 +17,7 @@ Le total historique **8/24** est attribué aux huit remplacements explicitement 
 | 1 | AI GBP Posting | — | Partiel | Non relancé | — | Oui | À confirmer | Publication Google réelle non certifiée. |
 | 2 | Behavioral AI | — | Partiel | Non relancé | — | Oui | À confirmer | Ne pas assimiler les données synthétiques à une validation sur données réelles. |
 | 3 | Revenue Leak AI | — | Partiel | Non relancé | — | Oui | À confirmer | Les estimations doivent rester fondées sur des données observées. |
-| 4 | AI Executive Reporting | — | Partiel | Non relancé | — | Oui | À confirmer | Personnalisation et planification à vérifier. |
+| 4 | AI Executive Reporting | — | Partiel | Non relancé | — | Oui | À confirmer | Les aperçus sans données ne montrent plus de chiffres synthétiques; personnalisation et planification restent à vérifier. |
 | 5 | AI Forecasting Engine | — | Partiel | Non relancé | — | Oui | À confirmer | Parcours et données réelles à certifier. |
 | 6 | AI Market Intelligence | — | Partiel | Non relancé | — | Oui | À confirmer | Source et actualité des données concurrentielles à certifier. |
 | 7 | CRM Integrations | — | Partiel | Non relancé | — | Oui | À confirmer | Connexion et synchronisation CRM réelles à valider. |
@@ -48,6 +48,7 @@ Le rapport archivé du 3 novembre nomme exactement les huit remplacements marqu�
 - Total conservé : **8/24 certifiés historiquement**, attribués aux huit lignes marquées `Oui`; aucune certification nouvelle ni double comptage.
 - Agency Reporting Packs : parcours local réussi; pas encore certifié complètement et toujours indisponible à l'achat.
 - GBP Performance & Leads : 9 tests API/service ciblés réussis; les valeurs d’aperçu inventées ne sont plus affichées en absence de données GBP réelles.
+- AI Executive Reporting : les insights, prévisions et scores synthétiques ne sont plus affichés sans données mesurées; la personnalisation et la planification restent à vérifier.
 - Global Monitoring : aucune ressource QA autorisée identifiée; procédure de création en QA préparée séparément, sans création externe.
-- La branche courante contient les correctifs Agency Packs et la mise à jour de cette matrice; rien n'est fusionné.
+- La branche courante contient les correctifs Agency Packs, les états sans données des add-ons et la mise à jour de cette matrice; rien n'est fusionné.
 - Prochaine priorité après cette PR : **GBP Performance & Leads**, sur une branche/PR isolée.

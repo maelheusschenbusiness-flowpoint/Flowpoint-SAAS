@@ -9147,9 +9147,8 @@ function _fpSafeColor(v) {
   // SUB: AI INSIGHTS REPORTING LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai') {
-    const _aiInsRaw = window.FP_DATA?.dataExplorer?.insights || null;
-    const aiInsightsArePreview = !_aiInsRaw && PREVIEW_MODE;
-    const aiInsights = _aiInsRaw
+    const _aiInsRaw = window.FP_DATA?.dataExplorer?.insights;
+    const aiInsights = Array.isArray(_aiInsRaw)
       ? _aiInsRaw.map(i=>({
           pri:i.priority||i.pri||'high',
           icon:i.icon||'💡',
@@ -9161,23 +9160,11 @@ function _fpSafeColor(v) {
           action:i.action||'Analyser',
           actionDefault:!i.action,
         }))
-      : (PREVIEW_MODE ? [
-          { pri: 'high', icon: '⚠️', cat: 'Conversion', title: 'Exemple — friction de conversion', body: 'Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.', action: 'Corriger le formulaire' },
-          { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
-          { pri: 'high',     icon: '📍', cat: 'Local SEO',   title: 'Opportunite Maps non capturee',          body: 'Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.',              action: 'Renforcer GBP'           },
-          { pri: 'high',     icon: '🔗', cat: 'Trafic',      title: 'Declin referents accelere',              body: 'Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.',             action: 'Analyser les referents'  },
-          { pri: 'positive', icon: '📈', cat: 'Croissance',  title: 'Acceleration trafic organique',          body: 'Le trafic organique a progresse de +130% en 8 mois — acceleration confirmee depuis mars. Le 15e arrondissement domine deja 4 mots-cles cles. Continuer sur cette lancee.',           action: 'Amplifier la strategie'  },
-        ] : []);
-    const forecast = [
-      { metric: 'Trafic M+3',    val: '+22%', conf: 78, color: '#2563EB', note: 'Avec maintien strategie SEO actuelle'     },
-      { metric: 'Conversion M+3',val: '+0.8%',conf: 64, color: '#22c55e', note: 'Si plan CRO mobile execute en juin'       },
-      { metric: 'Revenue M+3',   val: '+68%', conf: 71, color: '#8b5cf6', note: 'Combinaison trafic + conversion optimisee'},
-      { metric: 'Local SEO M+3',  val: '+31%', conf: 82, color: '#f59e0b', note: 'Si renforcement GBP confirme en juin'      },
-      { metric: 'Avis Google M+3', val: '+18',  conf: 74, color: '#06b6d4', note: 'Avec réponse systématique aux avis'         },
-    ].filter(() => PREVIEW_MODE);
+      : [];
+    const forecast = [];
     const insightDisplayText = (ins, field) => {
       const defaults = { cat: ins.catDefault, title: ins.titleDefault, action: ins.actionDefault };
-      return aiInsightsArePreview || defaults[field] ? fpT(ins[field]) : ins[field];
+      return defaults[field] ? fpT(ins[field]) : ins[field];
     };
     const priC = { critical: '#ef4444', high: '#f59e0b', medium: '#2563EB', positive: '#22c55e' };
     const priL = { critical: 'Critique', high: 'Priorité haute', medium: 'Moyen', positive: 'Positif' };
@@ -9185,15 +9172,7 @@ function _fpSafeColor(v) {
       ${isUltra
         ? aiBlock((()=>{
             const critCount = aiInsights.filter(i => i.pri === 'critical').length;
-            const avgScore = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-            if (PREVIEW_MODE) return fpT("Rapport IA généré automatiquement — <strong>{month}</strong>. {count} alertes critiques actives. Potentiel de revenus non capté : <strong>{amount}€/mois</strong>. Score de santé business : {score}/100 (+{delta} pts en 4 mois). Trajectoire : <strong>{trajectory}</strong>.", {
-              month: CUR_MONTH,
-              count: 2,
-              amount: '-3 800',
-              score: 72,
-              delta: 14,
-              trajectory: fpT('positive avec 2 risques à traiter en urgence'),
-            });
+            const avgScore = !PREVIEW_MODE && STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
             const alerts = critCount > 0
               ? fpT('<strong>{count} alerte{plural} critique{plural} active{plural}</strong>.', { count: critCount, plural: critCount > 1 ? 's' : '' })
               : fpT('Aucune alerte critique active.');
@@ -9218,7 +9197,7 @@ function _fpSafeColor(v) {
       <div class="fp-stat-row fp-mb-20">
         ${statCard(fpT('Insights générés'), String(aiInsights.length), fpT('cette semaine'), 'neutral')}
         ${statCard(fpT('Alertes critiques'), String(aiInsights.filter(i => i.pri === 'critical').length), fpT('action immédiate'), 'down')}
-        ${statCard(fpT('Score business'), (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'72/100'); })(), fpT(PREVIEW_MODE ? '+14 pts — 4 mois' : 'score moyen portfolio'), 'neutral')}
+        ${statCard(fpT('Score business'), (()=>{ const _a = !PREVIEW_MODE && STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'—'); })(), fpT('score moyen portfolio'), 'neutral')}
         ${statCard(fpT('Prévisions actives'), String(forecast.length), fpT('horizon M+3'), 'neutral')}
       </div>
 
@@ -9226,10 +9205,10 @@ function _fpSafeColor(v) {
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('cpu').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          ${fpT('Insights IA — Rapport mai 2026')}
+          ${fpT('Insights IA')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${aiInsights.map(ins => `
+          ${aiInsights.length ? aiInsights.map(ins => `
             <div style="padding:14px;border-radius:10px;border:1px solid ${priC[ins.pri]}28;background:${priC[ins.pri]}07;border-left:3px solid ${priC[ins.pri]}">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -9240,27 +9219,12 @@ function _fpSafeColor(v) {
                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(insightDisplayText(ins, 'action'))}</button>
               </div>
               <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(insightDisplayText(ins, 'title'))}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(aiInsightsArePreview ? fpT(ins.body) : ins.body)}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(ins.body)}</div>
             </div>
-          `).join('')}
+          `).join('') : `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:12px">${fpT('Données insuffisantes')}</div>`}
         </div>
       </div>
-
-      <!-- FORECASTS -->
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🔮 ${fpT('Prévisions IA — Horizon M+3 (Août 2026)')}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
-          ${forecast.map(f => `
-            <div style="padding:16px;border-radius:12px;border:1px solid ${f.color}28;background:${f.color}08;text-align:center">
-              <div style="font-size:26px;font-weight:900;color:${f.color};margin-bottom:4px">${f.val}</div>
-              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(f.metric))}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(fpT(f.note))}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Confiance IA :')} <strong style="color:${f.color}">${f.conf}%</strong></div>
-              <div class="fp-progress-track" style="height:4px;margin-top:6px"><div class="fp-progress-fill" style="width:${f.conf}%;background:${f.color}"></div></div>
-            </div>
-          `).join('')}
-        </div>`}
-      </div>
+      `}
     `;
   }
 

@@ -1550,6 +1550,19 @@ describe("private dashboard static English localization", () => {
     }
     expect(dashboardSource).toContain("STATE.route === 'reports' || STATE.route === 'competitor' || STATE.route === 'local-seo' ? fpT(t.label) : t.label");
 
+    const aiReportStart = dashboardSource.indexOf("// SUB: AI INSIGHTS REPORTING LAB");
+    const aiReportEnd = dashboardSource.indexOf("// DEFAULT (null) — Report Command Center", aiReportStart);
+    expect(aiReportStart).toBeGreaterThanOrEqual(0);
+    expect(aiReportEnd).toBeGreaterThan(aiReportStart);
+    const aiReportSource = dashboardSource.slice(aiReportStart, aiReportEnd);
+    expect(aiReportSource).toContain("const aiInsights = Array.isArray(_aiInsRaw)");
+    expect(aiReportSource).toContain("const forecast = [];");
+    expect(aiReportSource).not.toContain("Exemple — friction de conversion");
+    expect(aiReportSource).not.toContain("amount: '-3 800'");
+    expect(aiReportSource).not.toContain("val: '+22%'");
+    expect(aiReportSource).not.toContain("Prévisions IA — Horizon M+3 (Août 2026)");
+    expect(aiReportSource).not.toContain("displayStat(_a!==null?_a+'/100':null,'72/100')");
+
     const dynamicReportKeys = [
       "Simple",
       "Client",
@@ -1605,35 +1618,8 @@ describe("private dashboard static English localization", () => {
       "Reconquérir le trafic référent",
       "Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.",
       "+400 sessions/mois",
-      "Exemple — friction de conversion",
-      "Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.",
-      "Corriger le formulaire",
-      "Conversion mobile critique (0.12%)",
-      "Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d'abandons. Chaque point de conversion mobile = +47 clients/mois.",
-      "Plan UX mobile",
-      "Opportunite Maps non capturee",
-      "Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.",
-      "Renforcer GBP",
-      "Declin referents accelere",
-      "Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.",
-      "Analyser les referents",
-      "Acceleration trafic organique",
-      "Le trafic organique a progresse de +130% en 8 mois — acceleration confirmee depuis mars. Le 15e arrondissement domine deja 4 mots-cles cles. Continuer sur cette lancee.",
-      "Amplifier la strategie",
-      "Conversion",
-      "Mobile UX",
-      "Trafic",
-      "Croissance",
-      "Trafic M+3",
-      "Conversion M+3",
-      "Revenue M+3",
-      "Local SEO M+3",
-      "Avis Google M+3",
-      "Avec maintien strategie SEO actuelle",
-      "Si plan CRO mobile execute en juin",
-      "Combinaison trafic + conversion optimisee",
-      "Si renforcement GBP confirme en juin",
-      "Avec réponse systématique aux avis",
+      "Données insuffisantes",
+      "Insights IA",
       "IA",
       "Insight IA",
       "Analyser",
@@ -1680,8 +1666,9 @@ describe("private dashboard static English localization", () => {
       "label.textContent = `${pack.name} — ${pack.description}`;",
       "escHtml(r.name)",
       "escHtml(c.name)",
-      "aiInsightsArePreview || defaults[field] ? fpT(ins[field]) : ins[field]",
-      "aiInsightsArePreview ? fpT(ins.body) : ins.body",
+      "const aiInsights = Array.isArray(_aiInsRaw)",
+      "const forecast = [];",
+      "fpT('Insights IA')",
       "const reportType    = (STATE.settings && STATE.settings.reportType) || 'client';",
     ]) {
       expect(dashboardSource).toContain(binding);
