@@ -2,7 +2,7 @@
 
 Mise à jour : 4 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
 
-Le total historique **8/24** est attribué aux huit remplacements explicitement nommés dans le [rapport d’audit du 3 novembre 2026, commit `6c78d7d`](https://github.com/maelheusschenbusiness-flowpoint/Flowpoint-SAAS/blob/6c78d7dd37a43f611a6ed85b6526a3c1b0db7682/docs/flowpoint-audit-status-2026-11-03.md). Ce rapport indique qu’ils avaient été validés selon une décision antérieure de l’utilisateur; les parcours n’ont pas été rejoués et aucun artefact E2E individuel n’y est joint. La colonne historique conserve cette attribution sans la présenter comme une nouvelle certification de cette session.
+Le total historique **8/24** est attribué aux huit remplacements explicitement nommés dans le rapport d’audit archivé du 3 novembre 2026 (`docs/flowpoint-audit-status-2026-11-03.md`, commit `6c78d7d`, consulté dans l’historique Git local). Le rapport indique qu’ils avaient été validés selon une décision antérieure de l’utilisateur; les parcours n’ont pas été rejoués et aucun artefact E2E individuel n’y est joint. La colonne historique conserve cette attribution sans la présenter comme une nouvelle certification de cette session.
 
 **Légende**
 - **Développé** indique qu'une implémentation existe, pas qu'elle est prête à vendre.

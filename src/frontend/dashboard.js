@@ -8902,7 +8902,7 @@ function renderReports() {
             </div>`;
           }).join('')}
         </div>
-      </div>` : ''
+      </div>` : ''}
     `;
   }
 
