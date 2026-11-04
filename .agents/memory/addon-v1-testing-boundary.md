@@ -16,3 +16,9 @@ The user supplied the definitive retained-add-on improvement list in an attached
 **Why:** the user confirmed these decisions had already been communicated and asked to proceed without another validation round.
 
 **How to apply:** use the supplied list as the scope for parallel improvements, and continue with GBP Performance & Leads first.
+
+For Global Monitoring, certify only with an existing, authorized QA monitor. Do not create, modify, or delete monitors, and do not treat Better Stack aggregates as independent regional checks. Keep Global Monitoring blocked and unavailable for purchase until a real authorized monitor is tested. Keep Agency Reporting Packs unavailable for purchase until its functionality and full certification are complete.
+
+**Why:** the user explicitly set these certification and purchase boundaries; synthetic UI checks are not evidence of a real provider integration.
+
+**How to apply:** use only an existing authorized QA monitor. If none is identified, record the blocker and continue with another add-on. Preserve the `coming_soon` gate for Global Monitoring and Agency Reporting Packs until their stated conditions are met.
