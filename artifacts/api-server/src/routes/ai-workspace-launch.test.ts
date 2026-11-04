@@ -92,7 +92,10 @@ describe("AI Workspace Launch persisted flow", () => {
         return { rows: ((values?.[1] as string[]) ?? []).map(id => ({ id })) };
       }
       if (String(sql).includes("AS dashboards") && String(sql).includes("AS alerts")) {
-        return { rows: [{ dashboards: 1, alerts: 1 }] };
+        return { rows: [{
+          dashboards: values?.[1] ? 1 : 0,
+          alerts: values?.[2] ? 1 : 0,
+        }] };
       }
       if (String(sql).includes("FROM ai_workspace_profiles")) {
         return { rows: [{
@@ -119,6 +122,8 @@ describe("AI Workspace Launch persisted flow", () => {
       .send({ siteUrl: "https://example.test", businessName: "Example", niche: "services" });
 
     expect(response.status).toBe(200);
+    expect(aiChatMock.mock.calls[0]?.[0].messages[0].content).toContain("N'invente aucun pourcentage");
+    expect(aiChatMock.mock.calls[0]?.[0].messages[0].content).not.toContain("+20% trafic local");
     expect(response.body).toMatchObject({
       ok: true,
       strategy: completeOutput().strategy,
@@ -129,6 +134,13 @@ describe("AI Workspace Launch persisted flow", () => {
       dashboardsCreated: 1,
       alertsConfigured: 1,
       reportsScheduled: 0,
+      configuredModules: ["seo_dashboard", "seo_alert"],
+      readinessChecks: expect.arrayContaining([
+        expect.objectContaining({ id: "profile", status: "ready" }),
+        expect.objectContaining({ id: "objectives", status: "needs_attention" }),
+        expect.objectContaining({ id: "seo_dashboard", status: "ready" }),
+        expect.objectContaining({ id: "seo_alert", status: "ready" }),
+      ]),
     });
     const writes = queryMock.mock.calls.filter(([sql]) =>
       /INSERT INTO (onboarding_sessions|ai_workspace_profiles|ai_generated_missions|missions|custom_dashboards|alert_rules)/.test(String(sql)),
@@ -148,6 +160,34 @@ describe("AI Workspace Launch persisted flow", () => {
     expect(releaseMock).toHaveBeenCalledOnce();
   });
 
+  it("creates only the selected alert module and persists its configured threshold", async () => {
+    const response = await request(makeApp({ orgId: "org-a", role: "owner" }))
+      .post("/ai-workspace-launch")
+      .send({
+        siteUrl: "https://example.test",
+        businessName: "Example",
+        goals: ["Generate qualified leads"],
+        modules: ["seo_alert"],
+        alertThreshold: 65,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      configuredModules: ["seo_alert"],
+      dashboardsCreated: 0,
+      alertsConfigured: 1,
+      dashboard: null,
+      alertRule: { id: expect.stringMatching(/^awl_alert_/), threshold: 65 },
+      readinessChecks: expect.arrayContaining([
+        expect.objectContaining({ id: "objectives", status: "ready" }),
+        expect.objectContaining({ id: "seo_dashboard", status: "not_selected" }),
+      ]),
+    });
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO custom_dashboards"))).toBe(false);
+    const alertInsert = queryMock.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO alert_rules"));
+    expect(alertInsert?.[1]?.[3]).toBe(65);
+  });
+
   it("rejects writes from viewers before contacting AI or the database", async () => {
     const response = await request(makeApp({ orgId: "org-a", role: "viewer" }))
       .post("/ai-workspace-launch")
@@ -165,6 +205,12 @@ describe("AI Workspace Launch persisted flow", () => {
     const oversizedText = await request(makeApp({ orgId: "org-a", role: "owner" }))
       .post("/ai-workspace-launch")
       .send({ businessName: "x".repeat(161) });
+    const invalidModules = await request(makeApp({ orgId: "org-a", role: "owner" }))
+      .post("/ai-workspace-launch")
+      .send({ modules: ["unapproved_module"] });
+    const invalidThreshold = await request(makeApp({ orgId: "org-a", role: "owner" }))
+      .post("/ai-workspace-launch")
+      .send({ alertThreshold: 101 });
     const malformedBody = await request(makeApp({ orgId: "org-a", role: "owner" }))
       .post("/ai-workspace-launch")
       .set("content-type", "application/json")
@@ -172,9 +218,13 @@ describe("AI Workspace Launch persisted flow", () => {
 
     expect(invalidList.status).toBe(400);
     expect(oversizedText.status).toBe(400);
+    expect(invalidModules.status).toBe(400);
+    expect(invalidThreshold.status).toBe(400);
     expect(malformedBody.status).toBe(400);
     expect(invalidList.body.code).toBe("INVALID_PROFILE");
     expect(oversizedText.body.code).toBe("INVALID_PROFILE");
+    expect(invalidModules.body.code).toBe("INVALID_PROFILE");
+    expect(invalidThreshold.body.code).toBe("INVALID_PROFILE");
     expect(checkQuotaMock).not.toHaveBeenCalled();
     expect(aiChatMock).not.toHaveBeenCalled();
     expect(connectMock).not.toHaveBeenCalled();
@@ -200,6 +250,10 @@ describe("AI Workspace Launch persisted flow", () => {
           generated_strategy: "Stratégie persistée",
           generated_roadmap: completeOutput().roadmap,
           mission_count: 1,
+          metadata: {
+            selectedModules: ["seo_dashboard"],
+            readinessChecks: [{ id: "profile", label: "Business profile", status: "ready" }],
+          },
         }],
       })
       .mockResolvedValueOnce({
@@ -219,6 +273,10 @@ describe("AI Workspace Launch persisted flow", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.missions).toEqual([expect.objectContaining({ id: "mission-a" })]);
+    expect(response.body.configuredModules).toEqual(["seo_dashboard"]);
+    expect(response.body.readinessChecks).toEqual([
+      { id: "profile", label: "Business profile", status: "ready" },
+    ]);
     expect(queryMock.mock.calls[0]).toEqual([
       expect.stringContaining("WHERE s.id = $1 AND s.org_id = $2"),
       ["session-a", "org-a"],

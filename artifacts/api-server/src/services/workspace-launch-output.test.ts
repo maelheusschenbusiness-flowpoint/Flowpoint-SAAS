@@ -48,4 +48,18 @@ describe("parseWorkspaceLaunchOutput", () => {
     missingImpact.missions[0].impact = " ";
     expect(parseWorkspaceLaunchOutput(JSON.stringify(missingImpact))).toBeNull();
   });
+
+  it("rejects unverified percentage or revenue claims", () => {
+    const percentageClaim = validPayload();
+    percentageClaim.roadmap[0].impact = "Augmenter le trafic de 25%";
+    expect(parseWorkspaceLaunchOutput(JSON.stringify(percentageClaim))).toBeNull();
+
+    const revenueClaim = validPayload();
+    revenueClaim.strategy = "Générer 500 EUR de revenus supplémentaires.";
+    expect(parseWorkspaceLaunchOutput(JSON.stringify(revenueClaim))).toBeNull();
+
+    const currencyPrefixClaim = validPayload();
+    currencyPrefixClaim.missions[0].impact = "Generate $500 in monthly sales.";
+    expect(parseWorkspaceLaunchOutput(JSON.stringify(currencyPrefixClaim))).toBeNull();
+  });
 });
