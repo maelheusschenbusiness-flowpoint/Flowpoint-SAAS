@@ -24498,6 +24498,8 @@ function bindGlobalEvents() {
     "Notifié": "Notified",
     "Conforme": "Compliant",
     "Impossible de charger le rapport SLA Better Stack.": "Could not load the Better Stack SLA report.",
+    "Sélectionnez un audit": "Select an audit",
+    "Lancez d’abord un audit pour générer les rapports.": "Run an audit first to generate the reports.",
     "SLA": "SLA",
     "Maintenance OVH": "OVH maintenance",
     "Lundi 23:00–01:00": "Monday 23:00–01:00",

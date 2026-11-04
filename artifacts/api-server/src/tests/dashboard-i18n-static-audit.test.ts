@@ -1507,7 +1507,10 @@ describe("private dashboard static English localization", () => {
     expect(dashboardSource).toContain("escHtml(m.name)");
     expect(dashboardSource).toContain("escHtml(m.url)");
     expect(dashboardSource).toContain("region.region + ': '");
-    expect(dashboardSource).toContain("m.monitorName + ' (' + m.status + ')'");
+    expect(dashboardSource).toContain("const monitorDetails = region.monitors.map(m => {");
+    expect(dashboardSource).toContain("m.uptimePercentage !== null && m.uptimePercentage !== undefined");
+    expect(dashboardSource).toContain("fpT('Disponibilité')");
+    expect(dashboardSource).toContain("return `${m.monitorName} (${m.status}; ${fpT('Disponibilité')}: ${uptime})`;");
     expect(dashboardSource).toContain("data-pchecks=\"${p.checks.map(c => escHtml(c)).join(',')}\"");
     expect(dashboardSource).toContain("apiAction('PATCH', `/api/monitors/${id}`, { alertEmail: emailVal })");
     expect(dashboardSource).toContain("apiAction('POST', `/api/monitors/${m.id}/check`)");
