@@ -4,12 +4,22 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const google = vi.hoisted(() => ({
-  getPerformance: vi.fn(),
+  getPerformanceWithToken: vi.fn(),
   getValidToken: vi.fn(),
 }));
 const entitlement = vi.hoisted(() => ({ allowed: true }));
 
-vi.mock("../services/google-service.js", () => google);
+vi.mock("../services/google-service.js", () => ({
+  ...google,
+  GooglePerformanceApiError: class GooglePerformanceApiError extends Error {
+    status: number;
+    constructor(status: number) {
+      super("Google Business Profile Performance API returned HTTP " + status);
+      this.name = "GooglePerformanceApiError";
+      this.status = status;
+    }
+  },
+}));
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: (addonKey: string) => (_req: unknown, res: any, next: () => void) => {
     if (!entitlement.allowed) {
@@ -143,6 +153,7 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
         last_sync_at TIMESTAMPTZ
       )
     `);
+    await pool.query("CREATE TABLE IF NOT EXISTS google_product_connections (org_id TEXT NOT NULL, product TEXT NOT NULL, connected BOOLEAN NOT NULL DEFAULT false, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (org_id, product))");
     await pool.query(`
       CREATE TABLE IF NOT EXISTS gbp_performance_settings (
         org_id TEXT PRIMARY KEY,
@@ -152,6 +163,7 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
     `);
     databaseReady = true;
     tablesReady = true;
+    await pool.query("INSERT INTO google_product_connections (org_id, product, connected) VALUES ($1, 'gbp', TRUE), ($2, 'gbp', TRUE) ON CONFLICT (org_id, product) DO UPDATE SET connected=TRUE", [orgA, orgB]);
     await pool.query(
       `INSERT INTO google_locations (id, org_id, name, raw_data)
        VALUES ($1, $2, $3, $4::jsonb), ($5, $6, $7, $8::jsonb)
@@ -173,11 +185,11 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
     );
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     entitlement.allowed = true;
     google.getValidToken.mockReset().mockResolvedValue("synthetic-google-token");
-    google.getPerformance.mockReset().mockImplementation(
-        async (_tenantId: string, resourceName: string, range: { startTime: string }) => {
+    google.getPerformanceWithToken.mockReset().mockImplementation(
+        async (_token: string, resourceName: string, range: { startTime: string }) => {
         if (resourceName !== resourceA) {
           return [{ dailyMetric: "CALL_CLICKS", timeSeries: { datedValues: [{ value: "999" }] } }];
         }
@@ -192,6 +204,7 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
 
   afterAll(async () => {
     if (tablesReady) {
+      await pool.query("DELETE FROM google_product_connections WHERE org_id = ANY($1::text[])", [[orgA, orgB]]);
       await pool.query("DELETE FROM gbp_performance_settings WHERE org_id = ANY($1::text[])", [[orgA, orgB]]);
       await pool.query("DELETE FROM google_locations WHERE id = ANY($1::text[])", [[locationA, locationB]]);
     }
@@ -215,9 +228,9 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
     });
     expect(response.body.locations).toEqual([{ id: locationA, name: "Synthetic GBP A" }]);
     expect(google.getValidToken).toHaveBeenCalledWith(orgA);
-    expect(google.getPerformance).toHaveBeenCalledTimes(2);
-    expect(google.getPerformance).toHaveBeenCalledWith(
-      orgA,
+    expect(google.getPerformanceWithToken).toHaveBeenCalledTimes(2);
+    expect(google.getPerformanceWithToken).toHaveBeenCalledWith(
+      "synthetic-google-token",
       resourceA,
       expect.objectContaining({ startTime: expect.any(String), endTime: expect.any(String) }),
     );
@@ -267,7 +280,7 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
     expect(after.rows[0]?.settings).toEqual(before.rows[0]?.settings);
   });
 
-  it("surfaces missing auth, entitlement, invalid settings, missing Google connection, and provider failures", async () => {
+  it("surfaces missing auth, entitlement, invalid settings, missing GBP connection, and provider failures", async () => {
     const unauthenticated = await request(makeApp(null)).get("/api/gbp-performance");
     entitlement.allowed = false;
     const noEntitlement = await request(makeApp()).get("/api/gbp-performance");
@@ -275,9 +288,10 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
     const invalidSettings = await request(makeApp())
       .put("/api/gbp-performance/settings")
       .send({ ...defaultSettings, periodDays: 13 });
-    google.getValidToken.mockResolvedValueOnce(null);
+    await pool.query("UPDATE google_product_connections SET connected=FALSE WHERE org_id=$1 AND product='gbp'", [orgA]);
     const noGoogleConnection = await request(makeApp()).get("/api/gbp-performance");
-    google.getPerformance.mockRejectedValue(new Error("synthetic Google outage"));
+    await pool.query("UPDATE google_product_connections SET connected=TRUE WHERE org_id=$1 AND product='gbp'", [orgA]);
+    google.getPerformanceWithToken.mockRejectedValue(new Error("synthetic Google outage"));
     const providerFailure = await request(makeApp()).get("/api/gbp-performance");
 
     expect(unauthenticated.status).toBe(401);
@@ -286,6 +300,6 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
     expect(noGoogleConnection.status).toBe(200);
     expect(noGoogleConnection.body).toMatchObject({ configured: false, connectionRequired: true });
     expect(providerFailure.status).toBe(502);
-    expect(providerFailure.body).toMatchObject({ ok: false });
+    expect(providerFailure.body).toMatchObject({ ok: false, code: "GBP_PERFORMANCE_UNAVAILABLE" });
   });
 });

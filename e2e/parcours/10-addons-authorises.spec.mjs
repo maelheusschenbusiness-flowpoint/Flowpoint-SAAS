@@ -290,7 +290,47 @@ test("AI Workspace Launch restores a persisted strategy through the browser UI",
   await expect(page.locator("#awl-roadmap")).toContainText("Fixture mission roadmap");
 });
 
-test("GBP settings save from the dashboard and survive reload without cross-tenant locations", async ({ page }) => {
+test("GBP Performance renders connected location metrics and decline indicators", async ({ page }) => {
+      await page.route("**/api/gbp-performance*", async route => {
+        if (route.request().method() !== "GET") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            configured: true,
+            settings: { locationId: gbpLocationA, periodDays: 30, alertDropPercent: 20, goals: { CALL_CLICKS: 30 } },
+            locations: [{ id: gbpLocationA, name: "Synthetic GBP location A" }],
+            location: { id: gbpLocationA, name: "Synthetic GBP location A" },
+            period: { days: 30, start: "2026-10-01T00:00:00.000Z", end: "2026-10-31T00:00:00.000Z" },
+            current: { CALL_CLICKS: 5, WEBSITE_CLICKS: 12, BUSINESS_DIRECTION_REQUESTS: 3, BUSINESS_IMPRESSIONS_DESKTOP_MAPS: 100, BUSINESS_IMPRESSIONS_MOBILE_MAPS: 150 },
+            previous: { CALL_CLICKS: 20, WEBSITE_CLICKS: 10, BUSINESS_DIRECTION_REQUESTS: 3, BUSINESS_IMPRESSIONS_DESKTOP_MAPS: 90, BUSINESS_IMPRESSIONS_MOBILE_MAPS: 150 },
+            goals: { CALL_CLICKS: 30 },
+            drops: { CALL_CLICKS: 75 },
+          }),
+        });
+      });
+      await signInToDashboard(page);
+      await page.evaluate(() => { window.location.hash = "#reports/local"; });
+      await page.waitForFunction(
+        () => window.STATE?.route === "reports" && window.STATE?.subRoute === "local",
+        null,
+        { timeout: 20_000 },
+      );
+      const panel = page.locator('section[aria-labelledby="fp-gbp-performance-title"]');
+      await expect(panel).toBeVisible();
+      const cards = panel.locator("article");
+      await expect(cards).toHaveCount(5);
+      const calls = cards.filter({ hasText: "Appels depuis la fiche" });
+      await expect(calls).toContainText("5");
+      await expect(calls).toContainText("Baisse observée de 75%");
+      await expect(panel).toContainText("Les clics ne sont pas assimilés à des conversions.");
+    });
+
+    test("GBP settings save from the dashboard and survive reload without cross-tenant locations", async ({ page }) => {
   await signInToDashboard(page);
   await page.evaluate(() => { window.location.hash = "#reports/local"; });
   await page.waitForFunction(

@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { pool } from "@workspace/db";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
-import { getPerformance, getValidToken } from "../services/google-service.js";
+import { getPerformanceWithToken, getValidToken, GooglePerformanceApiError } from "../services/google-service.js";
 import { requireOrgId } from "../lib/require-org-id.js";
 import {
   DEFAULT_GBP_PERFORMANCE_SETTINGS,
@@ -31,85 +31,111 @@ async function readSettings(tenantId: string) {
 }
 
 router.get("/gbp-performance", async (req, res) => {
-  const tenantId = requireOrgId(req, res);
-  if (!tenantId) return;
-  try {
-    const [settings, locationResult] = await Promise.all([
-      readSettings(tenantId),
-      pool.query(
-        `SELECT id, name, raw_data
-         FROM google_locations WHERE org_id=$1 ORDER BY name`,
-        [tenantId],
-      ),
-    ]);
-    const locations = locationResult.rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name ?? ""),
-      resourceName: String((row.raw_data as { name?: string } | null)?.name ?? ""),
-    }));
-    const selected = locations.find((location) => location.id === settings.locationId) ?? locations[0];
-    if (!selected) {
-      res.json({ ok: true, configured: false, settings, locations: [], current: {}, previous: {}, drops: {} });
-      return;
-    }
-    if (!selected.resourceName) {
-      res.status(409).json({ ok: false, code: "GBP_LOCATION_RESOURCE_MISSING", error: "Synchronisez les fiches Google avant de charger leurs performances." });
-      return;
-    }
-    const token = await getValidToken(tenantId).catch(() => null);
-    if (!token) {
-      res.json({
-        ok: true,
-        configured: false,
-        connectionRequired: true,
-        message: "Connectez Google Business Profile puis synchronisez vos fiches pour consulter les données réelles.",
-        settings,
-        locations: locations.map(({ id, name }) => ({ id, name })),
-        current: {},
-        previous: {},
-        drops: {},
-      });
-      return;
-    }
+      const tenantId = requireOrgId(req, res);
+      if (!tenantId) return;
+      try {
+        const [settings, locationResult, connectionResult] = await Promise.all([
+          readSettings(tenantId),
+          pool.query(
+            'SELECT id, name, raw_data FROM google_locations WHERE org_id=$1 ORDER BY name',
+            [tenantId],
+          ),
+          pool.query(
+            "SELECT connected FROM google_product_connections WHERE org_id=$1 AND product='gbp' LIMIT 1",
+            [tenantId],
+          ),
+        ]);
+        const locations = locationResult.rows.map((row) => ({
+          id: String(row.id),
+          name: String(row.name ?? ""),
+          resourceName: String((row.raw_data as { name?: string } | null)?.name ?? ""),
+        }));
+        const googleConnected = connectionResult.rows[0]?.connected === true;
+        if (!googleConnected) {
+          res.json({
+            ok: true,
+            configured: false,
+            connectionRequired: true,
+            message: "Connectez Google Business Profile puis synchronisez vos fiches pour consulter les données réelles.",
+            settings,
+            locations: locations.map(({ id, name }) => ({ id, name })),
+            current: {},
+            previous: {},
+            drops: {},
+          });
+          return;
+        }
 
-    const now = new Date();
-    const currentStart = new Date(now.getTime() - settings.periodDays * 86_400_000);
-    const previousStart = new Date(currentStart.getTime() - settings.periodDays * 86_400_000);
-    const [currentRaw, previousRaw] = await Promise.all([
-      getPerformance(tenantId, selected.resourceName, {
-        startTime: currentStart.toISOString(),
-        endTime: now.toISOString(),
-      }),
-      getPerformance(tenantId, selected.resourceName, {
-        startTime: previousStart.toISOString(),
-        endTime: currentStart.toISOString(),
-      }),
-    ]);
-    const current = summarizeGbpMetrics(currentRaw);
-    const previous = summarizeGbpMetrics(previousRaw);
-    const drops: Partial<Record<GbpPerformanceMetric, number>> = {};
-    for (const metric of GBP_PERFORMANCE_METRICS) {
-      const drop = calculateDropPercent(current[metric] ?? 0, previous[metric] ?? 0);
-      if (drop !== null && drop >= settings.alertDropPercent) drops[metric] = drop;
-    }
-    res.json({
-      ok: true,
-      configured: true,
-      settings: { ...settings, locationId: selected.id },
-      locations: locations.map(({ id, name }) => ({ id, name })),
-      location: { id: selected.id, name: selected.name },
-      period: { days: settings.periodDays, start: currentStart.toISOString(), end: now.toISOString() },
-      current,
-      previous,
-      goals: settings.goals,
-      drops,
-    });
-  } catch (error) {
-    res.status(502).json({ ok: false, error: safeErrMsg(error) });
-  }
-});
+        const selected = locations.find((location) => location.id === settings.locationId) ?? locations[0];
+        if (!selected) {
+          res.json({ ok: true, configured: false, settings, locations: [], current: {}, previous: {}, drops: {} });
+          return;
+        }
+        if (!selected.resourceName) {
+          res.status(409).json({ ok: false, code: "GBP_LOCATION_RESOURCE_MISSING", error: "Synchronisez les fiches Google avant de charger leurs performances." });
+          return;
+        }
 
-router.put("/gbp-performance/settings", canWrite, async (req, res) => {
+        let token: string;
+        try {
+          const validToken = await getValidToken(tenantId);
+          if (!validToken) throw new Error("Google access token unavailable");
+          token = validToken;
+        } catch {
+          res.status(502).json({
+            ok: false,
+            code: "GBP_TOKEN_UNAVAILABLE",
+            error: "Impossible de vérifier l’autorisation Google Business Profile. Reconnectez le compte Google puis réessayez.",
+          });
+          return;
+        }
+
+        const now = new Date();
+        const currentStart = new Date(now.getTime() - settings.periodDays * 86_400_000);
+        const previousStart = new Date(currentStart.getTime() - settings.periodDays * 86_400_000);
+        const [currentRaw, previousRaw] = await Promise.all([
+          getPerformanceWithToken(token, selected.resourceName, {
+            startTime: currentStart.toISOString(),
+            endTime: now.toISOString(),
+          }),
+          getPerformanceWithToken(token, selected.resourceName, {
+            startTime: previousStart.toISOString(),
+            endTime: currentStart.toISOString(),
+          }),
+        ]);
+        const current = summarizeGbpMetrics(currentRaw);
+        const previous = summarizeGbpMetrics(previousRaw);
+        const drops: Partial<Record<GbpPerformanceMetric, number>> = {};
+        for (const metric of GBP_PERFORMANCE_METRICS) {
+          const drop = calculateDropPercent(current[metric] ?? 0, previous[metric] ?? 0);
+          if (drop !== null && drop >= settings.alertDropPercent) drops[metric] = drop;
+        }
+        res.json({
+          ok: true,
+          configured: true,
+          settings: { ...settings, locationId: selected.id },
+          locations: locations.map(({ id, name }) => ({ id, name })),
+          location: { id: selected.id, name: selected.name },
+          period: { days: settings.periodDays, start: currentStart.toISOString(), end: now.toISOString() },
+          current,
+          previous,
+          goals: settings.goals,
+          drops,
+        });
+      } catch (error) {
+        if (error instanceof GooglePerformanceApiError) {
+          const upstreamErrors: Record<number, { code: string; error: string }> = {
+            401: { code: "GBP_GOOGLE_REAUTH_REQUIRED", error: "L’autorisation Google a expiré. Reconnectez Google Business Profile puis réessayez." },
+            403: { code: "GBP_GOOGLE_PERMISSION_REQUIRED", error: "Google a refusé l’accès aux statistiques de cette fiche. Vérifiez les droits du compte connecté." },
+            404: { code: "GBP_LOCATION_UNAVAILABLE", error: "Google ne trouve plus cette fiche. Synchronisez vos fiches puis réessayez." },
+            429: { code: "GBP_PROVIDER_RATE_LIMITED", error: "La limite temporaire de Google est atteinte. Réessayez plus tard." },
+          };
+          res.status(502).json({ ok: false, ...(upstreamErrors[error.status] ?? { code: "GBP_PERFORMANCE_API_FAILED", error: safeErrMsg(error) }) });
+          return;
+        }
+        res.status(502).json({ ok: false, code: "GBP_PERFORMANCE_UNAVAILABLE", error: safeErrMsg(error) });
+      }
+    });router.put("/gbp-performance/settings", canWrite, async (req, res) => {
   const tenantId = requireOrgId(req, res);
   if (!tenantId) return;
   const settings = parseGbpPerformanceSettings(req.body);

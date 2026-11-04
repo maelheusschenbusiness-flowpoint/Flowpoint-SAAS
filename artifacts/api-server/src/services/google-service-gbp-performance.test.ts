@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ connect: vi.fn() }));
 
 vi.mock("@workspace/db", () => ({ pool: { connect: mocks.connect } }));
 
-import { encryptToken, getPerformance } from "./google-service.js";
+import { encryptToken, getPerformance, GooglePerformanceApiError } from "./google-service.js";
 
 function mockGoogleToken() {
   const client = {
@@ -22,6 +22,7 @@ function mockGoogleToken() {
 describe("Google Business Profile Performance API request", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     mockGoogleToken();
   });
 
@@ -63,9 +64,34 @@ describe("Google Business Profile Performance API request", () => {
   it("surfaces provider errors instead of silently returning fabricated empty metrics", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 403 })));
 
-    await expect(getPerformance("org-1", "locations/location-1", {
+    let providerError: unknown;
+    try {
+      await getPerformance("org-1", "locations/location-1", {
+        startTime: "2026-10-01T00:00:00.000Z",
+        endTime: "2026-10-08T00:00:00.000Z",
+      });
+    } catch (error) {
+      providerError = error;
+    }
+    expect(providerError).toBeInstanceOf(GooglePerformanceApiError);
+    expect((providerError as GooglePerformanceApiError).status).toBe(403);
+    expect((providerError as Error).message).toContain("HTTP 403");
+  });
+
+  it("does not turn missing Google tokens into an empty metrics response", async () => {
+    const client = {
+      query: vi.fn().mockResolvedValue({ rows: [] }),
+      release: vi.fn(),
+    };
+    mocks.connect.mockResolvedValueOnce(client);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getPerformance("org-missing", "locations/location-1", {
       startTime: "2026-10-01T00:00:00.000Z",
       endTime: "2026-10-08T00:00:00.000Z",
-    })).rejects.toThrow("HTTP 403");
+    })).rejects.toThrow("Google not connected for org: org-missing");
+    expect(client.query).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.release).toHaveBeenCalledTimes(1);
   });
 });

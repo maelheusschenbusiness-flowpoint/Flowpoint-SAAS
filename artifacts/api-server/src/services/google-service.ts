@@ -291,44 +291,54 @@ export async function getLocationReviews(orgId: string, locationName: string): P
   } catch { return []; }
 }
 
-export async function getPerformance(
-  orgId: string,
-  locationName: string,
-  opts: { startTime: string; endTime: string }
-): Promise<unknown> {
-  const token = await getValidToken(orgId).catch(() => null);
-  if (!token) return { metricValues: [] };
-  const start = new Date(opts.startTime);
-  const end   = new Date(opts.endTime);
-  const locationId = locationName.match(/(?:^|\/)locations\/([^/]+)$/)?.[1]
-    ?? (/^[^/]+$/.test(locationName) ? locationName : "");
-  if (!locationId || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
-    throw new Error("Invalid Google Business Profile performance request");
-  }
-  const params = new URLSearchParams();
-  for (const metric of GBP_PERFORMANCE_METRICS) params.append("dailyMetrics", metric);
-  for (const [prefix, date] of [["start_date", start], ["end_date", end]] as const) {
-    params.set(`dailyRange.${prefix}.year`, String(date.getUTCFullYear()));
-    params.set(`dailyRange.${prefix}.month`, String(date.getUTCMonth() + 1));
-    params.set(`dailyRange.${prefix}.day`, String(date.getUTCDate()));
-  }
-  const url = `https://businessprofileperformance.googleapis.com/v1/locations/${encodeURIComponent(locationId)}:fetchMultiDailyMetricsTimeSeries?${params}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!res.ok) {
-    throw new Error(`Google Business Profile Performance API returned HTTP ${res.status}`);
-  }
-  const data = await res.json() as {
-    multiDailyMetricTimeSeries?: Array<{
-      dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: unknown }>;
-    }>;
-  };
-  return (data.multiDailyMetricTimeSeries ?? []).flatMap((group) => group.dailyMetricTimeSeries ?? []);
-}
+export class GooglePerformanceApiError extends Error {
+      constructor(readonly status: number) {
+        super("Google Business Profile Performance API returned HTTP " + status);
+        this.name = "GooglePerformanceApiError";
+      }
+    }
 
-export async function publishGBPPost(
+    export async function getPerformanceWithToken(
+      token: string,
+      locationName: string,
+      opts: { startTime: string; endTime: string }
+    ): Promise<unknown> {
+      const start = new Date(opts.startTime);
+      const end = new Date(opts.endTime);
+      const locationId = locationName.match(/(?:^|\/)locations\/([^/]+)$/)?.[1]
+        ?? (/^[^/]+$/.test(locationName) ? locationName : "");
+      if (!locationId || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+        throw new Error("Invalid Google Business Profile performance request");
+      }
+      const params = new URLSearchParams();
+      for (const metric of GBP_PERFORMANCE_METRICS) params.append("dailyMetrics", metric);
+      for (const [prefix, date] of [["start_date", start], ["end_date", end]] as const) {
+        params.set("dailyRange." + prefix + ".year", String(date.getUTCFullYear()));
+        params.set("dailyRange." + prefix + ".month", String(date.getUTCMonth() + 1));
+        params.set("dailyRange." + prefix + ".day", String(date.getUTCDate()));
+      }
+      const url = "https://businessprofileperformance.googleapis.com/v1/locations/" + encodeURIComponent(locationId) + ":fetchMultiDailyMetricsTimeSeries?" + params;
+      const res = await fetch(url, {
+        headers: { Authorization: "Bearer " + token },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) throw new GooglePerformanceApiError(res.status);
+      const data = await res.json() as {
+        multiDailyMetricTimeSeries?: Array<{
+          dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: unknown }>;
+        }>;
+      };
+      return (data.multiDailyMetricTimeSeries ?? []).flatMap((group) => group.dailyMetricTimeSeries ?? []);
+    }
+
+    export async function getPerformance(
+      orgId: string,
+      locationName: string,
+      opts: { startTime: string; endTime: string }
+    ): Promise<unknown> {
+      const token = await getValidToken(orgId);
+      return getPerformanceWithToken(token, locationName, opts);
+    }export async function publishGBPPost(
   orgId: string,
   locationName: string,
   post: {

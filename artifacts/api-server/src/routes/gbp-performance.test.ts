@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
-  getPerformance: vi.fn(),
+  getPerformanceWithToken: vi.fn(),
   getValidToken: vi.fn(),
   addonAllowed: true,
   addonAllowedByKey: {} as Record<string, boolean>,
@@ -27,13 +27,22 @@ vi.mock("../middlewares/planGate.js", () => ({
   },
 }));
 vi.mock("../services/google-service.js", () => ({
-  getPerformance: mocks.getPerformance,
+  getPerformanceWithToken: mocks.getPerformanceWithToken,
   getValidToken: mocks.getValidToken,
+  GooglePerformanceApiError: class GooglePerformanceApiError extends Error {
+    status: number;
+    constructor(status: number) {
+      super("Google Business Profile Performance API returned HTTP " + status);
+      this.name = "GooglePerformanceApiError";
+      this.status = status;
+    }
+  },
 }));
 vi.mock("../services/ga4-service.js", () => ({
   getGA4ConversionPages: vi.fn().mockResolvedValue({ rows: [] }),
 }));
 
+import { GooglePerformanceApiError } from "../services/google-service.js";
 import gbpPerformanceRouter from "./gbp-performance.js";
 import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 
@@ -52,9 +61,19 @@ function makeApp(orgId: string | null = "org-a") {
   return app;
 }
 
+function queueGbpRead(connected: boolean, locations: unknown[] = [], settings?: unknown) {
+  mocks.query
+    .mockResolvedValueOnce({ rows: settings ? [{ settings }] : [] })
+    .mockResolvedValueOnce({ rows: locations })
+    .mockResolvedValueOnce({ rows: [{ connected }] });
+}
+
 describe("GBP Performance & Leads API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.query.mockReset();
+    mocks.getValidToken.mockReset().mockResolvedValue("synthetic-google-token");
+    mocks.getPerformanceWithToken.mockReset().mockResolvedValue([]);
     mocks.addonAllowed = true;
     mocks.addonAllowedByKey = {};
     mocks.addonGateCalls = [];
@@ -67,21 +86,71 @@ describe("GBP Performance & Leads API", () => {
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
-  it("scopes reads to the authenticated organization and reports missing Google setup", async () => {
-    mocks.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+  it("scopes reads to the authenticated organization and treats an absent GBP flag as disconnected", async () => {
+        queueGbpRead(false);
+        const response = await request(makeApp()).get("/api/gbp-performance");
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({ ok: true, configured: false, connectionRequired: true, locations: [] });
+        expect(mocks.query.mock.calls.map(([sql, values]) => [String(sql), values])).toEqual([
+          [expect.stringContaining("FROM gbp_performance_settings"), ["org-a"]],
+          [expect.stringContaining("FROM google_locations"), ["org-a"]],
+          [expect.stringContaining("FROM google_product_connections"), ["org-a"]],
+        ]);
+        expect(mocks.getValidToken).not.toHaveBeenCalled();
+        expect(mocks.getPerformanceWithToken).not.toHaveBeenCalled();
+      });
 
-    const response = await request(makeApp()).get("/api/gbp-performance");
+      it("retrieves and summarizes metrics only when the GBP product connection is active", async () => {
+        const settings = { locationId: "loc-a", periodDays: 30, goals: { CALL_CLICKS: 40 }, alertDropPercent: 25 };
+        queueGbpRead(true, [{ id: "loc-a", name: "Location A", raw_data: { name: "accounts/acct/locations/loc-a" } }], settings);
+        const metric = (value: number) => [{ dailyMetric: "CALL_CLICKS", timeSeries: { datedValues: [{ value: String(value) }] } }];
+        mocks.getPerformanceWithToken.mockResolvedValueOnce(metric(5)).mockResolvedValueOnce(metric(20));
+        const response = await request(makeApp()).get("/api/gbp-performance");
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          ok: true,
+          configured: true,
+          location: { id: "loc-a", name: "Location A" },
+          current: { CALL_CLICKS: 5 },
+          previous: { CALL_CLICKS: 20 },
+          drops: { CALL_CLICKS: 75 },
+          goals: { CALL_CLICKS: 40 },
+        });
+        expect(mocks.getValidToken).toHaveBeenCalledTimes(1);
+        expect(mocks.getValidToken).toHaveBeenCalledWith("org-a");
+        expect(mocks.getPerformanceWithToken).toHaveBeenCalledTimes(2);
+        expect(mocks.getPerformanceWithToken).toHaveBeenCalledWith(
+          "synthetic-google-token",
+          "accounts/acct/locations/loc-a",
+          expect.objectContaining({ startTime: expect.any(String), endTime: expect.any(String) }),
+        );
+      });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ ok: true, configured: false, locations: [] });
-    expect(mocks.query.mock.calls.map(([sql, values]) => [String(sql), values])).toEqual([
-      [expect.stringContaining("FROM gbp_performance_settings"), ["org-a"]],
-      [expect.stringContaining("FROM google_locations"), ["org-a"]],
-    ]);
-    expect(mocks.getPerformance).not.toHaveBeenCalled();
-  });
+      it("does not call Google when GBP is disconnected even if cached locations and a shared token exist", async () => {
+        queueGbpRead(false, [{ id: "loc-a", name: "Old location", raw_data: { name: "accounts/acct/locations/loc-a" } }]);
+        const response = await request(makeApp()).get("/api/gbp-performance");
+        expect(response.body).toMatchObject({ configured: false, connectionRequired: true });
+        expect(mocks.getValidToken).not.toHaveBeenCalled();
+        expect(mocks.getPerformanceWithToken).not.toHaveBeenCalled();
+      });
+
+      it("surfaces token retrieval failures instead of reporting a disconnected account", async () => {
+        queueGbpRead(true, [{ id: "loc-a", name: "Location A", raw_data: { name: "accounts/acct/locations/loc-a" } }]);
+        mocks.getValidToken.mockRejectedValueOnce(new Error("database token lookup failed"));
+        const response = await request(makeApp()).get("/api/gbp-performance");
+        expect(response.status).toBe(502);
+        expect(response.body).toMatchObject({ ok: false, code: "GBP_TOKEN_UNAVAILABLE" });
+        expect(mocks.getPerformanceWithToken).not.toHaveBeenCalled();
+      });
+
+      it("maps Google permission errors to a clear authorization message", async () => {
+        queueGbpRead(true, [{ id: "loc-a", name: "Location A", raw_data: { name: "accounts/acct/locations/loc-a" } }]);
+        mocks.getPerformanceWithToken.mockRejectedValueOnce(new GooglePerformanceApiError(403));
+        const response = await request(makeApp()).get("/api/gbp-performance");
+        expect(response.status).toBe(502);
+        expect(response.body).toMatchObject({ ok: false, code: "GBP_GOOGLE_PERMISSION_REQUIRED" });
+        expect(response.body.error).toContain("droits du compte");
+      });
 
   it("persists valid settings only after confirming the location belongs to the organization", async () => {
     const settings = {
