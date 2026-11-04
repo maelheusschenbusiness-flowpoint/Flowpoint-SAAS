@@ -152,7 +152,18 @@ describe("GBP Performance & Leads API", () => {
         expect(response.body.error).toContain("droits du compte");
       });
 
-  it("persists valid settings only after confirming the location belongs to the organization", async () => {
+  it("maps Google quota responses to retry guidance", async () => {
+        queueGbpRead(true, [{ id: "loc-a", name: "Location A", raw_data: { name: "accounts/acct/locations/loc-a" } }]);
+        mocks.getPerformanceWithToken.mockRejectedValueOnce(new GooglePerformanceApiError(429));
+
+        const response = await request(makeApp()).get("/api/gbp-performance");
+
+        expect(response.status).toBe(502);
+        expect(response.body).toMatchObject({ ok: false, code: "GBP_PROVIDER_RATE_LIMITED" });
+        expect(response.body.error).toContain("Réessayez plus tard");
+      });
+
+      it("persists valid settings only after confirming the location belongs to the organization", async () => {
     const settings = {
       locationId: "loc-a",
       periodDays: 30,
