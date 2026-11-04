@@ -48,7 +48,14 @@ export function parseTextBuffer(
 
   const truncated = text.length > maxChars;
   if (truncated) {
-    text = text.slice(0, maxChars);
+    // Never end on half a surrogate pair: when the limit falls between the high
+    // and the low unit of one character, cut just before that pair instead.
+    let end = maxChars;
+    const lastUnit = end > 0 ? text.charCodeAt(end - 1) : 0;
+    if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) {
+      end--;
+    }
+    text = text.slice(0, end);
   }
 
   return { text, truncated, charCount: text.length };
