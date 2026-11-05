@@ -20,11 +20,11 @@
     const state = root.querySelector("[data-sci-state]");
     if (!state) return;
 
-    const load = async (force = false) => {
+    const load = async () => {
       state.setAttribute("role", "status");
       state.textContent = t("Chargement des audits…");
       try {
-        const data = await window.apiAction("GET", "/api/seo-change-impact", undefined, force ? { force: true } : {});
+        const data = await window.apiAction("GET", "/api/seo-change-impact");
         const settings = data.settings || {};
         const comparisons = Array.isArray(data.comparisons) ? data.comparisons : [];
         state.innerHTML = `<form data-sci-settings class="fp-grid fp-grid-2" aria-label="${esc(t("Paramètres de comparaison"))}">
@@ -61,7 +61,7 @@
           };
           try {
             await window.apiAction("PUT", "/api/seo-change-impact/settings", settingsUpdate);
-            await load(true);
+            await load();
             const savedMessage = state.querySelector("[data-sci-message]");
             if (savedMessage) {
               savedMessage.setAttribute("role", "status");

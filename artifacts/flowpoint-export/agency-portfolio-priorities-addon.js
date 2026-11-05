@@ -11,7 +11,7 @@
   window.FP_ADDON_RENDERERS = window.FP_ADDON_RENDERERS || {};
   window.FP_ADDON_RENDERERS.agencyPortfolioPriorities = async function renderAgencyPortfolioPriorities(root) {
     if (!root) return;
-    const load = async (force = false) => {
+    const load = async () => {
       root.innerHTML = `<section class="fp-card" aria-labelledby="app-title">
         <h2 id="app-title" class="fp-card-title">${t("Priorités du portefeuille d’agences")}</h2>
         <p>${t("Classez vos sites à partir des audits SEO et des clics GSC réellement mesurés.")}</p>
@@ -19,7 +19,7 @@
       </section>`;
       const state = root.querySelector("[data-app-state]");
       try {
-        const data = await window.apiAction("GET", "/api/agency-portfolio-priorities", undefined, force ? { force: true } : {});
+        const data = await window.apiAction("GET", "/api/agency-portfolio-priorities");
         const settings = data.settings?.priorityWeights || {};
         const rows = Array.isArray(data.priorities) ? data.priorities : [];
         state.innerHTML = rows.length ? `<form data-app-settings aria-label="${esc(t("Pondérations de priorité"))}">
@@ -49,7 +49,7 @@
           const message = form.querySelector("[data-app-message]");
           try {
             await window.apiAction("PUT", "/api/agency-portfolio-priorities/settings", { priorityWeights });
-            await load(true);
+            await load();
             const savedMessage = root.querySelector("[data-app-message]");
             if (savedMessage) {
               savedMessage.setAttribute("role", "status");
