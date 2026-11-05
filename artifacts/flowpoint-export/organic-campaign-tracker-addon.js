@@ -11,7 +11,7 @@
   window.FP_ADDON_RENDERERS = window.FP_ADDON_RENDERERS || {};
   window.FP_ADDON_RENDERERS.organicCampaignTracker = async function renderOrganicCampaignTracker(root) {
     if (!root) return;
-    const load = async () => {
+    const load = async (fresh = false) => {
       root.innerHTML = `<section class="fp-card" aria-labelledby="oct-title">
         <h2 id="oct-title" class="fp-card-title">${t("Suivi des campagnes organiques")}</h2>
         <p>${t("Fixez des objectifs par requête et comparez-les aux données Search Console mesurées sur 28 jours.")}</p>
@@ -19,7 +19,10 @@
       </section>`;
       const state = root.querySelector("[data-oct-state]");
       try {
-        const data = await window.apiAction("GET", "/api/organic-campaign-tracker");
+        // apiAction caches GETs for 30 seconds. A mutation must refresh this
+        // list instead of re-rendering the cached pre-mutation response.
+        const refresh = fresh ? `?refresh=${Date.now()}` : "";
+        const data = await window.apiAction("GET", `/api/organic-campaign-tracker${refresh}`);
         const campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
         const rows = campaigns.map(campaign => {
           const status = statusLabels[campaign.status] || ["⚪", campaign.status || ""];
@@ -65,7 +68,7 @@
             await window.apiAction("POST", "/api/organic-campaign-tracker", {
               ...values, targetPosition: Number(values.targetPosition), minimumClicks: Number(values.minimumClicks),
             });
-            await load();
+            await load(true);
             const savedMessage = root.querySelector("[data-oct-message]");
             if (savedMessage) savedMessage.textContent = t("Objectif enregistré.");
           } catch (error) {
@@ -77,7 +80,7 @@
           button.addEventListener("click", async () => {
             try {
               await window.apiAction("DELETE", `/api/organic-campaign-tracker/${encodeURIComponent(button.dataset.octDelete)}`);
-              await load();
+              await load(true);
             } catch (error) {
               const message = root.querySelector("[data-oct-message]");
               if (message) {

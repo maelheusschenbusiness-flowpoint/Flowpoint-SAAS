@@ -21,6 +21,7 @@ export default defineConfig({
       "src/services/technical-seo-fix-verification.test.ts",
       "src/routes/technical-seo-fix-verification.test.ts",
       "src/routes/organic-campaign-tracker.test.ts",
+      "src/tests/organic-campaign-tracker-cache.test.ts",
       "src/services/agency-portfolio-priorities.test.ts",
       "src/routes/agency-portfolio-priorities.test.ts",
       "src/services/seo-change-impact.test.ts",
