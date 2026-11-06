@@ -24494,6 +24494,8 @@ function bindGlobalEvents() {
     "Notifié": "Notified",
     "Conforme": "Compliant",
     "Impossible de charger le rapport SLA Better Stack.": "Could not load the Better Stack SLA report.",
+    "Sélectionnez un audit": "Select an audit",
+    "Lancez d’abord un audit pour générer les rapports.": "Run an audit first to generate the reports.",
     "SLA": "SLA",
     "Maintenance OVH": "OVH maintenance",
     "Lundi 23:00–01:00": "Monday 23:00–01:00",
@@ -74003,13 +74005,62 @@ function renderGlobalMonitoringPanel() {
 
 function renderAgencyPacksPanel() {
   if (!STATE.me?.addons?.agencyPacks) return '';
+  const panelState = window._fpAgencyPacksState || {};
+  const audits = Array.isArray(panelState.audits) ? panelState.audits : [];
+  const packs = Array.isArray(panelState.packs) ? panelState.packs : [];
+  const selectedAuditId = String(panelState.selectedAuditId || '');
+  const controls = panelState.loaded ? `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <input type="text" maxlength="160" aria-label="${fpT('Nom du client')}"
+        placeholder="${fpT('Nom du client pour le pack complet')}"
+        value="${escHtml(panelState.clientName || '')}"
+        oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('clientName',this.value)">
+      <select required aria-label="${fpT('Audit à inclure dans les rapports')}"
+        onchange="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('selectedAuditId',this.value)">
+        <option value="" disabled ${selectedAuditId ? '' : 'selected'}>${fpT('Sélectionnez un audit')}</option>
+        ${audits.map(audit => {
+          const id = String(audit.id || '');
+          const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
+            ? fpT('score indisponible')
+            : fpT('Score {score}', { score: audit.score });
+          const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString(getLocale()) : '';
+          const label = [audit.url || fpT('Site'), measuredScore, measuredDate].filter(Boolean).join(' · ');
+          return `<option value="${escHtml(id)}" ${id === selectedAuditId ? 'selected' : ''}>${escHtml(label)}</option>`;
+        }).join('')}
+      </select>
+      <button type="button" class="fp-btn fp-btn-primary fp-btn-sm"
+        onclick="window.FP_V1_ADDON_PANELS.createAgencyPack()"
+        ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le pack complet (3 rapports)')}</button>
+    </div>
+    ${!audits.length ? `<p class="fp-text-muted">${fpT('Lancez d’abord un audit pour générer les rapports.')}</p>` : ''}
+    ${packs.map((pack, index) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)">
+        <span>${escHtml(`${pack.name || ''} — ${pack.description || ''}`)}</span>
+        <button type="button" class="fp-btn fp-btn-primary fp-btn-sm"
+          data-fp-agency-pack-index="${index}"
+          onclick="window.FP_V1_ADDON_PANELS.createAgencySinglePack(this.dataset.fpAgencyPackIndex)"
+          ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le rapport')}</button>
+      </div>`).join('')}
+  ` : `<div class="fp-text-muted">${escHtml(panelState.error || (panelState.loading ? fpT('Chargement…') : fpT('Aucun pack chargé.')))}</div>`;
   return `<section class="fp-card" style="margin-top:18px">
     <div class="fp-card-header"><div><h2>${fpT('Packs de rapports d’agence')}</h2><p class="fp-text-muted">${fpT('Modèles réutilisables pour les rapports clients')}</p></div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()">${fpT('Charger les packs')}</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()"
+        ${panelState.loading ? 'disabled' : ''}>${panelState.loaded ? fpT('Actualiser les packs') : fpT('Charger les packs')}</button>
     </div>
-    <div id="fp-agency-packs-result" class="fp-text-muted">${fpT('Aucun pack chargé.')}</div>
+    <div id="fp-agency-packs-result">${controls}</div>
   </section>`;
 }
+
+window._fpAgencyPacksState = window._fpAgencyPacksState || {
+  loading: false,
+  loaded: false,
+  submitting: false,
+  packs: [],
+  audits: [],
+  clientName: '',
+  selectedAuditId: '',
+  error: '',
+};
 
 window.FP_V1_ADDON_PANELS = {
   async loadSla() {
@@ -74126,90 +74177,85 @@ window.FP_V1_ADDON_PANELS = {
     }
   },
   async loadAgencyPacks() {
-    const target = document.getElementById('fp-agency-packs-result');
-    if (!target) return;
-    target.textContent = fpT('Chargement…');
+    const panelState = window._fpAgencyPacksState;
+    if (panelState.loading) return;
+    panelState.loading = true;
+    panelState.error = '';
+    render();
     try {
       const result = await apiFetch('/api/reports/agency-packs');
-      target.replaceChildren();
-      const bundleControls = document.createElement('div');
-      bundleControls.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px';
-      const clientInput = document.createElement('input');
-      clientInput.type = 'text'; clientInput.maxLength = 160;
-      clientInput.placeholder = fpT('Nom du client pour le pack complet');
-      clientInput.setAttribute('aria-label', fpT('Nom du client'));
-      const auditSelect = document.createElement('select');
-      auditSelect.setAttribute('aria-label', fpT('Audit à inclure dans les rapports'));
-      const noAuditOption = document.createElement('option');
-      noAuditOption.value = '';
-      noAuditOption.textContent = fpT('Sans audit lié');
-      auditSelect.appendChild(noAuditOption);
-      const audits = Array.isArray(result?.audits) ? result.audits : [];
-      for (const audit of audits) {
-        const option = document.createElement('option');
-        option.value = String(audit.id || '');
-        const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
-          ? fpT('score indisponible')
-          : fpT('Score {score}', { score: audit.score });
-        const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString(getLocale()) : '';
-        option.textContent = [audit.url || fpT('Site'), measuredScore, measuredDate].filter(Boolean).join(' · ');
-        auditSelect.appendChild(option);
+      panelState.audits = Array.isArray(result?.audits) ? result.audits : [];
+      panelState.packs = Array.isArray(result?.packs) ? result.packs : [];
+      if (!panelState.audits.some(audit => String(audit.id || '') === panelState.selectedAuditId)) {
+        panelState.selectedAuditId = String(panelState.audits[0]?.id || '');
       }
-      if (audits.length) auditSelect.value = String(audits[0].id || '');
-      const bundleButton = document.createElement('button');
-      bundleButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
-      bundleButton.textContent = fpT('Créer le pack complet (3 rapports)');
-      bundleButton.addEventListener('click', async () => {
-        const clientName = clientInput.value.trim();
-        if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
-        bundleButton.disabled = true;
-        try {
-          const bundle = await apiFetch('/api/reports/agency-packs/generate', {
-            method: 'POST',
-            body: JSON.stringify({
-              clientName,
-              auditId: auditSelect.value || undefined,
-            }),
-          });
-          if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
-          const createdIds = Array.isArray(bundle.reports) ? bundle.reports.map(report => String(report.id || '')).filter(Boolean) : [];
-          if (createdIds.length !== 3) throw new Error('Les trois rapports persistés ne sont pas confirmés');
-          await window._fpReportsAPI.load({ force: true });
-          const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
-          if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
-          showToast('success', fpT('Pack créé : 3 rapports vérifiés pour {client}', { client: escHtml(clientName) }));
-          render();
-        } catch { showToast('error', fpT('Le pack complet n’a pas pu être créé')); bundleButton.disabled = false; }
-      });
-      bundleControls.append(clientInput, auditSelect, bundleButton);
-      target.appendChild(bundleControls);
-      for (const pack of (result?.packs || [])) {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)';
-        const label = document.createElement('span');
-        label.textContent = `${pack.name} — ${pack.description}`;
-        const button = document.createElement('button');
-        button.className = 'fp-btn fp-btn-primary fp-btn-sm';
-        button.textContent = fpT('Créer le rapport');
-        button.addEventListener('click', async () => {
-          button.disabled = true;
-          try {
-            const created = await window._fpReportsAPI.create({
-              name: pack.name,
-              templateKey: pack.templateKey,
-              format: 'PDF',
-              auditId: auditSelect.value || undefined,
-            });
-            if (!created?.id) throw new Error('Rapport non confirmé');
-            render();
-          } catch { showToast('error', fpT('Impossible de créer le rapport')); button.disabled = false; }
-        });
-        row.append(label, button);
-        target.appendChild(row);
-      }
-      if (!result?.packs?.length) target.textContent = fpT('Aucun pack disponible.');
+      panelState.loaded = true;
     } catch {
-      target.textContent = fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
+      panelState.error = fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
+      if (!panelState.loaded) panelState.loaded = false;
+    } finally {
+      panelState.loading = false;
+      render();
+    }
+  },
+  updateAgencyPackDraft(field, value) {
+    if (field !== 'clientName' && field !== 'selectedAuditId') return;
+    window._fpAgencyPacksState[field] = String(value || '');
+  },
+  async createAgencyPack() {
+    const panelState = window._fpAgencyPacksState;
+    const clientName = String(panelState.clientName || '').trim();
+    const auditId = String(panelState.selectedAuditId || '');
+    if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
+    if (!auditId || !panelState.audits.some(audit => String(audit.id || '') === auditId)) {
+      showToast('error', fpT('Sélectionnez un audit'));
+      return;
+    }
+    if (panelState.submitting) return;
+    panelState.submitting = true;
+    render();
+    try {
+      const bundle = await apiFetch('/api/reports/agency-packs/generate', {
+        method: 'POST',
+        body: JSON.stringify({ clientName, auditId }),
+      });
+      if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
+      const createdIds = Array.isArray(bundle.reports)
+        ? bundle.reports.map(report => String(report.id || '')).filter(Boolean)
+        : [];
+      if (createdIds.length !== 3) throw new Error('Les trois rapports persistés ne sont pas confirmés');
+      await window._fpReportsAPI.load({ force: true });
+      const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
+      if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
+      showToast('success', fpT('Pack créé : 3 rapports vérifiés pour {client}', { client: escHtml(clientName) }));
+    } catch {
+      showToast('error', fpT('Le pack complet n’a pas pu être créé'));
+    } finally {
+      panelState.submitting = false;
+      render();
+    }
+  },
+  async createAgencySinglePack(index) {
+    const panelState = window._fpAgencyPacksState;
+    const pack = panelState.packs[Number(index)];
+    const auditId = String(panelState.selectedAuditId || '');
+    if (!pack || !auditId) { showToast('error', fpT('Sélectionnez un audit')); return; }
+    if (panelState.submitting) return;
+    panelState.submitting = true;
+    render();
+    try {
+      const created = await window._fpReportsAPI.create({
+        name: pack.name,
+        templateKey: pack.templateKey,
+        format: 'PDF',
+        auditId,
+      });
+      if (!created?.id) throw new Error('Rapport non confirmé');
+    } catch {
+      showToast('error', fpT('Impossible de créer le rapport'));
+    } finally {
+      panelState.submitting = false;
+      render();
     }
   },
 };
