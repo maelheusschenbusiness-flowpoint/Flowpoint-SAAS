@@ -1949,6 +1949,8 @@ function showFatalError(msg) {
 
 async function loadData(options = {}) {
   // ── Loading state: show skeleton immediately before any API call ──
+  STATE.dataLoadComplete = false;
+  STATE.reportsLoaded = false;
   STATE.loading = true;
   render();
   // Signal that loadData is running. Confirmation timers must not redirect
@@ -2220,6 +2222,7 @@ async function loadData(options = {}) {
   if ('reports' in _preloaded) {
     const _pRep = normArr(_preloaded.reports, 'reports');
     STATE.reports = (_pRep && _pRep.length > 0) ? _pRep : (PREVIEW_MODE ? MOCK_REPORTS : []);
+    STATE.reportsLoaded = true;
     // Also hydrate the Reports API module state so renderGA4Reports() doesn't re-fetch
     if (window._fpReportsState) {
       window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(_pRep) ? _pRep : [], error: null };
@@ -2298,7 +2301,7 @@ async function loadData(options = {}) {
   ]).then(function([_auRes, _moRes, _reRes, _teRes, _streaksRes, _contribRes]) {
     if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
     if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
-    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
+    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; STATE.reportsLoaded = true; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
     if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/teams failed:', _teRes.reason?.message || _teRes.reason); }
     // Per-member streaks from the canonical user_activity_days table
     if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
@@ -2660,7 +2663,12 @@ async function loadData(options = {}) {
     'monitors:', STATE.monitors.length, 'missions:', (STATE.missions||[]).length,
     'keywords:', (STATE.keywords||[]).length, 'competitors:', (STATE.competitors||[]).length,
     'reports:', STATE.reports.length, 'activityEvents:', (STATE.activityEvents||[]).length);
-  render();
+  // Flush the final hydrated view before exposing the completion signal. The
+  // normal render() debounce can otherwise fire after an E2E action and replace
+  // UI state written into the old DOM node.
+  if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  _doRender();
+  STATE.dataLoadComplete = true;
 
   // ── Intelligence Engine: compute real insights from STATE data ───────────────
   if (typeof window.FP_DATA !== 'object' || window.FP_DATA === null) window.FP_DATA = {};
