@@ -1,36 +1,36 @@
 # Matrice de suivi — add-ons bêta 2.0
 
-Mise à jour : 4 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
+Mise à jour : 6 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
 
 Le total historique **8/24** est attribué aux huit remplacements explicitement nommés dans le rapport d’audit archivé du 3 novembre 2026 (`docs/flowpoint-audit-status-2026-11-03.md`, commit `6c78d7d`, consulté dans l’historique Git local). Le rapport indique qu’ils avaient été validés selon une décision antérieure de l’utilisateur; les parcours n’ont pas été rejoués et aucun artefact E2E individuel n’y est joint. La colonne historique conserve cette attribution sans la présenter comme une nouvelle certification de cette session.
 
 **Légende**
 - **Développé** indique qu'une implémentation existe, pas qu'elle est prête à vendre.
 - **Parcours navigateur local** ne compte que les essais exécutés sur la base jetable attestée. Une UI testée avec une réponse synthétique n'est pas une certification réelle.
-- **Attribution historique 8/24** reproduit uniquement les huit modules nommés dans le rapport cité ci-dessus; elle ne signifie pas que leurs tests ont été rejoués.
+- **Attribution historique 8/24** reproduit uniquement les huit modules nommés dans le rapport archivé ci-dessus; elle ne signifie pas que leurs tests ont été rejoués.
 - **Certification complète actuelle** exige une preuve vérifiable couvrant les contrôles fonctionnels, permissions, quotas et intégrations applicables. `—` signifie qu’aucune nouvelle preuve complète n’a été produite dans cette session.
 - **Intégré à Test-Replit** indique que le catalogue et du code associé sont présents sur la branche de base. Cela ne signifie ni que le module est complet ni que les changements locaux non fusionnés y sont présents.
 - **Prêt pour bêta 2.0** reste `À confirmer` tant que la certification complète et la disponibilité prévue ne sont pas établies.
 
 | # | Module | Attribution historique 8/24 | Développé | Parcours navigateur local | Certification complète actuelle | Intégré à Test-Replit | Prêt pour bêta 2.0 | État / preuve à suivre |
 |---:|---|---|---|---|---|---|---|---|
-| 1 | AI GBP Posting | — | Partiel | Non relancé | — | Oui | À confirmer | Publication Google réelle non certifiée. |
-| 2 | Behavioral AI | — | Partiel | Non relancé | — | Oui | À confirmer | Ne pas assimiler les données synthétiques à une validation sur données réelles. |
-| 3 | Revenue Leak AI | — | Partiel | Non relancé | — | Oui | À confirmer | Les estimations doivent rester fondées sur des données observées. |
-| 4 | AI Executive Reporting | — | Partiel | Non relancé | — | Oui | À confirmer | Les aperçus sans données ne montrent plus de chiffres synthétiques; personnalisation et planification restent à vérifier. |
-| 5 | AI Forecasting Engine | — | Partiel | Non relancé | — | Oui | À confirmer | Parcours et données réelles à certifier. |
-| 6 | AI Market Intelligence | — | Partiel | Non relancé | — | Oui | À confirmer | Source et actualité des données concurrentielles à certifier. |
-| 7 | CRM Integrations | — | Partiel | Non relancé | — | Oui | À confirmer | Connexion et synchronisation CRM réelles à valider. |
-| 8 | Keyword Domination Engine | — | Partiel | Non relancé | — | Oui | À confirmer | Différenciation et parcours complet à vérifier. |
-| 9 | Advanced SEO Lab | — | Partiel | Non relancé | — | Oui | À confirmer | Fonctionnalités ciblées à certifier sans relancer les anciens add-ons hors périmètre. |
-| 10 | Global Monitoring | — | Partiel | UI synthétique seulement — non compté | Non | Oui | Non | Inventaire Better Stack lu le 4 novembre : 1 monitor, aucun candidat explicitement QA/test/synthétique. Aucun propriétaire QA vérifiable; certification bloquée. |
-| 11 | SLA Monitoring Avancé | — | Partiel | Non relancé | — | Oui | À confirmer | Contrôles SLA réels à rattacher à une preuve. |
-| 12 | AI CRO Strategist | — | Partiel | Non relancé | — | Oui | À confirmer | Mesures et recommandations réelles à vérifier. |
-| 13 | AI Workspace Launch | — | Partiel | Non relancé | — | Oui | À confirmer | Parcours complet et effets persistés à certifier. |
-| 14 | SEO Content Decay Radar | — | Présent | Non relancé | — | Oui | À confirmer | Certification antérieure non répétée conformément à la consigne. |
-| 15 | Backlink Intelligence | — | Partiel | Non relancé | — | Oui | À confirmer | Qualité et provenance des données à certifier. |
-| 16 | Agency Reporting Packs | — | Partiel | Réussi — création, quota et refus viewer | Non | Oui — version de base; correctifs locaux en attente de PR | Non | API : audit appartenant à l'organisation obligatoire; pack atomique de trois rapports. Unit tests : 9 réussis. E2E local : 1 scénario réussi. CI #346 a révélé un fixture sans audit et deux assertions de traduction; corrections préparées, nouveau résultat CI requis. L'achat reste `coming_soon`. |
-| 17 | GBP Performance & Leads | Oui | Présent | 9 tests API/service réussis; pas de navigateur ni compte Google réel | — | Oui | À confirmer | Le fallback GBP avec valeurs d’aperçu a été retiré; le panneau réel reste alimenté par l’API. Aucune nouvelle certification complète ni donnée Google réelle revendiquée. |
+| 1 | AI GBP Posting | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 17 tests ciblés réussis; la publication reste simulée, aucun appel Google réel. |
+| 2 | Behavioral AI | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 10 tests service/session réussis sur des événements synthétiques; snippet et données d’un site réel non certifiés. |
+| 3 | Revenue Leak AI | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 4 tests de propriété et d’erreur réussis; détection sur des revenus observés non certifiée. |
+| 4 | AI Executive Reporting | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 3 tests ciblés réussis; planification, personnalisation et données externes restent à vérifier. |
+| 5 | AI Forecasting Engine | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 12 tests ciblés réussis; aucune donnée GA4 réelle utilisée. |
+| 6 | AI Market Intelligence | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 4 tests réussis sur des observations fournies; aucun fournisseur réel interrogé. |
+| 7 | CRM Integrations | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 11 tests réussis; ils confirment qu’aucune connexion ou synchronisation CRM réelle n’est revendiquée. |
+| 8 | Keyword Domination Engine | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 5 tests réussis sur des données de test; intégration de données réelles non certifiée. |
+| 9 | Advanced SEO Lab | — | Partiel | Non exécuté | — | Oui | À confirmer | Aucun fichier de test dédié identifié; aucune validation nouvelle. |
+| 10 | Global Monitoring | — | Partiel | E2E local fail-closed réussi — données fournisseur absentes | Non | Oui | Non | Campagne du 6 novembre : 18 tests ciblés et un E2E réussis; l’API renvoie 503/configured=false sans métrique fabriquée. Aucun monitor QA autorisé identifié; certification réelle bloquée et achat `coming_soon`. |
+| 11 | SLA Monitoring Avancé | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 1 test ciblé réussi; les tests Better Stack précédents étaient simulés, données fournisseur réelles non vérifiées. |
+| 12 | AI CRO Strategist | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 19 tests ciblés réussis; aucune certification de fournisseur réel. |
+| 13 | AI Workspace Launch | — | Partiel | E2E local réussi — stratégie persistée restaurée | — | Oui | À confirmer | Campagne du 6 novembre : 21 tests ciblés et un E2E réussis; données et IA de test, pas de service externe certifié. |
+| 14 | SEO Content Decay Radar | — | Présent | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 13 tests, dont PostgreSQL avec fixtures GSC synthétiques; connexion GSC réelle non vérifiée. |
+| 15 | Backlink Intelligence | — | Partiel | Non exécuté | — | Oui | À confirmer | Campagne du 6 novembre : 2 tests de normalisation réussis; aucun appel DataForSEO réel. |
+| 16 | Agency Reporting Packs | — | Présent | E2E local réussi — création, persistance, quota et refus viewer vérifiés | Oui | Non | Non — PR #346 ouverte | Une certification complète locale sur base PostgreSQL jetable : 10 tests ciblés et un E2E réussis; formulaire et sélection conservés après rechargement des rapports, quota refusé sans insertion partielle, viewer refusé en 403. La PR #346 contient maintenant les changements API et les dashboards source/export synchronisés; CI en cours sur ce commit. Le code n’est pas encore intégré à Test-Replit et l’achat reste `coming_soon`. |
+| 17 | GBP Performance & Leads | Oui | Présent | 9 tests API/service antérieurs; pas de navigateur ni compte Google réel | — | Oui | À confirmer | La PR #347 a fusionné la réparation idempotente du schéma vers Test-Replit; cela ne certifie ni une synchronisation Google réelle ni de nouvelles données GBP. |
 | 18 | Local Presence Optimizer | Oui | Présent | Non relancé | — | Oui | À confirmer | Validation historique selon la source citée; certification non rejouée. |
 | 19 | Local Landing Opportunities | Oui | Présent | Non relancé | — | Oui | À confirmer | Validation historique selon la source citée; certification non rejouée. |
 | 20 | Conversion Opportunity Engine | Oui | Présent | Non relancé | — | Oui | À confirmer | Validation historique selon la source citée; certification non rejouée. |
@@ -41,14 +41,14 @@ Le total historique **8/24** est attribué aux huit remplacements explicitement 
 
 ## Attribution historique des huit validations
 
-Le rapport archivé du 3 novembre nomme exactement les huit remplacements marqués `Oui` dans la matrice : GBP Performance & Leads, Local Presence Optimizer, Local Landing Opportunities, Conversion Opportunity Engine, SEO Change Impact, Agency Portfolio Priorities, Technical SEO Fix Verification et Organic Campaign Tracker. Il précise que cette validation antérieure n’a pas été rejouée et que le catalogue/test de code ne la remplace pas. Les nouveaux parcours Agency Reporting Packs et les tests synthétiques Global Monitoring ne sont pas ajoutés à ce total.
+Le rapport archivé du 3 novembre nomme exactement les huit remplacements marqués `Oui` dans la matrice : GBP Performance & Leads, Local Presence Optimizer, Local Landing Opportunities, Conversion Opportunity Engine, SEO Change Impact, Agency Portfolio Priorities, Technical SEO Fix Verification et Organic Campaign Tracker. Il précise que cette validation antérieure n’a pas été rejouée et que le catalogue/test de code ne la remplace pas. La nouvelle certification locale Agency Reporting Packs et les tests synthétiques Global Monitoring ne changent pas le total historique **8/24**.
 
 ## Résultat de cette mise à jour
 
-- Total conservé : **8/24 certifiés historiquement**, attribués aux huit lignes marquées `Oui`; aucune certification nouvelle ni double comptage.
-- Agency Reporting Packs : parcours local réussi; pas encore certifié complètement et toujours indisponible à l'achat.
-- GBP Performance & Leads : 9 tests API/service ciblés réussis; les valeurs d’aperçu inventées ne sont plus affichées en absence de données GBP réelles.
-- AI Executive Reporting : les insights, prévisions et scores synthétiques ne sont plus affichés sans données mesurées; la personnalisation et la planification restent à vérifier.
-- Global Monitoring : aucune ressource QA autorisée identifiée; procédure de création en QA préparée séparément, sans création externe.
-- La branche courante contient les correctifs Agency Packs, les états sans données des add-ons et la mise à jour de cette matrice; rien n'est fusionné.
-- Prochaine priorité après cette PR : **GBP Performance & Leads**, sur une branche/PR isolée.
+- Total historique conservé : **8/24**. Une certification complète locale supplémentaire est produite pour Agency Reporting Packs, sans modifier ni recompter l’attribution historique. Aucun scénario Playwright n’est compté comme un add-on à lui seul.
+- Campagne `--pending` du 6 novembre : 150 tests unitaires/service/PostgreSQL réussis sur 15 modules; trois E2E locaux réussis (Agency Reporting Packs, Global Monitoring en mode fail-closed, AI Workspace Launch). Les tests utilisent des données synthétiques et ne constituent pas 150 certifications. La commande termine avec le code 2 car Advanced SEO Lab n’a aucun test ciblé.
+- Agency Reporting Packs : base PostgreSQL locale jetable attestée; création et persistance des trois rapports, conservation du formulaire après rechargement, quota sans insertion partielle et refus viewer en 403 vérifiés. Une seule certification complète est revendiquée. Achat `coming_soon` maintenu jusqu’à intégration; la PR #346 ouverte contient maintenant les changements API et l’UI, et sa CI est en cours pour le dernier commit.
+- Global Monitoring : 18 tests ciblés et un E2E local réussis avec Better Stack absent; l’API renvoie 503/configured=false et l’interface n’affiche aucune métrique inventée. Aucun appel Better Stack ni changement de monitor; aucun monitor QA autorisé identifié, donc la certification fournisseur et l’achat restent bloqués.
+- AI Workspace Launch a aussi un E2E local de restauration de stratégie persistée. Les autres modules ont les nombres de tests ciblés indiqués dans leurs lignes; aucun fournisseur réel n’a été appelé. Advanced SEO Lab reste non vérifié faute de tests ciblés; aucune certification n’est revendiquée pour les autres modules.
+- Aucune modification Production, Stripe LIVE, DNS, monitor Better Stack ou protection GitHub n’a été effectuée. Aucune PR n’a été fusionnée. Le dernier commit de la PR #346 est publié; sa vérification CI est en cours.
+- Étapes restantes : ajouter une preuve ciblée pour Advanced SEO Lab avant de pouvoir faire passer toute la campagne `--pending`; obtenir un monitor QA préexistant et autorisé avant toute certification fournisseur Global Monitoring. Garder les huit validations historiques inchangées.

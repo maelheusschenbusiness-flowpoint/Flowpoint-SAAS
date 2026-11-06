@@ -2,6 +2,10 @@ import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { test, expect } from "@playwright/test";
+import {
+  getAddonCertDatabaseConfig,
+  getLocalAddonCertDatabaseConfig,
+} from "../../artifacts/api-server/tools/addon-cert-db-guard.mjs";
 
 const apiRequire = createRequire(new URL("../../artifacts/api-server/package.json", import.meta.url));
 const { Pool } = apiRequire("pg");
@@ -49,7 +53,17 @@ test.beforeAll(async () => {
   if (!databaseUrl || !expectedDb || !expectedHost || !mailDir || !process.env["ENABLE_TEST_MAILER"]) {
     throw new Error("Certification requires an attested disposable database and isolated test-mail transport.");
   }
-  if (new URL(databaseUrl).hostname !== expectedHost) throw new Error("Unexpected certification database host.");
+  const localOnly = process.env["FLOWPOINT_ADDON_CERT_LOCAL_ONLY"] === "1";
+  const certConfig = localOnly
+    ? getLocalAddonCertDatabaseConfig()
+    : getAddonCertDatabaseConfig();
+  if (localOnly) {
+    const e2eUrl = new URL(process.env["E2E_BASE_URL"] ?? "");
+    if (e2eUrl.protocol !== "http:" || e2eUrl.hostname !== "127.0.0.1") {
+      throw new Error("Refusing local certification: E2E_BASE_URL must use local HTTP on 127.0.0.1.");
+    }
+  }
+  if (certConfig.expectedDatabase !== expectedDb) throw new Error("Unexpected certification database name.");
   db = new Pool({ connectionString: databaseUrl });
   const identity = await db.query("SELECT current_database() AS database_name");
   const marker = await db.query(
@@ -219,7 +233,7 @@ test.afterAll(async () => {
   await db.end();
 });
 
-test("authentifie normalement et vérifie les droits historiques avec des données synthétiques tenant-isolées", async ({ page }) => {
+test("authentifie normalement et certifie les add-ons historiques avec des données synthétiques tenant-isolées", async ({ page }) => {
   const login = await page.request.post("/api/auth/login-request", { data: { email } });
   expect(login.ok()).toBe(true);
   const loginBody = await login.json();
@@ -313,6 +327,12 @@ async function signInToDashboard(page) {
     { timeout: 20_000 },
   );
   await page.waitForFunction(() => window.STATE?.loading === false, null, { timeout: 20_000 });
+  await page.waitForFunction(
+    ({ orgId, userId }) =>
+      localStorage.getItem("fp:last-account-id") === `${orgId}|${userId}`,
+    { orgId: me.orgId, userId: me.userId },
+    { timeout: 30_000 },
+  );
   return me;
 }
 
@@ -320,10 +340,65 @@ test("Agency Reporting Packs enforce the report quota atomically and deny viewer
   await signInToDashboard(page);
 
   await db.query("DELETE FROM reports WHERE org_id=$1", [orgA]);
-  const baselinePack = await page.request.post("/api/reports/agency-packs/generate", {
-    data: { clientName: "Quota baseline customer", auditId: auditAfterA },
+  await page.evaluate(() => window.navigate("reports"));
+  await page.waitForFunction(() => window.STATE?.route === "reports", null, { timeout: 20_000 });
+  const card = page.locator("section.fp-card").filter({ has: page.locator("#fp-agency-packs-result") });
+  const loadPacksButton = card.getByRole("button", { name: /Charger les packs|Actualiser les packs|Load packs/i });
+  await expect(loadPacksButton).toBeVisible();
+  expect(await page.evaluate(() => typeof window.FP_V1_ADDON_PANELS?.loadAgencyPacks)).toBe("function");
+  const packsResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs" &&
+    response.request().method() === "GET",
+    { timeout: 15_000 },
+  );
+  await loadPacksButton.evaluate(button => button.click());
+  const packsResponse = await packsResponsePromise;
+  expect(packsResponse.status()).toBe(200);
+  const loadedPacks = await packsResponse.json();
+  expect(loadedPacks.audits.map(audit => String(audit.id))).toContain(auditAfterA);
+  const result = page.locator("#fp-agency-packs-result");
+  await result.locator('input[type="text"]').fill("Quota baseline customer");
+  await result.locator("select").selectOption(auditAfterA);
+  const createButton = result.locator("button.fp-btn-primary").first();
+  const formState = await result.evaluate(element => ({
+    buttons: Array.from(element.querySelectorAll("button")).map(button => ({
+      text: button.textContent?.trim(),
+      disabled: button.disabled,
+    })),
+  }));
+  expect(formState.buttons[0]).toMatchObject({
+    text: expect.stringMatching(/Créer le pack complet|Create complete pack/i),
+    disabled: false,
   });
-  expect(baselinePack.status()).toBe(201);
+  const baselineResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/generate" &&
+    response.request().method() === "POST",
+  );
+  await createButton.click();
+  const baselineResponse = await baselineResponsePromise;
+  expect(baselineResponse.status()).toBe(201);
+  const baselineBundle = await baselineResponse.json();
+  expect(baselineBundle.verifiedCount).toBe(3);
+  expect(baselineBundle.reports).toHaveLength(3);
+  expect(new Set(baselineBundle.reports.map(report => report.template_key))).toEqual(
+    new Set(["executive", "seo", "local"]),
+  );
+  await expect(page.locator("#fp-toast-container .fp-toast.success").first())
+    .toContainText(/Pack créé|Pack created/i);
+  const persistedBaseline = await db.query(
+    `SELECT id,template_key,audit_id FROM reports
+      WHERE org_id=$1 AND name LIKE 'Quota baseline customer%'`,
+    [orgA],
+  );
+  expect(persistedBaseline.rows).toHaveLength(3);
+  expect(persistedBaseline.rows.map(row => row.audit_id)).toEqual([auditAfterA, auditAfterA, auditAfterA]);
+  expect(new Set(persistedBaseline.rows.map(row => row.template_key))).toEqual(
+    new Set(["executive", "seo", "local"]),
+  );
+  expect(new Set(persistedBaseline.rows.map(row => row.id))).toEqual(
+    new Set(baselineBundle.reports.map(report => report.id)),
+  );
+  await expect(result.locator('input[type="text"]')).toBeVisible({ timeout: 5_000 });
 
   const beforeQuota = await db.query(
     "SELECT COUNT(*)::int AS count FROM reports WHERE org_id=$1 AND created_at > date_trunc('month',now())",
@@ -349,19 +424,23 @@ test("Agency Reporting Packs enforce the report quota atomically and deny viewer
     );
     expect(Number(atQuota.rows[0]?.count)).toBe(28);
 
-    await page.evaluate(() => { window.location.hash = "#reports"; });
-    await page.waitForFunction(() => window.STATE?.route === "reports", null, { timeout: 20_000 });
-    const card = page.locator("section.fp-card").filter({ has: page.locator("#fp-agency-packs-result") });
-    await card.getByRole("button", { name: /Charger les packs|Load packs/i }).click();
-    const result = page.locator("#fp-agency-packs-result");
     await result.locator('input[type="text"]').fill("Quota blocked customer");
     await result.locator("select").selectOption(auditAfterA);
-    const createButton = result.locator("button.fp-btn-primary").first();
+    const refreshResponsePromise = page.waitForResponse(response =>
+      new URL(response.url()).pathname === "/api/reports" &&
+      response.request().method() === "GET",
+      { timeout: 15_000 },
+    );
+    await page.evaluate(() => window._fpReportsAPI.load({ force: true }));
+    expect((await refreshResponsePromise).status()).toBe(200);
+    await expect(result.locator('input[type="text"]')).toHaveValue("Quota blocked customer");
+    await expect(result.locator("select")).toHaveValue(auditAfterA);
+    await expect(createButton).toBeEnabled();
     const quotaResponse = page.waitForResponse(response =>
       new URL(response.url()).pathname === "/api/reports/agency-packs/generate" &&
       response.request().method() === "POST"
     );
-    await createButton.click();
+    await createButton.click({ timeout: 5_000 });
     expect((await quotaResponse).status()).toBe(402);
     await expect(page.locator("#fp-toast-container .fp-toast.error").first())
       .toContainText(/could not be created|n’a pas pu être créé/i);
@@ -371,6 +450,11 @@ test("Agency Reporting Packs enforce the report quota atomically and deny viewer
       [orgA],
     );
     expect(Number(quotaReports.rows[0]?.count)).toBe(0);
+    const countAfterRejectedPack = await db.query(
+      "SELECT COUNT(*)::int AS count FROM reports WHERE org_id=$1 AND created_at > date_trunc('month',now())",
+      [orgA],
+    );
+    expect(Number(countAfterRejectedPack.rows[0]?.count)).toBe(28);
   } finally {
     await db.query("DELETE FROM reports WHERE org_id=$1 AND name LIKE $2", [orgA, `${quotaPrefix}%`]);
   }
@@ -703,33 +787,29 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
       .sort(),
   ).toEqual(["executive", "local", "seo"]);
 
-  let betterStackEmptyStateResponseHit = false;
-  await page.route("**/api/betterstack/global-overview**", async route => {
-    betterStackEmptyStateResponseHit = true;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        configuredRegionCount: 0,
-        configuredMonitorCount: 0,
-        measurementScope: "none",
-        regionalChecksPerformed: false,
-        regions: [],
-        note: "No authorized monitoring regions are configured.",
-      }),
-    });
-  });
-  await goTo("monitors", "#fp-global-monitoring-result");
-  const globalMonitoringCard = page.locator("section.fp-card").filter({ has: page.locator("#fp-global-monitoring-result") });
-  const overviewResponse = page.waitForResponse(response =>
+});
+
+test("Global Monitoring fails closed without provider data and shows no fabricated metrics", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("monitors"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "monitors" && Boolean(document.querySelector("#fp-global-monitoring-result")),
+    null,
+    { timeout: 20_000 },
+  );
+
+  const card = page.locator("section.fp-card").filter({ has: page.locator("#fp-global-monitoring-result") });
+  const responsePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/betterstack/global-overview"
   );
-  await globalMonitoringCard.locator("button.fp-btn-ghost").first().click();
-  expect((await overviewResponse).status()).toBe(200);
-  expect(betterStackEmptyStateResponseHit).toBe(true);
-  const globalOverview = page.locator("#fp-global-monitoring-result");
-  await expect(globalOverview).toContainText(
-    /Aucune région de contrôle configurée dans Better Stack|No check regions are configured in Better Stack/i,
-  );
-  await expect(globalOverview).not.toContainText(/%/);
+  const loadOverviewButton = card.locator("button.fp-btn-ghost").first();
+  await expect(loadOverviewButton).toBeVisible();
+  await loadOverviewButton.evaluate(button => button.click());
+  const response = await responsePromise;
+  expect(response.status()).toBe(503);
+  expect(await response.json()).toMatchObject({ configured: false });
+
+  const result = page.locator("#fp-global-monitoring-result");
+  await expect(result).toContainText(/Impossible de charger les régions|Could not load regions/i);
+  await expect(result).not.toContainText(/99\.9|QA monitor|configuredRegionCount/i);
 });
