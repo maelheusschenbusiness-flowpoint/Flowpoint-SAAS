@@ -14,7 +14,7 @@
   window.FP_ADDON_RENDERERS = window.FP_ADDON_RENDERERS || {};
   window.FP_ADDON_RENDERERS.technicalSeoFixVerification = async function renderTechnicalSEOFixVerification(root) {
     if (!root) return;
-    const load = async (force = false) => {
+    const load = async () => {
       root.innerHTML = `<section class="fp-card" aria-labelledby="tsfv-title">
         <h2 id="tsfv-title" class="fp-card-title">${t("Vérification SEO technique")}</h2>
         <p>${t("Comparez le nombre total de problèmes entre deux audits terminés de la même URL.")}</p>
@@ -23,7 +23,7 @@
       </section>`;
       const state = root.querySelector("[data-tsfv-state]");
       try {
-        const data = await window.apiAction("GET", "/api/technical-seo-fix-verification", undefined, force ? { force: true } : {});
+        const data = await window.apiAction("GET", "/api/technical-seo-fix-verification");
         const audits = Array.isArray(data.audits) ? data.audits : [];
         const latest = audits[0];
         const baseline = latest && audits.find(audit =>
@@ -55,7 +55,7 @@
           const message = state.querySelector("[data-tsfv-message]");
           try {
             const response = await window.apiAction("POST", "/api/technical-seo-fix-verification/verify", values);
-            await load(true);
+            await load();
             const status = statusLabels[response.result?.status] || ["⚪", response.result?.status || ""];
             const output = root.querySelector("[data-tsfv-message]");
             if (output) {

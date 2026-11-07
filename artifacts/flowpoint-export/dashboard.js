@@ -1178,11 +1178,7 @@ async function apiAction(method, path, body, options = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await apiFetch(path, {
-        method,
-        body: body ? JSON.stringify(body) : undefined,
-        force: options.force === true,
-      });
+      const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
       const ms = Math.round(performance.now() - _t0);
       if(window.__DEV__) console.log('[FP_ACTION] method=' + method + ' route=' + path + ' status=ok ms=' + ms + ' attempt=' + attempt);
       return result;
@@ -1953,6 +1949,8 @@ function showFatalError(msg) {
 
 async function loadData(options = {}) {
   // ── Loading state: show skeleton immediately before any API call ──
+  STATE.dataLoadComplete = false;
+  STATE.reportsLoaded = false;
   STATE.loading = true;
   render();
   // Signal that loadData is running. Confirmation timers must not redirect
@@ -2224,6 +2222,7 @@ async function loadData(options = {}) {
   if ('reports' in _preloaded) {
     const _pRep = normArr(_preloaded.reports, 'reports');
     STATE.reports = (_pRep && _pRep.length > 0) ? _pRep : (PREVIEW_MODE ? MOCK_REPORTS : []);
+    STATE.reportsLoaded = true;
     // Also hydrate the Reports API module state so renderGA4Reports() doesn't re-fetch
     if (window._fpReportsState) {
       window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(_pRep) ? _pRep : [], error: null };
@@ -2302,7 +2301,7 @@ async function loadData(options = {}) {
   ]).then(function([_auRes, _moRes, _reRes, _teRes, _streaksRes, _contribRes]) {
     if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
     if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
-    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
+    if (_reRes.status === 'fulfilled') { reports  = _reRes.value; STATE.reportsLoaded = true; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
     if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/teams failed:', _teRes.reason?.message || _teRes.reason); }
     // Per-member streaks from the canonical user_activity_days table
     if (_streaksRes && _streaksRes.status === 'fulfilled' && _streaksRes.value && Array.isArray(_streaksRes.value.streaks)) {
@@ -2664,7 +2663,12 @@ async function loadData(options = {}) {
     'monitors:', STATE.monitors.length, 'missions:', (STATE.missions||[]).length,
     'keywords:', (STATE.keywords||[]).length, 'competitors:', (STATE.competitors||[]).length,
     'reports:', STATE.reports.length, 'activityEvents:', (STATE.activityEvents||[]).length);
-  render();
+  // Flush the final hydrated view before exposing the completion signal. The
+  // normal render() debounce can otherwise fire after an E2E action and replace
+  // UI state written into the old DOM node.
+  if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  _doRender();
+  STATE.dataLoadComplete = true;
 
   // ── Intelligence Engine: compute real insights from STATE data ───────────────
   if (typeof window.FP_DATA !== 'object' || window.FP_DATA === null) window.FP_DATA = {};
@@ -8831,7 +8835,16 @@ function renderReports() {
       { name: 'Montmartre',         vis: 44, prev: 38, kw: 6,  reviews: 4.6, comp: 'Tres fort',trend: +6, dominant: false },
       { name: 'Marais',             vis: 31, prev: 33, kw: 4,  reviews: 3.8, comp: 'Moyen',   trend: -2,  dominant: false },
     ] : []);
-    const gbpStats = Array.isArray(_lseo.gbpStats) ? _lseo.gbpStats : [];
+    const _gbpStatsRaw = _lseo.gbpStats && _lseo.gbpStats.length > 0 ? _lseo.gbpStats : null;
+    const _gbpStatsArePreview = !_gbpStatsRaw && PREVIEW_MODE;
+    const gbpStats = _gbpStatsRaw || (_gbpStatsArePreview ? [
+      { label: 'Appels depuis GBP',   val: 47,  trend: +12, unit: '',   color: '#22c55e' },
+      { label: 'Itineraires demandes',val: 134, trend: +28, unit: '',   color: '#2563EB' },
+      { label: 'Visites fiche',       val: 2840,trend: +21, unit: '',   color: '#8b5cf6' },
+      { label: 'Note moyenne',        val: 4.4, trend: +0.2,unit: '★', color: '#f59e0b' },
+      { label: 'Avis sans reponse',   val: 14,  trend: +5,  unit: '',   color: '#ef4444' },
+      { label: 'Photos publiées',     val: 8,   trend: +3,  unit: '',   color: '#8b5cf6' },
+    ] : []);
     return `
       ${aiBlock(PREVIEW_MODE
         ? fpT("Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>{label}</strong> peuvent menacer votre note moyenne.", { label: fpT('Avis sans réponse') })
@@ -8888,7 +8901,6 @@ function renderReports() {
 
       <!-- GBP PERFORMANCE -->
       ${renderGbpPerformanceAddon()}
-      ${gbpStats.length ? `
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">📍 ${fpT('Performance Google Business Profile')} — ${CUR_MONTH}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
@@ -8897,12 +8909,12 @@ function renderReports() {
             const nc = g.color === '#ef4444' ? '#ef4444' : '#22c55e';
             return `<div style="padding:14px;border-radius:10px;border:1px solid ${g.color}28;background:${g.color}07;text-align:center">
               <div style="font-size:22px;font-weight:800;color:${g.color};margin-bottom:4px">${g.val}${g.unit}</div>
-              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(g.label)}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(_gbpStatsArePreview ? fpT(g.label) : g.label)}</div>
               <div style="font-size:11px;font-weight:700;color:${nc}">${nt} vs M-1</div>
             </div>`;
           }).join('')}
         </div>
-      </div>` : ''}
+      </div>
     `;
   }
 
@@ -9147,8 +9159,9 @@ function _fpSafeColor(v) {
   // SUB: AI INSIGHTS REPORTING LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai') {
-    const _aiInsRaw = window.FP_DATA?.dataExplorer?.insights;
-    const aiInsights = Array.isArray(_aiInsRaw)
+    const _aiInsRaw = window.FP_DATA?.dataExplorer?.insights || null;
+    const aiInsightsArePreview = !_aiInsRaw && PREVIEW_MODE;
+    const aiInsights = _aiInsRaw
       ? _aiInsRaw.map(i=>({
           pri:i.priority||i.pri||'high',
           icon:i.icon||'💡',
@@ -9160,11 +9173,23 @@ function _fpSafeColor(v) {
           action:i.action||'Analyser',
           actionDefault:!i.action,
         }))
-      : [];
-    const forecast = [];
+      : (PREVIEW_MODE ? [
+          { pri: 'high', icon: '⚠️', cat: 'Conversion', title: 'Exemple — friction de conversion', body: 'Démo uniquement : les abandons de formulaire peuvent signaler un point de friction. Le revenu associé reste non mesuré sans données de commandes reliées.', action: 'Corriger le formulaire' },
+          { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
+          { pri: 'high',     icon: '📍', cat: 'Local SEO',   title: 'Opportunite Maps non capturee',          body: 'Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.',              action: 'Renforcer GBP'           },
+          { pri: 'high',     icon: '🔗', cat: 'Trafic',      title: 'Declin referents accelere',              body: 'Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.',             action: 'Analyser les referents'  },
+          { pri: 'positive', icon: '📈', cat: 'Croissance',  title: 'Acceleration trafic organique',          body: 'Le trafic organique a progresse de +130% en 8 mois — acceleration confirmee depuis mars. Le 15e arrondissement domine deja 4 mots-cles cles. Continuer sur cette lancee.',           action: 'Amplifier la strategie'  },
+        ] : []);
+    const forecast = [
+      { metric: 'Trafic M+3',    val: '+22%', conf: 78, color: '#2563EB', note: 'Avec maintien strategie SEO actuelle'     },
+      { metric: 'Conversion M+3',val: '+0.8%',conf: 64, color: '#22c55e', note: 'Si plan CRO mobile execute en juin'       },
+      { metric: 'Revenue M+3',   val: '+68%', conf: 71, color: '#8b5cf6', note: 'Combinaison trafic + conversion optimisee'},
+      { metric: 'Local SEO M+3',  val: '+31%', conf: 82, color: '#f59e0b', note: 'Si renforcement GBP confirme en juin'      },
+      { metric: 'Avis Google M+3', val: '+18',  conf: 74, color: '#06b6d4', note: 'Avec réponse systématique aux avis'         },
+    ].filter(() => PREVIEW_MODE);
     const insightDisplayText = (ins, field) => {
       const defaults = { cat: ins.catDefault, title: ins.titleDefault, action: ins.actionDefault };
-      return defaults[field] ? fpT(ins[field]) : ins[field];
+      return aiInsightsArePreview || defaults[field] ? fpT(ins[field]) : ins[field];
     };
     const priC = { critical: '#ef4444', high: '#f59e0b', medium: '#2563EB', positive: '#22c55e' };
     const priL = { critical: 'Critique', high: 'Priorité haute', medium: 'Moyen', positive: 'Positif' };
@@ -9172,7 +9197,15 @@ function _fpSafeColor(v) {
       ${isUltra
         ? aiBlock((()=>{
             const critCount = aiInsights.filter(i => i.pri === 'critical').length;
-            const avgScore = !PREVIEW_MODE && STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+            const avgScore = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+            if (PREVIEW_MODE) return fpT("Rapport IA généré automatiquement — <strong>{month}</strong>. {count} alertes critiques actives. Potentiel de revenus non capté : <strong>{amount}€/mois</strong>. Score de santé business : {score}/100 (+{delta} pts en 4 mois). Trajectoire : <strong>{trajectory}</strong>.", {
+              month: CUR_MONTH,
+              count: 2,
+              amount: '-3 800',
+              score: 72,
+              delta: 14,
+              trajectory: fpT('positive avec 2 risques à traiter en urgence'),
+            });
             const alerts = critCount > 0
               ? fpT('<strong>{count} alerte{plural} critique{plural} active{plural}</strong>.', { count: critCount, plural: critCount > 1 ? 's' : '' })
               : fpT('Aucune alerte critique active.');
@@ -9197,7 +9230,7 @@ function _fpSafeColor(v) {
       <div class="fp-stat-row fp-mb-20">
         ${statCard(fpT('Insights générés'), String(aiInsights.length), fpT('cette semaine'), 'neutral')}
         ${statCard(fpT('Alertes critiques'), String(aiInsights.filter(i => i.pri === 'critical').length), fpT('action immédiate'), 'down')}
-        ${statCard(fpT('Score business'), (()=>{ const _a = !PREVIEW_MODE && STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'—'); })(), fpT('score moyen portfolio'), 'neutral')}
+        ${statCard(fpT('Score business'), (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'72/100'); })(), fpT(PREVIEW_MODE ? '+14 pts — 4 mois' : 'score moyen portfolio'), 'neutral')}
         ${statCard(fpT('Prévisions actives'), String(forecast.length), fpT('horizon M+3'), 'neutral')}
       </div>
 
@@ -9205,10 +9238,10 @@ function _fpSafeColor(v) {
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('cpu').replace('stroke="currentColor"','stroke="#8b5cf6"')}
-          ${fpT('Insights IA')}
+          ${fpT('Insights IA — Rapport mai 2026')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${aiInsights.length ? aiInsights.map(ins => `
+          ${aiInsights.map(ins => `
             <div style="padding:14px;border-radius:10px;border:1px solid ${priC[ins.pri]}28;background:${priC[ins.pri]}07;border-left:3px solid ${priC[ins.pri]}">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -9219,12 +9252,27 @@ function _fpSafeColor(v) {
                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(insightDisplayText(ins, 'action'))}</button>
               </div>
               <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(insightDisplayText(ins, 'title'))}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(ins.body)}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(aiInsightsArePreview ? fpT(ins.body) : ins.body)}</div>
             </div>
-          `).join('') : `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:12px">${fpT('Données insuffisantes')}</div>`}
+          `).join('')}
         </div>
       </div>
-      `}
+
+      <!-- FORECASTS -->
+      <div class="fp-card">
+        <div class="fp-card-title" style="margin-bottom:14px">🔮 ${fpT('Prévisions IA — Horizon M+3 (Août 2026)')}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+          ${forecast.map(f => `
+            <div style="padding:16px;border-radius:12px;border:1px solid ${f.color}28;background:${f.color}08;text-align:center">
+              <div style="font-size:26px;font-weight:900;color:${f.color};margin-bottom:4px">${f.val}</div>
+              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(f.metric))}</div>
+              <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(fpT(f.note))}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Confiance IA :')} <strong style="color:${f.color}">${f.conf}%</strong></div>
+              <div class="fp-progress-track" style="height:4px;margin-top:6px"><div class="fp-progress-fill" style="width:${f.conf}%;background:${f.color}"></div></div>
+            </div>
+          `).join('')}
+        </div>`}
+      </div>
     `;
   }
 
@@ -24454,6 +24502,7 @@ function bindGlobalEvents() {
     "Notifié": "Notified",
     "Conforme": "Compliant",
     "Impossible de charger le rapport SLA Better Stack.": "Could not load the Better Stack SLA report.",
+    "Actualiser les packs": "Refresh packs",
     "Sélectionnez un audit": "Select an audit",
     "Lancez d’abord un audit pour générer les rapports.": "Run an audit first to generate the reports.",
     "SLA": "SLA",
@@ -73965,13 +74014,62 @@ function renderGlobalMonitoringPanel() {
 
 function renderAgencyPacksPanel() {
   if (!STATE.me?.addons?.agencyPacks) return '';
+  const panelState = window._fpAgencyPacksState || {};
+  const audits = Array.isArray(panelState.audits) ? panelState.audits : [];
+  const packs = Array.isArray(panelState.packs) ? panelState.packs : [];
+  const selectedAuditId = String(panelState.selectedAuditId || '');
+  const controls = panelState.loaded ? `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <input type="text" maxlength="160" aria-label="${fpT('Nom du client')}"
+        placeholder="${fpT('Nom du client pour le pack complet')}"
+        value="${escHtml(panelState.clientName || '')}"
+        oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('clientName',this.value)">
+      <select required aria-label="${fpT('Audit à inclure dans les rapports')}"
+        onchange="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('selectedAuditId',this.value)">
+        <option value="" disabled ${selectedAuditId ? '' : 'selected'}>${fpT('Sélectionnez un audit')}</option>
+        ${audits.map(audit => {
+          const id = String(audit.id || '');
+          const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
+            ? fpT('score indisponible')
+            : fpT('Score {score}', { score: audit.score });
+          const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString(getLocale()) : '';
+          const label = [audit.url || fpT('Site'), measuredScore, measuredDate].filter(Boolean).join(' · ');
+          return `<option value="${escHtml(id)}" ${id === selectedAuditId ? 'selected' : ''}>${escHtml(label)}</option>`;
+        }).join('')}
+      </select>
+      <button type="button" class="fp-btn fp-btn-primary fp-btn-sm"
+        onclick="window.FP_V1_ADDON_PANELS.createAgencyPack()"
+        ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le pack complet (3 rapports)')}</button>
+    </div>
+    ${!audits.length ? `<p class="fp-text-muted">${fpT('Lancez d’abord un audit pour générer les rapports.')}</p>` : ''}
+    ${packs.map((pack, index) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)">
+        <span>${escHtml(`${pack.name || ''} — ${pack.description || ''}`)}</span>
+        <button type="button" class="fp-btn fp-btn-primary fp-btn-sm"
+          data-fp-agency-pack-index="${index}"
+          onclick="window.FP_V1_ADDON_PANELS.createAgencySinglePack(this.dataset.fpAgencyPackIndex)"
+          ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le rapport')}</button>
+      </div>`).join('')}
+  ` : `<div class="fp-text-muted">${escHtml(panelState.error || (panelState.loading ? fpT('Chargement…') : fpT('Aucun pack chargé.')))}</div>`;
   return `<section class="fp-card" style="margin-top:18px">
     <div class="fp-card-header"><div><h2>${fpT('Packs de rapports d’agence')}</h2><p class="fp-text-muted">${fpT('Modèles réutilisables pour les rapports clients')}</p></div>
-      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()">${fpT('Charger les packs')}</button>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadAgencyPacks()"
+        ${panelState.loading ? 'disabled' : ''}>${panelState.loaded ? fpT('Actualiser les packs') : fpT('Charger les packs')}</button>
     </div>
-    <div id="fp-agency-packs-result" class="fp-text-muted">${fpT('Aucun pack chargé.')}</div>
+    <div id="fp-agency-packs-result">${controls}</div>
   </section>`;
 }
+
+window._fpAgencyPacksState = window._fpAgencyPacksState || {
+  loading: false,
+  loaded: false,
+  submitting: false,
+  packs: [],
+  audits: [],
+  clientName: '',
+  selectedAuditId: '',
+  error: '',
+};
 
 window.FP_V1_ADDON_PANELS = {
   async loadSla() {
@@ -74077,13 +74175,7 @@ window.FP_V1_ADDON_PANELS = {
         const health = region.health || {};
         const alerts = (health.down || 0) + (health.degraded || 0);
         const statusText = alerts > 0 ? fpT('{count} monitor(s) en alerte', {count:alerts}) : (health.unknown || 0) > 0 ? fpT('{count} statuts inconnus', {count:health.unknown}) : fpT('Aucun monitor en alerte');
-        const monitorDetails = region.monitors.map(m => {
-          const uptime = m.uptimePercentage !== null && m.uptimePercentage !== undefined && Number.isFinite(Number(m.uptimePercentage))
-            ? `${Number(m.uptimePercentage).toFixed(2)}%`
-            : '—';
-          return `${m.monitorName} (${m.status}; ${fpT('Disponibilité')}: ${uptime})`;
-        }).join(', ');
-        row.textContent = region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + monitorDetails;
+        row.textContent = region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ');
         target.appendChild(row);
       }
       const note = document.createElement('small');
@@ -74094,103 +74186,85 @@ window.FP_V1_ADDON_PANELS = {
     }
   },
   async loadAgencyPacks() {
-    const target = document.getElementById('fp-agency-packs-result');
-    if (!target) return;
-    target.textContent = fpT('Chargement…');
+    const panelState = window._fpAgencyPacksState;
+    if (panelState.loading) return;
+    panelState.loading = true;
+    panelState.error = '';
+    render();
     try {
       const result = await apiFetch('/api/reports/agency-packs');
-      target.replaceChildren();
-      const bundleControls = document.createElement('div');
-      bundleControls.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px';
-      const clientInput = document.createElement('input');
-      clientInput.type = 'text'; clientInput.maxLength = 160;
-      clientInput.placeholder = fpT('Nom du client pour le pack complet');
-      clientInput.setAttribute('aria-label', fpT('Nom du client'));
-      const auditSelect = document.createElement('select');
-      auditSelect.setAttribute('aria-label', fpT('Audit à inclure dans les rapports'));
-      auditSelect.required = true;
-      const auditPlaceholder = document.createElement('option');
-      auditPlaceholder.value = '';
-      auditPlaceholder.disabled = true;
-      auditPlaceholder.selected = true;
-      auditPlaceholder.textContent = fpT('Sélectionnez un audit');
-      auditSelect.appendChild(auditPlaceholder);
-      const audits = Array.isArray(result?.audits) ? result.audits : [];
-      for (const audit of audits) {
-        const option = document.createElement('option');
-        option.value = String(audit.id || '');
-        const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
-          ? fpT('score indisponible')
-          : fpT('Score {score}', { score: audit.score });
-        const measuredDate = audit.created_at ? new Date(audit.created_at).toLocaleDateString(getLocale()) : '';
-        option.textContent = [audit.url || fpT('Site'), measuredScore, measuredDate].filter(Boolean).join(' · ');
-        auditSelect.appendChild(option);
+      panelState.audits = Array.isArray(result?.audits) ? result.audits : [];
+      panelState.packs = Array.isArray(result?.packs) ? result.packs : [];
+      if (!panelState.audits.some(audit => String(audit.id || '') === panelState.selectedAuditId)) {
+        panelState.selectedAuditId = String(panelState.audits[0]?.id || '');
       }
-      if (audits.length) auditSelect.value = String(audits[0].id || '');
-      const bundleButton = document.createElement('button');
-      bundleButton.className = 'fp-btn fp-btn-primary fp-btn-sm';
-      bundleButton.textContent = fpT('Créer le pack complet (3 rapports)');
-      bundleButton.disabled = audits.length === 0;
-      bundleButton.addEventListener('click', async () => {
-        const clientName = clientInput.value.trim();
-        if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
-        if (!auditSelect.value) { showToast('error', fpT('Sélectionnez un audit')); return; }
-        bundleButton.disabled = true;
-        try {
-          const bundle = await apiFetch('/api/reports/agency-packs/generate', {
-            method: 'POST',
-            body: JSON.stringify({
-              clientName,
-              auditId: auditSelect.value || undefined,
-            }),
-          });
-          if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
-          const createdIds = Array.isArray(bundle.reports) ? bundle.reports.map(report => String(report.id || '')).filter(Boolean) : [];
-          if (createdIds.length !== 3) throw new Error('Les trois rapports persistés ne sont pas confirmés');
-          await window._fpReportsAPI.load({ force: true });
-          const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
-          if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
-          showToast('success', fpT('Pack créé : 3 rapports vérifiés pour {client}', { client: escHtml(clientName) }));
-          render();
-        } catch { showToast('error', fpT('Le pack complet n’a pas pu être créé')); bundleButton.disabled = false; }
-      });
-      bundleControls.append(clientInput, auditSelect, bundleButton);
-      target.appendChild(bundleControls);
-      if (!audits.length) {
-        const auditNotice = document.createElement('p');
-        auditNotice.className = 'fp-text-muted';
-        auditNotice.textContent = fpT('Lancez d’abord un audit pour générer les rapports.');
-        target.appendChild(auditNotice);
-      }
-      for (const pack of (result?.packs || [])) {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)';
-        const label = document.createElement('span');
-        label.textContent = `${pack.name} — ${pack.description}`;
-        const button = document.createElement('button');
-        button.className = 'fp-btn fp-btn-primary fp-btn-sm';
-        button.textContent = fpT('Créer le rapport');
-        button.disabled = audits.length === 0;
-        button.addEventListener('click', async () => {
-          if (!auditSelect.value) { showToast('error', fpT('Sélectionnez un audit')); return; }
-          button.disabled = true;
-          try {
-            const created = await window._fpReportsAPI.create({
-              name: pack.name,
-              templateKey: pack.templateKey,
-              format: 'PDF',
-              auditId: auditSelect.value,
-            });
-            if (!created?.id) throw new Error('Rapport non confirmé');
-            render();
-          } catch { showToast('error', fpT('Impossible de créer le rapport')); button.disabled = false; }
-        });
-        row.append(label, button);
-        target.appendChild(row);
-      }
-      if (!result?.packs?.length) target.textContent = fpT('Aucun pack disponible.');
+      panelState.loaded = true;
     } catch {
-      target.textContent = fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
+      panelState.error = fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
+      if (!panelState.loaded) panelState.loaded = false;
+    } finally {
+      panelState.loading = false;
+      render();
+    }
+  },
+  updateAgencyPackDraft(field, value) {
+    if (field !== 'clientName' && field !== 'selectedAuditId') return;
+    window._fpAgencyPacksState[field] = String(value || '');
+  },
+  async createAgencyPack() {
+    const panelState = window._fpAgencyPacksState;
+    const clientName = String(panelState.clientName || '').trim();
+    const auditId = String(panelState.selectedAuditId || '');
+    if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
+    if (!auditId || !panelState.audits.some(audit => String(audit.id || '') === auditId)) {
+      showToast('error', fpT('Sélectionnez un audit'));
+      return;
+    }
+    if (panelState.submitting) return;
+    panelState.submitting = true;
+    render();
+    try {
+      const bundle = await apiFetch('/api/reports/agency-packs/generate', {
+        method: 'POST',
+        body: JSON.stringify({ clientName, auditId }),
+      });
+      if (bundle?.verifiedCount !== 3) throw new Error('Pack incomplet');
+      const createdIds = Array.isArray(bundle.reports)
+        ? bundle.reports.map(report => String(report.id || '')).filter(Boolean)
+        : [];
+      if (createdIds.length !== 3) throw new Error('Les trois rapports persistés ne sont pas confirmés');
+      await window._fpReportsAPI.load({ force: true });
+      const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
+      if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
+      showToast('success', fpT('Pack créé : 3 rapports vérifiés pour {client}', { client: escHtml(clientName) }));
+    } catch {
+      showToast('error', fpT('Le pack complet n’a pas pu être créé'));
+    } finally {
+      panelState.submitting = false;
+      render();
+    }
+  },
+  async createAgencySinglePack(index) {
+    const panelState = window._fpAgencyPacksState;
+    const pack = panelState.packs[Number(index)];
+    const auditId = String(panelState.selectedAuditId || '');
+    if (!pack || !auditId) { showToast('error', fpT('Sélectionnez un audit')); return; }
+    if (panelState.submitting) return;
+    panelState.submitting = true;
+    render();
+    try {
+      const created = await window._fpReportsAPI.create({
+        name: pack.name,
+        templateKey: pack.templateKey,
+        format: 'PDF',
+        auditId,
+      });
+      if (!created?.id) throw new Error('Rapport non confirmé');
+    } catch {
+      showToast('error', fpT('Impossible de créer le rapport'));
+    } finally {
+      panelState.submitting = false;
+      render();
     }
   },
 };
