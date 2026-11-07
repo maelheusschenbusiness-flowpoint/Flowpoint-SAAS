@@ -333,14 +333,36 @@ window.fpLoadBacklinkHistory = async function(button) {
   }
   render();
 };
+let _fpBacklinkAuditLoad = null;
+async function fpResolveBacklinkDomain() {
+  if (!Array.isArray(STATE.audits) || STATE.audits.length === 0) {
+    if (!_fpBacklinkAuditLoad) {
+      _fpBacklinkAuditLoad = apiFetch('/api/audits')
+        .then(data => {
+          const audits = Array.isArray(data) ? data : Array.isArray(data?.audits) ? data.audits : [];
+          STATE.audits = audits;
+          return audits;
+        })
+        .finally(() => { _fpBacklinkAuditLoad = null; });
+    }
+    await _fpBacklinkAuditLoad;
+  }
+  try { return new URL(STATE.audits?.[0]?.url || '').hostname; }
+  catch (_) { return ''; }
+}
 window.fpLoadBacklinkSummary = async function(button) {
-  const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
   const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
-  if (!domain) return;
-  STATE.backlinks = { loading: true, domain, orgId };
+  STATE.backlinks = { loading: true, orgId };
   if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
   render();
   try {
+    const domain = await fpResolveBacklinkDomain();
+    if (!domain) {
+      STATE.backlinks = { available: false, domain: '', orgId, reason: 'no_audit' };
+      render();
+      return;
+    }
+    STATE.backlinks = { loading: true, domain, orgId };
     STATE.backlinks = await apiFetch('/api/seo/backlinks?domain=' + encodeURIComponent(domain));
     STATE.backlinks.domain = domain;
     STATE.backlinks.orgId = orgId;
@@ -23117,6 +23139,15 @@ function bindGlobalEvents() {
     "{count} opportunités identifiées": "{count} opportunities identified",
     "Analyse des fiches GBP…": "Analyzing GBP listings…",
     "Gérer les add-ons": "Manage add-ons",
+    "L’add-on Backlink Intelligence est nécessaire pour accéder à ces données.": "The Backlink Intelligence add-on is required to access this data.",
+    "DataForSEO n’est pas configuré pour cette organisation.": "DataForSEO is not configured for this organization.",
+    "Lancez un audit de site pour sélectionner le domaine à analyser.": "Run a site audit to choose a domain to analyze.",
+    "Domaine analysé :": "Analyzed domain:",
+    "Actualiser le résumé": "Refresh summary",
+    "Charger le résumé": "Load summary",
+    "Vos backlinks": "Your backlinks",
+    "Domaines référents": "Referring domains",
+    "total DataForSEO": "DataForSEO total",
     "Priorités calculées à partir des champs présents dans votre fiche GBP synchronisée.": "Priorities based on the fields in your synced GBP profile.",
     "Aucune fiche GBP synchronisée. Connectez Google Business Profile puis synchronisez vos fiches.": "No Google Business Profile is synced. Connect Google Business Profile, then sync your listings.",
     "{completed} critères renseignés sur {total}": "{completed} of {total} criteria completed",
@@ -58528,6 +58559,51 @@ function renderGrowth() {
 // ─────────────────────────────────────────────────────────────────
 // NEW PAGE: COMPETITOR INTELLIGENCE
 // ─────────────────────────────────────────────────────────────────
+function renderBacklinkDirectPanel() {
+  const orgId = String(STATE.me?.orgId || STATE.me?.organizationId || STATE.me?.org?.id || '');
+  const domain = (() => { try { return new URL(STATE.audits?.[0]?.url || '').hostname; } catch (_) { return ''; } })();
+  if (!STATE.me?.addons?.backlinkIntelligence) {
+    return `<div class="fp-card" style="max-width:720px">
+      <div class="fp-card-title">Backlink Intelligence</div>
+      <p style="color:var(--fp-text-muted)">${fpT('L’add-on Backlink Intelligence est nécessaire pour accéder à ces données.')}</p>
+      <button class="fp-btn fp-btn-secondary fp-btn-sm" onclick="navigate('billing')">${fpT('Gérer les add-ons')}</button>
+    </div>`;
+  }
+  const raw = STATE.backlinks;
+  const summary = raw?.orgId === orgId && (raw.loading || raw.domain === domain) ? raw : null;
+  const available = summary?.available === true;
+  const message = summary?.loading
+    ? fpT('Chargement…')
+    : summary?.reason === 'not_configured'
+      ? fpT('DataForSEO n’est pas configuré pour cette organisation.')
+      : summary?.reason === 'no_audit'
+        ? fpT('Lancez un audit de site pour sélectionner le domaine à analyser.')
+        : summary?.error
+          ? String(summary.error)
+          : !domain
+            ? fpT('Lancez un audit de site pour sélectionner le domaine à analyser.')
+            : available
+              ? ''
+              : fpT('Données indisponibles');
+
+  return `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title">Backlink Intelligence</div>
+      <div style="font-size:12px;color:var(--fp-text-muted);margin:8px 0 14px">
+        ${domain ? `${fpT('Domaine analysé :')} <strong>${escHtml(domain)}</strong>` : fpT('Lancez un audit de site pour sélectionner le domaine à analyser.')}
+      </div>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.fpLoadBacklinkSummary(this)" ${summary?.loading ? 'disabled' : ''}>
+        ${fpT(summary?.loading ? 'Chargement…' : available ? 'Actualiser le résumé' : 'Charger le résumé')}
+      </button>
+      ${message ? `<div role="status" style="margin-top:12px;font-size:12px;color:var(--fp-text-muted)">${escHtml(message)}</div>` : ''}
+    </div>
+    <div class="fp-stat-row fp-mb-20">
+      ${statCard(fpT('Vos backlinks'), displayStat(available ? summary.backlinks : null, null), available ? fpT('total DataForSEO') : fpT('Données indisponibles'), 'neutral')}
+      ${statCard(fpT('Domaines référents'), displayStat(available ? summary.referring_domains : null, null), available ? fpT('total DataForSEO') : fpT('Données indisponibles'), 'neutral')}
+    </div>`;
+}
+
+
 function renderCompetitor() {
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
@@ -58552,6 +58628,7 @@ function renderCompetitor() {
       available: fpT('Données disponibles'),
       unavailable: fpT('Données indisponibles'),
     }[status] || fpT('Données indisponibles'));
+    if (sub === 'backlinks') return renderBacklinkDirectPanel();
     // Persisted AI analyses are independent from provider metrics. Hydrate them
     // in every production competitor view, including the default list.
     competitors.forEach(c => {
