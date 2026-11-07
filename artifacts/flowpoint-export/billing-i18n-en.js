@@ -542,5 +542,7 @@ var FP_I18N_EN_BILLING = {
   "Sources concurrentielles à valider": "Competitor sources require validation.",
   "Validation du modèle requise": "Model validation required.",
   "Validation requise": "Validation required.",
+  "Générer des missions SEO": "Generate SEO missions",
+  "Génération de missions indisponible": "SEO mission generation unavailable.",
 };
 window.FP_I18N_EN_BILLING = FP_I18N_EN_BILLING;
