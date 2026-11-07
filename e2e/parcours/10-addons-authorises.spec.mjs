@@ -328,6 +328,11 @@ async function signInToDashboard(page) {
   );
   await page.waitForFunction(() => window.STATE?.loading === false, null, { timeout: 20_000 });
   await page.waitForFunction(
+    () => window.STATE?.dataLoadComplete === true && window.STATE?.reportsLoaded === true,
+    null,
+    { timeout: 30_000 },
+  );
+  await page.waitForFunction(
     ({ orgId, userId }) =>
       localStorage.getItem("fp:last-account-id") === `${orgId}|${userId}`,
     { orgId: me.orgId, userId: me.userId },
@@ -359,6 +364,15 @@ test("Agency Reporting Packs enforce the report quota atomically and deny viewer
   const result = page.locator("#fp-agency-packs-result");
   await result.locator('input[type="text"]').fill("Quota baseline customer");
   await result.locator("select").selectOption(auditAfterA);
+  const refreshResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports" &&
+    response.request().method() === "GET",
+    { timeout: 15_000 },
+  );
+  await page.evaluate(() => window._fpReportsAPI.load({ force: true }));
+  expect((await refreshResponsePromise).status()).toBe(200);
+  await expect(result.locator('input[type="text"]')).toHaveValue("Quota baseline customer");
+  await expect(result.locator("select")).toHaveValue(auditAfterA);
   const createButton = result.locator("button.fp-btn-primary").first();
   const formState = await result.evaluate(element => ({
     buttons: Array.from(element.querySelectorAll("button")).map(button => ({
