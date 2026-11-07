@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ensureGbpPerformanceSettingsSchema } from "../services/init-gbp-performance-settings.js";
 
 const google = vi.hoisted(() => ({
   getPerformance: vi.fn(),
@@ -221,6 +222,38 @@ suite("GBP Performance & Leads PostgreSQL-backed API certification", () => {
       resourceA,
       expect.objectContaining({ startTime: expect.any(String), endTime: expect.any(String) }),
     );
+  });
+
+  it("repairs an existing settings table idempotently without changing saved tenant data", async () => {
+    const before = await pool.query(
+      `SELECT org_id, settings FROM gbp_performance_settings
+       WHERE org_id = ANY($1::text[]) ORDER BY org_id`,
+      [[orgA, orgB]],
+    );
+    expect(before.rows).toHaveLength(2);
+
+    await ensureGbpPerformanceSettingsSchema(pool);
+    await ensureGbpPerformanceSettingsSchema(pool);
+
+    const after = await pool.query(
+      `SELECT org_id, settings FROM gbp_performance_settings
+       WHERE org_id = ANY($1::text[]) ORDER BY org_id`,
+      [[orgA, orgB]],
+    );
+    expect(after.rows).toEqual(before.rows);
+
+    const schema = await pool.query(
+      `SELECT c.relrowsecurity AS rls,
+              COUNT(p.policyname)::int AS policy_count
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       LEFT JOIN pg_policies p
+         ON p.schemaname = n.nspname AND p.tablename = c.relname
+        AND p.policyname LIKE 'gbp_performance_settings_tenant_%'
+       WHERE n.nspname = 'public' AND c.relname = 'gbp_performance_settings'
+       GROUP BY c.relrowsecurity`,
+    );
+    expect(schema.rows[0]).toMatchObject({ rls: true, policy_count: 4 });
   });
 
   it("persists owner settings and returns them on the next real database read", async () => {

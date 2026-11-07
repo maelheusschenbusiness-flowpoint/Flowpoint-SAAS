@@ -18,6 +18,7 @@ import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { reportSchemaGateStatus } from "./services/schema-gate-status.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
+import { ensureGbpPerformanceSettingsSchema } from "./services/init-gbp-performance-settings.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { startGBPPostScheduler } from "./services/gbp-posting-service.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
@@ -197,6 +198,17 @@ async function main() {
     // configure (cas constate en production le 13/10/2026).
     logger.info("[startup] table `audits` presente — init complet non rejoue (voir [schema-gate] pour l'etat reel de la porte)");
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
+    // initDataTables is intentionally skipped on this fast path. Keep this
+    // small add-on schema repair on every startup so a stale migration marker
+    // cannot leave GBP settings unavailable.
+    await runCriticalStartupStep("GBP performance settings schema", async () => {
+      const client = await pool.connect();
+      try {
+        await ensureGbpPerformanceSettingsSchema(client);
+      } finally {
+        client.release();
+      }
+    });
     // Always run phase1-users on fast-path: adds first_name/last_name/status columns.
     // NEVER fatal — a warning is enough; the inline self-heal in finalize-checkout is the real gate.
     try { await initPhase1Users(); } catch (_p1Err) {
