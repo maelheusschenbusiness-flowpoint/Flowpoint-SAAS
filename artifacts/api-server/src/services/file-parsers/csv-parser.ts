@@ -4,7 +4,8 @@
  * Handles:
  *   - Auto-detection of comma / semicolon / tab delimiter
  *   - BOM stripping
- *   - Formula cell neutralisation (=, +, -, @ prefixes prepended with ')
+ *   - Formula cell neutralisation (=, +, -, @, tab, CR prefixes prepended
+ *     with ' — except cells that are exactly a number, left as-is)
  *   - Row and column limits
  *   - Markdown table output
  *   - Empty-file detection
@@ -24,10 +25,16 @@ export interface CsvParseError {
   error: "ATTACHMENT_CSV_INVALID" | "ATTACHMENT_TABLE_EMPTY";
 }
 
-const FORMULA_PREFIX_RE = /^[=+\-@]/;
+const FORMULA_PREFIX_RE = /^[=+\-@\t\r]/;
+
+// A cell that is exactly a number — optional sign, digits, optional decimal
+// part with a dot or a comma — carries no formula: it must stay untouched,
+// otherwise -12.5 or +7 would reach the model as the text '-12.5.
+const NUMERIC_CELL_RE = /^[+-]?\d+(?:[.,]\d+)?$/;
 
 function neutralizeCell(raw: unknown): string {
   const s = String(raw ?? "");
+  if (NUMERIC_CELL_RE.test(s)) return s;
   return FORMULA_PREFIX_RE.test(s) ? "'" + s : s;
 }
 
