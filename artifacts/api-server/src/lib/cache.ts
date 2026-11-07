@@ -14,6 +14,8 @@ interface CacheEntry<T> {
 
 class TTLCache {
   private store = new Map<string, CacheEntry<unknown>>();
+  /** Loads in progress, keyed like the store: concurrent misses share one fetcher call. */
+  private inflight = new Map<string, Promise<unknown>>();
   private stats = { hits: 0, misses: 0, sets: 0, evictions: 0 };
   private sweepInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -57,9 +59,25 @@ class TTLCache {
   ): Promise<T> {
     const cached = this.get<T>(namespace, key);
     if (cached !== null) return cached;
-    const value = await fetcher();
-    this.set(namespace, key, value, ttlSeconds);
-    return value;
+
+    const cacheKey = `${namespace}:${key}`;
+    const inflight = this.inflight.get(cacheKey) as Promise<T> | undefined;
+    if (inflight) return inflight;
+
+    const load = (async () => {
+      const value = await fetcher();
+      this.set(namespace, key, value, ttlSeconds);
+      return value;
+    })();
+    this.inflight.set(cacheKey, load);
+
+    // On failure nothing is cached, so the next call fetches again.
+    const release = (): void => {
+      if (this.inflight.get(cacheKey) === load) this.inflight.delete(cacheKey);
+    };
+    load.then(release, release);
+
+    return load;
   }
 
   /** Invalidate a specific key */
