@@ -7,7 +7,11 @@ export function sanitizeFilename(raw: string): string {
 }
 
 export function extractExtension(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() ?? "";
+  // Un nom sans point (README, pdf), un nom cache (.env) ou un nom fini par un
+  // point (fichier.) n'ont pas d'extension : seul un point interne en delimite une.
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0 || dot === filename.length - 1) return "";
+  return filename.slice(dot + 1).toLowerCase();
 }
 
 export function buildExtToMimes(allowedMime: Record<string, string>): Record<string, string[]> {
