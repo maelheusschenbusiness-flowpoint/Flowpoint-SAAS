@@ -83,6 +83,7 @@ export const WRITE_ANY_ROLE_EXCEPTIONS: readonly WriteRouteRule[] = [
   { method: "POST", path: "/onboarding/complete", reason: "Fermeture de la visite guidee : sans cela elle reapparait a chaque connexion pour un viewer." },
   { method: "PATCH", path: "/me/prefs", reason: "Etat d'interface (serie, epingles, checklist). Les reglages d'organisation (`settings`, `statusPageUrl`) sont refuses aux viewers DANS la route." },
   { method: "POST", path: "/organizations/:id/switch", reason: "Changer d'organisation active : concerne la session de l'utilisateur, la route verifie l'appartenance." },
+  { method: "POST", path: "/auth/sessions/:id/revoke", reason: "Fin d'une session (#384) : tout utilisateur humain peut terminer SES sessions ; la route verifie la propriete (ou owner/admin de la meme organisation) et refuse les cles API." },
   { method: "POST", path: "/security/2fa/setup", reason: "Compte personnel ; stub 501 (2FA non implemente)." },
   { method: "POST", path: "/security/2fa/verify", reason: "Compte personnel ; stub 501 (2FA non implemente)." },
   // ── Webhooks entrants authentifies par jeton dedie ──────────────────────────

@@ -60,6 +60,7 @@ describe("classification de la politique d'ecriture", () => {
     ["GET", "/integrations/connections", "read"],
     ["HEAD", "/white-label/templates", "read"],
     ["POST", "/automation/workflows", "member"],
+    ["POST", "/auth/sessions/abc123/revoke", "any-role"], // #384 : un viewer peut terminer SES sessions
     ["DELETE", "/team/files/abc", "member"],
     ["POST", "/ai/chat", "any-role"],
     ["POST", "/ai/summary", "any-role"],

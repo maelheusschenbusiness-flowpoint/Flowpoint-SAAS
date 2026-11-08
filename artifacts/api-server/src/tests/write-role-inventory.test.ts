@@ -161,6 +161,7 @@ const EXPECTED_ANY_ROLE_ROUTES: string[] = [
   "POST /onboarding/complete",
   "PATCH /me/prefs",
   "POST /organizations/:id/switch",
+  "POST /auth/sessions/:id/revoke",
   "POST /security/2fa/setup",
   "POST /security/2fa/verify",
   "POST /integrations/webhook/incoming/:token",
