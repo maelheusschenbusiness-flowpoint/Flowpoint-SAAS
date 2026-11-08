@@ -8,6 +8,9 @@ import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../service
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
+import {
+  classifyStripeRetrieveError, isWellFormedCheckoutSessionId, resolveVerifiedPlan, sessionBelongsToOrg,
+} from "../services/billing-verify-guards.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
 import {
@@ -289,6 +292,10 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
 router.get("/billing/verify", async (req: Request, res: Response) => {
   const sessionId = String(req.query["session_id"] || "");
   if (!sessionId) { res.status(400).json({ error: "session_id required" }); return; }
+  if (!isWellFormedCheckoutSessionId(sessionId)) {
+    res.status(400).json({ error: "session_id invalide", code: "INVALID_SESSION_ID" });
+    return;
+  }
 
   const stripeKey = getStripeKey();
 
@@ -305,7 +312,27 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+    let session: Awaited<ReturnType<typeof stripe.checkout.sessions.retrieve>>;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+    } catch (retrieveErr) {
+      const failure = classifyStripeRetrieveError(retrieveErr);
+      // Cause journalisee sans donnee personnelle : type + code Stripe, jamais le message ni le session_id.
+      logger.warn({ stripeType: failure.stripeType, stripeCode: failure.stripeCode, httpStatus: failure.status, orgId: req.orgId ?? "default" },
+        "[Billing] verify: Stripe checkout session retrieve failed");
+      res.status(failure.status).json({ error: failure.error, code: failure.code });
+      return;
+    }
+
+    // ── Propriete de la session : AVANT toute lecture d'etat, ecriture ou broadcast ──
+    const orgIdVerify = req.orgId ?? "default";
+    const billingCtx = await loadBillingContext(orgIdVerify);
+    if (!sessionBelongsToOrg(session as never, orgIdVerify, billingCtx.stripeCustomerId)) {
+      logger.warn({ orgId: orgIdVerify, httpStatus: 403 },
+        "[Billing] Checkout verification rejected — session does not belong to the authenticated organization");
+      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation.", code: "SESSION_NOT_OWNED" });
+      return;
+    }
 
     if (session.payment_status !== "paid" && session.status !== "complete") {
       res.status(402).json({ error: "Payment not completed", status: session.status });
@@ -336,31 +363,6 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     const hasAiCreditPurchase = isAiCreditsOnly || aiCreditPacks.length > 0;
     const isAddonCheckout = !isAiCreditsOnly &&
       (checkoutType === "addon_only" || Boolean(sessionAddonKey));
-
-    const orgIdVerify = req.orgId ?? "default";
-    const billingCtx = await loadBillingContext(orgIdVerify);
-
-    // Bind the Stripe Checkout session to this authenticated organization
-    // before reporting or persisting any purchased entitlement.
-    const sessionOrgId = String(sessionMeta["orgId"] ?? "").trim();
-    const sessionCustomerId = typeof session.customer === "string"
-      ? session.customer
-      : session.customer && typeof session.customer === "object" && "id" in session.customer
-        ? String(session.customer.id)
-        : "";
-    const metadataOrgMatches = !!sessionOrgId && sessionOrgId === orgIdVerify;
-    const customerMatches = !!sessionCustomerId &&
-      !!billingCtx.stripeCustomerId &&
-      sessionCustomerId === billingCtx.stripeCustomerId;
-
-    if ((sessionOrgId && !metadataOrgMatches) ||
-        (sessionCustomerId && billingCtx.stripeCustomerId && !customerMatches) ||
-        (!metadataOrgMatches && !customerMatches)) {
-      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify },
-        "[Billing] Checkout verification rejected — session does not match authenticated organization");
-      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation." });
-      return;
-    }
 
     const requestedAddonKeys = Array.from(new Set([
       ...(sessionAddonKey && !isAiCreditsOnly ? [sessionAddonKey] : []),
@@ -452,10 +454,15 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       }
     }
 
-    const planMeta = (sessionMeta["selected_plan"] || sessionMeta["plan"] || "pro").toLowerCase();
-    if (["standard","pro","ultra"].includes(planMeta)) {
-      store.broadcastPlanUpdate(planMeta, orgIdVerify);
+    // Pas de plan par defaut : metadonnees absentes ou invalides => aucune ecriture, aucun broadcast.
+    const planMeta = resolveVerifiedPlan(sessionMeta);
+    if (!planMeta) {
+      logger.warn({ checkoutType, orgId: orgIdVerify, httpStatus: 422 },
+        "[Billing] verify: plan absent or invalid in session metadata — nothing persisted");
+      res.status(422).json({ ok: false, error: "Plan introuvable dans la session de paiement.", code: "PLAN_UNRESOLVED", checkoutType });
+      return;
     }
+    store.broadcastPlanUpdate(planMeta, orgIdVerify);
 
     let addonsMeta: Record<string, boolean | number> = {};
     try { addonsMeta = JSON.parse(sessionMeta["addons"] || "{}"); } catch {}
