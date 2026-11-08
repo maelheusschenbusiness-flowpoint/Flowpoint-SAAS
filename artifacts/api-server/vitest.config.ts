@@ -25,6 +25,7 @@ export default defineConfig({
       "src/routes/agency-portfolio-priorities.test.ts",
       "src/services/seo-change-impact.test.ts",
       "src/routes/seo-change-impact.test.ts",
+      "src/tests/seo-change-impact-cache.test.ts",
        "src/routes/keyword-domination-postgres.test.ts",
       "src/services/keyword-engine-sync.test.ts",
        "src/routes/ab-testing-postgres.test.ts",

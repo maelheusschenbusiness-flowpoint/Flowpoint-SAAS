@@ -20,11 +20,14 @@
     const state = root.querySelector("[data-sci-state]");
     if (!state) return;
 
-    const load = async () => {
+    const load = async (fresh = false) => {
       state.setAttribute("role", "status");
       state.textContent = t("Chargement des audits…");
       try {
-        const data = await window.apiAction("GET", "/api/seo-change-impact");
+        // apiAction caches GETs for 30 seconds. After saving settings, use a
+        // unique query key so the refreshed form reflects the committed values.
+        const refresh = fresh ? `?refresh=${Date.now()}` : "";
+        const data = await window.apiAction("GET", `/api/seo-change-impact${refresh}`);
         const settings = data.settings || {};
         const comparisons = Array.isArray(data.comparisons) ? data.comparisons : [];
         state.innerHTML = `<form data-sci-settings class="fp-grid fp-grid-2" aria-label="${esc(t("Paramètres de comparaison"))}">
@@ -61,7 +64,7 @@
           };
           try {
             await window.apiAction("PUT", "/api/seo-change-impact/settings", settingsUpdate);
-            await load();
+            await load(true);
             const savedMessage = state.querySelector("[data-sci-message]");
             if (savedMessage) {
               savedMessage.setAttribute("role", "status");
