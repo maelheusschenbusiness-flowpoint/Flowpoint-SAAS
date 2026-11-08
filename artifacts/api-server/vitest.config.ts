@@ -50,6 +50,7 @@ export default defineConfig({
       "src/routes/ai-workspace-launch-postgres.test.ts",
       "src/routes/gbp-performance-postgres.test.ts",
       "src/tests/workspace-launch-frontend.test.ts",
+      "src/tests/funnel-front-plan-direct.test.ts",
       "src/services/monitor-cron.test.ts",
       "src/routes/data-explorer.test.ts",
       "src/services/forecasting-service.test.ts",
