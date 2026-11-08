@@ -98,7 +98,9 @@ describe("GBP post studio API", () => {
     const response = await request(app).post("/gbp-posts/post-1/publish").send({});
 
     expect(response.status).toBe(422);
-    expect(response.body.error).toBe("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
+    // Contrat D-01 : { code stable, error = message FR affichable par l'UI } (le code brut n'est plus le message).
+    expect(response.body.code).toBe("GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH");
+    expect(response.body.error).toContain("ne prend pas en charge");
   });
 
   it("sanitizes unexpected publish failures", async () => {

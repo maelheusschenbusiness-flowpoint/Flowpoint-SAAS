@@ -76316,6 +76316,7 @@ window._fpRenderGBPPostsPanel = function() {
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
             <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString(getLocale()))}` : ''}</div>
+            ${post.status === 'failed' && post.last_error_message ? `<div role="alert" style="font-size:11px;color:var(--fp-danger);margin-top:5px">${escHtml(post.last_error_message)}</div>` : ''}
           </div>
           ${['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
           ${String(post.post_type || '').toLowerCase() === 'product' ? `<span title="Format non pris en charge par l’API Google connectée" style="font-size:10px;color:var(--fp-text-muted)">Brouillon seulement</span>` : ''}

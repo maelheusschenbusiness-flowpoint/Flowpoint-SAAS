@@ -2811,6 +2811,11 @@ export async function initDataTables(): Promise<void> {
         )
       `);
       await run(client, `CREATE INDEX IF NOT EXISTS gbp_posts_org_idx ON gbp_posts(org_id, created_at DESC)`);
+      // D-01 : raison explicite d'un échec de publication (code stable + message affichable en UI).
+      await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS last_error_code TEXT`);
+      await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS last_error_message TEXT`);
+      // Planificateur : lecture des posts programmés échus.
+      await run(client, `CREATE INDEX IF NOT EXISTS gbp_posts_due_idx ON gbp_posts(scheduled_at) WHERE status = 'scheduled'`);
       await applyTenantRls("gbp_posts");
 
       // ── dataforseo_quota (composite PK; no surrogate id) ────────────────────
