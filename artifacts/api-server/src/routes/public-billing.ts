@@ -13,14 +13,15 @@ import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import {
-  subscriptionAttemptKey,
-  claimSubscriptionCreation,
-  settleSubscriptionClaim,
-  waitForClaimedSubscription,
-  createWithIdempotency,
-  ensureClaimTable,
-  type ClaimOutcome,
-} from "../services/checkout-subscription-claim.js";
+  ensureSignupSubscriptions,
+  createSubscriptionForAttempt,
+  buildLineItems,
+  AI_CREDIT_PACKS,
+  type AddonsMap,
+} from "../services/signup-subscription.js";
+
+// Reexport : createSubscriptionForAttempt vivait ici (tests existants).
+export { createSubscriptionForAttempt };
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { lockSignupEmail, lockPendingSignup, resolveOwnerOrgId } from "../services/signup-activation-lock.js";
@@ -75,118 +76,7 @@ export function checkoutIdempotencyKey(parts: {
   return "fp_" + createHash("sha256").update(material).digest("hex").slice(0, 48);
 }
 
-type StripeClient = Awaited<ReturnType<typeof createStripeClient>>;
 
-/**
- * Cree l'abonnement d'une tentative de checkout — exactement une fois.
- *
- * Le garde par liste d'abonnements qui precede chaque appel reste en place ; il
- * attrape le cas sequentiel (rechargement de page, rejeu du webhook) et il ne
- * voit rien du cas concurrent. C'est cette fonction qui ferme la fenetre, avec
- * les deux barrieres decrites dans services/checkout-subscription-claim.ts :
- * le verrou PostgreSQL evite le second appel reseau, la cle d'idempotence
- * Stripe garantit qu'un second appel, s'il a lieu quand meme, renvoie le meme
- * abonnement au lieu d'en creer un autre.
- *
- * Rien ici ne peut faire echouer la finalisation : le client vient de payer.
- * Une base injoignable degrade vers « barriere Stripe seule », journalisee en
- * ERROR, et non vers un refus de service.
- */
-export async function createSubscriptionForAttempt(args: {
-  stripe: StripeClient;
-  intentId: string;
-  scope: string;
-  plan: string;
-  priceId: string;
-  orgRef: string | null;
-  params: Stripe.SubscriptionCreateParams;
-}): Promise<Stripe.Subscription> {
-  const attemptKey = subscriptionAttemptKey({
-    scope:    args.scope,
-    intentId: args.intentId,
-    plan:     args.plan,
-    priceId:  args.priceId,
-  });
-  const claimArgs = {
-    attemptKey,
-    intentId: args.intentId,
-    plan:     args.plan,
-    priceId:  args.priceId,
-    orgRef:   args.orgRef,
-  };
-
-  const { pool } = await import("@workspace/db");
-
-  const tryClaim = async (): Promise<ClaimOutcome | null> => {
-    try {
-      return await claimSubscriptionCreation(pool, claimArgs);
-    } catch (err) {
-      // 42P01 : deploiement anterieur a la migration — poser la table et reessayer.
-      if ((err as { code?: string } | null)?.code === "42P01") {
-        try {
-          await ensureClaimTable(pool);
-          return await claimSubscriptionCreation(pool, claimArgs);
-        } catch (healErr) {
-          logger.error({ healErr, scope: args.scope },
-            "[PublicBilling][P0] verrou d'abonnement indisponible (table absente) — barriere Stripe seule");
-          return null;
-        }
-      }
-      logger.error({ err, scope: args.scope },
-        "[PublicBilling][P0] verrou d'abonnement indisponible — barriere Stripe seule");
-      return null;
-    }
-  };
-
-  let claim: ClaimOutcome = (await tryClaim()) ?? { role: "owner", subscriptionId: null };
-
-  if (claim.role === "pending") {
-    // Un autre appel du meme checkout tient le bail : son resultat fait foi.
-    const waited = await waitForClaimedSubscription(pool, attemptKey).catch(() => null);
-    if (waited) {
-      claim = { role: "settled", subscriptionId: waited };
-    } else {
-      // Bail non conclu dans le delai : processus tue, requete abandonnee. On
-      // reprend — la cle d'idempotence Stripe empeche le doublon si l'autre
-      // appel avait deja cree l'abonnement sans pouvoir l'inscrire.
-      const retried = await tryClaim();
-      claim = retried && retried.role !== "pending" ? retried : { role: "takeover", subscriptionId: null };
-      logger.warn({ scope: args.scope, attemptKey, role: claim.role },
-        "[PublicBilling][P0] bail de creation non conclu — reprise sous cle d'idempotence Stripe");
-    }
-  }
-
-  if (claim.role === "settled" && claim.subscriptionId) {
-    logger.info({ scope: args.scope, subscriptionId: claim.subscriptionId, attemptKey },
-      "[PublicBilling][P0] abonnement deja cree pour cette tentative — reutilisation (aucun doublon)");
-    return await args.stripe.subscriptions.retrieve(claim.subscriptionId);
-  }
-
-  const created = await createWithIdempotency<Stripe.Subscription>(
-    (idempotencyKey) => args.stripe.subscriptions.create(args.params, { idempotencyKey }),
-    attemptKey
-  );
-
-  const winner = await settleSubscriptionClaim(pool, attemptKey, created.id).catch(() => null);
-  if (winner && winner !== created.id) {
-    // Les deux barrieres ont ete contournees (bases distinctes, cle divergente).
-    // L'abonnement de cet appel date de quelques secondes et ferait une seconde
-    // facturation : il est annule tout de suite, celui de la tentative reste.
-    logger.error({ scope: args.scope, duplicate: created.id, kept: winner, attemptKey },
-      "[PublicBilling][P0] ABONNEMENT EN DOUBLE DETECTE — annulation immediate du doublon");
-    try {
-      await args.stripe.subscriptions.cancel(created.id);
-    } catch (cancelErr) {
-      logger.error({ cancelErr, duplicate: created.id },
-        "[PublicBilling][P0] annulation du doublon IMPOSSIBLE — intervention manuelle requise");
-    }
-    return await args.stripe.subscriptions.retrieve(winner);
-  }
-
-  logger.info({ scope: args.scope, subscriptionId: created.id, attemptKey, role: claim.role },
-    "[PublicBilling][P0] abonnement cree une seule fois pour cette tentative");
-  return created;
-}
 
 /**
  * Turn a Stripe failure into something the page can act on — and nothing more.
@@ -436,7 +326,6 @@ router.post("/billing/quote", async (req: Request, res: Response): Promise<void>
   }
 });
 
-type AddonsMap = Record<string, boolean | number>;
 
 // ── Input validation helpers (mirrors billing.ts) ─────────────────────────────
 const ALLOWED_PLANS_PUB    = new Set<string>(["standard", "pro", "ultra"]);
@@ -567,68 +456,6 @@ async function resolveSubscriberPlan(req: Request): Promise<string | undefined> 
   }
 }
 
-/* Add-ons that are one-time purchases (not subscription items) */
-const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
-
-/* PLAN_INCLUDED_ADDONS imported from plans.ts — do NOT duplicate here */
-
-function buildLineItems(
-  plan: string,
-  addons: AddonsMap,
-): {
-  subscriptionItems: Array<{ price: string; quantity: number }>;
-  oneTimeItems: Array<{ price: string; quantity: number }>;
-  checkoutType: string;
-} {
-  const included = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set();
-  const subscriptionItems: Array<{ price: string; quantity: number }> = [];
-  const oneTimeItems: Array<{ price: string; quantity: number }> = [];
-
-  /* Plan */
-  const planPriceId = getPlanPriceId(plan);
-  if (plan && !planPriceId) throw new Error("MISSING_PRICE_ID");
-  if (planPriceId) subscriptionItems.push({ price: planPriceId, quantity: 1 });
-
-  /* Resolve the Stripe key once so getAddonPriceId() can prefer test-mode overrides */
-  const _stripeKeyForPrices = (() => { try { return getStripeKey() ?? ""; } catch { return ""; } })();
-
-  /* Monthly flag add-ons */
-  for (const key of FLAG_ADDONS) {
-    if (!addons[key]) continue;
-    if (included.has(key)) continue; /* skip included */
-    if (AI_CREDIT_PACKS.has(key)) continue;
-    const priceId = getAddonPriceId(key, _stripeKeyForPrices);
-    if (!priceId) throw new Error("MISSING_PRICE_ID");
-    subscriptionItems.push({ price: priceId, quantity: 1 });
-  }
-
-  /* Qty add-ons */
-  for (const key of QTY_ADDONS) {
-    const qty = Number(addons[key] || 0);
-    if (qty <= 0) continue;
-    if (AI_CREDIT_PACKS.has(key)) {
-      /* One-time */
-      const priceId = getAddonPriceId(key, _stripeKeyForPrices);
-      if (!priceId) throw new Error("MISSING_PRICE_ID");
-      oneTimeItems.push({ price: priceId, quantity: qty });
-    } else {
-      const priceId = getAddonPriceId(key, _stripeKeyForPrices);
-      if (!priceId) throw new Error("MISSING_PRICE_ID");
-      subscriptionItems.push({ price: priceId, quantity: qty });
-    }
-  }
-
-  const hasPlan  = !!planPriceId;
-  const hasOneTime = oneTimeItems.length > 0;
-  const hasMonthly = subscriptionItems.filter(i => i.price !== planPriceId).length > 0;
-
-  let checkoutType: string;
-  if (hasPlan) checkoutType = "subscription";
-  else if (hasOneTime && !hasMonthly) checkoutType = "ai_credits_only";
-  else checkoutType = "addon_only";
-
-  return { subscriptionItems, oneTimeItems, checkoutType };
-}
 
 /**
  * Les etapes navigateur qui deviennent un jalon Conversion B. `landing_vue` vient
@@ -2534,160 +2361,47 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       }).catch(() => {});
     }
 
-    /* ── 3a. Plan subscription — trial only for confirmed first-time subscribers ── */
+    /* ── 3a/3b. Plan + add-on subscriptions — code partage avec le webhook ─────
+       A-09 : le webhook setup_intent/payment_intent.succeeded cree ces memes
+       abonnements (services/signup-subscription.ts) avec la meme cle
+       d'idempotence ; finalize ne cree donc jamais un doublon et reprend
+       l'abonnement deja cree quand le webhook est passe avant lui. */
     const planPriceId = getPlanPriceId(planKey);
     if (!planPriceId) {
       res.status(400).json({ error: "Plan introuvable dans Stripe." });
       return;
     }
-
-    // Grant trial when there is no prior subscription history AND the intent carries trial days > 0.
-    // When trial_days_remaining === 0 the user's trial has already expired — bill immediately.
-    const grantTrial = !hasSubscriptionHistory && intentTrialDays > 0;
-    // Ancre deterministe (cf. intentCreatedUnix) : l'essai part de la tentative
-    // de checkout, pas de l'instant ou ce processus-ci execute la ligne. L'ecart
-    // est le temps de saisie de la carte ; en echange, deux appels concurrents
-    // produisent un corps de requete identique, condition de l'idempotence Stripe.
-    const _fcAttemptAnchorUnix = intentCreatedUnix ?? Math.floor(Date.now() / 1000);
-    const trialEndUnix = grantTrial ? _fcAttemptAnchorUnix + intentTrialDays * 86400 : undefined;
-    logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
-
-    // ── P1-5 + P0: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
-    // P0 fix (2026-08-16): the previous guard filtered by `price: planPriceId` only,
-    // which allowed a SECOND subscription to be created when the customer already had
-    // an active/trialing subscription for a DIFFERENT plan (e.g., a Pro trialing sub
-    // created 43 min earlier via another checkout session with the same pre_register_token).
-    // Now we check ALL active/trialing subscriptions for the customer and block with 409
-    // when a different-plan subscription exists, preventing a double billing scenario.
-    let planSubscription: Awaited<ReturnType<typeof stripe.subscriptions.create>>;
-    {
-      const _allSubs = await stripe.subscriptions.list({
-        customer: customerId!,
-        status:   "all",
-        limit:    10,
+    const _fcSubs = await ensureSignupSubscriptions({
+      stripe,
+      intentId,
+      planKey,
+      addons:                 addonsResolved,
+      intentMeta,
+      intentCreatedUnix,
+      customerId:             customerId!,
+      paymentMethodId:        paymentMethodId!,
+      hasSubscriptionHistory,
+      orgRef:                 _authenticatedOrgId,
+      preRegisterToken,
+      sellerCode:             _fcSellerCode,
+      caller:                 "finalize",
+    });
+    if (_fcSubs.kind === "conflict") {
+      res.status(409).json({
+        error:   "account_already_subscribed",
+        message: "Ce compte possède déjà un abonnement actif. Connectez-vous pour gérer votre plan.",
       });
-      const _activeOrTrialing = _allSubs.data.filter(
-        (s: Stripe.Subscription) =>
-          (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
-          !s.cancel_at_period_end
-      );
-      // Observability — log subscription state before idempotency decision so that
-      // payment-intent customerId and finalize-checkout customerId can be correlated.
-      logger.info({
-        customerId,
-        planKey,
-        planPriceId,
-        totalSubsFetched:  _allSubs.data.length,
-        activeOrTrialing:  _activeOrTrialing.length,
-        activeSubSummary:  _activeOrTrialing.map((s: Stripe.Subscription) => ({
-          id:      s.id,
-          status:  s.status,
-          priceId: s.items.data[0]?.price.id ?? null,
-        })),
-        preRegisterToken: preRegisterToken ? preRegisterToken.slice(0, 8) + "…" : null,
-      }, "[PublicBilling] finalize: sub state before idempotency check");
-
-      const _samePlanReusable = _activeOrTrialing.find(
-        (s: Stripe.Subscription) => s.items.data.some((item: Stripe.SubscriptionItem) => item.price.id === planPriceId)
-      );
-
-      if (_samePlanReusable) {
-        // Reuse — avoid duplicate subscription on page refresh / double-click
-        logger.info({ subscriptionId: _samePlanReusable.id, planKey, customerId },
-          "[PublicBilling] finalize: reusing existing plan subscription (idempotent)");
-        planSubscription = _samePlanReusable as typeof planSubscription;
-      } else if (_activeOrTrialing.length > 0) {
-        // P0: customer already has an active/trialing subscription for a DIFFERENT plan.
-        // Creating a second subscription would charge the customer twice. Block immediately.
-        const _conflict = _activeOrTrialing[0]!;
-        logger.error(
-          {
-            conflictSubId:     _conflict.id,
-            conflictStatus:    _conflict.status,
-            conflictPriceId:   _conflict.items.data[0]?.price.id,
-            newPlan:           planKey,
-            customerId,
-            orgId:             _authenticatedOrgId,
-            preRegisterToken,
-          },
-          "[PublicBilling][P0] DUPLICATE SUBSCRIPTION BLOCKED — customer already has active/trialing subscription for a different plan"
-        );
-        res.status(409).json({
-          error:   "account_already_subscribed",
-          message: "Ce compte possède déjà un abonnement actif. Connectez-vous pour gérer votre plan.",
-        });
-        return;
-      } else {
-        // P0 anti-double-facturation : la lecture ci-dessus ne protege que le cas
-        // sequentiel. Trois appels simultanes la franchissent tous les trois.
-        planSubscription = await createSubscriptionForAttempt({
-          stripe,
-          intentId: intentId,
-          scope:    "plan",
-          plan:     planKey,
-          priceId:  planPriceId,
-          orgRef:   _authenticatedOrgId,
-          params: {
-            customer:               customerId!,
-            items:                  [{ price: planPriceId, quantity: 1 }],
-            ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
-            default_payment_method: paymentMethodId,
-            metadata: {
-              plan:           planKey,
-              source:         "checkout_payment",
-              flowpoint_cart: "true",
-              org_id:         _authenticatedOrgId,
-              orgId:          _authenticatedOrgId,
-              ...(_fcSellerCode ? { seller_id: _fcSellerCode, seller_attribution: "ref_link" } : {}),
-              ...(preRegisterToken || intentMeta["pre_register_token"]
-                ? { pre_register_token: preRegisterToken || intentMeta["pre_register_token"] }
-                : {}),
-              ...metadataAttributionFunnel(
-                intentMeta["fp_analytics_consent"],
-                intentMeta["fp_visitor_id"],
-                intentMeta["fp_source"],
-              ),
-            },
-          },
-        });
-      }
+      return;
     }
-
-    /* ── 3b. Add-on subscription — independent of trial ──────────────────
-       Add-ons were already charged immediately via PaymentIntent (month 1).
-       We create a recurring subscription that starts billing at month 2
-       (trial_end = now + 30 days) so the customer is never double-charged.
-    ────────────────────────────────────────────────────────────────────── */
-    const { subscriptionItems } = buildLineItems(planKey, addonsResolved);
-    const addonItems = subscriptionItems.filter(i => i.price !== planPriceId);
-
-    let addonSubscriptionId: string | null = null;
-    if (addonItems.length > 0) {
-      // Meme ancre deterministe que l'essai du plan : le corps de la requete doit
-      // etre identique d'un appel concurrent a l'autre.
-      const thirtyDaysFromNow = _fcAttemptAnchorUnix + 30 * 24 * 60 * 60;
-      const addonSub = await createSubscriptionForAttempt({
-        stripe,
-        intentId: intentId,
-        scope:    "plan_addons",
-        plan:     planKey,
-        priceId:  addonItems.map(i => String(i.price)).sort().join("+"),
-        orgRef:   _authenticatedOrgId,
-        params: {
-          customer:               customerId!,
-          items:                  addonItems,
-          trial_end:              thirtyDaysFromNow,   /* skip first 30d — already paid via PI */
-          default_payment_method: paymentMethodId,
-          metadata: {
-            plan:           planKey,
-            addons:         JSON.stringify(addonsResolved),
-            source:         "checkout_payment_addons",
-            flowpoint_cart: "true",
-          },
-        },
-      });
-      addonSubscriptionId = addonSub.id;
-    }
+    const planSubscription = _fcSubs.planSubscription;
+    const addonSubscriptionId = _fcSubs.addonSubscriptionId;
+    // L'abonnement peut avoir ete cree par le webhook : l'etat persiste est celui
+    // de l'abonnement REEL (statut, fin d'essai), pas celui qu'une relecture de
+    // l'historique du client (qui voit deja l'abonnement du webhook) laisserait deviner.
+    const _fcSubTrialEnd = typeof (planSubscription as { trial_end?: number | null }).trial_end === "number"
+      ? (planSubscription as { trial_end?: number | null }).trial_end as number : null;
+    const grantTrial = planSubscription.status === "trialing" || (_fcSubs.grantTrial && !planSubscription.status);
+    const trialEndUnix: number | undefined = _fcSubTrialEnd ?? _fcSubs.trialEndUnix;
 
     logger.info(
       { plan: planKey, planSubscriptionId: planSubscription.id, addonSubscriptionId, customerId },

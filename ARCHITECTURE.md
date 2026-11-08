@@ -1223,3 +1223,11 @@ POST /api/ai/chat (SSE)
 | 6 | Agents IA visuellement distincts | Les agents SEO/Local/Concurrents sont le même endpoint avec prompts différents, pas de vraie spécialisation |
 | 7 | dashboard.js + fp-backend.js loadent Maps | Double injection Google Maps JS — guard de déduplication ajouté (`maps-double-injection.md`) |
 | 8 | `confirmationLevel: "preview"` sur create_mission | Le modèle demande confirmation avant d'appeler l'outil, au lieu de l'appeler et laisser le système gérer la confirmation |
+
+
+## Essai et souscription (A-09)
+
+La souscription d'essai est creee par le webhook `setup_intent.succeeded` / `payment_intent.succeeded` ET par
+`finalize-checkout`, via le code commun `services/signup-subscription.ts` (cle d'idempotence partagee, jamais de doublon).
+L'organisation n'est `trialing` qu'avec une souscription connue, sinon `pending_billing`. Detail, chronologies et
+rattrapage : `docs/ESSAI-SANS-NAVIGATEUR-A09.md`.

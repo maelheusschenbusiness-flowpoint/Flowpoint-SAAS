@@ -242,15 +242,22 @@ describe("garde de regression — corps de requete deterministe", () => {
   it("l'essai est ancre sur l'intent Stripe, pas sur Date.now()", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
+    // A-09 : la creation vit desormais dans services/signup-subscription.ts,
+    // partagee par finalize-checkout et le webhook de l'intent.
+    const svc = fs.readFileSync(
+      path.join(import.meta.dirname ?? __dirname, "..", "services", "signup-subscription.ts"),
+      "utf8"
+    );
+    expect(svc).toContain("const anchorUnix = args.intentCreatedUnix ?? Math.floor(Date.now() / 1000);");
+    expect(svc).toContain("const trialEndUnix = grantTrial ? anchorUnix + intentTrialDays * 86400 : undefined;");
+    // Les deux creations du parcours (plan, add-ons) passent par le verrou.
+    expect((svc.match(/createSubscriptionForAttempt\(\{/g) ?? []).length).toBe(2);
     const src = fs.readFileSync(
       path.join(import.meta.dirname ?? __dirname, "public-billing.ts"),
       "utf8"
     );
-    expect(src).toContain("const _fcAttemptAnchorUnix = intentCreatedUnix ?? Math.floor(Date.now() / 1000);");
-    expect(src).toContain("const trialEndUnix = grantTrial ? _fcAttemptAnchorUnix + intentTrialDays * 86400 : undefined;");
-    // Les trois creations d'abonnement du parcours passent par le verrou.
-    const guarded = src.match(/createSubscriptionForAttempt\(\{/g) ?? [];
-    expect(guarded.length).toBe(3);
+    // Reste dans public-billing : l'abonnement d'add-on d'un abonne existant.
+    expect((src.match(/createSubscriptionForAttempt\(\{/g) ?? []).length).toBe(1);
     // Aucune creation directe ne subsiste dans finalize-checkout.
     const finalizeStart = src.indexOf('router.post("/public/finalize-checkout"');
     expect(finalizeStart).toBeGreaterThan(0);
