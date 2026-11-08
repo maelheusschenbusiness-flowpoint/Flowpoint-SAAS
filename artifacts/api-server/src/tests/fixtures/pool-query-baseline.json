@@ -70,8 +70,8 @@
       "noOrg": 2
     },
     "routes/auth.ts": {
-      "total": 20,
-      "noOrg": 17
+      "total": 22,
+      "noOrg": 18
     },
     "routes/client-mode.ts": {
       "total": 1,
@@ -126,7 +126,7 @@
       "noOrg": 1
     },
     "routes/local-maps.ts": {
-      "total": 7,
+      "total": 8,
       "noOrg": 6
     },
     "routes/location.ts": {
@@ -170,7 +170,7 @@
       "noOrg": 0
     },
     "routes/security.ts": {
-      "total": 1,
+      "total": 3,
       "noOrg": 1
     },
     "routes/seo.ts": {
@@ -233,6 +233,10 @@
       "total": 13,
       "noOrg": 7
     },
+    "services/automation-triggers.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
     "services/betterstack-service.ts": {
       "total": 7,
       "noOrg": 4
@@ -286,8 +290,8 @@
       "noOrg": 2
     },
     "services/gbp-posting-service.ts": {
-      "total": 9,
-      "noOrg": 4
+      "total": 12,
+      "noOrg": 6
     },
     "services/github-service.ts": {
       "total": 4,
@@ -350,7 +354,7 @@
       "noOrg": 6
     },
     "services/local-maps-service.ts": {
-      "total": 10,
+      "total": 11,
       "noOrg": 4
     },
     "services/market-intel-service.ts": {
