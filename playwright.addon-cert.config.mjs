@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e/parcours",
-  testMatch: "10-addons-authorises.spec.mjs",
+  testMatch: ["10-addons-authorises.spec.mjs", "advanced-seo-lab.spec.mjs", "backlink-intelligence.spec.mjs"],
   globalSetup: undefined,
   retries: 0,
   workers: 1,
@@ -12,6 +12,9 @@ export default defineConfig({
   use: {
     baseURL: process.env["E2E_BASE_URL"] ?? "http://127.0.0.1:8083",
     ...devices["Desktop Chrome"],
+    launchOptions: process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE"]
+      ? { executablePath: process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE"] }
+      : undefined,
     locale: "fr-FR",
     timezoneId: "Europe/Brussels",
   },
