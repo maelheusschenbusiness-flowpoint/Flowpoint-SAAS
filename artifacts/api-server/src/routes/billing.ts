@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
@@ -365,10 +365,46 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       return;
     }
 
-    const planMeta = (sessionMeta["selected_plan"] || sessionMeta["plan"] || "pro").toLowerCase();
-    if (["standard","pro","ultra"].includes(planMeta)) {
-      store.broadcastPlanUpdate(planMeta, orgIdVerify);
+    // Only a subscription-mode plan checkout may change the organization's plan.
+    // Add-on and credit purchases are applied by the webhook; never infer a plan.
+    const sessionAddonKey = String(sessionMeta["addonKey"] ?? "").trim();
+    const isNonPlanCheckout =
+      checkoutType === "addon_only" ||
+      !!sessionAddonKey ||
+      AI_CREDIT_PACK_KEYS.has(String(sessionMeta["pack"] ?? "").trim()) ||
+      session.mode !== "subscription";
+    if (isNonPlanCheckout) {
+      logger.info({ checkoutType, sessionId, orgId: orgIdVerify }, "[Billing] Non-plan checkout verified — plan unchanged");
+      res.json({ ok: true, checkoutType: checkoutType === "subscription" ? "addon_only" : checkoutType, planChanged: false });
+      return;
     }
+
+    const verifiedSub = typeof session.subscription === "object" && session.subscription
+      ? session.subscription as { id?: string; status?: string; metadata?: Record<string, string> | null;
+          items?: { data?: Array<{ price?: { id?: string } | null }> } }
+      : null;
+    const VALID_PLANS = ["standard", "pro", "ultra"];
+    let planFromSub: string | null = null;
+    for (const item of verifiedSub?.items?.data ?? []) {
+      const found = item?.price?.id ? getPlanForPriceId(item.price.id) : null;
+      if (found) { planFromSub = found; break; }
+    }
+    const metaPlan = String(sessionMeta["selected_plan"] || sessionMeta["plan"] || "").trim().toLowerCase();
+    const planMeta = planFromSub ?? (VALID_PLANS.includes(metaPlan) ? metaPlan : "");
+    if (!verifiedSub?.id || !VALID_PLANS.includes(planMeta) ||
+        !["active", "trialing"].includes(String(verifiedSub.status ?? ""))) {
+      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify }, "[Billing] verify: no valid plan subscription in session — nothing persisted");
+      res.status(422).json({ ok: false, error: "Aucun abonnement valide dans cette session de paiement.", code: "PLAN_UNRESOLVED", checkoutType });
+      return;
+    }
+    const currentCtx = await loadBillingContext(orgIdVerify);
+    if (currentCtx.stripeSubscriptionId && currentCtx.stripeSubscriptionId !== verifiedSub.id &&
+        ["active", "trialing", "past_due"].includes(String(currentCtx.subscriptionStatus ?? ""))) {
+      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify }, "[Billing] verify: session subscription is not the organization's current subscription — nothing persisted");
+      res.status(409).json({ ok: false, error: "Cette session ne correspond pas à l'abonnement actuel.", code: "SUBSCRIPTION_MISMATCH", checkoutType });
+      return;
+    }
+    store.broadcastPlanUpdate(planMeta, orgIdVerify);
 
     let addonsMeta: Record<string, boolean | number> = {};
     try { addonsMeta = JSON.parse(sessionMeta["addons"] || "{}"); } catch {}
