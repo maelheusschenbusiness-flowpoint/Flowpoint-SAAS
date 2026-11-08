@@ -1,4 +1,4 @@
-# Integration de 39 PR (#359-#387, #391-#395, #397-#401) — branche `integration/test-replit-20261108`
+# Integration de 40 PR (#359-#387, #391-#395, #397-#401, #403) — branche `integration/test-replit-20261108`
 
 Cette branche n'est PAS `Test-Replit`. Elle contient les 29 PR #359-#387 puis, empilees dessus, les 5 PR #391, #392, #394, #393, #395 (voir section 9), fusionnees dans un ordre determine, les conflits
 resolus et les corrections semantiques en commits SEPARES. Rien n'est fusionne dans `Test-Replit`, aucune branche
@@ -204,7 +204,10 @@ Ordre : **#397, #398, #399, #400, #401** (chaque merge `--no-ff`, typecheck apre
 027 et 028 sont aussi appliquees au demarrage par `initDataTables` (idempotent) : les appliquer a la main est facultatif mais sans risque. 025 et 026 ne le sont pas.
 
 ### Procedure « Operations necessaires pour integrer » (mise a jour)
-La procedure de la section 10 s'applique avec : fermeture de `seq 359 387` et `391 392 393 394 395 397 398 399 400 401` ; migrations dans l'ordre 025, 026, 027, 028 apres les deux diagnostics. La PR docs migrations (runbook 025/026) viendra s'ajouter dans un lot suivant.
+La procedure de la section 10 s'applique avec : fermeture de `seq 359 387` et `391 392 393 394 395 397 398 399 400 401 403` ; migrations dans l'ordre 025, 026, 027, 028 apres les deux diagnostics. La PR #403 (runbook migrations) est integree (voir ci-dessous) : fermer aussi #403 ; le runbook `docs/MIGRATIONS-025-026-RUNBOOK.md` fait foi pour l'application manuelle (section 10 : 027/028).
+
+### PR #403 (runbook migrations 025/026)
+Merge automatique sans conflit ; elle modifie `025_*.sql` (lock_timeout 5 s, gardes d'existence, detection d'index invalide) et `026_*.sql`, ajoute diagnostics, retours arriere, `scripts/test-migrations-025-026-local.sh` et le runbook. Le fond de ses scripts n'est pas modifie ; l'integration y ajoute seulement `rollback/027_*.down.sql`, `rollback/028_*.down.sql` et la section 10 du runbook (027/028, manuelles et facultatives, `initDataTables` creant deja ces objets au demarrage).
 
 ### Risques supplementaires
 - Lecture seule : un compte `canceled` apres sa periode ou `past_due` hors grace ne peut plus ecrire (y compris consommer des credits IA) ; ses donnees et exports (GET) restent accessibles. A valider commercialement avant production.

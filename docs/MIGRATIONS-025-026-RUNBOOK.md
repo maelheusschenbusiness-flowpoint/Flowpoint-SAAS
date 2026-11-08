@@ -109,3 +109,18 @@ Non execute localement : PostgreSQL 17 (CI) et la base Supabase (aucune ecriture
 Les migrations manuelles n'ont aujourd'hui aucune trace (la table `schema_migrations` existe, RLS sans policy). Proposition : un workflow GitHub `workflow_dispatch`
 (environnement protege, approbation du proprietaire, secret `DATABASE_URL` par environnement) qui execute preflight -> `pg_dump` en artefact chiffre -> migration -> postcheck, et
 enregistre le numero dans `schema_migrations`. Alternative plus legere : un script `scripts/apply-manual-migration.sh` lance par le proprietaire. A defaut, conserver ce runbook.
+
+## 10. Migrations 027 et 028 (ajoutees par l'integration des PR #399 et #401) — MANUELLES et facultatives
+
+Ajout de l'integration ; le fond des scripts 025/026 et de ce runbook n'est pas modifie par cette section.
+
+| Fichier | PR | Contenu | Diagnostic prealable (lecture seule) | Retour arriere (jamais execute) |
+|---|---|---|---|---|
+| `027_ai_credit_refunds.sql` | #399 | table `ai_credit_refunds` (audit des remboursements de credits IA) + 2 index | `SELECT to_regclass('public.ai_credit_refunds');` (NULL = absente) | `rollback/027_ai_credit_refunds.down.sql` : `DROP TABLE IF EXISTS` (perd l'historique des remboursements ; les credits deja retires ne sont pas rendus) |
+| `028_organizations_past_due_since.sql` | #401 | colonne `organizations.past_due_since` (debut de l'episode `past_due`, base de la grace `PAST_DUE_GRACE_DAYS`) + amorcage des lignes `past_due` existantes | `SELECT count(*) FILTER (WHERE subscription_status='past_due') AS past_due, count(*) FILTER (WHERE past_due_since IS NOT NULL) AS ancrees FROM organizations;` (echoue si la colonne est absente : normal) | `rollback/028_organizations_past_due_since.down.sql` : `DROP COLUMN IF EXISTS` (perd la date de debut de grace) |
+
+**Important : `init-data-tables.ts` cree deja ces objets au demarrage de l'application** (`CREATE TABLE IF NOT EXISTS ai_credit_refunds`, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS past_due_since`, amorcage `UPDATE ... WHERE past_due_since IS NULL`),
+de facon idempotente. Le PREMIER DEPLOIEMENT du code integre ajoutera donc la table et la colonne a la base cible, meme sans application manuelle de 027/028. Appliquer 027/028 a la main
+avant le deploiement est sans risque (memes instructions `IF NOT EXISTS`) et permet de verifier les droits ; les retours arriere ci-dessus sont inutiles tant que l'application tourne (elle recree les objets), sauf apres retour du code precedent.
+
+Ordre global des migrations manuelles : diagnostics (`025_026_preflight_aggregates.sql`, `025_detect_duplicate_org_owner_email.sql`, `a09_trialing_sans_souscription.sql`) -> 025 -> 026 (si necessaire) -> 027 -> 028.
