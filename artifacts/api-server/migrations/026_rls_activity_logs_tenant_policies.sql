@@ -29,7 +29,22 @@
 --
 -- A APPLIQUER (hors CI, sur decision humaine) : psql "$DATABASE_URL" -f 026_...sql
 --
--- RETOUR ARRIERE
+-- VERROUS
+--   CREATE POLICY prend un verrou ACCESS EXCLUSIVE tres bref sur activity_logs ;
+--   lock_timeout = 5 s evite de bloquer les ecritures derriere un verrou long.
+--
+-- ROLES / GUC
+--   Les policies n'ont pas de clause TO (PUBLIC) : aucun role n'est reference, donc
+--   rien a creer sur Supabase. Le GUC `app.current_org_id` est personnalise (nom
+--   pointe) : current_setting(..., true) renvoie NULL s'il n'est pas defini, donc la
+--   comparaison est fausse et l'acces est REFUSE (comportement sur par defaut). Les
+--   roles BYPASSRLS (postgres, service_role, supabase_admin) ignorent ces policies.
+--   ATTENTION : si le serveur se connecte avec un role NON BYPASSRLS, il doit poser
+--   `app.current_org_id` (req.orgDb) avant toute lecture, sinon 0 ligne.
+--
+-- RETOUR ARRIERE (script teste : migrations/rollback/026_rls_activity_logs_tenant_policies.down.sql)
+--   A n'utiliser que si, AVANT 026, les policies etaient absentes (sinon 026 etait un
+--   no-op et supprimer les policies retirerait celles posees par le demarrage).
 --   DROP POLICY IF EXISTS tenant_select ON public.activity_logs;
 --   DROP POLICY IF EXISTS tenant_insert ON public.activity_logs;
 --   DROP POLICY IF EXISTS tenant_update ON public.activity_logs;
@@ -37,6 +52,8 @@
 
 DO $$
 BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+
   IF to_regclass('public.activity_logs') IS NULL THEN
     RAISE NOTICE 'activity_logs absente : rien a faire';
     RETURN;
@@ -48,6 +65,10 @@ BEGIN
   ) THEN
     RAISE NOTICE 'activity_logs sans org_id : rien a faire';
     RETURN;
+  END IF;
+
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.activity_logs'::regclass) THEN
+    RAISE NOTICE '026: RLS DESACTIVEE sur activity_logs : les policies seront posees mais inertes (cette migration n''active pas RLS)';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'activity_logs' AND policyname = 'tenant_select') THEN
