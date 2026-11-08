@@ -1,6 +1,6 @@
-# Integration des 29 PR de correction (#359 a #387) — branche `integration/test-replit-20261108`
+# Integration de 34 PR (#359-#387 puis #391-#395) — branche `integration/test-replit-20261108`
 
-Cette branche n'est PAS `Test-Replit`. Elle contient les 29 PR fusionnees dans un ordre determine, les conflits
+Cette branche n'est PAS `Test-Replit`. Elle contient les 29 PR #359-#387 puis, empilees dessus, les 5 PR #391, #392, #394, #393, #395 (voir section 9), fusionnees dans un ordre determine, les conflits
 resolus et les corrections semantiques en commits SEPARES. Rien n'est fusionne dans `Test-Replit`, aucune branche
 de PR n'a ete modifiee, aucune migration n'a ete appliquee hors base jetable locale.
 
@@ -90,6 +90,83 @@ migration font partie de cette suite complete et passent. CI GitHub (PG17) : voi
 - #376 (garde d'abonnement) et #373 (garde de role) durcissent l'acces : possibles refus (403/402) inattendus pour des comptes en statut limite ; a verifier sur Test avant la production.
 - #385 et #368 appliquent un quota heatmaps (2/10/50) : des organisations deja au-dessus ne peuvent plus en creer.
 - Les validations intermediaires par etape (typecheck a chaque merge) n'ont pas ete systematiques : typecheck execute apres #380, #385, #375 et sur le resultat final ; l'etat final est complet.
+
+## 9. Second lot : PR #391 a #395 (empilees, base = branche d'integration)
+
+Ordre de fusion : **#391, #392, #394, #393, #395**. Chaque PR part de la tete d'origine f0adcf7 ; merges `--no-ff`, typecheck apres #391/#392/#394 puis apres #393.
+
+| PR | Branche | Contenu |
+|---|---|---|
+| #391 | fix/faux-succes-paiement-20261108 | `success.html`, `checkout-return.html`, `checkout-payment.html`, `fp-locale.js` (plus de faux succes de paiement) ; ajoute jsdom (devDependency) |
+| #392 | fix/credits-ia-sessions-20261108 | credits IA atomiques, sessions, plan Pro par defaut, send-invoice, colonne `language`, garde de role |
+| #394 | fix/webhook-credits-ia-verification-20261108 | `services/ai-credit-verification.ts` : controle pack/montant/organisation des credits IA dans `stripe-webhook.ts` |
+| #393 | fix/essai-sans-souscription-20261108 | A-09 : souscription d'essai creee par le webhook (`services/signup-subscription.ts`), blocs 3a/3b de `public-billing.ts` remplaces, diagnostic `migrations/diagnostics/a09_trialing_sans_souscription.sql` |
+| #395 | test/certification-parcours-20261108 | certification navigateur (harnais, 7 fichiers `*.cert.ts`, `playwright.certification.config.mjs`, workflow manuel `certification-navigateur.yml`) ; aucun code applicatif |
+
+### Conflits git
+Aucun conflit textuel : les cinq merges ont abouti automatiquement, y compris `stripe-webhook.ts` entre #393 et #394 (zones disjointes), `pool-query-baseline.json` (+4 lignes de chaque cote, ajouts distincts) et `pnpm-lock.yaml` (jsdom de #391 ; `pnpm install --frozen-lockfile` reussit sans regeneration).
+
+### Conflits semantiques
+| Interaction | Verification / correction |
+|---|---|
+| #393 x #394 (`case payment_intent/setup_intent.succeeded`) | Relu apres merge : la branche `ai_credits` (#394, verification pack/montant/org, 422 si rejet) s'execute AVANT le chemin d'inscription (#393, `provisionSubscriptionFromIntent` sans `.catch`, `activateNewSignup(requireSubscription)`) ; les deux restent actives. Tests des deux PR verts ensemble. |
+| #392 x inventaires (garde de role / abonnement / CSRF) | Suites `write-role-*`, planGate, CSRF vertes ; #392 ne modifie que l'exception documentee de `writeRoleGuard.ts`. |
+| Baseline `pool.query` | Les deux PR ajoutent des entrees ; test de baseline vert sans regeneration. |
+| **Course A-09 (#393 seule) — corrigee** | `trial-subscription-webhook-db.test.ts` « concurrence : 12 paires » echoue ~4 fois sur 6 sur la branche #393 seule (reproduit dans un worktree jetable) : sous 24 requetes simultanees l'ancrage `persistOrgData` de `finalize-checkout` expire (`timeout exceeded when trying to connect`), l'erreur est avalee (non fatale) et le webhook ne repare pas (jeton deja consomme) : organisation `trialing` sans `stripe_subscription_id`. Correction (commit e3ef9e3d) : ancrage rejoue 3 fois (300/600 ms). 6/6 verts ensuite. A reporter sur la PR #393 si elle est fusionnee seule. |
+| Certification x #391/#393 | `CERT_RUN_PENDING=1` : 159 passes (bureau-1440, iPhone 13, Pixel 7 : 53 chacun) dont les 9 anciens `fixme` ; `pendingFix` retire (commit separe), 159 passes aussi sans la variable. Libelle accepte : « Paiement echoue ». |
+| `dashboard.js` | #392 modifie `billing-files/12-dashboard.js` (source distincte, deja differente des copies avant integration). Les deux copies deployees (`src/frontend/dashboard.js` et `artifacts/flowpoint-export/dashboard.js`) restent identiques (`cmp`). |
+
+### Tests locaux (PG 16.15 jetable, comme la CI sauf version)
+| | Premiere integration (29 PR) | Etat final (34 PR) |
+|---|---|---|
+| migrate depuis zero | 771 etapes OK | 771 etapes OK, 0 echec |
+| typecheck / build | OK | OK |
+| vitest `--no-file-parallelism` | 3863 OK, 2 echecs | 3974 OK, 2 echecs, 6 ignores (313/316 fichiers OK) |
+| echecs | `stripe-webhook-pending-activation` x2 (timing) | identiques, memes 2 tests |
+| `test:certification` | OK | OK |
+| orphelins | 0 | 0 (337 fichiers : 316 executes, 21 exclus avec raison ; les 7 `*.cert.ts` ne sont pas comptes) |
+| certification navigateur | — | 159 passes, 0 echec, 0 fixme |
+| `cmp` dashboard.js x2 | identiques | identiques |
+
+CI GitHub (PG17) de la PR #390 sur le dernier commit de code `2de666a7915e32ddc15abbd89c389715a3639fc3` : check-run « Types, build, tests », run 42501658252, conclusion **success** (typecheck, build, vitest complet, certification, orphelins, tests ignores). Le commit suivant (documentation seule) a son propre run : voir la description de la PR #390.
+
+## 10. Operations necessaires pour integrer (apres validation humaine)
+
+```bash
+# 1. Sortir du brouillon et fusionner en UN merge (pas squash/rebase)
+gh pr ready 390
+gh pr merge 390 --merge            # vers Test-Replit
+
+# 2. Fermer les PR sources comme integrees
+MSG="Integree via la PR d'integration #390 (integration/test-replit-20261108)"
+for n in $(seq 359 387) 391 392 393 394 395; do gh pr close $n -c "$MSG"; done
+
+# 3. Migrations MANUELLES sur la base cible (apres sauvegarde) - jamais automatiques
+psql "$DATABASE_URL" -f artifacts/api-server/migrations/diagnostics/025_detect_duplicate_org_owner_email.sql   # diagnostic doublons : doit etre vide
+psql "$DATABASE_URL" -f artifacts/api-server/migrations/diagnostics/a09_trialing_sans_souscription.sql        # diagnostic des essais orphelins (lecture seule) : traiter selon docs/ESSAI-SANS-NAVIGATEUR-A09.md
+psql "$DATABASE_URL" -f artifacts/api-server/migrations/025_organizations_owner_email_unique.sql
+psql "$DATABASE_URL" -f artifacts/api-server/migrations/026_rls_activity_logs_tenant_policies.sql
+```
+Les 5 PR du second lot sont empilees sur la branche d'integration (base = cette branche) : les fermer SANS les fusionner une a une, leur contenu est dans #390. Apres la fusion, tester le workflow
+`certification-navigateur.yml` : il est en `workflow_dispatch` et n'est pas executable (404) tant qu'il n'est pas sur la branche par defaut ; a lancer apres fusion.
+
+### Variables d'environnement / options nouvelles ou au comportement change
+| Variable | Defaut | Effet |
+|---|---|---|
+| `RLS_ENFORCEMENT` | `warn` | `strict` : le demarrage echoue si l'isolation RLS n'est pas garantie ; `off` : silence les erreurs (etat expose par `/api/admin/db-check`). Ne pas passer en `strict` avant revue (la prod tourne en role BYPASSRLS). |
+| `SECURITY_STRICT_STARTUP` | non defini (= faux) | `true` : les avertissements de configuration de securite deviennent fatals au demarrage. |
+| `JWT_SECRET` | aucun (obligatoire hors `NODE_ENV=test`) | plus de secret de repli : absent => arret au demarrage. Verifier qu'il est pose sur Render AVANT le deploiement. |
+| `API_SECRET_KEY` | optionnelle | absente : avertissement, credential de service desactive. |
+| `ALLOW_UNAUTHENTICATED_DEV`, `ENABLE_DEV_AUTH` | non definis | ignores en production et sur Render (avertissement si poses). |
+| `CERT_BASE_URL`, `CERT_ALLOW_REMOTE_WRITES`, `CERT_RUN_PENDING`, `FP_CERT_*`, `TEST_MAIL_DIR` | tests seulement | n'affectent pas l'application. |
+
+### Retour arriere
+Voir section 8 ; en plus : `git revert -m 1 <merge>` annule aussi le second lot (contenu dans #390). Cote donnees, le webhook A-09 cree desormais des souscriptions Stripe d'essai : le retour au code precedent ne les supprime pas (elles restent valides ; ne pas les annuler a la main). Le diagnostic a09 est en lecture seule.
+
+### Risques supplementaires
+- La CI/PG17 peut reveler des differences avec PG16 local ; la course A-09 ci-dessus etait sensible a la charge (pool de 5 s) : corrigee mais a surveiller.
+- Les 2 echecs de timing preexistants peuvent aussi apparaitre en CI.
+- La certification navigateur utilise un faux Stripe/Google : elle ne prouve pas l'integration reelle.
 
 ## 7. Procedure de fusion recommandee (apres validation du proprietaire)
 
