@@ -140,9 +140,31 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
     request => new URL(request.url()).pathname === "/api/audits",
     { timeout: 20_000 },
   );
+  await page.waitForFunction(
+    () => {
+      const me = window.STATE?.me;
+      const orgId = me?.orgId || me?.organizationId || me?.org?.id || me?.id;
+      const userId = me?.userId || me?.user?.id || me?.email || me?.id;
+      return window.STATE?.loading === false
+        && window.STATE?.route === "overview"
+        && !!orgId && !!userId
+        && localStorage.getItem("fp:last-account-id") === String(orgId) + "|" + String(userId)
+        && window.location.hash === "#overview";
+    },
+    null,
+    { timeout: 30_000 },
+  );
+  await page.waitForFunction(() => typeof window.navigate === "function", null, { timeout: 20_000 });
 
-  await page.locator('[data-route="competitor"]').click();
-  await page.locator('[data-sub-route="backlinks"]').click();
+  // The first audit response remains held while the authenticated app finishes
+  // account initialization. Navigate through the app's global route function, not
+  // headless sidebar clicks, so the direct Backlink state is deterministic.
+  await page.evaluate(() => window.navigate("competitor", "backlinks"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "competitor" && window.STATE?.subRoute === "backlinks",
+    null,
+    { timeout: 20_000 },
+  );
 
   const summaryButton = page.locator('button[onclick*="fpLoadBacklinkSummary"]');
   await expect(summaryButton).toBeVisible();
@@ -172,5 +194,6 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
     domain_rank: null,
   });
   await expect(page.locator(".fp-stat-row")).toContainText("—");
+  await page.waitForFunction(() => window.STATE?.backlinks?.reason === "not_configured", null, { timeout: 15_000 });
   await expect(page.getByText(/DataForSEO (n’est pas configuré pour cette organisation\.|is not configured for this organization\.)/).first()).toBeVisible();
 });
