@@ -391,7 +391,7 @@ export async function createHeatmap(orgId: string, data: {
   } finally { client.release(); }
 }
 
-/** Claim a pending/failed scan once, then process it off the HTTP request path. */
+/** Claim a pending/failed/unavailable scan once, then process it off the HTTP request path. */
 export async function startHeatmapScan(orgId: string, id: string): Promise<boolean> {
   const claimed = await pool.query(
     `UPDATE local_heatmaps
@@ -399,7 +399,7 @@ export async function startHeatmapScan(orgId: string, id: string): Promise<boole
             results=jsonb_set(
               CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
               '{startedAt}', to_jsonb(NOW()::text), true)
-      WHERE id=$1 AND org_id=$2 AND status IN ('pending','failed')
+      WHERE id=$1 AND org_id=$2 AND status IN ('pending','failed','unavailable')
       RETURNING *`,
     [id, orgId],
   );
@@ -421,7 +421,7 @@ export async function startHeatmapScan(orgId: string, id: string): Promise<boole
   return true;
 }
 
-async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Promise<void> {
+export async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Promise<void> {
   const id = String(row.id);
   const businessName = String((row.results as HeatmapResults | undefined)?.businessName ?? "");
   const keyword = String(row.keyword ?? "");
@@ -431,9 +431,14 @@ async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Prom
   );
   if (!businessName.trim()) throw new Error("Le nom exact de l’établissement est requis.");
   if (!await isDataForSEOConfigured(orgId)) {
+    // Fournisseur absent : état explicite « unavailable » (relançable une fois
+    // les identifiants configurés), jamais de données simulées.
     await pool.query(
-      `UPDATE local_heatmaps SET status='failed', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
-      [id, orgId, JSON.stringify({ businessName, cells: [], error: "DataForSEO n’est pas configuré." })],
+      `UPDATE local_heatmaps SET status='unavailable', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
+      [id, orgId, JSON.stringify({
+        businessName, cells: [], code: "PROVIDER_NOT_CONFIGURED",
+        error: "Le fournisseur de mesures locales (DataForSEO) n’est pas configuré : aucune position n’a été mesurée.",
+      })],
     );
     return;
   }
