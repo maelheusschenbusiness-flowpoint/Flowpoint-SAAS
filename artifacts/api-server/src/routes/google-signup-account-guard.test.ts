@@ -176,7 +176,14 @@ describe("A-08 / A-10 / A-11 / transaction — creation du pre-enregistrement", 
     expect(loc.searchParams.get("google_signup")).toBe("1");
     expect(loc.searchParams.get("plan")).toBe("ultra");
     expect(loc.searchParams.get("pre_reg_token")).toBe(insert.params[0]);
-    expect(loc.search).not.toMatch(/example\.test|Ada|Lovelace|email|first_name|last_name/i);
+    // Le jeton est un hexadecimal ALEATOIRE : il peut contenir « ada » (a, d, a sont des chiffres hexa),
+    // donc il est exclu du controle de donnees personnelles (faux positif aleatoire sinon). On verifie
+    // les cles exactes et que les AUTRES valeurs ne portent aucune donnee personnelle.
+    expect([...loc.searchParams.keys()].sort()).toEqual(["google_signup", "plan", "pre_reg_token"]);
+    expect(loc.searchParams.get("pre_reg_token")).toMatch(/^[0-9a-f]+$/);
+    const sansJeton = new URLSearchParams(loc.search);
+    sansJeton.delete("pre_reg_token");
+    expect(sansJeton.toString()).not.toMatch(/example\.test|Ada|Lovelace|email|first_name|last_name/i);
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.headers["referrer-policy"]).toBe("no-referrer");
   });

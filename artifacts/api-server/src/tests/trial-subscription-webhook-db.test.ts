@@ -342,6 +342,18 @@ describe("A-09 — coordination webhook / finalize-checkout", () => {
     expect((await orgsOf(s.email))[0]!.stripe_subscription_id).toBe(subsOf(s.customer)[0]!.id);
   });
 
+  it("recherche d'authentification en echec (pool sature) : 503 retryable, JAMAIS un 401 auth_required", async () => {
+    const s = await seedSignup();
+    const spy = vi.spyOn(pool, "connect").mockRejectedValue(new Error("timeout exceeded when trying to connect") as never);
+    let fin: { status: number; body: Record<string, unknown> };
+    try { fin = await postFinalize(s); } finally { spy.mockRestore(); }
+    expect(fin.status).toBe(503);
+    expect(fin.body["retryable"]).toBe(true);
+    // Sans panne, le meme appel s'authentifie normalement.
+    const ok = await postFinalize(s);
+    expect(ok.status).toBe(200);
+  });
+
   it("concurrence : 12 paires webhook/finalize => une seule souscription par signup, une organisation, abonnement inscrit", async () => {
     // Les 24 requetes partent ensemble. Un 5xx (pool de connexions sature par 24
     // handlers simultanes) est rejoue comme le feraient Stripe (webhook) et le

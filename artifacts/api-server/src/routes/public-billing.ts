@@ -1679,6 +1679,10 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     : "";
   let _authenticatedOrgId: string | null = null;
   let _preRegisterTokenIsValid = false;
+  // Une recherche d'authentification qui ECHOUE (pool sature, base indisponible) n'est pas un
+  // visiteur non authentifie : repondre 401 « auth_required » ferait croire a une session perdue
+  // et envoyer vers /login. On repond 503 retryable (cause du 401 intermittent de la concurrence A-09).
+  let _fcAuthLookupFailed = false;
 
   // A valid signup token is authoritative over a stale cookie/session. It is
   // scoped to one pending signup and is the only credential that can activate
@@ -1695,6 +1699,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         _preRegisterTokenIsValid = !!_preRegR.rows[0]?.email;
       } finally { _preRegC.release(); }
     } catch (preRegValidationErr) {
+      _fcAuthLookupFailed = true;
       logger.warn({ preRegValidationErr }, "[PublicBilling/finalize-checkout] pre-register token validation failed");
     }
   }
@@ -1713,6 +1718,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         }
       } finally { _sc.release(); }
     } catch (sessionErr) {
+      _fcAuthLookupFailed = true;
       logger.warn({ sessionErr }, "[PublicBilling/finalize-checkout] Session lookup failed (non-fatal)");
     }
   }
@@ -1735,6 +1741,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         }
       } finally { _fcBypassC.release(); }
     } catch (_fcBypassErr) {
+      _fcAuthLookupFailed = true;
       logger.warn({ _fcBypassErr }, "[PublicBilling/finalize-checkout] preRegisterToken lookup failed (non-fatal)");
     }
   }
@@ -1775,6 +1782,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         }
       }
     } catch (_pathCErr) {
+      _fcAuthLookupFailed = true;
       logger.warn({ _pathCErr },
         "[PublicBilling/finalize-checkout] Path C: PI/SI metadata recovery failed (non-fatal)");
     }
@@ -1788,6 +1796,15 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   if (_fcHasUuidSession && preRegisterToken) {
     logger.info({ orgId: _authenticatedOrgId }, "[PublicBilling/finalize-checkout] ignoring stale pre-register token for authenticated UUID session");
     preRegisterToken = "";
+  }
+
+  if (!_authenticatedOrgId && _fcAuthLookupFailed) {
+    res.status(503).json({
+      error:     "auth_lookup_unavailable",
+      message:   "Verification momentanement indisponible. Reessayez dans un instant.",
+      retryable: true,
+    });
+    return;
   }
 
   if (!_authenticatedOrgId) {
