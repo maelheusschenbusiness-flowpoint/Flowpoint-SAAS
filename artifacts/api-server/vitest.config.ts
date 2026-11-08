@@ -183,6 +183,9 @@ export default defineConfig({
       "src/services/ai-provider-stream.test.ts",
       "src/tests/dashboard-responsive-ux.test.ts",
       "src/middlewares/requirePaidAccess-db.test.ts",
+      // B-03 : les gardes de planGate appliquent l'etat d'abonnement (base reelle) + table de verite.
+      "src/middlewares/planGate-subscription-status-db.test.ts",
+      "src/lib/subscription-access-matrix.test.ts",
       // Le contournement d'authentification de developpement exige une intention (17/10/2026).
       "src/middlewares/requireAuth-dev-bypass.test.ts",
       "src/routes/auth-me-org-resolution-db.test.ts",

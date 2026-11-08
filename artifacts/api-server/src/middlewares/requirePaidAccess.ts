@@ -26,7 +26,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../lib/logger.js";
-import { loadBillingContext, BillingContextUnavailableError } from "../services/billing-context.js";
+import { loadBillingContext, BillingContextUnavailableError, type BillingContext } from "../services/billing-context.js";
 
 const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
 
@@ -68,49 +68,79 @@ function isExempt(path: string): boolean {
 export const PAID_ACCESS_EXEMPT_PREFIXES = EXEMPT_PREFIXES;
 export { isExempt as isPaidAccessExemptPath };
 
-export async function requirePaidAccess(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (isExempt(req.path)) { next(); return; }
+/** Decision d'acces mise en cache sur la requete (evite un 2e chargement de facturation). */
+export type PaidAccessDecision =
+  | { status: "allowed"; ctx?: BillingContext }
+  | { status: "denied"; ctx: BillingContext }
+  | { status: "unavailable"; err: unknown };
 
-  // Pas de contexte d'organisation : la requete est soit non authentifiee, soit
-  // un appel de service. Le garde d'authentification de la route tranche —
-  // transformer cela en 402 masquerait un 401 et casserait les appels internes.
+const DECISION_KEY = "__paidAccessDecision";
+
+/**
+ * Evalue (une seule fois par requete) si l'abonnement de l'organisation ouvre
+ * l'acces payant. Partage entre le middleware global et les gardes de planGate
+ * (requirePlan / requireFeature / requireQuota / requireAddon) : il n'y a pas
+ * de second systeme de permissions, et le meme verdict n'est jamais recalcule.
+ * Les gardes de planGate couvrent aussi les routes situees sous un prefixe
+ * exempte du middleware global (ex. /permissions).
+ */
+export async function evaluatePaidAccess(req: Request): Promise<PaidAccessDecision> {
+  const bag = req as unknown as Record<string, PaidAccessDecision | undefined>;
+  const cached = bag[DECISION_KEY];
+  if (cached) return cached;
+
   const orgId = (req as Request & { orgId?: string }).orgId;
-  if (!orgId || orgId === "default") { next(); return; }
-
-  let ctx: Awaited<ReturnType<typeof loadBillingContext>>;
-  try {
-    ctx = await loadBillingContext(orgId);
-  } catch (err) {
-    if (err instanceof BillingContextUnavailableError || isProd()) {
-      // Etat de facturation illisible : on ne devine pas un droit. 503
-      // retryable, jamais un acces accorde par defaut ni un 402 definitif.
-      logger.error({ err, orgId, path: req.path },
-        "[PaidAccess] etat de facturation illisible — acces refuse (retryable)");
-      res.status(503).json({
-        ok: false,
-        error: "Impossible de verifier votre abonnement. Reessayez dans un instant.",
-        code: "BILLING_STATE_UNAVAILABLE",
-        retryable: true,
-      });
-      return;
+  let decision: PaidAccessDecision;
+  if (!orgId || orgId === "default") {
+    // Pas de contexte d'organisation : requete non authentifiee ou appel de
+    // service. Le garde d'authentification de la route tranche — transformer
+    // cela en 402 masquerait un 401 et casserait les appels internes.
+    decision = { status: "allowed" };
+  } else {
+    try {
+      const ctx = await loadBillingContext(orgId);
+      decision = ctx.hasPaidAccess ? { status: "allowed", ctx } : { status: "denied", ctx };
+    } catch (err) {
+      if (err instanceof BillingContextUnavailableError || isProd()) {
+        // Etat de facturation illisible : on ne devine pas un droit. 503
+        // retryable, jamais un acces accorde par defaut ni un 402 definitif.
+        decision = { status: "unavailable", err };
+      } else {
+        // Hors production uniquement : meme convention que planGate, pour ne
+        // pas rendre le developpement local dependant d'une base de facturation.
+        logger.warn({ err, orgId, path: req.path },
+          "[PaidAccess] etat de facturation illisible — passage autorise (hors production)");
+        decision = { status: "allowed" };
+      }
     }
-    // Hors production uniquement : meme convention que planGate, pour ne pas
-    // rendre le developpement local dependant d'une base de facturation.
-    logger.warn({ err, orgId, path: req.path },
-      "[PaidAccess] etat de facturation illisible — passage autorise (hors production)");
-    next();
-    return;
+  }
+  bag[DECISION_KEY] = decision;
+  return decision;
+}
+
+/**
+ * Garde reutilisable (planGate) : repond 402 SUBSCRIPTION_REQUIRED ou 503
+ * BILLING_STATE_UNAVAILABLE et renvoie false quand l'acces payant n'est pas
+ * ouvert ; renvoie true sinon (l'appelant poursuit).
+ */
+export async function enforcePaidAccess(req: Request, res: Response): Promise<boolean> {
+  const decision = await evaluatePaidAccess(req);
+  if (decision.status === "allowed") return true;
+  const orgId = (req as Request & { orgId?: string }).orgId;
+
+  if (decision.status === "unavailable") {
+    logger.error({ err: decision.err, orgId, path: req.path },
+      "[PaidAccess] etat de facturation illisible — acces refuse (retryable)");
+    res.status(503).json({
+      ok: false,
+      error: "Impossible de verifier votre abonnement. Reessayez dans un instant.",
+      code: "BILLING_STATE_UNAVAILABLE",
+      retryable: true,
+    });
+    return false;
   }
 
-  if (ctx.hasPaidAccess) {
-    if (ctx.inPaidGracePeriod) {
-      logger.info({ orgId, status: ctx.subscriptionStatus, currentPeriodEnd: ctx.currentPeriodEnd, path: req.path },
-        "[PaidAccess] acces accorde par la periode deja payee");
-    }
-    next();
-    return;
-  }
-
+  const ctx = decision.ctx;
   logger.info({ orgId, status: ctx.subscriptionStatus, plan: ctx.plan, path: req.path, method: req.method },
     "[PaidAccess] fonctionnalite payante refusee — abonnement inactif");
   res.status(402).json({
@@ -126,4 +156,21 @@ export async function requirePaidAccess(req: Request, res: Response, next: NextF
     billingUrl:         "/pricing.html",
     recovery:           { plans: "/api/plans/catalog", subscription: "/api/billing/subscription", reactivate: "/api/billing/reactivate" },
   });
+  return false;
+}
+
+export async function requirePaidAccess(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (isExempt(req.path)) { next(); return; }
+
+  const decision = await evaluatePaidAccess(req);
+  if (decision.status === "allowed") {
+    if (decision.ctx?.inPaidGracePeriod) {
+      logger.info({ orgId: (req as Request & { orgId?: string }).orgId, status: decision.ctx.subscriptionStatus,
+        currentPeriodEnd: decision.ctx.currentPeriodEnd, path: req.path },
+        "[PaidAccess] acces accorde par la periode deja payee");
+    }
+    next();
+    return;
+  }
+  await enforcePaidAccess(req, res);
 }

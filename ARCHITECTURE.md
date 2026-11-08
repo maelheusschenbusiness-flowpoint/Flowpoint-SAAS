@@ -484,7 +484,7 @@ organizations.subscription_status (raw DB) → billing-context.ts
   "trialing"  + subscriptionId → "trialing"    (hasPremiumAccess = true)
   "trialing"  + NO subscriptionId → "pending_billing"
   "canceled"  → "canceled"
-  "past_due"  → "past_due"     (hasPremiumAccess = true)
+  "past_due"  → "past_due"     (hasPremiumAccess = false ; acces maintenu uniquement tant que current_period_end est futur — grantsPaidAccess())
   null/vide   → "pending_billing"
 ```
 
