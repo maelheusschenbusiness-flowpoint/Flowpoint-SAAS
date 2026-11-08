@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { sessionCookieSameSite } from "../lib/session-cookie.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
@@ -950,7 +951,7 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
         // If session is already invalid (e.g. duplicate request), continue — idempotent
       }
       const _isProd = process.env["NODE_ENV"] === "production" || !!process.env["RENDER"];
-      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: _isProd ? "none" : "lax", path: "/" });
+      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: sessionCookieSameSite(), path: "/" });
       logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately — session revoked");
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
