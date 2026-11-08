@@ -15,7 +15,7 @@ export const COMPLETE_FORM = {
 };
 
 /** Reponses d'API « gardees » PAR LE PRODUIT (droit d'un add-on / plan absent) : attendues, pas des defauts. */
-const GATED_CODES = new Set(["ADDON_REQUIRED", "PLAN_REQUIRED", "FEATURE_REQUIRED", "SUBSCRIPTION_REQUIRED"]);
+const GATED_CODES = new Set(["ADDON_REQUIRED", "PLAN_REQUIRED", "FEATURE_REQUIRED", "SUBSCRIPTION_REQUIRED", "SUBSCRIPTION_READ_ONLY"]);
 
 export interface Observed { responses: Array<{ url: string; status: number; code?: string }>; consoleErrors: Array<{ text: string; url: string }>; pageErrors: string[]; funnelCalls: Array<{ body: Record<string, unknown> }> }
 
