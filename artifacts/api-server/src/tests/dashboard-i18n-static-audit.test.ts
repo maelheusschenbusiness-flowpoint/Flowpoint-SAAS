@@ -1667,10 +1667,10 @@ describe("private dashboard static English localization", () => {
 
     for (const binding of [
       "apiAction('POST', '/api/reports', { name, auditId, format, whiteLabel, branding, reportType, meetingNotes, dateStart, dateEnd })",
-      "clientName,\n              auditId: auditSelect.value || undefined,",
+      "body: JSON.stringify({ clientName, auditId }),",
       "name: pack.name",
       "templateKey: pack.templateKey",
-      "label.textContent = `${pack.name} — ${pack.description}`;",
+      "<span>${escHtml(`${pack.name || ''} — ${pack.description || ''}`)}</span>",
       "escHtml(r.name)",
       "escHtml(c.name)",
       "aiInsightsArePreview || defaults[field] ? fpT(ins[field]) : ins[field]",
