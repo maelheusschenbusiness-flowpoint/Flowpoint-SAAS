@@ -168,6 +168,8 @@ export const ADDON_REGISTRY = [
       "src/services/backlink-intel.test.ts",
       "src/services/dataforseo-backlinks.test.ts",
     ],
+    browserSpec: "e2e/parcours/backlink-intelligence.spec.mjs",
+    browserTitle: "Backlink Intelligence shows provider-unavailable states without synthetic metrics",
   },
   {
     id: "agency-reporting-packs",
