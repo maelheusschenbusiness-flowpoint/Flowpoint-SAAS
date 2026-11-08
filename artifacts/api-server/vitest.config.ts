@@ -52,6 +52,8 @@ export default defineConfig({
       "src/services/mailer-nodemailer10.test.ts",
       "src/services/nodemailer10-transport.test.ts",
       "src/services/webhook-url-safety.test.ts",
+      // C-16 : sonde de monitor a DNS epingle (anti-rebinding, 08/11/2026).
+      "src/services/monitor-ssrf-pinned.test.ts",
       "src/services/integration-response.test.ts",
       "src/services/executive-report-facts.test.ts",
       "src/routes/agency-packs.test.ts",

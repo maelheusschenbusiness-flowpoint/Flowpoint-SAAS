@@ -264,6 +264,7 @@ interface PinnedResponse {
 async function pinnedRequest(
   rawUrl: string,
   signal: AbortSignal,
+  method: "GET" | "HEAD" = "GET",
 ): Promise<PinnedResponse> {
   const parsed = new URL(rawUrl);
   const hostname = parsed.hostname;
@@ -339,7 +340,7 @@ async function pinnedRequest(
     hostname: pinnedIp,         // TCP/TLS connects here — fixed, validated IP
     port,
     path,
-    method: "GET",
+    method,
     headers: {
       Host: hostname,           // HTTP Host header → original hostname
       "User-Agent": USER_AGENT,
@@ -431,6 +432,72 @@ async function readBodyBounded(
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+export interface ProbeResult {
+  /** `true` quand la destination a ete atteinte (meme avec un statut HTTP d'erreur). */
+  reached: boolean;
+  statusCode: number;
+  /** `true` quand l'URL (ou une redirection) a ete refusee par la protection SSRF. */
+  blocked: boolean;
+  error: string | null;
+}
+
+/**
+ * Sonde HTTP (HEAD par defaut) SSRF-safe pour les monitors (C-16).
+ *
+ * L'ancien controle validait le DNS (`checkDnsResolution`) puis appelait
+ * `fetch()`, qui RE-RESOUT le nom : un DNS a TTL court pouvait repondre une IP
+ * publique a la validation puis une IP interne a la connexion (rebinding).
+ * Ici la resolution, la validation et la connexion utilisent la MEME adresse
+ * (`pinnedRequest`), a chaque saut de redirection.
+ *
+ * Ne leve jamais d'exception.
+ */
+export async function probeUrlPinned(
+  rawUrl: string,
+  opts?: { timeoutMs?: number; method?: "GET" | "HEAD" },
+): Promise<ProbeResult> {
+  let currentUrl = rawUrl;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.min(opts?.timeoutMs ?? 8_000, TOTAL_TIMEOUT_MS));
+  const method = opts?.method ?? "HEAD";
+  try {
+    for (let hop = 0; hop <= MAX_HOPS; hop++) {
+      let parsed: URL;
+      try { parsed = new URL(currentUrl); } catch {
+        return { reached: false, statusCode: 0, blocked: true, error: "URL invalide" };
+      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return { reached: false, statusCode: 0, blocked: true, error: "Protocole non autorise" };
+      }
+      let resp: PinnedResponse;
+      try {
+        resp = await pinnedRequest(currentUrl, ctrl.signal, method);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const lo = msg.toLowerCase();
+        if (lo.includes("ssrf")) return { reached: false, statusCode: 0, blocked: true, error: msg };
+        if (lo.includes("annul") || lo.includes("abort") || lo.includes("timeout")) {
+          return { reached: false, statusCode: 0, blocked: false, error: "Timeout after 8s" };
+        }
+        return { reached: false, statusCode: 0, blocked: false, error: msg.slice(0, 200) };
+      }
+      resp.incomingMessage.destroy();
+      if (resp.statusCode >= 300 && resp.statusCode < 400) {
+        const location = (resp.headers["location"] as string | undefined)?.trim();
+        if (!location) return { reached: true, statusCode: resp.statusCode, blocked: false, error: null };
+        try { currentUrl = new URL(location, currentUrl).toString(); } catch {
+          return { reached: true, statusCode: resp.statusCode, blocked: false, error: null };
+        }
+        continue;
+      }
+      return { reached: true, statusCode: resp.statusCode, blocked: false, error: null };
+    }
+    return { reached: false, statusCode: 0, blocked: false, error: "Too many redirects" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Fetch une URL externe de façon SSRF-safe (DNS pinned, redirects validés),
