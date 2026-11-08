@@ -3,7 +3,7 @@ import { Router, type Request, type RequestHandler } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import crypto from "crypto";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
 import {
   createIntegration, dispatchEvent, testIntegration, getIntegrationStats,
   processIncomingWebhook, getIntegrationLimit, SUPPORTED_EVENTS,
@@ -21,7 +21,12 @@ type OrgReq = Request & {
   orgId?: string;
 };
 const org  = (req: Request): string => (req as OrgReq).orgId ?? "default";
-const plan = (req: Request): string => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
+/**
+ * Plan de l'organisation LU EN BASE (resolvePlanFromDB, meme source que planGate/keywords.ts).
+ * Avant : repli sur Pro via `req.me` -- `req.me` n'est renseigne par aucun middleware, donc TOUTE
+ * organisation (Standard comprise) etait traitee comme Pro. Plan illisible => "standard" (le moins permissif).
+ */
+const plan = async (req: Request): Promise<string> => (await resolvePlanFromDB(req)) ?? "standard";
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 // D-07 : une nouvelle connexion ne peut s'abonner qu'aux evenements que le backend emet
 // reellement ; sinon elle ne se declencherait jamais (faux succes a l'activation).
@@ -80,7 +85,8 @@ router.get("/integrations", async (req, res) => {
 router.get("/integrations/stats", async (req, res) => {
   try {
     const stats = await getIntegrationStats(org(req));
-    res.json({ ...stats, limit: getIntegrationLimit(plan(req)), plan: plan(req), events: SUPPORTED_EVENTS });
+    const orgPlan = await plan(req);
+    res.json({ ...stats, limit: getIntegrationLimit(orgPlan), plan: orgPlan, events: SUPPORTED_EVENTS });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
@@ -175,7 +181,7 @@ router.post("/integrations/zapier/connect", requireAddon("zapierIntegration", "Z
   const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
   if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
-    const intg = await createIntegration(org(req), plan(req), {
+    const intg = await createIntegration(org(req), await plan(req), {
       name, type: "outgoing", platform: "zapier", endpointUrl: safeTarget.url, events,
       metadata: { platform: "zapier", connected_at: new Date().toISOString() },
     });
@@ -206,7 +212,7 @@ router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zap
   const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
   if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
-    const intg = await createIntegration(org(req), plan(req), {
+    const intg = await createIntegration(org(req), await plan(req), {
       name, type: "outgoing", platform: "make", endpointUrl: safeTarget.url, events,
       metadata: { platform: "make", scenario_name: scenarioName, connected_at: new Date().toISOString() },
     });
@@ -232,7 +238,7 @@ router.post("/integrations/connections", requireZapierAddonForNewConnection, req
     resolvedEndpoint = safeTarget.url;
   }
   try {
-    const intg = await createIntegration(org(req), plan(req), {
+    const intg = await createIntegration(org(req), await plan(req), {
       name, type: "outgoing", platform, endpointUrl: resolvedEndpoint, events, headers, retryEnabled, maxRetries,
     });
     res.status(201).json({ ok: true, integration: presentIntegration(intg, true) });

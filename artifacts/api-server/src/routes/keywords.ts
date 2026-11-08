@@ -443,8 +443,8 @@ router.post("/keywords", canWrite, async (req, res) => {
     const r = await (req as OrgReq).orgDb(
       `INSERT INTO tracked_keywords
          (id, org_id, keyword, current_position, prev_position, search_volume, difficulty,
-          tag, intent, active, device, location, language, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'desktop','France','fr',NOW(),NOW())
+          tag, intent, active, device, location, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'desktop','France',NOW(),NOW())
        ON CONFLICT (org_id, keyword, device, location) DO NOTHING
        RETURNING *`,
       [id, orgId, keyword, Number(position), Number(position), Number(volume), Number(difficulty),

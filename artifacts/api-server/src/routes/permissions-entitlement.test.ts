@@ -6,6 +6,7 @@ vi.mock("../middlewares/planGate.js", () => ({
     if (req.headers["x-enterprise-permissions"] === "active") next();
     else res.status(402).json({ error: "Enterprise Permissions required" });
   },
+  resolvePlanFromDB: async () => "pro",
 }));
 vi.mock("../middlewares/requireAdmin.js", () => ({
   requireAdmin: (_req: any, _res: any, next: any) => next(),

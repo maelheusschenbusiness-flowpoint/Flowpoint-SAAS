@@ -1319,14 +1319,11 @@ window.__fpPageLoadTs = Date.now();
       } catch (e) { console.warn('[FP] addon deactivate error:', e.message); }
     },
     buyAICredits: async function (pack) {
-      try {
-        var data = await apiAction('POST', '/api/addons/ai-credits/buy', { pack: pack });
-        if (typeof window.showToast === 'function') window.showToast('success', '+' + (typeof window.fpFormatNumber === 'function'
-          ? window.fpFormatNumber(data.creditsAdded || 0)
-          : (data.creditsAdded || 0).toLocaleString(_fpBackendLocale())) + ' ' + _fpBackendText('crédits IA ajoutés', 'AI credits added'));
-        window.FP_AI_CREDITS_API.load();
-        return data;
-      } catch (e) { console.warn('[FP] buy credits error:', e.message); return null; }
+      // Aucun credit n'est ajoute cote client ni sans paiement : on ouvre le parcours de paiement
+      // existant (les credits sont inscrits par le webhook Stripe apres paiement reussi).
+      if (typeof window._fpBuyAICredits === 'function') return window._fpBuyAICredits(pack);
+      if (typeof window.showToast === 'function') window.showToast('info', _fpBackendText('Achat de crédits IA : passez par la page de paiement', 'AI credits are purchased through the payment page'));
+      return null;
     },
   };
 
