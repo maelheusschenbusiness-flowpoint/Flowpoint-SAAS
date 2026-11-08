@@ -219,6 +219,8 @@ export interface FetchUrlResult {
   error?: string;
   /** Liens internes (même domaine) découverts sur la page — pour le crawl multi-pages. */
   links?: string[];
+  /** HTML brut (borné à MAX_BODY_BYTES) — uniquement si `includeHtml` est demandé. */
+  html?: string;
 }
 
 /**
@@ -229,6 +231,8 @@ export interface FetchUrlResult {
  */
 export interface FetchUrlOptions {
   timeoutMs?: number;
+  /** Retourne aussi le HTML brut borné (analyses structurelles : formulaires, CTA…). */
+  includeHtml?: boolean;
   beforeRequest?: (url: string) => Promise<{ allowed: boolean; error?: string }>;
 }
 
@@ -679,7 +683,10 @@ export async function fetchUrlContent(
       clearTimeout(timer);
       const extracted = extractContent(rawHtml);
       const links = extractInternalLinks(rawHtml, currentUrl);
-      return { ok: true, url: currentUrl, statusCode, loadTimeMs, ...extracted, links };
+      return {
+        ok: true, url: currentUrl, statusCode, loadTimeMs, ...extracted, links,
+        ...(opts?.includeHtml ? { html: rawHtml } : {}),
+      };
     }
 
     clearTimeout(timer);

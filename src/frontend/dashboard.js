@@ -20851,6 +20851,10 @@ function bindGlobalEvents() {
     "Aucun rapport planifié": "No scheduled report",
     "Aucun risque détecté pour le moment": "No risk detected at the moment",
     "Aucun signal de churn détecté": "No churn signal detected",
+    "Analyse de la page": "Page analysis",
+    "Analyse indisponible.": "Analysis unavailable.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "No friction point detected by the automatic checks on this page.",
+    "Preuve :": "Evidence:",
     "Aucun signal détecté pour le moment.": "No signal detected at the moment.",
     "Aucun site GSC trouvé. Vérifiez vos accès.": "No GSC site found. Check your access.",
     "Aucun siège d'équipe —": "No team seats —",
@@ -60558,6 +60562,17 @@ function renderConversion() {
         ${statCard(fpT("Gain financier"), fpT("Non mesuré"), fpT("aucune conversion/revenu attribué"), "neutral")}
       </div>
 
+      ${(function(){
+        const pa = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.pageAnalysis;
+        if (!pa) return '';
+        if (pa.status !== 'ok') return `<div class="fp-card fp-mb-20" data-cro-page-analysis="unavailable"><div class="fp-card-title" style="margin-bottom:8px">${fpT('Analyse de la page')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(pa.message || fpT('Analyse indisponible.'))}</div></div>`;
+        const fs = pa.findings || [];
+        return `<div class="fp-card fp-mb-20" data-cro-page-analysis="ok"><div class="fp-card-title" style="margin-bottom:8px">${fpT('Analyse de la page')} · ${escHtml(pa.analyzedUrl || '')}</div>
+          ${pa.ai && pa.ai.status === 'unavailable' ? `<div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:8px">${escHtml(pa.ai.message || '')}</div>` : ''}
+          ${fs.length === 0 ? `<div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Aucun point de friction détecté par les contrôles automatiques sur cette page.')}</div>` : fs.map(f => `<div style="padding:8px 0;border-top:1px solid var(--fp-border)"><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(f.title)}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${escHtml(f.description)}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${fpT('Preuve :')} ${escHtml(f.evidence)}</div></div>`).join('')}
+        </div>`;
+      })()}
+
       <!-- ROADMAP -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
@@ -74572,7 +74587,7 @@ window.FP_CRO_API = {
       const r = await apiFetch('/api/cro/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [] };
+        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [], pageAnalysis: r.pageAnalysis || null };
         if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
         showToast('success', fpT('{count} observations CRO analysées', { count:(r.observations || []).length }));
