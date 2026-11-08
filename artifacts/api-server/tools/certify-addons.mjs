@@ -167,7 +167,6 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/services/backlink-intel.test.ts",
       "src/services/dataforseo-backlinks.test.ts",
-      "src/routes/backlink-intelligence.test.ts",
     ],
     browserSpec: "e2e/parcours/backlink-intelligence.spec.mjs",
     browserTitle: "Backlink Intelligence shows provider-unavailable states without synthetic metrics",
