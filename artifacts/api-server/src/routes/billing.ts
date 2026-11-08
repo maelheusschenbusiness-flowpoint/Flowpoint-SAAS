@@ -335,6 +335,28 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 
     const orgIdVerify = req.orgId ?? "default";
 
+    // Bind the Stripe Checkout session to this authenticated organization
+    // before reporting or persisting anything (same rule as Test-Replit).
+    const ownerCtx = await loadBillingContext(orgIdVerify);
+    const sessionOrgId = String(sessionMeta["orgId"] ?? "").trim();
+    const sessionCustomerId = typeof session.customer === "string"
+      ? session.customer
+      : session.customer && typeof session.customer === "object" && "id" in session.customer
+        ? String(session.customer.id)
+        : "";
+    const metadataOrgMatches = !!sessionOrgId && sessionOrgId === orgIdVerify;
+    const customerMatches = !!sessionCustomerId &&
+      !!ownerCtx.stripeCustomerId &&
+      sessionCustomerId === ownerCtx.stripeCustomerId;
+    if ((sessionOrgId && !metadataOrgMatches) ||
+        (sessionCustomerId && ownerCtx.stripeCustomerId && !customerMatches) ||
+        (!metadataOrgMatches && !customerMatches)) {
+      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify },
+        "[Billing] Checkout verification rejected — session does not match authenticated organization");
+      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation." });
+      return;
+    }
+
     // For AI credits: no plan update needed; webhook already credited the org.
     // Return early with credits info so checkout-return.html can show proper confirmation.
     if (isAiCredits) {
