@@ -47,12 +47,26 @@
     button.style.width = '100%';
     button.textContent = t('Optimisation de contenu SEO');
 
+    const missionsButton = document.createElement('button');
+    missionsButton.id = 'audit-panel-seo-missions';
+    missionsButton.className = 'fp-btn fp-btn-ghost fp-btn-sm';
+    missionsButton.style.cssText = 'width:100%;margin-top:6px';
+    missionsButton.textContent = t('Générer des missions SEO');
+
     const result = document.createElement('div');
     result.id = resultId;
     result.setAttribute('aria-live', 'polite');
     result.style.marginTop = '8px';
-    wrapper.append(button, result);
+    wrapper.append(button, missionsButton, result);
     actionGroup.insertBefore(wrapper, rerun);
+
+    missionsButton.addEventListener('click', () => {
+      if (typeof window._generateLocalMissions !== 'function') {
+        result.textContent = t('Génération de missions indisponible');
+        return;
+      }
+      window._generateLocalMissions();
+    });
 
     button.addEventListener('click', async () => {
       const audit = currentAudit(button);
