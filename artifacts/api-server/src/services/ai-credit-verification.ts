@@ -37,18 +37,18 @@ export type AiCreditVerdict =
   | { ok: false; code: string; detail: string };
 
 export type AiCreditInput = {
-  kind: "payment_intent" | "checkout_session";
-  /** PaymentIntent.status ou Session.payment_status. */
+  /**
+   * PaymentIntent uniquement. Les sessions Checkout sont resolues a partir de
+   * leurs lignes Stripe (services/ai-credit-cart.ts), jamais des metadata.
+   */
+  kind: "payment_intent";
+  /** PaymentIntent.status. */
   status: unknown;
   metadata: Record<string, string>;
-  /** amount_received (PI) ou amount_total (Session), en centimes. */
+  /** amount_received (PI), en centimes. */
   paidAmountMinor: unknown;
   currency: unknown;
-  /**
-   * false pour une session combinee (plan + credits) : le montant du seul pack
-   * n'est pas isolable dans la charge utile Stripe. Pack et credits restent
-   * recalcules depuis le catalogue, mais le montant n'est pas recoupe.
-   */
+  /** Conserve pour compatibilite : le montant est toujours recoupe pour un PaymentIntent. */
   checkAmount: boolean;
 };
 
@@ -73,17 +73,17 @@ function line(key: string, quantity: number): AiCreditLine | null {
 const fail = (code: string, detail: string): AiCreditVerdict => ({ ok: false, code, detail });
 
 export function resolveAiCreditPurchase(input: AiCreditInput): AiCreditVerdict {
-  const { kind, metadata: meta } = input;
+  const { metadata: meta } = input;
 
   // (6) Statut : uniquement un paiement abouti.
-  const okStatus = kind === "payment_intent" ? "succeeded" : "paid";
+  const okStatus = "succeeded";
   if (input.status !== okStatus) {
     return fail("not_paid", `statut ${String(input.status)} (attendu ${okStatus})`);
   }
 
   // (1) Pack(s) : cles connues du catalogue serveur uniquement.
   let requested: Array<{ key: string; quantity: number }> = [];
-  const addonsRaw = kind === "payment_intent" ? meta["addons"] : undefined;
+  const addonsRaw = meta["addons"];
   if (addonsRaw && addonsRaw !== "{}" && addonsRaw !== "null") {
     // Panier du PaymentIntent public : quantites posees par le serveur (devis).
     let parsed: Record<string, unknown>;
@@ -105,24 +105,12 @@ export function resolveAiCreditPurchase(input: AiCreditInput): AiCreditVerdict {
     const fromField = String(meta["ai_credits"] ?? "")
       .split(",").map(normalizeKey).filter((k) => k.startsWith("aiCreditsPack"));
     const list = keys.length > 0 ? keys : fromField;
-    // Session combinee : comportement historique = premier pack uniquement.
-    const effective = input.checkAmount ? list : list.slice(0, 1);
+    const effective = list;
     requested = effective.map((key) => ({ key, quantity: 1 }));
   }
   if (requested.length === 0) return fail("no_pack", "aucun pack dans les metadata");
   for (const r of requested) {
     if (!(r.key in AI_CREDIT_CATALOG)) return fail("unknown_pack", `pack hors catalogue: ${r.key}`);
-  }
-
-  // Session credits-only a pack unique : la quantite se deduit du montant PAYE,
-  // au prix unitaire du catalogue (jamais d'une metadata).
-  if (kind === "checkout_session" && input.checkAmount && requested.length === 1) {
-    const unit = catalogUnitAmountCents(requested[0]!.key);
-    const paid = input.paidAmountMinor;
-    if (unit && typeof paid === "number" && Number.isInteger(paid) && paid > 0 && paid % unit === 0) {
-      const q = paid / unit;
-      if (q >= 1 && q <= MAX_PACK_QUANTITY) requested[0]!.quantity = q;
-    }
   }
 
   const lines: AiCreditLine[] = [];

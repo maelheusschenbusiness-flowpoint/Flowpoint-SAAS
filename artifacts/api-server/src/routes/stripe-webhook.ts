@@ -19,6 +19,7 @@ import { type ConversionStage } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
 import { resolveAiCreditPurchase, verifyAiCreditBeneficiary, recordAiCreditPurchase } from "../services/ai-credit-verification.js";
+import { resolveAiCreditsFromLineItems, fetchSessionLineItems, type CartVerdict } from "../services/ai-credit-cart.js";
 
 /** (5) Le mode de l'objet doit etre celui de l'evenement (deja controle vs. la cle). */
 async function rejectIfObjectModeMismatch(
@@ -1551,14 +1552,27 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         // beneficiaire = proprietaire du customer, statut paye uniquement.
         const sessionId     = String(obj["id"] ?? "");
         const paymentIntent = String(obj["payment_intent"] ?? "");
-        const verdict = resolveAiCreditPurchase({
-          kind: "checkout_session",
-          status: obj["payment_status"],
-          metadata: meta,
-          paidAmountMinor: obj["amount_total"],
-          currency: obj["currency"],
-          checkAmount: aiCreditsOnlyCheckout,
-        });
+        // Composition REELLE du panier : lignes Stripe (price id x quantite) rapprochees du
+        // catalogue serveur (services/ai-credit-cart.ts). Jamais metadata.pack / credits.
+        let verdict: CartVerdict;
+        if (obj["payment_status"] !== "paid") {
+          verdict = { ok: false, code: "not_paid", detail: `payment_status ${String(obj["payment_status"])}` };
+        } else {
+          try {
+            const stripeCli = await createStripeClient(stripeKey);
+            const lineItems = await fetchSessionLineItems(stripeCli, sessionId);
+            verdict = resolveAiCreditsFromLineItems({
+              paymentStatus: obj["payment_status"], livemode: event.livemode === true, lineItems,
+              amountTotal: obj["amount_total"], currency: obj["currency"],
+              creditsOnly: aiCreditsOnlyCheckout, metadata: meta,
+            });
+          } catch (lineErr) {
+            // Stripe indisponible : composition non prouvee. Credits seuls => 500 (Stripe relivre) ;
+            // panier combine => journalise (revue/rejeu manuel), l'abonnement n'est pas bloque.
+            if (aiCreditsOnlyCheckout) throw lineErr;
+            verdict = { ok: false, code: "line_items_unavailable", detail: "lignes Stripe illisibles" };
+          }
+        }
         let rejection: { code: string; detail: string } | null = verdict.ok ? null : verdict;
         let creditOrgId: string | null = null;
         if (!rejection) {
