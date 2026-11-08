@@ -337,7 +337,10 @@ describe("CA-8 — retours Checkout add-on/crédits confirmés par l’organisat
     const creditWebhookBlock = stripeWebhookTs.slice(creditWebhookStart, subscriptionStart);
     expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout || packFromField)");
     expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout) break");
-    expect(creditWebhookBlock).toContain("if (sessionPaid && credits > 0 && orgId)");
+    // Verification serveur : credits recalcules depuis le catalogue (pas les metadata), montant recoupe seulement pour les credits seuls.
+    expect(creditWebhookBlock).toContain("resolveAiCreditPurchase({");
+    expect(creditWebhookBlock).toContain("checkAmount: aiCreditsOnlyCheckout");
+    expect(creditWebhookBlock).toContain("recordAiCreditPurchase(");
     expect(creditWebhookBlock).toContain("throw e");
     expect(verifyBlock).toContain("const aiCreditPacks = String(sessionMeta[\"ai_credits\"] ?? \"\")");
     expect(verifyBlock).toContain("...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {})");
