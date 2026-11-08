@@ -658,8 +658,32 @@ export async function activateNewSignup(opts: {
   customerId?:  string;   // Stripe customer ID (may be absent for SetupIntent path)
   selectedPlan: string;
   isTrial:      boolean;
+  /**
+   * A-09 — souscription Stripe deja creee pour cet intent (webhook setup_intent /
+   * payment_intent.succeeded). Quand elle est fournie, l'organisation naît avec
+   * son stripe_subscription_id, son statut REEL et le vrai trial_end de Stripe.
+   */
+  subscription?: {
+    subscriptionId: string;
+    status: string;
+    trialEndUnix: number | null;
+    currentPeriodEndUnix: number | null;
+  } | null;
+  /**
+   * A-09 — chemin « intent » : l'organisation ne passe `trialing` QUE si une
+   * souscription est connue. Sans elle : `pending_billing` (aucun acces premium,
+   * pas de trial_ends_at). Les autres appelants gardent leur comportement.
+   */
+  requireSubscription?: boolean;
 }): Promise<void> {
   const { preRegToken, orgId, customerId, selectedPlan, isTrial } = opts;
+  const _wbSub = opts.subscription ?? null;
+  const _wbOrgStatus = _wbSub
+    ? (_wbSub.status === "trialing" ? "trialing" : _wbSub.status === "active" ? "active" : "trialing")
+    : (opts.requireSubscription ? "pending_billing" : (isTrial ? "trialing" : "active"));
+  const _wbTrialEnds: string | null = _wbSub
+    ? (_wbSub.trialEndUnix ? new Date(_wbSub.trialEndUnix * 1000).toISOString() : null)
+    : (opts.requireSubscription ? null : (isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null));
 
   if (!preRegToken || !orgId || orgId === "default") {
     logger.error({ preRegToken, orgId }, "[Webhook/activate] Missing preRegToken or orgId — skipping");
@@ -845,8 +869,9 @@ export async function activateNewSignup(opts: {
     const orgInsert = await activateClient.query<{ id: string }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
-          owner_email, stripe_customer_id, trial_ends_at, seller_id, fp_lid)
-       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11)
+          owner_email, stripe_customer_id, trial_ends_at, seller_id, fp_lid,
+          stripe_subscription_id, trial_consumed_at, current_period_end)
+       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (id) DO UPDATE
          SET status              = 'active',
              plan                = EXCLUDED.plan,
@@ -854,6 +879,10 @@ export async function activateNewSignup(opts: {
              stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, organizations.stripe_customer_id),
              seller_id           = COALESCE(organizations.seller_id, EXCLUDED.seller_id),
              fp_lid              = COALESCE(organizations.fp_lid, EXCLUDED.fp_lid),
+             stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, organizations.stripe_subscription_id),
+             trial_consumed_at   = COALESCE(organizations.trial_consumed_at, EXCLUDED.trial_consumed_at),
+             current_period_end  = COALESCE(EXCLUDED.current_period_end, organizations.current_period_end),
+             trial_ends_at       = CASE WHEN EXCLUDED.stripe_subscription_id IS NOT NULL THEN EXCLUDED.trial_ends_at ELSE organizations.trial_ends_at END,
              updated_at          = NOW()
        RETURNING id`,
       [
@@ -862,12 +891,15 @@ export async function activateNewSignup(opts: {
         newOrgSlug,
         userId,
         selectedPlan,
-        isTrial ? "trialing" : "active",
+        _wbOrgStatus,
         email,
         customerId ?? null,
-        isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
+        _wbTrialEnds,
         _wbSellerId,
         _wbFpLid,
+        _wbSub?.subscriptionId ?? null,
+        _wbSub && _wbSub.status === "trialing" ? new Date().toISOString() : null,
+        _wbSub?.currentPeriodEndUnix ? new Date(_wbSub.currentPeriodEndUnix * 1000).toISOString() : null,
       ]
     );
     newOrgId = orgInsert.rows[0]?.id ?? orgUUID;
@@ -2029,7 +2061,6 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       const piPlan    = piMeta["plan"] ?? "standard";
-      const piIsTrial = !piMeta["addons"] || piMeta["addons"] === "{}" || piMeta["addons"] === "null";
       // For setup_intent (0€ plan-only) always trial; for payment_intent also trial (add-ons don't count)
       const piSelectedPlan = piPlan || "standard";
 
@@ -2037,14 +2068,50 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // organizations.stripe_customer_id immediately. Previously this was undefined,
       // which left the column NULL and forced ESC to create a duplicate customer on
       // re-subscription (P0 pre-register customer reuse bug).
-      const _piCustomerId = obj["customer"] ? String(obj["customer"]) : undefined;
-      activateNewSignup({
+      let _piCustomerId = obj["customer"] ? String(obj["customer"]) : undefined;
+
+      // ── A-09 — la souscription d'essai est creee ICI, sans navigateur ────────
+      // Avant : seul finalize-checkout (onglet ouvert) creait l'abonnement Stripe,
+      // alors que cette branche passait deja l'organisation en `trialing` +14 j.
+      // Onglet ferme apres confirmSetup (3DS, mobile, coupure) = essai sans
+      // abonnement, donc aucun prelevement a J+14. Desormais : meme creation que
+      // finalize (services/signup-subscription.ts, cle d'idempotence partagee,
+      // jamais de doublon), AVANT l'activation, et SANS `.catch` : toute erreur
+      // Stripe/DB remonte au catch general -> evenement `failed` + HTTP 500 ->
+      // Stripe renvoie l'evenement. L'organisation ne devient `trialing` qu'avec
+      // une souscription connue.
+      const { provisionSubscriptionFromIntent } = await import("../services/signup-subscription.js");
+      const _piStripe = await createStripeClient(stripeKey);
+      const _piProvision = await provisionSubscriptionFromIntent({
+        stripe: _piStripe,
+        intent: obj as unknown as Parameters<typeof provisionSubscriptionFromIntent>[0]["intent"],
+        preRegisterToken: piPreRegToken,
+        caller: "webhook",
+      });
+      let _piSubscription: import("../services/signup-subscription.js").ProvisionedSubscription | null = null;
+      if (_piProvision.kind === "ready") {
+        _piSubscription = _piProvision.subscription;
+        _piCustomerId = _piProvision.customerId;
+      } else {
+        // Etat explicite NON premium : l'organisation est creee en pending_billing
+        // et le client termine son abonnement depuis la page de facturation.
+        if (_piProvision.customerId && !_piCustomerId) _piCustomerId = _piProvision.customerId;
+        logger.error({
+          SIGNUP_SUBSCRIPTION_UNRESOLVED: true,
+          reason: _piProvision.reason,
+          eventId, type: event.type, intentId,
+        }, "[Webhook] A-09 — aucune souscription creee pour cet intent : organisation laissee en pending_billing (non premium)");
+      }
+
+      await activateNewSignup({
         preRegToken:  piPreRegToken,
         orgId:        piOrgId,
         customerId:   _piCustomerId,
         selectedPlan: piSelectedPlan,
         isTrial:      true,  // all new signups start with a trial
-      }).catch(e => logger.error({ e, orgId: piOrgId, type: event.type }, "[Webhook] new-signup activation via intent failed"));
+        subscription: _piSubscription,
+        requireSubscription: true,
+      });
 
       // Safety net: also persist stripe_customer_id to org_settings[email] so ESC
       // legacy fallback (Step 2) finds it even if finalize-checkout was never called
@@ -2057,7 +2124,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         );
       }
 
-      logger.info({ type: event.type, orgId: piOrgId, customerId: _piCustomerId, plan: piSelectedPlan }, "[Webhook] New-signup activation queued from intent");
+      logger.info({ type: event.type, orgId: piOrgId, customerId: _piCustomerId, plan: piSelectedPlan, subscriptionId: _piSubscription?.subscriptionId ?? null }, "[Webhook] New-signup activated from intent");
       break;
     }
 

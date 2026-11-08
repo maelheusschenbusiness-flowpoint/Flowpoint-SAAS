@@ -228,7 +228,9 @@ describe("la mesure est posee et exploitable", () => {
     expect(trialActivated).toBeGreaterThan(subscriptionCase);
     expect(webhook).toContain("visiteurId: _attribution?.visiteurId ?? null");
 
-    const billing = readFileSync(join(process.cwd(), "src/routes/public-billing.ts"), "utf8");
+    // A-09 : la creation de l'abonnement (et sa metadonnee d'attribution) est
+    // portee par le service partage finalize-checkout / webhook.
+    const billing = readFileSync(join(process.cwd(), "src/services/signup-subscription.ts"), "utf8");
     expect(billing).toContain("metadataAttributionFunnel(");
     expect(billing).toContain('intentMeta["fp_visitor_id"]');
   });
