@@ -158,6 +158,8 @@ export default defineConfig({
       // Enumeration de comptes sur login-request (18/10/2026).
       "src/routes/login-request-enumeration.test.ts",
       "src/routes/login-request-behavior.test.ts",
+      // C-07 — OAuth : state lie au cookie, e-mail verifie, nonce Apple.
+      "src/routes/oauth-login-security.test.ts",
       // Mesure du tunnel posee sur la page d'inscription (18/10/2026).
       "src/tests/signin-mesure-tunnel.test.ts",
       "src/services/schema-reconcile-db.test.ts",

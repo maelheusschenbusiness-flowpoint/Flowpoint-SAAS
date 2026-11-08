@@ -166,20 +166,25 @@ describe("B/C — pre-register", () => {
 });
 
 describe("D — Google login state", () => {
-  const stateOf = (loc: string) =>
-    JSON.parse(Buffer.from(new URL(loc).searchParams.get("state")!, "base64").toString("utf8"));
+  // Depuis C-07 le `state` envoye a Google est opaque : la charge utile (fp_lid,
+  // seller_code, plan) est portee par le cookie httpOnly fp_oauth_google.
+  const stateOf = (r: { headers: Record<string, unknown> }) => {
+    const raw = ([] as string[]).concat(r.headers["set-cookie"] as string[] ?? [])
+      .find((c) => c.startsWith("fp_oauth_google="))!.split(";")[0]!.slice("fp_oauth_google=".length);
+    return JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+  };
   it("carries a valid fp_lid", async () => {
     const r = await request(app()).get(`/api/auth/google/login?fp_lid=${VALID}`);
     expect(r.status).toBe(302);
-    expect(stateOf(r.headers.location).fp_lid).toBe(VALID);
+    expect(stateOf(r).fp_lid).toBe(VALID);
   });
   it("never carries an invalid one", async () => {
     const r = await request(app()).get("/api/auth/google/login?fp_lid=%3Cscript%3E");
-    expect(stateOf(r.headers.location).fp_lid).toBeNull();
+    expect(stateOf(r).fp_lid).toBeNull();
   });
   it("is unchanged otherwise (seller_code still carried)", async () => {
     const r = await request(app()).get("/api/auth/google/login?seller_code=SELLER-AB12");
-    const st = stateOf(r.headers.location);
+    const st = stateOf(r);
     expect(st.seller_code).toBe("SELLER-AB12");
     expect(st.fp_lid).toBeNull();
   });
@@ -237,7 +242,7 @@ describe("F — funnel and finalize contracts", () => {
   });
   it("the Google callback stores the state fp_lid, the first attribution winning", () => {
     const src = read("../routes/auth.ts");
-    expect(src).toMatch(/fpLidFromState = normalizeFpLid\(stateObj\.fp_lid\)/);
+    expect(src).toMatch(/fpLidFromState: string \| null = normalizeFpLid\(oauthState\.fp_lid\)/);
     expect(src).toMatch(/RETURNING fp_lid/);
     expect(src).toMatch(/\.find\(\(v\): v is string => v !== null\) \?\? fpLidFromState/);
     expect(src).toMatch(/postal_code, seller_id, fp_lid, created_at, expires_at/);
