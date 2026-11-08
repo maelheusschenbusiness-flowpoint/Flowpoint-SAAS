@@ -42,6 +42,15 @@ vi.mock("../middlewares/requireRole.js", () => ({
   canAdmin: (_req: any, _res: any, next: any) => next(),
   canWrite: (_req: any, _res: any, next: any) => next(),
 }));
+// B-03 : les gardes de planGate verifient aussi l'etat d'abonnement. Ce test cible
+// la logique d'add-on SLA : l'organisation simulee a un abonnement actif.
+vi.mock("../services/billing-context.js", () => ({
+  BillingContextUnavailableError: class extends Error {},
+  loadBillingContext: vi.fn(async () => ({
+    subscriptionStatus: "active", plan: "standard", hasPaidAccess: true, inPaidGracePeriod: false,
+    trialEndsAt: null, currentPeriodEnd: null, canStartTrial: false,
+  })),
+}));
 vi.mock("../services/init-bs-ownership.js", () => ({ registreAppartenancePresent: vi.fn() }));
 vi.mock("../services/global-monitoring.js", () => ({
   summarizeGlobalMonitoring: mocks.summarizeGlobalMonitoring,

@@ -6,9 +6,20 @@
  *
  * Fail-closed policy: if the plan cannot be resolved from DB in production,
  * the request is denied (402 / 403). In development, fail-open is preserved.
+ *
+ * B-03 : le PLAN ne suffit pas — un abonnement annule/impaye/non finalise garde
+ * sa colonne `plan`. Chaque garde (requirePlan, requireFeature, requireQuota,
+ * requireAddon, requireAddonOrFeature) verifie donc aussi l'etat d'abonnement via
+ * enforcePaidAccess() (lib/subscription-state.ts fait foi : active, trialing, ou
+ * periode deja payee encore valide). Le verdict est mis en cache sur la requete
+ * par le middleware global requirePaidAccess : aucun cout supplementaire sur
+ * les routes qu'il protege deja, et les routes situees sous un prefixe exempte
+ * (ex. /permissions) restent couvertes. Reponse : 402 SUBSCRIPTION_REQUIRED
+ * (exploitable par l'UI) ou 503 BILLING_STATE_UNAVAILABLE.
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { enforcePaidAccess } from "./requirePaidAccess.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { planAtLeast, getFeature, getQuota, normalizePlan, type PlanTier, type FeatureFlags, type CoreQuotas } from "../lib/config.js";
@@ -94,7 +105,9 @@ export async function resolvePlanFromDB(req: Request): Promise<string | null> {
 /** Require a minimum plan tier to access an endpoint */
 export function requirePlan(minimumPlan: PlanTier): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, res: Response, next: NextFunction): void => {
-    resolvePlanFromDB(req).then(plan => {
+    enforcePaidAccess(req, res).then(async ok => {
+      if (!ok) return;
+      const plan = await resolvePlanFromDB(req);
       if (plan === null) {
         // DB error in production — fail-closed
         logger.error({ url: req.url }, "[PlanGate] Plan resolution failed — denying access");
@@ -111,9 +124,11 @@ export function requirePlan(minimumPlan: PlanTier): (req: Request, res: Response
 /** Require a specific feature flag to be enabled for current plan */
 export function requireFeature(feature: keyof FeatureFlags, featureLabel?: string): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, res: Response, next: NextFunction): void => {
-    resolvePlanFromDB(req).then(plan => {
+    enforcePaidAccess(req, res).then(async ok => {
+      if (!ok) return;
+      const plan = await resolvePlanFromDB(req);
       if (plan === null) {
-        logger.error({ url: req.url, feature }, "[PlanGate] Plan resolution failed — denying access");
+        logger.error({ url: req.url, feature },"[PlanGate] Plan resolution failed — denying access");
         res.status(503).json({ error: "Subscription status unavailable. Please try again." });
         return;
       }
@@ -132,6 +147,9 @@ export function requireQuota(
 ): (req: Request, res: Response, next: NextFunction) => void {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const orgId = (req as { orgId?: string }).orgId ?? "default";
+    try {
+      if (!(await enforcePaidAccess(req, res))) return;
+    } catch (err) { next(err); return; }
     const resolvedPlan = await resolvePlanFromDB(req);
     if (resolvedPlan === null) {
       logger.error({ resource, orgId }, "[PlanGate] quota plan resolution failed — denying request");
@@ -191,7 +209,9 @@ export function requireAddon(
       return;
     }
 
-    resolvePlanFromDB(req).then(async plan => {
+    enforcePaidAccess(req, res).then(async ok => {
+      if (!ok) return;
+      const plan = await resolvePlanFromDB(req);
       if (plan === null) {
         res.status(503).json({ error: "Subscription status unavailable. Please try again." });
         return;
@@ -266,7 +286,9 @@ export function requireAddonOrFeature(
       return;
     }
 
-    resolvePlanFromDB(req).then(plan => {
+    enforcePaidAccess(req, res).then(async ok => {
+      if (!ok) return;
+      const plan = await resolvePlanFromDB(req);
       if (plan === null) {
         res.status(503).json({ error: "Subscription status unavailable. Please try again." });
         return;
