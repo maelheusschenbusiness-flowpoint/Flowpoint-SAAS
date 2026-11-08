@@ -50,7 +50,7 @@ router.get("/gbp-posts/queue", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT q.*, p.content, p.post_type, p.location_name
-       FROM gbp_post_queue q JOIN gbp_posts p ON p.id=q.post_id
+       FROM gbp_post_queue q JOIN gbp_posts p ON p.id=q.post_id AND p.org_id=q.org_id
        WHERE q.org_id=$1 ORDER BY q.scheduled_for ASC LIMIT 20`,
       [org(req)]
     );
@@ -149,6 +149,10 @@ router.post("/gbp-posts/:id/publish", async (req, res) => {
     res.json({ ok: true, post });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
+    // Ressource d'une autre organisation, inexistante ou déjà publiée : même réponse (pas d'oracle d'existence).
+    if (message === "GBP_POST_NOT_FOUND_OR_ALREADY_PUBLISHED") {
+      res.status(404).json({ error: "Post introuvable", code: message }); return;
+    }
     const validationErrors = [
       "GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH",
       "GBP_EVENT_SCHEDULE_REQUIRED",
@@ -171,21 +175,31 @@ router.patch("/gbp-posts/:id", async (req, res) => {
   if (content)     { params.push(content);     updates.push(`content=$${params.length}`); }
   if (title)       { params.push(title);       updates.push(`title=$${params.length}`); }
   if (scheduledAt) { params.push(scheduledAt); updates.push(`scheduled_at=$${params.length}`); }
+  // Le statut n'est jamais posé par le client : « published »/« failed »/« publishing » ne
+  // résultent que de l'appel réel à Google (publishPost). Seul le retour en brouillon est permis.
+  if (status !== undefined && status !== "draft") {
+    res.status(400).json({ error: "Statut non modifiable : seul « draft » est accepté.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
+  }
   if (status)      { params.push(status);      updates.push(`status=$${params.length}`); }
   if (seoKeywords) { params.push(seoKeywords); updates.push(`seo_keywords=$${params.length}`); }
   params.push(req.params.id, org(req));
   try {
-    await db(req)(
-      `UPDATE gbp_posts SET ${updates.join(",")} WHERE id=$${params.length - 1} AND org_id=$${params.length}`,
+    const r = await db(req)(
+      `UPDATE gbp_posts SET ${updates.join(",")}
+        WHERE id=$${params.length - 1} AND org_id=$${params.length}
+          AND status IN ('draft','scheduled','failed')
+        RETURNING id`,
       params
     );
+    if (!r.rows.length) { res.status(404).json({ error: "Post introuvable" }); return; }
     res.json({ ok: true });
   } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
 router.delete("/gbp-posts/:id", async (req, res) => {
   try {
-    await deletePost(org(req), req.params.id);
+    const deleted = await deletePost(org(req), req.params.id);
+    if (deleted === false) { res.status(404).json({ error: "Post introuvable" }); return; }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });

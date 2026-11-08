@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import crypto from "crypto";
@@ -55,7 +56,7 @@ export async function createIntegration(
     const current = Number((countRes.rows[0] as Record<string, unknown>)["cnt"] ?? 0);
     if (current >= limit) throw new Error(`Limite du plan atteinte (${current}/${limit})`);
 
-    const id = `intg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = newId("intg");
     const endpointUrl = data.endpointUrl || data.webhookUrl || "";
     const platform = data.platform || "custom";
     const events = data.events ?? [];
@@ -114,7 +115,7 @@ export async function dispatchEvent(
 
     for (const intg of subscribed) {
       const startedAt = Date.now();
-      const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      const runId = newId("run");
       try {
         const delivery = await _deliverWebhook(intg, event, payload);
         const ok = delivery.ok;
@@ -348,7 +349,7 @@ export async function testIntegration(
        WHERE id=$3`,
       [ok ? 1 : 0, ok ? 0 : 1, id]
     );
-    const runId = `run_test_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+    const runId = newId("run_test");
     await client.query(
       `INSERT INTO automation_runs
          (id, org_id, integration_id, event_type, payload, status, attempt, duration_ms, http_status, triggered_at, created_at)
@@ -517,7 +518,7 @@ async function writeAutomationLog(
   client: { query: (sql: string, values?: unknown[]) => Promise<unknown> },
   entry: { orgId: string; integrationId?: string; runId?: string; level: string; message: string; metadata?: Record<string, unknown> }
 ): Promise<void> {
-  const id = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const id = newId("alog");
   await client.query(
     `INSERT INTO automation_logs (id, run_id, org_id, integration_id, level, message, metadata, created_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
