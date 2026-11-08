@@ -9,7 +9,7 @@ import {
 } from "../services/integrations-service.js";
 import { logger } from "../lib/logger.js";
 import { pool } from "@workspace/db";
-import { validatePublicHttpsWebhook } from "../services/webhook-url-safety.js";
+import { validatePublicHttpsWebhook, postWebhookPinned } from "../services/webhook-url-safety.js";
 import { presentIntegration } from "../services/integration-response.js";
 
 const router = Router();
@@ -314,14 +314,17 @@ router.get("/integrations/webhooks", async (req, res) => {
 router.post("/integrations/webhooks", requireAddon("advancedWebhooks", "Advanced Webhooks"), async (req, res) => {
   const { url, events = ["*"], headers = {} } = req.body as { url?: string; events?: string[]; headers?: Record<string, string> };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
-  const id = `wh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  // SSRF : la destination est validée AVANT d'être enregistrée (puis revalidée à chaque envoi).
+  const safeTarget = await validatePublicHttpsWebhook(url);
+  if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
+  const id = `wh_${crypto.randomUUID()}`;
   try {
     await db(req)(
       `INSERT INTO automation_integrations (id, org_id, name, type, platform, endpoint_url, events, headers, active, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,now(),now()) RETURNING *`,
-      [id, org(req), url, "outgoing", "webhook", url, JSON.stringify(events), JSON.stringify(headers)]
+      [id, org(req), safeTarget.url, "outgoing", "webhook", safeTarget.url, JSON.stringify(events), JSON.stringify(headers)]
     );
-    res.status(201).json({ ok: true, id, url });
+    res.status(201).json({ ok: true, id, url: safeTarget.url });
   } catch { res.status(500).json({ error: "Failed to save webhook" }); }
 });
 
@@ -332,17 +335,17 @@ router.post("/integrations/webhooks/test", requireAddon("advancedWebhooks", "Adv
   const safeTarget = await validatePublicHttpsWebhook(url);
   if (!safeTarget.ok) { res.status(400).json({ error: safeTarget.error }); return; }
   try {
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), 8_000);
-    const r = await fetch(safeTarget.url, {
-      method: "POST",
+    // DNS épinglé, redirections refusées, revalidation au moment de l'envoi.
+    const r = await postWebhookPinned(safeTarget.url, {
       headers: { "Content-Type": "application/json", "User-Agent": "FlowPoint-Webhook-Test/1.0" },
       body: JSON.stringify({ event: "ping", ts: Date.now(), source: "flowpoint-test" }),
-      signal: ac.signal,
-      redirect: "error",
+      timeoutMs: 8_000,
     });
-    clearTimeout(to);
-    res.json({ ok: r.ok, statusCode: r.status, durationMs: 0, note: r.ok ? "Ping OK" : "Endpoint a renvoyé une erreur" });
+    if (r.statusCode === undefined) {
+      res.json({ ok: false, error: r.error, note: "Test indisponible — enregistrez le webhook" });
+      return;
+    }
+    res.json({ ok: r.ok, statusCode: r.statusCode, durationMs: 0, note: r.ok ? "Ping OK" : "Endpoint a renvoyé une erreur" });
   } catch (err) {
     res.json({ ok: false, error: safeErrMsg(err), note: "Test indisponible — enregistrez le webhook" });
   }

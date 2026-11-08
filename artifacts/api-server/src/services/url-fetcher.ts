@@ -261,9 +261,19 @@ interface PinnedResponse {
  * This eliminates the TOCTOU gap present when `fetch()` re-resolves the hostname
  * at connection time — the connected IP is always the one that passed validation.
  */
-async function pinnedRequest(
+export interface PinnedRequestInit {
+  method?: string;
+  /** En-têtes ajoutés/remplaçant les défauts. Host est toujours forcé à l'hôte de l'URL. */
+  headers?: Record<string, string>;
+  body?: string;
+  /** Résolveur injectable (tests) : par défaut dns.lookup(all). */
+  resolve?: (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+}
+
+export async function pinnedRequest(
   rawUrl: string,
   signal: AbortSignal,
+  init?: PinnedRequestInit,
 ): Promise<PinnedResponse> {
   const parsed = new URL(rawUrl);
   const hostname = parsed.hostname;
@@ -285,7 +295,9 @@ async function pinnedRequest(
   //    complete in the OS but we no longer block on it past the deadline.
   let addresses: Array<{ address: string; family: number }>;
   try {
-    const dnsPromise = dns.lookup(hostname, { all: true }) as Promise<Array<{ address: string; family: number }>>;
+    const dnsPromise = (init?.resolve
+      ? init.resolve(hostname)
+      : dns.lookup(hostname, { all: true })) as Promise<Array<{ address: string; family: number }>>;
     const abortPromise = new Promise<never>((_, reject) => {
       if (signal.aborted) {
         reject(new Error("DNS annulé (timeout global)"));
@@ -339,12 +351,14 @@ async function pinnedRequest(
     hostname: pinnedIp,         // TCP/TLS connects here — fixed, validated IP
     port,
     path,
-    method: "GET",
+    method: init?.method ?? "GET",
     headers: {
-      Host: hostname,           // HTTP Host header → original hostname
       "User-Agent": USER_AGENT,
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8",
+      ...(init?.headers ?? {}),
+      ...(init?.body !== undefined ? { "Content-Length": String(Buffer.byteLength(init.body)) } : {}),
+      Host: parsed.host,        // HTTP Host header → original hostname (non surchargeable)
     },
     timeout: TOTAL_TIMEOUT_MS,
   };
@@ -374,6 +388,7 @@ async function pinnedRequest(
     // Clean up listener when the response arrives (to avoid a memory leak)
     req.once("response", () => signal.removeEventListener("abort", onAbort));
 
+    if (init?.body !== undefined) req.write(init.body);
     req.end();
   });
 }
