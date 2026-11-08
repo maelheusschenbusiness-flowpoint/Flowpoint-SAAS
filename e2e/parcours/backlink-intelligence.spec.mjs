@@ -122,28 +122,38 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
   });
   expect(messageFile).toBeTruthy();
 
+  let auditRequestCount = 0;
+  let releaseFirstAuditRequest;
+  const holdFirstAuditResponse = new Promise(resolve => { releaseFirstAuditRequest = resolve; });
+  await page.route(url => new URL(url).pathname === "/api/audits", async route => {
+    auditRequestCount += 1;
+    if (auditRequestCount === 1) {
+      await holdFirstAuditResponse;
+    }
+    await route.continue();
+  });
+
   await page.goto(loginBody.debugLink);
   await page.waitForURL(/dashboard\.html/, { timeout: 20_000 });
   await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
-  await page.waitForFunction(
-    () => window.STATE?.loading === false && window.STATE?.dataLoadComplete === true,
-    null,
-    { timeout: 30_000 },
-  );
-  await page.waitForFunction(
-    id => window.STATE?.audits?.some(audit => String(audit.id) === id),
-    auditId,
+  await page.waitForRequest(
+    request => new URL(request.url()).pathname === "/api/audits",
     { timeout: 20_000 },
   );
-  await page.evaluate(() => {
-    window.STATE.audits = [];
-    window.STATE.backlinks = null;
-  });
+  await page.waitForFunction(
+    () => window.STATE?.route === "overview" && window.STATE?.loading === false,
+    null,
+    { timeout: 20_000 },
+  );
 
-  await page.locator('[data-route="competitor"]').click();
-  await page.waitForFunction(() => window.STATE?.route === "competitor", null, { timeout: 20_000 });
-  await page.locator('[data-sub-route="backlinks"]').click();
-  await page.waitForFunction(() => window.STATE?.subRoute === "backlinks", null, { timeout: 20_000 });
+  // The background audit request is still held. Change only the SPA hash so the
+  // direct route can render while its audit state is empty, without flaky nav clicks.
+  await page.evaluate(() => { window.location.hash = "#competitor/backlinks"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "competitor" && window.STATE?.subRoute === "backlinks",
+    null,
+    { timeout: 20_000 },
+  );
 
   const summaryButton = page.locator('button[onclick*="fpLoadBacklinkSummary"]');
   await expect(summaryButton).toBeVisible();
@@ -157,6 +167,7 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
     response.request().method() === "GET" && response.url().includes("/api/seo/backlinks?"),
   );
   await summaryButton.click();
+  releaseFirstAuditRequest();
   const [auditsResponse, summaryHttpResponse] = await Promise.all([auditsResponsePromise, summaryResponse]);
   expect(auditsResponse.status()).toBe(200);
   const audits = await auditsResponse.json();
