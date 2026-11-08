@@ -8923,9 +8923,9 @@ function renderReports() {
         ['Rapport local complet', 'Plan zones cibles', 'Répondre aux avis'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard(fpT('Zones analysées'), String(zones.length), fpT(PREVIEW_MODE ? '1 dominée, 3 en progression' : 'données exemple'), PREVIEW_MODE ? 'up' : 'neutral')}
+        ${statCard(fpT('Zones analysées'), (zones.length > 0 || PREVIEW_MODE) ? String(zones.length) : '—', fpT(PREVIEW_MODE ? '1 dominée, 3 en progression' : (_lseo.state === 'not_connected' ? 'Non connecté' : 'Aucune zone analysée')), PREVIEW_MODE ? 'up' : 'neutral')}
         ${statCard(fpT('Visibilité moy.'), displayStat(null, '54%'), fpT(PREVIEW_MODE ? '+4% vs M-1' : 'Connectez GBP'), 'neutral')}
-        ${statCard(fpT('Note GBP moy.'), displayStat(null, '4.4 ★'), fpT(PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP'), 'neutral')}
+        ${statCard(fpT('Note GBP moy.'), typeof _lseo.avgRating === 'number' ? _lseo.avgRating.toFixed(1) + ' ★' : displayStat(null, '4.4 ★'), typeof _lseo.avgRating === 'number' ? fpT('données de votre fiche GBP') : fpT(PREVIEW_MODE ? '+0.2 vs M-1' : (_lseo.state === 'not_connected' ? 'Non connecté' : 'Connectez GBP')), 'neutral')}
         ${statCard(fpT('Avis sans réponse'), displayStat(null, '14'), fpT(PREVIEW_MODE ? 'Action requise' : 'Connectez GBP'), PREVIEW_MODE ? 'down' : 'neutral')}
       </div>
 
@@ -8951,18 +8951,18 @@ function renderReports() {
                 const vc = z.vis >= 70 ? '#22c55e' : z.vis >= 50 ? '#f59e0b' : '#ef4444';
                 const tc = z.trend > 0 ? '#22c55e' : z.trend < 0 ? '#ef4444' : 'var(--fp-text-faint)';
                 return `<tr>
-                  <td style="font-weight:600">${escHtml(z.name)}${z.dominant ? ' <span style="font-size:9px;color:#22c55e">★</span>' : ''}</td>
+                  <td style="font-weight:600">${escHtml(z.name)}${(z.dominant || z.dominated) ? ' <span style="font-size:9px;color:#22c55e">★</span>' : ''}</td>
                   <td style="text-align:center">
                     <div style="display:inline-flex;align-items:center;gap:6px">
                       <div class="fp-progress-track" style="width:48px;height:5px"><div class="fp-progress-fill" style="width:${z.vis}%;background:${vc}"></div></div>
                       <span style="font-weight:800;color:${vc};min-width:28px;text-align:left">${z.vis}%</span>
                     </div>
                   </td>
-                  <td style="text-align:center;color:var(--fp-text-faint)">${z.prev}%</td>
-                  <td style="text-align:center;font-weight:700">${z.kw}</td>
-                  <td style="text-align:center;font-weight:700;color:#f59e0b">${z.reviews} ★</td>
-                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(PREVIEW_MODE && !(_lseo.zones && _lseo.zones.length > 0) ? fpT(z.comp) : z.comp)}</td>
-                  <td style="text-align:center;font-weight:700;color:${tc}">${z.trend > 0 ? '↑+' : z.trend < 0 ? '↓' : '→'}${Math.abs(z.trend) || '0'}pts</td>
+                  <td style="text-align:center;color:var(--fp-text-faint)">${z.prev != null ? z.prev + '%' : '—'}</td>
+                  <td style="text-align:center;font-weight:700">${z.kw != null ? z.kw : '—'}</td>
+                  <td style="text-align:center;font-weight:700;color:#f59e0b">${z.reviews != null ? z.reviews + ' ★' : '—'}</td>
+                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${z.comp != null ? escHtml(PREVIEW_MODE && !(_lseo.zones && _lseo.zones.length > 0) ? fpT(z.comp) : z.comp) : '—'}</td>
+                  <td style="text-align:center;font-weight:700;color:${tc}">${z.trend != null ? (z.trend > 0 ? '↑+' : z.trend < 0 ? '↓' : '→') + (Math.abs(z.trend) || '0') + 'pts' : '—'}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -9925,7 +9925,7 @@ function renderLocalSEO() {
             { icon:'📍', label:'Zones actives',    val:dominatedZones!=null?dominatedZones + '/' + totalZones:'—', color:'#2563EB', sub:dominatedZones!=null?'couvertes à 70%+':'Configurez vos zones' },
             { icon:'⭐', label:'Note Google moy.', val:STATE.localSeo?.avgRating?STATE.localSeo.avgRating.toFixed(1)+'★':(PREVIEW_MODE?'4.4★':'—'), color:'#f59e0b', sub:STATE.localSeo?.gbpCount?'sur '+STATE.localSeo.gbpCount+' fiche(s) GBP':(PREVIEW_MODE?'sur 3 fiches GBP':'Configurez GBP') },
             { icon:'🔍', label:'Mots-clés locaux', val:STATE.localSeo?.localKeywords!=null?String(STATE.localSeo.localKeywords):(PREVIEW_MODE?'127':'—'), color:'#22c55e', sub:'en top 10' },
-            { icon:'⚔️', label:'Menaces actives',  val:STATE.competitors&&STATE.competitors.length>0?String(STATE.competitors.length):(PREVIEW_MODE?'3':'0'), color:'#ef4444', sub:STATE.competitors&&STATE.competitors.length>0?'concurrents suivis':(PREVIEW_MODE?'concurrents en hausse':'Aucun concurrent') },
+            { icon:'⚔️', label:'Menaces actives',  val:STATE.competitors&&STATE.competitors.length>0?String(STATE.competitors.length):(PREVIEW_MODE?'3':'—'), color:'#ef4444', sub:STATE.competitors&&STATE.competitors.length>0?'concurrents suivis':(PREVIEW_MODE?'concurrents en hausse':'Aucun concurrent') },
           ].map(m => '<div style="padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">'
             + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
             + '<span style="font-size:13px">' + m.icon + '</span>'
@@ -12730,7 +12730,7 @@ function renderSettings() {
            var dateStr = isCur ? fpT('Now') : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
           var rawUa = l.device||l.userAgent||'';
            var parsedDev = (function(ua){if(!ua)return 'Unknown device';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Unknown device';})(rawUa);
-           return { device: parsedDev, location: fpT('Unknown location'), ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
+           return { id: l.id || '', canRevoke: l.canRevoke === true, device: parsedDev, location: fpT('Unknown location'), ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
         })
       : [];
      const _parseDeviceUA = function(ua){if(!ua)return 'Unknown device';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Unknown device';};
@@ -12815,7 +12815,7 @@ function renderSettings() {
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(sess.location)} · IP ${escHtml(sess.ip)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(sess.date)}</div>
               </div>
-               ${!sess.current && sess.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success',fpT('Session revoked'));STATE.activeSessions=(STATE.activeSessions||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error',fpT('Error: {error}',{error:String(e.message||e)}));b.disabled=false;b.textContent=fpT('End session');}})(this)">${fpT('End session')}</button>` : ''}
+               ${!sess.current && sess.id && sess.canRevoke ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success',fpT('Session revoked'));STATE.loginHistory=(STATE.loginHistory||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error',fpT('Error: {error}',{error:String(e.message||e)}));b.disabled=false;b.textContent=fpT('End session');}})(this)">${fpT('End session')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -22835,6 +22835,8 @@ function bindGlobalEvents() {
     "Planning hebdomadaire (lundi 09:00 UTC)": "Weekly schedule (Monday 09:00 UTC)",
     "Générer des recommandations IA": "Generate AI recommendations",
     "Envoyer une alerte par email": "Send an email alert",
+    "Aucune zone analysée": "No zone analysed yet",
+    "données de votre fiche GBP": "from your GBP listing",
     "Critères de présence enregistrés.": "Presence criteria saved.",
     "Catalogue des add-ons indisponible.": "Add-on catalog unavailable.",
     "Objectif supprimé": "Goal deleted",
@@ -57320,16 +57322,18 @@ function initPageAnimations(route, sub) {
 
 function growthRing(val, color, sz, sw, label, sub) {
   sz = sz || 84; sw = sw || 7; label = label || ''; sub = sub || '';
+  // Donnee absente (null/undefined/NaN) : « — » et anneau vide, jamais un 0 % trompeur.
+  const _na = val === null || val === undefined || val === '' || !isFinite(Number(val));
   const r = sz / 2 - sw - 1;
   const c = +(2 * Math.PI * r).toFixed(2);
   return '<div class="fp-growth-ring-item">' +
     '<div style="position:relative;width:' + sz + 'px;height:' + sz + 'px;flex-shrink:0">' +
       '<svg width="' + sz + '" height="' + sz + '" viewBox="0 0 ' + sz + ' ' + sz + '" style="transform:rotate(-90deg);overflow:visible;display:block">' +
         '<circle cx="' + (sz/2) + '" cy="' + (sz/2) + '" r="' + r + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="' + sw + '"/>' +
-        '<circle cx="' + (sz/2) + '" cy="' + (sz/2) + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '" stroke-dasharray="' + c + '" stroke-dashoffset="' + c + '" stroke-linecap="round" data-ring-target="' + val + '" data-ring-r="' + r + '" style="transition:stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1)"/>' +
+        '<circle cx="' + (sz/2) + '" cy="' + (sz/2) + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '" stroke-dasharray="' + c + '" stroke-dashoffset="' + c + '" stroke-linecap="round"' + (_na ? '' : ' data-ring-target="' + val + '"') + ' data-ring-r="' + r + '" style="transition:stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1)"/>' +
       '</svg>' +
       '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column">' +
-        '<span style="font-size:' + (sz < 72 ? 11 : 13) + 'px;font-weight:800;color:#f1f5ff;font-family:var(--fp-font-head);line-height:1" data-count-to="' + val + '" data-suffix="%">0%</span>' +
+        '<span style="font-size:' + (sz < 72 ? 11 : 13) + 'px;font-weight:800;color:#f1f5ff;font-family:var(--fp-font-head);line-height:1"' + (_na ? '>—' : ' data-count-to="' + val + '" data-suffix="%">0%') + '</span>' +
       '</div>' +
     '</div>' +
     '<div style="margin-top:7px;text-align:center">' +
@@ -58138,11 +58142,11 @@ function renderGrowthCommandCenter() {
         </div>
         <div class="fp-growth-rings">
           ${growthRing(avgSc,'var(--fp-accent)',84,7,fpT('Momentum SEO'), STATE.overview?.scoreChange30d != null ? fpT('{count} pts/mois', { count:(STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d }) : fpT('Score moyen'))}
-          ${growthRing(_mySpeed||0,'#22c55e',84,7,fpT('Performance'), _mySpeed != null ? fpT('Score PSI moyen') : fpT('Connectez PSI'))}
-          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : 0,'#8b5cf6',84,7,fpT('Conversion'), STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : fpT('Connectez GA4'))}
-          ${growthRing(_myAvis,'#f59e0b',84,7,fpT('Avis GBP'), _lseo.avgRating ? _lseo.avgRating+'/5' : '—')}
-          ${growthRing(_c1Score||0,'#06b6d4',84,7,fpT('Concurrence'), _c1Score ? fpT('vs {name}', { name:escHtml(_comp1?.name||'Concurrent').substring(0,12) }) : fpT('Ajoutez concurrents'))}
-          ${growthRing(_myLocal,'#f97316',84,7,fpT('Local SEO'), _lseo.domScore ? _lseo.domScore+'/100' : fpT('Connectez LSEO'))}
+          ${growthRing(_mySpeed,'#22c55e',84,7,fpT('Performance'), _mySpeed != null ? fpT('Score PSI moyen') : fpT('Connectez PSI'))}
+          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : null,'#8b5cf6',84,7,fpT('Conversion'), STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : fpT('Connectez GA4'))}
+          ${growthRing(_myAvis,'#f59e0b',84,7,fpT('Avis GBP'), _lseo.avgRating ? _lseo.avgRating+'/5' : (_lseo.state === 'not_connected' ? fpT('Non connecté') : '—'))}
+          ${growthRing(_c1Score,'#06b6d4',84,7,fpT('Concurrence'), _c1Score ? fpT('vs {name}', { name:escHtml(_comp1?.name||'Concurrent').substring(0,12) }) : fpT('Ajoutez concurrents'))}
+          ${growthRing(_myLocal,'#f97316',84,7,fpT('Local SEO'), _lseo.domScore ? _lseo.domScore+'/100' : (_lseo.state === 'not_connected' ? fpT('Non connecté') : fpT('Connectez LSEO')))}
         </div>
       </div>
     </div>

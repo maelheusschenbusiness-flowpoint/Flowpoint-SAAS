@@ -8,6 +8,8 @@ import { loadOrgSettings } from "../services/org-settings.js";
 import { logger } from "../lib/logger.js";
 import { canAdmin } from "../middlewares/requireRole.js";
 import { displayablePublicKey, redactApiKeys } from "../lib/api-keys.js";
+import { createHash } from "crypto";
+import { pool } from "@workspace/db";
 
 const router = Router();
 
@@ -41,6 +43,34 @@ router.get("/security/score", async (req: Request, res: Response): Promise<void>
   }
 });
 
+// ── Session identifiers & revocation helpers ─────────────────────────────────
+// The raw token must never leave the server. Its first characters are NOT a usable
+// identifier either: the token starts with base64(userId:orgId:...) so every session
+// of one user shares the same prefix. The public id is a SHA-256 digest of the token.
+export function sessionPublicId(token: string): string {
+  return createHash("sha256").update(token).digest("hex").slice(0, 24);
+}
+const SESSION_ID_RE = /^[a-f0-9]{24}$/;
+
+type SessionActor = { userId?: string; userUuid?: string; email?: string; role?: string };
+const actorOf = (req: Request): SessionActor => {
+  const c = (req.orgContext ?? {}) as SessionActor;
+  return { userId: c.userId, userUuid: c.userUuid, email: c.email, role: c.role };
+};
+/** API keys and the service credential are not people: they cannot own or revoke sessions. */
+const isHumanActor = (a: SessionActor): boolean =>
+  !!a.role && a.role !== "service" && !String(a.userId ?? "").startsWith("apikey:") && a.userId !== "service";
+const isOrgAdmin = (a: SessionActor): boolean => a.role === "owner" || a.role === "admin";
+function ownsSession(row: Record<string, unknown>, a: SessionActor): boolean {
+  const email = String(row["email"] ?? "").toLowerCase();
+  if (a.email && email && a.email.toLowerCase() === email) return true;
+  if (a.userUuid && row["user_id_v2"] && String(row["user_id_v2"]) === a.userUuid) return true;
+  return !!a.userId && String(row["user_id"] ?? "") === a.userId;
+}
+const currentTokenOf = (req: Request): string =>
+  ((req as unknown as { cookies?: Record<string, string> }).cookies?.["fp_token"]) ??
+  ((req.headers["authorization"] as string | undefined)?.replace(/^Bearer\s+/i, "") ?? "");
+
 // ── GET /api/sessions — login history for current org ────────────────────────
 router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
@@ -52,8 +82,9 @@ router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
       ((req as unknown as { cookies?: Record<string, string> }).cookies?.["fp_token"]) ??
       ((req.headers["authorization"] as string | undefined)?.replace(/^Bearer\s+/i, "") ?? "");
 
+    const actor = actorOf(req);
     const r = await orgDb(req)(
-      `SELECT token, email, ip_address, user_agent, created_at, expires_at
+      `SELECT token, user_id, user_id_v2, email, ip_address, user_agent, created_at, expires_at
        FROM user_sessions
        WHERE org_id = $1
           AND expires_at > NOW()
@@ -69,7 +100,7 @@ router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
       const rawIp = String(row["ip_address"] ?? "");
       const createdAt = row["created_at"] ? new Date(String(row["created_at"])) : null;
       return {
-        id:       String(row["token"]).slice(0, 16),  // safe partial token as ID
+        id:       rowToken ? sessionPublicId(rowToken) : "",  // opaque digest, never a token fragment
         event:    "Connexion réussie",
         device:   rawUa ? rawUa.slice(0, 80) : "Appareil inconnu",
         // The security screen is for the authenticated account holder: show the
@@ -77,6 +108,8 @@ router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
         ip:       rawIp || "IP inconnue",
         date:     createdAt ? createdAt.toISOString() : null,
         isCurrent,
+        // The current session is ended through sign-out, never through this list.
+        canRevoke: isHumanActor(actor) && !isCurrent && (isOrgAdmin(actor) || ownsSession(row, actor)),
         success:  true,
       };
     });
@@ -89,6 +122,63 @@ router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
       sessions: [],
       count: 0,
     });
+  }
+});
+
+// ── POST /api/auth/sessions/:id/revoke — end ONE session ─────────────────────
+// Allowed: the user's own sessions, or any session of the SAME organization for an
+// owner/admin. A session of another organization is indistinguishable from an unknown
+// id (404). The current session is refused explicitly (409): use sign-out for that.
+router.post("/auth/sessions/:id/revoke", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  const actor = actorOf(req);
+  if (!isHumanActor(actor)) {
+    res.status(403).json({ error: "Seul un utilisateur connecté peut mettre fin à une session.", code: "SESSION_REVOKE_FORBIDDEN" });
+    return;
+  }
+  const sessionId = String(req.params["id"] ?? "");
+  if (!SESSION_ID_RE.test(sessionId)) {
+    res.status(400).json({ error: "Identifiant de session invalide.", code: "SESSION_ID_INVALID" });
+    return;
+  }
+  try {
+    const found = await pool.query(
+      `SELECT token, user_id, user_id_v2, email FROM user_sessions
+        WHERE org_id = $1 AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 500`,
+      [orgId],
+    );
+    const target = found.rows.find((row) => sessionPublicId(String(row["token"])) === sessionId);
+    if (!target) {
+      res.status(404).json({ error: "Session introuvable.", code: "SESSION_NOT_FOUND" });
+      return;
+    }
+    if (!isOrgAdmin(actor) && !ownsSession(target, actor)) {
+      res.status(403).json({ error: "Vous ne pouvez mettre fin qu'à vos propres sessions.", code: "SESSION_REVOKE_FORBIDDEN" });
+      return;
+    }
+    const currentToken = currentTokenOf(req);
+    if (currentToken && String(target["token"]) === currentToken) {
+      res.status(409).json({
+        error: "Il s'agit de votre session actuelle : utilisez « Se déconnecter » pour y mettre fin.",
+        code: "CURRENT_SESSION",
+      });
+      return;
+    }
+    const del = await pool.query(
+      `DELETE FROM user_sessions WHERE token = $1 AND org_id = $2`,
+      [String(target["token"]), orgId],
+    );
+    if (!del.rowCount) {
+      res.status(404).json({ error: "Session introuvable.", code: "SESSION_NOT_FOUND" });
+      return;
+    }
+    logger.info({ orgId, byUser: actor.userId, own: ownsSession(target, actor) }, "[Security] session revoked");
+    res.json({ ok: true, revoked: 1, id: sessionId, current: false });
+  } catch (err) {
+    logger.error({ err, orgId }, "[Security] session revocation failed");
+    res.status(503).json({ error: "La session n'a pas pu être révoquée. Réessayez.", code: "SESSION_REVOKE_UNAVAILABLE" });
   }
 });
 
