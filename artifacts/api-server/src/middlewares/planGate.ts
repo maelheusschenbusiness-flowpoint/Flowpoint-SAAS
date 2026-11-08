@@ -143,7 +143,7 @@ export function requireQuota(
     try {
       const used = await getCurrentUsage(orgId, req);
       if (used < limit) { next(); return; }
-      quotaExceeded(res, String(resource), limit, resolvedPlan);
+      quotaExceeded(res, String(resource), limit, resolvedPlan, used);
     } catch (err) {
       logger.error({ err, resource, orgId }, "[PlanGate] quota usage resolution failed — denying request");
       res.status(503).json({ error: "Usage status unavailable. Please try again." });

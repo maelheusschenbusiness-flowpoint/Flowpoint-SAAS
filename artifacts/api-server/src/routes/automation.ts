@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getWorkflowsData, executeWorkflow } from "../services/automation-service.js";
 import { store } from "../services/store.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, requireQuota } from "../middlewares/planGate.js";
 import { hasAddonEntitlementForOrg } from "../services/addon-entitlement.js";
 import { isAWLReportWorkflow } from "../services/awl-weekly-report.js";
 
@@ -56,7 +56,12 @@ router.get("/automation/workflows", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/automation/workflows", async (req: Request, res: Response) => {
+// Plafond d'automatisations du plan (3 / 20 / 100) : compte les workflows de l'organisation.
+// Les workflows existants restent utilisables ; seule la CREATION au-dela du plafond est refusee.
+router.post("/automation/workflows", requireQuota("automations", async (orgId, quotaReq) => {
+  const r = await (quotaReq as OrgReq).orgDb(`SELECT COUNT(*)::int AS n FROM automation_workflows WHERE org_id=$1`, [orgId]);
+  return Number(r.rows[0]?.["n"] ?? 0);
+}), async (req: Request, res: Response) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const { name, icon, description, actions, category } = body as { name?: string; icon?: string; description?: string; actions?: unknown; category?: string };
   // Accept both camelCase (API clients) and snake_case (dashboard frontend)

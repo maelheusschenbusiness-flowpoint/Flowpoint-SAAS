@@ -13,6 +13,9 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/services/stripe-factory.test.ts",
+      // B-05/B-07/B-09 : quotas annonces appliques cote serveur, CORE_QUOTAS derive de PLAN_DEFINITIONS, alias agency.
+      "src/lib/core-quotas-consistency.test.ts",
+      "src/routes/quota-coverage-db.test.ts",
       "src/routes/admin-test-session.test.ts",
       "src/services/render-test-migration-guard.test.ts",
        "src/routes/admin-test-session-postgres.test.ts",

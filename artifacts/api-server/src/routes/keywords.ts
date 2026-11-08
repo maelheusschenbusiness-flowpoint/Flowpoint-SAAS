@@ -11,7 +11,7 @@ import {
 import { logger } from "../lib/logger.js";
 import { withCache } from "../middlewares/cacheControl.js";
 import { canWrite } from "../middlewares/requireRole.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
 import { findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
 import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
@@ -28,8 +28,58 @@ type OrgReq = import("express").Request & { orgDb: (sql: string, values?: unknow
 function getOrg(req: import("express").Request): string {
   return (req as OrgReq).orgId ?? "default";
 }
-function getPlan(req: import("express").Request): string {
-  return ((req as unknown as { me?: { plan?: string } }).me?.plan) ?? "Pro";
+/**
+ * Plan de l'organisation, lu en base. Avant, `req.me?.plan ?? "Pro"` : `req.me`
+ * n'est renseigne par aucun middleware, donc TOUTE organisation (Standard
+ * comprise) etait traitee comme Pro (plafond 500 au lieu de 50).
+ * Renvoie null si le plan est illisible en production (l'appelant refuse en 503).
+ */
+async function getPlan(req: import("express").Request): Promise<string | null> {
+  return resolvePlanFromDB(req);
+}
+
+type KeywordCapacity =
+  | { ok: true; limit: number; current: number; hasKeywordDomination: boolean }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+/**
+ * Capacite de suivi de mots-cles de l'organisation (plafond du plan, etendu a
+ * 10 000 par l'add-on Keyword Domination). Fail-closed : un compteur illisible
+ * refuse la creation (503) au lieu de l'autoriser sans limite.
+ */
+async function checkKeywordCapacity(req: import("express").Request, orgId: string): Promise<KeywordCapacity> {
+  const plan = await getPlan(req);
+  if (plan === null) {
+    return { ok: false, status: 503, body: { error: "Impossible de vérifier votre plan. Réessayez dans un instant.", code: "KEYWORD_QUOTA_UNAVAILABLE" } };
+  }
+  const { loadBillingContext } = await import("../services/billing-context.js");
+  const bCtx = await loadBillingContext(orgId).catch(() => null);
+  const hasKeywordDomination = !!(bCtx?.addons?.["keywordDomination"]);
+  const basePlanLimit = getKeywordLimit(plan);
+  const limit = hasKeywordDomination ? Math.max(basePlanLimit, 10000) : basePlanLimit;
+  let current: number;
+  try {
+    const countRes = await (req as OrgReq).orgDb(
+      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
+      [orgId],
+    );
+    current = Number((countRes.rows[0] as { n?: number } | undefined)?.n ?? 0);
+  } catch (err) {
+    logger.error({ err, orgId }, "[Keywords] compteur de mots-clés illisible — création refusée (fail-closed)");
+    return { ok: false, status: 503, body: { error: "Impossible de vérifier votre quota de mots-clés. Réessayez dans un instant.", code: "KEYWORD_QUOTA_UNAVAILABLE" } };
+  }
+  if (current >= limit) {
+    return {
+      ok: false, status: 429,
+      body: {
+        error: `Plan limit atteint (${current}/${limit} mots-clés). ${hasKeywordDomination ? '' : 'Activez Keyword Domination Engine pour passer à 10 000 mots-clés.'}`.trim(),
+        code: "KEYWORD_LIMIT_REACHED",
+        current, limit,
+        addonKey: hasKeywordDomination ? null : "keywordDomination",
+      },
+    };
+  }
+  return { ok: true, limit, current, hasKeywordDomination };
 }
 
 // GET /api/keywords/content-decay — real GSC page data, no AI or external API call.
@@ -217,8 +267,9 @@ router.get("/keywords", withCache(60), async (req, res) => {
 
 // GET /api/keywords/stats
 router.get("/keywords/stats", async (req, res) => {
-  const orgId = getOrg(req); const plan = getPlan(req);
+  const orgId = getOrg(req);
   try {
+    const plan = (await getPlan(req)) ?? "standard";
     const stats = await getKeywordStats(orgId);
     res.json({ ...stats, limit: getKeywordLimit(plan), plan });
   } catch { res.json({ keywords: 0, tracked: 0, top10: 0, avgPosition: null, limit: 0, plan: "starter" }); }
@@ -314,31 +365,13 @@ router.get("/keywords/:id/history", async (req, res) => {
 
 // POST /api/keywords/track
 router.post("/keywords/track", canWrite, async (req, res) => {
-  const orgId = getOrg(req); const plan = getPlan(req);
+  const orgId = getOrg(req);
   const { keyword, url, device, location, language, tag } = req.body as Record<string,string>;
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
     // keywordDomination add-on extends the limit to 10 000 (vs plan default: ultra=5000, pro=500, standard=50)
-    const { loadBillingContext } = await import("../services/billing-context.js");
-    const bCtx = await loadBillingContext(orgId).catch(() => null);
-    const hasKeywordDomination = !!(bCtx?.addons?.["keywordDomination"]);
-    const basePlanLimit = getKeywordLimit(plan);
-    const effectiveLimit = hasKeywordDomination ? Math.max(basePlanLimit, 10000) : basePlanLimit;
-    // Check current count before inserting
-    const countRes = await (req as OrgReq).orgDb(
-      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
-      [orgId]
-    ).catch(() => ({ rows: [{ n: 0 }] }));
-    const currentCount = (countRes.rows[0] as { n: number })?.n ?? 0;
-    if (currentCount >= effectiveLimit) {
-      res.status(429).json({
-        error: `Plan limit atteint (${currentCount}/${effectiveLimit} mots-clés). ${hasKeywordDomination ? '' : 'Activez Keyword Domination Engine pour passer à 10 000 mots-clés.'}`.trim(),
-        code: "KEYWORD_LIMIT_REACHED",
-        current: currentCount, limit: effectiveLimit,
-        addonKey: hasKeywordDomination ? null : "keywordDomination",
-      });
-      return;
-    }
+    const capacity = await checkKeywordCapacity(req, orgId);
+    if (!capacity.ok) { res.status(capacity.status).json(capacity.body); return; }
     const id = await trackKeyword(orgId, keyword, { targetUrl: url, device, location, tag });
     res.status(201).json({ ok: true, id, keyword, location: location ?? "France", device: device ?? "desktop" });
   } catch (err) {
@@ -398,6 +431,9 @@ router.post("/keywords", canWrite, async (req, res) => {
   };
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
+    // Meme plafond que POST /keywords/track : cette route historique inserait sans aucune limite.
+    const capacity = await checkKeywordCapacity(req, orgId);
+    if (!capacity.ok) { res.status(capacity.status).json(capacity.body); return; }
     const id = "kw" + Date.now();
     const r = await (req as OrgReq).orgDb(
       `INSERT INTO tracked_keywords
