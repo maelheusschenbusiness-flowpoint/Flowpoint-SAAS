@@ -81,6 +81,9 @@ export default defineConfig({
       "src/routes/addon-only-checkout.test.ts",
       "src/routes/onboarding.test.ts",
       "src/routes/billing-period-end.test.ts",
+      // Correctif securite GET /billing/verify (propriete de session, erreurs Stripe typees, plan sans defaut).
+      "src/routes/billing-verify-ownership.test.ts",
+      "src/services/billing-verify-guards.test.ts",
       "src/routes/team-invite-accept.test.ts",
       "src/services/seat-entitlement.test.ts",
       "src/routes/team-seat-gate.test.ts",
