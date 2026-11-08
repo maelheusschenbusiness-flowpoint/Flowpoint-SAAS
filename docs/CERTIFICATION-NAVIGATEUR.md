@@ -120,7 +120,9 @@ dans la branche testée il est sauté (`test.fixme`) **avec la référence de la
 | `success.html` direct : aucun « Abonnement activé » | `fix/faux-succes-paiement-20261108` | la page affiche le succès sans `session_id` ni vérification |
 | `checkout-return.html?redirect_status=failed` sans session : pas de « Paiement enregistré » | `fix/faux-succes-paiement-20261108` | un 401 est présenté comme paiement enregistré |
 
-Quand ces branches existent sur `origin` : fusion **locale non poussée** dans un clone d'essai, `CERT_RUN_PENDING=1`, puis retirer
+**Vérifié le 08/11/2026** : `fix/faux-succes-paiement-20261108` (561743d4) et `fix/essai-sans-souscription-20261108` (bd139cfd) fusionnées localement (non poussées) sur cette branche dans un clone d'essai jetable, `CERT_RUN_PENDING=1` : les 3 tests cibles passent sur les 3 profils (le libellé « Paiement échoué » remplace « Erreur de finalisation » sur `redirect_status=failed` ; les tests l'acceptent).
+
+Quand ces branches sont dans la branche testée : fusion **locale non poussée** dans un clone d'essai, `CERT_RUN_PENDING=1`, puis retirer
 l'appel `pendingFix(...)` des tests devenus verts (ils entrent alors dans la barrière GO).
 
 ## 6. Critères GO / NO-GO

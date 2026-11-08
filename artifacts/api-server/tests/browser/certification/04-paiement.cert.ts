@@ -115,7 +115,8 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     await page.waitForURL(/\/checkout\.html/);
     await page.locator("#fp-pay-btn").click();
     await page.waitForURL(/\/checkout-payment\.html/);
-    await expect(page.locator("#fp-alert")).toContainText("Stripe.js n'a pas pu se charger");
+    // Le libelle exact depend de la cause diagnostiquee (PR fix/faux-succes-paiement) : on exige un message explicite sur Stripe / le paiement.
+    await expect(page.locator("#fp-alert")).toContainText(/Stripe|paiement/i);
     await expect(page.locator("#fp-pay-btn")).toBeDisabled();
   });
 
@@ -143,7 +144,7 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     expect(await attendre(async () => (await mails(email)).find((x) => x["tag"] === "activation_magic_link"))).toBeTruthy();
   });
 
-  test("retour avec un intent NON confirme (3DS abandonne) : erreur de finalisation, aucun compte active", async ({ page, request, newEmail }) => {
+  test("retour avec un intent NON confirme (3DS abandonne) : echec affiche, aucun compte active", async ({ page, request, newEmail }) => {
     const email = newEmail("nonconf");
     const pre = await request.post(`${BASE_URL}/api/auth/pre-register`, { data: { firstName: "T", lastName: "C", email, companyName: "C", country: "FR", address: "1 rue", city: "Paris", postalCode: "75001" } });
     const token = ((await pre.json()) as any).preRegisterToken as string;
@@ -151,7 +152,7 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     const intentId = (((await pi.json()) as any).clientSecret as string).split("_secret_")[0];
     await page.addInitScript((t) => { sessionStorage.setItem("fp_pre_reg_token", t); }, token);
     await page.goto(`/checkout-return.html?setup_intent=${intentId}&redirect_status=failed`);
-    await expect(page.locator("#fp-title")).toHaveText("Erreur de finalisation", { timeout: 15_000 });
+    await expect(page.locator("#fp-title")).toHaveText(/Erreur de finalisation|Paiement échoué/, { timeout: 15_000 });   // « Paiement échoué » depuis fix/faux-succes-paiement
     expect(await orgOf(email)).toBeNull();
   });
 
