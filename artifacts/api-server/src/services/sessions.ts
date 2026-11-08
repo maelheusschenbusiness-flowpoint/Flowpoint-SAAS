@@ -1,6 +1,7 @@
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveJwtSecret } from "../lib/security-config.js";
 
 // 7 days — long enough that Safari's tab-freeze / overnight laptop closure
 // (both clear sessionStorage) can recover via the HttpOnly cookie without
@@ -20,7 +21,8 @@ export interface SessionData {
   userUuid?: string;
 }
 
-const JWT_SECRET = process.env["JWT_SECRET"] ?? "dev-secret-change-me-in-prod-min32chars";
+// C-15 : plus de secret de repli code en dur hors tests (resolveJwtSecret leve).
+const JWT_SECRET = resolveJwtSecret();
 
 function signToken(payload: string): string {
   return createHmac("sha256", JWT_SECRET).update(payload).digest("hex");

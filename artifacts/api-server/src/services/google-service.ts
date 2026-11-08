@@ -13,6 +13,7 @@ import { logger } from "../lib/logger.js";
 import { getOrgAddons } from "./addons-service.js";
 import { selectGbpLocations } from "./gbp-location-quota.js";
 import { GBP_PERFORMANCE_METRICS } from "./gbp-performance-addon.js";
+import { resolveJwtSecret } from "../lib/security-config.js";
 
 const GOOGLE_AUTH_BASE  = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token";
@@ -42,7 +43,7 @@ export const GOOGLE_INTEGRATION_SCOPE_SET = new Set<string>(GOOGLE_INTEGRATION_S
 // ── Encryption ────────────────────────────────────────────────────────────────
 
 const ENC_KEY = createHash("sha256")
-  .update(process.env["JWT_SECRET"] ?? "dev-key-please-change")
+  .update(resolveJwtSecret())
   .digest();
 
 export function encryptToken(token: string): string {
