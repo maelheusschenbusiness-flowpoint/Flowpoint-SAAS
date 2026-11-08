@@ -346,7 +346,13 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
 
   try {
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
-    const report = r.rows[0] ?? { id, name };
+    const report = r.rows[0];
+    if (!report) {
+      // Jamais de 201 avec un id absent de la base : le rapport doit etre relu apres COMMIT.
+      logger.error({ orgId: org(req), reportId: id }, "[reports] report not found after commit");
+      res.status(500).json({ error: "Le rapport n'a pas pu être vérifié après sa création.", code: "REPORT_NOT_PERSISTED" });
+      return;
+    }
     store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     // Cumulative usage accounting — never decremented on deletion
     import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
@@ -369,8 +375,9 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         }).catch(() => {});
       }
     }
-  } catch {
-    res.status(500).json({ error: "Failed to create report" });
+  } catch (err) {
+    logger.error({ err, orgId: org(req), reportId: id }, "[reports] post-creation read failed");
+    if (!res.headersSent) res.status(500).json({ error: "Le rapport n'a pas pu être vérifié après sa création.", code: "REPORT_NOT_PERSISTED" });
   }
 });
 
@@ -398,9 +405,13 @@ router.post("/reports/approve", canWrite, async (req, res) => {
   const { reportId } = req.body as { reportId?: string };
   if (!reportId) { res.status(400).json({ error: "reportId required" }); return; }
   try {
-    await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2`, [reportId, org(req)]);
+    const upd = await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2 RETURNING id`, [reportId, org(req)]);
+    if (!upd.rows.length) { res.status(404).json({ error: "Report not found", code: "REPORT_NOT_FOUND" }); return; }
     res.json({ ok: true, report: { id: reportId } });
-  } catch { res.json({ ok: true }); }
+  } catch (err) {
+    logger.error({ err, orgId: org(req), reportId }, "[reports] approve failed");
+    res.status(500).json({ ok: false, error: "Impossible d'approuver le rapport.", code: "REPORT_APPROVE_FAILED" });
+  }
 });
 
 // ── POST /reports/send-invoice ────────────────────────────────────────────────
@@ -510,8 +521,9 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
 
     store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     res.status(201).json({ token, expiresAt, path: `/report/${token}` });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to share report" });
+  } catch (err) {
+    logger.error({ err, orgId: org(req), reportId: req.params.id }, "[reports] share link creation failed");
+    res.status(500).json({ ok: false, error: "Failed to share report", code: "SHARE_CREATE_FAILED" });
   }
 });
 
