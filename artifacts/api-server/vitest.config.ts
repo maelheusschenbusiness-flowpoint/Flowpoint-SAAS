@@ -130,6 +130,9 @@ export default defineConfig({
       "src/tests/signup-session-dashboard-refresh.test.ts",
       // P0 anti-double-facturation : un checkout = un abonnement.
       "src/services/checkout-subscription-claim-db.test.ts",
+      // A-06 — une seule organisation par proprietaire (finalize-checkout x webhook), migration 025.
+      "src/services/signup-activation-concurrency-db.test.ts",
+      "src/tests/signup-activation-lock-contract.test.ts",
       "src/routes/checkout-single-subscription.test.ts",
       "src/services/checkout-post-tokens-rls-db.test.ts",
       "src/services/identity-schema-gate-db.test.ts",

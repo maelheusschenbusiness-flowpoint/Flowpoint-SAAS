@@ -23,6 +23,7 @@ import {
 } from "../services/checkout-subscription-claim.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { lockSignupEmail, lockPendingSignup, resolveOwnerOrgId } from "../services/signup-activation-lock.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 
@@ -2902,7 +2903,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
           const _fcAEmail = _fcSignup["email"] ?? _authenticatedOrgId;
           const { randomUUID: _fcRandUUID } = await import("crypto");
-          const _fcAOrgId = _fcRandUUID();
+          // `let` : l'identifiant definitif est resolu DANS la transaction, sous verrou (A-06).
+          let _fcAOrgId: string = _fcRandUUID();
           logger.info({ step: "FC-2", email: _fcAEmail, newOrgId: _fcAOrgId, planKey, grantTrial, customerId }, "[FC] step-2: identifiers resolved");
 
           // ── Step 3: Self-heal DDL (auto-commit, outside transaction) ────
@@ -2936,6 +2938,19 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           const _fcActTxC = await _fcActPool.connect();
           try {
             await _fcActTxC.query("BEGIN");
+
+            // A-06 — serialiser avec le webhook (activateNewSignup) et les autres
+            // appels finalize pour ce meme e-mail, relire le jeton sous verrou, puis
+            // REUTILISER l'organisation deja creee par l'autre chemin au lieu d'en
+            // generer une seconde (un randomUUID systematique donnait deux orgs).
+            await lockSignupEmail(_fcActTxC, String(_fcAEmail));
+            const _fcLocked = await lockPendingSignup(_fcActTxC, _fcActToken);
+            const _fcResolved = await resolveOwnerOrgId(_fcActTxC, String(_fcAEmail), _fcAOrgId);
+            if (_fcResolved.reused) {
+              logger.info({ step: "FC-4-reuse", orgId: _fcResolved.orgId, alreadyConsumed: _fcLocked.consumed },
+                "[FC] organisation existante reutilisee pour ce proprietaire (activation concurrente / deja faite)");
+              _fcAOrgId = _fcResolved.orgId;
+            }
 
             // 4a — upsert user
             logger.info({ step: "FC-4a", email: _fcAEmail }, "[FC] step-4a: INSERT INTO users");

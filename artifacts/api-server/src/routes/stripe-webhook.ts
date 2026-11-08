@@ -14,6 +14,7 @@ import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../service
 import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { lockSignupEmail, lockPendingSignup, resolveOwnerOrgId } from "../services/signup-activation-lock.js";
 import { type ConversionStage } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
@@ -699,7 +700,7 @@ export async function activateNewSignup(opts: {
     const orgCheck = await pgPool.connect();
     try {
       const r = await orgCheck.query<{ id: string; subscription_status: string }>(
-        `SELECT id::text, subscription_status FROM organizations WHERE owner_email = $1 LIMIT 1`,
+        `SELECT id::text, subscription_status FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
         [email]
       );
       const existingRow = r.rows[0] ?? null;
@@ -720,7 +721,8 @@ export async function activateNewSignup(opts: {
     } finally { orgCheck.release(); }
   }
   // Use existing UUID for idempotency, or generate a fresh one for new orgs
-  const orgUUID = _existingOrgUUID ?? _wbRandUUID();
+  // `let` : l'identifiant definitif est resolu DANS la transaction, sous verrou (A-06).
+  let orgUUID = _existingOrgUUID ?? _wbRandUUID();
 
   // ── 2. Upsert org_settings for profile data only ────────────────────────
   // IMPORTANT: org_settings is keyed by org_id. New-user signups have an email-shaped
@@ -786,6 +788,22 @@ export async function activateNewSignup(opts: {
   let newOrgId: string | null = null;
   try {
     await activateClient.query("BEGIN");
+
+    // A-06 — serialiser avec finalize-checkout pour ce meme e-mail, relire le
+    // jeton sous verrou, et reutiliser l'organisation que l'autre chemin vient de
+    // creer. Si finalize a deja active ce jeton, il n'y a plus rien a faire ici.
+    await lockSignupEmail(activateClient, email);
+    const _wbLocked = await lockPendingSignup(activateClient, preRegToken);
+    if (_wbLocked.consumed || !_wbLocked.found) {
+      await activateClient.query("ROLLBACK");
+      logger.info({ preRegToken, orgId }, "[Webhook/activate] pending_signups deja consomme sous verrou — activation deja faite par finalize-checkout, rien a recreer");
+      return;
+    }
+    const _wbResolved = await resolveOwnerOrgId(activateClient, email, orgUUID);
+    if (_wbResolved.reused) {
+      logger.info({ orgUUID: _wbResolved.orgId }, "[Webhook/activate] organisation existante reutilisee pour ce proprietaire");
+      orgUUID = _wbResolved.orgId;
+    }
 
     // Supply an explicit UUID so activation never fails when users.id has no DEFAULT.
     const _wbNewUserId = _wbRandUUID();
