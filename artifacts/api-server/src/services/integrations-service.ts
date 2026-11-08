@@ -1,7 +1,7 @@
 import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import crypto from "crypto";
-import { validatePublicHttpsWebhook } from "./webhook-url-safety.js";
+import { validatePublicHttpsWebhook, postWebhookPinned } from "./webhook-url-safety.js";
 
 export const SUPPORTED_EVENTS = [
   "audit.completed", "audit.failed", "monitor.down", "monitor.up",
@@ -37,6 +37,13 @@ export async function createIntegration(
     maxRetries?: number;
   }
 ): Promise<Record<string, unknown>> {
+  // Défense en profondeur : ne jamais enregistrer une destination non publique,
+  // quel que soit l'appelant (toutes les routes ne valident pas).
+  if (data.endpointUrl || data.webhookUrl) {
+    const safe = await validatePublicHttpsWebhook(data.endpointUrl || data.webhookUrl);
+    if (!safe.ok) throw new Error(safe.error);
+    data = { ...data, endpointUrl: safe.url, webhookUrl: undefined };
+  }
   const limit = getIntegrationLimit(plan);
   const client = await pool.connect();
   try {
@@ -192,16 +199,10 @@ async function _deliverWebhook(
   const customHeaders = parseJson<Record<string, string>>(intg["headers"] as string, {});
   Object.assign(headers, customHeaders);
 
-  const response = await fetch(endpointUrl, {
-    method: "POST",
-    headers,
-    body,
-    signal: AbortSignal.timeout(timeoutMs),
-    redirect: "error",
-  });
-
-  logger.info({ platform, event, status: response.status }, "[integrations] webhook delivered");
-  return { ok: response.ok, statusCode: response.status, error: response.ok ? undefined : `HTTP ${response.status}` };
+  // DNS épinglé + revalidation à chaque envoi + aucune redirection suivie.
+  const delivery = await postWebhookPinned(safeTarget.url, { headers, body, timeoutMs });
+  logger.info({ platform, event, status: delivery.statusCode }, "[integrations] webhook delivered");
+  return delivery;
 }
 
 // ── buildPlatformPayload ───────────────────────────────────────────────────────
@@ -327,15 +328,10 @@ export async function testIntegration(
           .digest("hex")}`;
       }
 
-      const response = await fetch(safeTarget.url, {
-        method: "POST",
-        headers,
-        body,
-        signal: AbortSignal.timeout(10000),
-        redirect: "error",
-      });
-      ok = response.ok;
-      httpStatus = response.status;
+      const delivery = await postWebhookPinned(safeTarget.url, { headers, body, timeoutMs: 10000 });
+      ok = delivery.ok;
+      httpStatus = delivery.statusCode;
+      if (!ok && delivery.error && httpStatus === undefined) throw new Error(delivery.error);
     } catch (err) {
       deliveryError = err instanceof Error ? err.message : "Request failed";
     }
