@@ -2754,7 +2754,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               try {
                 const _fcAnchorPeriod = subPeriodEnd(planSubscription);
                 const { persistOrgData: _fcPodAnchor } = await import("../services/org-data.js");
-                await _fcPodAnchor(_fcAOrgId, {
+                // Ancrage rejoue (3 essais, 300/600 ms) : sous forte charge, le pool de
+                // connexions peut expirer (« timeout exceeded when trying to connect »)
+                // et l'ancrage, non fatal, laissait l'organisation sans abonnement
+                // canonique alors que le webhook, voyant le jeton consomme, ne la
+                // repare pas (course reproduite par trial-subscription-webhook-db).
+                const _fcAnchorFields = {
                   plan:                 planKey,
                   subscriptionStatus:   grantTrial ? "trialing" : "active",
                   stripeSubscriptionId: planSubscription.id,
@@ -2762,7 +2767,16 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                   ...(trialEndUnix !== undefined ? { trialEndsAt: new Date(trialEndUnix * 1000).toISOString() } : {}),
                   trialConsumedAt:      new Date().toISOString(),
                   ...(_fcAnchorPeriod !== null ? { currentPeriodEnd: new Date(_fcAnchorPeriod * 1000).toISOString() } : {}),
-                });
+                };
+                for (let _fcTry = 1; ; _fcTry++) {
+                  try {
+                    await _fcPodAnchor(_fcAOrgId, _fcAnchorFields);
+                    break;
+                  } catch (_fcRetryErr) {
+                    if (_fcTry >= 3) throw _fcRetryErr;
+                    await new Promise((r) => setTimeout(r, 300 * _fcTry));
+                  }
+                }
                 logger.info({ step: "FC-4f-ok", orgId: _fcAOrgId, subscriptionId: planSubscription.id },
                   "[FC] abonnement ancre sur la ligne canonique organizations");
               } catch (_fcAnchorErr) {
