@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { mailer } from "./mailer.js";
@@ -52,7 +53,7 @@ export interface FireAlertEventOpts {
 }
 
 export async function fireAlertEvent(opts: FireAlertEventOpts): Promise<void> {
-  const id = `ae_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const id = newId("ae");
   const client = await pool.connect();
   try {
     if (opts.dedupeKey) {

@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import {
@@ -376,7 +377,7 @@ export async function createHeatmap(orgId: string, data: {
 }): Promise<Heatmap> {
   const client = await pool.connect();
   try {
-    const id = `hm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = newId("hm");
     await client.query(
       `INSERT INTO local_heatmaps
          (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, results, created_at)
@@ -385,7 +386,7 @@ export async function createHeatmap(orgId: string, data: {
        data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7,
        JSON.stringify({ businessName: data.businessName, cells: [] })]
     );
-    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1`, [id]);
+    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2`, [id, orgId]);
     return exposeHeatmap(res.rows[0]);
   } finally { client.release(); }
 }

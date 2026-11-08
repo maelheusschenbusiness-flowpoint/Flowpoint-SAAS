@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { Router, type Request, type RequestHandler } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import crypto from "crypto";
@@ -379,7 +380,7 @@ router.post("/integrations/incoming-webhooks", async (req, res) => {
   };
   if (!name) { res.status(400).json({ error: "name requis" }); return; }
   const token = crypto.randomBytes(24).toString("hex");
-  const id = `iw_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const id = newId("iw");
   try {
     const r = await db(req)(
       `INSERT INTO incoming_webhooks (id, org_id, name, token, source, action, action_config, active)

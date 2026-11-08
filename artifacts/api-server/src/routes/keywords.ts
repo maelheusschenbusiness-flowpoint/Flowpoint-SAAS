@@ -385,9 +385,14 @@ router.post("/keywords/opportunities/generate", canWrite, async (req, res) => {
 // PATCH /api/keywords/alerts/:id/read
 router.patch("/keywords/alerts/:id/read", canWrite, async (req, res) => {
   try {
-    await (req as OrgReq).orgDb(`UPDATE ranking_alerts SET read = true WHERE id = $1`, [req.params.id]);
+    // Toujours borné à l'organisation (défense en profondeur, en plus de la RLS).
+    const r = await (req as OrgReq).orgDb(
+      `UPDATE ranking_alerts SET read = true WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [req.params.id, getOrg(req)],
+    );
+    if (!r.rows.length) { res.status(404).json({ error: "Alerte introuvable" }); return; }
     res.json({ ok: true });
-  } catch { res.json({ ok: true }); }
+  } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
 // POST /api/keywords (legacy — inserts into tracked_keywords)

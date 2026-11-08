@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { publishGBPPost } from "./google-service.js";
@@ -105,7 +106,7 @@ export async function createPost(orgId: string, data: {
 }): Promise<GBPPost> {
   const client = await pool.connect();
   try {
-    const id = `gp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = newId("gp");
     const status = data.scheduledAt ? "scheduled" : "draft";
     await client.query(
       `INSERT INTO gbp_posts (
@@ -260,10 +261,11 @@ export async function publishPost(orgId: string, postId: string): Promise<{ ok: 
   }
 }
 
-export async function deletePost(orgId: string, postId: string): Promise<void> {
+export async function deletePost(orgId: string, postId: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    await client.query(`DELETE FROM gbp_posts WHERE id=$1 AND org_id=$2`, [postId, orgId]);
+    const r = await client.query(`DELETE FROM gbp_posts WHERE id=$1 AND org_id=$2`, [postId, orgId]);
+    return (r.rowCount ?? 0) > 0;
   } finally { client.release(); }
 }
 

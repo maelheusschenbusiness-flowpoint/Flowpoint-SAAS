@@ -72,6 +72,8 @@ export default defineConfig({
        "src/services/local-landing-opportunities.test.ts",
        "src/routes/local-landing-opportunities.test.ts",
       "src/routes/gbp-posts.test.ts",
+      "src/routes/gbp-posts-org-isolation.test.ts",
+      "src/lib/ids.test.ts",
        "src/services/maps-service.test.ts",
        "src/services/conversion-opportunity-engine.test.ts",
        "src/routes/conversion-opportunity-engine.test.ts",
