@@ -1875,9 +1875,15 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     // deux appels concurrents doivent construire le MEME corps de requete, sinon
     // Stripe refuse de rejouer la reponse memorisee et le doublon revient.
     let intentCreatedUnix: number | null = null;
+    // Faits du PaymentIntent lus chez Stripe (source de verite des credits, pas le corps de la requete).
+    let intentFacts: { status: string; amountReceived: number | null; currency: string; livemode: boolean | null } | null = null;
 
     if (intentType === "payment") {
       const pi = await stripe.paymentIntents.retrieve(intentId);
+      intentFacts = {
+        status: String(pi.status), amountReceived: typeof pi.amount_received === "number" ? pi.amount_received : null,
+        currency: String(pi.currency ?? ""), livemode: typeof pi.livemode === "boolean" ? pi.livemode : null,
+      };
       if (pi.status !== "succeeded" && pi.status !== "processing") {
         res.status(400).json({ error: "Paiement non confirmé (statut: " + pi.status + ")." });
         return;
@@ -1940,35 +1946,63 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         return;
       }
 
-      /* AI credit packs — same idempotency key as the webhook path (acp_pi_<id>)
-         so a webhook replay or a finalize retry can never double-credit. */
-      const _aoCreditsMap: Record<string, number> = { aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000 };
+      /* AI credit packs — MEME source de verite que le webhook (cle acp_pi_<id>, verrou par
+         PaymentIntent) : composition lue dans metadata.addons du PaymentIntent ecrit par le
+         serveur (quantites incluses), JAMAIS dans le corps de la requete ; montant recu recoupe
+         avec le catalogue ; aucun credit tant que le paiement n'est pas "succeeded" (le webhook
+         payment_intent.succeeded inscrira alors l'achat). Webhook et finalize ne peuvent donc ni
+         doubler ni diverger : une seule inscription, meme valeur. */
       let _aoTotalCredits = 0;
-      if (_aoCreditPacks.length > 0) {
+      // Porte d'entree : packs vus dans le corps OU dans le panier ecrit par le serveur sur le
+      // PaymentIntent (un corps tronque ne doit pas faire perdre des credits payes).
+      const _aoMetaCreditPacks = (() => {
+        try { return Object.entries(JSON.parse(intentMeta["addons"] || "{}") as Record<string, unknown>)
+          .filter(([k, v]) => AI_CREDIT_PACKS.has(k) && v); } catch { return []; }
+      })();
+      if (_aoCreditPacks.length > 0 || _aoMetaCreditPacks.length > 0) {
         try {
-          // Compute totals before the DB call so we can use the idempotency key.
-          _aoTotalCredits = _aoCreditPacks.reduce((s, k) => s + (_aoCreditsMap[k] ?? 0), 0);
-          const _primaryPack      = _aoCreditPacks[0] ?? "";
-          const _amountEurCents   = _aoCreditPacks.reduce((s, k) => s + Math.round((ADDON_DEFINITIONS[k]?.priceEur ?? 0) * 100), 0);
+          const { resolveAiCreditPurchase, verifyAiCreditBeneficiary, recordAiCreditPurchase } = await import("../services/ai-credit-verification.js");
+          const { resolveAiCreditsFromPaymentIntentCart } = await import("../services/ai-credit-cart.js");
+          const { findOrgByStripeCustomer } = await import("../services/org-data.js");
           const { pool: _aoPool } = await import("@workspace/db");
-          const _aoC = await _aoPool.connect();
-          try {
-            // Key matches payment_intent.succeeded webhook: acp_pi_<intentId>
-            // ON CONFLICT DO NOTHING ensures credits are granted exactly once
-            // regardless of whether the webhook or finalize-checkout arrives first,
-            // and even if finalize-checkout is called twice (browser reload, double-submit).
-            await _aoC.query(
-              `INSERT INTO ai_credit_purchases
-                 (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (id) DO NOTHING`,
-              [`acp_pi_${intentId}`, _authenticatedOrgId, _primaryPack, _aoTotalCredits,
-               _amountEurCents, "", intentId]
-            );
-          } finally { _aoC.release(); }
-          logger.info({ orgId: _authenticatedOrgId, packs: _aoCreditPacks }, "[PublicBilling] finalize: AI credits credited (addon-only cart)");
-          // Broadcast so any open dashboard tab refreshes the credits counter immediately.
-          try { store.broadcast({ type: "ai:credits_added", pack: _aoCreditPacks[0] ?? "", credits: _aoTotalCredits }, _authenticatedOrgId); } catch (_) { /* non-blocking */ }
+          const creditsOnlyCart = intentMeta["type"] === "ai_credits";
+          const verdict = !intentFacts
+            ? { ok: false as const, code: "not_a_payment_intent", detail: "intent type" }
+            : creditsOnlyCart
+              ? resolveAiCreditPurchase({ kind: "payment_intent", status: intentFacts.status, metadata: intentMeta,
+                  paidAmountMinor: intentFacts.amountReceived, currency: intentFacts.currency, checkAmount: true })
+              : resolveAiCreditsFromPaymentIntentCart({ status: intentFacts.status, metadata: intentMeta,
+                  amountReceived: intentFacts.amountReceived, currency: intentFacts.currency });
+          if (!verdict.ok && verdict.code === "not_paid") {
+            logger.info({ intentId, status: intentFacts?.status }, "[PublicBilling] finalize: payment not succeeded yet — AI credits left to the payment_intent.succeeded webhook");
+          } else if (!verdict.ok) {
+            logger.error({ AI_CREDITS_REJECTED: true, code: verdict.code, detail: verdict.detail, intentId, orgId: _authenticatedOrgId },
+              "[PublicBilling] finalize: AI credits REJECTED — credits NOT credited (needs review)");
+            res.status(422).json({ error: "Paiement reçu mais crédits non appliqués. Contactez le support.", code: "ai_credits_verification_failed" });
+            return;
+          } else {
+            const linkedOrg = intentCustomerId ? await findOrgByStripeCustomer(intentCustomerId) : null;
+            const ben = await verifyAiCreditBeneficiary(_aoPool as never, {
+              resolvedOrgId: linkedOrg ?? _authenticatedOrgId ?? null,
+              resolvedVia: linkedOrg ? "stripe_customer_id" : "authenticated_session",
+              hasCustomer: !!intentCustomerId, metadata: intentMeta, requireMetadataOrg: false,
+            });
+            if (!ben.ok) {
+              logger.error({ AI_CREDITS_REJECTED: true, code: ben.code, intentId }, "[PublicBilling] finalize: AI credits beneficiary REJECTED");
+              res.status(422).json({ error: "Paiement reçu mais crédits non appliqués. Contactez le support.", code: "ai_credits_verification_failed" });
+              return;
+            }
+            const credited = await recordAiCreditPurchase(_aoPool as never, {
+              id: `acp_pi_${intentId}`, orgId: ben.orgId, pack: verdict.pack, credits: verdict.credits,
+              amountCents: verdict.amountCents, sessionId: "", paymentIntent: intentId,
+            });
+            _aoTotalCredits = verdict.credits;
+            logger.info({ orgId: ben.orgId, packs: verdict.pack, credits: verdict.credits, credited }, "[PublicBilling] finalize: AI credits (addon-only cart, server-verified)");
+            if (credited) {
+              // Broadcast so any open dashboard tab refreshes the credits counter immediately.
+              try { store.broadcast({ type: "ai:credits_added", pack: verdict.pack, credits: verdict.credits }, ben.orgId); } catch (_) { /* non-blocking */ }
+            }
+          }
         } catch (aoCreditErr) {
           logger.error({ aoCreditErr, orgId: _authenticatedOrgId }, "[PublicBilling] finalize: AI credit insert failed");
           res.status(500).json({ error: "Paiement reçu mais crédits non appliqués. Contactez le support." });

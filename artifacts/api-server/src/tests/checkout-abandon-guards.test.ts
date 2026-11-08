@@ -116,7 +116,7 @@ describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirm
 
   it("les guards PI/SI précèdent les premiers appels DB dans finalize-checkout", () => {
     const piGuardIdx   = publicBillingTs.indexOf("pi.status !== \"succeeded\"");
-    const firstDbWrite = publicBillingTs.indexOf("await _aoPool.connect");
+    const firstDbWrite = publicBillingTs.indexOf("verifyAiCreditBeneficiary(_aoPool");
     expect(piGuardIdx).toBeGreaterThan(0);
     expect(firstDbWrite).toBeGreaterThan(0);
     expect(piGuardIdx, "guard PI doit précéder le premier accès DB").toBeLessThan(firstDbWrite);
@@ -337,9 +337,12 @@ describe("CA-8 — retours Checkout add-on/crédits confirmés par l’organisat
     const creditWebhookBlock = stripeWebhookTs.slice(creditWebhookStart, subscriptionStart);
     expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout || packFromField)");
     expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout) break");
-    // Verification serveur : credits recalcules depuis le catalogue (pas les metadata), montant recoupe seulement pour les credits seuls.
-    expect(creditWebhookBlock).toContain("resolveAiCreditPurchase({");
-    expect(creditWebhookBlock).toContain("checkAmount: aiCreditsOnlyCheckout");
+    // Verification serveur : credits recalcules depuis le catalogue a partir des lignes Stripe (pas les metadata).
+    // Composition lue dans les LIGNES Stripe (price id x quantite), jamais dans les metadata.
+    expect(creditWebhookBlock).toContain("fetchSessionLineItems(");
+    expect(creditWebhookBlock).toContain("resolveAiCreditsFromLineItems({");
+    expect(creditWebhookBlock).toContain("creditsOnly: aiCreditsOnlyCheckout");
+    expect(creditWebhookBlock).not.toContain("resolveAiCreditPurchase(");
     expect(creditWebhookBlock).toContain("recordAiCreditPurchase(");
     expect(creditWebhookBlock).toContain("throw e");
     expect(verifyBlock).toContain("const aiCreditPacks = String(sessionMeta[\"ai_credits\"] ?? \"\")");

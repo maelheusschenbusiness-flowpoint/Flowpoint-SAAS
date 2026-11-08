@@ -11,10 +11,16 @@
  * (3) montant/devise payes (4) organisation = proprietaire du customer
  * (5) mode live/test (6) idempotence + statut (7) deux evenements, un achat.
  */
-import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { createHmac, randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
+
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_PRICE_AI_50K"] = "price_t_ai50k";
+  process.env["STRIPE_TEST_PRICE_AI_200K"] = "price_t_ai200k";
+  process.env["STRIPE_TEST_PRICE_AI_500K"] = "price_t_ai500k";
+});
 
 vi.mock("@workspace/db", async (importOriginal) => importOriginal<typeof import("@workspace/db")>());
 vi.mock("../lib/logger.js", () => ({
@@ -26,6 +32,7 @@ vi.mock("../services/store.js", () => ({
 
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { setStripeForTesting } from "../services/stripe-factory.js";
 
 const SECRET = "whsec_secret_de_test_calcule_localement";
 const ORG_A = randomUUID();
@@ -97,8 +104,17 @@ afterAll(async () => {
   await pool.query(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [[ORG_A, ORG_B]]);
   await pool.query(`DELETE FROM billing_events WHERE stripe_event_id LIKE 'evt_%' AND created_at > NOW() - INTERVAL '1 hour' AND org_id = ANY($1::text[])`, [[ORG_A, ORG_B, "_system_"]]);
 });
+/** Lignes Stripe (listLineItems) par session : la composition vient d'ici, jamais des metadata. */
+const LIGNES = new Map<string, Array<Record<string, unknown>>>();
+const PRIX: Record<string, [string, number]> = { aiCreditsPack50k: ["price_t_ai50k", 400], aiCreditsPack200k: ["price_t_ai200k", 900], aiCreditsPack500k: ["price_t_ai500k", 1900] };
+const ligne = (key: string, quantity: number, over: Record<string, unknown> = {}) => ({
+  id: `li_${key}_${quantity}`, price: { id: PRIX[key]![0] }, quantity, amount_subtotal: PRIX[key]![1] * quantity, amount_discount: 0, amount_total: PRIX[key]![1] * quantity, ...over,
+});
+afterEach(() => setStripeForTesting(null));
 beforeEach(() => {
   vi.clearAllMocks();
+  LIGNES.clear();
+  setStripeForTesting({ checkout: { sessions: { listLineItems: vi.fn(async (id: string) => ({ data: LIGNES.get(id) ?? [], has_more: false })) } } });
   process.env = { ...environnement };
   process.env["NODE_ENV"] = "development";
   process.env["STRIPE_SECRET_KEY"] = "sk_test_cle_de_test_locale";
@@ -288,12 +304,15 @@ describe("controle 6 — idempotence et statut", () => {
 });
 
 describe("controle 7 — checkout.session.completed + payment_intent.succeeded, un seul achat", () => {
-  const session = (piId: string, over: Record<string, unknown> = {}, meta: Record<string, string> = {}) => ({
-    id: uid("cs_test"), object: "checkout.session", mode: "payment", payment_status: "paid", livemode: false,
-    amount_total: 400, currency: "eur", customer: CUS_A, payment_intent: piId,
-    metadata: { type: "ai_credits", pack: "ai_credits_50k", credits: "50000", amountEurCents: "400", orgId: ORG_A, ...meta },
-    ...over,
-  });
+  const session = (piId: string, over: Record<string, unknown> = {}, meta: Record<string, string> = {}, lignes: Array<Record<string, unknown>> = [ligne("aiCreditsPack50k", 1)]) => {
+    const id = uid("cs_test"); LIGNES.set(id, lignes);
+    return {
+      id, object: "checkout.session", mode: "payment", payment_status: "paid", livemode: false,
+      amount_total: 400, currency: "eur", customer: CUS_A, payment_intent: piId,
+      metadata: { type: "ai_credits", pack: "ai_credits_50k", credits: "50000", amountEurCents: "400", orgId: ORG_A, ...meta },
+      ...over,
+    };
+  };
   it("session payee valide => credits catalogue", async () => {
     if (!dbUp) return;
     const o = pi(); const s = session(o["id"] as string);
@@ -332,9 +351,14 @@ describe("controle 7 — checkout.session.completed + payment_intent.succeeded, 
     const o = pi(); const s = session(o["id"] as string, {}, { credits: "7000000" });
     await envoyer("checkout.session.completed", s);
     expect(await credits(ORG_A, o["id"] as string)).toBe(50000);
-    const o2 = pi(); const s2 = session(o2["id"] as string, {}, { pack: "ai_credits_xxl" });
-    expect((await envoyer("checkout.session.completed", s2)).status).toBe(422);
+    // metadata.pack n'est plus lu : seule la ligne Stripe compte. Un price id inconnu => refus.
+    const o2 = pi(); const s2 = session(o2["id"] as string, {}, {}, [{ ...ligne("aiCreditsPack50k", 1), price: { id: "price_inconnu" } }]);
+    const r2 = await envoyer("checkout.session.completed", s2);
+    expect(r2.status).toBe(422); expect(r2.body.code).toBe("unknown_line");
     expect(await rows(o2["id"] as string)).toBe(0);
+    const o3 = pi(); const s3 = session(o3["id"] as string, {}, { pack: "ai_credits_xxl", credits: "9" });
+    expect((await envoyer("checkout.session.completed", s3)).status).toBe(200);
+    expect(await credits(ORG_A, o3["id"] as string)).toBe(50000);
   });
   it("session non payee => aucun credit, pas d'erreur", async () => {
     if (!dbUp) return;
@@ -342,9 +366,9 @@ describe("controle 7 — checkout.session.completed + payment_intent.succeeded, 
     expect((await envoyer("checkout.session.completed", s)).status).toBe(200);
     expect(await rows(o["id"] as string)).toBe(0);
   });
-  it("session : quantite 3 deduite du montant paye (1200 = 3 x 400)", async () => {
+  it("session : quantite 3 lue sur la ligne Stripe (3 x 400 = 1200)", async () => {
     if (!dbUp) return;
-    const o = pi(); const s = session(o["id"] as string, { amount_total: 1200 });
+    const o = pi(); const s = session(o["id"] as string, { amount_total: 1200 }, {}, [ligne("aiCreditsPack50k", 3)]);
     expect((await envoyer("checkout.session.completed", s)).status).toBe(200);
     expect(await credits(ORG_A, o["id"] as string)).toBe(150000);
   });
