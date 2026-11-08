@@ -71,48 +71,81 @@ const currentTokenOf = (req: Request): string =>
   ((req as unknown as { cookies?: Record<string, string> }).cookies?.["fp_token"]) ??
   ((req.headers["authorization"] as string | undefined)?.replace(/^Bearer\s+/i, "") ?? "");
 
-// ── GET /api/sessions — login history for current org ────────────────────────
+// ── Minimisation des donnees de session d'AUTRES membres ─────────────────────
+/** Adresse tronquee : IPv4 -> a.b.x.x ; IPv6 -> deux premiers groupes. Jamais l'adresse complete. */
+export function maskIp(raw: string): string {
+  const ip = raw.trim();
+  if (!ip) return "IP inconnue";
+  const v4 = ip.replace(/^::ffff:/i, "");
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v4)) { const p = v4.split("."); return `${p[0]}.${p[1]}.x.x`; }
+  if (ip.includes(":")) { const g = ip.split(":").filter(Boolean).slice(0, 2); return g.length ? `${g.join(":")}::x` : "IP inconnue"; }
+  return "IP inconnue";
+}
+/** Resume « Navigateur · Systeme » : jamais la chaine user-agent brute. */
+export function summarizeUserAgent(ua: string): string {
+  if (!ua) return "Appareil inconnu";
+  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Navigateur";
+  const os = /iPhone|iPad|iOS/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows"
+    : /Mac OS X|Macintosh/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? `${browser} · ${os}` : browser;
+}
+
+// ── GET /api/sessions — sessions actives ─────────────────────────────────────
+// member/viewer : UNIQUEMENT leurs propres sessions. owner/admin : celles de l'organisation,
+// avec IP tronquee et user-agent resume pour les sessions des AUTRES membres. Les cles API et
+// le service n'ont pas de session : liste vide. Jamais le jeton ni un fragment du jeton.
 router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
   try {
-    // Resolve the current token from cookie or Authorization header.
-    // The auth system uses the cookie name "fp_token".
-    const currentToken: string =
-      ((req as unknown as { cookies?: Record<string, string> }).cookies?.["fp_token"]) ??
-      ((req.headers["authorization"] as string | undefined)?.replace(/^Bearer\s+/i, "") ?? "");
-
+    const currentToken = currentTokenOf(req);
     const actor = actorOf(req);
-    const r = await orgDb(req)(
-      `SELECT token, user_id, user_id_v2, email, ip_address, user_agent, created_at, expires_at
+    if (!isHumanActor(actor)) { res.json({ sessions: [], count: 0 }); return; }
+    const admin = isOrgAdmin(actor);
+
+    let sql = `SELECT token, user_id, user_id_v2, email, ip_address, user_agent, created_at, expires_at
        FROM user_sessions
        WHERE org_id = $1
-          AND expires_at > NOW()
+          AND expires_at > NOW()`;
+    const params: unknown[] = [orgId];
+    if (!admin) {
+      // Filtre cote SQL : la limite de 15 lignes ne doit pas masquer les sessions propres.
+      const ids: string[] = [];
+      if (actor.email) { params.push(actor.email.toLowerCase()); ids.push(`lower(email) = $${params.length}`); }
+      if (actor.userUuid) { params.push(actor.userUuid); ids.push(`user_id_v2::text = $${params.length}`); }
+      if (actor.userId) { params.push(actor.userId); ids.push(`user_id = $${params.length}`); }
+      if (!ids.length) { res.json({ sessions: [], count: 0 }); return; }
+      sql += ` AND (${ids.join(" OR ")})`;
+    }
+    sql += `
        ORDER BY created_at DESC
-       LIMIT 15`,
-      [orgId]
-    ).catch(() => ({ rows: [] }));
+       LIMIT 15`;
+    const r = await orgDb(req)(sql, params).catch(() => ({ rows: [] }));
 
-    const sessions = r.rows.map((row) => {
-      const rowToken = row["token"] as string | null | undefined;
-      const isCurrent = currentToken.length > 0 && !!rowToken && rowToken === currentToken;
-      const rawUa = String(row["user_agent"] ?? "");
-      const rawIp = String(row["ip_address"] ?? "");
-      const createdAt = row["created_at"] ? new Date(String(row["created_at"])) : null;
-      return {
-        id:       rowToken ? sessionPublicId(rowToken) : "",  // opaque digest, never a token fragment
-        event:    "Connexion réussie",
-        device:   rawUa ? rawUa.slice(0, 80) : "Appareil inconnu",
-        // The security screen is for the authenticated account holder: show the
-        // recorded client address rather than a fabricated/masked placeholder.
-        ip:       rawIp || "IP inconnue",
-        date:     createdAt ? createdAt.toISOString() : null,
-        isCurrent,
-        // The current session is ended through sign-out, never through this list.
-        canRevoke: isHumanActor(actor) && !isCurrent && (isOrgAdmin(actor) || ownsSession(row, actor)),
-        success:  true,
-      };
-    });
+    const sessions = r.rows
+      // Defense en profondeur : meme si le filtre SQL etait contourne, un non-admin ne voit que le sien.
+      .filter((row) => admin || ownsSession(row, actor))
+      .map((row) => {
+        const rowToken = row["token"] as string | null | undefined;
+        const isCurrent = currentToken.length > 0 && !!rowToken && rowToken === currentToken;
+        const own = ownsSession(row, actor);
+        const rawUa = String(row["user_agent"] ?? "");
+        const rawIp = String(row["ip_address"] ?? "");
+        const createdAt = row["created_at"] ? new Date(String(row["created_at"])) : null;
+        return {
+          id:       rowToken ? sessionPublicId(rowToken) : "",  // opaque digest, never a token fragment
+          event:    "Connexion réussie",
+          device:   own ? (rawUa ? rawUa.slice(0, 80) : "Appareil inconnu") : summarizeUserAgent(rawUa),
+          ip:       own ? (rawIp || "IP inconnue") : maskIp(rawIp),
+          date:     createdAt ? createdAt.toISOString() : null,
+          isCurrent,
+          own,
+          // The current session is ended through sign-out, never through this list.
+          canRevoke: !isCurrent && (admin || own),
+          success:  true,
+        };
+      });
 
     res.json({ sessions, count: sessions.length });
   } catch (err) {

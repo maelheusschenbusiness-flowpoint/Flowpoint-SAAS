@@ -145,7 +145,6 @@ const EXPECTED_ANY_ROLE_ROUTES: string[] = [
   "POST /ai/missions",
   "POST /ai/pagespeed-insights",
   "POST /ai/generate",
-  "POST /ai-credits/consume",
   "POST /pagespeed/analyze",
   "POST /pagespeed/compare",
   "POST /maps/geocode",

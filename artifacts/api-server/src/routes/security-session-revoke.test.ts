@@ -151,8 +151,9 @@ describe("GET /sessions — identifiants et droit de revocation", () => {
     expect(JSON.stringify(res.body)).not.toContain(SAME_PREFIX);
     expect(byDevice["Chrome"]).toMatchObject({ isCurrent: true, canRevoke: false });
     expect(byDevice["iPhone"]).toMatchObject({ isCurrent: false, canRevoke: true });
-    expect(byDevice["Firefox"]).toMatchObject({ isCurrent: false, canRevoke: false });
-    expect(new Set(res.body.sessions.map((s: any) => s.id)).size).toBe(3);
+    // Constat 3 : un membre ne voit plus la session d'un AUTRE membre (voir security-sessions-list.test.ts).
+    expect(byDevice["Firefox"]).toBeUndefined();
+    expect(new Set(res.body.sessions.map((s: any) => s.id)).size).toBe(2);
   });
 
   it("un admin peut revoquer les sessions des autres, mais pas la courante", async () => {

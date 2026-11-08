@@ -66,7 +66,6 @@ export const WRITE_ANY_ROLE_EXCEPTIONS: readonly WriteRouteRule[] = [
   { method: "POST", path: "/ai/missions", reason: "Suggestions IA de missions (propose, ne cree pas)." },
   { method: "POST", path: "/ai/pagespeed-insights", reason: "Lecture IA des resultats PageSpeed." },
   { method: "POST", path: "/ai/generate", reason: "Generation de texte IA ponctuelle." },
-  { method: "POST", path: "/ai-credits/consume", reason: "Debit de credits IA par une fonctionnalite d'analyse utilisee par tout role." },
   { method: "POST", path: "/pagespeed/analyze", reason: "Analyse PageSpeed d'une URL (lecture)." },
   { method: "POST", path: "/pagespeed/compare", reason: "Comparaison PageSpeed (lecture)." },
   { method: "POST", path: "/maps/geocode", reason: "Geocodage (lecture)." },

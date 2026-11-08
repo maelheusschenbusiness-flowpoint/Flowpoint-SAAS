@@ -19,6 +19,7 @@ vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_q: any, _s: any, n: any) => n(),
   // requireQuota("automations") ajoute par #385 sur POST /automation/workflows ; ce test ne verifie pas le plafond.
   requireQuota: () => (_q: any, _s: any, n: any) => n(),
+  resolvePlanFromDB: async () => "pro",
 }));
 vi.mock("../middlewares/requireAdmin.js", () => ({ requireAdmin: (_q: any, _s: any, n: any) => n() }));
 vi.mock("../services/addon-entitlement.js", () => ({ hasAddonEntitlementForOrg: vi.fn().mockResolvedValue(true) }));

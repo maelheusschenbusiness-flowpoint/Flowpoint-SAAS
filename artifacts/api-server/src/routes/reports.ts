@@ -415,9 +415,18 @@ router.post("/reports/approve", canWrite, async (req, res) => {
 });
 
 // ── POST /reports/send-invoice ────────────────────────────────────────────────
+// Aucun envoi de facture par e-mail n'est implemente (pas de rendu de facture ni de modele
+// transactionnel dedie) : la route repondait `sent:true` sans rien envoyer. Etat honnete 501.
+// Les factures se telechargent depuis le portail de facturation.
 router.post("/reports/send-invoice", canAdmin, async (req, res) => {
   const { invoiceId } = req.body as { invoiceId?: string };
-  res.json({ ok: true, invoiceId: invoiceId ?? null, sent: true });
+  res.status(501).json({
+    ok: false,
+    sent: false,
+    code: "not_implemented",
+    error: "L'envoi des factures par e-mail n'est pas encore disponible. Téléchargez la facture depuis le portail de facturation.",
+    invoiceId: invoiceId ?? null,
+  });
 });
 
 // ── GET /reports/:id/download ─────────────────────────────────────────────────
