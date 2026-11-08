@@ -7,7 +7,7 @@ import {
 } from "../services/local-maps-service.js";
 import { pool } from "@workspace/db";
 import { isDataForSEOConfigured, verifierEtConsommerQuota, rembourserQuota, suivreAppelsPayants, getGoogleMapsResults } from "../services/dataforseo-service.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, requireQuota } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -36,7 +36,13 @@ router.get("/local-maps/heatmaps/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/local-maps/heatmaps", canWrite, async (req, res) => {
+// Plafond par plan (CORE_QUOTAS.heatmaps : 2 / 10 / 50) : nombre de heatmaps enregistrées.
+const heatmapQuota = requireQuota("heatmaps", async (orgId) => {
+  const r = await pool.query(`SELECT COUNT(*)::int AS n FROM local_heatmaps WHERE org_id=$1`, [orgId]);
+  return Number((r.rows[0] as { n?: number } | undefined)?.n ?? 0);
+});
+
+router.post("/local-maps/heatmaps", canWrite, heatmapQuota, async (req, res) => {
   const { locationId, name, keyword, businessName, centerLat, centerLng, radiusKm, gridSize } = req.body as {
     locationId?: string; name?: string; keyword?: string; businessName?: string;
     centerLat?: number; centerLng?: number; radiusKm?: number; gridSize?: number;

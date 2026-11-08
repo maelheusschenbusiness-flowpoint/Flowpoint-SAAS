@@ -76843,12 +76843,12 @@ function renderLocalDominationMaps() {
             </div>
           </div>
 
-          ${['pending','running','partial','failed'].includes(activeHeatmap?.status) ? `
+          ${['pending','running','partial','failed','unavailable'].includes(activeHeatmap?.status) ? `
             <div style="padding:10px 12px;margin:10px 0;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
               ${activeHeatmap?.status === 'running' || activeHeatmap?.status === 'pending'
                 ? fpT('Mesures DataForSEO en cours. Actualisez cette page pour voir leur état.')
-                : escHtml(activeHeatmap?.scan_error || fpT(activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
-              ${activeHeatmap?.status === 'failed' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">${fpT('Relancer la mesure')}</button>` : ''}
+                : escHtml(activeHeatmap?.scan_error || fpT(activeHeatmap?.status === 'unavailable' ? 'Les mesures locales ne sont pas disponibles : le fournisseur n’est pas configuré.' : activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
+              ${(activeHeatmap?.status === 'failed' || activeHeatmap?.status === 'unavailable') ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">${fpT('Relancer la mesure')}</button>` : ''}
             </div>
           ` : ''}
 
