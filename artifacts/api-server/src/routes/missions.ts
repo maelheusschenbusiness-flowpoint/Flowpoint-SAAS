@@ -343,7 +343,7 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
     const {
       title, description, category = "seo", type = "seo", status = "todo",
       impact = "Moyen", effort = "Moyen", priority = "medium",
-      dueDate, steps, priorityScore, assignedTo,
+      dueDate, steps, priorityScore, assignedTo, source,
     } = req.body as Record<string, unknown>;
 
     if (!title) { res.status(400).json({ error: "title required" }); return; }
@@ -367,15 +367,16 @@ router.post("/missions", canWrite, async (req: Request, res: Response) => {
 
     const id = uid();
     const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[(priority as string)] ?? 50);
+    const sourceType = source === "dataforseo" ? "dataforseo" : "manual";
 
     const createdBy = (req as any).orgContext?.userId || (req as any).orgContext?.email || null;
     await db(`
       INSERT INTO missions (
         id, org_id, title, description, category, type, priority, priority_score,
         status, impact, effort, steps, due_date, assigned_to, source_type, created_by, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',$15,NOW(),NOW(),NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW(),NOW())
     `, [id, org, normalizedTitle, description || null, category, type, priority, pScore, status, impact, effort,
-        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null, createdBy]);
+        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null, sourceType, createdBy]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     // BUG-003 guard: INSERT committed but SELECT returned no row — log full context for diagnosis

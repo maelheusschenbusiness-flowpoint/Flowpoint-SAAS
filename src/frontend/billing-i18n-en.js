@@ -511,5 +511,7 @@ var FP_I18N_EN_BILLING = {
   "30 jours": "30 days",
   "90 jours": "90 days",
   "365 jours": "365 days",
+  "Générer des missions SEO": "Generate SEO missions",
+  "Génération de missions indisponible": "SEO mission generation unavailable.",
 };
 window.FP_I18N_EN_BILLING = FP_I18N_EN_BILLING;

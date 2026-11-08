@@ -53346,37 +53346,8 @@ async function init() {
       }
     } catch(e) { showToast('error', fpT('Impossible de charger les classements locaux. Réessayez dans un instant.')); }
   };
-  // Auto-missions generator — replaces undefined FP_DATAFORSEO_API.generateMissions()
-  window._generateLocalMissions = async function() {
-    const missions = [
-      { title: 'Optimiser la fiche Google Business Profile', category: 'Local SEO', priority: 'high' },
-      { title: 'Créer des citations locales manquantes', category: 'Local SEO', priority: 'high' },
-      { title: 'Améliorer le score de cohérence NAP', category: 'Local SEO', priority: 'medium' },
-      { title: 'Générer des avis positifs (stratégie de collecte)', category: 'Local SEO', priority: 'medium' },
-      { title: 'Optimiser les mots-clés locaux cibles', category: 'Local SEO', priority: 'medium' },
-    ];
-    showToast('info', fpT('Génération des missions locales…'));
-    let created = 0;
-    for (const m of missions) {
-      try {
-        if (!STATE.missions) STATE.missions = [];
-        const dup = STATE.missions.find(x => x.title.toLowerCase() === m.title.toLowerCase() && x.status !== 'done');
-        if (!dup) {
-          // Always POST to the real API; fall back to local cache on failure
-          const payload = { ...m, status: 'todo', source: 'local-seo', steps: [] };
-          const s = await apiAction('POST', '/api/missions', payload).catch(() => null);
-          if (s && s.id) {
-            STATE.missions.unshift({ ...payload, id: s.id, createdAt: s.createdAt || new Date().toISOString() });
-            created++;
-          }
-        }
-      } catch(e) {}
-    }
-    if (created > 0) {
-      showToast('success', created + fpT(' missions locales créées !'));
-      setTimeout(() => navigate('missions'), 900);
-    } else showToast('warning', fpT('Toutes les missions existent déjà'));
-  };
+  // SEO mission generation is implemented by seo-missions-addon.js.
+  // Do not add a hard-coded fallback here: it would create fictitious SEO tasks.
   // Satellite map toggle — toggles visual mode on the SVG map
   window._toggleSatelliteMode = function(btn) {
     const map = document.getElementById('fp-gmap');
