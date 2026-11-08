@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
-import { randomBytes, randomUUID, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
+import { randomBytes, randomUUID, createHash, createPrivateKey, sign as cryptoSign } from "crypto";
 
 /** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
 function sha256hex(s: string): string {
@@ -27,6 +27,8 @@ import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { startOAuthState, consumeOAuthState, safeRedirectTo, sanitizePlan } from "../services/oauth-state.js";
+import { verifyAppleIdToken } from "../services/apple-id-token.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { keysEqual } from "../lib/auth-token.js";
@@ -2079,12 +2081,17 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   logger.info({ redirectUri }, "[Auth] Google OAuth login — redirect URI");
 
   const rawPlan = String(req.query["plan"] ?? "");
-  const selectedPlan = ["standard","pro","ultra"].includes(rawPlan) ? rawPlan : null;
-  const rawRedirect = String(req.query["redirect_to"] ?? "");
-  const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : null;
+  const selectedPlan = sanitizePlan(rawPlan);
+  const redirectTo = safeRedirectTo(String(req.query["redirect_to"] ?? ""));
   const rawSellerCode = String(req.query["seller_code"] ?? "").trim().toUpperCase();
   const sellerCode = /^SELLER-[A-Z0-9]{1,20}$/.test(rawSellerCode) ? rawSellerCode : null;
   const fpLid = normalizeFpLid(req.query["fp_lid"]);
+
+  // `state` aleatoire lie a un cookie httpOnly ; plan / seller_code / fp_lid /
+  // redirect_to voyagent dans ce cookie et non plus dans l'URL du fournisseur.
+  const oauth = startOAuthState(res, "google",
+    { plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid },
+    isDeployedProd());
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -2093,7 +2100,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid })).toString("base64"),
+    state: oauth.state,
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -2103,8 +2110,20 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
   const publicUrl = getPublicUrl();
 
+  // Le `state` est verifie AVANT tout echange de code : lie au cookie du
+  // navigateur, a usage unique, expire apres 10 minutes.
+  const stateCheck = consumeOAuthState(req, res, "google", req.query["state"], isDeployedProd());
+  if (!stateCheck.ok) {
+    logger.warn({ reason: stateCheck.reason }, "[Auth] Google callback rejected — invalid OAuth state");
+    res.redirect(`${publicUrl}/login.html?error=invalid_state`);
+    return;
+  }
+  const oauthState = stateCheck.record;
+  // Le plan choisi reste porte vers la page d'inscription en cas d'erreur.
+  const carriedQuery: Record<string, unknown> = { ...req.query, ...(oauthState.plan ? { plan: oauthState.plan } : {}) };
+
   if (oauthError) {
-    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`, req.query));
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`, carriedQuery));
     return;
   }
   if (!code) {
@@ -2141,44 +2160,39 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       locale?:        string;   // user locale (e.g. "fr", "en")
     };
 
-    const resolvedEmail = user.email ?? user.sub ?? "";
+    // Une adresse que Google n'a pas verifiee ne prouve pas l'identite : le
+    // callback peut donner la propriete d'une organisation existante par e-mail.
+    // L'absence d'e-mail (repli historique sur `sub`) est refusee pour la meme raison.
+    if (!user.email || (user.email_verified !== true && (user.email_verified as unknown) !== "true")) {
+      logger.warn({ hasEmail: !!user.email }, "[Auth] Google login rejected — email missing or not verified by Google");
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=email_not_verified`, carriedQuery));
+      return;
+    }
+    const resolvedEmail = user.email;
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Google login rejected — email not on allowlist");
-      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, carriedQuery));
       return;
     }
 
     // SECURITY: store.me writes removed — user data must be read from DB, not global singleton.
 
-    // Apply plan & redirect from OAuth state if present
+    // Plan, redirection, seller_code et fp_lid viennent de l'etat VERIFIE (cookie lie).
     let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
-    let planFromState: string | null = null;
+    const planFromState: string | null = oauthState.plan;
     let sellerIdFromState: string | null = null;
-    let fpLidFromState: string | null = null;
-    try {
-      const rawState = String(req.query["state"] ?? "");
-      if (rawState) {
-        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as {
-          plan?: string;
-          redirect_to?: string | null;
-          seller_code?: string | null;
-          fp_lid?: string | null;
-        };
-        fpLidFromState = normalizeFpLid(stateObj.fp_lid);
-        if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
-          planFromState = stateObj.plan;
-          logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
-        }
-        if (stateObj.redirect_to && stateObj.redirect_to.startsWith("/")) {
-          redirectAfterLogin = `${publicUrl}${stateObj.redirect_to}`;
-          logger.info({ redirect: redirectAfterLogin }, "[Auth] Google login — redirect after login set from OAuth state");
-        }
-        if (stateObj.seller_code) {
-          const { validateSellerCode } = await import("../services/seller-attribution.js");
-          sellerIdFromState = (await validateSellerCode(stateObj.seller_code))?.id ?? null;
-        }
+    const fpLidFromState: string | null = normalizeFpLid(oauthState.fp_lid);
+    if (oauthState.redirect_to) {
+      redirectAfterLogin = `${publicUrl}${oauthState.redirect_to}`;
+    }
+    if (oauthState.seller_code) {
+      try {
+        const { validateSellerCode } = await import("../services/seller-attribution.js");
+        sellerIdFromState = (await validateSellerCode(oauthState.seller_code))?.id ?? null;
+      } catch (sellerErr) {
+        logger.warn({ err: sellerErr }, "[Auth] Google login — seller code validation failed (ignored)");
       }
-    } catch { /* state parse error — ignore */ }
+    }
 
     // Persist org settings (including plan) so /api/me returns correct plan after restart.
     // OAuth must also create a UUID-backed identity before issuing a session:
@@ -2282,12 +2296,12 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
             }
           } catch (preRegErr) {
             logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
-            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, carriedQuery));
             return;
           }
           if (!googlePreRegToken) {
             logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
-            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, carriedQuery));
             return;
           }
           const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
@@ -2310,7 +2324,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       }
     } catch (err) {
       logger.error({ err }, "[Auth] Google login — identity provisioning failed");
-      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, carriedQuery));
       return;
     }
 
@@ -2342,7 +2356,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     res.redirect(redirectAfterLogin);
   } catch (err) {
     logger.error({ err }, "[Auth] Google login callback failed");
-    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, carriedQuery));
   }
 });
 
@@ -2356,13 +2370,22 @@ router.get("/auth/github/login", (req: Request, res: Response) => {
     return;
   }
 
-  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user,user:email`;
+  // `state` aleatoire lie a un cookie httpOnly (protection CSRF / rejeu).
+  const oauth = startOAuthState(res, "github", { plan: null, redirect_to: null, seller_code: null, fp_lid: null }, isDeployedProd());
+  const url = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent("read:user,user:email")}&state=${encodeURIComponent(oauth.state)}`;
   res.redirect(url);
 });
 
 router.get("/auth/github/callback", async (req: Request, res: Response) => {
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
   const publicUrl = getPublicUrl();
+
+  const ghState = consumeOAuthState(req, res, "github", req.query["state"], isDeployedProd());
+  if (!ghState.ok) {
+    logger.warn({ reason: ghState.reason }, "[Auth] GitHub callback rejected — invalid OAuth state");
+    res.redirect(`${publicUrl}/login.html?error=invalid_state`);
+    return;
+  }
 
   if (oauthError || !code) {
     res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError || "missing_code")}`);
@@ -2383,7 +2406,24 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     }, DELAIS.identite);
     const user = await userRes.json() as { login?: string; name?: string; email?: string };
 
-    const resolvedEmail = user.email ?? user.login ?? "";
+    // L'identite est l'adresse PRIMAIRE ET VERIFIEE par GitHub (/user/emails,
+    // scope user:email). Le champ `email` de /user est un profil public libre et
+    // le repli sur `login` fabriquait une identite qui n'est pas une adresse.
+    const emailsRes = await fetchBorne("https://api.github.com/user/emails", {
+      headers: { "Authorization": `Bearer ${tokens.access_token}`, "Accept": "application/vnd.github+json" },
+    }, DELAIS.identite);
+    const ghEmails = emailsRes.ok
+      ? await emailsRes.json() as Array<{ email?: string; primary?: boolean; verified?: boolean }>
+      : [];
+    const verifiedPrimary = Array.isArray(ghEmails)
+      ? ghEmails.find((e) => e.primary === true && e.verified === true && typeof e.email === "string")
+      : undefined;
+    if (!verifiedPrimary?.email) {
+      logger.warn({ login: user.login }, "[Auth] GitHub login rejected — no primary verified email");
+      res.redirect(`${publicUrl}/login.html?error=email_not_verified`);
+      return;
+    }
+    const resolvedEmail = verifiedPrimary.email.toLowerCase().trim();
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ login: user.login }, "[Auth] GitHub login rejected — email not on allowlist");
       res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
@@ -2621,7 +2661,10 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
   const redirectUri =
     process.env["APPLE_AUTH_REDIRECT_URI"] ||
     `${getPublicUrl()}/api/auth/apple/callback`;
-  const state = Buffer.from(JSON.stringify({ ts: Date.now() })).toString("base64url");
+  // `state` + `nonce` aleatoires, lies a un cookie httpOnly (SameSite=None en
+  // production : le callback d'Apple est un POST inter-sites).
+  const oauth = startOAuthState(res, "apple", { plan: null, redirect_to: null, seller_code: null, fp_lid: null }, isDeployedProd());
+  const state = oauth.state;
   const url = new URL("https://appleid.apple.com/auth/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
@@ -2629,6 +2672,7 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
   url.searchParams.set("response_mode", "form_post");
   url.searchParams.set("scope", "name email");
   url.searchParams.set("state", state);
+  url.searchParams.set("nonce", oauth.nonce);
   res.redirect(url.toString());
 });
 
@@ -2668,6 +2712,13 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
   // Apple only sends `user` JSON on the VERY FIRST auth for this user+app pair
   const userJson  = body["user"]     ?? "";
 
+  const appleState = consumeOAuthState(req, res, "apple", body["state"], isDeployedProd());
+  if (!appleState.ok) {
+    logger.warn({ reason: appleState.reason }, "[Auth] Apple callback rejected — invalid OAuth state");
+    res.redirect(`${publicUrl}/login.html?error=invalid_state`);
+    return;
+  }
+
   if (!code) {
     const appleError = body["error"] ?? "missing_code";
     logger.warn({ appleError }, "[Auth] Apple callback — missing code");
@@ -2682,39 +2733,29 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
   }
 
   try {
+    let appleSub: string | undefined;
     let appleEmail: string | undefined;
-    let appleSub:   string | undefined;
 
-    // ── Step 1: verify the id_token that Apple sent in the form_post body ──────
+    const fetchAppleKeys = async () => {
+      const jwksRes = await fetchBorne("https://appleid.apple.com/auth/keys", {}, DELAIS.identite);
+      if (!jwksRes.ok) throw new Error("Apple JWKS unavailable");
+      return ((await jwksRes.json()) as { keys: Array<{ kid?: string }> }).keys;
+    };
+    const verifyOpts = { clientId, expectedNonce: appleState.record.nonce, fetchKeys: fetchAppleKeys };
+
+    // ── Step 1: id_token du formulaire — signature, iss, aud, exp et nonce ────
     if (idToken) {
-      const parts = idToken.split(".");
-      if (parts.length === 3) {
-        try {
-          const headerObj  = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { kid?: string };
-          const payloadObj = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
-          // Fetch Apple's public JWKS
-          const jwksRes = await fetchBorne("https://appleid.apple.com/auth/keys", {}, DELAIS.identite);
-          if (jwksRes.ok) {
-            const jwks = await jwksRes.json() as { keys: Array<JsonWebKey & { kid?: string }> };
-            const jwk  = jwks.keys.find((k) => k.kid === headerObj.kid);
-            if (jwk) {
-              const pubKey   = createPublicKey({ key: jwk as unknown as Parameters<typeof createPublicKey>[0] & object, format: "jwk" } as Parameters<typeof createPublicKey>[0]);
-              const sigInput = Buffer.from(`${parts[0]}.${parts[1]}`);
-              const valid    = cryptoVerify("SHA256", sigInput, pubKey, Buffer.from(parts[2], "base64url"));
-              if (valid && payloadObj["aud"] === clientId) {
-                appleEmail = typeof payloadObj["email"] === "string" ? payloadObj["email"] : undefined;
-                appleSub   = typeof payloadObj["sub"]   === "string" ? payloadObj["sub"]   : undefined;
-              }
-            }
-          }
-        } catch (verifyErr) {
-          logger.warn({ err: verifyErr }, "[Auth] Apple callback — id_token verify failed (non-fatal, will try code exchange)");
-        }
+      try {
+        const ident = await verifyAppleIdToken(idToken, verifyOpts);
+        appleSub = ident.sub;
+        appleEmail = ident.email;
+      } catch (verifyErr) {
+        logger.warn({ err: verifyErr }, "[Auth] Apple callback — id_token du formulaire refuse, tentative via echange de code");
       }
     }
 
-    // ── Step 2: exchange code for tokens if we still don't have email/sub ──────
-    if (!appleEmail && !appleSub) {
+    // ── Step 2: echange de code (meme verification complete du jeton obtenu) ──
+    if (!appleEmail) {
       const teamId     = process.env["APPLE_TEAM_ID"]     ?? "";
       const keyId      = process.env["APPLE_KEY_ID"]      ?? "";
       const rawPem     = (process.env["APPLE_PRIVATE_KEY"] ?? "").replace(/\\n/g, "\n");
@@ -2740,31 +2781,27 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
       if (!tokenRes.ok || !tokens.id_token) {
         throw new Error(`Apple token exchange failed: ${tokens.error ?? "no id_token"} — ${tokens.error_description ?? ""}`);
       }
-      // Decode payload (already issued by Apple, trust it after exchange)
-      const tp = tokens.id_token.split(".");
-      if (tp.length === 3) {
-        const pl = JSON.parse(Buffer.from(tp[1], "base64url").toString("utf8")) as Record<string, unknown>;
-        appleEmail = typeof pl["email"] === "string" ? pl["email"] : undefined;
-        appleSub   = typeof pl["sub"]   === "string" ? pl["sub"]   : undefined;
-      }
+      const ident = await verifyAppleIdToken(tokens.id_token, verifyOpts);
+      appleSub = ident.sub;
+      appleEmail = ident.email;
     }
 
-    // ── Step 3: parse `user` JSON (name + email, only on first sign-in) ────────
+    // ── Step 3: le champ `user` (client) ne fournit QUE le prenom d'affichage ──
+    // Son e-mail n'est jamais utilise : il n'est pas signe.
     let appleFirstName: string | undefined;
     if (userJson) {
       try {
-        const u = JSON.parse(userJson) as { name?: { firstName?: string }; email?: string };
-        appleFirstName = u.name?.firstName;
-        if (!appleEmail) appleEmail = u.email;
+        const u = JSON.parse(userJson) as { name?: { firstName?: string } };
+        appleFirstName = typeof u.name?.firstName === "string" ? u.name.firstName.slice(0, 80) : undefined;
       } catch { /* ignore */ }
     }
 
-    if (!appleEmail && !appleSub) {
-      throw new Error("Could not determine Apple user identity — email and sub both missing");
+    if (!appleEmail || !appleSub) {
+      throw new Error("Could not determine a verified Apple identity");
     }
 
     // Apple private-relay addresses (privaterelay.appleid.com) are valid — accept them
-    const resolvedEmail = (appleEmail ?? `${appleSub}@apple-sub.local`).toLowerCase().trim();
+    const resolvedEmail = appleEmail.toLowerCase().trim();
 
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Apple login rejected — email not on allowlist");
