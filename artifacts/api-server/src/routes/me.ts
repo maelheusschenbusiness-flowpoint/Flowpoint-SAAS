@@ -638,6 +638,24 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
     statusPageUrl?: string; // convenience top-level alias — merged into settings.statusPageUrl
   };
+  // C-04 : cette route est ouverte a tout role (la garde d'ecriture par defaut la
+  // laisse passer pour l'etat d'interface : serie, epingles, checklist). Les
+  // reglages d'ORGANISATION (`settings`, `statusPageUrl`) restent reserves aux
+  // roles qui ecrivent : un viewer (ou une cle publique fp_pub_) ne les modifie pas.
+  const _prefsRole = String(req.orgContext?.role ?? "");
+  const _prefsWritesOrgSettings =
+    (rawSettings && typeof rawSettings === "object" && Object.keys(rawSettings).length > 0) ||
+    typeof statusPageUrl === "string";
+  // Un role absent est deja refuse (401) par writeRoleGuard : ici seul « viewer » est a exclure.
+  if (_prefsWritesOrgSettings && _prefsRole === "viewer") {
+    res.status(403).json({
+      error: "Forbidden: write access requires owner, admin or member role",
+      code: "WRITE_ROLE_REQUIRED",
+      yourRole: _prefsRole || null,
+    });
+    return;
+  }
+
   // ── statusPageUrl validation helper ──────────────────────────────────────────
   // Returns the trimmed URL if it is a valid absolute http/https URL, "" if the
   // intent is to clear the field, or null if the value is invalid and must be
