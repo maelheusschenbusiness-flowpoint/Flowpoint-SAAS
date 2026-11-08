@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
+      "src/services/local-maps-recommendations.test.ts",
       "src/services/stripe-factory.test.ts",
       "src/routes/admin-test-session.test.ts",
       "src/services/render-test-migration-guard.test.ts",

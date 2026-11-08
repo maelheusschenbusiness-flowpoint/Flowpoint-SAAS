@@ -484,10 +484,79 @@ async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Prom
   );
 }
 
-export async function generateAiLocalRecommendations(orgId: string): Promise<Array<{ title: string; description: string; impact: string; effort: string; priority: string }>> {
-  const [heatmaps, competitors] = await Promise.all([
+export interface GbpLocationFacts {
+  name: string;
+  rating: number | null;
+  reviews_count: number | null;
+  phone: string | null;
+  website: string | null;
+}
+
+type LocalRecommendation = { title: string; description: string; impact: string; effort: string; priority: string };
+
+/** Recommandations dérivées UNIQUEMENT des fiches Google Business enregistrées (aucun gain chiffré). */
+export function buildGbpLocalRecommendations(locations: GbpLocationFacts[]): LocalRecommendation[] {
+  const items: LocalRecommendation[] = [];
+  for (const loc of locations) {
+    const label = loc.name || "Établissement";
+    const rating = loc.rating == null ? null : Number(loc.rating);
+    const reviews = Number(loc.reviews_count ?? 0);
+    if (!loc.website?.trim()) {
+      items.push({
+        title: `Ajouter un site web à la fiche « ${label} »`,
+        description: "Aucun site web n’est renseigné sur cette fiche Google Business enregistrée.",
+        impact: "Non chiffré", effort: "Faible", priority: "medium",
+      });
+    }
+    if (!loc.phone?.trim()) {
+      items.push({
+        title: `Renseigner un téléphone sur la fiche « ${label} »`,
+        description: "Aucun numéro de téléphone n’est renseigné sur cette fiche Google Business enregistrée.",
+        impact: "Non chiffré", effort: "Faible", priority: "medium",
+      });
+    }
+    if (rating != null && reviews > 0 && rating < 4) {
+      items.push({
+        title: `Traiter les avis négatifs de « ${label} »`,
+        description: `La note enregistrée est de ${rating.toFixed(1)}/5 sur ${reviews} avis. Répondre aux avis et solliciter des retours de clients satisfaits.`,
+        impact: "Non chiffré", effort: "Moyen", priority: "high",
+      });
+    }
+    if (reviews === 0) {
+      items.push({
+        title: `Recueillir des premiers avis pour « ${label} »`,
+        description: "Aucun avis n’est enregistré pour cette fiche.",
+        impact: "Non chiffré", effort: "Moyen", priority: "medium",
+      });
+    }
+  }
+  return items;
+}
+
+export interface AiLocalRecommendationsResult {
+  status: "ok" | "empty";
+  message: string | null;
+  recommendations: LocalRecommendation[];
+}
+
+export async function generateAiLocalRecommendations(orgId: string): Promise<AiLocalRecommendationsResult> {
+  const [heatmaps, competitors, locations] = await Promise.all([
     getHeatmaps(orgId),
     getCompetitorSummary(orgId),
+    pool.query(
+      `SELECT name, rating, reviews_count, phone, website FROM google_locations WHERE org_id=$1 ORDER BY name LIMIT 20`,
+      [orgId],
+    ).then(r => r.rows as GbpLocationFacts[]).catch(() => [] as GbpLocationFacts[]),
   ]);
-  return buildLocalMapsRecommendations(heatmaps, competitors);
+  const measured = (heatmaps.length > 0 || competitors.resultCount > 0)
+    ? buildLocalMapsRecommendations(heatmaps, competitors) : [];
+  const recommendations = [...buildGbpLocalRecommendations(locations), ...measured];
+  if (recommendations.length === 0) {
+    return {
+      status: "empty",
+      message: "Aucune recommandation : connectez une fiche Google Business ou lancez une analyse locale pour obtenir des constats fondés sur vos données.",
+      recommendations: [],
+    };
+  }
+  return { status: "ok", message: null, recommendations };
 }
