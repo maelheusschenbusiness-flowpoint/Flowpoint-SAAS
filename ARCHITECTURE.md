@@ -939,8 +939,8 @@ Les routes suivantes ont un renderer dans `dashboard.js` mais peu/pas de donnée
 | `signin.html` | Page sign-in (lien Google OAuth) |
 | `login.html` | Formulaire saisie email → magic link |
 | `login-verify.html` + `login-verify.js` | Consommation token magic link → création session |
-| `pricing.html` + `pricing.js` | Catalogue plans, sélection, cart → checkout |
-| `checkout.html` + `checkout.js` | Étapes checkout Stripe |
+| `pricing.html` + `pricing-funnel.js` (+ `pricing.js` historique, non chargé, lu par `tests/certification/lot_c.mjs`) | Catalogue plans, sélection (le bouton d'un plan mène directement à l'inscription/paiement), cart → checkout ; `pricing-funnel.js` émet `cta_clique` (consentement requis) |
+| `checkout.html` | Étapes checkout Stripe (le `checkout.js` orphelin a été supprimé) |
 | `checkout-payment.html` | UI paiement |
 | `checkout-return.html` | Retour Stripe → vérification session → redirect |
 | `success.html` | Confirmation post-checkout |
