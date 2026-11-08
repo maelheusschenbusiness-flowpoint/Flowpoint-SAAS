@@ -348,9 +348,11 @@ describe("CA-8 — retours Checkout add-on/crédits confirmés par l’organisat
   });
 
   it("vérifie que la session Stripe appartient à l'organisation authentifiée", () => {
-    expect(verifyBlock).toContain("metadataOrgMatches");
-    expect(verifyBlock).toContain("customerMatches");
-    expect(verifyBlock).toContain("session does not match authenticated organization");
+    // La garde vit desormais dans services/billing-verify-guards.ts (testee en comportement
+    // par routes/billing-verify-ownership.test.ts) ; ici on verifie qu'elle precede 402/credits/plan.
+    expect(verifyBlock).toContain("sessionBelongsToOrg(session");
+    expect(verifyBlock).toContain("does not belong to the authenticated organization");
+    expect(verifyBlock.indexOf("sessionBelongsToOrg(")).toBeLessThan(verifyBlock.indexOf("payment_status !== \"paid\" && session.status"));
   });
 
   it("retourne les achats add-on/crédits vers l'écran dédié et gère l'annulation", () => {
