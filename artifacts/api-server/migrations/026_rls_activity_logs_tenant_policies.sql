@@ -1,4 +1,4 @@
--- 025_rls_activity_logs_tenant_policies.sql  (C-08)
+-- 026_rls_activity_logs_tenant_policies.sql  (C-08)
 --
 -- CONTEXTE
 --   `activity_logs` porte `org_id` et RLS y est activee (init-data-tables.ts), mais
@@ -27,7 +27,7 @@
 --     BYPASSRLS) n'est pas affecte.
 --   - Meme definition que init-rls-migration.ts (GUC encapsule dans un SELECT).
 --
--- A APPLIQUER (hors CI, sur decision humaine) : psql "$DATABASE_URL" -f 025_...sql
+-- A APPLIQUER (hors CI, sur decision humaine) : psql "$DATABASE_URL" -f 026_...sql
 --
 -- RETOUR ARRIERE
 --   DROP POLICY IF EXISTS tenant_select ON public.activity_logs;

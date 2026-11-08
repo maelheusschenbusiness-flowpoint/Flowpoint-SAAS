@@ -1,7 +1,7 @@
 /**
  * rls-activity-logs-migration-db.test.ts — C-08
  *
- * `migrations/025_rls_activity_logs_tenant_policies.sql` pose les 4 policies
+ * `migrations/026_rls_activity_logs_tenant_policies.sql` pose les 4 policies
  * tenant_* de `activity_logs` quand elles manquent (base demarree par le seul
  * chemin rapide). Le fichier est idempotent et reversible ; ce test le prouve dans
  * une transaction ANNULEE : la base n'est pas modifiee.
@@ -21,7 +21,7 @@ vi.mock("../lib/logger.js", () => ({
 import { pool } from "@workspace/db";
 
 const SQL = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations", "025_rls_activity_logs_tenant_policies.sql"),
+  join(dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations", "026_rls_activity_logs_tenant_policies.sql"),
   "utf8",
 );
 const POLICIES = ["tenant_select", "tenant_insert", "tenant_update", "tenant_delete"];
