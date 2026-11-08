@@ -94,10 +94,22 @@ describe("Agency Reporting Packs", () => {
     expect(response.status).toBe(200);
     expect(response.body.audits).toEqual(audits);
     expect(response.body.packs).toHaveLength(3);
+    expect(response.body.packs.map((pack: { templateKey: string }) => pack.templateKey).sort())
+      .toEqual(["executive", "local", "seo"]);
     expect(orgDbMock).toHaveBeenCalledWith(
       expect.stringContaining("WHERE org_id=$1"),
       ["org-a"],
     );
+  });
+
+  it("requires a selected audit before opening a report transaction", async () => {
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/generate")
+      .send({ clientName: "Client A" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("AUDIT_REQUIRED");
+    expect(poolConnectMock).not.toHaveBeenCalled();
   });
 
   it("returns a retryable error instead of an empty report list when storage fails", async () => {
@@ -156,6 +168,32 @@ describe("Agency Reporting Packs", () => {
     expect(response.body.verifiedCount).toBe(3);
     expect(inserts).toHaveLength(3);
     expect(inserts.every((row) => row.auditId === "audit-a1")).toBe(true);
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it("rejects the complete pack without partial inserts when fewer than three report slots remain", async () => {
+    checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 18 });
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1" }] });
+    const client = {
+      query: vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [], rowCount: 1 })),
+      release: vi.fn(),
+    };
+    poolConnectMock.mockResolvedValue(client as any);
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/generate")
+      .send({ clientName: "Client A", auditId: "audit-a1" });
+
+    expect(response.status).toBe(402);
+    expect(response.body).toMatchObject({
+      code: "QUOTA_EXCEEDED",
+      resource: "reports",
+      required: 3,
+      used: 18,
+      limit: 20,
+    });
+    expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(client.query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO reports"))).toBe(false);
     expect(client.release).toHaveBeenCalled();
   });
 
