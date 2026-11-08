@@ -105,6 +105,7 @@ export default defineConfig({
       "src/services/dataforseo-quota-db.test.ts",
       // Politique fail-closed des appels payants DataForSEO (17/10/2026).
       "src/routes/seo-quota-failclosed.test.ts",
+      "src/routes/advanced-seo-lab.test.ts",
       "src/services/dataforseo-quota-failclosed-db.test.ts",
       "src/services/betterstack-tenancy-db.test.ts",
       // Gardes de creation, migration autonome, non-regression du natif.
