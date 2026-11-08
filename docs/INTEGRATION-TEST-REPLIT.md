@@ -1,4 +1,4 @@
-# Integration de 34 PR (#359-#387 puis #391-#395) — branche `integration/test-replit-20261108`
+# Integration de 39 PR (#359-#387, #391-#395, #397-#401) — branche `integration/test-replit-20261108`
 
 Cette branche n'est PAS `Test-Replit`. Elle contient les 29 PR #359-#387 puis, empilees dessus, les 5 PR #391, #392, #394, #393, #395 (voir section 9), fusionnees dans un ordre determine, les conflits
 resolus et les corrections semantiques en commits SEPARES. Rien n'est fusionne dans `Test-Replit`, aucune branche
@@ -167,6 +167,52 @@ Voir section 8 ; en plus : `git revert -m 1 <merge>` annule aussi le second lot 
 - La CI/PG17 peut reveler des differences avec PG16 local ; la course A-09 ci-dessus etait sensible a la charge (pool de 5 s) : corrigee mais a surveiller.
 - Les 2 echecs de timing preexistants peuvent aussi apparaitre en CI.
 - La certification navigateur utilise un faux Stripe/Google : elle ne prouve pas l'integration reelle.
+
+## 11. Troisieme lot : PR #397 a #401 (consolidation)
+
+Ordre : **#397, #398, #399, #400, #401** (chaque merge `--no-ff`, typecheck apres chacun). Les 5 merges sont automatiques, sans conflit textuel (`stripe-webhook.ts` : #399 +19 lignes, #400 +30 lignes, zones disjointes ; `pool-query-baseline.json` : ajouts de #399 seuls ; `dashboard.js`/`fp-locale.js` : seul #401 les modifie, les deux copies restent identiques, `cmp` OK).
+
+| PR | Branche | Contenu |
+|---|---|---|
+| #397 | fix/billing-verify-integration-20261108 | garde de propriete de `GET /billing/verify` (`services/billing-verify-guards.ts`) |
+| #398 | test/certification-stripe-reel-20261108 | certification du VRAI Stripe (mode test), outils et doc ; ajouts seuls, rien d'execute ici |
+| #399 | fix/credits-remboursements-20261108 | remboursements des credits IA (`ai-credit-refunds.ts`, migration 027, table creee aussi au demarrage) |
+| #400 | fix/paniers-credits-abonnement-20261108 | paniers credits IA + abonnement (`ai-credit-cart.ts`) |
+| #401 | fix/regle-annulation-past-due-20261108 | regle annulation / past_due : mode lecture seule (`resolveAccessMode`, 402 `SUBSCRIPTION_READ_ONLY`), migration past_due_since, grace `PAST_DUE_GRACE_DAYS` |
+
+### Decisions et corrections d'integration
+| Sujet | Constat | Decision |
+|---|---|---|
+| Migrations en doublon | #399 et #401 ajoutaient toutes deux `027_*` | #399 garde `027_ai_credit_refunds.sql` ; #401 devient **`028_organizations_past_due_since.sql`** (git mv + references : ARCHITECTURE.md, message de `org-data.ts`). Aucun autre doublon introduit (010 et 014 etaient deja en double avant ce chantier). Ni `migrate` ni la CI n'executent `migrations/*.sql` ; `initDataTables` cree `ai_credit_refunds` et `past_due_since` avec `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` / `UPDATE ... WHERE past_due_since IS NULL` : idempotent. |
+| Lecture seule x garde de role #373 x credits | Verifie par le nouveau test `middlewares/read-only-integration-matrix.test.ts` (14 cas sur les vrais chemins) | En lecture seule : `POST /ai-credits/consume`, add-ons, ecritures metier, `/me/settings` : 402 `SUBSCRIPTION_READ_ONLY`. Restent accessibles : lectures (`GET /billing/verify`, usage credits, exports de ses donnees), portail, reactivation, achats de credits (`/billing/checkout-ai-credits`, `/billing/ai-credits-intent`), `/billing/usage-events`, `DELETE /settings/data`. Webhook Stripe : jamais soumis aux gardes (avec ou sans organisation). |
+| Certification #395 x #401 | `07-abonnement-etats` attendait un 402 sur les lectures d'un compte `past_due` hors grace / `canceled` hors periode, ce qui n'est plus vrai (lecture seule) ; une ligne `past_due` posee en SQL sans `past_due_since` reste en acces complet (pas de bascule brutale, decision de #401) | Test aligne sur la regle : lectures ouvertes + en-tete `X-FP-Access-Mode: read_only`, ecritures 402 `SUBSCRIPTION_READ_ONLY` (avec `past_due_since` pose a J-10) ; `expired` reste 402 `SUBSCRIPTION_REQUIRED` ; `SUBSCRIPTION_READ_ONLY` ajoute aux codes de garde-fou attendus. Aucune assertion relachee. |
+| Test instable `google-signup-account-guard` (#371) | La regex `/Ada/i` etait appliquee a une URL contenant le jeton HEXADECIMAL aleatoire (a, d, a sont des chiffres hexa) : faux positif aleatoire, test faux par construction | Les cles de la redirection sont verifiees exactement, le jeton est verifie comme hexadecimal puis EXCLU du controle de donnees personnelles. 25 executions : 25 passees. |
+| Test instable `trial-subscription-webhook-db` (#393) : 401 en concurrence | Cause racine : les recherches d'authentification de `finalize-checkout` (jeton, session, chemin C) avalent une erreur de pool (`timeout exceeded when trying to connect`, pool sature a 24 requetes) et laissent l'organisation non resolue : reponse 401 `auth_required` trompeuse (renvoie vers /login). Meme famille que la course d'ancrage corrigee precedemment | `finalize-checkout` repond desormais **503 `auth_lookup_unavailable` retryable** quand une recherche a echoue, 401 seulement si aucune recherche n'a echoue. Test deterministe ajoute (pool en echec : 503, pas 401 ; echoue sans le correctif). Mesure sous charge (6 processus en parallele) : 1 echec sur 30 avant, **0 sur 36** apres ; 20 executions sequentielles : 20 sur 20. |
+| Test de position `finalize-checkout-path-c` | Un commentaire contenant le mot `auth_required` avant le bloc Path C cassait ce test de grep source | Commentaire reformule (aucune assertion modifiee). |
+
+### Variables d'environnement nouvelles (en plus de la section 10)
+| Variable | Defaut | Effet |
+|---|---|---|
+| `PAST_DUE_GRACE_DAYS` | `3` | grace d'acces complet depuis `past_due_since`, puis lecture seule ; entier 0..30, invalide : 3 + log `warn` |
+| `PAST_DUE_RULE_ACTIVATED_AT` | demarrage du processus | ancre ISO des organisations `past_due` anterieures a la regle (evite une bascule brutale) |
+| `STRIPE_TEST_PRICE_AI_50K` / `_200K` / `_500K` | non definies | prix de TEST des packs de credits IA (equivalents `STRIPE_PRICE_AI_*` en production) ; necessaires pour acheter des credits en mode test |
+| `STRIPE_TEST_SECRET_KEY`, `STRIPE_TEST_PUBLISHABLE_KEY`, `STRIPE_TEST_WEBHOOK_SECRET`, `STRIPE_TEST_PRICE_ID_*`, `CERT_STRIPE_*` | non definies | campagne de certification Stripe reel (#398), hors application ; voir `docs/CERTIFICATION-STRIPE-REEL.md` |
+
+### Migrations manuelles, dans l'ordre (apres sauvegarde)
+1. diagnostics (lecture seule) : `migrations/diagnostics/025_detect_duplicate_org_owner_email.sql` (doit etre vide), `migrations/diagnostics/a09_trialing_sans_souscription.sql` ;
+2. `025_organizations_owner_email_unique.sql`, `026_rls_activity_logs_tenant_policies.sql`, `027_ai_credit_refunds.sql`, `028_organizations_past_due_since.sql`.
+027 et 028 sont aussi appliquees au demarrage par `initDataTables` (idempotent) : les appliquer a la main est facultatif mais sans risque. 025 et 026 ne le sont pas.
+
+### Procedure « Operations necessaires pour integrer » (mise a jour)
+La procedure de la section 10 s'applique avec : fermeture de `seq 359 387` et `391 392 393 394 395 397 398 399 400 401` ; migrations dans l'ordre 025, 026, 027, 028 apres les deux diagnostics. La PR docs migrations (runbook 025/026) viendra s'ajouter dans un lot suivant.
+
+### Risques supplementaires
+- Lecture seule : un compte `canceled` apres sa periode ou `past_due` hors grace ne peut plus ecrire (y compris consommer des credits IA) ; ses donnees et exports (GET) restent accessibles. A valider commercialement avant production.
+- Les lignes `past_due` existantes sans `past_due_since` restent en acces complet jusqu'a l'ancre `PAST_DUE_RULE_ACTIVATED_AT` + grace.
+- Tout ce qui touche le vrai Stripe (#398) n'a pas ete execute.
+
+### Tests locaux et CI du lot 3
+Resultats et sha final : voir la description de la PR #390 et la section « Resultats du lot 3 » ci-dessous.
 
 ## 7. Procedure de fusion recommandee (apres validation du proprietaire)
 
