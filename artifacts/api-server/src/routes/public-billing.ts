@@ -1680,7 +1680,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
   let _authenticatedOrgId: string | null = null;
   let _preRegisterTokenIsValid = false;
   // Une recherche d'authentification qui ECHOUE (pool sature, base indisponible) n'est pas un
-  // visiteur non authentifie : repondre 401 « auth_required » ferait croire a une session perdue
+  // visiteur non authentifie : repondre un 401 d'authentification ferait croire a une session perdue
   // et envoyer vers /login. On repond 503 retryable (cause du 401 intermittent de la concurrence A-09).
   let _fcAuthLookupFailed = false;
 
