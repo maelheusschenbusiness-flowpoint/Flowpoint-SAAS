@@ -18,6 +18,16 @@ import { logger } from "../lib/logger.js";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const EXEMPT_PATHS = ["/api/webhooks/stripe", "/api/billing/webhook"];
 
+/**
+ * Exception explicite, et unique, pour le callback Apple Sign In : Apple
+ * renvoie l'utilisateur par un POST `response_mode=form_post` cross-site dont
+ * l'Origin est Apple (non liste). Ce callback n'est pas protege par
+ * Origin/Referer mais par un `state` aleatoire lie a un cookie httpOnly
+ * (fp_oauth_apple), un nonce et la verification du jeton signe Apple
+ * (PR #367). Ne PAS elargir a /api/auth/* : les autres POST restent controles.
+ */
+const OAUTH_FORM_POST_EXEMPT_PATHS = ["/api/auth/apple/callback"];
+
 function hasExplicitCredential(req: Request): boolean {
   const auth = req.headers["authorization"];
   if (typeof auth === "string" && auth.startsWith("Bearer ")) return true;
@@ -38,6 +48,7 @@ export function csrfOrigin(allowed: OriginPattern[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (SAFE_METHODS.has(req.method)) return next();
     if (EXEMPT_PATHS.some((p) => req.path === p || req.path.startsWith(`${p}/`))) return next();
+    if (OAUTH_FORM_POST_EXEMPT_PATHS.includes(req.path)) return next();
     const cookies = (req as unknown as { cookies?: Record<string, string> }).cookies;
     const cookieToken = cookies?.["fp_token"];
     if (typeof cookieToken !== "string" || cookieToken.trim() === "") return next();

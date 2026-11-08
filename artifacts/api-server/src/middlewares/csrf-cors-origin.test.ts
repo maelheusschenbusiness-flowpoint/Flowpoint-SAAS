@@ -29,6 +29,8 @@ function buildApp(env: NodeJS.ProcessEnv) {
   app.use(csrfOrigin(allowed));
   app.post("/api/thing", (_req, res) => res.json({ ok: true }));
   app.get("/api/thing", (_req, res) => res.json({ ok: true }));
+  app.post("/api/auth/apple/callback", (_req, res) => res.json({ ok: true }));
+  app.post("/api/auth/apple/callback/extra", (_req, res) => res.json({ ok: true }));
   app.post("/api/webhooks/stripe", (_req, res) => res.json({ received: true }));
   app.post("/api/billing/webhook", (_req, res) => res.json({ received: true }));
   return app;
@@ -137,6 +139,18 @@ describe("controle Origin/Referer sur requetes non sures par cookie (C-01)", () 
     expect(a.status).toBe(200);
     const b = await request(app).post("/api/thing").set("X-API-Key", "fp_pub_x").set("Cookie", cookie).send({});
     expect(b.status).toBe(200);
+  });
+
+  it("callback Apple form_post cross-site : non rejete ; chemins voisins et autres POST cookie restent refuses", async () => {
+    const app = buildApp(PROD);
+    const apple = await request(app)
+      .post("/api/auth/apple/callback").type("form").set("Cookie", cookie)
+      .set("Origin", "https://appleid.apple.com").send({ code: "c", state: "s" });
+    expect(apple.status).toBe(200);
+    const sibling = await request(app).post("/api/auth/apple/callback/extra").set("Cookie", cookie).set("Origin", "https://appleid.apple.com").send({});
+    expect(sibling.status).toBe(403);
+    const other = await request(app).post("/api/thing").set("Cookie", cookie).set("Origin", "https://appleid.apple.com").send({});
+    expect(other.status).toBe(403);
   });
 
   it("webhooks Stripe intacts (les deux chemins), meme avec Origin tiers", async () => {
