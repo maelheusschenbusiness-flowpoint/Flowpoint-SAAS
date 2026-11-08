@@ -1,4 +1,4 @@
--- 027_organizations_past_due_since.sql
+-- 028_organizations_past_due_since.sql
 --
 -- Regle commerciale : un compte past_due garde l'acces complet pendant une
 -- grace (PAST_DUE_GRACE_DAYS, defaut 3 jours) puis passe en lecture seule.

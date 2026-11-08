@@ -516,7 +516,7 @@ Organisations deja `past_due` sans horodatage : le demarrage (`initDataTables`) 
 `PAST_DUE_RULE_ACTIVATED_AT` (defaut : demarrage du processus).
 
 **Variables d'environnement** : `PAST_DUE_GRACE_DAYS` (entier 0..30, defaut 3 ; invalide → 3 + log `warn`),
-`PAST_DUE_RULE_ACTIVATED_AT` (optionnelle, ISO). Colonne : migration `migrations/027_organizations_past_due_since.sql`
+`PAST_DUE_RULE_ACTIVATED_AT` (optionnelle, ISO). Colonne : migration `migrations/028_organizations_past_due_since.sql`
 (idempotente) ; `initDataTables` l'ajoute aussi au demarrage de l'API.
 
 ### Trial

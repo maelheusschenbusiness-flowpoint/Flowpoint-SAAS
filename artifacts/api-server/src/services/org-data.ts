@@ -136,7 +136,7 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         // Colonne past_due_since absente (base jamais passee par initDataTables) :
         // relecture sans elle — valeur NULL, la regle conservatrice s'applique.
         if ((err as { code?: string })?.code !== "42703") throw err;
-        logger.error({ orgId }, "[OrgData] organizations.past_due_since ABSENTE — lecture sans elle (redemarrer l'API ou appliquer migrations/027)");
+        logger.error({ orgId }, "[OrgData] organizations.past_due_since ABSENTE — lecture sans elle (redemarrer l'API ou appliquer migrations/028)");
         return client.query(ORG_BILLING_SELECT.replace("past_due_since,", "NULL::timestamptz AS past_due_since,"), [orgId]) as never;
       });
 
@@ -327,7 +327,7 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
           // past_due_since absente (base jamais migree) : ne pas perdre le reste
           // de l'ecriture de facturation — on la rejoue sans cette colonne.
           if ((colErr as { code?: string })?.code !== "42703" || !sets.some(x => x.startsWith("past_due_since"))) throw colErr;
-          logger.error({ orgId }, "[OrgData] organizations.past_due_since ABSENTE — ecriture rejouee sans elle (redemarrer l'API ou appliquer migrations/027)");
+          logger.error({ orgId }, "[OrgData] organizations.past_due_since ABSENTE — ecriture rejouee sans elle (redemarrer l'API ou appliquer migrations/028)");
           updateRes = await client.query(
             `UPDATE organizations SET ${sets.filter(x => !x.startsWith("past_due_since")).join(", ")} WHERE id = $1::uuid`,
             [orgId, ...vals],
