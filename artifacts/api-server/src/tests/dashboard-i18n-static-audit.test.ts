@@ -2169,7 +2169,7 @@ describe("private dashboard static English localization", () => {
     expect(dashboardSource).toContain("escHtml(fpT(t.name))");
     expect(dashboardSource).toContain("escHtml(fpT(t.description||''))");
     expect(dashboardSource).toContain(
-      "window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}')",
+      "window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}','${escHtml(t.trigger_event)}')",
     );
 
     const settingsScript = dashboardHtml.indexOf('src="settings-i18n-en.js');

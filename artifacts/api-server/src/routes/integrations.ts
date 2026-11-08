@@ -12,6 +12,7 @@ import { logger } from "../lib/logger.js";
 import { pool } from "@workspace/db";
 import { validatePublicHttpsWebhook, postWebhookPinned } from "../services/webhook-url-safety.js";
 import { presentIntegration } from "../services/integration-response.js";
+import { EMITTED_EVENTS, findUnsupportedEvents, normalizeAutomationEvent } from "../services/automation-capabilities.js";
 
 const router = Router();
 
@@ -22,6 +23,25 @@ type OrgReq = Request & {
 const org  = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const plan = (req: Request): string => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+// D-07 : une nouvelle connexion ne peut s'abonner qu'aux evenements que le backend emet
+// reellement ; sinon elle ne se declencherait jamais (faux succes a l'activation).
+const requireEmittedEvents: RequestHandler = (req, res, next) => {
+  const events = (req.body as { events?: unknown } | undefined)?.events;
+  const unsupported = findUnsupportedEvents(events);
+  if (unsupported.length) {
+    res.status(400).json({
+      error: `Événement(s) non émis par FlowPoint pour l'instant : ${unsupported.join(", ")}.`,
+      code: "UNSUPPORTED_EVENT",
+      unsupported,
+      supported: EMITTED_EVENTS,
+    });
+    return;
+  }
+  if (Array.isArray(events)) {
+    req.body.events = [...new Set(events.map(e => (String(e) === "*" ? "*" : normalizeAutomationEvent(e))))];
+  }
+  next();
+};
 const requireZapierAddonForNewConnection: RequestHandler = (req, res, next) => {
   if (!["zapier", "make"].includes(String(req.body?.platform ?? "").toLowerCase())) return next();
   return requireAddon("zapierIntegration", "Zapier/Make Integration")(req, res, next);
@@ -77,7 +97,8 @@ router.get("/integrations/templates", async (_req, res) => {
 
 // ── GET /api/integrations/events ───────────────────────────────────────────────
 router.get("/integrations/events", (_req, res) => {
-  res.json({ events: SUPPORTED_EVENTS });
+  // `emitted` = evenements reellement emis automatiquement ; `events` = liste historique declaree.
+  res.json({ events: SUPPORTED_EVENTS, emitted: EMITTED_EVENTS });
 });
 
 // ── GET /api/integrations/automation-logs ─────────────────────────────────────
@@ -148,7 +169,7 @@ router.get("/integrations/zapier", async (req, res) => {
 });
 
 // ── Zapier / Make connect require zapierIntegration add-on ──────────────────
-router.post("/integrations/zapier/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), async (req, res) => {
+router.post("/integrations/zapier/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), requireEmittedEvents, async (req, res) => {
   const { webhookUrl, events = [], name = "Zapier Integration" } = req.body as { webhookUrl?: string; events?: string[]; name?: string };
   if (!webhookUrl) { res.status(400).json({ error: "webhookUrl requis" }); return; }
   const safeTarget = await validatePublicHttpsWebhook(webhookUrl);
@@ -177,7 +198,7 @@ router.get("/integrations/make", async (req, res) => {
 });
 
 // ── POST /api/integrations/make/connect ───────────────────────────────────────
-router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), async (req, res) => {
+router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zapier/Make Integration"), requireEmittedEvents, async (req, res) => {
   const { webhookUrl, events = [], name = "Make Integration", scenarioName } = req.body as {
     webhookUrl?: string; events?: string[]; name?: string; scenarioName?: string;
   };
@@ -197,7 +218,7 @@ router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zap
 });
 
 // ── POST /api/integrations/connections ─────────────────────────────────────────
-router.post("/integrations/connections", requireZapierAddonForNewConnection, async (req, res) => {
+router.post("/integrations/connections", requireZapierAddonForNewConnection, requireEmittedEvents, async (req, res) => {
   const { name, platform, endpointUrl, events = [], headers = {}, retryEnabled = true, maxRetries = 3 } = req.body as {
     name?: string; platform?: string; endpointUrl?: string;
     events?: string[]; headers?: Record<string, string>;

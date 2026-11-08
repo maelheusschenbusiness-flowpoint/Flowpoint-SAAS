@@ -4,6 +4,7 @@ import { store } from "../services/store.js";
 import { requireAddon, requireQuota } from "../middlewares/planGate.js";
 import { hasAddonEntitlementForOrg } from "../services/addon-entitlement.js";
 import { isAWLReportWorkflow } from "../services/awl-weekly-report.js";
+import { EMITTED_EVENTS, EXECUTABLE_WORKFLOW_ACTIONS, describeWorkflowCapability, isEmittedEvent, isExecutableWorkflowAction, normalizeAutomationEvent } from "../services/automation-capabilities.js";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get("/automation/workflows", async (req: Request, res: Response) => {
       const successRuns = runRows.filter((run: Record<string, unknown>) => run["status"] === "success").length;
       const durations = runRows.map((run: Record<string, unknown>) => Number(run["duration_ms"] ?? 0)).filter(Number.isFinite);
       res.json({
-        workflows: r.rows,
+        workflows: r.rows.map(w => ({ ...w, capability: describeWorkflowCapability(w) })),
         runs: runs.rows,
         stats: {
           totalRuns,
@@ -70,6 +71,33 @@ router.post("/automation/workflows", requireQuota("automations", async (orgId, q
   if (!name || !triggerType || !actions) {
     res.status(400).json({ error: "name, triggerType, actions required" }); return;
   }
+  // D-07 : un workflow ne peut etre cree qu'avec un declencheur reellement emis et des actions
+  // reellement executables ; sinon il resterait « actif » sans jamais rien faire.
+  let normalizedTriggerConfig = triggerConfig;
+  if (triggerType === "event") {
+    const ev = normalizeAutomationEvent(triggerConfig?.event);
+    if (!isEmittedEvent(ev)) {
+      res.status(400).json({
+        error: "Ce déclencheur n'est pas encore actif : aucun événement correspondant n'est émis par FlowPoint.",
+        code: "TRIGGER_NOT_SUPPORTED", supported: EMITTED_EVENTS,
+      }); return;
+    }
+    normalizedTriggerConfig = { ...(triggerConfig ?? {}), event: ev };
+  }
+  if (triggerType === "schedule" && typeof triggerConfig?.cron !== "string") {
+    res.status(400).json({ error: "Un workflow planifié exige une expression cron.", code: "TRIGGER_NOT_SUPPORTED" }); return;
+  }
+  if (triggerType !== "event" && triggerType !== "schedule") {
+    res.status(400).json({ error: "Ce type de déclencheur n'est pas encore actif.", code: "TRIGGER_NOT_SUPPORTED", supported: EMITTED_EVENTS }); return;
+  }
+  const actionList = Array.isArray(actions) ? actions as Array<{ type?: unknown; params?: unknown }> : [];
+  const badActions = actionList.filter(a => !isExecutableWorkflowAction(a?.type, a?.params)).map(a => String(a?.type ?? "?"));
+  if (!actionList.length || badActions.length) {
+    res.status(400).json({
+      error: `Action(s) non disponible(s) pour l'instant : ${badActions.join(", ") || "aucune action"}.`,
+      code: "ACTION_NOT_SUPPORTED", supported: EXECUTABLE_WORKFLOW_ACTIONS,
+    }); return;
+  }
   if (isAWLReportWorkflow({ triggerConfig, actions })) {
     try {
       if (!(await hasAddonEntitlementForOrg(org(req), "aiWorkspaceLaunch"))) {
@@ -85,7 +113,7 @@ router.post("/automation/workflows", requireQuota("automations", async (orgId, q
       `INSERT INTO automation_workflows (id, org_id, name, icon, description, trigger_type, trigger_config, actions, enabled, runs_count, category)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,0,$9)`,
       [id, org(req), name, icon ?? "⚡", description ?? null, triggerType,
-       JSON.stringify(triggerConfig ?? {}), JSON.stringify(actions), category ?? "general"]
+       JSON.stringify(normalizedTriggerConfig ?? {}), JSON.stringify(actions), category ?? "general"]
     );
     // Return the created row so the frontend can update its list without a reload
     const created = await db(req)(`SELECT * FROM automation_workflows WHERE id=$1 AND org_id=$2`, [id, org(req)]).catch(() => ({ rows: [] }));
@@ -105,7 +133,7 @@ router.patch("/automation/workflows/:id", async (req: Request, res: Response) =>
   let existing: Record<string, unknown> | undefined;
   try {
     const owned = await db(req)(
-      `SELECT id, trigger_config, actions FROM automation_workflows WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      `SELECT id, trigger_type, trigger_config, actions FROM automation_workflows WHERE id=$1 AND org_id=$2 LIMIT 1`,
       [req.params.id, orgId],
     );
     existing = owned.rows[0];
@@ -113,6 +141,19 @@ router.patch("/automation/workflows/:id", async (req: Request, res: Response) =>
     res.status(503).json({ error: "Workflow indisponible." }); return;
   }
   if (!existing) { res.status(404).json({ error: "Workflow not found" }); return; }
+  if (enabled === true) {
+    const cap = describeWorkflowCapability({
+      trigger_type: existing["trigger_type"],
+      trigger_config: triggerConfig ?? existing["trigger_config"],
+      actions: actions ?? existing["actions"],
+    });
+    if (!cap.supported) {
+      res.status(409).json({
+        error: "Ce workflow ne peut pas être activé : son déclencheur ou certaines actions ne sont pas encore disponibles.",
+        code: "WORKFLOW_NOT_SUPPORTED", capability: cap,
+      }); return;
+    }
+  }
   if (isAWLReportWorkflow({
     triggerConfig: triggerConfig ?? existing["trigger_config"],
     actions: actions ?? existing["actions"],
