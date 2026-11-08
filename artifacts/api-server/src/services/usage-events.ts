@@ -19,6 +19,19 @@ export const USAGE_EVENT_KINDS = new Set([
 
 let _tableReady = false;
 
+/**
+ * Crée la table `usage_events` si elle n'existe pas (création paresseuse : aucune
+ * migration ne la porte). Exportée pour que les LECTURES de quota (checkQuota
+ * « exports ») garantissent aussi son existence : sans cela, sur une base neuve
+ * la première lecture échouait (relation inexistante) alors que la table n'est
+ * créée qu'à la première écriture, soit un export bloqué à jamais en fail-closed.
+ * Ne lève jamais : un échec est journalisé et la requête suivante échouera
+ * explicitement (et sera traitée par l'appelant).
+ */
+export async function ensureUsageEventsTable(): Promise<void> {
+  await ensureTable();
+}
+
 async function ensureTable(): Promise<void> {
   if (_tableReady) return;
   const client = await pool.connect();
