@@ -153,6 +153,12 @@ export default defineConfig({
       "src/services/quarantine-table-rls-db.test.ts",
       "src/services/schema-gate-status-db.test.ts",
       "src/services/rls-guc-alignment-db.test.ts",
+      // C-08 : etat RLS reel (superuser/BYPASSRLS), isolation inter-organisations
+      // sous app_user, inventaire des acces bruts pool.query.
+      "src/services/rls-enforcement-status-db.test.ts",
+      "src/services/rls-cross-org-isolation-db.test.ts",
+      "src/services/rls-activity-logs-migration-db.test.ts",
+      "src/tests/pool-query-inventory.test.ts",
       // Tables pre-compte : RLS forcee sans policy, et pourquoi rien ne casse (18/10/2026).
       "src/services/tables-pre-compte-rls-db.test.ts",
       // Garde de cible : un service ne modifie que la base qu'il declare (18/10/2026).
