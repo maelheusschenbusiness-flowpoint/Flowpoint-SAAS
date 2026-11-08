@@ -212,7 +212,7 @@ La procedure de la section 10 s'applique avec : fermeture de `seq 359 387` et `3
 - Tout ce qui touche le vrai Stripe (#398) n'a pas ete execute.
 
 ### Tests locaux et CI du lot 3
-Resultats et sha final : voir la description de la PR #390 et la section « Resultats du lot 3 » ci-dessous.
+Local (PG 16 jetable) sur le dernier commit de code : migrate depuis zero 771 etapes OK / 0 echec ; typecheck 0 erreur ; build OK ; vitest complet `--no-file-parallelism` : **4214 OK / 2 echecs / 6 ignores** (327/330 fichiers OK) contre 3974 OK / 2 echecs avant ce lot ; les 2 echecs sont les memes tests de timing `stripe-webhook-pending-activation` ; `test:certification` OK ; 0 orphelin ; `cmp` des deux `dashboard.js` OK ; certification navigateur 159 passes (bureau, iPhone 13, Pixel 7). Le sha final et les runs CI GitHub sont dans la description de la PR #390.
 
 ## 7. Procedure de fusion recommandee (apres validation du proprietaire)
 
