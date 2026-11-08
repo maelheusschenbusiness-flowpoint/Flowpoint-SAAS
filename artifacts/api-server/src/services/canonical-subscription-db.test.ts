@@ -137,10 +137,17 @@ describe("persistance canonique de l'abonnement", () => {
     expect(ctx.hasPaidAccess).toBe(true);
     expect(ctx.inPaidGracePeriod).toBe(true);
 
+    // La grace past_due se mesure depuis past_due_since (pose par persistOrgData),
+    // pas depuis current_period_end : une fin de periode passee ne change rien
+    // tant que la grace court ; une fois la grace ecoulee → lecture seule.
     await persistOrgData(ORG, { currentPeriodEnd: agoDays(1) });
     await dropLegacyRows();
     ctx = await loadBillingContext(ORG);
+    expect(ctx.hasPaidAccess).toBe(true);
+    await pool.query(`UPDATE organizations SET past_due_since = NOW() - INTERVAL '10 days' WHERE id = $1::uuid`, [ORG]);
+    ctx = await loadBillingContext(ORG);
     expect(ctx.hasPaidAccess).toBe(false);
+    expect(ctx.readOnly).toBe(true);
   });
 
   it("5 — SANS ligne legacy : annulation puis reactivation", async () => {

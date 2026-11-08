@@ -11,8 +11,19 @@
  *                                    → toujours accessibles, pour que le client
  *                                      puisse regulariser sa situation
  *
+ * REGLE COMMERCIALE (annulation / past_due) — decision UNIQUE : resolveAccessMode()
+ * (lib/subscription-state.ts), appelee par loadBillingContext().
+ *  - full       : acces complet (actif, essai, annule dans sa periode payee,
+ *                 past_due dans la grace PAST_DUE_GRACE_DAYS)
+ *  - read_only  : annule apres current_period_end / past_due hors grace /
+ *                 unpaid / paused → lectures (GET/HEAD/OPTIONS) autorisees,
+ *                 toute ecriture refusee en 402 SUBSCRIPTION_READ_ONLY, SAUF les
+ *                 chemins de regularisation et de compte (READ_ONLY_WRITE_ALLOWED :
+ *                 facturation, auth, profil, suppression de ses donnees...).
+ *                 Aucune donnee n'est supprimee ; les exports (GET) restent ouverts.
+ *  - blocked    : jamais finalise / essai expire → 402 SUBSCRIPTION_REQUIRED.
+ *
  * PAS DE SECOND SYSTEME DE PERMISSIONS : la decision vient de
- * grantsPaidAccess() (lib/subscription-state.ts) alimente par
  * loadBillingContext() — les memes primitives que /me et que planGate.
  * Les quotas et les droits par plan restent la responsabilite de planGate ;
  * ce middleware ne repond qu'a « l'abonnement ouvre-t-il l'acces ? ».
@@ -56,6 +67,42 @@ const EXEMPT_PREFIXES: readonly string[] = [
   "/admin", "/qa",
 ];
 
+/**
+ * En LECTURE SEULE, ces chemins restent ECRIVABLES (regularisation + compte) :
+ * facturation / reactivation / nouvelle souscription, authentification, profil
+ * et preferences de l'utilisateur, securite du compte, onboarding, invitations,
+ * droit d'effacement (DELETE /settings/data). Tout le reste des ecritures —
+ * y compris celles des prefixes exemptes de blocage total (/org, /settings,
+ * /addons, /ai-credits, /permissions, /roles) — est refuse.
+ */
+const READ_ONLY_WRITE_ALLOWED: readonly string[] = [
+  "/health", "/healthz", "/status", "/version", "/diagnostics",
+  "/auth", "/sessions", "/sso",
+  "/public", "/plans",
+  "/billing", "/stripe", "/webhooks",
+  "/me", "/preferences", "/security",
+  "/onboarding", "/team/invitations",
+  "/admin", "/qa",
+  "/settings/data",
+];
+/** Sous-chemins de READ_ONLY_WRITE_ALLOWED qui restent des ecritures metier a refuser. */
+const READ_ONLY_WRITE_BLOCKED: readonly string[] = ["/me/addons", "/me/settings", "/me/dataforseo"];
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+export const isSafeMethod = (m: string | undefined) => SAFE_METHODS.has((m ?? "GET").toUpperCase());
+
+function matchesPrefix(path: string, list: readonly string[]): boolean {
+  for (const prefix of list) {
+    if (path === prefix || path.startsWith(prefix + "/")) return true;
+  }
+  return false;
+}
+
+/** true quand une ECRITURE sur ce chemin reste permise en lecture seule. */
+export function isReadOnlyWriteAllowedPath(path: string): boolean {
+  return matchesPrefix(path, READ_ONLY_WRITE_ALLOWED) && !matchesPrefix(path, READ_ONLY_WRITE_BLOCKED);
+}
+
 function isExempt(path: string): boolean {
   for (const prefix of EXEMPT_PREFIXES) {
     if (path === prefix) return true;
@@ -72,6 +119,7 @@ export { isExempt as isPaidAccessExemptPath };
 export type PaidAccessDecision =
   | { status: "allowed"; ctx?: BillingContext }
   | { status: "denied"; ctx: BillingContext }
+  | { status: "read_only"; ctx: BillingContext }
   | { status: "unavailable"; err: unknown };
 
 const DECISION_KEY = "__paidAccessDecision";
@@ -99,7 +147,9 @@ export async function evaluatePaidAccess(req: Request): Promise<PaidAccessDecisi
   } else {
     try {
       const ctx = await loadBillingContext(orgId);
-      decision = ctx.hasPaidAccess ? { status: "allowed", ctx } : { status: "denied", ctx };
+      decision = ctx.accessMode === "full" ? { status: "allowed", ctx }
+        : ctx.accessMode === "read_only" ? { status: "read_only", ctx }
+        : { status: "denied", ctx };
     } catch (err) {
       if (err instanceof BillingContextUnavailableError || isProd()) {
         // Etat de facturation illisible : on ne devine pas un droit. 503
@@ -127,6 +177,14 @@ export async function enforcePaidAccess(req: Request, res: Response): Promise<bo
   const decision = await evaluatePaidAccess(req);
   if (decision.status === "allowed") return true;
   const orgId = (req as Request & { orgId?: string }).orgId;
+
+  if (decision.status === "read_only") {
+    // Lecture seule : les lectures passent, toute ecriture / action premium /
+    // generation / consommation de credits est refusee (402, code exploitable).
+    if (isSafeMethod(req.method)) { markReadOnly(res); return true; }
+    refuseReadOnly(req, res, decision.ctx);
+    return false;
+  }
 
   if (decision.status === "unavailable") {
     logger.error({ err: decision.err, orgId, path: req.path },
@@ -159,8 +217,42 @@ export async function enforcePaidAccess(req: Request, res: Response): Promise<bo
   return false;
 }
 
+function markReadOnly(res: Response): void {
+  if (typeof res.setHeader === "function") res.setHeader("X-FP-Access-Mode", "read_only");
+}
+
+/** 402 SUBSCRIPTION_READ_ONLY : l'organisation est en lecture seule. */
+function refuseReadOnly(req: Request, res: Response, ctx: BillingContext): void {
+  const orgId = (req as Request & { orgId?: string }).orgId;
+  logger.info({ orgId, status: ctx.subscriptionStatus, reason: ctx.accessReason, path: req.path, method: req.method },
+    "[PaidAccess] ecriture refusee — organisation en lecture seule");
+  markReadOnly(res);
+  res.status(402).json({
+    ok: false,
+    error: "Votre abonnement n'est plus actif : votre espace est en lecture seule. Vos donnees sont conservees ; reprenez un abonnement pour modifier ou generer du contenu.",
+    code: "SUBSCRIPTION_READ_ONLY",
+    readOnly: true,
+    accessMode:         ctx.accessMode,
+    accessReason:       ctx.accessReason,
+    subscriptionStatus: ctx.subscriptionStatus,
+    plan:               ctx.plan,
+    currentPeriodEnd:   ctx.currentPeriodEnd,
+    graceEndsAt:        ctx.graceEndsAt,
+    billingUrl:         "/pricing.html",
+    recovery:           { plans: "/api/plans/catalog", subscription: "/api/billing/subscription", reactivate: "/api/billing/reactivate" },
+  });
+}
+
 export async function requirePaidAccess(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (isExempt(req.path)) { next(); return; }
+  if (isExempt(req.path)) {
+    // Prefixe exempte du blocage total. En lecture seule, une ECRITURE n'est
+    // pourtant permise que sur les chemins de regularisation / de compte.
+    if (isSafeMethod(req.method) || isReadOnlyWriteAllowedPath(req.path)) { next(); return; }
+    const d = await evaluatePaidAccess(req);
+    if (d.status === "read_only") { refuseReadOnly(req, res, d.ctx); return; }
+    next();
+    return;
+  }
 
   const decision = await evaluatePaidAccess(req);
   if (decision.status === "allowed") {
@@ -172,5 +264,7 @@ export async function requirePaidAccess(req: Request, res: Response, next: NextF
     next();
     return;
   }
-  await enforcePaidAccess(req, res);
+  // read_only + lecture : enforcePaidAccess renvoie true (on poursuit) ;
+  // ecriture / blocage / 503 : la reponse est deja envoyee.
+  if (await enforcePaidAccess(req, res)) next();
 }

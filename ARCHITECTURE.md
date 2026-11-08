@@ -484,9 +484,40 @@ organizations.subscription_status (raw DB) → billing-context.ts
   "trialing"  + subscriptionId → "trialing"    (hasPremiumAccess = true)
   "trialing"  + NO subscriptionId → "pending_billing"
   "canceled"  → "canceled"
-  "past_due"  → "past_due"     (hasPremiumAccess = false ; acces maintenu uniquement tant que current_period_end est futur — grantsPaidAccess())
+  "past_due"  → "past_due"     (acces complet pendant la grace PAST_DUE_GRACE_DAYS depuis past_due_since, puis lecture seule — resolveAccessMode())
   null/vide   → "pending_billing"
 ```
+
+### Mode d'acces : annulation et past_due (regle validee par le proprietaire)
+
+**Un SEUL endroit de decision** : `resolveAccessMode(state, now, config)` dans `lib/subscription-state.ts`
+(fonction pure ; horloge et configuration injectees). Elle est appelee par `loadBillingContext()`
+(`services/billing-context.ts`) et par `/me`, puis appliquee par `middlewares/requirePaidAccess.ts` (global,
+monte sur `/api`) et `enforcePaidAccess()` (gardes `planGate`). Aucune autre logique n'existe.
+
+| Mode | Quand | Effet |
+|------|-------|-------|
+| `full` | `active`, `trialing`, `active`+`cancel_at_period_end` (jusqu'a la fin), `canceled` avant `current_period_end`, `past_due` dans la grace | acces complet |
+| `read_only` | `canceled` apres `current_period_end` (ou sans date), `past_due` hors grace, `unpaid`, `paused`, `cancel_at_period_end` dont la fin est depassee | GET/HEAD/OPTIONS autorises ; toute ecriture / action premium / consommation de credits / generation : **402 `SUBSCRIPTION_READ_ONLY`** (`readOnly`, `accessMode`, `accessReason`, `graceEndsAt`, `billingUrl`, `recovery`). En-tete `X-FP-Access-Mode: read_only` sur les lectures. Aucune donnee supprimee. |
+| `blocked` | `pending_billing`, `incomplete`, `incomplete_expired`, `expired`, `none`, statut inconnu (aucun abonnement paye) | 402 `SUBSCRIPTION_REQUIRED` (inchange) |
+
+Ecritures qui restent possibles en lecture seule (`READ_ONLY_WRITE_ALLOWED`) : facturation (`/billing`, portail,
+reactivation, `/stripe`, `/webhooks`), `/plans`, `/public`, authentification/sessions, profil et preferences
+(`/me`, sauf `/me/addons`, `/me/settings`, `/me/dataforseo`), securite du compte, onboarding, invitations,
+`DELETE /settings/data` (droit d'effacement). Les exports de ses propres donnees (GET) restent ouverts.
+
+**past_due** : la grace se mesure depuis `organizations.past_due_since`, posee UNE fois (COALESCE) par
+`invoice.payment_failed` / `customer.subscription.*` `past_due` (dans `persistOrgData`), jamais repoussee par les
+relances, remise a NULL au retour `active`/`trialing` (`invoice.payment_succeeded` > 0, reactivation). On
+n'utilise PAS `current_period_end` : au renouvellement Stripe avance deja la periode quand la facture est creee,
+elle est donc future alors que la periode n'est pas payee. `unpaid` et `paused` = lecture seule immediate.
+Organisations deja `past_due` sans horodatage : le demarrage (`initDataTables`) pose `past_due_since = NOW()`
+(grace de N jours depuis le deploiement, jamais de bascule brutale) ; sans colonne, le code retombe sur l'ancre
+`PAST_DUE_RULE_ACTIVATED_AT` (defaut : demarrage du processus).
+
+**Variables d'environnement** : `PAST_DUE_GRACE_DAYS` (entier 0..30, defaut 3 ; invalide → 3 + log `warn`),
+`PAST_DUE_RULE_ACTIVATED_AT` (optionnelle, ISO). Colonne : migration `migrations/027_organizations_past_due_since.sql`
+(idempotente) ; `initDataTables` l'ajoute aussi au demarrage de l'API.
 
 ### Trial
 

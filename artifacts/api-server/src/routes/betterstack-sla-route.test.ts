@@ -47,7 +47,7 @@ vi.mock("../middlewares/requireRole.js", () => ({
 vi.mock("../services/billing-context.js", () => ({
   BillingContextUnavailableError: class extends Error {},
   loadBillingContext: vi.fn(async () => ({
-    subscriptionStatus: "active", plan: "standard", hasPaidAccess: true, inPaidGracePeriod: false,
+    subscriptionStatus: "active", plan: "standard", hasPaidAccess: true, accessMode: "full", inPaidGracePeriod: false,
     trialEndsAt: null, currentPeriodEnd: null, canStartTrial: false,
   })),
 }));
