@@ -175,7 +175,16 @@ class Store {
            LIMIT $1 OFFSET $2`,
           values
         );
+        // Terminer la transaction LECTURE SEULE avant de rendre la connexion au
+        // pool : sans COMMIT, la connexion revenait « idle in transaction » en
+        // lecture seule et la prochaine ecriture qui la recevait (ex. logActivity)
+        // echouait avec « cannot execute INSERT in a read-only transaction »,
+        // silencieusement avalee par son catch.
+        await client.query("COMMIT");
         return r.rows;
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
       } finally {
         client.release();
       }
