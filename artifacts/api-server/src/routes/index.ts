@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction, type IRouter } from "express";
 import { getPublishableKey } from "../services/stripe-factory.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { writeRoleGuard } from "../middlewares/writeRoleGuard.js";
 import healthRouter from "./health.js";
 import eventsRouter from "./events.js";
 import shareRouter from "./share.js";
@@ -195,6 +196,12 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   }
   next();
 });
+
+// C-04 — garde d'ecriture PAR DEFAUT : toute route non-GET exige au moins le role
+// `member` (owner/admin/member), sauf exceptions explicites et commentees dans
+// middlewares/writeRoleGuard.ts (analyses IA, etat d'interface, webhooks a jeton).
+// Les gardes posees route par route restent actives : celle-ci n'est qu'un plancher.
+router.use(writeRoleGuard);
 
 router.use(meRouter);
 router.use(onboardingRouter);

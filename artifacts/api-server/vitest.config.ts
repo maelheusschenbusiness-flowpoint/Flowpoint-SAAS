@@ -135,6 +135,9 @@ export default defineConfig({
       "src/services/content-decay.test.ts",
       "src/tests/pdf_white_label.test.ts",
       "src/tests/rbac-policy-v1.test.ts",
+      // C-04 : garde d'ecriture par defaut + inventaire des routes non-GET.
+      "src/tests/write-role-guard.test.ts",
+      "src/tests/write-role-inventory.test.ts",
       "src/tests/onboarding-six-steps.test.ts",
       "src/tests/whitelabel-color-escape.test.ts",
       "src/tests/rbac-default-role.test.ts",
