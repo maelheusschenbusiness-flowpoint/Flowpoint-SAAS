@@ -215,7 +215,7 @@ Merge automatique sans conflit ; elle modifie `025_*.sql` (lock_timeout 5 s, gar
 - Tout ce qui touche le vrai Stripe (#398) n'a pas ete execute.
 
 ### Tests locaux et CI du lot 3
-Local (PG 16 jetable) sur le dernier commit de code : migrate depuis zero 771 etapes OK / 0 echec ; typecheck 0 erreur ; build OK ; vitest complet `--no-file-parallelism` : **4214 OK / 2 echecs / 6 ignores** (327/330 fichiers OK) contre 3974 OK / 2 echecs avant ce lot ; les 2 echecs sont les memes tests de timing `stripe-webhook-pending-activation` ; `test:certification` OK ; 0 orphelin ; `cmp` des deux `dashboard.js` OK ; certification navigateur 159 passes (bureau, iPhone 13, Pixel 7). Le sha final et les runs CI GitHub sont dans la description de la PR #390.
+Local (PG 16 jetable) sur le dernier commit de code : migrate depuis zero 771 etapes OK / 0 echec ; typecheck 0 erreur ; build OK ; vitest complet `--no-file-parallelism` : **4214 OK / 2 echecs / 6 ignores** (327/330 fichiers OK) contre 3974 OK / 2 echecs avant ce lot ; les 2 echecs sont les memes tests de timing `stripe-webhook-pending-activation` ; `test:certification` OK ; 0 orphelin ; `cmp` des deux `dashboard.js` OK ; certification navigateur 159 passes (bureau, iPhone 13, Pixel 7). Apres l'ajout de #403 (SQL et docs), la suite complete a ete rejouee : memes chiffres (4214 OK / 2 echecs de timing connus). Le sha final et les runs CI GitHub sont dans la description de la PR #390.
 
 ## 7. Procedure de fusion recommandee (apres validation du proprietaire)
 
