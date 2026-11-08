@@ -29,6 +29,7 @@ import { createStripeClient, getStripeKey } from "../services/stripe-factory.js"
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
+import { keysEqual } from "../lib/auth-token.js";
 
 const router = Router();
 
@@ -2837,7 +2838,7 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
   }
   const adminKey = (req.headers["x-admin-key"] as string) ?? "";
   const expectedKey = process.env["ADMIN_KEY"] ?? "";
-  if (!expectedKey || adminKey !== expectedKey) {
+  if (!expectedKey || !keysEqual(adminKey, expectedKey)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -2887,7 +2888,7 @@ router.get("/auth/dev-login", async (req: Request, res: Response) => {
   }
   const key      = (req.query["key"] as string) ?? "";
   const expected = process.env["ADMIN_KEY"] ?? "";
-  if (!expected || key !== expected) { res.status(401).send("Unauthorized"); return; }
+  if (!expected || !keysEqual(key, expected)) { res.status(401).send("Unauthorized"); return; }
   const email    = (req.query["email"]  as string) || "test@flowpoint.pro";
   const orgId    = (req.query["orgId"]  as string) || "default";
   const role     = (req.query["role"]   as string) || "admin";

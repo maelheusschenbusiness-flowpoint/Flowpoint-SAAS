@@ -185,6 +185,8 @@ export default defineConfig({
       "src/middlewares/requirePaidAccess-db.test.ts",
       // Le contournement d'authentification de developpement exige une intention (17/10/2026).
       "src/middlewares/requireAuth-dev-bypass.test.ts",
+      // C-09 / C-13 : comparaison en temps constant + jeton en query limite au SSE (08/11/2026).
+      "src/middlewares/auth-token-hardening.test.ts",
       "src/routes/auth-me-org-resolution-db.test.ts",
       "src/routes/ai-classifier.test.ts",
       "src/routes/ai-chat-failclosed.test.ts",

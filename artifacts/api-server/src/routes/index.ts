@@ -79,6 +79,7 @@ import progressionRouter from "./progression.js";
 import orgDataExportRouter from "./org-data-export.js";
 import onboardingRouter from "./onboarding.js";
 import gbpPerformanceRouter from "./gbp-performance.js";
+import { keysEqual } from "../lib/auth-token.js";
 
 const router: IRouter = Router();
 
@@ -154,7 +155,7 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   if (req.userId === "service") {
     // Verify the credential arrived via X-Api-Key, not a forged Bearer DB session.
     const apiKeyHeader = req.headers["x-api-key"];
-    if (!serviceSecret || typeof apiKeyHeader !== "string" || apiKeyHeader !== serviceSecret) {
+    if (!serviceSecret || typeof apiKeyHeader !== "string" || !keysEqual(apiKeyHeader, serviceSecret)) {
       // userId="service" came from a Bearer session — reject as fraudulent.
       res.status(401).json({ error: "Unauthorized: invalid credentials" });
       return;

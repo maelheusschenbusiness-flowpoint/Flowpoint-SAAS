@@ -2,6 +2,7 @@ import { type Request, type Response, type NextFunction } from "express";
 import { getSession } from "../services/sessions.js";
 import { logger } from "../lib/logger.js";
 import { API_KEY_DENIED_ROUTES } from "../lib/api-keys.js";
+import { keysEqual, isSseQueryTokenRequest } from "../lib/auth-token.js";
 
 const MISSING_KEY_WARNING_SHOWN = { shown: false };
 
@@ -48,9 +49,7 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
     provided = cookieToken.trim();
   } else if (
     // EventSource cannot set headers — allow a query token for SSE streams only
-    req.method === "GET" &&
-    typeof req.query["token"] === "string" &&
-    (req.headers["accept"] ?? "").includes("text/event-stream")
+    isSseQueryTokenRequest(req)
   ) {
     provided = (req.query["token"] as string).trim();
   }
@@ -100,7 +99,7 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
   }
 
   // Accept the API_SECRET_KEY as a service credential
-  if (serviceSecret && provided === serviceSecret) {
+  if (serviceSecret && keysEqual(provided, serviceSecret)) {
     next();
     return;
   }
