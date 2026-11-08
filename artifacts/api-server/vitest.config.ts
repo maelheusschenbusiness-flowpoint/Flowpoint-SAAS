@@ -81,6 +81,8 @@ export default defineConfig({
       "src/routes/addon-only-checkout.test.ts",
       "src/routes/onboarding.test.ts",
       "src/routes/billing-period-end.test.ts",
+      // GET /billing/verify : appartenance avant 402 (pas de fuite de statut) + plan sans defaut « pro ».
+      "src/routes/billing-verify-plan-et-fuite.test.ts",
       "src/routes/team-invite-accept.test.ts",
       "src/services/seat-entitlement.test.ts",
       "src/routes/team-seat-gate.test.ts",
