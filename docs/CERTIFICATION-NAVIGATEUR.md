@@ -40,8 +40,6 @@ export DATABASE_URL=$($H/pg-jetable.sh url)
 npx playwright test -c playwright.certification.config.mjs --trace off
 # un profil / un fichier :
 npx playwright test -c playwright.certification.config.mjs --project=iphone-13 03-google
-# rejouer aussi les comportements cibles encore « fixme » (voir §5) :
-CERT_RUN_PENDING=1 npx playwright test -c playwright.certification.config.mjs
 
 $H/run-local.sh down                     # arrête le serveur
 $H/run-local.sh destroy                  # + supprime la base jetable
@@ -108,22 +106,14 @@ Réponses d'API que le produit renvoie volontairement (402 `ADDON_REQUIRED`, 403
 ne sont pas comptées comme erreurs ; tout autre 4xx/5xx de `/api/*` ou erreur console de l'origine testée fait échouer le test.
 Les messages d'erreur qui désignent un hôte tiers (polices, analytics) sont ignorés : ils relèvent du réseau, pas du produit.
 
-## 5. Tests « comportement cible » (`test.fixme`)
+## 5. Tests « comportement cible »
 
-Certains comportements sont corrigés par des PR en cours. Le test décrit **le comportement attendu** ; tant que la PR n'est pas
-dans la branche testée il est sauté (`test.fixme`) **avec la référence de la PR**. Ils échouent aujourd'hui : c'est vérifié
-(`CERT_RUN_PENDING=1`), ce n'est pas un moyen de masquer un échec.
-
-| Test | PR / branche | Pourquoi |
-|---|---|---|
-| webhook `setup_intent.succeeded` seul : souscription d'essai créée | `fix/essai-sans-souscription-20261108` | le webhook active le compte (`isTrial: true`) sans créer de souscription |
-| `success.html` direct : aucun « Abonnement activé » | `fix/faux-succes-paiement-20261108` | la page affiche le succès sans `session_id` ni vérification |
-| `checkout-return.html?redirect_status=failed` sans session : pas de « Paiement enregistré » | `fix/faux-succes-paiement-20261108` | un 401 est présenté comme paiement enregistré |
-
-**Vérifié le 08/11/2026** : `fix/faux-succes-paiement-20261108` (561743d4) et `fix/essai-sans-souscription-20261108` (bd139cfd) fusionnées localement (non poussées) sur cette branche dans un clone d'essai jetable, `CERT_RUN_PENDING=1` : les 3 tests cibles passent sur les 3 profils (le libellé « Paiement échoué » remplace « Erreur de finalisation » sur `redirect_status=failed` ; les tests l'acceptent).
-
-Quand ces branches sont dans la branche testée : fusion **locale non poussée** dans un clone d'essai, `CERT_RUN_PENDING=1`, puis retirer
-l'appel `pendingFix(...)` des tests devenus verts (ils entrent alors dans la barrière GO).
+Les trois tests qui décrivaient des comportements livrés par des PR en cours (webhook `setup_intent.succeeded` seul crée la
+souscription d'essai : #393 ; `success.html` direct n'affiche aucun « Abonnement activé » et `checkout-return.html` en échec
+n'affiche pas « Paiement enregistré » : #391) ont été rejoués le 08/11/2026 sur `integration/test-replit-20261108` contenant ces PR :
+159 passés sur les 3 profils, 0 fixme. Le `test.fixme` (`pendingFix`) a donc été retiré : ils font partie de la barrière GO.
+Le libellé « Paiement échoué » remplace « Erreur de finalisation » sur `redirect_status=failed` ; les tests l'acceptent.
+Pour un futur comportement cible non encore livré, réintroduire un `test.fixme(...)` avec la référence de la PR.
 
 ## 6. Critères GO / NO-GO
 

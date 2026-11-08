@@ -1,10 +1,10 @@
 /**
  * 4. Paiement : SetupIntent (Payment Element simule), essai 14 jours, finalisation, erreurs.
  * Stripe.js est remplace par un stub local (route Playwright) ; le serveur parle a un faux Stripe en memoire.
- * Les comportements CORRIGES par des PR en cours sont ASSERTES tels que le produit doit se comporter ;
- * ils sont sautes (test.fixme) avec la reference de la PR tant que CERT_RUN_PENDING n'est pas pose.
+ * Les comportements corriges par #391 (faux succes) et #393 (essai sans souscription) sont assertes
+ * sans fixme depuis leur integration dans integration/test-replit-20261108.
  */
-import { test, expect, one, all, IS_LOCAL, BASE_URL, ANON_OK, unexpectedConsoleErrors, pendingFix } from "./support/fixtures";
+import { test, expect, one, all, IS_LOCAL, BASE_URL, ANON_OK, unexpectedConsoleErrors } from "./support/fixtures";
 import { seedCart, remplirInscription, inscriptionJusquAuPaiement, payer, stripeState, paiementConfirmeSansFinalisation, attendre } from "./support/parcours";
 
 test.skip(!IS_LOCAL, "Ecrit des comptes et utilise le faux Stripe : local uniquement.");
@@ -156,9 +156,8 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     expect(await orgOf(email)).toBeNull();
   });
 
-  test.describe("comportements cibles (PR en cours)", () => {
+  test.describe("comportements des PR #391 et #393 (integrees)", () => {
     test("onglet ferme apres confirmation : le webhook setup_intent.succeeded cree la SOUSCRIPTION d'essai et active le compte", async ({ page, request, newEmail }) => {
-      pendingFix("fix/essai-sans-souscription-20261108", "aujourd'hui le webhook active le compte (isTrial: true) SANS creer de souscription Stripe : essai sans abonnement adosse.");
       const email = newEmail("webhook");
       const { intentId, token } = await paiementConfirmeSansFinalisation(request, email);
       const intent = (await stripeState(page)).intents.find((i) => i["id"] === intentId) as any;
@@ -174,14 +173,12 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     });
 
     test("success.html ouvert directement ne declare AUCUN abonnement active", async ({ page }) => {
-      pendingFix("fix/faux-succes-paiement-20261108", "success.html affiche « Abonnement active — 14 jours d'essai offerts » sans session_id ni verification serveur.");
       await page.goto("/success.html");
       await expect(page.locator("body")).not.toContainText("Abonnement activé");
       await expect(page.locator("body")).not.toContainText("14 jours d'essai offerts");
     });
 
     test("retour Stripe en echec (redirect_status=failed, intent inconnu, visiteur sans session) n'affiche pas « paiement enregistre »", async ({ page }) => {
-      pendingFix("fix/faux-succes-paiement-20261108", "checkout-return.html rend « Paiement enregistre » sur un 401, meme quand Stripe annonce redirect_status=failed.");
       await page.goto("/checkout-return.html?setup_intent=seti_inconnu&redirect_status=failed");
       await expect(page.locator("#fp-title")).toBeVisible();
       await expect(page.locator("#fp-title")).not.toHaveText(/Paiement enregistré|Compte activé|confirmée/);

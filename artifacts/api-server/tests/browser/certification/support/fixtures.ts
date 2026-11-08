@@ -175,14 +175,5 @@ export function unexpectedConsoleErrors(o: Observed, allow: Array<RegExp> = []):
     .map((e) => `${e.text.slice(0, 160)} @ ${e.url}`);
 }
 
-/**
- * Comportement CIBLE livre par une PR encore en cours : le test reste ecrit tel que le produit doit se
- * comporter ; il est saute (test.fixme) avec la reference de la PR tant que CERT_RUN_PENDING n'est pas pose.
- * CERT_RUN_PENDING=1 le rejoue (clone d'essai avec la PR fusionnee localement).
- */
-export function pendingFix(pr: string, raison: string): void {
-  test.fixme(!process.env["CERT_RUN_PENDING"], `[${pr}] ${raison}`);
-}
-
 /** Visiteur anonyme : les sondes de session (/api/me, /api/billing/subscription...) repondent 401 — attendu — et le navigateur le journalise. */
 export const ANON_OK: RegExp[] = [/status of 401/, /ERR_(FAILED|NAME_NOT_RESOLVED|INTERNET_DISCONNECTED)/];
