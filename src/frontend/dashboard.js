@@ -20856,6 +20856,9 @@ function bindGlobalEvents() {
     "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "No friction point detected by the automatic checks on this page.",
     "Preuve :": "Evidence:",
     "Les mesures locales ne sont pas disponibles : le fournisseur n’est pas configuré.": "Local measurements are unavailable: the data provider is not configured.",
+    "Effort": "Effort",
+    "Aucune recommandation disponible pour le moment.": "No recommendation available at the moment.",
+    "Les recommandations sont indisponibles pour le moment.": "Recommendations are currently unavailable.",
     "Aucun signal détecté pour le moment.": "No signal detected at the moment.",
     "Aucun site GSC trouvé. Vérifiez vos accès.": "No GSC site found. Check your access.",
     "Aucun siège d'équipe —": "No team seats —",
@@ -76620,6 +76623,20 @@ window.FP_LOCAL_MAPS_API = {
   async getAIRecommendations() {
     return await apiFetch('/api/local-maps/ai-recommendations', { method: 'POST', body: JSON.stringify({}) });
   },
+  async showRecommendations() {
+    showToast('info', fpT('Analyse en cours…'));
+    let html;
+    try {
+      const r = await this.getAIRecommendations();
+      const items = Array.isArray(r?.recommendations) ? r.recommendations : [];
+      html = items.length
+        ? items.map(it => '<div style="margin-bottom:10px"><strong>' + escHtml(it.title) + '</strong><br>' + escHtml(it.description) + '<br><span style="font-size:10px;opacity:.7">' + escHtml(fpT('Impact')) + ' : ' + escHtml(it.impact) + ' · ' + escHtml(fpT('Effort')) + ' : ' + escHtml(it.effort) + '</span></div>').join('')
+        : escHtml(r?.message || fpT('Aucune recommandation disponible pour le moment.'));
+    } catch (e) {
+      html = escHtml(fpT('Les recommandations sont indisponibles pour le moment.'));
+    }
+    openFloatPanel('🤖 Recommandations', '<div style="padding:16px;font-size:12px;line-height:1.7;color:var(--fp-text-muted)">' + html + '</div>');
+  },
   async discoverCompetitors(data) {
     return await apiFetch('/api/local-maps/competitors/discover', { method: 'POST', body: JSON.stringify(data) });
   },
@@ -76854,7 +76871,7 @@ function renderLocalDominationMaps() {
                 <div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em">${fpT('domination')}</div>
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
-                onclick="showToast('info', fpT('Analyse IA en cours…'));window.FP_LOCAL_MAPS_API?.getAIRecommendations().then(r=>{showToast('success', fpT('Recommandations générées'));openFloatPanel('🤖 Recommandations IA', '<div style=\'padding:16px;font-size:12px;line-height:1.7;color:var(--fp-text-muted)\'>'+escHtml(r?.summary||'')+'</div>');})">
+                onclick="window.FP_LOCAL_MAPS_API?.showRecommendations()">
                 ✦ IA
               </button>
             </div>

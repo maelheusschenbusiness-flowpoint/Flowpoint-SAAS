@@ -197,8 +197,8 @@ router.get("/local-maps/visibility-scores", async (req, res) => {
 
 router.post("/local-maps/ai-recommendations", canWrite, async (req, res) => {
   try {
-    const summary = await generateAiLocalRecommendations(org(req));
-    res.json({ ok: true, summary });
+    const result = await generateAiLocalRecommendations(org(req));
+    res.json({ ok: true, status: result.status, message: result.message, summary: result.recommendations, recommendations: result.recommendations });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
