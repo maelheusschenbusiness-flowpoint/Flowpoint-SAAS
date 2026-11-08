@@ -133,7 +133,8 @@ describe("B-09 — plan 'agency' (alias d'Ultra) dans checkQuota", () => {
 });
 
 describe("B-07 — POST /automation/workflows applique le plafond d'automatisations", () => {
-  const body = { name: "wf", triggerType: "manual", actions: [] };
+  // #377 (D-07) refuse les declencheurs non emis ("manual") : on utilise un evenement reellement emis.
+  const body = { name: "wf", triggerType: "event", triggerConfig: { event: "monitor.down" }, actions: [{ type: "send_alert" }] };
 
   it("Standard (3) : les 3 premiers passent, le 4e est refuse en 429 explicite", async () => {
     if (!dbUp) return expect(dbUp).toBe(false);

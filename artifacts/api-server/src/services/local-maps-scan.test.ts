@@ -76,7 +76,8 @@ describe("heatmaps Local — D-03", () => {
 
   it("la création est plafonnée par plan (requireQuota 'heatmaps') avant toute écriture", () => {
     const src = readFileSync(new URL("../routes/local-maps.ts", import.meta.url), "utf8");
-    expect(src).toMatch(/router\.post\("\/local-maps\/heatmaps",\s*canWrite,\s*heatmapQuota/);
+    // #368 nommait le garde (heatmapQuota) ; #385 l'inline : les deux placent le quota apres canWrite et avant le handler.
+    expect(src).toMatch(/router\.post\("\/local-maps\/heatmaps",\s*canWrite,\s*(heatmapQuota|requireQuota\("heatmaps")/);
     expect(src).toContain('requireQuota("heatmaps"');
   });
 });

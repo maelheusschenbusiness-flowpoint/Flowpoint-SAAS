@@ -15,7 +15,11 @@ const { orgDbMock, createIntegrationMock, executeWorkflowMock } = vi.hoisted(() 
 vi.mock("@workspace/db", () => ({ pool: { query: vi.fn() }, withOrgDb: vi.fn() }));
 vi.mock("../services/automation-service.js", () => ({ getWorkflowsData: vi.fn(), executeWorkflow: executeWorkflowMock }));
 vi.mock("../services/store.js", () => ({ store: { logActivity: vi.fn().mockResolvedValue(undefined), broadcast: vi.fn() } }));
-vi.mock("../middlewares/planGate.js", () => ({ requireAddon: () => (_q: any, _s: any, n: any) => n() }));
+vi.mock("../middlewares/planGate.js", () => ({
+  requireAddon: () => (_q: any, _s: any, n: any) => n(),
+  // requireQuota("automations") ajoute par #385 sur POST /automation/workflows ; ce test ne verifie pas le plafond.
+  requireQuota: () => (_q: any, _s: any, n: any) => n(),
+}));
 vi.mock("../middlewares/requireAdmin.js", () => ({ requireAdmin: (_q: any, _s: any, n: any) => n() }));
 vi.mock("../services/addon-entitlement.js", () => ({ hasAddonEntitlementForOrg: vi.fn().mockResolvedValue(true) }));
 vi.mock("../services/integrations-service.js", () => ({
