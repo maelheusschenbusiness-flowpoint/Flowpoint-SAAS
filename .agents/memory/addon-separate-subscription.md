@@ -12,10 +12,13 @@ Paid add-ons MUST stay off the plan subscription for new purchases. The public P
 
 **How to apply:**
 - PaymentIntent checkout: create/reuse by intent idempotency key; set `trial_end` 30 days after payment; tag `addonSub`, `source`, `origin_intent`, and org ID metadata.
-- Direct service activation: find or create the org's dedicated add-on subscription with `billing_cycle_anchor: "now"`.
+- Direct service activation: find or create the org's dedicated add-on subscription with `payment_behavior: "error_if_incomplete"`; omit `billing_cycle_anchor` so Stripe anchors at subscription creation.
+- Grant direct activation only when the resulting subscription is `active` or `trialing`; a Stripe 402 maps to `payment_required`, never a free entitlement. Do not add items to an unpaid add-on subscription.
 - Webhook reconciliation: sum quantity add-ons over all live subscriptions (active, trialing, past_due); never revoke unrelated add-ons on `subscription.created`.
-- Deactivation: remove matching items from both the legacy plan subscription and every live dedicated add-on subscription; cancel dedicated subscriptions only when empty.
+- Deactivation: remove matching items from both the legacy plan subscription and every live dedicated add-on subscription. If every item on a dedicated subscription is being removed, cancel the subscription directly; Stripe rejects deleting its final item.
 - Backward compatibility: existing items on the plan subscription stay there; do not automatically migrate them.
+
+**Why:** A real Stripe TEST cycle on 2026-11-08 showed that current Stripe API versions reject `billing_cycle_anchor: "now"`, `default_incomplete` can leave a subscription unpaid while a caller mistakes item presence for payment, and deleting the last subscription item returns an error.
 
 ## Migration procedure for existing items on plan sub
 To move a legacy add-on item (e.g., monitorsPack10 × 2 on plan sub) to the addon sub:

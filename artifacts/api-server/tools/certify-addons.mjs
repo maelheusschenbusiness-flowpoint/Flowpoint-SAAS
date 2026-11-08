@@ -178,8 +178,15 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/routes/agency-packs.test.ts",
       "src/routes/agency-packs-postgres.test.ts",
+      "src/services/stripe-trial-history.test.ts",
+      "src/tests/signup-token-over-stale-session.test.ts",
+      "src/lib/addon-test-price-coverage.test.ts",
     ],
-    browserTitle: "Agency Reporting Packs enforce the report quota atomically and deny viewers",
+    browserTitle: "Agency Reporting Packs quota is atomic and viewer access is denied",
+    stripeBrowserTitles: [
+      "Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle",
+      "Agency checkout CTA completes a new-customer Stripe TEST purchase",
+    ],
   },
   {
     id: "gbp-performance-leads",
@@ -301,7 +308,7 @@ function findSystemChromium() {
 }
 
 export function parseArgs(args) {
-  const options = { selection: "pending", addons: [], help: false };
+  const options = { selection: "pending", addons: [], help: false, stripeTest: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--help" || arg === "-h") {
@@ -310,6 +317,8 @@ export function parseArgs(args) {
       options.selection = "all";
     } else if (arg === "--pending") {
       options.selection = "pending";
+    } else if (arg === "--stripe-test") {
+      options.stripeTest = true;
     } else if (arg === "--addon") {
       const value = args[index + 1];
       if (!value) throw new Error("--addon requires an add-on name or id.");
@@ -349,6 +358,68 @@ export function selectAddons(options, registry = ADDON_REGISTRY) {
   ];
 }
 
+async function resolveStandardTestPlanPriceId(stripeTestKey) {
+  if (!stripeTestKey?.startsWith("sk_test_")) {
+    throw new Error("--stripe-test requires a Stripe TEST key to verify the Standard plan price.");
+  }
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeTestKey);
+  const configuredId = process.env["STRIPE_TEST_PRICE_ID_STANDARD"];
+
+  if (configuredId) {
+    const price = await stripe.prices.retrieve(configuredId, { expand: ["product"] });
+    const product = typeof price.product === "object" ? price.product : null;
+    const isStandardProduct =
+      product?.metadata?.plan?.toLowerCase() === "standard" ||
+      product?.name?.trim().toLowerCase() === "flowpoint standard test";
+    if (
+      price.livemode ||
+      price.currency !== "eur" ||
+      price.recurring?.interval !== "month" ||
+      !isStandardProduct
+    ) {
+      throw new Error("STRIPE_TEST_PRICE_ID_STANDARD must be a Standard monthly TEST price.");
+    }
+    return configuredId;
+  }
+
+  const matches = [];
+  let startingAfter;
+  for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+    const page = await stripe.prices.list({
+      active: true,
+      limit: 100,
+      expand: ["data.product"],
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    for (const price of page.data) {
+      const product = typeof price.product === "object" ? price.product : null;
+      const isStandardProduct =
+        product?.metadata?.plan?.toLowerCase() === "standard" ||
+        product?.name?.trim().toLowerCase() === "flowpoint standard test";
+      if (
+        !price.livemode &&
+        price.currency === "eur" &&
+        price.recurring?.interval === "month" &&
+        isStandardProduct
+      ) {
+        matches.push(price);
+      }
+    }
+    if (!page.has_more) break;
+    const lastId = page.data.at(-1)?.id;
+    if (!lastId || lastId === startingAfter || pageNumber === 9) {
+      throw new Error("Could not finish reading the Stripe TEST price catalog safely.");
+    }
+    startingAfter = lastId;
+  }
+
+  if (matches.length !== 1) {
+    throw new Error(`Expected one active Standard monthly TEST price; found ${matches.length}.`);
+  }
+  return matches[0].id;
+}
+
 export function buildLocalEnvironment({
   databaseUrl,
   port,
@@ -356,6 +427,8 @@ export function buildLocalEnvironment({
   mailDir = join(tempDir, "mail"),
   sessionSecret = randomBytes(32).toString("hex"),
   adminKey = randomBytes(32).toString("hex"),
+  stripeTest = false,
+  standardPlanTestPriceId,
 }) {
   const env = {};
   for (const key of BASE_ENV_KEYS) {
@@ -388,6 +461,39 @@ export function buildLocalEnvironment({
     API_SECRET_KEY: randomBytes(32).toString("hex"),
     CRON_KEY: randomBytes(32).toString("hex"),
   });
+  if (stripeTest) {
+    const stripeTestKey = process.env["STRIPE_TEST_KEY"];
+    const agencyPacksTestPrice = process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"];
+    const standardPlanTestPrice =
+      standardPlanTestPriceId || process.env["STRIPE_TEST_PRICE_ID_STANDARD"];
+    const stripeTestPublishableKey = process.env["STRIPE_TEST_PUBLISHABLE_KEY"];
+    const stripeTestWebhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
+    if (!stripeTestKey?.startsWith("sk_test_")) {
+      throw new Error("--stripe-test requires STRIPE_TEST_KEY to be a Stripe TEST-mode key.");
+    }
+    if (!agencyPacksTestPrice?.startsWith("price_")) {
+      throw new Error("--stripe-test requires STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS.");
+    }
+    if (!standardPlanTestPrice?.startsWith("price_")) {
+      throw new Error("--stripe-test requires STRIPE_TEST_PRICE_ID_STANDARD for hosted Checkout.");
+    }
+    if (!stripeTestPublishableKey?.startsWith("pk_test_")) {
+      throw new Error("--stripe-test requires STRIPE_TEST_PUBLISHABLE_KEY for the browser payment form.");
+    }
+    if (!stripeTestWebhookSecret?.startsWith("whsec_")) {
+      throw new Error("--stripe-test requires STRIPE_TEST_WEBHOOK_SECRET for signed webhook certification.");
+    }
+    Object.assign(env, {
+      STRIPE_TEST_KEY: stripeTestKey,
+      STRIPE_TEST_MODE: "true",
+      STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS: agencyPacksTestPrice,
+      STRIPE_TEST_PRICE_ID_STANDARD: standardPlanTestPrice,
+      STRIPE_TEST_PUBLISHABLE_KEY: stripeTestPublishableKey,
+      STRIPE_TEST_WEBHOOK_SECRET: stripeTestWebhookSecret,
+      PUBLIC_URL: `http://${LOCAL_ADDON_CERT_HOST}:${port}`,
+      FLOWPOINT_AGENCY_PACKS_STRIPE_TEST: "1",
+    });
+  }
   const chromium = findSystemChromium();
   if (chromium) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE = chromium;
   return env;
@@ -718,15 +824,24 @@ Options:
   --pending              Run add-ons without historical certification attribution (default)
   --all                  Run the complete 24-add-on registry
   --addon <name-or-id>   Run one add-on (repeatable)
+  --stripe-test          Run the isolated Agency Packs lifecycle against Stripe TEST only
   --help                 Show this help
 
 This runner creates a disposable PostgreSQL cluster reachable only at 127.0.0.1,
 starts the API on loopback, runs mapped Vitest and Playwright suites, then stops
-the processes and removes all temporary files. It does not call external providers.`);
+the processes and removes all temporary files. External calls are disabled unless
+--stripe-test is explicitly used with --addon agency-reporting-packs; that mode
+requires an sk_test_ key and performs one add-on lifecycle only.`);
 }
 
 async function runCertification(options, signal) {
   const selected = selectAddons(options);
+  if (options.stripeTest && (selected.length !== 1 || selected[0].id !== "agency-reporting-packs")) {
+    throw new Error("--stripe-test is restricted to --addon agency-reporting-packs.");
+  }
+  const standardPlanTestPriceId = options.stripeTest
+    ? await resolveStandardTestPlanPriceId(process.env["STRIPE_TEST_KEY"])
+    : undefined;
   let tempDir;
   let pg;
   let api;
@@ -743,10 +858,20 @@ async function runCertification(options, signal) {
     if (build.code !== 0) throw new Error(build.interrupted ? "Certification interrupted by the user." : "API build failed.");
 
     pg = await createTemporaryPostgres(tempDir, signal);
-    const testEnv = buildLocalEnvironment({ databaseUrl: pg.databaseUrl, port: await reservePort(), tempDir });
+    const port = await reservePort();
+    const testEnv = buildLocalEnvironment({ databaseUrl: pg.databaseUrl, port, tempDir });
+    const apiEnv = options.stripeTest
+      ? buildLocalEnvironment({
+        databaseUrl: pg.databaseUrl,
+        port,
+        tempDir,
+        stripeTest: true,
+        standardPlanTestPriceId,
+      })
+      : testEnv;
     validateLocalDatabaseEnv(testEnv);
 
-    api = await startApi(testEnv, signal);
+    api = await startApi(apiEnv, signal);
     console.log("Local API is listening on 127.0.0.1.");
 
     const previouslyRunFiles = new Set();
@@ -774,10 +899,15 @@ async function runCertification(options, signal) {
       summary.push({ id: addon.id, label: addon.label, historical: addon.historical, unit: unit.status });
       if (unit.status === "interrupted") break;
       const browserSpec = addon.browserSpec ?? E2E_SPEC;
-      const browserRunKey = `${browserSpec}::${addon.browserTitle ?? ""}`;
-      if (addon.browserTitle && !browserRuns.has(browserRunKey) && !signal.aborted) {
+      const browserTitles = [
+        addon.browserTitle,
+        ...(options.stripeTest ? (addon.stripeBrowserTitles ?? []) : []),
+      ].filter(Boolean);
+      for (const browserTitle of browserTitles) {
+        const browserRunKey = `${browserSpec}::${browserTitle}`;
+        if (browserRuns.has(browserRunKey) || signal.aborted) continue;
         browserRuns.add(browserRunKey);
-        const browser = await runBrowserTests([addon.browserTitle], testEnv, signal, browserSpec);
+        const browser = await runBrowserTests([browserTitle], apiEnv, signal, browserSpec);
         summary.push({ id: `browser:${addon.id}`, label: addon.label, historical: addon.historical, unit: browser.status });
         if (browser.status === "interrupted") break;
       }

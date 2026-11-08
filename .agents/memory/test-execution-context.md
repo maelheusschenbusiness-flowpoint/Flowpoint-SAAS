@@ -14,3 +14,9 @@ For one Vitest file, invoke it directly with `pnpm --filter @workspace/api-serve
 **Why:** The attempted single-file command timed out after starting all API tests, obscuring the targeted result.
 
 **How to apply:** Use the direct `exec vitest run` form for focused checks; reserve the package `test` script for the full suite.
+
+When validating an isolated worktree, workspace package dependencies may need package-local `node_modules` links in addition to the API package link.
+
+**Why:** Packages such as the shared database library resolve `pg` and `drizzle-orm` from their own location; without those links, build and typecheck fail before application code is evaluated.
+
+**How to apply:** Recreate the package-local dependency links for the isolated worktree before running the API build, typecheck, or full certification.

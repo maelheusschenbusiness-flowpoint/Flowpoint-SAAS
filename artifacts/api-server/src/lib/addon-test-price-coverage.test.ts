@@ -422,3 +422,49 @@ it("marks Advanced SEO Lab and Backlink Intelligence as bundled, not separately 
   }
   expect(plans.getAddonPurchaseStatus("keywordDomination")).toBe("price_unavailable");
 });
+
+it("opens Agency Reporting Packs only in TEST with a dedicated TEST price", async () => {
+  const plans = await loadPlans({
+    STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS: "price_test_agency_packs",
+  });
+
+  expect(plans.getAddonAvailability("agencyPacks")).toBe("available");
+  expect(plans.getAddonPurchaseStatus("agencyPacks")).toBe("purchasable");
+  expect(plans.getAddonPurchasablePlans("agencyPacks")).toContain("standard");
+});
+
+it("keeps Agency Reporting Packs coming soon without a TEST price and in LIVE mode", async () => {
+  const withoutTestPrice = await loadPlans();
+  expect(withoutTestPrice.getAddonAvailability("agencyPacks")).toBe("coming_soon");
+  expect(withoutTestPrice.getAddonPurchaseStatus("agencyPacks")).toBe("coming_soon");
+
+  const liveMode = await loadPlans({
+    NODE_ENV: "development",
+    STRIPE_TEST_MODE: "false",
+    STRIPE_TEST_KEY: "",
+    STRIPE_LIVE_API_KEY: "sk_live_agency_packs_fixture",
+    STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS: "price_test_agency_packs",
+  });
+  expect(liveMode.getAddonAvailability("agencyPacks")).toBe("coming_soon");
+  expect(liveMode.getAddonPurchaseStatus("agencyPacks")).toBe("coming_soon");
+});
+
+it("maps signed TEST add-on subscription events without changing checkout price separation", async () => {
+  const testMode = await loadPlans({
+    STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS: "price_test_agency_packs",
+  });
+  expect(testMode.getAddonForPriceId("price_test_agency_packs")).toBe("agencyPacks");
+  expect(testMode.getAddonPriceId("agencyPacks", "sk_test_fixture")).toBe("price_test_agency_packs");
+  expect(testMode.getAddonPriceId("agencyPacks", "sk_live_fixture")).toBeUndefined();
+
+  const liveMode = await loadPlans({
+    NODE_ENV: "development",
+    STRIPE_TEST_MODE: "false",
+    STRIPE_TEST_KEY: "",
+    STRIPE_LIVE_API_KEY: "sk_live_addon_mapping_fixture",
+    STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS: "price_test_agency_packs",
+  });
+  expect(liveMode.getAddonForPriceId("price_test_agency_packs")).toBe("agencyPacks");
+  expect(liveMode.getAddonPriceId("agencyPacks", "sk_live_fixture"))
+    .toBe(liveMode.ADDON_PRICE_IDS.agencyPacks);
+});
