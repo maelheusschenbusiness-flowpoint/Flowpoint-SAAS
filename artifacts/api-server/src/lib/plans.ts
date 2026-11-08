@@ -112,18 +112,48 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
   },
 };
 
+/**
+ * Alias internes de plan. "agency" est un alias d'Ultra (jamais affiche au
+ * client, jamais vendable) : il doit recevoir EXACTEMENT les memes limites,
+ * credits IA et add-ons inclus qu'Ultra. Sans cela, une organisation 'agency'
+ * retombait silencieusement sur les limites Standard (`PLAN_LIMITS[plan] ||
+ * PLAN_LIMITS.standard`) et n'avait aucun add-on inclus.
+ */
+export const PLAN_ALIASES: Readonly<Record<string, string>> = { agency: "ultra" };
+
+/** Identifiant de plan canonique (resout les alias, met en minuscules). */
+export function canonicalPlanId(plan: string | null | undefined): string {
+  const p = String(plan ?? "").trim().toLowerCase();
+  return PLAN_ALIASES[p] ?? p;
+}
+
+/**
+ * Ajoute les alias de plan a une table derivee. Les cles d'alias sont NON
+ * ENUMERABLES : les lectures directes (`MAP["agency"]`) fonctionnent, mais les
+ * catalogues publics qui iterent (Object.keys/entries) ne listent jamais
+ * "agency".
+ */
+function withPlanAliases<T>(map: Record<string, T>): Record<string, T> {
+  for (const [alias, target] of Object.entries(PLAN_ALIASES)) {
+    if (target in map && !(alias in map)) {
+      Object.defineProperty(map, alias, { value: map[target], enumerable: false, configurable: true });
+    }
+  }
+  return map;
+}
+
 /* ── Derived exports — NEVER hardcode these values elsewhere ── */
-export const PLAN_LIMITS: Record<string, PlanLimits> = Object.fromEntries(
+export const PLAN_LIMITS: Record<string, PlanLimits> = withPlanAliases(Object.fromEntries(
   Object.entries(PLAN_DEFINITIONS).map(([k, v]) => [k, v.limits])
-);
+));
 
-export const PLAN_AI_CREDITS: Record<string, number> = Object.fromEntries(
+export const PLAN_AI_CREDITS: Record<string, number> = withPlanAliases(Object.fromEntries(
   Object.entries(PLAN_DEFINITIONS).map(([k, v]) => [k, v.aiCredits])
-);
+));
 
-export const PLAN_AI_TOKENS: Record<string, number> = Object.fromEntries(
+export const PLAN_AI_TOKENS: Record<string, number> = withPlanAliases(Object.fromEntries(
   Object.entries(PLAN_DEFINITIONS).map(([k, v]) => [k, v.aiTokens])
-);
+));
 
 // ── Plan price IDs (live Stripe — confirmed 23/06/2026) ───────────────────────
 // Abonnement Standard 29€/mois | Abonnement Pro 79€/mois | Abonnement Ultra 149€/mois
@@ -736,7 +766,7 @@ export function computeQtyAddonExtras(addons: Record<string, boolean | number>):
  * customDomain, behavioralAI, aiForecasting, and retention365d.
  * keywordDomination remains purchasable on Pro/Ultra but is not bundled.
  */
-export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
+export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = withPlanAliases<ReadonlySet<string>>({
   standard: new Set<string>(["whiteLabel"]),
   pro: new Set<string>([
     "whiteLabel",
@@ -764,7 +794,7 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     "aiForecasting",
     "retention365d",
   ]),
-};
+});
 
 /**
  * PLAN_ALLOWED_ADDONS — which add-ons can be PURCHASED (paid) per plan tier.

@@ -74,8 +74,24 @@ export function tooManyRequests(res: Response, retryAfterSeconds = 60): void {
   res.status(429).json({ ok: false, error: 'Rate limit exceeded', code: 'RATE_LIMIT_EXCEEDED', details: { retryAfterSeconds } } satisfies ApiError);
 }
 
-export function quotaExceeded(res: Response, resource: string, limit: number, plan: string): void {
-  res.status(429).json({ ok: false, error: `Quota exceeded for ${resource}`, code: 'QUOTA_EXCEEDED', details: { resource, limit, plan } } satisfies ApiError);
+const QUOTA_LABELS_FR: Record<string, string> = {
+  keywords: 'mots-clés suivis', competitors: 'concurrents suivis', heatmaps: 'heatmaps',
+  automations: 'automatisations', missions: 'missions', gbpPosts: 'posts Google Business Profile',
+  crmIntegrations: 'intégrations CRM', audits: 'audits', monitors: 'monitors', reports: 'rapports',
+  exports: 'exports', teamMembers: "membres d'équipe",
+};
+
+export function quotaExceeded(res: Response, resource: string, limit: number, plan: string, used?: number): void {
+  const label = QUOTA_LABELS_FR[resource] ?? resource;
+  res.status(429).json({
+    ok: false,
+    error: `Quota exceeded for ${resource}`,
+    // Message explicite pour l'utilisateur (le champ `error` reste inchange pour les clients existants).
+    message: `Limite de votre plan ${plan} atteinte pour les ${label} (${used !== undefined ? `${used}/` : ''}${limit}). Passez à un plan supérieur pour en ajouter. Vos éléments existants restent accessibles.`,
+    code: 'QUOTA_EXCEEDED',
+    details: { resource, limit, plan, ...(used !== undefined ? { used } : {}) },
+    upgradeUrl: '/pricing.html',
+  } satisfies ApiError & { message: string; upgradeUrl: string });
 }
 
 export function planRequired(res: Response, feature: string, requiredPlan: string): void {

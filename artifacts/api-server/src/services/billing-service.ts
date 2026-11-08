@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { ensureUsageEventsTable } from "./usage-events.js";
+import { ensureUsageEventsTable, getMonthlyUsageCounts } from "./usage-events.js";
 import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
 import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId, isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 
@@ -255,6 +255,20 @@ export async function getUsageSummary(orgId = "default") {
   }
 }
 
+/**
+ * Consommation mensuelle = max(lignes vivantes du mois, evenements usage_events du mois).
+ * Intention documentee dans usage-events.ts : « supprimer un rapport/audit ne doit
+ * PAS effacer son historique de consommation ». C'est deja la regle de l'AFFICHAGE
+ * (GET /billing/usage) ; l'application du quota l'ignorait et comptait les seules
+ * lignes vivantes (supprimer puis recreer contournait le plafond). Si les evenements
+ * sont illisibles, on retombe sur le compte des lignes vivantes (jamais moins strict
+ * qu'avant) — getMonthlyUsageCounts journalise l'echec.
+ */
+async function cumulativeMonthlyUsage(orgId: string, kind: string, live: number): Promise<number> {
+  const events = await getMonthlyUsageCounts(orgId);
+  return Math.max(live, events[kind] ?? 0);
+}
+
 // ── Quota enforcement ─────────────────────────────────────────────────────────
 /**
  * P0-6 FIX: checkQuota now loads plan and live usage from the database using
@@ -334,7 +348,8 @@ export async function checkQuota(
               `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
-            usedCount = Number(r.rows[0]?.n ?? 0);
+            // Consommation CUMULEE (usage-events.ts) : supprimer un audit ne libere pas le quota.
+            usedCount = await cumulativeMonthlyUsage(resolvedOrgId, "audit_created", Number(r.rows[0]?.n ?? 0));
             limit = limits.audits + extraAudits;
             break;
           }
@@ -352,7 +367,8 @@ export async function checkQuota(
               `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
-            usedCount = Number(r.rows[0]?.n ?? 0);
+            // Consommation CUMULEE (usage-events.ts) : supprimer un rapport ne libere pas le quota.
+            usedCount = await cumulativeMonthlyUsage(resolvedOrgId, "report_created", Number(r.rows[0]?.n ?? 0));
             limit = limits.reports + extraReports;
             break;
           }

@@ -13,6 +13,8 @@ vi.mock("../services/automation-service.js", () => ({
 }));
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: any, _res: any, next: any) => next(),
+  // Le plafond d'automatisations est teste dans quota-coverage-db.test.ts ; ici on cible l'isolation.
+  requireQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 import automationRouter from "./automation.js";
