@@ -26,7 +26,7 @@ const SQL = readFileSync(
 );
 const POLICIES = ["tenant_select", "tenant_insert", "tenant_update", "tenant_delete"];
 
-describe("migration 025 — policies tenant de activity_logs", () => {
+describe("migration 026 — policies tenant de activity_logs", () => {
   it("recree les 4 policies manquantes, est idempotente, et ne touche pas a FORCE", async () => {
     const c = await pool.connect();
     try {
