@@ -18,6 +18,17 @@ import { lockSignupEmail, lockPendingSignup, resolveOwnerOrgId } from "../servic
 import { type ConversionStage } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
+import { resolveAiCreditPurchase, verifyAiCreditBeneficiary, recordAiCreditPurchase } from "../services/ai-credit-verification.js";
+
+/** (5) Le mode de l'objet doit etre celui de l'evenement (deja controle vs. la cle). */
+async function rejectIfObjectModeMismatch(
+  obj: Record<string, unknown>, eventLivemode: unknown,
+): Promise<{ code: string; detail: string } | null> {
+  if (typeof obj["livemode"] === "boolean" && obj["livemode"] !== eventLivemode) {
+    return { code: "livemode_mismatch", detail: "livemode de l'objet different de celui de l'evenement" };
+  }
+  return null;
+}
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -1484,50 +1495,69 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         meta["type"] === "ai_credits" ||
         meta["flowpoint_checkout_type"] === "ai_credits_only";
       if (aiCreditsOnlyCheckout || packFromField) {
-        const AI_CREDITS_FROM_PACK: Record<string, number> = {
-          aiCreditsPack50k:  50000,
-          aiCreditsPack200k: 200000,
-          aiCreditsPack500k: 500000,
-        };
-        const pack    = meta["pack"] || packFromField || "";
-        const credits = parseInt(meta["credits"] ?? "0", 10) || (packFromField ? (AI_CREDITS_FROM_PACK[packFromField] ?? 0) : 0);
-        const amountEurCents = parseInt(meta["amountEurCents"] ?? "0", 10);
-        const sessionId      = String(obj["id"] ?? "");
-        const paymentIntent  = String(obj["payment_intent"] ?? "");
-
-        // P0-3: removed store.me.stripeCustomerId mutation
-
-        if (sessionPaid && credits > 0 && orgId) {
+        // Verification serveur (voir services/ai-credit-verification.ts) : pack du
+        // catalogue, credits et montant RECALCULES (jamais lus des metadata),
+        // beneficiaire = proprietaire du customer, statut paye uniquement.
+        const sessionId     = String(obj["id"] ?? "");
+        const paymentIntent = String(obj["payment_intent"] ?? "");
+        const verdict = resolveAiCreditPurchase({
+          kind: "checkout_session",
+          status: obj["payment_status"],
+          metadata: meta,
+          paidAmountMinor: obj["amount_total"],
+          currency: obj["currency"],
+          checkAmount: aiCreditsOnlyCheckout,
+        });
+        let rejection: { code: string; detail: string } | null = verdict.ok ? null : verdict;
+        let creditOrgId: string | null = null;
+        if (!rejection) {
+          rejection = await rejectIfObjectModeMismatch(obj, event.livemode);
+        }
+        if (!rejection) {
+          const { pool: pgPool } = await import("@workspace/db");
+          const ben = await verifyAiCreditBeneficiary(pgPool as never, {
+            resolvedOrgId: orgId, resolvedVia,
+            hasCustomer: typeof obj["customer"] === "string" && String(obj["customer"]).startsWith("cus_"),
+            metadata: meta, requireMetadataOrg: aiCreditsOnlyCheckout,
+          });
+          if (ben.ok) creditOrgId = ben.orgId; else rejection = ben;
+        }
+        if (rejection?.code === "not_paid") {
+          // Session non payee (ex. paiement differe) : rien a crediter, ce n'est pas une anomalie.
+          logger.info({ sessionId }, "[Webhook] AI credits not credited — Checkout session is not paid");
+          if (aiCreditsOnlyCheckout) break;
+        } else if (rejection || !verdict.ok || !creditOrgId) {
+          const code = rejection?.code ?? "rejected";
+          logger.error({ AI_CREDITS_REJECTED: true, code, detail: rejection?.detail, eventId, sessionId, orgId, resolvedVia },
+            "[Webhook] AI credits purchase REJECTED — credits NOT credited (needs review/replay)");
+          if (aiCreditsOnlyCheckout) {
+            // Rien n'est cree : l'evenement reste rejouable (Stripe reessaie, ou rejeu manuel).
+            await markEventStatus("failed", { aiCreditsRejected: code });
+            res.status(422).json({ received: false, error: "ai_credits_verification_failed", code });
+            return;
+          }
+          // Session combinee : ne pas bloquer l'activation de l'abonnement ci-dessous.
+        } else {
+          if (verdict.metadataCreditsMismatch) {
+            logger.warn({ eventId, sessionId, credits: verdict.credits }, "[Webhook] metadata.credits differs from catalogue — catalogue value used");
+          }
           try {
             const { pool: pgPool } = await import("@workspace/db");
-            const client = await pgPool.connect();
-            const month = (() => {
-              const d = new Date();
-              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-            })();
-            try {
-              // Deterministic id keyed on the Stripe session → idempotent on webhook replays
-              const purchaseId = `acp_${sessionId}`;
-              await client.query(
-                `INSERT INTO ai_credit_purchases
-                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (id) DO NOTHING`,
-                [purchaseId, orgId, pack, credits, amountEurCents, sessionId, paymentIntent]
-              );
-            } finally {
-              client.release();
+            // Deterministic id keyed on the Stripe session → idempotent on webhook replays
+            const credited = await recordAiCreditPurchase(pgPool as never, {
+              id: `acp_${sessionId}`, orgId: creditOrgId, pack: verdict.pack, credits: verdict.credits,
+              amountCents: verdict.amountCents, sessionId, paymentIntent,
+            });
+            if (credited) {
+              store.broadcast({ type: "ai:credits_added", pack: verdict.pack, credits: verdict.credits }, creditOrgId);
+              logger.info({ pack: verdict.pack, credits: verdict.credits, orgId: creditOrgId }, "[Webhook] AI credits credited to org");
+            } else {
+              logger.info({ sessionId, paymentIntent }, "[Webhook] AI credits already credited for this purchase — skipped");
             }
-            store.broadcast({ type: "ai:credits_added", pack, credits }, orgId);
-            logger.info({ pack, credits, orgId }, "[Webhook] AI credits credited to org");
           } catch (e) {
             logger.error({ e, orgId }, "[Webhook] Failed to credit AI credits to org");
             throw e;
           }
-        } else if (credits > 0 && !orgId) {
-          logger.error({ pack, credits }, "[Webhook] AI credits purchase: orgId unresolved — credits NOT credited");
-        } else if (!sessionPaid && credits > 0) {
-          logger.info({ pack, credits, sessionId }, "[Webhook] AI credits not credited — Checkout session is not paid");
         }
         // Credit-only sessions have no subscription work below. Combined
         // sessions must continue so the subscription/add-on webhook logic runs.
@@ -1803,33 +1833,59 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       // ── In-app AI credit pack purchase (PaymentElement modal, no redirect) ──
       if (piMeta["type"] === "ai_credits") {
-        const pack    = piMeta["pack"]    ?? "";
-        const credits = parseInt(piMeta["credits"] ?? "0", 10);
-        const amountEurCents = parseInt(piMeta["amountEurCents"] ?? "0", 10);
-        const piId    = String(obj["id"] ?? "");
-        const aiOrgId = orgId ?? piMeta["orgId"] ?? null;
-
-        if (credits > 0 && aiOrgId && piId) {
-          try {
-            const { pool: pgPool } = await import("@workspace/db");
-            const client = await pgPool.connect();
-            try {
-              // Deterministic id keyed on the PaymentIntent → idempotent on retries
-              await client.query(
-                `INSERT INTO ai_credit_purchases
-                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (id) DO NOTHING`,
-                [`acp_pi_${piId}`, aiOrgId, pack, credits, amountEurCents, "", piId]
-              );
-            } finally { client.release(); }
-            store.broadcast({ type: "ai:credits_added", pack, credits }, aiOrgId);
-            logger.info({ pack, credits, orgId: aiOrgId }, "[Webhook] AI credits credited (payment_intent flow)");
-          } catch (e) {
-            logger.error({ e, orgId: aiOrgId }, "[Webhook] Failed to credit AI credits (payment_intent flow)");
+        const piId = String(obj["id"] ?? "");
+        let rejection: { code: string; detail: string } | null = null;
+        if (event.type !== "payment_intent.succeeded") {
+          rejection = { code: "not_a_payment_intent", detail: `type ${event.type}` };
+        }
+        const verdict = resolveAiCreditPurchase({
+          kind: "payment_intent",
+          status: obj["status"],
+          metadata: piMeta,
+          paidAmountMinor: obj["amount_received"],
+          currency: obj["currency"],
+          checkAmount: true,
+        });
+        if (!rejection && !verdict.ok) rejection = verdict;
+        if (!rejection) rejection = await rejectIfObjectModeMismatch(obj, event.livemode);
+        let creditOrgId: string | null = null;
+        if (!rejection) {
+          const { pool: pgPool } = await import("@workspace/db");
+          const ben = await verifyAiCreditBeneficiary(pgPool as never, {
+            resolvedOrgId: orgId, resolvedVia,
+            hasCustomer: typeof obj["customer"] === "string" && String(obj["customer"]).startsWith("cus_"),
+            metadata: piMeta, requireMetadataOrg: true,
+          });
+          if (ben.ok) creditOrgId = ben.orgId; else rejection = ben;
+        }
+        if (rejection || !verdict.ok || !creditOrgId || !piId) {
+          const code = rejection?.code ?? "rejected";
+          logger.error({ AI_CREDITS_REJECTED: true, code, detail: rejection?.detail, eventId, piId, orgId, resolvedVia },
+            "[Webhook] AI credits PaymentIntent REJECTED — credits NOT credited (needs review/replay)");
+          await markEventStatus("failed", { aiCreditsRejected: code });
+          res.status(422).json({ received: false, error: "ai_credits_verification_failed", code });
+          return;
+        }
+        if (verdict.metadataCreditsMismatch) {
+          logger.warn({ eventId, piId, credits: verdict.credits }, "[Webhook] metadata.credits differs from catalogue — catalogue value used");
+        }
+        try {
+          const { pool: pgPool } = await import("@workspace/db");
+          // Deterministic id keyed on the PaymentIntent → idempotent on retries
+          const credited = await recordAiCreditPurchase(pgPool as never, {
+            id: `acp_pi_${piId}`, orgId: creditOrgId, pack: verdict.pack, credits: verdict.credits,
+            amountCents: verdict.amountCents, sessionId: "", paymentIntent: piId,
+          });
+          if (credited) {
+            store.broadcast({ type: "ai:credits_added", pack: verdict.pack, credits: verdict.credits }, creditOrgId);
+            logger.info({ pack: verdict.pack, credits: verdict.credits, orgId: creditOrgId }, "[Webhook] AI credits credited (payment_intent flow)");
+          } else {
+            logger.info({ piId }, "[Webhook] AI credits already credited for this purchase — skipped");
           }
-        } else {
-          logger.error({ pack, credits, piId }, "[Webhook] AI credits intent: orgId unresolved — credits NOT credited");
+        } catch (e) {
+          // Relance : un echec DB ne doit pas marquer l'evenement traite (credits perdus).
+          logger.error({ e, orgId: creditOrgId }, "[Webhook] Failed to credit AI credits (payment_intent flow)");
+          throw e;
         }
         break;
       }
