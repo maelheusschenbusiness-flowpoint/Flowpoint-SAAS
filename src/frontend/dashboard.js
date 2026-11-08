@@ -20851,6 +20851,7 @@ function bindGlobalEvents() {
     "Aucun rapport planifié": "No scheduled report",
     "Aucun risque détecté pour le moment": "No risk detected at the moment",
     "Aucun signal de churn détecté": "No churn signal detected",
+    "Les mesures locales ne sont pas disponibles : le fournisseur n’est pas configuré.": "Local measurements are unavailable: the data provider is not configured.",
     "Aucun signal détecté pour le moment.": "No signal detected at the moment.",
     "Aucun site GSC trouvé. Vérifiez vos accès.": "No GSC site found. Check your access.",
     "Aucun siège d'équipe —": "No team seats —",
