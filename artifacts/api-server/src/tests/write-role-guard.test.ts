@@ -27,6 +27,8 @@ vi.mock("../services/automation-service.js", () => ({ getWorkflowsData: vi.fn(),
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_r: Request, _s: Response, n: NextFunction) => n(),
   requireFeature: () => (_r: Request, _s: Response, n: NextFunction) => n(),
+  // Ajoute par #377/#385 sur POST /automation/workflows ; ce test verifie la garde de role, pas le quota.
+  requireQuota: () => (_r: Request, _s: Response, n: NextFunction) => n(),
 }));
 
 const { writeRoleGuard, classifyWriteRoute, normalizeRoutePath, routePatternMatches } =
