@@ -1741,6 +1741,25 @@ function applyThemeChoice(t) {
   render();
 }
 
+// D-07 — ce que le backend FAIT REELLEMENT. Copie de artifacts/api-server/src/services/automation-capabilities.ts
+// (un test de non-regression verifie que les deux listes restent identiques).
+const FP_AUTOMATION_CAPS = {
+  events: ['monitor.down', 'monitor.up', 'audit.completed'],
+  aliases: { 'monitor.recovered': 'monitor.up', 'monitor_down': 'monitor.down', 'monitor_up': 'monitor.up', 'audit_done': 'audit.completed' },
+  platforms: ['slack', 'discord', 'zapier', 'make', 'n8n', 'custom'],
+  actions: ['run_audit', 'generate_recommendations', 'generate_report', 'analyze_competitors', 'send_alert'],
+};
+function fpNormalizeAutomationEvent(ev) {
+  const raw = String(ev || '').trim();
+  return FP_AUTOMATION_CAPS.aliases[raw] || raw;
+}
+function fpTemplateAvailability(t) {
+  if (!t || FP_AUTOMATION_CAPS.events.indexOf(fpNormalizeAutomationEvent(t.trigger_event)) < 0) return { available: false, reason: 'event_not_emitted' };
+  if (FP_AUTOMATION_CAPS.platforms.indexOf(String(t.platform || '')) < 0) return { available: false, reason: 'platform_not_supported' };
+  return { available: true };
+}
+window.fpTemplateAvailability = fpTemplateAvailability;
+
 function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
   const prefillName = tplName || '';
   const prefillDesc = tplDesc || '';
@@ -1749,20 +1768,24 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
     ${prefillDesc ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">${escHtml(prefillDesc)}</div>` : ''}
     <div class="fp-form-group"><label class="fp-form-label">${fpT('Déclencheur')}</label>
       <select class="fp-select" id="wf-trigger" style="width:100%">
-        <option value="audit_done">${fpT('Audit terminé')}</option>
-        <option value="alert">${fpT('Alerte déclenchée')}</option>
-        <option value="weekly">Planning hebdomadaire</option>
-        <option value="monitor_down">${fpT('Monitor en erreur')}</option>
-        <option value="report_ready">${fpT('Rapport prêt')}</option>
+        <option value="audit.completed">${fpT('Audit terminé')}</option>
+        <option value="monitor.down">${fpT('Monitor en erreur')}</option>
+        <option value="monitor.up">${fpT('Monitor rétabli')}</option>
+        <option value="weekly">${fpT('Planning hebdomadaire (lundi 09:00 UTC)')}</option>
+        <option value="alert" disabled>${fpT('Alerte déclenchée')} — ${fpT('Bientôt disponible')}</option>
+        <option value="report_ready" disabled>${fpT('Rapport prêt')} — ${fpT('Bientôt disponible')}</option>
       </select>
     </div>
     <div class="fp-form-group"><label class="fp-form-label">Action automatique</label>
       <select class="fp-select" id="wf-action" style="width:100%">
-        <option value="send_email">${fpT('Envoyer email')}</option>
-        <option value="gen_report">${fpT('Générer rapport PDF')}</option>
-        <option value="slack_notif">${fpT('Notification Slack')}</option>
-        <option value="webhook">${fpT('Déclencher webhook')}</option>
-        <option value="create_mission">${fpT('Créer mission')}</option>
+        <option value="generate_report">${fpT('Générer rapport PDF')}</option>
+        <option value="run_audit">${fpT('Lancer un audit')}</option>
+        <option value="generate_recommendations">${fpT('Générer des recommandations IA')}</option>
+        <option value="send_alert">${fpT('Envoyer une alerte par email')}</option>
+        <option value="send_email" disabled>${fpT('Envoyer email')} — ${fpT('Bientôt disponible')}</option>
+        <option value="slack_notif" disabled>${fpT('Notification Slack')} — ${fpT('Bientôt disponible')}</option>
+        <option value="webhook" disabled>${fpT('Déclencher webhook')} — ${fpT('Bientôt disponible')}</option>
+        <option value="create_mission" disabled>${fpT('Créer mission')} — ${fpT('Bientôt disponible')}</option>
       </select>
     </div>
     <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="wf-save">${fpT('Créer le workflow')}</button>
@@ -1775,14 +1798,17 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
       if (!name) { showToast('warning', fpT('Entrez un nom pour le workflow')); return; }
       const trigger = document.getElementById('wf-trigger')?.value;
       const action = document.getElementById('wf-action')?.value;
-      const _trigLabels = { audit_done:'Audit terminé', alert:'Alerte déclenchée', weekly:'Planning hebdomadaire', monitor_down:'Monitor en erreur', report_ready:'Rapport prêt' };
-      const _actLabels  = { send_email:'Envoyer email', gen_report:'Générer rapport PDF', slack_notif:'Notification Slack', webhook:'Déclencher webhook', create_mission:'Créer mission' };
+      const _trigLabels = { 'audit.completed':'Audit terminé', 'monitor.down':'Monitor en erreur', 'monitor.up':'Monitor rétabli', weekly:'Planning hebdomadaire (lundi 09:00 UTC)' };
+      const _actLabels  = { generate_report:'Générer rapport PDF', run_audit:'Lancer un audit', generate_recommendations:'Générer des recommandations IA', send_alert:'Envoyer une alerte par email' };
+      if (!_trigLabels[trigger] || !_actLabels[action]) { showToast('warning', fpT('Bientôt disponible')); return; }
       const payload = {
         name,
         enabled: true,
         category: 'Custom',
         trigger_type: trigger === 'weekly' ? 'schedule' : 'event',
-        trigger_config: { event: trigger, description: _trigLabels[trigger] || trigger },
+        trigger_config: trigger === 'weekly'
+          ? { cron: '0 9 * * 1', timezone: 'UTC', description: _trigLabels[trigger] }
+          : { event: trigger, description: _trigLabels[trigger] || trigger },
         actions: [{ type: action, description: _actLabels[action] || action }],
       };
       saveBtn.dataset.submitting = '1';
@@ -1799,10 +1825,11 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
       }
       closeFloatPanel();
       render();
-      showToast('success', fpT('Workflow créé !'));
       if (window.FP_AUTOMATION_API && window.FP_AUTOMATION_API.create) {
         // Persist via API then replace the optimistic item with the real one
         window.FP_AUTOMATION_API.create(payload).then((r) => {
+          if (!r || r.ok === false) throw new Error('WORKFLOW_NOT_CREATED');
+          showToast('success', fpT('Workflow créé !'));
           const created = r && r.workflow;
           // Remove optimistic item
           STATE.workflows = (STATE.workflows || []).filter(w => w.id !== _tmpId);
@@ -12854,7 +12881,9 @@ function renderSettings() {
           name:     w.name     || 'Workflow',
           icon:     w.icon     || '⚡',
           color:    w.category === 'Monitoring' ? '#ef4444' : w.category === 'IA' ? '#8b5cf6' : w.category === 'SEO' ? '#22c55e' : '#2563EB',
-          active:   w.enabled  ?? true,
+          capability: w.capability || null,
+          unsupported: !!(w.capability && w.capability.supported === false),
+          active:   (w.enabled ?? true) && !(w.capability && w.capability.supported === false),
           trigger:  ((w.trigger_config||w.triggerConfig)?.description) || (w.trigger_type === 'schedule' || w.triggerType === 'schedule' ? 'Planifié' : w.trigger_type === 'event' || w.triggerType === 'event' ? 'Événement' : w.trigger_type || w.triggerType || '—'),
           action:   Array.isArray(w.actions) && w.actions[0] ? (w.actions[0].description || w.actions[0].type || '—') : '—',
           runs:     w.runs_count || w.runsCount || 0,
@@ -12863,11 +12892,11 @@ function renderSettings() {
         }))
       : [];
     const templates = [
-      {name:'Rapport client hebdo',   icon:'📊', desc:'Génère et envoie un résumé client chaque semaine'},
-      {name:'SLA monitoring strict',  icon:'🛡️', desc:'Alerte multi-canal si uptime < 99.5%'},
-      {name:'Pipeline SEO complet',   icon:'🚀', desc:'Audit → analyse → recommandations → rapport'},
-      {name:'Workflow onboarding',    icon:'🎯', desc:'Suite automatisée pour nouveaux clients'},
-      {name:'Veille concurrentielle', icon:'🕵️', desc:'Surveillance hebdo des mouvements concurrents + alerte IA'},
+      {name:'Rapport client hebdo',   icon:'📊', desc:'Génère et envoie un résumé client chaque semaine', ready:true},
+      {name:'SLA monitoring strict',  icon:'🛡️', desc:'Alerte multi-canal si uptime < 99.5%', ready:false},
+      {name:'Pipeline SEO complet',   icon:'🚀', desc:'Audit → analyse → recommandations → rapport', ready:true},
+      {name:'Workflow onboarding',    icon:'🎯', desc:'Suite automatisée pour nouveaux clients', ready:false},
+      {name:'Veille concurrentielle', icon:'🕵️', desc:'Surveillance hebdo des mouvements concurrents + alerte IA', ready:false},
     ];
     return `
       ${isPro
@@ -12882,7 +12911,7 @@ function renderSettings() {
         ${statCard(fpT('Active workflows'), String(workflows.filter(w => w.active).length), fpT('{count} configured', { count: workflows.length }), 'up')}
         ${statCard(fpT('Runs this month'), String(workflows.reduce((s,w) => s + w.runs, 0)), fpT('successful automations'), 'up')}
         ${statCard(fpT('Time saved'), displayStat(null, PREVIEW_MODE ? '~6h/mo' : '—'), PREVIEW_MODE ? fpT('AI estimate') : fpT('Activate workflows'), 'neutral')}
-        ${statCard(fpT('Available templates'), '+99', fpT('ready to use'), 'up')}
+        ${statCard(fpT('Available templates'), String(templates.filter(t => t.ready).length), fpT('ready to use'), 'up')}
       </div>
 
       <!-- WORKFLOWS LIST -->
@@ -12902,13 +12931,14 @@ function renderSettings() {
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;min-width:0">
                   <span style="font-size:12px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0">${escHtml(wf.name)}</span>
                   <span style="flex-shrink:0">${badge(wf.category, wf.color)}</span>
+                  ${wf.unsupported ? `<span style="flex-shrink:0">${badge(fpT('Bientôt disponible'), '#f59e0b')}</span>` : ''}
                 </div>
                 <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                   ⚡ <strong>${escHtml(wf.trigger)}</strong> → ${escHtml(wf.action)}
                 </div>
                 <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} ${fpT('runs')} · ${fpT('Last run')}: ${escHtml(wf.lastRun)}</div>
               </div>
-              <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : `showToast('error', fpT('Workflow invalide : identifiant manquant'))`}"></button>
+              <button class="fp-toggle${wf.active ? ' on' : ''}" ${wf.unsupported ? `disabled style="opacity:.45;cursor:not-allowed" title="${fpT('Bientôt disponible')}"` : ''} onclick="${wf.unsupported ? '' : wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : `showToast('error', fpT('Workflow invalide : identifiant manquant'))`}"></button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;${wf.active ? '' : 'opacity:.45;cursor:not-allowed'}" ${wf.active ? '' : `disabled title="${fpT("Activez le workflow avant de l'exécuter")}"`} onclick="${wf.id && wf.active ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : ''}">▶ Run</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;color:var(--fp-danger)" onclick="${wf.id ? `window.FP_AUTOMATION_API&&window.FP_AUTOMATION_API.remove('${escHtml(wf.id)}')` : ''}" title="${fpT('Supprimer ce workflow')}">🗑</button>
             </div>
@@ -12925,7 +12955,9 @@ function renderSettings() {
               <div style="font-size:20px;margin-bottom:6px">${t.icon}</div>
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(t.name))}</div>
               <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(fpT(t.desc))}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">${fpT('Use this template')}</button>
+              ${t.ready
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">${fpT('Use this template')}</button>`
+                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="width:100%;font-size:10px;margin-top:auto;opacity:.55;cursor:not-allowed">${fpT('Bientôt disponible')}</button>`}
             </div>
           `).join('')}
         </div>
@@ -13328,7 +13360,7 @@ function renderSettings() {
             ${statCard(fpT('Success rate'), stats.totalDeliveries > 0 && stats.successRate != null ? stats.successRate+'%' : '—', stats.totalDeliveries > 0 ? fpT('successful deliveries') : fpT('No deliveries'), stats.totalDeliveries > 0 && stats.successRate < 90 ? 'down' : 'neutral')}
             ${statCard(fpT('Errors (24h)'), String(stats.recentErrors||0), fpT('recent alerts'), stats.recentErrors>0?'down':'up')}
             ${statCard(fpT('Average latency'), stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', fpT('webhook delivery'), 'neutral')}
-            ${statCard(fpT('Templates'), '+99', fpT('ready to use'), 'up')}
+            ${statCard(fpT('Templates'), String(_allTpl.filter(t => fpTemplateAvailability(t).available).length), fpT('ready to use'), 'up')}
             ${statCard(fpT('Successful syncs'), String(Math.max(0,(stats.totalRuns||0)-(stats.recentErrors||0))), fpT('in the last 30 days'), (stats.recentErrors||0)>0?'neutral':'up')}
             ${statCard(fpT('API quota remaining'), displayStat(null, '85%'), PREVIEW_MODE ? '→ 1,500 / 2,000 ' + fpT('calls') : fpT('View API usage'), 'neutral')}
           </div>
@@ -13502,9 +13534,12 @@ function renderSettings() {
         const planColor = p => p==='Ultra'?'#8b5cf6':p==='Pro'?'#2563EB':'#22c55e';
         // When a category filter is active, show 12 from that category (seeded shuffle)
         const _activeCat = window._intgTemplCat || 'Tous';
+        // D-07 : les modeles reellement activables d'abord ; les autres restent visibles, marques « Bientôt disponible ».
+        const _byAvail = arr => arr.map((t, i) => ({ t, i, a: fpTemplateAvailability(t).available ? 1 : 0 })).sort((x, y) => (y.a - x.a) || (x.i - y.i)).map(x => x.t);
+        const _srcTpl = (intgData.templates && intgData.templates.length > 0) ? intgData.templates : _allTpl;
         const _visibleTpl = _activeCat === 'Tous'
-          ? templates  // already 12 rotated from full library
-          : (() => { const sub = _allTpl.filter(t => t.category === _activeCat); return sub.length <= 12 ? sub : _rotShuffle(_rotSeed, sub).slice(0, 12); })();
+          ? _byAvail(_srcTpl).slice(0, 24)
+          : _byAvail(_srcTpl.filter(t => t.category === _activeCat)).slice(0, 24);
         return `
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
             ${['Tous',...cats].map(c => `
@@ -13533,10 +13568,12 @@ function renderSettings() {
                     ⚡ ${fpT('Trigger')}: <strong>${t.trigger_event}</strong>
                   </div>
                   <div style="display:flex;gap:6px;margin-top:4px">
-                    <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1;font-size:10px"
-                      onclick="window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}')">
+                    ${fpTemplateAvailability(t).available
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1;font-size:10px"
+                      onclick="window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}','${escHtml(t.trigger_event)}')">
                        ${fpT('Use this template')}
-                    </button>
+                    </button>`
+                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="flex:1;font-size:10px;opacity:.55;cursor:not-allowed" title="${fpT('Bientôt disponible')}">${fpT('Bientôt disponible')}</button>`}
                     <span style="font-size:10px;color:var(--fp-text-faint);align-self:center">🔥 ${t.popularity||0}</span>
                   </div>
                 </div>
@@ -13653,7 +13690,7 @@ function renderSettings() {
         ${[
           ['hub',       '🏠 Hub',        ''],
           ['webhooks',  '🔗 Webhooks',   intgs.length > 0 ? String(intgs.length) : ''],
-          ['templates', '📦 Templates',  '+99'],
+          ['templates', '📦 Templates',  String(_allTpl.filter(t => fpTemplateAvailability(t).available).length)],
           ['logs',      '📋 Logs',       runs.length > 0 ? String(runs.length) : ''],
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
@@ -13681,7 +13718,7 @@ function renderSettings() {
             <div>
               <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Événements déclencheurs (laisser vide = tous)')}</label>
               <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:8px;border:1px solid var(--fp-border);border-radius:8px" id="intg-events-container">
-                ${['audit.completed','monitor.down','monitor.recovered','report.generated','mission.created','mission.completed','review.received','keyword.ranking_changed','backlink.detected','competitor.detected','ai.insight.generated','payment.failed'].map(ev => `
+                ${FP_AUTOMATION_CAPS.events.map(ev => `
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--fp-text-muted);padding:3px 8px;border-radius:6px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
                     <input type="checkbox" name="intg-event" value="${ev}" style="accent-color:var(--fp-accent)">
                     ${ev}
@@ -22807,6 +22844,10 @@ function bindGlobalEvents() {
     "Lien de partage copié": "Share link copied",
     "Lien de partage généré": "Share link generated",
     "Erreur partage": "Sharing error",
+    "Monitor rétabli": "Monitor recovered",
+    "Planning hebdomadaire (lundi 09:00 UTC)": "Weekly schedule (Monday 09:00 UTC)",
+    "Générer des recommandations IA": "Generate AI recommendations",
+    "Envoyer une alerte par email": "Send an email alert",
     "Critères de présence enregistrés.": "Presence criteria saved.",
     "Catalogue des add-ons indisponible.": "Add-on catalog unavailable.",
     "Objectif supprimé": "Goal deleted",
@@ -53120,7 +53161,12 @@ async function init() {
     } catch(e) { showToast('error', String(e)); }
   };
 
-  window._useTemplate = async function(tplId, platform, name) {
+  window._useTemplate = async function(tplId, platform, name, triggerEvent) {
+    // D-07 : un modele dont l'evenement n'est pas emis ou dont la cible n'est pas livrable n'est pas activable.
+    if (!fpTemplateAvailability({ trigger_event: triggerEvent, platform: platform }).available) {
+      showToast('info', fpT('Bientôt disponible'));
+      return;
+    }
     window._currentPlatform = platform;
     const titleEl = document.getElementById('fp-intg-modal-title');
     const nameEl  = document.getElementById('intg-name');
@@ -53128,6 +53174,9 @@ async function init() {
     if (nameEl)  nameEl.value = name;
     const modal = document.getElementById('fp-intg-modal');
     if (modal) modal.style.display = 'flex';
+    // Abonne la connexion a l'evenement du modele (et a lui seul), au lieu de « tous les evenements ».
+    const wanted = fpNormalizeAutomationEvent(triggerEvent);
+    document.querySelectorAll('input[name="intg-event"]').forEach(el => { el.checked = (el.value === wanted); });
     window._intgTab = 'webhooks';
   };
 

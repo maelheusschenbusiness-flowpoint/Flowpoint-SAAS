@@ -296,6 +296,14 @@ async function saveCheckResult(
           userName: "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
+        // D-07 : declencheur automatique reel (webhooks abonnes + workflows actives).
+        import("../services/automation-triggers.js")
+          .then(m => m.emitAutomationEvent(orgId, isDown ? "monitor.down" : "monitor.up", {
+            monitorId, name: String(mon.name), url: String(mon.url),
+            statusCode: result.statusCode ?? null, downDurationMin: downDurationMin ?? 0,
+          }))
+          .catch(err => logger.warn({ err, monitorId }, "[monitors] automation trigger failed (non-fatal)"));
+
         // Resolve recipient using the 3-tier priority chain:
         //   1. per-monitor alertEmail (stored on the monitor row)
         //   2. user-pref alertEmail (stored in user_prefs.settings.alertEmail via Settings > Canaux d'alerte)

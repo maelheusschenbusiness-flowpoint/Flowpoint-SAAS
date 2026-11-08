@@ -334,6 +334,10 @@ export default defineConfig({
       "src/services/workflow-schedule-cron.test.ts",
       "src/services/workflow-schedule-cron-db.test.ts",
       "src/services/automation-service-awl-report-postgres.test.ts",
+      // D-07 : automatisations honnetes — capacites reelles, declencheurs, activation (2026-11-08).
+      "src/services/automation-capabilities.test.ts",
+      "src/services/automation-triggers.test.ts",
+      "src/routes/automation-honesty.test.ts",
     ],
     environment: "node",
     // DETERMINISME : les fichiers ne s'executent pas en parallele.

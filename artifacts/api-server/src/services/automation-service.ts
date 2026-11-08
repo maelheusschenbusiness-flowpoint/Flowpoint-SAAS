@@ -9,6 +9,7 @@ import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 import { checkAIQuota, recordCompletedUsage, type AIModel } from "./ai-engine.js";
 import { hasAddonEntitlementForOrg } from "./addon-entitlement.js";
 import { isAWLReportWorkflow } from "./awl-weekly-report.js";
+import { describeWorkflowCapability, type WorkflowCapability } from "./automation-capabilities.js";
 
 type WorkflowAIUsage = {
   requestId: string;
@@ -231,10 +232,10 @@ export async function generateAndPersistWorkflowReport(
 
 const SEED_WORKFLOWS = [
   { id: "wf_1", name: "Rapport client hebdo",       icon: "📊", description: "Génère et envoie un résumé client chaque semaine",         triggerType: "schedule", triggerConfig: { cron: "0 9 * * 1" },           actions: [{ type: "generate_report", params: { format: "pdf" } }, { type: "send_email", params: { template: "client_weekly" } }],            enabled: true, runsCount: 0, category: "Rapports" },
-  { id: "wf_2", name: "SLA monitoring strict",       icon: "🛡️", description: "Alerte multi-canal si uptime < 99.5%",                    triggerType: "condition", triggerConfig: { metric: "uptime", lt: 99.5 },   actions: [{ type: "send_alert", params: { channels: ["email", "sms"] } }, { type: "create_incident" }],                                            enabled: true, runsCount: 0, category: "Monitoring" },
+  { id: "wf_2", name: "SLA monitoring strict",       icon: "🛡️", description: "Alerte multi-canal si uptime < 99.5%",                    triggerType: "condition", triggerConfig: { metric: "uptime", lt: 99.5 },   actions: [{ type: "send_alert", params: { channels: ["email", "sms"] } }, { type: "create_incident" }],                                            enabled: false, runsCount: 0, category: "Monitoring" },
   { id: "wf_3", name: "Pipeline SEO complet",        icon: "🚀", description: "Audit → analyse → recommandations → rapport",             triggerType: "schedule", triggerConfig: { cron: "0 3 * * 1" },           actions: [{ type: "run_audit" }, { type: "generate_recommendations" }, { type: "generate_report", params: { format: "pdf" } }],                  enabled: true, runsCount: 0, category: "SEO" },
   { id: "wf_4", name: "Workflow onboarding",         icon: "🎯", description: "Suite automatisée pour nouveaux clients",                  triggerType: "event",    triggerConfig: { event: "client.created" },     actions: [{ type: "send_welcome_email" }, { type: "run_audit", params: { type: "quick" } }, { type: "create_dashboard" }],                          enabled: false, runsCount: 0, category: "Clients" },
-  { id: "wf_5", name: "Veille concurrentielle",      icon: "🕵️", description: "Surveillance hebdo des mouvements concurrents + alerte IA", triggerType: "schedule", triggerConfig: { cron: "0 8 * * 3" },          actions: [{ type: "analyze_competitors" }, { type: "generate_market_insight" }, { type: "notify_if_change", params: { threshold: 5 } }],             enabled: true, runsCount: 0, category: "Intelligence" },
+  { id: "wf_5", name: "Veille concurrentielle",      icon: "🕵️", description: "Surveillance hebdo des mouvements concurrents + alerte IA", triggerType: "schedule", triggerConfig: { cron: "0 8 * * 3" },          actions: [{ type: "analyze_competitors" }, { type: "generate_market_insight" }, { type: "notify_if_change", params: { threshold: 5 } }],             enabled: false, runsCount: 0, category: "Intelligence" },
   { id: "wf_6", name: "Backup données mensuel",      icon: "💾", description: "Export complet + stockage cloud chaque mois",             triggerType: "schedule", triggerConfig: { cron: "0 3 1 * *" },           actions: [{ type: "export_all_data", params: { format: "json" } }, { type: "store_cloud" }],                                                        enabled: false, runsCount: 0, category: "Données" },
 ];
 
@@ -613,7 +614,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
 }
 
 export async function getWorkflowsData(orgId = "default"): Promise<{
-  workflows: Array<typeof automationWorkflowsTable.$inferSelect>;
+  workflows: Array<typeof automationWorkflowsTable.$inferSelect & { capability: WorkflowCapability }>;
   recentRuns: Array<Record<string, unknown>>;
   stats: { active: number; totalRuns: number; successRate: number; timeSavedHours: number };
 }> {
@@ -637,13 +638,15 @@ export async function getWorkflowsData(orgId = "default"): Promise<{
       db.select().from(automationWorkflowsTable).where(eq(automationWorkflowsTable.orgId, orgId)).orderBy(desc(automationWorkflowsTable.createdAt)),
     ]);
 
-    const active = workflows.filter(w => w.enabled).length;
+    const active = workflows.filter(w => w.enabled && describeWorkflowCapability(w as unknown as Record<string, unknown>).supported).length;
     const totalRuns = workflows.reduce((s, w) => s + (w.runsCount ?? 0), 0);
     const successRuns = runs.filter(r => r.status === "success").length;
     const successRate = runs.length > 0 ? Math.round((successRuns / runs.length) * 100) : 0;
     const timeSavedHours = Math.round(totalRuns * 0.4 * 10) / 10;
 
-    return { workflows, recentRuns: runs, stats: { active, totalRuns, successRate, timeSavedHours } };
+    // D-07 : chaque workflow indique s'il peut reellement se declencher et s'executer.
+    const withCapability = workflows.map(w => ({ ...w, capability: describeWorkflowCapability(w as unknown as Record<string, unknown>) }));
+    return { workflows: withCapability, recentRuns: runs, stats: { active, totalRuns, successRate, timeSavedHours } };
   } catch (err) {
     logger.error({ err }, "[Automation] getWorkflowsData failed");
     return {
