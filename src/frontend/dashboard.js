@@ -1681,16 +1681,38 @@ async function changeTeamMemberRole(memberId, currentRole) {
   });
 }
 
+// Lien de partage de rapport : le jeton n'existe QUE s'il a ete cree et persiste par l'API
+// (POST /api/reports/:id/share). Aucun jeton local, aucun repli factice.
+async function fpCreateReportShareLink(reportId, body) {
+  if (!reportId) throw new Error('REPORT_REQUIRED');
+  const res = await apiAction('POST', '/api/reports/' + encodeURIComponent(reportId) + '/share', body || {});
+  if (!res || !res.token || !res.path) throw new Error('SHARE_TOKEN_MISSING');
+  return { token: res.token, expiresAt: res.expiresAt, url: new URL(res.path, location.origin).toString() };
+}
+async function fpCopyShareLink(url) {
+  try { await navigator.clipboard.writeText(url); return true; }
+  catch (_) { try { window.prompt(fpT('Copiez ce lien de partage'), url); } catch (__) {} return false; }
+}
+function fpShareLinkFailed(err) {
+  console.warn('[FP] Report share link not created', err);
+  showToast('error', fpT("Impossible de créer le lien de partage. Aucun lien n'a été généré."));
+}
+async function fpShareReportAndCopy(reportId, body) {
+  try {
+    const link = await fpCreateReportShareLink(reportId, body);
+    const report = (STATE.reports || []).find(r => r.id === reportId);
+    if (report) report.shared = true;
+    const copied = await fpCopyShareLink(link.url);
+    showToast(copied ? 'success' : 'info', copied ? fpT('Lien copié ! Valable 30 jours.') : fpT('Lien de partage généré'));
+    return link;
+  } catch (err) { fpShareLinkFailed(err); return null; }
+}
+
 async function createShareLink() {
-  const token = 'fp-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-  const base = location.pathname.replace('dashboard.html', 'report-view.html');
-  const url = `${location.origin}${base}?token=${token}`;
-  localStorage.setItem('fp:share-' + token, JSON.stringify({
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
-  }));
-  try { await navigator.clipboard.writeText(url); } catch(e) {}
-  showToast('success', fpT('Lien créé et copié ! Valable 30 jours.'));
+  const reports = (STATE.reports || []).filter(r => r && r.id);
+  if (!reports.length) { showToast('error', fpT("Créez d'abord un rapport avant de générer un lien de partage.")); return; }
+  const latest = reports.slice().sort((x, y) => String(y.date || '').localeCompare(String(x.date || '')))[0];
+  await fpShareReportAndCopy(latest.id, {});
 }
 
 function fullscreenPresent() {
@@ -9370,7 +9392,7 @@ function _fpSafeColor(v) {
               </div>
               <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="PDF" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓ PDF</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Partager')}" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{var res=await apiAction('POST','/api/reports/'+b.dataset.rid+'/share',{});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;try{await navigator.clipboard.writeText(u);}catch(_){}showToast('success',fpT('Lien copié !'));}else showToast('info',fpT('Lien généré'));}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Partager')}" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{await fpShareReportAndCopy(b.dataset.rid,{});}catch(e){fpShareLinkFailed(e);}})(this)">🔗</button>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="${fpT('Supprimer')}" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){if(!confirm(fpT('Supprimer ce rapport ?')))return;try{await apiAction('DELETE','/api/reports/'+b.dataset.rid);STATE.reports=(STATE.reports||[]).filter(x=>x.id!==b.dataset.rid);render();showToast('success',fpT('Rapport supprimé'));}catch(e){showToast('error',fpT('Erreur'));}})(this)">✕</button>
               </div>
             </div>
@@ -18295,43 +18317,7 @@ function bindSectionEvents() {
         secondaryColor: _wlbShare.secondaryColor|| '#1d4ed8',
         footerMsg:      _wlbShare.footerMsg     || '',
       };
-      try {
-        const res = await apiAction('POST', `/api/reports/${reportId}/share`, {
-          branding: brandingPayload,
-          auditIds: STATE.audits.slice(0, 4).map(a => a.id),
-        });
-        if (res?.token) {
-          if (report) { report.shared = true; }
-          const base = location.pathname.endsWith('dashboard.html')
-            ? location.pathname.replace('dashboard.html', 'report-view.html')
-            : location.pathname.replace(/\/?$/, '/report-view.html');
-          const shareUrl = `${location.origin}${base}?token=${res.token}`;
-          navigator.clipboard?.writeText(shareUrl).catch(() => {});
-          showToast('success', fpT('Lien copié ! Valable 30 jours.'));
-          return;
-        }
-      } catch(err) {
-        console.warn('[FP] Share API failed, using local fallback', err);
-      }
-      const token = 'fp-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-      let _shareNotes = [];
-      try { if (report?.meetingNotesJson) _shareNotes = JSON.parse(report.meetingNotesJson); } catch {}
-      const payload = {
-        report: report || { id: reportId, name: 'Rapport', date: new Date().toISOString(), type: 'PDF', pages: 8 },
-        branding: brandingPayload,
-        audits: STATE.audits.slice(0, 4),
-        meetingNotes: _shareNotes,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-      };
-      localStorage.setItem('fp:share-' + token, JSON.stringify({ reportId: payload.report?.id||null, createdAt: payload.createdAt, expiresAt: payload.expiresAt }));
-      if (report) { report.shared = true; }
-      const base = location.pathname.endsWith('dashboard.html')
-        ? location.pathname.replace('dashboard.html', 'report-view.html')
-        : location.pathname.replace(/\/?$/, '/report-view.html');
-      const shareUrl = `${location.origin}${base}?token=${token}`;
-      navigator.clipboard?.writeText(shareUrl).catch(() => {});
-      showToast('success', fpT('Lien copié ! Valable 30 jours.'));
+      await fpShareReportAndCopy(reportId, { branding: brandingPayload });
     }));
     $('#report-new-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); });
     $$('.fp-report-card, .fp-report-row').forEach(card => {
@@ -18343,16 +18329,7 @@ function bindSectionEvents() {
           { key:'share', icon:'copy',     label:fpT('Copier le lien'), action: async ()=>{
             const wlb = JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
             const bp = { agencyName: wlb.agencyName || STATE.me?.org?.name || 'Mon Agence', logoUrl: wlb.logoUrl || '', primaryColor: wlb.primaryColor || '#2563EB', secondaryColor: wlb.secondaryColor || '#1d4ed8', footerMsg: wlb.footerMsg || '' };
-            const base = location.pathname.endsWith('dashboard.html') ? location.pathname.replace('dashboard.html','report-view.html') : location.pathname.replace(/\/?$/,'/report-view.html');
-            try {
-              const res = await apiAction('POST', `/api/reports/${report.id}/share`, { branding: bp, auditIds: STATE.audits.slice(0,4).map(a=>a.id) });
-              if (res?.token) { navigator.clipboard?.writeText(`${location.origin}${base}?token=${res.token}`).catch(()=>{}); showToast('success', fpT('Lien copié ! Valable 30 jours.')); return; }
-            } catch(err) { console.warn('[FP] Share API fallback'); }
-            const token = 'fp-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);
-            let _ctxNotes = []; try { if (report?.meetingNotesJson) _ctxNotes = JSON.parse(report.meetingNotesJson); } catch {}
-            localStorage.setItem('fp:share-'+token, JSON.stringify({ reportId: report?.id||null, createdAt:new Date().toISOString(), expiresAt:new Date(Date.now()+30*24*3600*1000).toISOString() }));
-            navigator.clipboard?.writeText(`${location.origin}${base}?token=${token}`).catch(()=>{});
-            showToast('success', fpT('Lien copié ! Valable 30 jours.'));
+            await fpShareReportAndCopy(report.id, { branding: bp });
           } },
           { key:'regen', icon:'refresh',  label:fpT('Regénérer'), action:async()=>{
             try {
@@ -22815,6 +22792,8 @@ function bindGlobalEvents() {
     "Lien de partage copié": "Share link copied",
     "Lien de partage généré": "Share link generated",
     "Erreur partage": "Sharing error",
+    "Impossible de créer le lien de partage. Aucun lien n'a été généré.": "Could not create the share link. No link was generated.",
+    "Créez d'abord un rapport avant de générer un lien de partage.": "Create a report first before generating a share link.",
     "Critères de présence enregistrés.": "Presence criteria saved.",
     "Catalogue des add-ons indisponible.": "Add-on catalog unavailable.",
     "Objectif supprimé": "Goal deleted",

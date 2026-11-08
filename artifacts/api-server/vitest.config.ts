@@ -346,6 +346,9 @@ export default defineConfig({
       "src/services/workflow-schedule-cron.test.ts",
       "src/services/workflow-schedule-cron-db.test.ts",
       "src/services/automation-service-awl-report-postgres.test.ts",
+      // D-05 : rapports sans fantome + lien de partage reel (2026-11-08).
+      "src/routes/reports-no-phantom.test.ts",
+      "src/tests/report-share-frontend.test.ts",
     ],
 >>>>>>> pr-368
     environment: "node",
