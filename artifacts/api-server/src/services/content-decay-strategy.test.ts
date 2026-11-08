@@ -15,6 +15,30 @@ describe("parseContentDecayStrategy", () => {
     expect(parseContentDecayStrategy(JSON.stringify(valid()))?.actions).toHaveLength(3);
   });
 
+  it("accepts a strategy wrapped in a ```json code block", () => {
+    const strategy = parseContentDecayStrategy(`\`\`\`json\n${JSON.stringify(valid())}\n\`\`\``);
+    expect(strategy?.summary).toBe(valid().summary);
+    expect(strategy?.actions).toHaveLength(3);
+  });
+
+  it("accepts a code block without the json word", () => {
+    const strategy = parseContentDecayStrategy(`\`\`\`\n${JSON.stringify(valid())}\n\`\`\``);
+    expect(strategy?.actions).toHaveLength(3);
+  });
+
+  it("rejects text before the code block", () => {
+    const wrapped = `Voici la stratégie :\n\`\`\`json\n${JSON.stringify(valid())}\n\`\`\``;
+    expect(parseContentDecayStrategy(wrapped)).toBeNull();
+  });
+
+  it("rejects a code block holding invalid JSON", () => {
+    expect(parseContentDecayStrategy("```json\nnot-json\n```")).toBeNull();
+  });
+
+  it("still accepts a valid strategy without any code block", () => {
+    expect(parseContentDecayStrategy(JSON.stringify(valid()))?.summary).toBe(valid().summary);
+  });
+
   it("rejects malformed, incomplete, or duplicate recommendations", () => {
     expect(parseContentDecayStrategy("not-json")).toBeNull();
     const incomplete = valid();
