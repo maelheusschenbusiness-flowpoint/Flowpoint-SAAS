@@ -387,32 +387,109 @@ router.post("/seo/generate-missions", canWrite, requireAddon("advancedSeoLab", "
 
 // ── GET /api/seo/llm-visibility ───────────────────────────────────────────────
 
-// ── GET /local-seo/status ────────────────────────────────────────────────────────
-router.get("/local-seo/status", async (req, res) => {
+// ── GET /local-seo  (alias: /local-seo/status) ───────────────────────────────────
+// Agregat reel pour le dashboard (Local SEO + Growth) : note moyenne, nombre d'avis, zones.
+// Jamais de valeur inventee : `state` dit explicitement pourquoi une donnee est absente.
+//   not_connected  -> aucun compte Google Business Profile connecte (avgRating/reviewCount/zones = null/[])
+//   no_data        -> GBP connecte mais aucune note/avis synchronise
+//   ok             -> au moins une donnee reelle
+type LocalSeoDb = (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+export type LocalSeoZone = {
+  id: string; name: string; keyword: string | null; vis: number; dominated: boolean;
+  averageRank: number | null; measuredPoints: number; totalPoints: number;
+  prev: null; trend: null; kw: null; reviews: null; comp: null;
+};
+
+export async function buildLocalSeoSummary(db: LocalSeoDb, orgId: string) {
+  let failures = 0; // requetes en erreur : une base indisponible ne doit jamais passer pour « non connecte »
+  const locRow = await db(
+    `SELECT address, city, latitude, longitude FROM organizations WHERE id=$1`, [orgId]
+  ).catch(() => { return { rows: [] as Record<string, unknown>[] }; });
+  const loc = locRow.rows[0];
+  const hasLocation = !!(loc?.latitude || loc?.address);
+  const gbpRow = await db(
+    `SELECT COUNT(*) AS cnt FROM google_tokens WHERE org_id=$1`, [orgId]
+  ).catch(() => { failures++; return { rows: [{ cnt: 0 }] as Record<string, unknown>[] }; });
+  const hasGBP = Number(gbpRow.rows[0]?.cnt ?? 0) > 0;
+
+  let avgRating: number | null = null;
+  let reviewCount: number | null = null;
+  let gbpCount: number | null = null;
+  if (hasGBP) {
+    const agg = await db(
+      `SELECT COUNT(*)::int AS locations,
+              COALESCE(SUM(reviews_count), 0)::int AS review_count,
+              SUM(rating * reviews_count) FILTER (WHERE rating IS NOT NULL AND reviews_count > 0) AS weighted,
+              SUM(reviews_count) FILTER (WHERE rating IS NOT NULL AND reviews_count > 0) AS weight,
+              AVG(rating) FILTER (WHERE rating IS NOT NULL) AS plain_avg
+         FROM google_locations WHERE org_id=$1`, [orgId]
+    ).catch(() => { failures++; return { rows: [] as Record<string, unknown>[] }; });
+    const a = agg.rows[0];
+    const locations = Number(a?.locations ?? 0);
+    if (locations > 0) {
+      gbpCount = locations;
+      const weight = Number(a?.weight ?? 0);
+      if (weight > 0) avgRating = Math.round((Number(a?.weighted) / weight) * 10) / 10;
+      else if (a?.plain_avg != null) avgRating = Math.round(Number(a.plain_avg) * 10) / 10;
+      reviewCount = Number(a?.review_count ?? 0);
+    } else {
+      const rv = await db(
+        `SELECT COUNT(*)::int AS cnt, AVG(rating) AS avg FROM google_reviews WHERE org_id=$1 AND rating IS NOT NULL`, [orgId]
+      ).catch(() => { failures++; return { rows: [] as Record<string, unknown>[] }; });
+      const cnt = Number(rv.rows[0]?.cnt ?? 0);
+      if (cnt > 0) { reviewCount = cnt; avgRating = Math.round(Number(rv.rows[0]?.avg) * 10) / 10; }
+    }
+  }
+
+  // Zones = scans de carte de chaleur reellement mesures (local_heatmaps).
+  const zones: LocalSeoZone[] = [];
+  const hm = await db(
+    `SELECT id, name, keyword, results FROM local_heatmaps
+      WHERE org_id=$1 AND status='completed' ORDER BY created_at DESC LIMIT 20`, [orgId]
+  ).catch(() => { failures++; return { rows: [] as Record<string, unknown>[] }; });
+  for (const row of hm.rows) {
+    let results: unknown = row["results"];
+    if (typeof results === "string") { try { results = JSON.parse(results); } catch { results = null; } }
+    const summary = (results && typeof results === "object" ? (results as Record<string, unknown>)["summary"] : null) as
+      { dominanceScore?: number | null; averageRank?: number | null; measuredPoints?: number; totalPoints?: number } | null;
+    if (!summary || typeof summary.dominanceScore !== "number" || !(Number(summary.measuredPoints) > 0)) continue;
+    zones.push({
+      id: String(row["id"]), name: String(row["name"] || row["keyword"] || "Zone"), keyword: row["keyword"] ? String(row["keyword"]) : null,
+      vis: summary.dominanceScore, dominated: summary.dominanceScore >= 70,
+      averageRank: typeof summary.averageRank === "number" ? summary.averageRank : null,
+      measuredPoints: Number(summary.measuredPoints), totalPoints: Number(summary.totalPoints ?? 0),
+      prev: null, trend: null, kw: null, reviews: null, comp: null,
+    });
+  }
+
+  const hasData = avgRating !== null || reviewCount !== null || zones.length > 0;
+  if (failures > 0 && !hasData) throw new Error("local-seo summary unavailable");
+  const state: "not_connected" | "no_data" | "ok" = hasData ? "ok" : hasGBP ? "no_data" : "not_connected";
+  return {
+    ok: true,
+    configured: hasLocation || hasGBP,
+    hasLocation,
+    hasGBP,
+    gbpConnected: hasGBP,
+    source: hasGBP ? "gbp" : hasLocation ? "manual" : "none",
+    state,
+    avgRating, reviewCount, gbpCount, zones,
+  };
+}
+
+const localSeoSummaryHandler = async (req: import("express").Request, res: import("express").Response) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
-    // Check if GBP/GMB data or location is configured
-    const db = (req as unknown as Record<string, unknown>)["orgDb"] as ((sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) | undefined;
-    if (!db) { res.json({ configured: false, source: "none" }); return; }
-    const locRow = await db(
-      `SELECT address, city, latitude, longitude FROM organizations WHERE id=$1`, [orgId]
-    ).catch(() => ({ rows: [] }));
-    const loc = locRow.rows[0] as Record<string, unknown> | undefined;
-    const hasLocation = !!(loc?.latitude || loc?.address);
-    // Check GBP tokens
-    const gbpRow = await db(
-      `SELECT COUNT(*) AS cnt FROM google_tokens WHERE org_id=$1`, [orgId]
-    ).catch(() => ({ rows: [{ cnt: 0 }] }));
-    const hasGBP = Number((gbpRow.rows[0] as Record<string, unknown>)?.cnt ?? 0) > 0;
-    res.json({
-      ok: true,
-      configured: hasLocation || hasGBP,
-      hasLocation,
-      hasGBP,
-      source: hasGBP ? "gbp" : hasLocation ? "manual" : "none",
-    });
-  } catch { res.json({ ok: false, configured: false, source: "error" }); }
-});
+    const db = (req as unknown as Record<string, unknown>)["orgDb"] as LocalSeoDb | undefined;
+    if (!db) { res.json({ ok: false, configured: false, source: "none", state: "not_connected", avgRating: null, reviewCount: null, zones: [] }); return; }
+    res.json(await buildLocalSeoSummary(db, orgId));
+  } catch {
+    // Etat explicite : l'interface affiche « indisponible », jamais un 0 trompeur.
+    res.status(503).json({ ok: false, configured: false, source: "error", state: "unavailable", avgRating: null, reviewCount: null, zones: [] });
+  }
+};
+router.get("/local-seo", localSeoSummaryHandler);
+router.get("/local-seo/status", localSeoSummaryHandler);
 
 // ── GET /local-seo/citations ──────────────────────────────────────────────────
 // DataForSEO backlinks are not local business citations and cannot prove NAP
