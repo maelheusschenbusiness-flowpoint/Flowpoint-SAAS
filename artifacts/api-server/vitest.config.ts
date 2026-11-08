@@ -196,6 +196,8 @@ export default defineConfig({
       "src/services/ai-attachments.test.ts",
       "src/services/ai-attachments-db.test.ts",
       "src/services/ai-attachment-parser.test.ts",
+      // BOM UTF-8 initial sur un JSON valide : rejete a tort (07/11/2026).
+      "src/services/file-parsers/json-parser.test.ts",
       "src/services/ai-attachment-parser-db.test.ts",
       "src/services/ai-multimodal.test.ts",
       "src/routes/ai-chat-attachments.test.ts",

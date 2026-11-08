@@ -2,6 +2,7 @@
  * json-parser.ts — Parse JSON files from a Buffer.
  *
  * Handles:
+ *   - UTF-8 with and without BOM
  *   - JSON validation (ATTACHMENT_JSON_INVALID on syntax error)
  *   - Depth limit enforcement (ATTACHMENT_JSON_TOO_DEEP when exceeded — distinct code)
  *   - Sensitive key redaction via explicit normalised-key matching
@@ -132,9 +133,17 @@ export function parseJsonBuffer(
   maxDepth: number,
   maxChars: number,
 ): JsonParseResult | JsonParseError {
+  let raw = buf.toString("utf-8");
+
+  // Remove UTF-8 BOM (U+FEFF) — JSON.parse rejects it, but the content is valid.
+  // Same handling as text-parser.ts.
+  if (raw.charCodeAt(0) === 0xFEFF) {
+    raw = raw.slice(1);
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(buf.toString("utf-8")) as unknown;
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return { error: "ATTACHMENT_JSON_INVALID" };
   }
