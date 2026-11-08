@@ -302,6 +302,32 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     const stripe = await createStripeClient(stripeKey);
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
 
+    const orgIdVerify = req.orgId ?? "default";
+
+    // Bind the Stripe Checkout session to this authenticated organization
+    // before reporting ANYTHING (payment status included) or persisting (same rule as #402).
+    // Must stay ahead of the "payment not completed" answer so a foreign session
+    // never leaks its status.
+    const billingCtx = await loadBillingContext(orgIdVerify);
+    const sessionOrgId = String(((session.metadata ?? {}) as Record<string, string>)["orgId"] ?? "").trim();
+    const sessionCustomerId = typeof session.customer === "string"
+      ? session.customer
+      : session.customer && typeof session.customer === "object" && "id" in session.customer
+        ? String(session.customer.id)
+        : "";
+    const metadataOrgMatches = !!sessionOrgId && sessionOrgId === orgIdVerify;
+    const customerMatches = !!sessionCustomerId &&
+      !!billingCtx.stripeCustomerId &&
+      sessionCustomerId === billingCtx.stripeCustomerId;
+    if ((sessionOrgId && !metadataOrgMatches) ||
+        (sessionCustomerId && billingCtx.stripeCustomerId && !customerMatches) ||
+        (!metadataOrgMatches && !customerMatches)) {
+      logger.warn({ sessionId, orgId: orgIdVerify },
+        "[Billing] Checkout verification rejected — session does not match authenticated organization");
+      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation.", code: "SESSION_NOT_OWNED" });
+      return;
+    }
+
     if (session.payment_status !== "paid" && session.status !== "complete") {
       res.status(402).json({ error: "Payment not completed", status: session.status });
       return;
@@ -333,30 +359,6 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       }
     }
 
-    const orgIdVerify = req.orgId ?? "default";
-
-    // Bind the Stripe Checkout session to this authenticated organization
-    // before reporting or persisting anything (same rule as Test-Replit).
-    const ownerCtx = await loadBillingContext(orgIdVerify);
-    const sessionOrgId = String(sessionMeta["orgId"] ?? "").trim();
-    const sessionCustomerId = typeof session.customer === "string"
-      ? session.customer
-      : session.customer && typeof session.customer === "object" && "id" in session.customer
-        ? String(session.customer.id)
-        : "";
-    const metadataOrgMatches = !!sessionOrgId && sessionOrgId === orgIdVerify;
-    const customerMatches = !!sessionCustomerId &&
-      !!ownerCtx.stripeCustomerId &&
-      sessionCustomerId === ownerCtx.stripeCustomerId;
-    if ((sessionOrgId && !metadataOrgMatches) ||
-        (sessionCustomerId && ownerCtx.stripeCustomerId && !customerMatches) ||
-        (!metadataOrgMatches && !customerMatches)) {
-      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify },
-        "[Billing] Checkout verification rejected — session does not match authenticated organization");
-      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation." });
-      return;
-    }
-
     // For AI credits: no plan update needed; webhook already credited the org.
     // Return early with credits info so checkout-return.html can show proper confirmation.
     if (isAiCredits) {
@@ -365,10 +367,15 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       return;
     }
 
-    const planMeta = (sessionMeta["selected_plan"] || sessionMeta["plan"] || "pro").toLowerCase();
-    if (["standard","pro","ultra"].includes(planMeta)) {
-      store.broadcastPlanUpdate(planMeta, orgIdVerify);
+    // No silent "pro" default: an unresolved plan (e.g. an add-on-only session) writes nothing.
+    const planMeta = String(sessionMeta["selected_plan"] || sessionMeta["plan"] || "").trim().toLowerCase();
+    if (!["standard","pro","ultra"].includes(planMeta)) {
+      logger.warn({ checkoutType, orgId: orgIdVerify, httpStatus: 422 },
+        "[Billing] verify: plan absent or invalid in session metadata — nothing persisted");
+      res.status(422).json({ ok: false, error: "Plan introuvable dans la session de paiement.", code: "PLAN_UNRESOLVED", checkoutType });
+      return;
     }
+    store.broadcastPlanUpdate(planMeta, orgIdVerify);
 
     let addonsMeta: Record<string, boolean | number> = {};
     try { addonsMeta = JSON.parse(sessionMeta["addons"] || "{}"); } catch {}
@@ -380,8 +387,6 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     for (const key of QTY_ADDONS) {
       if (addonsMeta[key] !== undefined) activatedAddons[key] = Number(addonsMeta[key] || 0);
     }
-
-    const billingCtx = await loadBillingContext(orgIdVerify);
 
     // Persist billing state to organizations (new source of truth) + mirror to org_settings
     const subscription = typeof session.subscription === "object" && session.subscription
