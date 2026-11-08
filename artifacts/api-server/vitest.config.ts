@@ -160,6 +160,8 @@ export default defineConfig({
       "src/routes/login-request-behavior.test.ts",
       // C-07 — OAuth : state lie au cookie, e-mail verifie, nonce Apple.
       "src/routes/oauth-login-security.test.ts",
+      // A-07/A-08/A-10/A-11 — inscription Google.
+      "src/routes/google-signup-account-guard.test.ts",
       // Mesure du tunnel posee sur la page d'inscription (18/10/2026).
       "src/tests/signin-mesure-tunnel.test.ts",
       "src/services/schema-reconcile-db.test.ts",

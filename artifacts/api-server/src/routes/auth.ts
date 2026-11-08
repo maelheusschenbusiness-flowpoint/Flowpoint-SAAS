@@ -130,7 +130,7 @@ async function resolveOrCreateLegacyOrg({
     if (!resolvedUserUuid) {
       // S3-legacy path: user not yet in `users` — check then insert.
       const existingUser = await client.query<{ id: string }>(
-        `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+        `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
         [email],
       );
       if (existingUser.rows.length > 0) {
@@ -211,7 +211,7 @@ async function resolveOrCreateLegacyOrg({
     // ── Step B: look for an existing UUID org keyed by owner_email ───────────
     const existing = await client.query<{ id: string }>(
       `SELECT id FROM organizations
-        WHERE owner_email = $1 AND status != 'deleted'
+        WHERE lower(owner_email) = lower($1) AND status != 'deleted'
         LIMIT 1`,
       [email],
     );
@@ -2066,6 +2066,45 @@ router.post("/auth/login-verify", (req: Request, res: Response) => {
   return handleLoginVerify(typeof token === "string" ? token : undefined, req, res);
 });
 
+/**
+ * A-07 — un compte deja existant ne doit jamais etre traite comme une nouvelle
+ * inscription par le chemin Google (meme garde que POST /auth/pre-register :
+ * `users` actif + `organization_members` actif).
+ *
+ *  - none     : aucun compte actif (absent, ou `pending` = inscription reprise)
+ *  - member   : membre actif d'une organisation -> connexion avec SON role
+ *  - blocked  : compte existant mais inutilisable (suspendu / sans organisation)
+ */
+export type OAuthExistingAccount =
+  | { kind: "none" }
+  | { kind: "member"; orgId: string; role: string; userUuid: string }
+  | { kind: "blocked"; reason: "suspended" | "no_active_org" };
+
+export async function findExistingAccountForOAuth(email: string): Promise<OAuthExistingAccount> {
+  const normalized = email.toLowerCase().trim();
+  const u = await pool.query<{ id: string; status: string }>(
+    `SELECT id::text AS id, status FROM users WHERE lower(email) = $1 LIMIT 1`,
+    [normalized],
+  );
+  const row = u.rows[0];
+  if (!row || row.status === "pending") return { kind: "none" };
+  if (row.status !== "active") return { kind: "blocked", reason: "suspended" };
+  const m = await pool.query<{ organization_id: string; role: string }>(
+    `SELECT om.organization_id::text AS organization_id, om.role
+       FROM organization_members om
+       JOIN organizations o ON o.id::text = om.organization_id::text
+      WHERE om.user_id = $1::uuid AND om.status = 'active' AND o.status != 'deleted'
+      ORDER BY om.joined_at ASC
+      LIMIT 1`,
+    [row.id],
+  );
+  const mem = m.rows[0];
+  if (!mem || !["owner", "admin", "member", "viewer"].includes(mem.role)) {
+    return { kind: "blocked", reason: "no_active_org" };
+  }
+  return { kind: "member", orgId: mem.organization_id, role: mem.role, userUuid: row.id };
+}
+
 // ── Google OAuth Login (separate from GBP — for account authentication) ──────
 router.get("/auth/google/login", (req: Request, res: Response) => {
   const clientId = process.env["GOOGLE_CLIENT_ID"] || "";
@@ -2166,7 +2205,9 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       res.redirect(withCarriedParams(`${publicUrl}/login.html?error=email_not_verified`, carriedQuery));
       return;
     }
-    const resolvedEmail = user.email;
+    // A-08 : Google peut renvoyer une casse differente de celle stockee — tout le
+    // chemin Google travaille sur l'adresse normalisee.
+    const resolvedEmail = user.email.toLowerCase().trim();
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Google login rejected — email not on allowlist");
       res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, carriedQuery));
@@ -2196,6 +2237,8 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // OAuth must also create a UUID-backed identity before issuing a session:
     // orgContext correctly rejects legacy email-as-orgId sessions.
     let googleIdentity: { orgId: string; userUuid: string };
+    // Role de session : proprietaire par defaut ; le role reel d'un membre existant (A-07).
+    let googleSessionRole = "owner";
     try {
       // ── Fast-path: check organizations table first (new auth system post-migration) ──
       // Users who signed up via magic link only exist in `organizations`/`users`, not in
@@ -2204,7 +2247,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       // selection screen — creating a duplicate Stripe customer.
       const _googleOrgQuery = await pool.query<{ id: string; subscription_status: string | null }>(
         `SELECT id, subscription_status FROM organizations
-          WHERE owner_email = $1 AND status != 'deleted'
+          WHERE lower(owner_email) = $1 AND status != 'deleted'
           LIMIT 1`,
         [resolvedEmail],
       );
@@ -2213,6 +2256,25 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         _googleOrgRow.subscription_status !== null &&
         _googleOrgRow.subscription_status !== "" &&
         _googleOrgRow.subscription_status !== "pending_billing";
+
+      const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
+      // A-07 : garde "compte existant" AVANT toute creation de signup (meme garde
+      // que pre-register : users actif + organization_members). Ne s'applique
+      // pas a un proprietaire deja active (org detenue) ni a un historique
+      // deja active dans org_settings.
+      let _preloadedGoogleOrg: Awaited<ReturnType<typeof loadOrgSettings>> | null = null;
+      let _acct: OAuthExistingAccount = { kind: "none" };
+      if (!_googleIsActivated) {
+        _preloadedGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+        const _legacyActivated = !!_preloadedGoogleOrg?.subscriptionStatus &&
+          _preloadedGoogleOrg.subscriptionStatus !== "pending_billing";
+        if (!_legacyActivated) _acct = await findExistingAccountForOAuth(resolvedEmail);
+        if (_acct.kind === "blocked") {
+          logger.warn({ reason: _acct.reason }, "[Auth] Google login — existing account cannot start a signup");
+          res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${_acct.reason === "suspended" ? "access_denied" : "no_active_org"}`, carriedQuery));
+          return;
+        }
+      }
 
       if (_googleIsActivated) {
         // Existing activated org — resolve identity directly, no pending_billing redirect.
@@ -2226,10 +2288,13 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
           orgSettings: null,
           authProvider: "google",
         });
+      } else if (_acct.kind === "member") {
+        logger.info({ role: _acct.role }, "[Auth] Google login — existing member, signup flow bypassed");
+        googleIdentity = { orgId: _acct.orgId, userUuid: _acct.userUuid };
+        googleSessionRole = _acct.role;
       } else {
         // ── Legacy / new-signup path: check org_settings, then apply pending_billing gate ──
-        const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
-        const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+        const _existingGoogleOrg = _preloadedGoogleOrg;
         if (_existingGoogleOrg) {
           // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
           await upsertOrgSettings(resolvedEmail, {
@@ -2267,10 +2332,14 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
           try {
             const _gpClient = await pool.connect();
             try {
-              // Invalidate any existing non-consumed pending signup for this email
+              // UPDATE (invalider l'ancien jeton) puis INSERT dans UNE transaction,
+              // serialisee par e-mail : deux callbacks simultanes ne peuvent plus
+              // laisser l'e-mail sans jeton valide ni creer deux lignes actives.
+              await _gpClient.query("BEGIN");
+              await _gpClient.query(`SELECT pg_advisory_xact_lock(hashtext(lower($1)))`, [resolvedEmail]);
               const _gpInvalidated = await _gpClient.query<{ fp_lid: string | null }>(
                 `UPDATE pending_signups SET consumed_at = NOW()
-                 WHERE email = $1 AND consumed_at IS NULL
+                 WHERE lower(email) = lower($1) AND consumed_at IS NULL
                  RETURNING fp_lid`,
                 [resolvedEmail],
               );
@@ -2278,37 +2347,53 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               const _gpFpLid = ((_gpInvalidated?.rows ?? []) as { fp_lid?: string | null }[])
                 .map(r => normalizeFpLid(r.fp_lid))
                 .find((v): v is string => v !== null) ?? fpLidFromState;
-              // Insert a fresh pending_signups row
               googlePreRegToken = generateToken();
+              // A-10 : Google ne fournit ni pays, ni adresse, ni ville, ni code postal.
+              // Ils restent NULL (colonnes nullables) : plus de 'FR' / '—' / '00000'
+              // recopies ensuite comme une vraie adresse dans org_settings, et
+              // `locationConfigured` n'est plus faussement vrai.
               await _gpClient.query(
                 `INSERT INTO pending_signups
                    (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,$7,NOW(),NOW() + INTERVAL '2 hours')
-                 ON CONFLICT (token) DO NOTHING`,
+                 VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours')`,
                 // company_name left blank — Google signup carries no company information
                 [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
               );
-              logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
+              await _gpClient.query("COMMIT");
+              logger.info("[Auth] Google signup — pending_signups record created for checkout");
+            } catch (txErr) {
+              await _gpClient.query("ROLLBACK").catch(() => {});
+              googlePreRegToken = "";
+              // 23505 : un callback concurrent a insere sa ligne entre-temps — l'utilisateur
+              // peut simplement recommencer (meme erreur "retry" que les autres echecs).
+              if ((txErr as { code?: string }).code === "23505") {
+                logger.warn("[Auth] Google signup — concurrent pending_signups insert (23505), user asked to retry");
+              }
+              throw txErr;
             } finally {
               _gpClient.release();
             }
           } catch (preRegErr) {
-            logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
+            logger.error({ err: preRegErr }, "[Auth] Google signup — pending_signups creation failed (fatal)");
             res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, carriedQuery));
             return;
           }
           if (!googlePreRegToken) {
-            logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
+            logger.error("[Auth] Google signup — pre_reg_token is empty after insert, aborting");
             res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, carriedQuery));
             return;
           }
           const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
-          const emailParam = encodeURIComponent(resolvedEmail);
-          const firstParam = encodeURIComponent(googleFirstName);
-          const lastParam  = encodeURIComponent(googleLastName);
           const tokenParam = encodeURIComponent(googlePreRegToken);
+          // A-11 : l'adresse e-mail et le nom ne figurent plus dans l'URL (historique,
+          // Referer, journaux). signin.html ne lisait que google_signup + pre_reg_token ;
+          // le jeton lui-meme reste dans l'URL (contrat inchange) et est retire de la
+          // barre d'adresse par le front des l'arrivee (history.replaceState + sessionStorage).
+          // La reponse n'est ni mise en cache ni accompagnee d'un Referer.
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Referrer-Policy", "no-referrer");
           res.redirect(
-            `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+            `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&pre_reg_token=${tokenParam}`,
           );
           return;
         }
@@ -2332,7 +2417,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Direct OAuth login = org creator → owner role.
     const sessionToken = await createSession({
       userId: googleIdentity.userUuid, orgId: googleIdentity.orgId, userUuid: googleIdentity.userUuid,
-      email: resolvedEmail, role: "owner",
+      email: resolvedEmail, role: googleSessionRole,
        ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
