@@ -16735,10 +16735,45 @@ function render() {
   if (_renderTimer) clearTimeout(_renderTimer);
   _renderTimer = setTimeout(() => { _renderTimer = null; _doRender(); }, 30);
 }
+// ── Banniere d'etat d'acces : lecture seule / grace past_due / annulation programmee ──
+// Source : /api/me (accessMode, accessReason, graceEndsAt, cancelAtPeriodEnd, currentPeriodEnd).
+// Textes FR/EN via fp-locale.js (fpAccessText), repli anglais pour les autres langues.
+function fpSyncAccessBanner() {
+  const me = STATE.me || {};
+  const T = window.fpAccessText || function () { return ''; };
+  let title = '', body = '';
+  if (me.accessMode === 'read_only') {
+    title = T('readOnlyTitle');
+    body = (String(me.accessReason || '').indexOf('past_due') === 0) ? T('readOnlyPastDue') : T('readOnlyBody');
+  } else if (me.accessMode === 'full' && me.accessReason === 'past_due_grace' && me.graceEndsAt) {
+    title = T('graceTitle'); body = T('graceBody', { date: fmtDate(me.graceEndsAt) });
+  } else if (me.accessMode === 'full' && me.cancelAtPeriodEnd && me.currentPeriodEnd) {
+    title = T('cancelTitle'); body = T('cancelBody', { date: fmtDate(me.currentPeriodEnd) });
+  }
+  let el = document.getElementById('fp-access-banner');
+  document.body.classList.toggle('fp-read-only', me.accessMode === 'read_only');
+  if (!title) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fp-access-banner';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'position:sticky;top:0;z-index:9000;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 16px;background:#78350f;color:#fffbeb;font:13px/1.45 system-ui,sans-serif;border-bottom:1px solid #f59e0b';
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.replaceChildren();
+  const strong = document.createElement('strong'); strong.textContent = title;
+  const span = document.createElement('span'); span.textContent = body; span.style.flex = '1';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.textContent = T('action');
+  btn.style.cssText = 'padding:5px 12px;border:1px solid #fbbf24;border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
+  btn.addEventListener('click', function () { try { navigate('billing'); } catch (_) { window.location.href = '/pricing.html'; } });
+  el.append(strong, span, btn);
+}
 let _fpLastRenderedKey = null;
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
+  try { fpSyncAccessBanner(); } catch (_) {}
 
   // Route-change detection: the overlay spinner + loading bar are ONLY for real
   // navigation. Background data refreshes re-render the same route — showing the

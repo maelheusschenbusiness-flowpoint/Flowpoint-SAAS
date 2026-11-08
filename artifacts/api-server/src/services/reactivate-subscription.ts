@@ -104,7 +104,7 @@ export async function reactivateSubscriptionAfterLogin(
 
     if (activeSubs.data.length > 0) {
       await pool.query(
-        `UPDATE organizations SET subscription_status = 'active' WHERE id = $1`,
+        `UPDATE organizations SET subscription_status = 'active', past_due_since = NULL WHERE id = $1`,
         [orgId]
       );
       logger.info({ orgId, caller, subId: activeSubs.data[0].id },
@@ -113,7 +113,7 @@ export async function reactivateSubscriptionAfterLogin(
     }
     if (trialSubs.data.length > 0) {
       await pool.query(
-        `UPDATE organizations SET subscription_status = 'trialing' WHERE id = $1`,
+        `UPDATE organizations SET subscription_status = 'trialing', past_due_since = NULL WHERE id = $1`,
         [orgId]
       );
       logger.info({ orgId, caller, subId: trialSubs.data[0].id },
@@ -139,7 +139,9 @@ export async function reactivateSubscriptionAfterLogin(
       });
       const fpStatus = cancelPendingSub.status === "trialing" ? "trialing" : "active";
       await pool.query(
-        `UPDATE organizations SET subscription_status = $1 WHERE id = $2`,
+        `UPDATE organizations SET subscription_status = $1,
+                past_due_since = CASE WHEN $1 IN ('active','trialing') THEN NULL ELSE past_due_since END
+          WHERE id = $2`,
         [fpStatus, orgId]
       );
       logger.info(
@@ -207,7 +209,9 @@ export async function reactivateSubscriptionAfterLogin(
     const fpStatus = stripeStatusToFP(newSub.status);
     if (fpStatus) {
       await pool.query(
-        `UPDATE organizations SET subscription_status = $1 WHERE id = $2`,
+        `UPDATE organizations SET subscription_status = $1,
+                past_due_since = CASE WHEN $1 IN ('active','trialing') THEN NULL ELSE past_due_since END
+          WHERE id = $2`,
         [fpStatus, orgId]
       );
       logger.info(

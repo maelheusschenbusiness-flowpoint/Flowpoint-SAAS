@@ -1532,6 +1532,15 @@ export async function initDataTables(): Promise<void> {
     // se renouvelle » de « actif qui s'arrete le <date> ».
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cancel_at TIMESTAMPTZ;`);
+    // Debut de l'episode past_due (grace PAST_DUE_GRACE_DAYS — lib/subscription-state.ts
+    // resolveAccessMode). Pose une fois par le webhook invoice.payment_failed
+    // (COALESCE dans persistOrgData), remise a NULL au retour active/trialing.
+    // NOTE DEPLOIEMENT : ce demarrage ajoute la colonne au premier deploiement.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS past_due_since TIMESTAMPTZ;`);
+    // Organisations DEJA past_due avant la regle : leur grace part de CE premier
+    // demarrage (jamais un basculement brutal en lecture seule). Ne touche que
+    // les lignes sans horodatage ; idempotent (une fois posee, la valeur reste).
+    await run(client, `UPDATE organizations SET past_due_since = NOW() WHERE subscription_status = 'past_due' AND past_due_since IS NULL;`);
     // Colonnes lues par loadOrgData() mais creees jusqu'ici uniquement par
     // migrations/*.sql — qui ne s'executent pas en production. Sur une base
     // posee par initDataTables seul, le SELECT de loadOrgData echouait, donc

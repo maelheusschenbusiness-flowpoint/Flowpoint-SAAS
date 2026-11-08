@@ -32,10 +32,10 @@ const agoDays = (n: number) => new Date(Date.now() - n * 86400_000).toISOString(
 type Outcome = { nexted: boolean; status: number | null; body: Record<string, unknown> | null };
 type Gate = (req: Request, res: Response, next: NextFunction) => unknown;
 
-async function run(gate: Gate, orgId: string): Promise<Outcome> {
+async function run(gate: Gate, orgId: string, method = "GET"): Promise<Outcome> {
   const out: Outcome = { nexted: false, status: null, body: null };
   await new Promise<void>((resolve) => {
-    const req = { url: "/permissions/roles", path: "/permissions/roles", method: "GET", orgId, headers: {} } as unknown as Request;
+    const req = { url: "/permissions/roles", path: "/permissions/roles", method, orgId, headers: {} } as unknown as Request;
     const res = {
       status(code: number) { out.status = code; return this; },
       json(payload: Record<string, unknown>) { out.body = payload; resolve(); return this; },
@@ -46,14 +46,15 @@ async function run(gate: Gate, orgId: string): Promise<Outcome> {
   return out;
 }
 
-async function setOrg(o: { plan?: string; status: string | null; sub?: string | null; trialEnds?: string | null; periodEnd?: string | null; consumed?: boolean }) {
+async function setOrg(o: { plan?: string; status: string | null; sub?: string | null; trialEnds?: string | null; periodEnd?: string | null; consumed?: boolean; pastDueSince?: string | null }) {
   await pool.query(
     `UPDATE organizations
         SET plan = $2, subscription_status = $3, stripe_subscription_id = $4, stripe_customer_id = 'cus_gate',
             trial_ends_at = $5, current_period_end = $6,
-            trial_consumed_at = CASE WHEN $7::boolean THEN NOW() - INTERVAL '30 days' ELSE NULL END
+            trial_consumed_at = CASE WHEN $7::boolean THEN NOW() - INTERVAL '30 days' ELSE NULL END,
+            past_due_since = $8
       WHERE id = $1::uuid`,
-    [ORG, o.plan ?? "pro", o.status, o.sub ?? null, o.trialEnds ?? null, o.periodEnd ?? null, o.consumed ?? true]);
+    [ORG, o.plan ?? "pro", o.status, o.sub ?? null, o.trialEnds ?? null, o.periodEnd ?? null, o.consumed ?? true, o.pastDueSince ?? null]);
 }
 
 beforeAll(async () => {
@@ -82,22 +83,26 @@ const GATES: Array<[string, () => Gate]> = [
 const OPEN: Array<[string, Parameters<typeof setOrg>[0]]> = [
   ["actif", { status: "active", sub: "sub_1" }],
   ["essai Stripe en cours", { status: "trialing", sub: "sub_1", trialEnds: inDays(7) }],
-  ["past_due DANS la periode payee (grace bornee)", { status: "past_due", sub: "sub_1", periodEnd: inDays(5) }],
+  ["past_due DANS la grace (depuis 1 jour)", { status: "past_due", sub: "sub_1", periodEnd: inDays(5), pastDueSince: agoDays(1) }],
   ["annule avec periode payee restante", { status: "canceled", sub: "sub_1", periodEnd: inDays(5) }],
 ];
 
+/** Aucun abonnement paye : blocage total (402 SUBSCRIPTION_REQUIRED, meme en lecture). */
 const CLOSED: Array<[string, Parameters<typeof setOrg>[0]]> = [
   ["essai expire sans abonnement", { status: "trialing", sub: null, trialEnds: agoDays(2) }],
-  ["past_due HORS periode payee", { status: "past_due", sub: "sub_1", periodEnd: agoDays(2) }],
-  ["past_due sans date de periode", { status: "past_due", sub: "sub_1", periodEnd: null }],
-  ["unpaid hors periode", { status: "unpaid", sub: "sub_1", periodEnd: agoDays(1) }],
-  ["paused sans periode", { status: "paused", sub: "sub_1" }],
-  ["annule, periode terminee", { status: "canceled", sub: "sub_1", periodEnd: agoDays(3) }],
-  ["annule sans date de periode", { status: "canceled", sub: "sub_1" }],
   ["expire (statut brut inconnu)", { status: "expired", sub: null }],
   ["incomplete", { status: "incomplete", sub: null }],
   ["pending_billing", { status: "pending_billing", sub: null, consumed: false }],
   ["statut nul", { status: null, sub: null, consumed: false }],
+];
+
+/** Abonnement paye puis interrompu : LECTURE SEULE (GET passe, ecriture 402 SUBSCRIPTION_READ_ONLY). */
+const READ_ONLY: Array<[string, Parameters<typeof setOrg>[0]]> = [
+  ["past_due HORS grace (periode Stripe future mais impayee)", { status: "past_due", sub: "sub_1", periodEnd: inDays(20), pastDueSince: agoDays(4) }],
+  ["unpaid hors periode", { status: "unpaid", sub: "sub_1", periodEnd: agoDays(1) }],
+  ["paused sans periode", { status: "paused", sub: "sub_1" }],
+  ["annule, periode terminee", { status: "canceled", sub: "sub_1", periodEnd: agoDays(3) }],
+  ["annule sans date de periode", { status: "canceled", sub: "sub_1" }],
 ];
 
 describe.each(GATES)("planGate %s", (_label, makeGate) => {
@@ -115,6 +120,26 @@ describe.each(GATES)("planGate %s", (_label, makeGate) => {
     expect(out.nexted).toBe(false);
     expect(out.status).toBe(402);
     expect(out.body).toMatchObject({ code: "SUBSCRIPTION_REQUIRED", ok: false });
+    expect(out.body).toHaveProperty("subscriptionStatus");
+    expect(out.body).toHaveProperty("billingUrl");
+  });
+});
+
+describe.each(GATES)("planGate %s — lecture seule", (_label, makeGate) => {
+  it.each(READ_ONLY)("%s : GET autorise", async (_n, state) => {
+    if (!dbUp) return expect(dbUp).toBe(false);
+    await setOrg(state);
+    const out = await run(makeGate(), ORG, "GET");
+    expect({ nexted: out.nexted, status: out.status }).toEqual({ nexted: true, status: null });
+  });
+
+  it.each(READ_ONLY)("%s : POST => 402 SUBSCRIPTION_READ_ONLY", async (_n, state) => {
+    if (!dbUp) return expect(dbUp).toBe(false);
+    await setOrg(state);
+    const out = await run(makeGate(), ORG, "POST");
+    expect(out.nexted).toBe(false);
+    expect(out.status).toBe(402);
+    expect(out.body).toMatchObject({ code: "SUBSCRIPTION_READ_ONLY", ok: false, readOnly: true });
     expect(out.body).toHaveProperty("subscriptionStatus");
     expect(out.body).toHaveProperty("billingUrl");
   });
@@ -138,9 +163,11 @@ describe("planGate — plan inconnu et plan 'agency'", () => {
     expect((await run(requirePlan("ultra"), ORG)).nexted).toBe(true);
     expect((await run(requireFeature("multiLocation", "Multi-location"), ORG)).nexted).toBe(true);
     await setOrg({ plan: "agency", status: "canceled", sub: "sub_1", periodEnd: agoDays(1) });
-    const out = await run(requirePlan("ultra"), ORG);
+    // Annule hors periode : lecture seule (lecture passe, ecriture refusee).
+    expect((await run(requirePlan("ultra"), ORG, "GET")).nexted).toBe(true);
+    const out = await run(requirePlan("ultra"), ORG, "POST");
     expect(out.status).toBe(402);
-    expect(out.body).toMatchObject({ code: "SUBSCRIPTION_REQUIRED" });
+    expect(out.body).toMatchObject({ code: "SUBSCRIPTION_READ_ONLY" });
   });
 });
 

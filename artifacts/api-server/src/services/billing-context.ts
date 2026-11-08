@@ -11,7 +11,8 @@
 import { pool } from "@workspace/db";
 import { PLAN_INCLUDED_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { loadOrgData } from "./org-data.js";
-import { normalizeSubscriptionStatus, statusGrantsAccess, grantsPaidAccess, paidPeriodStillValid } from "../lib/subscription-state.js";
+import { normalizeSubscriptionStatus, statusGrantsAccess, resolveAccessMode, type AccessMode, type AccessReason } from "../lib/subscription-state.js";
+import { getAccessConfig } from "../lib/access-config.js";
 import { logger } from "../lib/logger.js";
 
 export interface BillingContext {
@@ -60,8 +61,18 @@ export interface BillingContext {
    * avant la fin de la periode facturee). Source unique : grantsPaidAccess().
    */
   hasPaidAccess: boolean;
-  /** true quand l'acces ne tient qu'a la periode deja payee */
+  /** true quand l'acces ne tient qu'a la periode deja payee ou a la grace past_due */
   inPaidGracePeriod: boolean;
+  /** Decision UNIQUE (resolveAccessMode) : full | read_only | blocked */
+  accessMode: AccessMode;
+  /** Raison machine de la decision (ex. past_due_grace_expired) */
+  accessReason: AccessReason;
+  /** true en lecture seule (annulation echue / past_due hors grace) */
+  readOnly: boolean;
+  /** Debut de l'episode past_due (ISO) */
+  pastDueSince: string | null;
+  /** Fin de grace past_due (ISO) quand le compte est past_due */
+  graceEndsAt: string | null;
   /**
    * true quand le compte n'a jamais consommé de trial ET n'a pas d'historique Stripe.
    * Calculé à partir de trialConsumedAt IS NULL AND stripeSubscriptionId IS NULL.
@@ -180,10 +191,18 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   const currentPeriodEnd    = orgData.currentPeriodEnd ?? null;
   const cancelAtPeriodEnd   = orgData.cancelAtPeriodEnd === true;
   const cancelAt            = orgData.cancelAt ?? null;
-  const hasPremiumAccess    = statusGrantsAccess(normalised);
-  const hasPaidAccess       = isQaOrg || grantsPaidAccess({ status: normalised, currentPeriodEnd });
-  const inPaidGracePeriod   = !hasPremiumAccess && hasPaidAccess
-                              && paidPeriodStillValid(normalised, currentPeriodEnd);
+  const pastDueSince        = orgData.pastDueSince ?? null;
+  // SOURCE UNIQUE de la decision d'acces : resolveAccessMode (lib/subscription-state.ts).
+  const decision = isQaOrg
+    ? { mode: "full" as AccessMode, reason: "trialing" as AccessReason, graceEndsAt: null as string | null }
+    : resolveAccessMode(
+        { status: normalised, currentPeriodEnd, cancelAtPeriodEnd, pastDueSince },
+        new Date(),
+        getAccessConfig(),
+      );
+  const hasPaidAccess       = decision.mode === "full";
+  const hasPremiumAccess    = hasPaidAccess && statusGrantsAccess(normalised);
+  const inPaidGracePeriod   = hasPaidAccess && !hasPremiumAccess;
   const canStartTrial       = !isQaOrg && !trialConsumedAt && !stripeSubscriptionId;
   // Le client doit regulariser des que l'acces ne vient plus d'un abonnement
   // vivant — y compris pendant la periode payee restante, qui expire bientot.
@@ -209,6 +228,11 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     hasPremiumAccess,
     hasPaidAccess,
     inPaidGracePeriod,
+    accessMode:            decision.mode,
+    accessReason:          decision.reason,
+    readOnly:              decision.mode === "read_only",
+    pastDueSince,
+    graceEndsAt:           decision.graceEndsAt ?? null,
     canStartTrial,
     mustCompleteBilling,
   };
