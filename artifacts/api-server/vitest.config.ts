@@ -13,6 +13,8 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/services/stripe-factory.test.ts",
+      // B-01 : quota d'exports compte sur usage_events (colonne kind) en base reelle.
+      "src/services/export-quota-db.test.ts",
       "src/routes/admin-test-session.test.ts",
       "src/services/render-test-migration-guard.test.ts",
        "src/routes/admin-test-session-postgres.test.ts",
