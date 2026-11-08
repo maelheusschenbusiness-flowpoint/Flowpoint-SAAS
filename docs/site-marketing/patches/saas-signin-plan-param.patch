@@ -1,0 +1,30 @@
+--- a/artifacts/flowpoint-export/signin.html	2026-11-08 12:28:30.825672796 +0000
++++ b/artifacts/flowpoint-export/signin.html	2026-11-08 12:28:30.837947597 +0000
+@@ -728,6 +728,27 @@
+       sessionStorage.setItem('fp_lid', fpLidValue);
+     }
+   } catch (_) {}
++  /* Site marketing → ?plan=standard|pro|ultra (boutons de tarifs de flowpoint.pro).
++     Contrat : seules les trois valeurs exactes sont acceptées (insensible à la
++     casse), tout le reste est ignoré sans effet. Le plan est placé dans fp_cart
++     (mêmes clés que pricing.html : plan, addons, _v, _updatedAt) ; fpCartPlan()
++     le relit ensuite : écran de choix sauté, plan transmis au lien Google.
++     Pas de prix, d'essai ni de règle carte modifiés. Ignoré au retour du
++     callback Google (?google_signup=1), qui porte son propre ?plan=. */
++  (function () {
++    if (googleSignupParam === '1') return;
++    var wantedPlan = (urlParams.get('plan') || '').trim().toLowerCase();
++    if (FP_PLANS.indexOf(wantedPlan) === -1) return;
++    try {
++      var siteCart = JSON.parse(localStorage.getItem('fp_cart') || 'null');
++      siteCart = siteCart && typeof siteCart === 'object' ? siteCart : {};
++      siteCart.plan = wantedPlan;
++      siteCart.addons = siteCart.addons && typeof siteCart.addons === 'object' ? siteCart.addons : {};
++      siteCart._v = 1;
++      siteCart._updatedAt = Date.now();
++      localStorage.setItem('fp_cart', JSON.stringify(siteCart));
++    } catch (_) {}
++  })();
+   /* Lien Google : /api/auth/google/login?plan=…&seller_code=…&fp_lid=…
+      Le plan choisi sur pricing.html (fp_cart) voyage avec le lien pour que le
+      callback le renvoie ici (?plan=…) et que l'écran de choix soit sauté. */
