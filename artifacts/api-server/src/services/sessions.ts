@@ -21,11 +21,12 @@ export interface SessionData {
   userUuid?: string;
 }
 
-// C-15 : plus de secret de repli code en dur hors tests (resolveJwtSecret leve).
-const JWT_SECRET = resolveJwtSecret();
+// C-15 : plus de secret de repli code en dur hors tests. Resolution paresseuse
+// (au premier usage) : index.ts / lib/env.ts echouent deja au demarrage, et un
+// import ne doit pas lever dans les tests qui ne signent rien.
 
 function signToken(payload: string): string {
-  return createHmac("sha256", JWT_SECRET).update(payload).digest("hex");
+  return createHmac("sha256", resolveJwtSecret()).update(payload).digest("hex");
 }
 
 function makeToken(userId: string, orgId: string): string {

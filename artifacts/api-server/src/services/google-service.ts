@@ -42,13 +42,14 @@ export const GOOGLE_INTEGRATION_SCOPE_SET = new Set<string>(GOOGLE_INTEGRATION_S
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
-const ENC_KEY = createHash("sha256")
-  .update(resolveJwtSecret())
-  .digest();
+// C-15 : cle derivee paresseusement, sans repli code en dur hors tests.
+function encKey(): Buffer {
+  return createHash("sha256").update(resolveJwtSecret()).digest();
+}
 
 export function encryptToken(token: string): string {
   const iv     = randomBytes(16);
-  const cipher = createCipheriv("aes-256-gcm", ENC_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", encKey(), iv);
   const enc    = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
   const tag    = cipher.getAuthTag();
   return [iv.toString("hex"), enc.toString("hex"), tag.toString("hex")].join(":");
@@ -59,7 +60,7 @@ export function decryptToken(encrypted: string): string {
   const iv       = Buffer.from(ivHex, "hex");
   const encBuf   = Buffer.from(encHex, "hex");
   const tag      = Buffer.from(tagHex, "hex");
-  const decipher = createDecipheriv("aes-256-gcm", ENC_KEY, iv);
+  const decipher = createDecipheriv("aes-256-gcm", encKey(), iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(encBuf), decipher.final()]).toString("utf8");
 }
