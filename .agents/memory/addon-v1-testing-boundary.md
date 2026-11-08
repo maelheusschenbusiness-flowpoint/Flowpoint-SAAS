@@ -22,3 +22,15 @@ For Global Monitoring, certify only with an existing, authorized QA monitor. Do 
 **Why:** the user explicitly set these certification and purchase boundaries; synthetic UI checks are not evidence of a real provider integration.
 
 **How to apply:** use only an existing authorized QA monitor. If none is identified, record the blocker and continue with another add-on. Preserve the `coming_soon` gate for Global Monitoring and Agency Reporting Packs until their stated conditions are met.
+
+For add-on webhook certification, replay Stripe TEST-created events locally with valid and invalid signatures against the loopback-only test server. Do not expose that server through a public tunnel or claim external Stripe delivery was tested without explicit authorization.
+
+**Why:** the certification must stay isolated from Production and Stripe LIVE; local signed replay verifies webhook handling without adding public ingress.
+
+**How to apply:** use the disposable local database and TEST credentials in the certification runner, and state that provider-delivered webhook transport is not covered.
+
+Use `docs/beta2-addon-matrix.md` as the single source of truth for the 24 modules. Preserve the historical 8/24 attribution; only claim a new certification from actual evidence, and never count individual test scenarios as separately certified add-ons.
+
+**Why:** the user explicitly requires real validations to be tracked without double counting.
+
+**How to apply:** update each module's matrix row with the evidence and its limits, distinguish mocked/synthetic checks from complete certification, and change the certified total only when a new module meets its full criteria.

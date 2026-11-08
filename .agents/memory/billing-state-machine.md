@@ -1,6 +1,6 @@
 ---
 name: Billing state-machine corrections
-description: 9 structural billing fixes applied — patterns for subscription status, trial, addons, checkout auth, and cart versioning.
+description: Billing state-machine rules, including account-wide Stripe history checks before granting trials.
 ---
 
 ## Correction 1 — Status key mismatch
@@ -42,6 +42,13 @@ Set _orgId from `/api/me` email field (async after page load).
 - Set by webhook on `customer.subscription.created` + `status=trialing` (idempotent: skipped if already set).
 - NULL = account has never had a real Stripe trial → `canStartTrial=true`.
 - Non-null = trial already used → `canStartTrial=false`, "14j offerts" badge hidden in checkout.html.
+
+## Trial history gate
+Checkout derives trial eligibility from the signup email or authenticated account, then checks current and legacy account markers plus Stripe customers and their subscription history. A valid pre-registration token takes precedence over a stale browser session. Finalization rechecks eligibility; any unavailable history lookup fails closed and grants no trial.
+
+**Why:** A person can have prior canceled subscriptions or another Stripe customer record even when the current organization has no local subscription marker.
+
+**How to apply:** Keep the identity used for the quote, PaymentIntent, and finalization aligned. Never trust a client-supplied trial flag or assume an anonymous pre-registration is automatically a new customer.
 
 ## Direct plan changes
 - Active/trialing plan buttons call the authenticated upgrade endpoint directly; they must never send an existing subscriber through Checkout.

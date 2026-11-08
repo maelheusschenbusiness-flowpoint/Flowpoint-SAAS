@@ -216,7 +216,14 @@ describe("payment-intent: which identity pays", () => {
     const r1 = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     const r2 = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S2 });
     expect([r1.status, r2.status]).toEqual([200, 200]);
-    expect(fake.customersListed.map((l) => l.email)).toEqual([NEW_EMAIL, "other.signup@exemple.fr"]);
+    // Each signup email is checked once for prior trial history and once when
+    // resolving the canonical Stripe Customer for the PaymentIntent.
+    expect(fake.customersListed.map((l) => l.email)).toEqual([
+      NEW_EMAIL,
+      NEW_EMAIL,
+      "other.signup@exemple.fr",
+      "other.signup@exemple.fr",
+    ]);
     expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL, "other.signup@exemple.fr"]);
     expect(intentCustomers(fake)).not.toContain(OLD_CUSTOMER);
   });

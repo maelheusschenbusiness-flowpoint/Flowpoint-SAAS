@@ -12,6 +12,7 @@ import { publicCheckoutRateLimit, funnelEventRateLimit } from "../middlewares/ra
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { hasStripeSubscriptionHistory } from "../services/stripe-trial-history.js";
 import {
   subscriptionAttemptKey,
   claimSubscriptionCreation,
@@ -529,19 +530,88 @@ function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
  * Stripe is about to take.
  */
 async function resolveTrialEligibility(req: Request): Promise<boolean> {
-  const authOrgId = (req as Request & { orgId?: string }).orgId;
-  if (authOrgId && authOrgId !== "default") {
-    try {
+  const preRegisterToken =
+    typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  const customerIds = new Set<string>();
+  let email = "";
+
+  try {
+    const { pool } = await import("@workspace/db");
+    let signupIdentityResolved = false;
+
+    // A valid signup token outranks a stale browser session. The token's email
+    // is checked against all existing account and Stripe history before a trial
+    // can be quoted or added to a hosted Checkout Session.
+    if (preRegisterToken) {
+      const signup = await pool.query<{ email: string; stripe_customer_id: string | null }>(
+        `SELECT email, stripe_customer_id
+         FROM pending_signups
+         WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL
+         LIMIT 1`,
+        [preRegisterToken],
+      );
+      const row = signup.rows[0];
+      if (row?.email) {
+        signupIdentityResolved = true;
+        email = row.email;
+        if (row.stripe_customer_id) customerIds.add(row.stripe_customer_id);
+      }
+    }
+
+    // Invalid/expired signup tokens follow the existing identity rule: use a
+    // valid session if present. Resolve the session explicitly because this
+    // router runs before the normal org-context middleware.
+    if (!signupIdentityResolved) {
+      const authOrgId = await resolvePublicBillingOrgId(req);
+      if (!authOrgId || authOrgId === "default") return false;
       const { loadBillingContext } = await import("../services/billing-context.js");
       const ctx = await loadBillingContext(authOrgId);
-      return ctx.canStartTrial === true;
-    } catch (err) {
-      logger.warn({ err, orgId: authOrgId }, "[PublicBilling] trial eligibility lookup failed — quoting without trial");
-      return false;
+      if (!ctx.canStartTrial || !ctx.email) return false;
+      email = ctx.email;
+      if (ctx.stripeCustomerId) customerIds.add(ctx.stripeCustomerId);
     }
+
+    const existingOrgs = await pool.query<{
+      stripe_customer_id: string | null;
+      stripe_subscription_id: string | null;
+      trial_consumed_at: string | null;
+    }>(
+      `SELECT stripe_customer_id, stripe_subscription_id, trial_consumed_at
+       FROM organizations
+       WHERE lower(owner_email) = lower($1)`,
+      [email],
+    );
+    for (const existing of existingOrgs.rows) {
+      if (existing.trial_consumed_at || existing.stripe_subscription_id) return false;
+      if (existing.stripe_customer_id) customerIds.add(existing.stripe_customer_id);
+    }
+
+    // Older accounts may still have email-keyed billing state. It is history,
+    // not a new signup, and must also be included in the customer lookup.
+    const legacyOrgs = await pool.query<{
+      stripe_customer_id: string | null;
+      stripe_subscription_id: string | null;
+      trial_consumed_at: string | null;
+    }>(
+      `SELECT stripe_customer_id, stripe_subscription_id, trial_consumed_at
+       FROM org_settings
+       WHERE lower(org_id) = lower($1)`,
+      [email],
+    );
+    for (const existing of legacyOrgs.rows) {
+      if (existing.trial_consumed_at || existing.stripe_subscription_id) return false;
+      if (existing.stripe_customer_id) customerIds.add(existing.stripe_customer_id);
+    }
+
+    const stripeKey = getStripeKey();
+    if (!stripeKey) return false;
+    const stripe = await createStripeClient(stripeKey);
+    return !(await hasStripeSubscriptionHistory(stripe, { email, customerIds: [...customerIds] }));
+  } catch (err) {
+    logger.warn({ reason: "trial_history_unavailable" },
+      "[PublicBilling] trial eligibility could not verify account history — no trial");
+    return false;
   }
-  /* Anonymous / pre-registration: a new account has no subscription history. */
-  return true;
 }
 
 /**
@@ -2540,9 +2610,22 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       return;
     }
 
-    // Grant trial when there is no prior subscription history AND the intent carries trial days > 0.
-    // When trial_days_remaining === 0 the user's trial has already expired — bill immediately.
-    const grantTrial = !hasSubscriptionHistory && intentTrialDays > 0;
+    // Re-check the same account/email history at finalization. A quote or intent
+    // can be stale, and the customer may have another Stripe customer record
+    // with a canceled subscription. A valid pre-registration token remains
+    // authoritative, but never revive one carried by a stale UUID session.
+    const _trialTokenForFinalize = _UUID_RE_FC.test(_authenticatedOrgId)
+      ? ""
+      : preRegisterToken || intentMeta["pre_register_token"] || "";
+    const _trialEligibilityReq = {
+      body: { ...(body ?? {}), preRegisterToken: _trialTokenForFinalize },
+      orgId: _authenticatedOrgId,
+    } as unknown as Request & { orgId?: string };
+    const _trialEligibleAtFinalize = await resolveTrialEligibility(_trialEligibilityReq);
+
+    // Grant trial only when there is no verified history AND the server has
+    // revalidated eligibility. When trial_days_remaining is zero, bill now.
+    const grantTrial = _trialEligibleAtFinalize && !hasSubscriptionHistory && intentTrialDays > 0;
     // Ancre deterministe (cf. intentCreatedUnix) : l'essai part de la tentative
     // de checkout, pas de l'instant ou ce processus-ci execute la ligne. L'ecart
     // est le temps de saisie de la carte ; en echange, deux appels concurrents

@@ -48,7 +48,7 @@
 - [Alert-events service-only gate](alert-events-service-gate.md) — POST /alert-events blocked for user sessions via userId check (not role); service bypass in routes/index.ts allows userId="service" past org-context gate
 - [Overview insights RL + fixed credits](overview-insights-rl.md) — PG SELECT FOR UPDATE mutex; fixedCreditCost:500 bypasses gpt-4o-mini multiplier (0.4); cache hits skip slot; QA: bust in-process hot cache by changing audit score (new context hash)
 - [P0 auth isolation fixes](auth-isolation-fixes.md) — store.me global singleton causes cross-user leakage; me.ts fallback must use safe defaults; login-verify.js must purgeUserCache before redirect
-- [Billing state-machine corrections](billing-state-machine.md) — 9 structural fixes: pending_billing at signup, subscriptionStatus dual-key, canStartTrial DB-only, resource_missing DB cleanup, cart versioning, org_addons source of truth
+- [Billing state-machine corrections](billing-state-machine.md) — trial eligibility uses account markers plus Stripe customer/email history; returning users and plan changes get no renewed trial.
 - [Billing addon includedFrom matrix](billing-addon-included-matrix.md) — Standard⊂White-Label; Pro⊂+customDomain+webhooks+retention90d; Ultra⊂+retention365d; isIncluded needs 'standard' guard first
 - [fpUpgradeOrCheckout scope bug](fp-upgrade-scope.md) — defined only inside if(sub==='addons'); must inject with || guard before if(sub==='plans') so Plans tab buttons work
 - [Checkout trial gate](checkout-trial-gate.md) — _fpCanStartTrial from /api/me.canStartTrial; plan-sub text + totals + bullet all must be conditioned on it
@@ -133,7 +133,7 @@
 - [signin-extras WAF block + org-change fix](signin-extras-injection.md) — WAF blocks signin.html/app.ts/build.mjs on GitHub blob API; org-change detection in dashboard.js is the primary fix
 - [persistOrgData UPDATE-first pattern](persistorgdata-update-first.md) — bare INSERT ON CONFLICT fails for existing orgs; UPDATE first + INSERT ON CONFLICT fallback only when rowCount=0
 - [Webhook deactivation race — expand missing](webhook-deactivation-race.md) — subscriptions.list() without expand causes item.price?.id=undefined → all paid addons wrongly deactivated right after activation
-- [Addon separate subscription P0-B](addon-separate-subscription.md) — paid add-ons go on a dedicated Stripe subscription (metadata.addonSub:true), billing_cycle_anchor:now; legacy items on plan sub stay in place (backward compat)
+- [Addon separate subscription P0-B](addon-separate-subscription.md) — keep paid add-ons separate; omit the cycle anchor, require confirmed payment, and cancel an empty subscription directly.
 - [AI chat crash fix](chat-crash-fix.md) — ERR_STREAM_WRITE_AFTER_END: sseClose closes res before outer handler writes; guard writableEnded; add global unhandledRejection handler
 - [Monitor null email/phone fix](monitor-null-email-phone.md) — configure_monitor INSERT must use `cfEmail ?? ""` not `cfEmail ?? null`; NOT NULL DEFAULT '' violated by explicit NULL; pre-flight asks for email in multi-turn
 - [Confirm idempotency — _fpConfirmedProposals](confirm-idempotency-set.md) — track confirmed proposalIds in window._fpConfirmedProposals; re-renders of confirmation cards must check the Set; never re-enable button in catch; _settle() pattern
@@ -152,6 +152,6 @@
 - [Seller checkout identity](seller-checkout-identity.md) — valid signup tokens outrank stale sessions; invalid tokens fall back, and UUID sessions never activate pending signups.
 - [Add-on V1 test-only boundary](addon-v1-testing-boundary.md) — keep add-on refactor work on Test-Replit; never touch Flowpoint production, production PostgreSQL, or Stripe live without explicit approval.
 - [GSC page opportunity analysis](gsc-page-opportunity-analysis.md) — page-level GSC tables support decay detection, but separate query/page tables cannot prove keyword cannibalization.
-- [Test execution context](test-execution-context.md) — explicitly set test mode; live-server tests also depend on the running API's tenant and billing state.
+- [Test execution context](test-execution-context.md) — set NODE_ENV=test; isolated worktrees also need workspace package dependencies linked before builds.
 - [A/B exposure ordering](ab-exposure-ordering.md) — the site snippet must persist an exposure before reporting a conversion; otherwise a fast click can be rejected as unarmed.
 - [Add-on replacement branch sequencing](addon-replacement-branch-sequencing.md) — reuse existing feature branches and avoid simultaneous edits to the shared add-on catalogue or dashboard files.
