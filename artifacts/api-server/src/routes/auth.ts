@@ -29,6 +29,7 @@ import { createStripeClient, getStripeKey } from "../services/stripe-factory.js"
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
+import { sessionCookieSameSite } from "../lib/session-cookie.js";
 
 const router = Router();
 
@@ -2005,7 +2006,7 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   res.cookie("fp_token", sessionToken, {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    sameSite: sessionCookieSameSite(),
     maxAge: SESSION_TTL_MS,
     path: "/",
   });
@@ -2438,7 +2439,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
@@ -2536,7 +2537,7 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
       res.clearCookie("fp_token", {
         httpOnly: true,
         secure: isProd,
-        sameSite: isProd ? "none" : "lax",
+        sameSite: sessionCookieSameSite(),
         path: "/",
       });
     }
@@ -2552,7 +2553,7 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     res.cookie("fp_token", provided, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
@@ -2602,7 +2603,7 @@ router.post("/auth/logout", async (req: Request, res: Response) => {
   res.clearCookie("fp_token", {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    sameSite: sessionCookieSameSite(),
     path: "/",
   });
 
@@ -2813,7 +2814,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure:   isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge:   SESSION_TTL_MS,
       path:     "/",
     });
@@ -2866,7 +2867,7 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
     res.cookie("fp_token", token, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge: SESSION_TTL_MS,
       path: "/",
     });

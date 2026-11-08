@@ -27,6 +27,7 @@ import { canAdmin, ownerOnly }                   from "../middlewares/requireRol
 import { createSession, SESSION_TTL_MS, updateSessionsRole } from "../services/sessions.js";
 import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
 import { store }                                from "../services/store.js";
+import { sessionCookieSameSite } from "../lib/session-cookie.js";
 import {
   computeUserStreak,
   getActivityTimezone,
@@ -481,7 +482,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure:   _isProd,
-      sameSite: _isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge:   SESSION_TTL_MS,
       path:     "/",
     });
