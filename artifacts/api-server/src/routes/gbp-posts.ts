@@ -3,6 +3,7 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   createPost, generateAiPost, publishPost, getPostsDashboard, deletePost, getScheduledPosts,
 } from "../services/gbp-posting-service.js";
+import { GbpPublishError, GBP_PUBLISH_ERRORS } from "../services/gbp-publish-errors.js";
 import { requireAddon, requireFeature } from "../middlewares/planGate.js";
 
 const router = Router();
@@ -149,16 +150,18 @@ router.post("/gbp-posts/:id/publish", async (req, res) => {
     res.json({ ok: true, post });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
-    const validationErrors = [
-      "GBP_POST_TYPE_NOT_SUPPORTED_FOR_PUBLISH",
-      "GBP_EVENT_SCHEDULE_REQUIRED",
-      "GBP_EVENT_SCHEDULE_INVALID",
-      "GBP_MEDIA_URL_INVALID",
-    ];
-    const isValidationError = validationErrors.includes(message);
-    res.status(isValidationError ? 422 : 500).json({
-      error: isValidationError ? message : safeErrMsg(err),
-    });
+    // Réponse explicite et exploitable par l'UI : { error: message FR, code }. Jamais de faux succès.
+    const code = err instanceof GbpPublishError ? err.code : message;
+    if (code in GBP_PUBLISH_ERRORS) {
+      const status =
+        code === "GOOGLE_NOT_CONNECTED" || code === "GOOGLE_AUTH_FAILED" ? 409
+        : code === "GBP_API_UNAVAILABLE" || code === "GBP_API_RATE_LIMITED" ? 503
+        : code === "GBP_API_FORBIDDEN" || code === "GBP_API_REJECTED" || code === "GBP_PUBLISH_FAILED" ? 502
+        : 422;
+      res.status(status).json({ ok: false, error: GBP_PUBLISH_ERRORS[code], code });
+      return;
+    }
+    res.status(500).json({ ok: false, error: safeErrMsg(err), code: "GBP_PUBLISH_FAILED" });
   }
 });
 

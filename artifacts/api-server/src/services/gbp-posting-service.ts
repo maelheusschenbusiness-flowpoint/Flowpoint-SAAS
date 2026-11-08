@@ -1,6 +1,8 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { publishGBPPost } from "./google-service.js";
+import { GbpPublishError, GBP_PUBLISH_ERRORS } from "./gbp-publish-errors.js";
+export { GbpPublishError, GBP_PUBLISH_ERRORS };
 
 export type PostType = "standard" | "event" | "offer" | "product";
 export type CtaType = "CALL" | "LEARN_MORE" | "ORDER" | "BOOK" | "SIGN_UP" | "SHOP" | "GET_OFFER" | "NONE";
@@ -57,6 +59,9 @@ export interface GBPPost {
   scheduled_at: string | null;
   published_at: string | null;
   google_post_id: string | null;
+  /** Dernière erreur de publication (post en échec) : code stable + message affichable. */
+  last_error_code?: string | null;
+  last_error_message?: string | null;
   views: number;
   clicks: number;
   calls: number;
@@ -81,7 +86,9 @@ export async function getPostsDashboard(orgId: string): Promise<{
       posts,
       stats: {
         total: posts.length,
-        published: posts.filter(p => p.status === "published").length,
+        // « Publié » = confirmé par Google (identifiant de post renvoyé). Les anciennes lignes
+        // marquées published sans google_post_id venaient d'un simple UPDATE sans appel Google.
+        published: posts.filter(p => p.status === "published" && !!p.google_post_id).length,
         scheduled: posts.filter(p => p.status === "scheduled").length,
         draft: posts.filter(p => p.status === "draft").length,
         thisMonth: posts.filter(p => {
@@ -241,22 +248,51 @@ export async function publishPost(orgId: string, postId: string): Promise<{ ok: 
       ...(event ? { event } : {}),
       ...(offer ? { offer } : {}),
     });
-    if (!result.ok) throw new Error(result.error || "GBP_PUBLISH_FAILED");
+    if (!result.ok || !result.postName) {
+      logger.warn({ orgId, postId, code: result.code, error: result.error }, "[gbp-posting] Google publish failed");
+      throw new GbpPublishError(result.code ?? "GBP_PUBLISH_FAILED");
+    }
+    // Google a confirmé : on n'écrit « published » qu'ici, avec l'identifiant renvoyé.
     const publishedAt = new Date().toISOString();
-    await pool.query(
-      `UPDATE gbp_posts
-          SET status='published', published_at=$1, google_post_id=$2, updated_at=NOW()
-        WHERE id=$3 AND org_id=$4 AND status='publishing'`,
-      [publishedAt, result.postName ?? null, postId, orgId],
-    );
-    return { ok: true, publishedAt, ...(result.postName ? { googlePostId: result.postName } : {}) };
+    let saved = false;
+    for (let attempt = 0; attempt < 2 && !saved; attempt++) {
+      try {
+        await pool.query(
+          `UPDATE gbp_posts
+              SET status='published', published_at=$1, google_post_id=$2,
+                  last_error_code=NULL, last_error_message=NULL, updated_at=NOW()
+            WHERE id=$3 AND org_id=$4 AND status='publishing'`,
+          [publishedAt, result.postName, postId, orgId],
+        );
+        saved = true;
+      } catch (dbError) {
+        logger.error({ orgId, postId, googlePostId: result.postName, dbError }, "[gbp-posting] published on Google but status write failed");
+      }
+    }
+    // Le post EST publié côté Google : ne jamais le repasser en « failed » (doublon au prochain essai).
+    return { ok: true, publishedAt, googlePostId: result.postName };
   } catch (error) {
+    const code = error instanceof GbpPublishError ? error.code
+      : (error instanceof Error && error.message in GBP_PUBLISH_ERRORS ? error.message : "GBP_PUBLISH_FAILED");
+    await markPostFailed(orgId, postId, code);
+    throw error;
+  }
+}
+
+async function markPostFailed(orgId: string, postId: string, code: string): Promise<void> {
+  const message = GBP_PUBLISH_ERRORS[code] ?? GBP_PUBLISH_ERRORS["GBP_PUBLISH_FAILED"]!;
+  try {
     await pool.query(
-      `UPDATE gbp_posts SET status='failed', updated_at=NOW()
+      `UPDATE gbp_posts SET status='failed', last_error_code=$3, last_error_message=$4, updated_at=NOW()
         WHERE id=$1 AND org_id=$2 AND status='publishing'`,
+      [postId, orgId, code, message],
+    );
+  } catch {
+    // Colonnes d'erreur indisponibles (schéma non à jour) : le statut doit quand même sortir de « publishing ».
+    await pool.query(
+      `UPDATE gbp_posts SET status='failed', updated_at=NOW() WHERE id=$1 AND org_id=$2 AND status='publishing'`,
       [postId, orgId],
     ).catch(() => {});
-    throw error;
   }
 }
 
@@ -280,9 +316,24 @@ export async function getScheduledPosts(orgId: string): Promise<GBPPost[]> {
 
 /** Publish due scheduled posts through the already-authorized GBP token. */
 export async function publishDueScheduledPosts(): Promise<{ attempted: number; published: number }> {
+  // 1. Un process mort pendant « publishing » laisserait le post bloqué : on le sort de cet état
+  //    en échec explicite (jamais republié automatiquement : Google a peut-être déjà publié).
+  await pool.query(
+    `UPDATE gbp_posts SET status='failed', last_error_code='GBP_PUBLISH_INTERRUPTED', last_error_message=$1, updated_at=NOW()
+      WHERE status='publishing' AND updated_at < NOW() - INTERVAL '15 minutes'`,
+    [GBP_PUBLISH_ERRORS["GBP_PUBLISH_INTERRUPTED"]],
+  ).catch(error => logger.warn({ error }, "[gbp-posting] stale publishing recovery failed"));
+  // 2. Une programmation manquée de plus de 24 h (service arrêté) n'est pas publiée par surprise.
+  await pool.query(
+    `UPDATE gbp_posts SET status='failed', last_error_code='GBP_SCHEDULE_MISSED', last_error_message=$1, updated_at=NOW()
+      WHERE status='scheduled' AND scheduled_at < NOW() - INTERVAL '24 hours'`,
+    [GBP_PUBLISH_ERRORS["GBP_SCHEDULE_MISSED"]],
+  ).catch(error => logger.warn({ error }, "[gbp-posting] missed schedule marking failed"));
+  // 3. Posts échus (fenêtre de 24 h), lot borné. Le claim atomique est dans publishPost
+  //    (UPDATE ... WHERE status IN (...) RETURNING) : deux instances ne publient jamais le même post.
   const due = await pool.query(
     `SELECT id, org_id FROM gbp_posts
-      WHERE status='scheduled' AND scheduled_at <= NOW()
+      WHERE status='scheduled' AND scheduled_at <= NOW() AND scheduled_at >= NOW() - INTERVAL '24 hours'
       ORDER BY scheduled_at ASC LIMIT 20`,
   );
   let published = 0;
