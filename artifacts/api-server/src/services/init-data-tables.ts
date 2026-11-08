@@ -3885,6 +3885,47 @@ export async function initDataTables(): Promise<void> {
       }
     }
 
+    // Suivi des remboursements de credits IA (ai-credit-refunds.ts) : journal d'audit
+    // `refund_adjustment`, cumulatif par achat, cle = refund id Stripe (idempotence).
+    // Idempotent ; sans donnee personnelle (identifiants Stripe et montants seulement).
+    await client.query(`
+        CREATE TABLE IF NOT EXISTS ai_credit_refunds (
+          refund_id                  TEXT PRIMARY KEY,
+          purchase_id                TEXT NOT NULL,
+          org_id                     UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          payment_intent             TEXT,
+          charge_id                  TEXT,
+          refund_amount_cents        BIGINT NOT NULL,
+          status                     TEXT NOT NULL,
+          refund_status              TEXT,
+          kind                       TEXT NOT NULL DEFAULT 'refund_adjustment',
+          credits_target             INTEGER NOT NULL DEFAULT 0,
+          credits_removed            INTEGER NOT NULL DEFAULT 0,
+          credits_shortfall          INTEGER NOT NULL DEFAULT 0,
+          cumulative_refunded_cents  BIGINT NOT NULL DEFAULT 0,
+          cumulative_credits_removed INTEGER NOT NULL DEFAULT 0,
+          livemode                   BOOLEAN,
+          created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_credit_refunds_purchase ON ai_credit_refunds(purchase_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_credit_refunds_org ON ai_credit_refunds(org_id, created_at DESC);
+        ALTER TABLE ai_credit_refunds ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE ai_credit_refunds FORCE ROW LEVEL SECURITY;
+        DROP POLICY IF EXISTS tenant_select ON ai_credit_refunds;
+        DROP POLICY IF EXISTS tenant_insert ON ai_credit_refunds;
+        DROP POLICY IF EXISTS tenant_update ON ai_credit_refunds;
+        DROP POLICY IF EXISTS tenant_delete ON ai_credit_refunds;
+        CREATE POLICY tenant_select ON ai_credit_refunds FOR SELECT
+          USING     (org_id::text = current_setting('app.current_org_id', true));
+        CREATE POLICY tenant_insert ON ai_credit_refunds FOR INSERT
+          WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+        CREATE POLICY tenant_update ON ai_credit_refunds FOR UPDATE
+          USING     (org_id::text = current_setting('app.current_org_id', true));
+        CREATE POLICY tenant_delete ON ai_credit_refunds FOR DELETE
+          USING     (org_id::text = current_setting('app.current_org_id', true));
+      `);
+
     // ── P1-2 : ai_usage_logs org_id type fix (idempotent fallback guard) ────────
     // Runs only if fix-org-uuid-relations-v1 failed or hasn't run yet.
     // Guards FK creation on organizations.id being UUID to prevent SQLSTATE 42804.

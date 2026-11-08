@@ -1434,6 +1434,25 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   }
 
   try {
+  // ── Credits IA : remboursement ──────────────────────────────────────────────
+  // Point d'insertion volontairement SEPARE du ledger vendeur (case "charge.refunded"
+  // ci-dessous, inchange) : retire les credits IA non consommes correspondant au
+  // remboursement. No-op si le paiement n'est pas un achat de credits.
+  if (event.type === "charge.refunded" || event.type === "refund.created" || event.type === "refund.updated") {
+    const { processAiCreditRefundEvent } = await import("../services/ai-credit-refunds.js");
+    const { pool: pgPool } = await import("@workspace/db");
+    await processAiCreditRefundEvent(
+      { type: event.type, livemode: event.livemode === true, object: obj },
+      {
+        pool: pgPool as never,
+        getStripe: () => createStripeClient(stripeKey),
+        findOrgByCustomer: async (cus) => {
+          const o = await findOrgByStripeCustomer(cus);
+          return o && UUID_RE_WH.test(o) ? o : null;
+        },
+      },
+    );
+  }
   switch (event.type) {
 
     case "charge.refunded":
