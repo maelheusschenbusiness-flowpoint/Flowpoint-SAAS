@@ -122,27 +122,28 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
   });
   expect(messageFile).toBeTruthy();
 
-  let auditRequestCount = 0;
-  let releaseFirstAuditRequest;
-  const holdFirstAuditResponse = new Promise(resolve => { releaseFirstAuditRequest = resolve; });
-  await page.route(url => new URL(url).pathname === "/api/audits", async route => {
-    auditRequestCount += 1;
-    if (auditRequestCount === 1) {
-      await holdFirstAuditResponse;
-    }
-    await route.continue();
-  });
-
   await page.goto(loginBody.debugLink);
   await page.waitForURL(/dashboard\.html/, { timeout: 20_000 });
   await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
-  await page.waitForRequest(
-    request => new URL(request.url()).pathname === "/api/audits",
+  await page.waitForFunction(
+    () => window.STATE?.loading === false && window.STATE?.dataLoadComplete === true,
+    null,
+    { timeout: 30_000 },
+  );
+  await page.waitForFunction(
+    id => window.STATE?.audits?.some(audit => String(audit.id) === id),
+    auditId,
     { timeout: 20_000 },
   );
+  await page.evaluate(() => {
+    window.STATE.audits = [];
+    window.STATE.backlinks = null;
+  });
 
   await page.locator('[data-route="competitor"]').click();
+  await page.waitForFunction(() => window.STATE?.route === "competitor", null, { timeout: 20_000 });
   await page.locator('[data-sub-route="backlinks"]').click();
+  await page.waitForFunction(() => window.STATE?.subRoute === "backlinks", null, { timeout: 20_000 });
 
   const summaryButton = page.locator('button[onclick*="fpLoadBacklinkSummary"]');
   await expect(summaryButton).toBeVisible();
@@ -156,7 +157,6 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
     response.request().method() === "GET" && response.url().includes("/api/seo/backlinks?"),
   );
   await summaryButton.click();
-  releaseFirstAuditRequest();
   const [auditsResponse, summaryHttpResponse] = await Promise.all([auditsResponsePromise, summaryResponse]);
   expect(auditsResponse.status()).toBe(200);
   const audits = await auditsResponse.json();
@@ -172,5 +172,6 @@ test("Backlink Intelligence shows provider-unavailable states without synthetic 
     domain_rank: null,
   });
   await expect(page.locator(".fp-stat-row")).toContainText("—");
+  await page.waitForFunction(() => window.STATE?.backlinks?.reason === "not_configured", null, { timeout: 15_000 });
   await expect(page.getByText(/DataForSEO (n’est pas configuré pour cette organisation\.|is not configured for this organization\.)/).first()).toBeVisible();
 });
