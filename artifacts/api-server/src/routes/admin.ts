@@ -41,7 +41,7 @@ function requireAdminKey(req: Request, res: Response): boolean {
     return false;
   }
   const provided = req.headers["x-admin-key"];
-  if (typeof provided !== "string" || provided !== key) {
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
     res.status(403).json({ ok: false, error: "Invalid or missing x-admin-key header" });
     return false;
   }

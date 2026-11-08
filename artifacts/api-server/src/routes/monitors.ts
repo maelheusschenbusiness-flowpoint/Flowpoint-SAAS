@@ -9,6 +9,7 @@ import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { isQaFixturesEnabled } from "./qa-fixtures.js";
 import { checkQuota } from "../services/billing-service.js";
+import { keysEqual } from "../lib/auth-token.js";
 
 const router = Router();
 const monitorCreateRateLimit = createRateLimit("reportsPerHour");
@@ -812,7 +813,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       if (typeof apiKeyHeader !== "string") {
         res.status(403).json({ error: "Not authorized" }); return;
       }
-      if (!serviceSecret || apiKeyHeader !== serviceSecret) {
+      if (!serviceSecret || !keysEqual(apiKeyHeader, serviceSecret)) {
         res.status(401).json({ error: "Unauthorized" }); return;
       }
       // Both gates passed — use unscoped pool to find the monitor across any org.

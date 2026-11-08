@@ -18,6 +18,7 @@ import { getSession, deleteSession }              from "../services/sessions.js"
 import { logger }                                from "../lib/logger.js";
 import { pool }                                  from "@workspace/db";
 import { apiKeysDisabled, isDeterministicPublicKey, PUBLIC_KEY_ROLE, SECRET_KEY_ROLE } from "../lib/api-keys.js";
+import { keysEqual, isSseQueryTokenRequest } from "../lib/auth-token.js";
 
 export interface OrgContext {
   orgId:    string;
@@ -57,9 +58,10 @@ function extractToken(req: Request): string | undefined {
     return cookieToken.trim();
   }
   // Query param — for SSE/EventSource which cannot send custom headers
-  const queryToken = (req.query as Record<string, string>)["token"];
-  if (typeof queryToken === "string" && queryToken.trim()) {
-    return queryToken.trim();
+  // C-13 : restreint au flux SSE, comme requireAuth (jamais sur une route ordinaire).
+  if (isSseQueryTokenRequest(req)) {
+    const queryToken = (req.query as Record<string, string>)["token"] as string;
+    if (queryToken.trim()) return queryToken.trim();
   }
   return undefined;
 }
@@ -122,7 +124,7 @@ async function _orgContext(req: Request, res: Response, next: NextFunction): Pro
 
     // 2. API_SECRET_KEY as service credential
     const serviceSecret = process.env["API_SECRET_KEY"];
-    if (serviceSecret && token === serviceSecret) {
+    if (serviceSecret && keysEqual(token, serviceSecret)) {
       req.orgId      = "default";
       req.userId     = "service";
       req.orgContext = { orgId: "default", userId: "service", role: "admin" };
