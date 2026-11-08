@@ -165,4 +165,17 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
     expect(r.status).toBe(200);
     expect(persistOrgData).toHaveBeenCalledWith("org-a", expect.objectContaining({ plan: "ultra", stripeSubscriptionId: "sub_new" }));
   });
+  it("panier plan Standard + add-on (première souscription) : plan écrit", async () => {
+    ctx = { stripeCustomerId: "cus_a", stripeSubscriptionId: null, subscriptionStatus: null, plan: "standard", addons: {} };
+    const r = await call({ ...paid, mode: "subscription", subscription: sub("sub_cart", "standard", "trialing"),
+      metadata: { flowpoint_checkout_type: "subscription_with_immediate_addons", selected_plan: "standard", immediate_addons: "whiteLabel" } });
+    expect(r.status).toBe(200);
+    expect(persistOrgData).toHaveBeenCalledWith("org-a", expect.objectContaining({ plan: "standard", stripeSubscriptionId: "sub_cart" }));
+  });
+
+  it("rejeu de la session de l'abonnement courant : plan relu sur le prix actuel", async () => {
+    const r1 = await call({ ...paid, mode: "subscription", subscription: sub("sub_main", "pro"), metadata: { plan: "ultra", orgId: "org-a" } });
+    const r2 = await call({ ...paid, mode: "subscription", subscription: sub("sub_main", "pro"), metadata: { plan: "ultra", orgId: "org-a" } });
+    expect([r1.body.plan, r2.body.plan]).toEqual(["pro", "pro"]);
+  });
 });

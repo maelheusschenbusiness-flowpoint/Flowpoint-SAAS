@@ -13,6 +13,7 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/routes/billing-verify-plan-guard.test.ts",
+      "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
