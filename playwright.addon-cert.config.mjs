@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e/parcours",
-  testMatch: ["10-addons-authorises.spec.mjs", "advanced-seo-lab.spec.mjs"],
+  testMatch: ["10-addons-authorises.spec.mjs", "advanced-seo-lab.spec.mjs", "backlink-intelligence.spec.mjs"],
   globalSetup: undefined,
   retries: 0,
   workers: 1,
