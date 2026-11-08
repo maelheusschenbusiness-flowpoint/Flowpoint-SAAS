@@ -112,6 +112,8 @@ export default defineConfig({
       "src/services/betterstack-creation-guards-db.test.ts",
       "src/lib/logger-redaction.test.ts",
       "src/lib/carry-params.test.ts",
+      // Un nom sans point n'est pas une extension : « pdf » n'est pas un PDF.
+      "src/lib/file-validation.test.ts",
       // Resilience des APIs externes : toute sortie reseau est bornee (17/10/2026).
       "src/lib/fetch-borne.test.ts",
       "src/middlewares/rate-limit-public-checkout.test.ts",
