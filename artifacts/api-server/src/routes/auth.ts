@@ -1170,11 +1170,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     // the two pages for ever and the lead was lost. The status was already read
     // here and simply never looked at.
     //
-    // Letting a pending retry through is safe: the transaction below deletes the
-    // caller's own unconsumed pending_signups rows before inserting a fresh one,
-    // and checkout-session/payment-intent reuse the canonical Stripe Customer
-    // recorded on those rows (ONE_CUSTOMER_INVARIANT), so no second customer,
-    // org or subscription can appear. An `active` or `suspended` account is still
+    // Letting a pending retry through is safe: the transaction below reuses the
+    // caller's unconsumed pending_signups row and token, preserving any Customer
+    // anchor needed by a delayed successful-payment webhook. An `active` or
+    // `suspended` account is still
     // refused, exactly as before.
     const _existingStatus = _activeUser.rows[0]?.status ?? "";
     if (_activeUser.rows.length > 0 && _existingStatus !== "pending") {
@@ -1231,54 +1230,36 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     return;
   }
 
-  // ── Atomic cleanup + insert in a single serialized transaction ───────────────
-  // DELETE all non-consumed rows for this email (including expired ones) then
-  // INSERT the new row.  Expired rows have consumed_at IS NULL but
-  // expires_at < NOW(); they are unusable yet block the unique index.  Removing
-  // them unconditionally avoids the window where the index prevents a legitimate
-  // retry while the cleanup cron hasn't fired yet.
+  // ── Reuse or create the temporary signup row atomically ─────────────────────
+  // A retry reuses its unconsumed token rather than deleting it. A Stripe
+  // PaymentIntent can still be delivering a successful-payment webhook while
+  // the browser is being reopened; replacing the token would orphan that paid
+  // checkout. Stripe Customer IDs already anchored to the row are preserved.
   //
-  // If a concurrent request races to INSERT at the same moment, PostgreSQL
-  // returns error code 23505 (unique_violation).  We catch it and return a
-  // controlled 409 so the frontend can prompt the user to wait a moment and retry
-  // rather than showing a generic 500.
-  const preToken = generateToken();
+  // If two first-time requests race before either has a row to lock, the unique
+  // email index still arbitrates the INSERT and the loser receives a controlled
+  // 409 below.
+  let preToken = generateToken();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // DELETE all non-consumed rows for this email (expired or abandoned checkouts).
-    // RETURNING lets us collect Stripe customer IDs for async cleanup.
-    const _cleaned = await client.query<{ stripe_customer_id: string | null; fp_lid: string | null }>(
-      `DELETE FROM pending_signups
+    const _existingSignup = await client.query<{
+      token: string;
+      fp_lid: string | null;
+    }>(
+      `SELECT token, fp_lid
+       FROM pending_signups
        WHERE lower(email) = lower($1) AND consumed_at IS NULL
-       RETURNING stripe_customer_id, fp_lid`,
-      [normalizedEmail]
+       ORDER BY created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [normalizedEmail],
     );
+    const _existingToken = _existingSignup.rows[0]?.token ?? null;
+    if (_existingToken) preToken = _existingToken;
     // Conversion B: the first attribution wins — a retry never replaces it.
-    const _earlierFpLid = (_cleaned.rows as { fp_lid?: string | null }[])
-      .map(r => normalizeFpLid(r.fp_lid))
-      .find((v): v is string => v !== null) ?? null;
-    const _staleCustomerIds = (_cleaned.rows as { stripe_customer_id: string | null }[])
-      .map(r => r.stripe_customer_id)
-      .filter((id): id is string => Boolean(id));
-
-    if (_staleCustomerIds.length > 0 || _cleaned.rowCount) {
-      logger.info(
-        { email: normalizedEmail, deletedRows: _cleaned.rowCount },
-        "[Auth/PreRegister] stale pending signups deleted — user retrying or first signup after expired attempt"
-      );
-      // Non-fatal: remove any stale org_settings shell (pending_billing) left by old Render code.
-      await client.query(
-        `DELETE FROM org_settings
-         WHERE lower(org_id::text) = lower($1)
-           AND (subscription_status IS NULL
-             OR subscription_status = ''
-             OR subscription_status = 'pending_billing'
-             OR subscription_status = 'none')`,
-        [normalizedEmail]
-      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
-    }
+    const _earlierFpLid = normalizeFpLid(_existingSignup.rows[0]?.fp_lid);
 
     // Seller attribution (beta): validate seller_code server-side — never trust raw code from caller.
     let _preRegSellerId: string | null = null;
@@ -1295,24 +1276,41 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       }
     }
 
-    // `created_at` est relu : c'est l'horodatage que l'emission AI Lab doit porter.
-    // AI Lab exige qu'un meme `event_id` decrive un evenement immuable, horodatage
-    // compris — un `Date.now()` cote emetteur transformerait un rejeu en collision.
-    const _preRegInserted = await client.query<{ created_at: Date; fp_lid: string | null }>(
-      `INSERT INTO pending_signups
-         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
-       RETURNING created_at, fp_lid`,
-      [
-        preToken, normalizedEmail, fn, ln, company,
-        countryVal, addressVal, cityVal, postalVal,
-        String(phone || "").trim() || null,
-        String(vat   || "").trim() || null,
-        _preRegSellerId,
-        // Conversion B: opaque lead id, strictly validated; anything else is NULL.
-        _earlierFpLid ?? normalizeFpLid(_rawFpLid),
-      ]
-    );
+    const _submittedFpLid = _earlierFpLid ?? normalizeFpLid(_rawFpLid);
+    // Keep the original event time/token for idempotent funnel attribution.
+    // Do not shorten an expiry that payment-intent extended for webhook recovery.
+    const _preRegInserted = _existingToken
+      ? await client.query<{ created_at: Date; fp_lid: string | null }>(
+          `UPDATE pending_signups
+           SET first_name = $1, last_name = $2, company_name = $3,
+               country = $4, address = $5, city = $6, postal_code = $7,
+               phone = $8, vat = $9,
+               seller_id = COALESCE(seller_id, $10),
+               fp_lid = COALESCE(fp_lid, $11),
+               expires_at = GREATEST(expires_at, NOW() + INTERVAL '2 hours')
+           WHERE token = $12
+           RETURNING created_at, fp_lid`,
+          [
+            fn, ln, company, countryVal, addressVal, cityVal, postalVal,
+            String(phone || "").trim() || null,
+            String(vat || "").trim() || null,
+            _preRegSellerId, _submittedFpLid, _existingToken,
+          ],
+        )
+      : await client.query<{ created_at: Date; fp_lid: string | null }>(
+          `INSERT INTO pending_signups
+             (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
+           RETURNING created_at, fp_lid`,
+          [
+            preToken, normalizedEmail, fn, ln, company,
+            countryVal, addressVal, cityVal, postalVal,
+            String(phone || "").trim() || null,
+            String(vat || "").trim() || null,
+            _preRegSellerId,
+            _submittedFpLid,
+          ],
+        );
 
     await client.query("COMMIT");
 
@@ -1340,27 +1338,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       }
     }
 
-    // Fire-and-forget: delete any orphaned Stripe customers from abandoned checkouts.
-    if (_staleCustomerIds.length > 0) {
-      (async () => {
-        try {
-          const { createStripeClient: _csClient, getStripeKey: _getKey } = await import("../services/stripe-factory.js");
-          const _stripe = await _csClient(_getKey());
-          for (const cid of _staleCustomerIds) {
-            await _stripe.customers.del(cid).catch((e: unknown) =>
-              logger.warn({ customerId: cid, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)")
-            );
-          }
-        } catch (e) {
-          logger.warn({ err: e }, "[Auth/PreRegister] Stale Stripe customers batch cleanup failed (non-fatal)");
-        }
-      })();
-    }
   } catch (_insertErr) {
     await client.query("ROLLBACK").catch(() => {});
-    // 23505 = unique_violation: two concurrent requests for the same email
-    // managed to both DELETE 0 existing rows and both attempt INSERT simultaneously.
-    // Safe to ask the user to wait a moment — no data loss, just a retry signal.
+    // 23505 = unique_violation: concurrent first-time requests for this email
+    // raced before either could lock an existing row. Ask the user to retry.
     if ((_insertErr as { code?: string }).code === "23505") {
       logger.warn({ email: normalizedEmail }, "[Auth/PreRegister] concurrent signup race (23505) — user asked to retry");
       res.status(409).json({
@@ -1374,25 +1355,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     client.release();
   }
 
-  // Create users row with status='pending' — no session, no magic link yet.
-  // Stripe webhook is the only path that activates this account.
-  try {
-    const { pool: pgPool } = await import("@workspace/db");
-    await pgPool.query(
-      `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
-       VALUES ($1, $2, $3, 'magic_link', FALSE, 'pending')
-       ON CONFLICT (email) DO UPDATE
-         SET first_name = EXCLUDED.first_name,
-             last_name  = EXCLUDED.last_name
-         WHERE users.status = 'pending'`,
-      [normalizedEmail, fn, ln]
-    );
-    logger.info({ email: normalizedEmail }, "[Auth/PreRegister] users row created (status=pending)");
-  } catch (usersErr) {
-    logger.warn({ usersErr, email: normalizedEmail }, "[Auth/PreRegister] users row creation failed (non-fatal)");
-  }
-
-  logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] Pre-registration stored — awaiting plan + payment");
+  logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] temporary signup stored — no account or Stripe customer created");
   // Mesure du tunnel : le formulaire a ete envoye ET accepte. C'est la
   // premiere etape que le serveur puisse constater — `signup_started` ne peut
   // venir que du navigateur. Aucune donnee personnelle n'est transmise.

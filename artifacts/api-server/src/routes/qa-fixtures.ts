@@ -184,6 +184,8 @@ router.post("/qa/ga4-funnel-base-url", qaGuard, (req: Request, res: Response) =>
 // tests can verify org creation, magic_link_tokens, and captured activation email
 // without needing a real Stripe payment.
 // Body: { preRegToken, orgId, customerId?, selectedPlan, isTrial? }
+// This isolated fixture path supplies a visibly fake subscription ID so the
+// production activation helper still enforces its subscription-before-activation contract.
 router.post("/qa/billing/activate-signup", qaGuard, async (req: Request, res: Response) => {
   const { preRegToken, orgId, customerId, selectedPlan, isTrial = false } = req.body as {
     preRegToken?: string;
@@ -202,7 +204,15 @@ router.post("/qa/billing/activate-signup", qaGuard, async (req: Request, res: Re
       res.status(500).json({ error: "activateNewSignup not exported from stripe-webhook" });
       return;
     }
-    await _qaActivate({ preRegToken, orgId, customerId, selectedPlan, isTrial });
+    await _qaActivate({
+      preRegToken,
+      orgId,
+      customerId,
+      subscriptionId: `sub_qa_fixture_${preRegToken.slice(0, 8)}`,
+      selectedPlan,
+      isTrial,
+      trialEndsAt: isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
