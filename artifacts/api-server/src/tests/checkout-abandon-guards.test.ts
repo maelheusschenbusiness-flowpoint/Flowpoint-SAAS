@@ -152,15 +152,23 @@ describe("CA-9 — abandoned signup creates no account or Stripe Customer", () =
     expect(publicBillingTs).toMatch(/INTERVAL '7 days'/);
   });
 
-  it("SetupIntent success alone cannot activate signup; paid-intent recovery is awaited", () => {
-    const setupStart = stripeWebhookTs.indexOf('case "setup_intent.succeeded":');
-    const paymentStart = stripeWebhookTs.indexOf('case "payment_intent.succeeded":', setupStart);
-    const setupCase = stripeWebhookTs.slice(setupStart, paymentStart);
-    const paymentCaseEnd = stripeWebhookTs.indexOf('case "customer.subscription.created":', paymentStart);
-    const paymentCase = stripeWebhookTs.slice(paymentStart, paymentCaseEnd);
-    expect(setupCase).not.toContain("activateNewSignup");
-    expect(paymentCase).toMatch(/await ensurePendingSignupStripeCustomer/);
-    expect(paymentCase).toMatch(/await activateNewSignup/);
+  // Assertion textuelle de #410 remplacee (fusion #390 x #410, validee le 09/11) :
+  // elle verifiait l'ORDRE des `case` du webhook, pas le comportement, et elle
+  // exprimait l'ancien contrat (SetupIntent sans effet) que A-09 remplace. Le
+  // comportement — un SetupIntent reussi n'aboutit a `trialing` QUE si une
+  // souscription Stripe trialing reelle existe, jamais d'acces premium sinon,
+  // rejeu, concurrence webhook/finalize, echec transitoire puis relivraison,
+  // pas de deuxieme essai — est prouve contre PostgreSQL dans
+  // src/tests/signup-410-guarantees-db.test.ts. Reste verifie ici : les deux
+  // chemins d'intent ATTENDENT la resolution du Customer et l'activation.
+  it("intent recovery awaits Customer resolution and activation (no fire-and-forget)", () => {
+    const start = stripeWebhookTs.indexOf('case "payment_intent.succeeded":');
+    const end = stripeWebhookTs.indexOf('case "customer.subscription.created":', start);
+    const intentCase = stripeWebhookTs.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(intentCase).toMatch(/await ensurePendingSignupStripeCustomer/);
+    expect(intentCase).toMatch(/await activateNewSignup/);
+    expect(intentCase).not.toMatch(/activateNewSignup\([\s\S]{0,400}\)\s*\.catch/);
   });
 });
 

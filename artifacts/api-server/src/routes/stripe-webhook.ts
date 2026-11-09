@@ -2180,18 +2180,22 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const { provisionSubscriptionFromIntent } = await import("../services/signup-subscription.js");
       const _piStripe = await createStripeClient(stripeKey);
 
-      // #410 — un PaymentIntent reussi est une preuve de paiement : il DOIT porter
-      // un moyen de paiement (sinon erreur -> 500, relivraison), et le Customer de
-      // l'inscription est resolu/cree APRES confirmation, sous verrou de la ligne
-      // pending_signups (convergence webhook/finalize sur un seul Customer).
+      // #410 — un intent reussi (PaymentIntent paye OU SetupIntent de l'essai a
+      // 0 EUR) DOIT porter un moyen de paiement (sinon erreur -> 500, relivraison),
+      // et le Customer de l'inscription est resolu/cree APRES confirmation, sous
+      // verrou de la ligne pending_signups (convergence webhook/finalize sur un
+      // seul Customer, cle d'idempotence Stripe derivee du jeton). Depuis #410 le
+      // checkout ne cree plus de Customer avant confirmation : sans cette etape,
+      // un essai dont l'onglet est ferme n'aurait aucun Customer, donc aucune
+      // souscription (A-09 incomplet).
       let _piResolvedCustomerId: string | null = null;
-      if (event.type === "payment_intent.succeeded") {
+      {
         const paymentMethodId =
           typeof obj["payment_method"] === "string"
             ? obj["payment_method"]
             : ((obj["payment_method"] as { id?: string } | null)?.id ?? "");
         if (!paymentMethodId) {
-          throw new Error(`PaymentIntent ${String(obj["id"] ?? "")} succeeded without a payment method`);
+          throw new Error(`${event.type === "setup_intent.succeeded" ? "SetupIntent" : "PaymentIntent"} ${String(obj["id"] ?? "")} succeeded without a payment method`);
         }
         const { ensurePendingSignupStripeCustomer } =
           await import("../services/pending-signup-stripe-customer.js");

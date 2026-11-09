@@ -77,6 +77,18 @@ function stripeClient() {
       // Customers reels crees pour un signup, il porte pre_register_token.
       retrieve: async (id: string) => ({ id, metadata: { pre_register_token: tokenByCustomer.get(id) ?? "" } }),
       list: async () => ({ data: [], has_more: false }),
+      // Customer cree apres confirmation (#410) quand l'intent n'en porte pas :
+      // idempotent par cle, comme Stripe.
+      create: async (params: { metadata?: Record<string, string> }, o?: { idempotencyKey?: string }) => {
+        const k = o?.idempotencyKey ?? `nokey_${randomUUID()}`;
+        let id = createdCustomerByKey.get(k);
+        if (!id) {
+          id = `cus_a09_created_${RUN}_${createdCustomerByKey.size + 1}`;
+          createdCustomerByKey.set(k, id);
+          tokenByCustomer.set(id, params.metadata?.["pre_register_token"] ?? "");
+        }
+        return { id };
+      },
       update: async (id: string) => ({ id }),
     },
     paymentMethods: {
@@ -121,6 +133,7 @@ const emails: string[] = [];
 const customers: string[] = [];
 const intentIds: string[] = [];
 const tokenByCustomer = new Map<string, string>();
+const createdCustomerByKey = new Map<string, string>();
 let seq = 0;
 
 type Signup = { email: string; token: string; customer: string; intent: string; created: number };
@@ -293,16 +306,27 @@ describe("A-09 — webhook seul (onglet ferme apres confirmSetup)", () => {
     expect(healed[0]!.stripe_subscription_id).toBe(subsOf(s.customer)[0]!.id);
   });
 
-  it("intent sans client Stripe : etat explicite NON premium (pending_billing), jamais trialing sans souscription", async () => {
+  // Assertion modifiee (fusion #390 x #410, validee par l'utilisateur le 09/11) :
+  // l'ancien contrat « intent sans client => pending_billing » decrivait la limite
+  // d'avant #410. Depuis #410, le checkout ne cree plus de Customer avant
+  // confirmation : TOUT essai a 0 EUR arrive sans client, et ce contrat aurait
+  // prive d'essai chaque onglet ferme. Le webhook cree desormais le Customer apres
+  // confirmation (ensurePendingSignupStripeCustomer) et ouvre l'essai reel.
+  it("intent sans client Stripe : le webhook cree le Customer apres confirmation et ouvre l'essai reel de 14 jours", async () => {
     const s = await seedSignup({ noCustomer: true });
     const res = await deliverWebhook(s);
     expect(res.status).toBe(200);
-    expect(fake.subs).toHaveLength(0);
+    expect(fake.subs).toHaveLength(1);
+    const sub = fake.subs[0]!;
+    expect(sub.status).toBe("trialing");
+    expect(sub.trial_end).toBe(s.created + 14 * DAY);
+    const anchored = await pool.query(`SELECT stripe_customer_id FROM pending_signups WHERE token = $1`, [s.token]);
+    expect(anchored.rows[0]!.stripe_customer_id).toBe(sub.customer);
     const orgs = await orgsOf(s.email);
     expect(orgs).toHaveLength(1);
-    expect(orgs[0]!.subscription_status).toBe("pending_billing");
-    expect(orgs[0]!.stripe_subscription_id).toBeNull();
-    expect(orgs[0]!.trial_ends_at).toBeNull();
+    expect(orgs[0]!.subscription_status).toBe("trialing");
+    expect(orgs[0]!.stripe_subscription_id).toBe(sub.id);
+    expect(orgs[0]!.stripe_customer_id).toBe(sub.customer);
   });
 });
 
