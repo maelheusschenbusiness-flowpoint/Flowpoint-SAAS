@@ -10821,7 +10821,7 @@ function renderBilling() {
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), availability:'coming_soon', tag:'Données requises', roi:'Aucune perte estimée sans preuve', desc:'Les pertes financières restent masquées tant que des événements de conversion réels ne les mesurent pas.', features:['Aucune perte financière inventée','Aucune estimation sans événements réels','Données comportementales requises'] },
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
-      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.', features:['Bientôt disponible'] },
+      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère des packs persistés, des rapports multi-sites, des portails clients et des livraisons planifiées.', features:['Packs persistés', 'Rapports multi-sites', 'Portail client en lecture seule', 'Livraison planifiée'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.', features:['Bientôt disponible'] },
       { key:'agencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), availability:'coming_soon', tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
       // ── IA ──
@@ -74066,6 +74066,7 @@ function renderAgencyPacksPanel() {
   const audits = Array.isArray(panelState.audits) ? panelState.audits : [];
   const packs = Array.isArray(panelState.packs) ? panelState.packs : [];
   const selectedAuditId = String(panelState.selectedAuditId || '');
+  const selectedAuditIds = Array.isArray(panelState.selectedAuditIds) ? panelState.selectedAuditIds : [];
   const controls = panelState.loaded ? `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
       <input type="text" maxlength="160" aria-label="${fpT('Nom du client')}"
@@ -74098,6 +74099,37 @@ function renderAgencyPacksPanel() {
           onclick="window.FP_V1_ADDON_PANELS.createAgencySinglePack(this.dataset.fpAgencyPackIndex)"
           ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le rapport')}</button>
       </div>`).join('')}
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--fp-border)">
+      <h3>${fpT('Rapport multi-sites')}</h3>
+      <p class="fp-text-muted">${fpT('Sélectionnez les audits terminés à inclure; seules ces mesures seront consolidées.')}</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        ${audits.filter(audit => audit.status === 'completed').map(audit => `
+          <label><input type="checkbox" ${selectedAuditIds.includes(String(audit.id)) ? 'checked' : ''}
+            onchange="window.FP_V1_ADDON_PANELS.toggleAgencySite(this.value,this.checked)" value="${escHtml(audit.id)}">
+            ${escHtml(audit.url || audit.id)} · ${escHtml(audit.score ?? '—')}</label>`).join('')}
+      </div>
+      <button type="button" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.consolidateAgencySites()"
+        ${selectedAuditIds.length < 2 || panelState.submitting ? 'disabled' : ''}>${fpT('Consolider les sites et créer un portail')}</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <input type="email" maxlength="254" aria-label="${fpT('Email client')}" placeholder="${fpT('Email client')}"
+          value="${escHtml(panelState.recipientEmail || '')}" oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('recipientEmail',this.value)">
+        <input type="text" maxlength="100" aria-label="${fpT('Expression cron')}" placeholder="0 9 * * 1"
+          value="${escHtml(panelState.cron || '0 9 * * 1')}" oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('cron',this.value)">
+        <input type="text" maxlength="80" aria-label="${fpT('Fuseau horaire')}" placeholder="Europe/Paris"
+          value="${escHtml(panelState.timezone || 'Europe/Paris')}" oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('timezone',this.value)">
+        <button type="button" class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.createAgencySchedule()"
+          ${selectedAuditIds.length < 2 || panelState.submitting || !panelState.schedulerEnabled ? 'disabled' : ''}>${fpT('Planifier la génération et l’envoi')}</button>
+      </div>
+      ${panelState.schedulerEnabled ? '' : `<p class="fp-text-muted">${fpT('La livraison planifiée est désactivée par la configuration du serveur.')}</p>`}
+      ${(panelState.portals || []).map(portal => `<div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+        <span>${escHtml(portal.client_name)} · ${escHtml(portal.expires_at)}</span>
+        ${portal.revoked_at ? `<span>${fpT('Révoqué')}</span>` : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.revokeAgencyPortal('${escHtml(portal.id)}')">${fpT('Révoquer le portail')}</button>`}
+      </div>`).join('')}
+      ${(panelState.schedules || []).map(schedule => `<div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+        <span>${escHtml(schedule.client_name)} · ${escHtml(schedule.recipient_email)} · ${escHtml(schedule.cron_expression)} (${escHtml(schedule.timezone)}) · ${escHtml(schedule.last_status || fpT('Jamais exécuté'))}</span>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.toggleAgencySchedule('${escHtml(schedule.id)}',${!schedule.enabled})">${schedule.enabled ? fpT('Suspendre') : fpT('Reprendre')}</button>
+      </div>`).join('')}
+    </div>
   ` : `<div class="fp-text-muted">${escHtml(panelState.error || (panelState.loading ? fpT('Chargement…') : fpT('Aucun pack chargé.')))}</div>`;
   return `<section class="fp-card" style="margin-top:18px">
     <div class="fp-card-header"><div><h2>${fpT('Packs de rapports d’agence')}</h2><p class="fp-text-muted">${fpT('Modèles réutilisables pour les rapports clients')}</p></div>
@@ -74116,6 +74148,13 @@ window._fpAgencyPacksState = window._fpAgencyPacksState || {
   audits: [],
   clientName: '',
   selectedAuditId: '',
+  selectedAuditIds: [],
+  recipientEmail: '',
+  cron: '0 9 * * 1',
+  timezone: 'Europe/Paris',
+  portals: [],
+  schedules: [],
+  schedulerEnabled: false,
   error: '',
 };
 
@@ -74243,6 +74282,13 @@ window.FP_V1_ADDON_PANELS = {
       const result = await apiFetch('/api/reports/agency-packs');
       panelState.audits = Array.isArray(result?.audits) ? result.audits : [];
       panelState.packs = Array.isArray(result?.packs) ? result.packs : [];
+      const [portalResult, scheduleResult] = await Promise.all([
+        apiFetch('/api/reports/agency-packs/portals'),
+        apiFetch('/api/reports/agency-packs/schedules'),
+      ]);
+      panelState.portals = Array.isArray(portalResult) ? portalResult : [];
+      panelState.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
+      panelState.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
       if (!panelState.audits.some(audit => String(audit.id || '') === panelState.selectedAuditId)) {
         panelState.selectedAuditId = String(panelState.audits[0]?.id || '');
       }
@@ -74256,8 +74302,74 @@ window.FP_V1_ADDON_PANELS = {
     }
   },
   updateAgencyPackDraft(field, value) {
-    if (field !== 'clientName' && field !== 'selectedAuditId') return;
+    if (!['clientName', 'selectedAuditId', 'recipientEmail', 'cron', 'timezone'].includes(field)) return;
     window._fpAgencyPacksState[field] = String(value || '');
+  },
+  toggleAgencySite(auditId, selected) {
+    const state = window._fpAgencyPacksState;
+    const ids = new Set(state.selectedAuditIds || []);
+    if (selected) ids.add(String(auditId)); else ids.delete(String(auditId));
+    state.selectedAuditIds = [...ids];
+  },
+  async consolidateAgencySites() {
+    const state = window._fpAgencyPacksState;
+    if (state.submitting) return;
+    state.submitting = true;
+    render();
+    try {
+      const consolidated = await apiFetch('/api/reports/agency-packs/consolidate', {
+        method: 'POST',
+        body: JSON.stringify({ clientName: state.clientName, auditIds: state.selectedAuditIds }),
+      });
+      const portal = await apiFetch('/api/reports/agency-packs/portals', {
+        method: 'POST',
+        body: JSON.stringify({ clientName: state.clientName, reportIds: [consolidated.id] }),
+      });
+      showToast('success', fpT('Rapport multi-sites créé. Portail client : {url}', {url: portal.url}));
+      state.portals = await apiFetch('/api/reports/agency-packs/portals');
+      await window._fpReportsAPI.load({ force: true });
+    } catch (error) {
+      showToast('error', error?.message || fpT('Impossible de créer le rapport et le portail'));
+    } finally { state.submitting = false; render(); }
+  },
+  async createAgencySchedule() {
+    const state = window._fpAgencyPacksState;
+    if (state.submitting) return;
+    state.submitting = true;
+    render();
+    try {
+      await apiFetch('/api/reports/agency-packs/schedules', {
+        method: 'POST',
+        body: JSON.stringify({
+          clientName: state.clientName, recipientEmail: state.recipientEmail,
+          auditIds: state.selectedAuditIds, cron: state.cron, timezone: state.timezone,
+        }),
+      });
+      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules');
+      state.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
+      state.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
+      showToast('success', fpT('Génération et livraison planifiées'));
+    } catch (error) {
+      showToast('error', error?.message || fpT('Impossible de planifier la livraison'));
+    } finally { state.submitting = false; render(); }
+  },
+  async revokeAgencyPortal(id) {
+    try {
+      await apiFetch(`/api/reports/agency-packs/portals/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      window._fpAgencyPacksState.portals = await apiFetch('/api/reports/agency-packs/portals');
+      render();
+    } catch (error) { showToast('error', error?.message || fpT('Impossible de révoquer le portail')); }
+  },
+  async toggleAgencySchedule(id, enabled) {
+    try {
+      await apiFetch(`/api/reports/agency-packs/schedules/${encodeURIComponent(id)}`, {
+        method: 'PATCH', body: JSON.stringify({ enabled }),
+      });
+      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules');
+      window._fpAgencyPacksState.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
+      window._fpAgencyPacksState.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
+      render();
+    } catch (error) { showToast('error', error?.message || fpT('Impossible de modifier la planification')); }
   },
   async createAgencyPack() {
     const panelState = window._fpAgencyPacksState;
