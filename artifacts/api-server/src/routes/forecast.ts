@@ -45,7 +45,7 @@ router.post("/forecast/generate", canWrite, async (req: Request, res: Response) 
   try {
     const data = await generateForecasts(orgId, siteUrl);
     if (!data.available) {
-      res.status(422).json({ ok: false, ...data });
+      res.status(422).json({ ok: false, error: data.reason || "Insufficient forecast history", ...data });
       return;
     }
     res.json({ ok: true, ...data });

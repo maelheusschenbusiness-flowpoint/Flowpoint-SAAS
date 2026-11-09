@@ -63462,7 +63462,7 @@ function renderDataExplorer() {
       return _points.filter(p => p.scenario === name).slice(0, days)
         .reduce((sum, p) => sum + Number(p[key] ?? 0), 0);
     };
-    const _hasForecast = !!(_fcData?.available && _realistic.length);
+    const _hasForecast = !!(_fcData?.status === 'available' && _fcData?.available && _realistic.length);
     const _hasGA4Forecast = !!(_fcData?.ga4Available);
     const _conversionForecast30d = Number(_fcData?.summary?.expectedConversionsIn30d ?? 0);
     const _revenueForecast90d = Number(_fcData?.summary?.expectedRevenueIn90d ?? 0);
@@ -63480,7 +63480,7 @@ function renderDataExplorer() {
       ${isUltra && _hasForecast
         ? aiBlock(`Prévision de trafic fondée sur GSC${_hasGA4Forecast ? ' et prévision de conversions/revenus fondée sur GA4' : '; conversions et revenus indisponibles sans 14 jours de données GA4'}. Confiance : <strong>${_fcData.summary?.confidenceScore ?? '—'}%</strong>.`, ['Simuler un scénario', 'Rapport prévision'])
         : isUltra
-          ? `<div class="fp-card fp-mb-20" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Prévision indisponible</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_fcData?.reason || 'Au moins 14 jours de données Search Console sont nécessaires pour créer une prévision fiable.')}</div></div>`
+           ? `<div class="fp-card fp-mb-20" role="status" data-forecast-status="${escHtml(_fcData?.status || 'insufficient_data')}" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Prévision indisponible — données insuffisantes</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_fcData?.reason || 'Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.')}</div></div>`
           : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Forecasting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions trafic, conversion, revenue et ranking basées sur l\'IA et vos données historiques.</div></div>
@@ -74757,8 +74757,32 @@ window.FP_FORECAST_API = {
         window.FP_DATA.forecast = r;
         render();
         showToast('success', fpT('Prévisions de trafic générées à partir de vos données Search Console'));
-      } else showToast('error', r?.error || 'Erreur');
-    } catch(e) { showToast('error', String(e)); }
+    } else showToast('error', r?.error || 'Erreur');
+  } catch(e) {
+    if (e?.status === 422) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.forecast = {
+        siteUrl,
+        forecasts: [],
+        available: false,
+        status: 'insufficient_data',
+        minimumHistoryDays: 14,
+        ga4Available: false,
+        source: 'none',
+        reason: e.message,
+        summary: {
+          expectedTrafficIn30d: 0,
+          expectedTrafficIn90d: 0,
+          expectedConversionsIn30d: 0,
+          expectedRevenueIn90d: 0,
+          confidenceScore: 0,
+          growthScenarios: { pessimistic: 0, realistic: 0, optimistic: 0 },
+        },
+      };
+      render();
+    }
+    showToast('error', String(e));
+  }
   },
 };
 

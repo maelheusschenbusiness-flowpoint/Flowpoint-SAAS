@@ -42,6 +42,8 @@ export default defineConfig({
       "src/routes/data-explorer.test.ts",
       "src/services/forecasting-service.test.ts",
       "src/services/forecasting-service.atomic.test.ts",
+      "src/routes/forecast.test.ts",
+      "src/tests/forecast-ui-state.test.ts",
       "src/services/market-intel-service.test.ts",
       "src/services/market-intel-persistence-db.test.ts",
       "src/services/enterprise-permission-engine.test.ts",

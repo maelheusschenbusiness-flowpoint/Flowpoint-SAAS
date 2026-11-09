@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { projectGA4DailyMetric } from "./forecasting-service.js";
+import { MINIMUM_HISTORY_DAYS, projectGA4DailyMetric } from "./forecasting-service.js";
 
 describe("GA4 forecast metrics", () => {
+  it("documents a 14-observation minimum", () => {
+    expect(MINIMUM_HISTORY_DAYS).toBe(14);
+  });
+
   it("does not project a metric from fewer than 14 observed days", () => {
     expect(projectGA4DailyMetric(Array(13).fill(20), 30, 1)).toBe(0);
   });
@@ -19,5 +23,10 @@ describe("GA4 forecast metrics", () => {
   it("limits the trend extrapolation to five percent per day", () => {
     const increasing = [...Array(14).fill(0), ...Array(14).fill(100)];
     expect(projectGA4DailyMetric(increasing, 1, 1)).toBe(105);
+  });
+
+  it("refuses invalid metric history instead of projecting missing values as zero", () => {
+    expect(projectGA4DailyMetric([...Array(13).fill(20), Number.NaN], 30, 1)).toBe(0);
+    expect(projectGA4DailyMetric([...Array(13).fill(20), -1], 30, 1)).toBe(0);
   });
 });
