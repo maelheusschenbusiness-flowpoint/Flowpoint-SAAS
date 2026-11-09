@@ -20577,6 +20577,8 @@ function bindGlobalEvents() {
     "Ajouter des attributs alt descriptifs sur toutes les images": "Add descriptive alt attributes to all images",
     "Données structurées Schema.org": "Schema.org structured data",
     "Données insuffisantes": "Insufficient data",
+    "Attribution financière : données insuffisantes": "Financial attribution: insufficient data",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Behavioral events use a tracker session identifier; available GA4 revenue is aggregated and cannot be joined exactly. No observed or estimated loss will be shown without this evidence.",
     "Créer un dashboard": "Create a dashboard",
     "Ajouter des widgets": "Add widgets",
     "Données historiques insuffisantes pour générer une prévision.": "Not enough historical data to generate a forecast.",
