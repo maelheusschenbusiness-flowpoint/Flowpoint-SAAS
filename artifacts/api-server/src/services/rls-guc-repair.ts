@@ -34,6 +34,8 @@ import { logger } from "../lib/logger.js";
 
 /** La seule variable que `withOrgDb()` pose. */
 export const TENANT_GUC = "app.current_org_id";
+/** Le portail public pose cette variable dans sa transaction pour prouver le jeton. */
+const PORTAL_BEARER_GUC = "app.agency_portal_token_hash";
 
 export type Queryable = {
   query: (
@@ -70,7 +72,9 @@ export type MisalignedPolicy = {
 };
 
 /**
- * Toute policy qui lit une variable `app.*` autre que celle de l'application.
+ * Toute policy qui lit une variable `app.*` que l'application ne pose pas.
+ * Le portail public pose son propre GUC avant la lecture du jeton ; il n'utilise
+ * pas `withOrgDb()` tant qu'il n'a pas retrouve l'organisation du portail.
  * `alsoCorrectlyIsolated` separe ce qui est casse de ce qui est seulement
  * trompeur : les policies permissives se combinent en OU.
  */
@@ -88,8 +92,9 @@ export async function findMisalignedOrgPolicies(db: Queryable): Promise<Misalign
        FROM p LEFT JOIN correctes c ON c.tablename = p.tablename
       WHERE p.predicat LIKE '%current_setting(''app.%'
         AND p.predicat NOT LIKE '%' || $1 || '%'
+        AND p.predicat NOT LIKE '%' || $2 || '%'
       ORDER BY p.tablename, p.policyname`,
-    [TENANT_GUC]
+    [TENANT_GUC, PORTAL_BEARER_GUC]
   );
   return res.rows.map((r) => ({
     table: String(r["tablename"]),
