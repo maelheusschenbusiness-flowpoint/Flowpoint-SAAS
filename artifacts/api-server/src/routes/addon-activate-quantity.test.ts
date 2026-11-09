@@ -284,6 +284,14 @@ describe("POST /addons/:key/activate — unsynced Stripe results are rejected (n
     expect(activateCalls).toHaveLength(0);
   });
 
+  it("payment_required → 402, no DB grant", async () => {
+    mockSyncResult = { synced: false, reason: "payment_required" };
+    const app = await buildApp();
+    const res = await request(app).post("/addons/monitorsPack10/activate").send({ quantity: 1 });
+    expect(res.status).toBe(402);
+    expect(activateCalls).toHaveLength(0);
+  });
+
   it("stripe_error → 502, no DB grant", async () => {
     mockSyncResult = { synced: false, reason: "stripe_error" };
     const app = await buildApp();
