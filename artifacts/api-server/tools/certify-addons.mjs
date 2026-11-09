@@ -265,6 +265,19 @@ export const ADDON_REGISTRY = [
   },
 ];
 
+const CHECKOUT_ABANDONMENT_SCENARIO = {
+  id: "checkout-abandonment",
+  label: "Signup checkout abandonment recovery",
+  tests: [
+    "src/tests/checkout-abandon-guards.test.ts",
+    "src/services/pending-signup-stripe-customer.test.ts",
+    "src/tests/conversion-b-fp-lid.test.ts",
+    "src/tests/signup-token-over-stale-session.test.ts",
+  ],
+  browserSpec: "e2e/parcours/checkout-abandonment.spec.mjs",
+  browserTitle: "Payment Element abandonment never activates an unconfirmed signup",
+};
+
 const BASE_ENV_KEYS = [
   "PATH",
   "HOME",
@@ -301,7 +314,7 @@ function findSystemChromium() {
 }
 
 export function parseArgs(args) {
-  const options = { selection: "pending", addons: [], help: false };
+  const options = { selection: "pending", addons: [], help: false, checkoutAbandonment: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--help" || arg === "-h") {
@@ -310,6 +323,8 @@ export function parseArgs(args) {
       options.selection = "all";
     } else if (arg === "--pending") {
       options.selection = "pending";
+    } else if (arg === "--checkout-abandonment") {
+      options.checkoutAbandonment = true;
     } else if (arg === "--addon") {
       const value = args[index + 1];
       if (!value) throw new Error("--addon requires an add-on name or id.");
@@ -320,6 +335,9 @@ export function parseArgs(args) {
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
+  }
+  if (options.checkoutAbandonment && (options.addons.length || options.selection === "all")) {
+    throw new Error("--checkout-abandonment cannot be combined with add-on selections.");
   }
   if (options.addons.length) options.selection = "explicit";
   return options;
@@ -356,6 +374,7 @@ export function buildLocalEnvironment({
   mailDir = join(tempDir, "mail"),
   sessionSecret = randomBytes(32).toString("hex"),
   adminKey = randomBytes(32).toString("hex"),
+  stripeTest = false,
 }) {
   const env = {};
   for (const key of BASE_ENV_KEYS) {
@@ -388,6 +407,23 @@ export function buildLocalEnvironment({
     API_SECRET_KEY: randomBytes(32).toString("hex"),
     CRON_KEY: randomBytes(32).toString("hex"),
   });
+  if (stripeTest) {
+    // This explicit certification mode forwards only Stripe TEST credentials.
+    // Live keys are deliberately never copied into the disposable app process.
+    for (const key of [
+      "STRIPE_TEST_KEY",
+      "STRIPE_TEST_PUBLISHABLE_KEY",
+      "STRIPE_TEST_WEBHOOK_SECRET",
+    ]) {
+      if (process.env[key]) env[key] = process.env[key];
+    }
+    env.STRIPE_TEST_MODE = "true";
+    // Map the existing Stripe TEST plan catalog for this isolated certification.
+    // These are read-only references; the runner creates or edits no prices.
+    env.STRIPE_TEST_PRICE_ID_STANDARD = "price_1UAt5K9eqtbj6iPBVm8v6LRy";
+    env.STRIPE_TEST_PRICE_ID_PRO = "price_1UQ53c9eqtbj6iPB4FVBZqzX";
+    env.STRIPE_TEST_PRICE_ID_ULTRA = "price_1UQ53s9eqtbj6iPBhEB7NsM9";
+  }
   const chromium = findSystemChromium();
   if (chromium) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE = chromium;
   return env;
@@ -718,15 +754,30 @@ Options:
   --pending              Run add-ons without historical certification attribution (default)
   --all                  Run the complete 24-add-on registry
   --addon <name-or-id>   Run one add-on (repeatable)
+  --checkout-abandonment Run the isolated signup recovery E2E with Stripe TEST only
   --help                 Show this help
 
 This runner creates a disposable PostgreSQL cluster reachable only at 127.0.0.1,
 starts the API on loopback, runs mapped Vitest and Playwright suites, then stops
-the processes and removes all temporary files. It does not call external providers.`);
+the processes and removes all temporary files. Only --checkout-abandonment calls
+Stripe, and that mode requires an sk_test_ key; live Stripe credentials are not forwarded.`);
 }
 
 async function runCertification(options, signal) {
-  const selected = selectAddons(options);
+  if (options.checkoutAbandonment) {
+    if (!process.env.STRIPE_TEST_KEY?.startsWith("sk_test_")) {
+      throw new Error("Checkout E2E requires STRIPE_TEST_KEY with an sk_test_ prefix.");
+    }
+    if (!process.env.STRIPE_TEST_WEBHOOK_SECRET) {
+      throw new Error("Checkout E2E requires STRIPE_TEST_WEBHOOK_SECRET.");
+    }
+    if (!process.env.STRIPE_TEST_PUBLISHABLE_KEY?.startsWith("pk_test_")) {
+      throw new Error("Checkout E2E requires STRIPE_TEST_PUBLISHABLE_KEY with a pk_test_ prefix.");
+    }
+  }
+  const selected = options.checkoutAbandonment
+    ? [CHECKOUT_ABANDONMENT_SCENARIO]
+    : selectAddons(options);
   let tempDir;
   let pg;
   let api;
@@ -743,7 +794,12 @@ async function runCertification(options, signal) {
     if (build.code !== 0) throw new Error(build.interrupted ? "Certification interrupted by the user." : "API build failed.");
 
     pg = await createTemporaryPostgres(tempDir, signal);
-    const testEnv = buildLocalEnvironment({ databaseUrl: pg.databaseUrl, port: await reservePort(), tempDir });
+    const testEnv = buildLocalEnvironment({
+      databaseUrl: pg.databaseUrl,
+      port: await reservePort(),
+      tempDir,
+      stripeTest: options.checkoutAbandonment,
+    });
     validateLocalDatabaseEnv(testEnv);
 
     api = await startApi(testEnv, signal);
