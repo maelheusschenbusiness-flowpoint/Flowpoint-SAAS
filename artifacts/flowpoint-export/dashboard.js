@@ -20574,6 +20574,8 @@ function bindGlobalEvents() {
     "Ajouter des attributs alt descriptifs sur toutes les images": "Add descriptive alt attributes to all images",
     "Données structurées Schema.org": "Schema.org structured data",
     "Données insuffisantes": "Insufficient data",
+    "Prévision indisponible — données insuffisantes": "Forecast unavailable — insufficient data",
+    "Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.": "At least 14 days of valid GSC and GA4 data (sessions, conversions, and revenue) are required.",
     "Créer un dashboard": "Create a dashboard",
     "Ajouter des widgets": "Add widgets",
     "Données historiques insuffisantes pour générer une prévision.": "Not enough historical data to generate a forecast.",
@@ -63480,7 +63482,7 @@ function renderDataExplorer() {
       ${isUltra && _hasForecast
         ? aiBlock(`Prévision de trafic fondée sur GSC${_hasGA4Forecast ? ' et prévision de conversions/revenus fondée sur GA4' : '; conversions et revenus indisponibles sans 14 jours de données GA4'}. Confiance : <strong>${_fcData.summary?.confidenceScore ?? '—'}%</strong>.`, ['Simuler un scénario', 'Rapport prévision'])
         : isUltra
-           ? `<div class="fp-card fp-mb-20" role="status" data-forecast-status="${escHtml(_fcData?.status || 'insufficient_data')}" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Prévision indisponible — données insuffisantes</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_fcData?.reason || 'Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.')}</div></div>`
+           ? `<div class="fp-card fp-mb-20" role="status" data-forecast-status="${escHtml(_fcData?.status || 'insufficient_data')}" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${fpT('Prévision indisponible — données insuffisantes')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(fpT(_fcData?.reason || 'Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.'))}</div></div>`
           : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Forecasting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions trafic, conversion, revenue et ranking basées sur l\'IA et vos données historiques.</div></div>
