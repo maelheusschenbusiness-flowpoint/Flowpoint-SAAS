@@ -335,7 +335,7 @@
   <!-- ── ÉTAPE 1 : Formulaire d'inscription ── -->
   <div id="signup-screen">
     <h1 class="card-title">Créer votre compte FlowPoint</h1>
-    <p class="card-sub">Renseignez vos informations pour créer votre compte FlowPoint.</p>
+    <p class="card-sub">Trois informations pour démarrer votre essai. La facturation sera demandée au moment du paiement.</p>
 
     <a href="/api/auth/google/login" class="btn-oauth fp-hidden" id="btn-google-oauth">
       <svg width="18" height="18" viewBox="0 0 48 48">
@@ -354,69 +354,21 @@
       </div>
 
       <div class="fields">
-        <div class="row-2">
-          <div class="field">
-            <label for="firstName">Prénom *</label>
-            <input type="text" id="firstName" name="firstName" placeholder="Marie" required autocomplete="given-name" />
-          </div>
-          <div class="field">
-            <label for="lastName">Nom *</label>
-            <input type="text" id="lastName" name="lastName" placeholder="Dupont" required autocomplete="family-name" />
-          </div>
-        </div>
-
         <div class="field">
           <label for="email">Email professionnel *</label>
           <input type="email" id="email" name="email" placeholder="marie@monentreprise.fr" required autocomplete="email" />
         </div>
 
         <div class="field">
+          <label for="firstName">Prénom *</label>
+          <input type="text" id="firstName" name="firstName" placeholder="Marie" required autocomplete="given-name" />
+        </div>
+
+        <div class="field">
           <label for="companyName">Nom de l'entreprise *</label>
           <input type="text" id="companyName" name="companyName" placeholder="Mon Agence Digitale" required autocomplete="organization" />
         </div>
-
-        <div class="field">
-          <label for="country">Pays *</label>
-          <select id="country" name="country" required autocomplete="country">
-            <option value="">— Sélectionner —</option>
-            <option value="FR" selected>🇫🇷 France</option>
-            <option value="BE">🇧🇪 Belgique</option>
-            <option value="CH">🇨🇭 Suisse</option>
-            <option value="LU">🇱🇺 Luxembourg</option>
-            <option value="CA">🇨🇦 Canada (FR)</option>
-            <option value="MA">🇲🇦 Maroc</option>
-            <option value="DZ">🇩🇿 Algérie</option>
-            <option value="TN">🇹🇳 Tunisie</option>
-            <option value="OTHER">Autre</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="address">Adresse *</label>
-          <input type="text" id="address" name="address" placeholder="12 rue de la Paix" required autocomplete="street-address" />
-        </div>
-
-        <div class="row-2">
-          <div class="field">
-            <label for="city">Ville *</label>
-            <input type="text" id="city" name="city" placeholder="Paris" required autocomplete="address-level2" />
-          </div>
-          <div class="field">
-            <label for="postalCode">Code postal *</label>
-            <input type="text" id="postalCode" name="postalCode" placeholder="75001" required autocomplete="postal-code" />
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="field">
-            <label for="phone">Téléphone <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
-            <input type="tel" id="phone" name="phone" placeholder="+33 6 12 34 56 78" autocomplete="tel" />
-          </div>
-          <div class="field">
-            <label for="vat">N° TVA <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
-            <input type="text" id="vat" name="vat" placeholder="FR 12 345678901" autocomplete="off" />
-          </div>
-        </div>
+        <!-- Adresse, pays, téléphone et TVA : demandés au paiement (checkout-payment.html), avant la première facture. -->
       </div>
 
       <div id="signup-msg" class="msg" role="alert"></div>
@@ -689,39 +641,25 @@
 
     var hp         = val('_hp');
     var firstName  = val('firstName');
-    var lastName   = val('lastName');
     var email      = val('email').toLowerCase();
     var companyName= val('companyName');
-    var country    = val('country');
-    var address    = val('address');
-    var city       = val('city');
-    var postalCode = val('postalCode');
-    var phone      = val('phone');
-    var vat        = val('vat');
 
-    if (!firstName)   { showMsg(signupMsg,'error','Le prénom est requis.');              return; }
-    if (!lastName)    { showMsg(signupMsg,'error','Le nom est requis.');                 return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       showMsg(signupMsg,'error','Adresse email invalide.'); return;
     }
     if (isDisposable(email)) {
       showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
     }
+    if (!firstName)   { showMsg(signupMsg,'error','Le prénom est requis.');              return; }
     if (!companyName) { showMsg(signupMsg,'error',"Le nom de l'entreprise est requis."); return; }
-    if (!country)     { showMsg(signupMsg,'error','Le pays est requis.');                return; }
-    if (!address)     { showMsg(signupMsg,'error',"L'adresse est requise.");             return; }
-    if (!city)        { showMsg(signupMsg,'error','La ville est requise.');              return; }
-    if (!postalCode)  { showMsg(signupMsg,'error','Le code postal est requis.');         return; }
 
     setLoading(signupBtn, true);
 
     fetch('/api/auth/pre-register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _hp: hp, firstName: firstName, lastName: lastName,
-        email: email, companyName: companyName, country: country,
-        address: address, city: city, postalCode: postalCode,
-        phone: phone || undefined, vat: vat || undefined,
+      body: JSON.stringify({ _hp: hp, firstName: firstName,
+        email: email, companyName: companyName,
         seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})(),
         fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})() })
     })

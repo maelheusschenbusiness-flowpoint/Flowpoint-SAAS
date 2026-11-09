@@ -1029,13 +1029,13 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   const cityVal     = String(city        || "").trim();
   const postalVal   = String(postalCode  || "").trim();
 
+  // Demarrer l'essai ne demande que le strict necessaire : email, prenom et
+  // entreprise. Le nom, l'adresse, le pays, le telephone et la TVA sont
+  // facultatifs ici : ils sont collectes au paiement (Stripe Address Element
+  // sur checkout-payment.html, recopies par finalize-checkout), c'est-a-dire
+  // avant la premiere facture. S'ils sont fournis, ils sont conserves.
   if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
-  if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
   if (!company)    { res.status(400).json({ error: "Le nom de l'entreprise est requis." }); return; }
-  if (!countryVal) { res.status(400).json({ error: "Le pays est requis." });                return; }
-  if (!addressVal) { res.status(400).json({ error: "L'adresse est requise." });             return; }
-  if (!cityVal)    { res.status(400).json({ error: "La ville est requise." });              return; }
-  if (!postalVal)  { res.status(400).json({ error: "Le code postal est requis." });         return; }
 
   if (isDisposableEmail(normalizedEmail)) {
     res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
@@ -1202,7 +1202,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
        RETURNING created_at, fp_lid`,
       [
         preToken, normalizedEmail, fn, ln, company,
-        countryVal, addressVal, cityVal, postalVal,
+        countryVal || null, addressVal || null, cityVal || null, postalVal || null,
         String(phone || "").trim() || null,
         String(vat   || "").trim() || null,
         _preRegSellerId,

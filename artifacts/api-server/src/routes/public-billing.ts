@@ -21,6 +21,8 @@ import {
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
 
+import { normalizeVat } from "../lib/vat.js";
+
 const router = Router();
 const publicFunnelEventRateLimit = createIpRateLimit("public_funnel_event", 60, 60_000);
 
@@ -2409,6 +2411,39 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       await stripe.customers.update(customerId!, _fcUpdate);
       logger.info({ customerId, hasPmAddr: _fcHasPmAddr, hasName: !!_fcFinalName },
         "[PublicBilling] finalize: customer enriched (Address Element + signup data)");
+
+      /* Facturation reportee au paiement : l'inscription ne demande plus
+         l'adresse ni la TVA. L'adresse saisie dans l'Address Element (et le
+         telephone, s'il est donne) est recopiee sur la ligne pending_signups
+         AVANT l'activation, qui la reporte dans org_settings. Une valeur deja
+         presente n'est jamais ecrasee. */
+      const _fcPhone = typeof (_fcPmBd as { phone?: unknown } | null)?.phone === "string"
+        ? String((_fcPmBd as { phone?: string }).phone).trim() : "";
+      const _fcVat = normalizeVat(body?.vat);
+      if (_fcPrt2 && (_fcHasPmAddr || _fcPhone || _fcVat)) {
+        const { pool: _fcAddrPool } = await import("@workspace/db");
+        await _fcAddrPool.query(
+          `UPDATE pending_signups SET
+             country     = COALESCE(NULLIF(country, ''),     $2),
+             address     = COALESCE(NULLIF(address, ''),     $3),
+             city        = COALESCE(NULLIF(city, ''),        $4),
+             postal_code = COALESCE(NULLIF(postal_code, ''), $5),
+             phone       = COALESCE(NULLIF(phone, ''),       $6),
+             vat         = COALESCE(NULLIF(vat, ''),         $7)
+           WHERE token = $1`,
+          [_fcPrt2,
+           _fcHasPmAddr ? (_fcPmAddr!.country ?? null) : null,
+           _fcHasPmAddr ? [_fcPmAddr!.line1, _fcPmAddr!.line2].filter(Boolean).join(", ") : null,
+           _fcHasPmAddr ? (_fcPmAddr!.city ?? null) : null,
+           _fcHasPmAddr ? (_fcPmAddr!.postal_code ?? null) : null,
+           _fcPhone || null,
+           _fcVat],
+        ).catch((e: unknown) => logger.warn({ e }, "[PublicBilling] finalize: billing details copy failed (non-fatal)"));
+      }
+      if (_fcVat) {
+        await stripe.customers.createTaxId(customerId!, { type: "eu_vat", value: _fcVat })
+          .catch((e: unknown) => logger.warn({ err: (e as Error)?.message }, "[PublicBilling] finalize: VAT tax id refused (non-fatal)"));
+      }
 
     } catch (_fcEnrichErr) {
       logger.warn({ _fcEnrichErr }, "[PublicBilling] finalize: customer enrichment non-fatal — invoice_settings only");
