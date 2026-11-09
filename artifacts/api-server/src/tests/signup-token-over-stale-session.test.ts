@@ -10,7 +10,7 @@
  * A valid pre-registration token is the identity of THIS checkout; the session is used
  * only when there is no valid token. The existing-subscriber guard is unchanged.
  *
- *  A  no session + valid token          → signup path, new Customer
+ *  A  no session + valid token          → signup path, no pre-payment Customer
  *  B  old session + valid token         → token wins, old org / Customer never used
  *  C  session, no token                 → authenticated path unchanged
  *  D  invalid/expired token + session   → falls back to the session (existing rule)
@@ -52,6 +52,14 @@ vi.mock("../services/sessions.js", () => ({
 }));
 const ensureStripeCustomer = vi.fn(async (orgId: string) => (orgId === OLD_ORG ? OLD_CUSTOMER : null));
 vi.mock("../services/ensure-stripe-customer.js", () => ({ ensureStripeCustomer: (o: string) => ensureStripeCustomer(o) }));
+vi.mock("../services/pending-signup-stripe-customer.js", () => ({
+  ensurePendingSignupStripeCustomer: vi.fn(async (
+    _stripe: unknown,
+    _token: string,
+    _paymentMethodId: string | null,
+    customerIdHint: string | null,
+  ) => ({ customerId: customerIdHint ?? "cus_NEW_SIGNUP", hasSubscriptionHistory: false })),
+}));
 vi.mock("../services/seller-attribution.js", () => ({
   resolveSellerIdFromToken: vi.fn(async (t: string) => (t === TOKEN_S1 ? "seller-1" : t === TOKEN_S2 ? "seller-2" : null)),
   validateSellerCode: vi.fn(async () => null),
@@ -89,6 +97,8 @@ function answer(sql: string, values: unknown[] = []) {
     const row = PENDING[String(values[1])]; if (row) row.stripe_customer_id = String(values[0]);
     return { rows: [], rowCount: 1 };
   }
+  if (/^\s*INSERT INTO users/i.test(sql)) return { rows: [{ id: "user-new-signup" }], rowCount: 1 };
+  if (/^\s*INSERT INTO organizations/i.test(sql)) return { rows: [{ id: String(values[0]) }], rowCount: 1 };
   if (/FROM sellers/.test(sql)) return { rows: [{ seller_code: values[0] === "seller-1" ? "SELLER-S1" : "SELLER-S2" }], rowCount: 1 };
   return { rows: [], rowCount: 0 };
 }
@@ -167,20 +177,23 @@ afterEach(() => {
 });
 
 describe("payment-intent: which identity pays", () => {
-  it("A — no session + valid token: signup path, new Customer for the signup email", async () => {
+  it("A — no session + valid token: creates an intent without creating a Stripe Customer", async () => {
     const r = await request(makeApp()).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     expect(r.status).toBe(200);
-    expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL]);
-    expect(intentCustomers(fake)).toEqual(["cus_NEW_SIGNUP"]);
-    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBe("cus_NEW_SIGNUP");
+    expect(fake.customersCreated).toEqual([]);
+    expect(fake.customersListed).toEqual([]);
+    expect(intentCustomers(fake)).toEqual([undefined]);
+    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBeNull();
   });
 
-  it("B — old session + valid token of a new signup: the token wins, the old org is never used", async () => {
+  it("B — old session + valid token: token wins without creating or using either Customer", async () => {
     const r = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     expect(r.status).toBe(200);
-    expect(intentCustomers(fake)).toEqual(["cus_NEW_SIGNUP"]);
+    expect(intentCustomers(fake)).toEqual([undefined]);
     expect(intentCustomers(fake)).not.toContain(OLD_CUSTOMER);
-    expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL]);
+    expect(fake.customersCreated).toEqual([]);
+    expect(fake.customersListed).toEqual([]);
+    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBeNull();
     expect(ensureStripeCustomer).not.toHaveBeenCalled();
     expect(loadBillingContext).not.toHaveBeenCalledWith(OLD_ORG); // quote/trial not taken from the old account
     const meta = [...fake.setupCreated, ...fake.piCreated][0].metadata;
@@ -212,25 +225,40 @@ describe("payment-intent: which identity pays", () => {
     expect(intentCustomers(fake)).toEqual([]);
   });
 
-  it("E — a different seller code changes nothing in Customer resolution", async () => {
+  it("E — repeated signup intents create no Customers before confirmation", async () => {
     const r1 = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     const r2 = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S2 });
     expect([r1.status, r2.status]).toEqual([200, 200]);
-    expect(fake.customersListed.map((l) => l.email)).toEqual([NEW_EMAIL, "other.signup@exemple.fr"]);
-    expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL, "other.signup@exemple.fr"]);
+    expect(fake.customersListed).toEqual([]);
+    expect(fake.customersCreated).toEqual([]);
     expect(intentCustomers(fake)).not.toContain(OLD_CUSTOMER);
   });
 });
 
 describe("finalize-checkout: the signup token is received and wins", () => {
-  it("F — old session + valid token: authenticates with the token, the session is not even looked up", async () => {
-    fake = makeFakeStripe({ intentCustomer: "cus_NEW_SIGNUP", intentMeta: { pre_register_token: TOKEN_S1 } });
+  it("F — SetupIntent success creates one 14-day subscription trial before signup activation", async () => {
+    fake = makeFakeStripe({
+      intentCustomer: "cus_NEW_SIGNUP",
+      intentMeta: {
+        pre_register_token: TOKEN_S1,
+        plan: "standard",
+        trial_days_remaining: "14",
+      },
+    });
     setStripeForTesting(fake as any);
-    await request(makeApp("tok-old")).post("/api/public/finalize-checkout")
+    const response = await request(makeApp("tok-old")).post("/api/public/finalize-checkout")
       .send({ intentId: "seti_fake", intentType: "setup", plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
+    expect(response.status, JSON.stringify({
+      body: response.body,
+      errors: vi.mocked(logger.error).mock.calls.slice(-4),
+    })).toBe(200);
     expect(sessionLookups).toEqual([]);
     expect(vi.mocked(logger.info).mock.calls.some((c) => String(c[1]).includes("Authenticated via preRegisterToken"))).toBe(true);
     expect(fake.subsListedFor).not.toContain(OLD_CUSTOMER);
+    expect(fake.subsCreated).toHaveLength(1);
+    const trialEnd = Number(fake.subsCreated[0].trial_end);
+    expect(trialEnd).toBeGreaterThan(Math.floor(Date.now() / 1000) + 13 * 86400);
+    expect(trialEnd).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 14 * 86400 + 60);
   });
 });
 
