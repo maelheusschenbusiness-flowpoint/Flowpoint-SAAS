@@ -9,10 +9,18 @@ function text(value: unknown, max: number): string | null {
   return valueTrimmed.length > 0 && valueTrimmed.length <= max ? valueTrimmed : null;
 }
 
+/** A whole trimmed text that is exactly one ``` / ```json fenced block, capturing its content. */
+const CODE_BLOCK = /^```[ \t]*(?:json)?[ \t]*\r?\n?([\s\S]*?)\r?\n?[ \t]*```$/i;
+
+function unwrapCodeBlock(value: string): string {
+  const match = CODE_BLOCK.exec(value);
+  return match ? match[1] ?? "" : value;
+}
+
 export function parseContentDecayStrategy(value: string): ContentDecayStrategy | null {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(value);
+    parsed = JSON.parse(unwrapCodeBlock(value.trim()));
   } catch {
     return null;
   }
