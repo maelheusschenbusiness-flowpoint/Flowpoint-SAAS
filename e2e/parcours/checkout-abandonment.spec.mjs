@@ -180,6 +180,7 @@ test("Payment Element abandonment never activates an unconfirmed signup", async 
   const setup = await createSetupIntent(request, setupToken);
   const confirmedSetup = await stripe.setupIntents.confirm(setup.setupIntentId, {
     payment_method: "pm_card_visa",
+    return_url: new URL("/checkout-return.html", BASE_URL).toString(),
   });
   expect(confirmedSetup.status).toBe("succeeded");
   const setupEvent = await findStripeEvent("setup_intent.succeeded", confirmedSetup.id);
