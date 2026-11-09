@@ -1634,6 +1634,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // legacy sessions. Honor the current key first.
       const plan     = meta["selected_plan"] || meta["plan"] || "";
       const planNorm = plan.toLowerCase();
+      // Add-on and credit purchases never touch the main plan subscription.
+      const sessionMode = String(obj["mode"] ?? "");
+      const isPlanCheckout = ["standard","pro","ultra"].includes(planNorm) &&
+        !String(meta["addonKey"] ?? "").trim() &&
+        meta["flowpoint_checkout_type"] !== "addon_only" &&
+        (!sessionMode || sessionMode === "subscription");
 
       if (!orgId) {
         logger.error({ plan: planNorm, sessionId: obj["id"] }, "[Webhook] checkout.session.completed: orgId unresolved — subscription state NOT persisted");
@@ -1697,7 +1703,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // interfere with dashboard plan changes.
       const _newSubId = obj["subscription"] ? String(obj["subscription"]) : undefined;
       let _isDuplicateSub = false;
-      if (_newSubId && customerId && stripeKey) {
+      if (isPlanCheckout && _newSubId && customerId && stripeKey) {
         try {
           const _bsStripe  = await createStripeClient(stripeKey);
           const _bsAllSubs = await _bsStripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
@@ -1781,16 +1787,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // overwrite the correct subscription ID before the new one arrives.
       const persistPayload: Parameters<typeof persistSubscriptionMeta>[0] = {
         orgId,
-        subscriptionStatus: "active",
         stripeCustomerId: customerId,
-        ...(_newSubId ? { stripeSubscriptionId: _newSubId } : {}),
+        ...(isPlanCheckout ? { subscriptionStatus: "active" } : {}),
+        ...(isPlanCheckout && _newSubId ? { stripeSubscriptionId: _newSubId } : {}),
       };
-      if (["standard","pro","ultra"].includes(planNorm)) {
+      if (isPlanCheckout) {
         persistPayload.plan = planNorm;
       }
       await persistSubscriptionMeta(persistPayload);
 
-      if (["standard","pro","ultra"].includes(planNorm)) {
+      if (isPlanCheckout) {
         store.broadcastPlanUpdate(planNorm, orgId);
         // Provision plan-bundled add-ons immediately at checkout so the subscriber
         // can access their features without waiting for the subscription.created event.
