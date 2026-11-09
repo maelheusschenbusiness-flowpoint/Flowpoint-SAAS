@@ -100,6 +100,10 @@
 
     /* ── Stripe elements ── */
     #fp-payment-element { margin-bottom: 18px; }
+    #fp-address-element { margin-bottom: 14px; }
+    .fp-vat-field { margin-bottom: 18px; }
+    .fp-vat-field label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .fp-vat-field input { width: 100%; padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,0.35); background: transparent; color: inherit; font-size: 14px; }
 
     /* ── Alert ── */
     .fp-alert { display: none; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
@@ -163,6 +167,14 @@
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
     <div id="fp-payment-element" role="group" aria-label="Informations de paiement"></div>
 
+    <!-- Facturation : demandée ici, avant la première facture, et plus à l'inscription. -->
+    <div class="fp-card-title">Adresse de facturation</div>
+    <div id="fp-address-element" role="group" aria-label="Adresse de facturation"></div>
+    <div class="fp-vat-field">
+      <label for="fp-vat">N° TVA intracommunautaire (optionnel)</label>
+      <input type="text" id="fp-vat" placeholder="FR12345678901" autocomplete="off" maxlength="20" />
+    </div>
+
     <span id="fp-pay-desc" hidden>Confirme et finalise votre abonnement FlowPoint. Paiement sécurisé par Stripe.</span>
     <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirmer et payer" aria-describedby="fp-pay-desc">
       <span id="fp-btn-text">Chargement…</span>
@@ -203,6 +215,7 @@
   var quote         = null;   /* devis serveur — seule source de montants */
   var stripe, elements;
   var _paymentReady = false;
+  var _addressComplete = false;
   var _payBtnLabel  = 'Confirmer →';
   var _mode         = 'setup';
   function authHeaders() {
@@ -274,7 +287,7 @@
     if (label) txt.textContent = label;
   }
   function _tryEnablePayBtn() {
-    if (_paymentReady) {
+    if (_paymentReady && _addressComplete) {
       document.getElementById('fp-btn-text').textContent = _payBtnLabel;
       document.getElementById('fp-pay-btn').disabled = false;
     }
@@ -460,6 +473,30 @@
       return;
     }
 
+    /* Address Element en mode « billing » : Stripe joint l'adresse (et le
+       téléphone) au moyen de paiement lors de confirmPayment/confirmSetup ;
+       finalize-checkout la recopie sur le Customer et sur l'organisation. */
+    try {
+      var addressElement = elements.create('address', {
+        mode: 'billing',
+        fields: { phone: 'always' },
+        validation: { phone: { required: 'never' } },
+        defaultValues: {
+          name: (data.defaultValues && data.defaultValues.name) || '',
+          address: { country: (data.defaultValues && data.defaultValues.country) || 'FR' },
+        },
+      });
+      addressElement.mount('#fp-address-element');
+      addressElement.on('change', function (ev) {
+        _addressComplete = !!(ev && ev.complete);
+        if (!_addressComplete) document.getElementById('fp-pay-btn').disabled = true;
+        _tryEnablePayBtn();
+      });
+    } catch (e) {
+      showAlert('[S3] Address Element : ' + (e.message || e));
+      return;
+    }
+
     paymentElement.on('ready', function () {
       _paymentReady = true;
       _tryEnablePayBtn();
@@ -494,6 +531,15 @@
     setLoading(true, 'Vérification en cours…');
 
     var mode      = this.getAttribute('data-mode') || 'payment';
+    try {
+      var _vat = (document.getElementById('fp-vat').value || '').replace(/[\s.-]/g, '').toUpperCase();
+      if (_vat && !/^[A-Z]{2}[A-Z0-9]{2,13}$/.test(_vat)) {
+        showAlert('Numéro de TVA invalide (ex. FR12345678901). Laissez le champ vide si vous n\'en avez pas.');
+        setLoading(false, mode === 'payment' ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →' : 'Démarrer l\'essai gratuit →');
+        return;
+      }
+      if (_vat) sessionStorage.setItem('fp_signup_vat', _vat); else sessionStorage.removeItem('fp_signup_vat');
+    } catch (e) {}
     var returnUrl = window.location.origin + '/checkout-return.html';
 
     try {

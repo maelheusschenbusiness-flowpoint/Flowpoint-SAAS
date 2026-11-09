@@ -16,6 +16,7 @@ import { type ConversionStage } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
 import { enregistrerEtape, lireAttributionFunnel } from "../services/funnel-events.js";
+import { billingFromPaymentMethod, fillPendingSignup } from "../lib/billing-profile.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -567,6 +568,37 @@ export async function activateNewSignup(opts: {
     } finally { check.release(); }
     logger.warn({ preRegToken, orgId }, "[Webhook/activate] pending_signups row not found — skipping activation");
     return;
+  }
+
+  // ── 1a. Reprise apres interruption : finalize-checkout n'a peut-etre jamais
+  // tourne (onglet ferme apres la confirmation de la carte). L'adresse saisie
+  // dans l'Address Element est alors seulement sur le moyen de paiement Stripe :
+  // on la recupere ici, avant la propagation vers org_settings. Champs vides
+  // seulement, jamais d'ecrasement ; un echec ne bloque pas l'activation.
+  if (customerId && !signupRow["address"]) {
+    try {
+      const _rbKey = getStripeKey();
+      if (_rbKey) {
+        const { default: _RbStripe } = await import("stripe");
+        const _rbStripe = new _RbStripe(_rbKey, { apiVersion: "2026-04-22.dahlia" });
+        const _rbPms = await _rbStripe.customers.listPaymentMethods(customerId, { limit: 1 });
+        const _rbBilling = billingFromPaymentMethod(_rbPms.data[0]?.billing_details ?? null);
+        if (_rbBilling) {
+          await fillPendingSignup(pgPool, preRegToken, _rbBilling);
+          signupRow = {
+            ...signupRow,
+            country:     signupRow["country"]     || _rbBilling.country,
+            address:     signupRow["address"]     || _rbBilling.address,
+            city:        signupRow["city"]        || _rbBilling.city,
+            postal_code: signupRow["postal_code"] || _rbBilling.postalCode,
+            phone:       signupRow["phone"]       || _rbBilling.phone,
+          };
+          logger.info({ preRegToken: preRegToken.slice(0, 8) }, "[Webhook/activate] billing address recovered from payment method");
+        }
+      }
+    } catch (_rbErr) {
+      logger.warn({ err: (_rbErr as Error)?.message }, "[Webhook/activate] billing address recovery failed (non-fatal)");
+    }
   }
 
   const email     = signupRow["email"] ?? orgId;

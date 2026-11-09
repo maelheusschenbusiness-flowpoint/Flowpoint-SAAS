@@ -91,6 +91,7 @@
 
       var fcBody = { intentId: intentId, intentType: intentType, plan: plan, addons: addons };
       if (preRegisterToken) fcBody.preRegisterToken = preRegisterToken;
+      try { var _fcVat = sessionStorage.getItem('fp_signup_vat'); if (_fcVat) fcBody.vat = _fcVat; } catch(e) {}
       fetch('/api/public/finalize-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -21,6 +21,8 @@ import {
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
 
+import { billingFromPaymentMethod, fillPendingSignup, fillOrgSettings, ensureEuVatTaxId } from "../lib/billing-profile.js";
+
 const router = Router();
 const publicFunnelEventRateLimit = createIpRateLimit("public_funnel_event", 60, 60_000);
 
@@ -2406,6 +2408,30 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         } : {}),
       };
 
+      /* Facturation reportee au paiement : l'inscription ne demande plus
+         l'adresse ni la TVA. Elles sont recopiees AVANT la mise a jour Stripe,
+         dans un bloc separe : un echec Stripe ne les perd pas, et un echec de
+         base ne bloque pas Stripe. Jamais d'ecrasement d'une valeur presente ;
+         si le webhook a deja active le compte, org_settings est complete aussi.
+         Idempotent : une relance ne cree ni doublon ni ecrasement. */
+      const _fcBilling = billingFromPaymentMethod(
+        _fcPmBd as Parameters<typeof billingFromPaymentMethod>[0], body?.vat);
+      if (_fcBilling) {
+        try {
+          const { pool: _fcAddrPool } = await import("@workspace/db");
+          if (_fcPrt2) await fillPendingSignup(_fcAddrPool, _fcPrt2, _fcBilling);
+          const _fcHealed = _fcFinalEmail ? await fillOrgSettings(_fcAddrPool, _fcFinalEmail.toLowerCase(), _fcBilling) : 0;
+          logger.info({ hasAddress: !!_fcBilling.address, hasVat: !!_fcBilling.vat, orgSettingsRows: _fcHealed },
+            "[PublicBilling] finalize: billing details persisted");
+        } catch (e) {
+          logger.warn({ err: (e as Error)?.message }, "[PublicBilling] finalize: billing details copy failed (non-fatal, Stripe customer still holds them)");
+        }
+      }
+      if (_fcBilling?.vat) {
+        const _fcTax = await ensureEuVatTaxId(stripe as unknown as Parameters<typeof ensureEuVatTaxId>[0], customerId!, _fcBilling.vat);
+        logger.info({ outcome: _fcTax }, "[PublicBilling] finalize: VAT tax id");
+      }
+
       await stripe.customers.update(customerId!, _fcUpdate);
       logger.info({ customerId, hasPmAddr: _fcHasPmAddr, hasName: !!_fcFinalName },
         "[PublicBilling] finalize: customer enriched (Address Element + signup data)");
@@ -2905,6 +2931,20 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
               }
             } catch (_fcOsErr) {
               logger.warn({ step: "FC-4f", err: (_fcOsErr as Error).message }, "[FC] step-4f: org_settings propagation failed (non-fatal)");
+            }
+            // Step 4g: completer les champs encore vides (TVA comprise) sur toutes
+            // les lignes org_settings du compte, sans rien ecraser.
+            try {
+              const _fcSigBilling = {
+                country: _fcSignup["country"] ?? null, address: _fcSignup["address"] ?? null,
+                city: _fcSignup["city"] ?? null, postalCode: _fcSignup["postal_code"] ?? null,
+                phone: _fcSignup["phone"] ?? null, vat: _fcSignup["vat"] ?? null,
+              };
+              if (Object.values(_fcSigBilling).some(Boolean)) {
+                await fillOrgSettings(_fcActPool, _fcAEmail, _fcSigBilling);
+              }
+            } catch (_fc4gErr) {
+              logger.warn({ step: "FC-4g", err: (_fc4gErr as Error).message }, "[FC] step-4g: billing fill failed (non-fatal)");
             }
 
           } catch (_fcActErr) {
