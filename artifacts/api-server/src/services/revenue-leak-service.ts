@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { db, behaviorEventsTable } from "@workspace/db";
 import { deriveConversionObservations } from "./conversion-observations.js";
+import { REVENUE_LEAK_ATTRIBUTION, revenueLeakFinancials } from "./revenue-leak-attribution.js";
 
 export interface RevenueLeakItem {
   id: string;
@@ -38,11 +39,12 @@ export interface RevenueLeakData {
     criticalLeaks: number;
   };
   financial: {
-    status: "unavailable";
+    status: "insufficient_data";
     observedLoss: null;
     estimatedLoss: null;
     currency: null;
   };
+  attribution: typeof REVENUE_LEAK_ATTRIBUTION;
 }
 
 const WINDOW_DAYS = 30;
@@ -117,12 +119,8 @@ export async function getRevenueLeakData(orgId: string, siteUrl?: string): Promi
       topCategory: leaks[0]?.leakType ?? "N/A",
       criticalLeaks: leaks.filter(leak => leak.metadata.confidence === "high").length,
     },
-    financial: {
-      status: "unavailable",
-      observedLoss: null,
-      estimatedLoss: null,
-      currency: null,
-    },
+    financial: revenueLeakFinancials(),
+    attribution: REVENUE_LEAK_ATTRIBUTION,
   };
 }
 

@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { requireAddon } from "../middlewares/planGate.js";
 import { deriveConversionObservations } from "../services/conversion-observations.js";
+import { REVENUE_LEAK_ATTRIBUTION } from "../services/revenue-leak-attribution.js";
+import { getGA4ConversionPages } from "../services/ga4-service.js";
 
 const router = Router();
 
@@ -9,6 +11,62 @@ type OrgReq = Request & {
   orgId?: string;
 };
 const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+const unavailableGA4Revenue = () => ({
+  status: "unavailable",
+  source: "ga4",
+  observedRevenue: null,
+  observedConversions: null,
+  observedLoss: null,
+  estimatedLoss: null,
+  currency: null,
+  note: "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.",
+});
+
+function summarizeGA4Revenue(report: Awaited<ReturnType<typeof getGA4ConversionPages>>) {
+  const metrics = report.totals?.[0]?.metricValues ?? [];
+  const revenue = Number(metrics[3]?.value);
+  const conversions = Number(metrics[2]?.value);
+  const currency = String(report.currencyCode ?? "").trim().toUpperCase();
+  if (!Number.isFinite(revenue) || !/^[A-Z]{3}$/.test(currency)) return unavailableGA4Revenue();
+  return {
+    status: "observed",
+    source: "ga4",
+    observedRevenue: revenue,
+    observedConversions: Number.isFinite(conversions) ? conversions : null,
+    observedLoss: null,
+    estimatedLoss: null,
+    currency,
+    note: "Total GA4 des pages d’entrée sur les 30 derniers jours. Ce montant n’est pas attribué aux frictions listées.",
+  };
+}
+
+async function loadGA4Revenue(req: Request, siteUrl?: string) {
+  const orgId = (req as OrgReq).orgId ?? "default";
+  if (siteUrl) {
+    try {
+      const { rows } = await db(req)(
+        `SELECT website_url AS "websiteUrl"
+           FROM ga4_properties
+          WHERE org_id = $1 AND is_active = true
+          LIMIT 1`,
+        [orgId],
+      );
+      const siteHost = new URL(siteUrl).hostname.toLowerCase().replace(/^www\./, "");
+      const propertyHost = new URL(String(rows[0]?.websiteUrl ?? "")).hostname.toLowerCase().replace(/^www\./, "");
+      if (!siteHost || siteHost !== propertyHost) return unavailableGA4Revenue();
+    } catch {
+      return unavailableGA4Revenue();
+    }
+  }
+
+  try {
+    // This is the completed 30-day aggregate period; today's partial data is excluded.
+    return summarizeGA4Revenue(await getGA4ConversionPages(orgId, "30daysAgo", "yesterday"));
+  } catch {
+    return unavailableGA4Revenue();
+  }
+}
 
 // Gate scoped to /revenue-leak/* only — path-less router.use() would intercept every route
 // mounted after this router in index.ts (same catch-all pattern as behavioral.ts).
@@ -75,11 +133,18 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
       ok: true, source: "behavior_events", windowDays: 30, opportunities,
       observations: opportunities.map(({ siteUrl, page, eventType, observedEvents, affectedSessions, confidence }) =>
         ({ siteUrl, page, eventType, observedEvents, affectedSessions, confidence })),
-      financial: { status: "unavailable", observedLoss: null, estimatedLoss: null, currency: null },
+      attribution: REVENUE_LEAK_ATTRIBUTION,
+      financial: await loadGA4Revenue(req, siteUrl),
       noData: opportunities.length === 0,
     });
   } catch {
-    res.status(503).json({ error: "Les événements comportementaux sont temporairement indisponibles.", opportunities: [], noData: true });
+    res.status(503).json({
+      error: "Les événements comportementaux sont temporairement indisponibles.",
+      opportunities: [],
+      attribution: REVENUE_LEAK_ATTRIBUTION,
+      financial: unavailableGA4Revenue(),
+      noData: true,
+    });
   }
 });
 
@@ -92,11 +157,16 @@ router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
     const opportunities = await loadRevenueOpportunities(req, siteUrl);
     res.json({
       ok: true, source: "behavior_events", windowDays: 30, opportunities,
-      financial: { status: "unavailable", observedLoss: null, estimatedLoss: null, currency: null },
+      attribution: REVENUE_LEAK_ATTRIBUTION,
+      financial: await loadGA4Revenue(req, siteUrl),
       noData: opportunities.length === 0,
     });
   } catch {
-    res.status(500).json({ error: "Failed to detect revenue leaks" });
+    res.status(500).json({
+      error: "Failed to detect revenue leaks",
+      attribution: REVENUE_LEAK_ATTRIBUTION,
+      financial: unavailableGA4Revenue(),
+    });
   }
 });
 

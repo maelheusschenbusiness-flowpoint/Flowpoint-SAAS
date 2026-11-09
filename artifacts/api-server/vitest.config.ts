@@ -86,6 +86,9 @@ export default defineConfig({
       // CRO observed-event recommendations and real A/B sample statistics.
       "src/services/conversion-observations.test.ts",
       "src/routes/revenue-leak-ownership.test.ts",
+      "src/routes/revenue-leak-ga4.test.ts",
+      "src/services/revenue-leak-attribution.test.ts",
+      "src/tests/revenue-leak-attribution-ui.test.ts",
       // Keep behavioral session identity stable for real experiment assignments.
       "src/services/behavioral-session-id.test.ts",
       "src/services/behavioral-service.test.ts",
