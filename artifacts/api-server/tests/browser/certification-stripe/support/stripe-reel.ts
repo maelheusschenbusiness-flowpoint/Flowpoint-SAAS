@@ -112,8 +112,25 @@ export async function repondre3ds(page: Page, action: "reussir" | "echouer", del
 }
 
 /** Resolution de la reponse de confirmation Stripe (api.stripe.com/v1/setup_intents/seti_.../confirm). */
-export function attendreConfirmationStripe(page: Page) {
-  return page.waitForResponse((r) => /api\.stripe\.com\/v1\/setup_intents\/seti_[^/]+\/confirm/.test(r.url()), { timeout: 90_000 });
+export async function attendreConfirmationStripe(page: Page) {
+  const response = await page.waitForResponse(
+    (r) => /api\.stripe\.com\/v1\/setup_intents\/seti_[^/]+\/confirm/.test(r.url()),
+    { timeout: 90_000 },
+  );
+  const requestBody = response.request().postData() ?? "";
+  const form = new URLSearchParams(requestBody);
+  let returnUrl = form.get("return_url");
+  if (!returnUrl) {
+    try {
+      returnUrl = (JSON.parse(requestBody) as { return_url?: string }).return_url ?? null;
+    } catch { /* Stripe.js normally sends form-encoded parameters. */ }
+  }
+  expect(returnUrl, "Stripe SetupIntent confirmation must include return_url").toBeTruthy();
+  const actualReturnUrl = new URL(returnUrl!);
+  expect(actualReturnUrl.origin, "Stripe return_url must stay on the TEST page origin")
+    .toBe(new URL(cfg.baseUrl).origin);
+  expect(actualReturnUrl.pathname).toBe("/checkout-return.html");
+  return response;
 }
 
 // ── Preuves cote Stripe (API TEST) ─────────────────────────────────────────────────────────────────────────
