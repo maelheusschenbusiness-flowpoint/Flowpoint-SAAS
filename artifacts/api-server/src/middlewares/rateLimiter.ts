@@ -2,6 +2,14 @@
  * FlowPoint — In-memory sliding window rate limiter
  * Per-org isolation, per-endpoint buckets, plan-aware limits.
  * No Redis dependency — works in single-node deployments.
+ *
+ * LIMITE CONNUE (audit E-03, non traitee ici) : le store `windows` est en
+ * memoire du processus. Il n'est ni partage entre instances ni conserve apres
+ * redemarrage ; la limite effective est donc multipliee par le nombre
+ * d'instances. Valide uniquement tant que le service reste mono-instance.
+ *
+ * Adresse client (audit C-06) : toujours `req.ip` via clientIp() ; ne jamais
+ * lire X-Forwarded-For directement (valeur controlee par le client).
  */
 
 import type { Request, Response, NextFunction } from "express";

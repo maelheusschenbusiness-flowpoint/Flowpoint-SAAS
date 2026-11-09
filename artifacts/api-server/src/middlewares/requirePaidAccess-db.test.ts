@@ -52,12 +52,15 @@ const RECOVERY_PATHS = [
   "/onboarding/status", "/settings/api-keys", "/permissions",
 ];
 
+/** Ecritures qui restent permises en lecture seule : regularisation et compte. */
+const RECOVERY_WRITE_PATHS = ["/billing/reactivate", "/billing/portal", "/auth/logout", "/plans/checkout", "/me/prefs", "/onboarding/status", "/settings/data"];
+
 type Outcome = { nexted: boolean; status: number | null; body: Record<string, unknown> | null };
 
-async function callGate(orgId: string, path: string, role = "owner"): Promise<Outcome> {
+async function callGate(orgId: string, path: string, role = "owner", method = "GET"): Promise<Outcome> {
   const out: Outcome = { nexted: false, status: null, body: null };
   const req = {
-    path, method: "GET", orgId,
+    path, method, orgId,
     orgContext: { orgId, userId: "u", role },
     headers: {},
   } as unknown as Request;
@@ -72,16 +75,16 @@ async function callGate(orgId: string, path: string, role = "owner"): Promise<Ou
 
 /** Positionne l'etat d'abonnement reel de l'org en base. */
 async function setState(orgId: string, opts: {
-  status: string; trialEndsAt?: string | null; subId?: string | null; periodEnd?: string | null;
+  status: string; trialEndsAt?: string | null; subId?: string | null; periodEnd?: string | null; pastDueSince?: string | null;
 }): Promise<void> {
   const c = await pool.connect();
   try {
     await c.query(
       `UPDATE organizations
           SET subscription_status = $2, trial_ends_at = $3, stripe_subscription_id = $4,
-              current_period_end = $5, stripe_customer_id = 'cus_test', trial_consumed_at = NOW() - INTERVAL '30 days'
+              current_period_end = $5, past_due_since = $6, stripe_customer_id = 'cus_test', trial_consumed_at = NOW() - INTERVAL '30 days'
         WHERE id = $1::uuid`,
-      [orgId, opts.status, opts.trialEndsAt ?? null, opts.subId ?? null, opts.periodEnd ?? null]);
+      [orgId, opts.status, opts.trialEndsAt ?? null, opts.subId ?? null, opts.periodEnd ?? null, opts.pastDueSince ?? null]);
   } finally { c.release(); }
 }
 
@@ -145,34 +148,39 @@ describe("requirePaidAccess — etats d'abonnement", () => {
     for (const p of PAID_PATHS) expect((await callGate(ORG_A, p)).nexted, p).toBe(true);
   });
 
-  it("annule et periode payee terminee → bloque", async () => {
+  it("annule et periode payee terminee → LECTURE SEULE (GET ok, ecriture 402 SUBSCRIPTION_READ_ONLY)", async () => {
     if (!dbUp) return;
     await setState(ORG_A, { status: "canceled", subId: "sub_a", periodEnd: agoDays(1) });
     for (const p of PAID_PATHS) {
-      const r = await callGate(ORG_A, p);
-      expect(r.nexted, p).toBe(false);
-      expect(r.status, p).toBe(402);
+      expect((await callGate(ORG_A, p, "owner", "GET")).nexted, p).toBe(true);
+      const w = await callGate(ORG_A, p, "owner", "POST");
+      expect(w.nexted, p).toBe(false);
+      expect(w.status, p).toBe(402);
+      expect(w.body?.["code"], p).toBe("SUBSCRIPTION_READ_ONLY");
     }
   });
 
-  it("annule sans periode connue → bloque (aucun acces accorde par defaut)", async () => {
+  it("annule sans periode connue → lecture seule (aucun acces complet par defaut)", async () => {
     if (!dbUp) return;
     await setState(ORG_A, { status: "canceled", subId: "sub_a", periodEnd: null });
-    expect((await callGate(ORG_A, "/overview")).status).toBe(402);
+    expect((await callGate(ORG_A, "/overview")).nexted).toBe(true);
+    expect((await callGate(ORG_A, "/overview", "owner", "POST")).status).toBe(402);
   });
 
-  it("impaye : periode payee en cours → autorise ; terminee → bloque", async () => {
+  it("past_due : dans la grace → acces complet ; hors grace → lecture seule", async () => {
     if (!dbUp) return;
-    await setState(ORG_A, { status: "past_due", subId: "sub_a", periodEnd: inDays(5) });
-    expect((await callGate(ORG_A, "/audits")).nexted).toBe(true);
-    await setState(ORG_A, { status: "past_due", subId: "sub_a", periodEnd: agoDays(5) });
-    expect((await callGate(ORG_A, "/audits")).status).toBe(402);
+    await setState(ORG_A, { status: "past_due", subId: "sub_a", periodEnd: inDays(5), pastDueSince: agoDays(1) });
+    expect((await callGate(ORG_A, "/audits", "owner", "POST")).nexted).toBe(true);
+    await setState(ORG_A, { status: "past_due", subId: "sub_a", periodEnd: inDays(5), pastDueSince: agoDays(5) });
+    expect((await callGate(ORG_A, "/audits", "owner", "GET")).nexted).toBe(true);
+    expect((await callGate(ORG_A, "/audits", "owner", "POST")).body?.["code"]).toBe("SUBSCRIPTION_READ_ONLY");
   });
 
-  it("suspendu (unpaid) sans periode → bloque", async () => {
+  it("suspendu (unpaid) → lecture seule", async () => {
     if (!dbUp) return;
     await setState(ORG_A, { status: "unpaid", subId: "sub_a", periodEnd: null });
-    expect((await callGate(ORG_A, "/monitors")).status).toBe(402);
+    expect((await callGate(ORG_A, "/monitors")).nexted).toBe(true);
+    expect((await callGate(ORG_A, "/monitors", "owner", "POST")).status).toBe(402);
   });
 
   it("facturation non finalisee (pending_billing) → bloque", async () => {
@@ -185,7 +193,7 @@ describe("requirePaidAccess — etats d'abonnement", () => {
 
   it("la reponse 402 porte de quoi regulariser", async () => {
     if (!dbUp) return;
-    await setState(ORG_A, { status: "canceled", subId: "sub_a", periodEnd: agoDays(1) });
+    await setState(ORG_A, { status: "pending_billing", subId: null, periodEnd: null });
     const r = await callGate(ORG_A, "/reports");
     expect(r.body?.["code"]).toBe("SUBSCRIPTION_REQUIRED");
     expect(r.body?.["billingUrl"]).toBeTruthy();
@@ -196,10 +204,10 @@ describe("requirePaidAccess — etats d'abonnement", () => {
 
 describe("requirePaidAccess — roles", () => {
   for (const role of ["owner", "admin", "member"]) {
-    it(`role ${role} : bloque quand l'abonnement est inactif`, async () => {
+    it(`role ${role} : ecriture refusee quand l'abonnement est inactif`, async () => {
       if (!dbUp) return;
       await setState(ORG_A, { status: "canceled", subId: "sub_a", periodEnd: agoDays(2) });
-      const r = await callGate(ORG_A, "/overview", role);
+      const r = await callGate(ORG_A, "/overview", role, "POST");
       expect(r.nexted).toBe(false);
       expect(r.status).toBe(402);
     });
@@ -217,13 +225,13 @@ describe("requirePaidAccess — isolation entre organisations", () => {
     if (!dbUp) return;
     await setState(ORG_A, { status: "canceled", subId: "sub_a", periodEnd: agoDays(3) });
     await setState(ORG_B, { status: "active",   subId: "sub_b", periodEnd: inDays(25) });
-    expect((await callGate(ORG_A, "/overview")).status).toBe(402);
-    expect((await callGate(ORG_B, "/overview")).nexted).toBe(true);
+    expect((await callGate(ORG_A, "/overview", "owner", "POST")).status).toBe(402);
+    expect((await callGate(ORG_B, "/overview", "owner", "POST")).nexted).toBe(true);
     // Inversion : la decision n'est pas memorisee entre organisations.
     await setState(ORG_A, { status: "active",   subId: "sub_a", periodEnd: inDays(25) });
     await setState(ORG_B, { status: "unpaid",   subId: "sub_b", periodEnd: agoDays(1) });
-    expect((await callGate(ORG_A, "/overview")).nexted).toBe(true);
-    expect((await callGate(ORG_B, "/overview")).status).toBe(402);
+    expect((await callGate(ORG_A, "/overview", "owner", "POST")).nexted).toBe(true);
+    expect((await callGate(ORG_B, "/overview", "owner", "POST")).status).toBe(402);
   });
 
   it("organisation inexistante : etat illisible → 503 retryable, jamais un acces", async () => {
@@ -253,12 +261,19 @@ describe("requirePaidAccess — un client bloque peut toujours payer", () => {
     it(`${label} : compte, auth, facturation et reactivation restent ouverts`, async () => {
       if (!dbUp) return;
       await setState(ORG_A, st);
-      // Garde-fou : l'etat choisi bloque bien une route payante.
-      expect((await callGate(ORG_A, "/overview")).status).toBe(402);
+      // Garde-fou : l'etat choisi bloque bien une ECRITURE payante (GET aussi
+      // pour les etats sans abonnement paye).
+      expect((await callGate(ORG_A, "/overview", "owner", "POST")).status).toBe(402);
       for (const p of RECOVERY_PATHS) {
         const r = await callGate(ORG_A, p);
         expect(r.nexted, `${label} ${p}`).toBe(true);
         expect(r.status, `${label} ${p}`).toBeNull();
+      }
+      // Ecritures de regularisation (facturation, auth, plans, profil...) ouvertes
+      // MEME en lecture seule : un client doit pouvoir payer / se reconnecter.
+      for (const p of RECOVERY_WRITE_PATHS) {
+        const r = await callGate(ORG_A, p, "owner", "POST");
+        expect(r.nexted, `${label} POST ${p}`).toBe(true);
       }
     });
   }

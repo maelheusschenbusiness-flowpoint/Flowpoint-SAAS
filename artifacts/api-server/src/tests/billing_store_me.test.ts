@@ -9,9 +9,15 @@
  * 4. Multi-org isolation: PUT /api/me/addons reads current addons from DB (not store.me.addons)
  */
 
+import { describe, it, afterAll, vi } from "vitest";
+
+// vitest.setup.ts remplace @workspace/db par un faux pool pour toute la suite.
+// Ce fichier verifie un comportement SQL REEL (isolation par organisation) :
+// il reprend donc le vrai module, comme les autres tests *-db.test.ts.
+vi.mock("@workspace/db", async (importOriginal) => importOriginal<typeof import("@workspace/db")>());
 import fs from "fs";
 import path from "path";
-import { randomBytes } from "crypto";
+import { randomUUID } from "crypto";
 import pg from "pg";
 import assert from "assert";
 
@@ -25,7 +31,8 @@ const pool = new Pool({
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 async function freshOrg(plan = "standard", addons: Record<string, unknown> = {}): Promise<string> {
-  const orgId = `test_bsm_${randomBytes(6).toString("hex")}`;
+  // organizations.id est un UUID (un identifiant texte plantait en 22P02).
+  const orgId = randomUUID();
   await pool.query(
     `INSERT INTO organizations (id, name, owner_email, plan, subscription_status, addons, created_at, updated_at)
      VALUES ($1,$2,$3,$4,'active',$5::jsonb,NOW(),NOW())
@@ -174,23 +181,13 @@ async function testPutAddonsReadsFromDB() {
   console.log("✅ Test 5: PUT /api/me/addons reads addons from DB via loadOrgData (store import removed)");
 }
 
-// ── runner ────────────────────────────────────────────────────────────────────
+// ── vitest runner (anciennement un script `main()` + process.exit) ──────────
 
-async function main() {
-  console.log("=== Billing store.me elimination certification ===\n");
-  try {
-    await testNoStoreMeInBillingService();
-    await testNoStoreMeMutationsInStartTrial();
-    await testNoBroadcastPlanUpdateMutation();
-    await testGetSubscriptionAnalyticsIsolation();
-    await testPutAddonsReadsFromDB();
-    console.log("\n✅ ALL BILLING STORE.ME TESTS PASSED");
-  } catch (err) {
-    console.error("\n❌ TEST FAILED:", (err as Error).message);
-    process.exit(1);
-  } finally {
-    await pool.end();
-  }
-}
-
-main();
+describe("billing store.me elimination", () => {
+  afterAll(async () => { await pool.end(); });
+  it("billing-service.ts ne lit plus les champs du singleton store.me", async () => { await testNoStoreMeInBillingService(); }, 30_000);
+  it("startTrial ne mute pas store.me", async () => { await testNoStoreMeMutationsInStartTrial(); }, 30_000);
+  it("broadcastPlanUpdate ne mute pas this.me", async () => { await testNoBroadcastPlanUpdateMutation(); }, 30_000);
+  it("getSubscriptionAnalytics est isole par organisation", async () => { await testGetSubscriptionAnalyticsIsolation(); }, 30_000);
+  it("PUT /me/addons lit les add-ons en base via loadOrgData", async () => { await testPutAddonsReadsFromDB(); }, 30_000);
+});

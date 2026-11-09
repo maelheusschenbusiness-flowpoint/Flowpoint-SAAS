@@ -86,6 +86,7 @@ vi.mock("@workspace/db", () => ({
       ? { rows: [{ subscription_id: null, inserted: true }], rowCount: 1 }
       : { rows: [], rowCount: 0 };
   }
+        if (/FROM organizations WHERE id = \$1::uuid/.test(sql)) return { rows: [{ ok: 1 }] };
         if (/FROM user_sessions/.test(sql)) {
           return values[0] === "tok-subscriber"
             ? { rows: [{ org_id: "org-uuid-1" }] }
@@ -106,6 +107,7 @@ vi.mock("@workspace/db", () => ({
       ? { rows: [{ subscription_id: null, inserted: true }], rowCount: 1 }
       : { rows: [], rowCount: 0 };
   }
+      if (/FROM organizations WHERE id = \$1::uuid/.test(sql)) return { rows: [{ ok: 1 }] };
       if (/FROM organizations WHERE id::text/.test(sql)) {
         return canonicalAnchorCustomer
           ? { rows: [{ stripe_customer_id: canonicalAnchorCustomer, subscription_status: "active" }] }
@@ -126,6 +128,13 @@ vi.mock("../services/addons-service.js", () => ({
   provisionPlanAddons: vi.fn(async () => {}),
 }));
 
+// Le customer Stripe du PaymentIntent appartient a l'organisation UUID authentifiee.
+const CREDIT_ORG = "10000000-0000-4000-8000-000000000003";
+vi.mock("../services/org-data.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/org-data.js")>()),
+  findOrgByStripeCustomer: vi.fn(async () => "10000000-0000-4000-8000-000000000003"),
+}));
+
 const { default: publicBillingRouter } = await import("./public-billing.js");
 
 function makeApp(orgId?: string, cookieToken?: string) {
@@ -140,11 +149,21 @@ function makeApp(orgId?: string, cookieToken?: string) {
   return app;
 }
 
+/** PaymentIntent de credits tel que cree par /public/payment-intent : panier serveur dans metadata.addons. */
+function creditPi(addons: Record<string, number>, amount: number, extra: Record<string, string> = {}, status = "succeeded") {
+  return {
+    intentMetadata: { type: "ai_credits", addons: JSON.stringify(addons), orgId: CREDIT_ORG, ...extra },
+    intentAmount: amount, intentStatus: status,
+  };
+}
+
 /** Recording fake Stripe client — no network. */
 function makeFakeStripe(opts?: {
   existingPlanSubId?: string;
   intentCustomerId?: string;
   intentMetadata?: Record<string, string>;
+  intentAmount?: number;
+  intentStatus?: string;
   failAddonSubCreate?: boolean;
 }) {
   const created: any[] = [];
@@ -172,9 +191,10 @@ function makeFakeStripe(opts?: {
       }),
       retrieve: vi.fn(async (id: string) => ({
         id,
-        status: "succeeded",
+        status: opts?.intentStatus ?? "succeeded",
         payment_method: "pm_fake_1",
         customer: opts?.intentCustomerId ?? "cus_test_sub",
+        amount: opts?.intentAmount ?? 0, amount_received: opts?.intentAmount ?? 0, currency: "eur", livemode: false,
         metadata: opts?.intentMetadata ?? {},
       })),
     },
@@ -466,9 +486,9 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
   });
 
   it("credits AI packs idempotently for a credits-only cart", async () => {
-    const fake = makeFakeStripe();
+    const fake = makeFakeStripe(creditPi({ aiCreditsPack50k: 1 }, 400));
     setStripeForTesting(fake);
-    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+    const r = await request(makeApp(CREDIT_ORG, "tok-uuid-subscriber"))
       .post("/api/public/finalize-checkout")
       .send({ intentId: "pi_fake_2", intentType: "payment", plan: "", addons: { aiCreditsPack50k: 1 } });
     expect(r.status).toBe(200);
@@ -477,7 +497,7 @@ describe("active subscriber — finalize-checkout provisions the add-on (no plan
     expect(insert).toBeDefined();
     // Key must match acp_pi_<intentId> — same format the payment_intent.succeeded webhook uses.
     expect(insert!.values[0]).toBe("acp_pi_pi_fake_2");
-    expect(insert!.values[1]).toBe("org-uuid-1");
+    expect(insert!.values[1]).toBe(CREDIT_ORG);
     expect(insert!.values[3]).toBe(50000);
     expect(fake.subsCreated).toHaveLength(0); // one-time — no subscription
   });
@@ -509,9 +529,9 @@ describe("AI credits idempotency — all order combinations", () => {
 
   // ── T1: Normal — finalize-checkout runs, credits ×1 ──────────────────────
   it("T1 — normal return: finalize-checkout credits the org exactly once", async () => {
-    const fake = makeFakeStripe();
+    const fake = makeFakeStripe(creditPi({ [AI_PACK]: 1 }, 1900));
     setStripeForTesting(fake);
-    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+    const r = await request(makeApp(CREDIT_ORG, "tok-uuid-subscriber"))
       .post("/api/public/finalize-checkout")
       .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
     expect(r.status).toBe(200);
@@ -528,13 +548,13 @@ describe("AI credits idempotency — all order combinations", () => {
 
   // ── T2: finalize-checkout called twice (browser reload / double-submit) ───
   it("T2 — double finalize: both calls return 200, same idempotency key used both times", async () => {
-    const fake = makeFakeStripe();
+    const fake = makeFakeStripe(creditPi({ [AI_PACK]: 1 }, 1900));
     setStripeForTesting(fake);
     const body = { intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } };
-    const r1 = await request(makeApp("org-uuid-1", "tok-subscriber"))
+    const r1 = await request(makeApp(CREDIT_ORG, "tok-uuid-subscriber"))
       .post("/api/public/finalize-checkout").send(body);
     expect(r1.status).toBe(200);
-    const r2 = await request(makeApp("org-uuid-1", "tok-subscriber"))
+    const r2 = await request(makeApp(CREDIT_ORG, "tok-uuid-subscriber"))
       .post("/api/public/finalize-checkout").send(body);
     expect(r2.status).toBe(200);
     const inserts = allCreditInserts();
@@ -556,9 +576,9 @@ describe("AI credits idempotency — all order combinations", () => {
     });
     const insertsBefore = allCreditInserts().length;
 
-    const fake = makeFakeStripe();
+    const fake = makeFakeStripe(creditPi({ [AI_PACK]: 1 }, 1900));
     setStripeForTesting(fake);
-    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+    const r = await request(makeApp(CREDIT_ORG, "tok-uuid-subscriber"))
       .post("/api/public/finalize-checkout")
       .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
     expect(r.status).toBe(200);
@@ -574,9 +594,9 @@ describe("AI credits idempotency — all order combinations", () => {
   // Verified by confirming finalize uses acp_pi_<intentId> — the same key
   // the payment_intent.succeeded handler inserts at stripe-webhook.ts line 903.
   it("T4 — finalize then webhook: idempotency key is acp_pi_<intentId> on BOTH sides", async () => {
-    const fake = makeFakeStripe();
+    const fake = makeFakeStripe(creditPi({ [AI_PACK]: 1 }, 1900));
     setStripeForTesting(fake);
-    const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
+    const r = await request(makeApp(CREDIT_ORG, "tok-uuid-subscriber"))
       .post("/api/public/finalize-checkout")
       .send({ intentId: INTENT_ID, intentType: "payment", plan: "", addons: { [AI_PACK]: 1 } });
     expect(r.status).toBe(200);
@@ -615,7 +635,8 @@ describe("AI credits idempotency — all order combinations", () => {
       status: "requires_payment_method", // payment failed
       payment_method: "" as string,        // no PM attached on failure
       customer: "cus_test_sub",
-      metadata: {},
+      amount: 0, amount_received: 0, currency: "eur", livemode: false,
+      metadata: {} as Record<string, string>,
     }));
     setStripeForTesting(fake);
     const r = await request(makeApp("org-uuid-1", "tok-subscriber"))
@@ -624,5 +645,58 @@ describe("AI credits idempotency — all order combinations", () => {
     // Must reject the finalize — payment did not succeed.
     expect([400, 402, 422]).toContain(r.status);
     expect(allCreditInserts()).toHaveLength(0); // 0 credits attributed
+  });
+});
+
+
+// ── Composition du panier : finalize-checkout applique la MEME source de verite que le webhook ──
+describe("finalize-checkout — credits = panier serveur du PaymentIntent (jamais le corps)", () => {
+  beforeEach(() => { dbQueries.length = 0; activatedAddons.length = 0; });
+  const inserts = () => dbQueries.filter(q => /INSERT INTO ai_credit_purchases/.test(q.sql));
+  const finalize = (fake: unknown, body: Record<string, unknown>) => {
+    setStripeForTesting(fake as never);
+    return request(makeApp(CREDIT_ORG, "tok-uuid-subscriber")).post("/api/public/finalize-checkout")
+      .send({ intentType: "payment", plan: "", ...body });
+  };
+
+  it("quantite 2 : 100 000 credits (ancien code : 50 000, sous-credit)", async () => {
+    const r = await finalize(makeFakeStripe(creditPi({ aiCreditsPack50k: 2 }, 800)), { intentId: "pi_q2", addons: { aiCreditsPack50k: 2 } });
+    expect(r.status).toBe(200);
+    expect(r.body.credits).toBe(100000);
+    expect(inserts()).toHaveLength(1);
+    expect(inserts()[0]!.values[3]).toBe(100000);
+  });
+  it("corps de requete gonfle (500k) alors que le PaymentIntent paye 50k : seuls 50 000 credits", async () => {
+    const r = await finalize(makeFakeStripe(creditPi({ aiCreditsPack50k: 1 }, 400)), { intentId: "pi_inflate", addons: { aiCreditsPack500k: 1 } });
+    expect(r.status).toBe(200);
+    expect(inserts()[0]!.values[3]).toBe(50000);
+  });
+  it("corps de requete tronque : les credits payes ne sont pas perdus", async () => {
+    const r = await finalize(makeFakeStripe(creditPi({ aiCreditsPack50k: 3 }, 1200)), { intentId: "pi_trunc", addons: { monitorsPack10: 1 } });
+    expect(r.status).toBe(200);
+    expect(inserts()[0]!.values[3]).toBe(150000);
+  });
+  it("montant recu different du catalogue : aucun credit, 422", async () => {
+    const r = await finalize(makeFakeStripe(creditPi({ aiCreditsPack50k: 2 }, 400)), { intentId: "pi_short", addons: { aiCreditsPack50k: 2 } });
+    expect(r.status).toBe(422);
+    expect(inserts()).toHaveLength(0);
+  });
+  it("paiement en cours (processing) : aucun credit tant que non reussi (le webhook creditera)", async () => {
+    const r = await finalize(makeFakeStripe(creditPi({ aiCreditsPack50k: 1 }, 400, {}, "processing")), { intentId: "pi_proc", addons: { aiCreditsPack50k: 1 } });
+    expect(inserts()).toHaveLength(0);
+    expect([200, 202, 400]).toContain(r.status);
+  });
+  it("quantite invalide dans le panier du PaymentIntent : aucun credit", async () => {
+    const r = await finalize(makeFakeStripe(creditPi({ aiCreditsPack50k: 0.5 }, 400)), { intentId: "pi_badq", addons: { aiCreditsPack50k: 1 } });
+    expect(r.status).toBe(422);
+    expect(inserts()).toHaveLength(0);
+  });
+  it("panier mixte credits x2 + add-on recurrent : credits = 100 000 exactement", async () => {
+    const fake = makeFakeStripe({ ...creditPi({ aiCreditsPack50k: 2, [PAID_ADDON]: 1 }, 800 + 1000), existingPlanSubId: "sub_existing_plan", intentMetadata: {
+      addons: JSON.stringify({ aiCreditsPack50k: 2, [PAID_ADDON]: 1 }), orgId: CREDIT_ORG } });
+    const r = await finalize(fake, { intentId: "pi_mixed", addons: { aiCreditsPack50k: 2, [PAID_ADDON]: 1 } });
+    expect(r.status).toBe(200);
+    expect(inserts()).toHaveLength(1);
+    expect(inserts()[0]!.values[3]).toBe(100000);
   });
 });

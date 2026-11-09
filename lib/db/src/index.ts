@@ -555,6 +555,20 @@ export const missionsSchemaRef = {
 // (migrations, async PSI updates) that are not tenant-scoped reads.
 
 import type { PoolClient } from "pg";
+import {
+  inspectRlsFacts, recordRlsFacts, recordRuntimeSetRoleFailure, reportRlsEnforcement,
+  resolveRlsEnforcementPolicy, getRlsEnforcementStatus,
+} from "./rls-enforcement.js";
+
+// C-08 : mesure, classement et etat observable de l'isolation RLS reelle.
+export {
+  classifyRlsEnforcement, inspectRlsFacts, resolveRlsEnforcementPolicy,
+  getRlsEnforcementStatus, reportRlsEnforcement, resetRlsEnforcementState, RlsEnforcementError,
+} from "./rls-enforcement.js";
+export type {
+  RlsEnforcementFacts, RlsEnforcementMode, RlsEnforcementClassification,
+  RlsEnforcementPolicy, RlsEnforcementStatus,
+} from "./rls-enforcement.js";
 
 // Populated once at server startup by probeAppUserRole().
 // When true, withOrgDb() never attempts SET LOCAL ROLE — it only sets the GUC.
@@ -578,32 +592,33 @@ export async function probeAppUserRole(): Promise<void> {
   // Without this listener Node.js would crash with "Unhandled 'error' event".
   client.on("error", () => { /* absorbed — pool.on('error') covers idle clients */ });
   try {
-    // First check if the role even exists.
-    const { rows } = await client.query<{ exists: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'app_user') AS exists`
-    );
-    if (!rows[0]?.exists) {
-      _appUserRoleUnavailable = true;
+    // C-08 : on MESURE l'etat reel (role de connexion superuser/BYPASSRLS ? proprietaire
+    // de tables sans FORCE ? SET ROLE possible ?) au lieu d'affirmer que le mode
+    // GUC-only est « correct et sur ». La mesure ne modifie rien.
+    const facts = await inspectRlsFacts(client);
+    recordRlsFacts(facts);
+    _appUserRoleUnavailable = facts.setRoleUsable !== true;
+    if (facts.appUserRoleExists === false) {
       console.warn("[withOrgDb] app_user role absent — GUC-only RLS mode. Run initRlsSetup() first.");
-      return;
+    } else if (facts.setRoleUsable === false) {
+      console.warn(
+        "[withOrgDb] app_user role present but SET ROLE failed — GUC-only RLS mode.",
+        "To enable full RLS: GRANT app_user TO <db-connection-user>;",
+      );
     }
-
-    // Role exists — verify the current connection user can actually SET ROLE.
-    await client.query("SET ROLE app_user");
-    await client.query("RESET ROLE");
-    // Role is present and usable — _appUserRoleUnavailable stays false.
-    console.info("[withOrgDb] app_user role present and usable — full RLS enforcement active");
   } catch {
+    // La mesure elle-meme a echoue : etat inconnu, traite comme « non garanti ».
     _appUserRoleUnavailable = true;
-    // Role exists but membership is not granted to the connection user (managed DB).
-    // GUC-only mode is correct and safe: RLS policies evaluate app.current_org_id.
-    console.warn(
-      "[withOrgDb] app_user role present but SET ROLE failed — GUC-only RLS mode (correct for managed DBs).",
-      "To enable full RLS: GRANT app_user TO <db-connection-user>;",
-    );
+    recordRlsFacts({
+      appUserRoleExists: null, setRoleUsable: false, appUserBypassesRls: null,
+      connectionRole: null, connectionIsSuperuser: null, connectionBypassesRls: null, ownedUnforcedRlsTables: null,
+    });
   } finally {
     client.release();
   }
+  // Politique `strict` : leve (le demarrage echoue). Sinon, journalise en ERREUR
+  // quand l'isolation par la base n'est pas garantie (voir rls-enforcement.ts).
+  reportRlsEnforcement(getRlsEnforcementStatus());
 }
 
 export async function withOrgDbClient<T>(
@@ -629,7 +644,15 @@ export async function withOrgDbClient<T>(
       try {
         await client.query("SET LOCAL ROLE app_user");
       } catch (roleErr) {
+        recordRuntimeSetRoleFailure();
+        if (resolveRlsEnforcementPolicy() === "strict") {
+          // RLS_ENFORCEMENT=strict : jamais de degradation silencieuse, et le drapeau
+          // `_appUserRoleUnavailable` n'est PAS pose : chaque requete retente le SET ROLE.
+          console.error("[SECURITY][RLS] SET LOCAL ROLE app_user failed and RLS_ENFORCEMENT=strict — refusing to serve this query without database-level isolation.");
+          throw roleErr;
+        }
         _appUserRoleUnavailable = true;
+        console.error("[SECURITY][RLS] SET LOCAL ROLE app_user failed at runtime — database-level tenant isolation is not guaranteed (see GET /api/admin/db-check).");
         console.warn(
           "[withOrgDb] SET LOCAL ROLE app_user failed — recovering transaction, GUC-only RLS mode.",
           "Fix: GRANT app_user TO <db-connection-user>;",

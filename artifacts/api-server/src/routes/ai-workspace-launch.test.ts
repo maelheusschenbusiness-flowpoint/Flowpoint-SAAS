@@ -63,13 +63,13 @@ function completeOutput() {
   };
 }
 
-function makeApp(options: { orgId?: string; role?: string } = {}) {
+function makeApp(options: { orgId?: string; role?: string; noUser?: boolean } = {}) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     Object.assign(req, {
       orgId: options.orgId,
-      userId: "user-a",
+      userId: options.noUser ? undefined : "user-a",
       orgContext: options.role ? { role: options.role, userId: "user-a" } : undefined,
     });
     next();
@@ -237,6 +237,17 @@ describe("AI Workspace Launch persisted flow", () => {
 
     expect(response.status).toBe(401);
     expect(checkQuotaMock).not.toHaveBeenCalled();
+    expect(connectMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects writes without an authenticated user instead of defaulting to an anonymous identity", async () => {
+    const response = await request(makeApp({ orgId: "org-a", role: "owner", noUser: true }))
+      .post("/ai-workspace-launch")
+      .send({ siteUrl: "https://example.test", businessName: "Example" });
+
+    expect(response.status).toBe(401);
+    expect(checkQuotaMock).not.toHaveBeenCalled();
+    expect(aiChatMock).not.toHaveBeenCalled();
     expect(connectMock).not.toHaveBeenCalled();
   });
 

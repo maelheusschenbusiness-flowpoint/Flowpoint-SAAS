@@ -19,6 +19,7 @@
 
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
+import { randomUUID } from "node:crypto";
 import express, { type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { pool } from "@workspace/db";
@@ -34,7 +35,13 @@ const RUN_ID = `sp1_${Date.now()}`;
 let server: Server;
 let BASE: string;
 
-function orgId(tag: string) { return `${RUN_ID}_${tag}`; }
+// organizations.id est un UUID : un identifiant texte plantait avec 22P02.
+const ORG_IDS = new Map<string, string>();
+function orgId(tag: string): string {
+  let id = ORG_IDS.get(tag);
+  if (!id) { id = randomUUID(); ORG_IDS.set(tag, id); }
+  return id;
+}
 
 async function makeSession(tag: string, role = "owner"): Promise<string> {
   const oid = orgId(tag);
@@ -54,10 +61,10 @@ async function ensureOrg(tag: string) {
       [oid]
     );
     await client.query(
-      `INSERT INTO organizations (id, name, plan, subscription_status)
-       VALUES ($1, $2, 'Ultra', 'active')
+      `INSERT INTO organizations (id, name, owner_email, plan, subscription_status)
+       VALUES ($1, $2, $3, 'Ultra', 'active')
        ON CONFLICT (id) DO UPDATE SET plan = 'Ultra', subscription_status = 'active'`,
-      [oid, `Test Org ${tag}`]
+      [oid, `Test Org ${tag}`, `${tag}@test.invalid`]
     );
     await client.query(
       `INSERT INTO user_prefs (org_id, settings, streak, pinned, checklist)
@@ -72,10 +79,10 @@ async function cleanup(tags: string[]) {
   const ids = tags.map(t => orgId(t));
   const client = await pool.connect();
   try {
-    await client.query(`DELETE FROM user_prefs    WHERE org_id = ANY($1)`, [ids]);
-    await client.query(`DELETE FROM org_settings  WHERE org_id = ANY($1)`, [ids]);
-    await client.query(`DELETE FROM organizations WHERE id     = ANY($1)`, [ids]);
-    await client.query(`DELETE FROM user_sessions WHERE org_id = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM user_prefs    WHERE org_id::text = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM org_settings  WHERE org_id::text = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM organizations WHERE id::text = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM user_sessions WHERE org_id::text = ANY($1)`, [ids]);
   } catch { /* non-fatal */ } finally { client.release(); }
 }
 

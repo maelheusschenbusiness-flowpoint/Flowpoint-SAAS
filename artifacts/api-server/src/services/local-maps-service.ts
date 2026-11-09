@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import {
@@ -376,7 +377,7 @@ export async function createHeatmap(orgId: string, data: {
 }): Promise<Heatmap> {
   const client = await pool.connect();
   try {
-    const id = `hm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = newId("hm");
     await client.query(
       `INSERT INTO local_heatmaps
          (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, results, created_at)
@@ -385,12 +386,12 @@ export async function createHeatmap(orgId: string, data: {
        data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7,
        JSON.stringify({ businessName: data.businessName, cells: [] })]
     );
-    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1`, [id]);
+    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2`, [id, orgId]);
     return exposeHeatmap(res.rows[0]);
   } finally { client.release(); }
 }
 
-/** Claim a pending/failed scan once, then process it off the HTTP request path. */
+/** Claim a pending/failed/unavailable scan once, then process it off the HTTP request path. */
 export async function startHeatmapScan(orgId: string, id: string): Promise<boolean> {
   const claimed = await pool.query(
     `UPDATE local_heatmaps
@@ -398,7 +399,7 @@ export async function startHeatmapScan(orgId: string, id: string): Promise<boole
             results=jsonb_set(
               CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
               '{startedAt}', to_jsonb(NOW()::text), true)
-      WHERE id=$1 AND org_id=$2 AND status IN ('pending','failed')
+      WHERE id=$1 AND org_id=$2 AND status IN ('pending','failed','unavailable')
       RETURNING *`,
     [id, orgId],
   );
@@ -420,7 +421,7 @@ export async function startHeatmapScan(orgId: string, id: string): Promise<boole
   return true;
 }
 
-async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Promise<void> {
+export async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Promise<void> {
   const id = String(row.id);
   const businessName = String((row.results as HeatmapResults | undefined)?.businessName ?? "");
   const keyword = String(row.keyword ?? "");
@@ -430,9 +431,14 @@ async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Prom
   );
   if (!businessName.trim()) throw new Error("Le nom exact de l’établissement est requis.");
   if (!await isDataForSEOConfigured(orgId)) {
+    // Fournisseur absent : état explicite « unavailable » (relançable une fois
+    // les identifiants configurés), jamais de données simulées.
     await pool.query(
-      `UPDATE local_heatmaps SET status='failed', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
-      [id, orgId, JSON.stringify({ businessName, cells: [], error: "DataForSEO n’est pas configuré." })],
+      `UPDATE local_heatmaps SET status='unavailable', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
+      [id, orgId, JSON.stringify({
+        businessName, cells: [], code: "PROVIDER_NOT_CONFIGURED",
+        error: "Le fournisseur de mesures locales (DataForSEO) n’est pas configuré : aucune position n’a été mesurée.",
+      })],
     );
     return;
   }
@@ -484,10 +490,79 @@ async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Prom
   );
 }
 
-export async function generateAiLocalRecommendations(orgId: string): Promise<Array<{ title: string; description: string; impact: string; effort: string; priority: string }>> {
-  const [heatmaps, competitors] = await Promise.all([
+export interface GbpLocationFacts {
+  name: string;
+  rating: number | null;
+  reviews_count: number | null;
+  phone: string | null;
+  website: string | null;
+}
+
+type LocalRecommendation = { title: string; description: string; impact: string; effort: string; priority: string };
+
+/** Recommandations dérivées UNIQUEMENT des fiches Google Business enregistrées (aucun gain chiffré). */
+export function buildGbpLocalRecommendations(locations: GbpLocationFacts[]): LocalRecommendation[] {
+  const items: LocalRecommendation[] = [];
+  for (const loc of locations) {
+    const label = loc.name || "Établissement";
+    const rating = loc.rating == null ? null : Number(loc.rating);
+    const reviews = Number(loc.reviews_count ?? 0);
+    if (!loc.website?.trim()) {
+      items.push({
+        title: `Ajouter un site web à la fiche « ${label} »`,
+        description: "Aucun site web n’est renseigné sur cette fiche Google Business enregistrée.",
+        impact: "Non chiffré", effort: "Faible", priority: "medium",
+      });
+    }
+    if (!loc.phone?.trim()) {
+      items.push({
+        title: `Renseigner un téléphone sur la fiche « ${label} »`,
+        description: "Aucun numéro de téléphone n’est renseigné sur cette fiche Google Business enregistrée.",
+        impact: "Non chiffré", effort: "Faible", priority: "medium",
+      });
+    }
+    if (rating != null && reviews > 0 && rating < 4) {
+      items.push({
+        title: `Traiter les avis négatifs de « ${label} »`,
+        description: `La note enregistrée est de ${rating.toFixed(1)}/5 sur ${reviews} avis. Répondre aux avis et solliciter des retours de clients satisfaits.`,
+        impact: "Non chiffré", effort: "Moyen", priority: "high",
+      });
+    }
+    if (reviews === 0) {
+      items.push({
+        title: `Recueillir des premiers avis pour « ${label} »`,
+        description: "Aucun avis n’est enregistré pour cette fiche.",
+        impact: "Non chiffré", effort: "Moyen", priority: "medium",
+      });
+    }
+  }
+  return items;
+}
+
+export interface AiLocalRecommendationsResult {
+  status: "ok" | "empty";
+  message: string | null;
+  recommendations: LocalRecommendation[];
+}
+
+export async function generateAiLocalRecommendations(orgId: string): Promise<AiLocalRecommendationsResult> {
+  const [heatmaps, competitors, locations] = await Promise.all([
     getHeatmaps(orgId),
     getCompetitorSummary(orgId),
+    pool.query(
+      `SELECT name, rating, reviews_count, phone, website FROM google_locations WHERE org_id=$1 ORDER BY name LIMIT 20`,
+      [orgId],
+    ).then(r => r.rows as GbpLocationFacts[]).catch(() => [] as GbpLocationFacts[]),
   ]);
-  return buildLocalMapsRecommendations(heatmaps, competitors);
+  const measured = (heatmaps.length > 0 || competitors.resultCount > 0)
+    ? buildLocalMapsRecommendations(heatmaps, competitors) : [];
+  const recommendations = [...buildGbpLocalRecommendations(locations), ...measured];
+  if (recommendations.length === 0) {
+    return {
+      status: "empty",
+      message: "Aucune recommandation : connectez une fiche Google Business ou lancez une analyse locale pour obtenir des constats fondés sur vos données.",
+      recommendations: [],
+    };
+  }
+  return { status: "ok", message: null, recommendations };
 }

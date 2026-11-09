@@ -4,7 +4,7 @@ import {
   CRM_PROVIDERS, getCrmStatus, disconnectCrm, syncCrm,
   getSyncLogs, getFieldMappings, upsertFieldMapping, getCrmLimit, type CrmProvider,
 } from "../services/crm-service.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -23,7 +23,12 @@ type OrgReq = Request & {
   orgId?: string;
 };
 const org  = (req: Request): string => (req as OrgReq).orgId ?? "default";
-const plan = (req: Request): string => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
+/**
+ * Plan de l'organisation LU EN BASE (resolvePlanFromDB, meme source que planGate/keywords.ts).
+ * Avant : repli sur Pro via `req.me` -- `req.me` n'est renseigne par aucun middleware, donc TOUTE
+ * organisation (Standard comprise) etait traitee comme Pro. Plan illisible => "standard" (le moins permissif).
+ */
+const plan = async (req: Request): Promise<string> => (await resolvePlanFromDB(req)) ?? "standard";
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 router.get("/crm/providers", (_req, res) => {
@@ -33,7 +38,8 @@ router.get("/crm/providers", (_req, res) => {
 router.get("/crm/status", async (req, res) => {
   try {
     const data = await getCrmStatus(org(req));
-    res.json({ ...data, limit: getCrmLimit(plan(req)), plan: plan(req) });
+    const orgPlan = await plan(req);
+    res.json({ ...data, limit: getCrmLimit(orgPlan), plan: orgPlan });
   } catch {
     res.status(503).json({
       error: "Impossible de charger l’état des intégrations CRM.",

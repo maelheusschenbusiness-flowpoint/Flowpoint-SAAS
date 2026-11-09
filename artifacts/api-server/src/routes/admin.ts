@@ -15,7 +15,7 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
-import { pool, withOrgDb } from "@workspace/db";
+import { pool, withOrgDb, getRlsEnforcementStatus } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
 import { INSERT_QA_TEST_SESSION_SQL } from "../services/qa-test-session.js";
 import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
@@ -41,7 +41,7 @@ function requireAdminKey(req: Request, res: Response): boolean {
     return false;
   }
   const provided = req.headers["x-admin-key"];
-  if (typeof provided !== "string" || provided !== key) {
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
     res.status(403).json({ ok: false, error: "Invalid or missing x-admin-key header" });
     return false;
   }
@@ -579,6 +579,10 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
         app_user_bypassrls: appUser?.rolbypassrls ?? null,
         rls_enabled_tables: tableR.rows[0].rls_tables,
         total_policies:     rlsR.rows[0].policy_count,
+        // C-08 : etat REEL de l'isolation par la base (mode, role de connexion
+        // superuser/BYPASSRLS, motifs). `isolationGuaranteed:false` = seuls les
+        // filtres org_id manuels isolent les organisations. Aucun secret.
+        enforcement: getRlsEnforcementStatus(),
       },
     });
   } catch (err) {

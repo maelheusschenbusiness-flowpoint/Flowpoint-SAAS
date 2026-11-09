@@ -30,6 +30,7 @@
 import { readFileSync } from "fs";
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
+import { randomUUID } from "node:crypto";
 import express, { type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { pool } from "@workspace/db";
@@ -49,7 +50,13 @@ function check(id: string, pass: boolean): void {
   console.log(`  ${pass ? "✅" : "❌"} ${id}`);
 }
 
-function orgId(tag: string) { return `sme_${RUN}_${tag}`; }
+// organizations.id est un UUID : un identifiant texte plantait avec 22P02.
+const ORG_IDS = new Map<string, string>();
+function orgId(tag: string): string {
+  let id = ORG_IDS.get(tag);
+  if (!id) { id = randomUUID(); ORG_IDS.set(tag, id); }
+  return id;
+}
 
 async function ensureOrgWithAddons(
   tag: string,
@@ -59,10 +66,10 @@ async function ensureOrgWithAddons(
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO organizations (id, name, plan, subscription_status, addons)
-       VALUES ($1, $2, 'pro', 'active', $3::jsonb)
+      `INSERT INTO organizations (id, name, owner_email, plan, subscription_status, addons)
+       VALUES ($1, $2, $4, 'pro', 'active', $3::jsonb)
        ON CONFLICT (id) DO UPDATE SET plan = 'pro', addons = $3::jsonb`,
-      [oid, `SME Test ${tag}`, JSON.stringify(addons)]
+      [oid, `SME Test ${tag}`, JSON.stringify(addons), `${tag}@sme-test.invalid`]
     );
     await client.query(
       `INSERT INTO org_settings (org_id, plan, subscription_status)
@@ -87,10 +94,10 @@ async function cleanup() {
   const client = await pool.connect();
   try {
     const ids = ["a", "b", "wl_yes", "wl_no"].map(t => orgId(t));
-    await client.query(`DELETE FROM user_sessions    WHERE org_id = ANY($1)`, [ids]);
-    await client.query(`DELETE FROM org_settings     WHERE org_id = ANY($1)`, [ids]);
-    await client.query(`DELETE FROM org_addons       WHERE org_id = ANY($1)`, [ids]).catch(() => {});
-    await client.query(`DELETE FROM report_templates WHERE org_id = ANY($1)`, [ids]).catch(() => {});
+    await client.query(`DELETE FROM user_sessions    WHERE org_id::text = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM org_settings     WHERE org_id::text = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM org_addons       WHERE org_id::text = ANY($1)`, [ids]).catch(() => {});
+    await client.query(`DELETE FROM report_templates WHERE org_id::text = ANY($1)`, [ids]).catch(() => {});
   } finally { client.release(); }
 }
 
