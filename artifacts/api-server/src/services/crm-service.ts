@@ -13,7 +13,7 @@ export const CRM_PROVIDERS = [
 
 export type CrmProvider = typeof CRM_PROVIDERS[number]['id'];
 
-import { PLAN_DEFINITIONS } from "../lib/plans.js";
+import { getQuota } from "../lib/config.js";
 
 export class CrmCapabilityUnavailableError extends Error {
   readonly code = "CRM_SYNC_UNAVAILABLE";
@@ -45,8 +45,9 @@ function toPublicCrmIntegration(row: Record<string, unknown>): Record<string, un
 }
 
 export function getCrmLimit(plan: string): number {
-  const def = PLAN_DEFINITIONS[plan.toLowerCase()];
-  return def ? def.limits.workspaces : 1;
+  // Plafond d'integrations CRM annonce (1 / 3 / 10) — et non le nombre de workspaces
+  // (1 / 5 / 10) que cette fonction renvoyait par erreur. Source unique : CORE_QUOTAS.
+  return getQuota(plan, "crmIntegrations");
 }
 
 export async function getCrmStatus(orgId: string): Promise<{

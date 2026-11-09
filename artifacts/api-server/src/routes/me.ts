@@ -6,7 +6,8 @@ import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
-import { normalizeSubscriptionStatus, grantsPaidAccess, statusGrantsAccess } from "../lib/subscription-state.js";
+import { normalizeSubscriptionStatus, resolveAccessMode, statusGrantsAccess } from "../lib/subscription-state.js";
+import { getAccessConfig } from "../lib/access-config.js";
 import { logger } from "../lib/logger.js";
 import { displayablePublicKey, isApiKeyPrincipal, redactApiKeys, stripApiKeyFields } from "../lib/api-keys.js";
 import {
@@ -194,8 +195,17 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 
       // ── Acces aux fonctionnalites payantes — meme regle que le middleware ──
       const _currentPeriodEnd = billingData?.currentPeriodEnd ?? null;
-      const _hasPaidAccess    = grantsPaidAccess({ status: normStatus, currentPeriodEnd: _currentPeriodEnd });
-      const _inPaidGrace      = !statusGrantsAccess(normStatus) && _hasPaidAccess;
+      // Decision UNIQUE resolveAccessMode — identique a billing-context.ts.
+      const _access = _isQaOrg
+        ? { mode: "full" as const, reason: "trialing" as const, graceEndsAt: null as string | null }
+        : resolveAccessMode({
+            status: normStatus,
+            currentPeriodEnd: _currentPeriodEnd,
+            cancelAtPeriodEnd: billingData?.cancelAtPeriodEnd === true,
+            pastDueSince: billingData?.pastDueSince ?? null,
+          }, new Date(), getAccessConfig());
+      const _hasPaidAccess    = _access.mode === "full";
+      const _inPaidGrace      = _hasPaidAccess && !statusGrantsAccess(normStatus);
 
       // Read addons from org_addons table (single source of truth — Correction 8).
       // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
@@ -281,13 +291,20 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         hasPremiumAccess:    _hasPaidAccess,
         hasPaidAccess:       _hasPaidAccess,
         inPaidGracePeriod:   _inPaidGrace,
+        // Lecture seule (annulation echue / past_due hors grace) : l'UI affiche
+        // la banniere et grise les actions ; l'API refuse les ecritures (402
+        // SUBSCRIPTION_READ_ONLY).
+        accessMode:          _access.mode,
+        accessReason:        _access.reason,
+        readOnly:            _access.mode === "read_only",
+        graceEndsAt:         _access.graceEndsAt ?? null,
         currentPeriodEnd:    _currentPeriodEnd,
         // Annulation programmee : permet d'afficher « se termine le … » et de
         // distinguer un abonnement actif qui se renouvelle d'un actif qui
         // s'arrete. Absent jusqu'ici, donc invisible du dashboard.
         cancelAtPeriodEnd:   billingData?.cancelAtPeriodEnd === true,
         cancelAt:            billingData?.cancelAt ?? null,
-        mustCompleteBilling: !statusGrantsAccess(normStatus),
+        mustCompleteBilling: !(_hasPaidAccess && statusGrantsAccess(normStatus)),
         onboardingCompletedAt: await (async () => {
           try {
             const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId]);
@@ -638,6 +655,24 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
     statusPageUrl?: string; // convenience top-level alias — merged into settings.statusPageUrl
   };
+  // C-04 : cette route est ouverte a tout role (la garde d'ecriture par defaut la
+  // laisse passer pour l'etat d'interface : serie, epingles, checklist). Les
+  // reglages d'ORGANISATION (`settings`, `statusPageUrl`) restent reserves aux
+  // roles qui ecrivent : un viewer (ou une cle publique fp_pub_) ne les modifie pas.
+  const _prefsRole = String(req.orgContext?.role ?? "");
+  const _prefsWritesOrgSettings =
+    (rawSettings && typeof rawSettings === "object" && Object.keys(rawSettings).length > 0) ||
+    typeof statusPageUrl === "string";
+  // Un role absent est deja refuse (401) par writeRoleGuard : ici seul « viewer » est a exclure.
+  if (_prefsWritesOrgSettings && _prefsRole === "viewer") {
+    res.status(403).json({
+      error: "Forbidden: write access requires owner, admin or member role",
+      code: "WRITE_ROLE_REQUIRED",
+      yourRole: _prefsRole || null,
+    });
+    return;
+  }
+
   // ── statusPageUrl validation helper ──────────────────────────────────────────
   // Returns the trimmed URL if it is a valid absolute http/https URL, "" if the
   // intent is to clear the field, or null if the value is invalid and must be

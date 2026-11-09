@@ -1604,6 +1604,15 @@ export async function initDataTables(): Promise<void> {
     // se renouvelle » de « actif qui s'arrete le <date> ».
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT false;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cancel_at TIMESTAMPTZ;`);
+    // Debut de l'episode past_due (grace PAST_DUE_GRACE_DAYS — lib/subscription-state.ts
+    // resolveAccessMode). Pose une fois par le webhook invoice.payment_failed
+    // (COALESCE dans persistOrgData), remise a NULL au retour active/trialing.
+    // NOTE DEPLOIEMENT : ce demarrage ajoute la colonne au premier deploiement.
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS past_due_since TIMESTAMPTZ;`);
+    // Organisations DEJA past_due avant la regle : leur grace part de CE premier
+    // demarrage (jamais un basculement brutal en lecture seule). Ne touche que
+    // les lignes sans horodatage ; idempotent (une fois posee, la valeur reste).
+    await run(client, `UPDATE organizations SET past_due_since = NOW() WHERE subscription_status = 'past_due' AND past_due_since IS NULL;`);
     // Colonnes lues par loadOrgData() mais creees jusqu'ici uniquement par
     // migrations/*.sql — qui ne s'executent pas en production. Sur une base
     // posee par initDataTables seul, le SELECT de loadOrgData echouait, donc
@@ -2885,6 +2894,11 @@ export async function initDataTables(): Promise<void> {
         )
       `);
       await run(client, `CREATE INDEX IF NOT EXISTS gbp_posts_org_idx ON gbp_posts(org_id, created_at DESC)`);
+      // D-01 : raison explicite d'un échec de publication (code stable + message affichable en UI).
+      await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS last_error_code TEXT`);
+      await run(client, `ALTER TABLE gbp_posts ADD COLUMN IF NOT EXISTS last_error_message TEXT`);
+      // Planificateur : lecture des posts programmés échus.
+      await run(client, `CREATE INDEX IF NOT EXISTS gbp_posts_due_idx ON gbp_posts(scheduled_at) WHERE status = 'scheduled'`);
       await applyTenantRls("gbp_posts");
 
       // ── dataforseo_quota (composite PK; no surrogate id) ────────────────────
@@ -3953,6 +3967,47 @@ export async function initDataTables(): Promise<void> {
         logger.info("[init-data-tables] fix-org-uuid-relations-v1 migration complete ✓");
       }
     }
+
+    // Suivi des remboursements de credits IA (ai-credit-refunds.ts) : journal d'audit
+    // `refund_adjustment`, cumulatif par achat, cle = refund id Stripe (idempotence).
+    // Idempotent ; sans donnee personnelle (identifiants Stripe et montants seulement).
+    await client.query(`
+        CREATE TABLE IF NOT EXISTS ai_credit_refunds (
+          refund_id                  TEXT PRIMARY KEY,
+          purchase_id                TEXT NOT NULL,
+          org_id                     UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          payment_intent             TEXT,
+          charge_id                  TEXT,
+          refund_amount_cents        BIGINT NOT NULL,
+          status                     TEXT NOT NULL,
+          refund_status              TEXT,
+          kind                       TEXT NOT NULL DEFAULT 'refund_adjustment',
+          credits_target             INTEGER NOT NULL DEFAULT 0,
+          credits_removed            INTEGER NOT NULL DEFAULT 0,
+          credits_shortfall          INTEGER NOT NULL DEFAULT 0,
+          cumulative_refunded_cents  BIGINT NOT NULL DEFAULT 0,
+          cumulative_credits_removed INTEGER NOT NULL DEFAULT 0,
+          livemode                   BOOLEAN,
+          created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_credit_refunds_purchase ON ai_credit_refunds(purchase_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_credit_refunds_org ON ai_credit_refunds(org_id, created_at DESC);
+        ALTER TABLE ai_credit_refunds ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE ai_credit_refunds FORCE ROW LEVEL SECURITY;
+        DROP POLICY IF EXISTS tenant_select ON ai_credit_refunds;
+        DROP POLICY IF EXISTS tenant_insert ON ai_credit_refunds;
+        DROP POLICY IF EXISTS tenant_update ON ai_credit_refunds;
+        DROP POLICY IF EXISTS tenant_delete ON ai_credit_refunds;
+        CREATE POLICY tenant_select ON ai_credit_refunds FOR SELECT
+          USING     (org_id::text = current_setting('app.current_org_id', true));
+        CREATE POLICY tenant_insert ON ai_credit_refunds FOR INSERT
+          WITH CHECK(org_id::text = current_setting('app.current_org_id', true));
+        CREATE POLICY tenant_update ON ai_credit_refunds FOR UPDATE
+          USING     (org_id::text = current_setting('app.current_org_id', true));
+        CREATE POLICY tenant_delete ON ai_credit_refunds FOR DELETE
+          USING     (org_id::text = current_setting('app.current_org_id', true));
+      `);
 
     // ── P1-2 : ai_usage_logs org_id type fix (idempotent fallback guard) ────────
     // Runs only if fix-org-uuid-relations-v1 failed or hasn't run yet.

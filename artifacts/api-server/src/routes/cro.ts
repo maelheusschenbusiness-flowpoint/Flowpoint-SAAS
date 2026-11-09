@@ -3,6 +3,7 @@ import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { logger } from "../lib/logger.js";
 import { deriveConversionObservations } from "../services/conversion-observations.js";
+import { analyzeCroPage } from "../services/cro-service.js";
 
 const router = Router();
 
@@ -89,7 +90,10 @@ router.post("/cro/generate", canWrite, async (req: Request, res: Response) => {
   if (!owned) return;
   try {
     const observations = await loadObservedInsights(req, siteUrl);
-    res.json({ ok: true, source: "behavior_events", windowDays: 30, observations });
+    // Analyse réelle de la page (fetch SSRF-safe). Jamais d'exception : en cas
+    // d'échec, `pageAnalysis.status === "unavailable"` + message explicite.
+    const pageAnalysis = await analyzeCroPage(siteUrl);
+    res.json({ ok: true, source: "behavior_events", windowDays: 30, observations, pageAnalysis });
   } catch (err) {
     logger.warn({ err, siteUrl, orgId }, "[CRO] observed-event analysis failed");
     res.status(503).json({ error: "Impossible d'analyser les événements collectés.", observations: [] });

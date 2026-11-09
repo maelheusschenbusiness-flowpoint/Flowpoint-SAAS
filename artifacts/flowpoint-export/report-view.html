@@ -149,7 +149,28 @@
         });
       }
 
+      function esc(v) {
+        return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+
+      // L'API publique renvoie { report, branding, audits, createdAt } : on l'adapte au gabarit
+      // d'affichage (titre / indicateurs / sections) avec les seules donnees reellement presentes.
+      function adaptSharedReport(d) {
+        var out = { title: esc(d.report.name || ''), createdAt: d.createdAt, orgName: esc((d.branding && d.branding.agencyName) || '') };
+        var audits = Array.isArray(d.audits) ? d.audits : [];
+        if (audits.length) {
+          out.sections = audits.map(function (a) {
+            var score = (a.score === 0 || a.score) ? 'Score SEO : ' + esc(a.score) + '/100' : '';
+            return { title: esc(a.url || 'Audit'), content: score };
+          });
+        }
+        return out;
+      }
+
       function renderReport(data) {
+        if (data && data.report && typeof data.report === 'object') data = adaptSharedReport(data);
         document.getElementById('fp-report-title').textContent = data.title ||
           window.fpPublicText('Rapport d\'analyse', 'Analysis report');
         var meta = document.getElementById('fp-report-meta');
@@ -210,9 +231,10 @@
       }
 
       var parts = window.location.pathname.split('/');
-      var token = parts[parts.length - 1] || new URLSearchParams(window.location.search).get('token');
+      var token = parts[parts.length - 1];
+      if (!token || token === 'report-view.html') token = new URLSearchParams(window.location.search).get('token');
 
-      if (!token || token === 'report-view.html') {
+      if (!token) {
         document.getElementById('fp-error-msg').textContent = 'Aucun identifiant de rapport trouvé dans l\'URL.';
         show('fp-error');
         return;

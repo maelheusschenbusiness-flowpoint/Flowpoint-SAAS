@@ -45,6 +45,9 @@ const CHAMPS_SENSIBLES = [
   // `!isProduction` et ne se declenche donc jamais en production — la cle est
   // masquee quand meme, pour que le prochain site d'appel n'ait rien a savoir.
   "debugLink", "verifyPath", "magicLink", "loginLink", "inviteUrl", "resetLink",
+  // C-14 : en-tetes et jetons complementaires, et numeros de telephone.
+  "jwt", "xApiKey", "setCookie", "bearer", "authToken", "sellerToken", "pendingToken",
+  "phone", "phoneNumber", "telephone", "mobile", "tel",
 ];
 
 /** `API_KEY`, `api-key`, `apiKey` et `apikey` designent la meme chose. */
@@ -60,11 +63,21 @@ export const CENSURE = "[masque]";
 const PROFONDEUR_MAX = 8;
 const NOEUDS_MAX = 500;
 
+/** Adresse e-mail : partie locale, `@`, domaine pointe. */
+const EMAIL_MOTIF = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+
+/** `jean.dupont@exemple.fr` -> `je***@exemple.fr`. Exporte pour les tests. */
+export function masquerEmail(adresse: string): string {
+  const arobase = adresse.lastIndexOf("@");
+  if (arobase < 0) return CENSURE;
+  return `${adresse.slice(0, Math.min(arobase, 2))}***${adresse.slice(arobase)}`;
+}
+
 /**
  * Secrets reconnaissables a leur forme, pour les cas ou la cle ne dit rien :
  * un jeton interpole dans un message, ou recopie dans `err.message`.
  */
-const MOTIFS_VALEURS: ReadonlyArray<readonly [RegExp, string]> = [
+const MOTIFS_VALEURS: ReadonlyArray<readonly [RegExp, string | ((sous: string, ...args: string[]) => string)]> = [
   // Stripe : cles secretes, restreintes, et secrets de signature de webhook
   [/\b(sk|rk)_(live|test)_[A-Za-z0-9]{8,}/g, CENSURE],
   [/\bwhsec_[A-Za-z0-9+/=_-]{8,}/g, CENSURE],
@@ -76,12 +89,15 @@ const MOTIFS_VALEURS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+):[^@\s/]+@/gi, `$1:${CENSURE}@`],
   // Lien de connexion ou d'invitation portant un jeton
   [/([?&]token=)[A-Za-z0-9._~+/=-]{16,}/g, `$1${CENSURE}`],
+  // C-14 : adresse e-mail (donnee personnelle) -> `ab***@domaine`. Garde le
+  // domaine et deux caracteres pour le diagnostic, sans exposer la personne.
+  [EMAIL_MOTIF, (adresse: string) => masquerEmail(adresse)],
 ];
 
 function masquerChaine(valeur: string): string {
   let sortie = valeur;
   for (const [motif, remplacement] of MOTIFS_VALEURS) {
-    sortie = sortie.replace(motif, remplacement);
+    sortie = sortie.replace(motif, remplacement as string);
   }
   return sortie;
 }
@@ -166,6 +182,10 @@ export const REDACTED_PATHS: readonly string[] = [
   "body",
   "req.headers.authorization",
   "req.headers.cookie",
+  "req.headers['x-api-key']",
+  "req.headers['x-admin-key']",
+  "req.headers['x-seller-admin-key']",
+  "req.headers['x-growth-admin-key']",
   "res.headers['set-cookie']",
 ];
 

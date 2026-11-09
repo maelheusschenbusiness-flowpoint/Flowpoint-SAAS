@@ -17,6 +17,7 @@
  */
 
 import { readFileSync } from "fs";
+import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
 import express, { type Request, type Response, type NextFunction } from "express";
@@ -37,7 +38,14 @@ function check(id: string, pass: boolean): void {
   console.log(`  ${pass ? "✅" : "❌"} ${id}`);
 }
 
-function orgId(tag: string) { return `ddd_${RUN}_${tag}`; }
+// organizations.id est un UUID : un identifiant texte (`ddd_<run>_<tag>`) plantait
+// avec 22P02 des l'insertion. Un UUID stable par tag, genere une fois par execution.
+const ORG_IDS = new Map<string, string>();
+function orgId(tag: string): string {
+  let id = ORG_IDS.get(tag);
+  if (!id) { id = randomUUID(); ORG_IDS.set(tag, id); }
+  return id;
+}
 
 async function ensureOrg(tag: string): Promise<void> {
   const oid = orgId(tag);
@@ -75,9 +83,10 @@ async function insertAudit(tag: string): Promise<string> {
 async function insertSchedule(tag: string): Promise<string> {
   const oid = orgId(tag);
   const id = `sched_ddd_${RUN}_${tag}`;
-  // Both next_run and created_at are bigint (epoch ms)
-  const nowMs = Date.now();
-  const nextRunMs = nowMs + 7 * 24 * 3600 * 1000;
+  // next_run et created_at sont des timestamps (src/routes/audits.ts y ecrit des
+  // dates ISO) ; le test passait autrefois des millisecondes epoch (colonnes bigint).
+  const nowMs = new Date();
+  const nextRunMs = new Date(nowMs.getTime() + 7 * 24 * 3600 * 1000);
   const client = await pool.connect();
   try {
     await client.query(

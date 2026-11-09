@@ -105,7 +105,7 @@ export const TABLES_COMPTE_A_PRESERVER = new Set<string>([
   "roles", "org_member_permissions",
   // Facturation : plan, options, historique comptable
   "subscriptions", "org_addons", "billing_events",
-  "ai_credit_purchases", "checkout_post_tokens",
+  "ai_credit_purchases", "ai_credit_refunds", "checkout_post_tokens",
   // Infrastructure
   "schema_migrations", "canonical_seeds",
 ]);

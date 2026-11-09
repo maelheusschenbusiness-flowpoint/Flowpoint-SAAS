@@ -10,6 +10,7 @@
 import { logger } from "../lib/logger.js";
 import { randomUUID } from "node:crypto";
 import { aiChat } from "./ai-provider.js";
+import { fetchUrlContent } from "./url-fetcher.js";
 import { checkAIQuota, recordCompletedUsageDeferred } from "./ai-engine.js";
 
 const FETCH_TIMEOUT_MS  = 15_000;
@@ -105,25 +106,16 @@ function hashStr(s: string): string {
 
 async function fetchPage(url: string): Promise<{ url: string; content: string; ok: boolean }> {
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; FlowPoint-Analyzer/1.0)",
-        "Accept": "text/html,*/*;q=0.9",
-      },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-    });
+    // SSRF : fetch garde partage (DNS epingle, IP privees/link-local/CGNAT refusees,
+    // chaque redirection revalidee, corps borne). Jamais de fetch() direct sur une URL utilisateur.
+    const res = await fetchUrlContent(url, { timeoutMs: FETCH_TIMEOUT_MS });
     if (!res.ok) return { url, content: "", ok: false };
-    const html = await res.text();
-    const text = html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/\s{2,}/g, " ")
-      .trim()
-      .slice(0, 7000);
+    const text = [
+      res.title,
+      res.metaDescription,
+      ...(res.headings ?? []).map(h => h.text),
+      res.bodyText,
+    ].filter(Boolean).join(" ").replace(/\s{2,}/g, " ").trim().slice(0, 7000);
     return { url, content: text, ok: text.length > 80 };
   } catch {
     return { url, content: "", ok: false };

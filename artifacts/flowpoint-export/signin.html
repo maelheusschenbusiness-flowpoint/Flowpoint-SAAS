@@ -443,7 +443,7 @@
 
       <button type="submit" class="btn-primary" id="signup-btn" style="margin-top:20px">
         <div class="spinner"></div>
-        <span class="btn-text">Continuer vers le choix du plan →</span>
+        <span class="btn-text" id="signup-btn-text">Continuer vers le choix du plan →</span>
       </button>
     </form>
 
@@ -577,19 +577,45 @@
     } catch (e) {}
   })();
 
-  /* ── Called when user clicks a plan card ── */
-  function choosePlan(plan, btn) {
+  var FP_PLANS = ['standard', 'pro', 'ultra'];
+
+  /* A-04 — le plan déjà choisi sur pricing.html (fp_cart, frais < 1h).
+     Retourne '' si aucun plan valide : l'écran de choix reste alors affiché. */
+  function fpCartPlan() {
+    try {
+      var cart = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      if (!cart || typeof cart !== 'object') return '';
+      var age = typeof cart._updatedAt === 'number' ? Date.now() - cart._updatedAt : Infinity;
+      if (!(age >= 0 && age < 3600000)) return '';
+      var plan = String(cart.plan || '').toLowerCase();
+      return FP_PLANS.indexOf(plan) !== -1 ? plan : '';
+    } catch (e) { return ''; }
+  }
+
+  /* Revient au formulaire (jeton de pré-inscription absent ou perdu) sans
+     recharger la page : un rechargement détruisait justement le jeton. */
+  function fpBackToSignupForm(message) {
+    _planBtnsLocked = false;
+    var planScreen = document.getElementById('plan-screen');
+    var signupScreen = document.getElementById('signup-screen');
+    if (planScreen) planScreen.style.display = 'none';
+    if (signupScreen) signupScreen.style.display = 'block';
+    var el = document.getElementById('signup-msg');
+    if (el) { el.className = 'msg error'; el.textContent = message; }
+  }
+
+  /* Enregistre le plan dans le panier, persiste le jeton et part vers le paiement. */
+  function proceedWithPlan(plan, btn) {
     if (_planBtnsLocked) return;
     if (!_preRegisterToken) {
-      var msgEl = document.getElementById('plan-msg');
-      if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = 'Erreur : session d\'inscription introuvable. Rechargez la page.'; }
+      fpBackToSignupForm('Votre session d\'inscription a expiré. Veuillez renseigner à nouveau le formulaire pour continuer.');
       return;
     }
     _planBtnsLocked = true;
 
     // Disable all buttons immediately then redirect
     document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = true; });
-    btn.style.opacity = '0.5';
+    if (btn) btn.style.opacity = '0.5';
 
     // Save plan + preserve any add-ons selected before authentication.
     var pendingCart = null;
@@ -603,7 +629,25 @@
     // Also persist to localStorage with a 2-hour TTL so the token survives
     // tab closure or sessionStorage loss between signin → pricing → checkout-payment.
     try { localStorage.setItem('fp_pre_reg_token', JSON.stringify({ token: _preRegisterToken, exp: Date.now() + 7200000 })); } catch(e) {}
+    // Le jeton est désormais porté par le paiement : plus de reprise Google à faire.
+    try { sessionStorage.removeItem('fp_google_signup_resume'); } catch(e) {}
     window.location.href = '/checkout.html?plan=' + encodeURIComponent(plan);
+  }
+
+  /* ── Called when user clicks a plan card ── */
+  function choosePlan(plan, btn) {
+    proceedWithPlan(plan, btn);
+  }
+
+  /* Écran de choix du plan, sauf si le panier contient déjà un plan (A-04). */
+  function fpAfterPreRegister() {
+    var cartPlan = fpCartPlan();
+    if (cartPlan) {
+      proceedWithPlan(cartPlan, null);
+      return;
+    }
+    document.getElementById('signup-screen').style.display = 'none';
+    document.getElementById('plan-screen').style.display   = 'block';
   }
 
 (function () {
@@ -665,12 +709,9 @@
      signup reads this value below; the Google link receives it explicitly so
      the OAuth state can carry it through the callback. */
   var sellerRefParam = (urlParams.get('fp_ref') || urlParams.get('ref') || '').toUpperCase();
-  if (/^SELLER-[A-Z0-9]{1,20}$/.test(sellerRefParam)) {
+  var sellerRefValid = /^SELLER-[A-Z0-9]{1,20}$/.test(sellerRefParam);
+  if (sellerRefValid) {
     try { localStorage.setItem('fp_seller_ref', sellerRefParam); } catch (_) {}
-    var googleSignupLink = document.getElementById('btn-google-oauth');
-    if (googleSignupLink) {
-      googleSignupLink.href = '/api/auth/google/login?seller_code=' + encodeURIComponent(sellerRefParam);
-    }
   }
   /* Conversion B: the opaque lead id of an outreach email (22 characters
      [A-Za-z0-9_-]). Kept in sessionStorage; the first one wins. Anything else
@@ -687,20 +728,71 @@
       sessionStorage.setItem('fp_lid', fpLidValue);
     }
   } catch (_) {}
-  if (fpLidValue) {
-    var googleLeadLink = document.getElementById('btn-google-oauth');
-    if (googleLeadLink) {
-      googleLeadLink.href += (googleLeadLink.href.indexOf('?') === -1 ? '?' : '&') +
-        'fp_lid=' + encodeURIComponent(fpLidValue);
-    }
+  /* Lien Google : /api/auth/google/login?plan=…&seller_code=…&fp_lid=…
+     Le plan choisi sur pricing.html (fp_cart) voyage avec le lien pour que le
+     callback le renvoie ici (?plan=…) et que l'écran de choix soit sauté. */
+  (function () {
+    var googleLink = document.getElementById('btn-google-oauth');
+    if (!googleLink) return;
+    var qs = [];
+    var plan = fpCartPlan();
+    if (plan) qs.push('plan=' + encodeURIComponent(plan));
+    if (sellerRefValid) qs.push('seller_code=' + encodeURIComponent(sellerRefParam));
+    if (fpLidValue) qs.push('fp_lid=' + encodeURIComponent(fpLidValue));
+    if (qs.length) googleLink.href = '/api/auth/google/login?' + qs.join('&');
+    /* On retient le plan réellement envoyé : le callback renvoie un plan par
+       défaut quand aucun n'a été transmis, il ne doit pas être pris pour un choix. */
+    googleLink.addEventListener('click', function () {
+      try {
+        if (plan) sessionStorage.setItem('fp_google_plan_sent', plan);
+        else sessionStorage.removeItem('fp_google_plan_sent');
+      } catch (_) {}
+    });
+  })();
+  /* Plan déjà choisi : le bouton annonce la suite réelle (paiement). */
+  if (fpCartPlan()) {
+    var submitLabel = document.getElementById('signup-btn-text');
+    if (submitLabel) submitLabel.textContent = 'Continuer vers le paiement →';
   }
+  /* A-11 — le jeton de pré-inscription Google est rangé en sessionStorage dès
+     l'arrivée (et retiré de l'URL) : un rechargement ne le détruit plus. Sans
+     paramètre, on le restaure tant que la reprise Google est en cours. */
+  var GOOGLE_RESUME_TTL = 30 * 60 * 1000;
+  var googleResumeToken = '';
   if (googleSignupParam === '1' && preRegTokenParam) {
-    _preRegisterToken = preRegTokenParam;
-    // Clean URL so a refresh doesn't re-trigger
+    googleResumeToken = preRegTokenParam;
+    try {
+      sessionStorage.setItem('fp_pre_reg_token', googleResumeToken);
+      sessionStorage.setItem('fp_google_signup_resume', JSON.stringify({ exp: Date.now() + GOOGLE_RESUME_TTL }));
+    } catch (_) {}
+    // Plan renvoyé par le callback (?plan=…) : on le retient dans le panier.
+    var planParam = (urlParams.get('plan') || '').toLowerCase();
+    var planSent = '';
+    try { planSent = sessionStorage.getItem('fp_google_plan_sent') || ''; sessionStorage.removeItem('fp_google_plan_sent'); } catch (_) {}
+    if (FP_PLANS.indexOf(planParam) !== -1 && planParam === planSent) {
+      try {
+        var gCart = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+        gCart = gCart && typeof gCart === 'object' ? gCart : {};
+        gCart.plan = planParam;
+        gCart.addons = gCart.addons && typeof gCart.addons === 'object' ? gCart.addons : {};
+        gCart._v = 1; gCart._updatedAt = Date.now();
+        localStorage.setItem('fp_cart', JSON.stringify(gCart));
+      } catch (_) {}
+    }
+    // Clean URL so the token no longer sits in the address bar / history
     history.replaceState({}, '', '/signin.html');
-    // Skip the info form, jump straight to plan selection
-    document.getElementById('signup-screen').style.display = 'none';
-    document.getElementById('plan-screen').style.display   = 'block';
+  } else {
+    try {
+      var resume = JSON.parse(sessionStorage.getItem('fp_google_signup_resume') || 'null');
+      var kept = sessionStorage.getItem('fp_pre_reg_token') || '';
+      if (resume && resume.exp > Date.now() && kept) googleResumeToken = kept;
+      else sessionStorage.removeItem('fp_google_signup_resume');
+    } catch (_) {}
+  }
+  if (googleResumeToken) {
+    _preRegisterToken = googleResumeToken;
+    // Skip the info form: straight to payment if a plan is known, else plan choice
+    fpAfterPreRegister();
   }
 
   /* ── Mesure du tunnel — ajoutee le 18/10/2026 ───────────────────────────
@@ -935,9 +1027,8 @@
       // Store token for the plan selection step
       _preRegisterToken = res.data.preRegisterToken || '';
 
-      // Show plan selection screen
-      document.getElementById('signup-screen').style.display = 'none';
-      document.getElementById('plan-screen').style.display   = 'block';
+      // Plan déjà choisi sur pricing.html → paiement ; sinon écran de choix
+      fpAfterPreRegister();
     })
     .catch(function() {
       setLoading(signupBtn, false);

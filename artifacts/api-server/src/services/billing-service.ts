@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
+import { ensureUsageEventsTable, getMonthlyUsageCounts } from "./usage-events.js";
 import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
 import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId, isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 
@@ -254,6 +255,20 @@ export async function getUsageSummary(orgId = "default") {
   }
 }
 
+/**
+ * Consommation mensuelle = max(lignes vivantes du mois, evenements usage_events du mois).
+ * Intention documentee dans usage-events.ts : « supprimer un rapport/audit ne doit
+ * PAS effacer son historique de consommation ». C'est deja la regle de l'AFFICHAGE
+ * (GET /billing/usage) ; l'application du quota l'ignorait et comptait les seules
+ * lignes vivantes (supprimer puis recreer contournait le plafond). Si les evenements
+ * sont illisibles, on retombe sur le compte des lignes vivantes (jamais moins strict
+ * qu'avant) — getMonthlyUsageCounts journalise l'echec.
+ */
+async function cumulativeMonthlyUsage(orgId: string, kind: string, live: number): Promise<number> {
+  const events = await getMonthlyUsageCounts(orgId);
+  return Math.max(live, events[kind] ?? 0);
+}
+
 // ── Quota enforcement ─────────────────────────────────────────────────────────
 /**
  * P0-6 FIX: checkQuota now loads plan and live usage from the database using
@@ -269,6 +284,17 @@ export async function checkQuota(
   orgId: string,
   options: { failClosed?: boolean } = {},
 ): Promise<{ allowed: boolean; used: number; limit: number; plan: string; available?: boolean }> {
+  // Politique d'échec du comptage, par ressource :
+  //  - exports : FAIL-CLOSED par défaut. Compter dépend de la table paresseuse
+  //    `usage_events` ; une erreur silencieuse (ex. colonne erronée, B-01) avait
+  //    rendu le quota inopérant. On refuse (available:false) avec message clair
+  //    plutôt que d'offrir des exports illimités.
+  //  - audits / reports / monitors / seats : comptés sur des tables vivantes du
+  //    schéma migré, et les appelants n'interprètent que `allowed` (un refus
+  //    afficherait « limite atteinte » à tort) : fail-open conservé, mais l'échec
+  //    est journalisé au niveau ERROR, jamais avalé. Les appelants qui veulent
+  //    le refus passent { failClosed: true } explicitement.
+  const failClosed = options.failClosed ?? resource === "exports";
 
   // Safety net: if orgId is unresolved, fall back to standard limits (most restrictive)
   const resolvedOrgId = orgId && orgId !== "default" ? orgId : null;
@@ -295,8 +321,8 @@ export async function checkQuota(
       }
       qtyExtras = computeQtyAddonExtras(addonMap);
     } catch (err) {
-      logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed — using standard limits");
-      if (options.failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
+      logger.error({ err, orgId: resolvedOrgId, resource, failClosed }, "[Billing] checkQuota: DB load failed — using standard limits");
+      if (failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
     }
   }
   const extraMonitors = qtyExtras["monitors"]    ?? 0;
@@ -322,7 +348,8 @@ export async function checkQuota(
               `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
-            usedCount = Number(r.rows[0]?.n ?? 0);
+            // Consommation CUMULEE (usage-events.ts) : supprimer un audit ne libere pas le quota.
+            usedCount = await cumulativeMonthlyUsage(resolvedOrgId, "audit_created", Number(r.rows[0]?.n ?? 0));
             limit = limits.audits + extraAudits;
             break;
           }
@@ -340,7 +367,8 @@ export async function checkQuota(
               `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
-            usedCount = Number(r.rows[0]?.n ?? 0);
+            // Consommation CUMULEE (usage-events.ts) : supprimer un rapport ne libere pas le quota.
+            usedCount = await cumulativeMonthlyUsage(resolvedOrgId, "report_created", Number(r.rows[0]?.n ?? 0));
             limit = limits.reports + extraReports;
             break;
           }
@@ -354,13 +382,15 @@ export async function checkQuota(
             break;
           }
           case "exports": {
+            // La table est créée paresseusement : la garantir avant de compter.
+            await ensureUsageEventsTable();
             // Count all export events this month from usage_events.kind
             // (CSV client-side, PDF, Health-Score all report via POST /billing/usage-events)
             const r = await client.query(
               `SELECT COUNT(*)::int AS n FROM usage_events
                 WHERE org_id=$1
                   AND kind IN ('export','pdf_export','health_export')
-                  AND created_at > date_trunc('month', now())`,
+                  AND created_at >= date_trunc('month', now())`,
               [resolvedOrgId]
             );
             usedCount = Number(r.rows[0]?.n ?? 0);
@@ -372,13 +402,13 @@ export async function checkQuota(
         client.release();
       }
     } catch (err) {
-      logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed — allowing");
-      if (options.failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
+      logger.error({ err, orgId: resolvedOrgId, resource, failClosed }, `[Billing] checkQuota: usage count failed — ${failClosed ? "DENYING (fail-closed)" : "allowing (fail-open)"}`);
+      if (failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
       return { allowed: true, used: 0, limit: limits[resource as keyof typeof limits] as number || 0, plan };
     }
   } else {
     // No orgId — use standard limits with zero usage (most conservative: allow but log)
-    if (options.failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
+    if (failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
     limit = limits[resource as keyof typeof limits] as number || 0;
     logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId — returning standard limit, usage=0");
   }

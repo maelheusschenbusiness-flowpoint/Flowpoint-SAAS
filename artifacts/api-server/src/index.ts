@@ -1,5 +1,6 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
+import { enforceSecurityConfig } from "./lib/security-config.js";
 import { getPublishableKey, getStripeKey, getStripeKeyPairMode } from "./services/stripe-factory.js";
 import { plansRepliantSurPrixLive } from "./lib/plans.js";
 import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
@@ -25,6 +26,9 @@ import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib
 
 import { fetchBorne, DELAIS } from "./lib/fetch-borne.js";
 const PORT = env.PORT;
+
+// C-15 : garde-fous de configuration de securite, avant toute ouverture de port.
+enforceSecurityConfig(logger);
 
 // ── Schema health check ────────────────────────────────────────────────────────
 //

@@ -10,6 +10,12 @@
  * 6. Runtime: org_id is correctly written on INSERT
  */
 
+import { describe, it, afterAll, vi } from "vitest";
+
+// vitest.setup.ts remplace @workspace/db par un faux pool pour toute la suite.
+// Ce fichier verifie un comportement SQL REEL (isolation par organisation) :
+// il reprend donc le vrai module, comme les autres tests *-db.test.ts.
+vi.mock("@workspace/db", async (importOriginal) => importOriginal<typeof import("@workspace/db")>());
 import fs from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
@@ -175,24 +181,14 @@ async function testOrgIdWrittenOnInsert() {
   }
 }
 
-// ── runner ────────────────────────────────────────────────────────────────────
+// ── vitest runner (anciennement un script `main()` + process.exit) ──────────
 
-async function main() {
-  console.log("=== Activity logs org_id isolation certification ===\n");
-  try {
-    await testActivityLogInterfaceHasOrgId();
-    await testLogActivityInsertIncludesOrgId();
-    await testGetFilteredActivityFiltersOrgId();
-    await testActivityRoutePassesOrgId();
-    await testOrgIsolationAtRuntime();
-    await testOrgIdWrittenOnInsert();
-    console.log("\n✅ ALL ACTIVITY LOGS ISOLATION TESTS PASSED");
-  } catch (err) {
-    console.error("\n❌ TEST FAILED:", (err as Error).message);
-    process.exit(1);
-  } finally {
-    await pool.end();
-  }
-}
-
-main();
+describe("activity_logs org_id isolation", () => {
+  afterAll(async () => { await pool.end(); });
+  it("ActivityLog expose orgId", async () => { await testActivityLogInterfaceHasOrgId(); }, 30_000);
+  it("logActivity ecrit org_id", async () => { await testLogActivityInsertIncludesOrgId(); }, 30_000);
+  it("getFilteredActivity filtre par org_id", async () => { await testGetFilteredActivityFiltersOrgId(); }, 30_000);
+  it("la route activity transmet orgId", async () => { await testActivityRoutePassesOrgId(); }, 30_000);
+  it("l'organisation A ne voit pas les journaux de B (execution reelle)", async () => { await testOrgIsolationAtRuntime(); }, 30_000);
+  it("org_id est ecrit a l'INSERT (execution reelle)", async () => { await testOrgIdWrittenOnInsert(); }, 30_000);
+});

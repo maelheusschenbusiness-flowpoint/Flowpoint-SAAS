@@ -1,3 +1,4 @@
+import { newId } from "../lib/ids.js";
 import { Router, type Request } from "express";
 import { store } from "../services/store.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
@@ -97,7 +98,7 @@ router.post("/alert-rules", canWrite, async (req, res) => {
   const finalOperator  = isEvent ? null : operator!;
   const finalThreshold = isEvent ? null : Number(threshold);
 
-  const id = `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const id = newId("ar");
   try {
     await db(req)(
       `INSERT INTO alert_rules (id, org_id, name, type, operator, threshold, duration_min, channels, site_urls, enabled)
@@ -105,7 +106,7 @@ router.post("/alert-rules", canWrite, async (req, res) => {
       [id, org(req), name, type, finalOperator, finalThreshold, Number(durationMin ?? 0),
        JSON.stringify(channels ?? ["email"]), JSON.stringify(siteUrls ?? []), enabled ?? true]
     );
-    const r = await db(req)(`SELECT * FROM alert_rules WHERE id=$1`, [id]);
+    const r = await db(req)(`SELECT * FROM alert_rules WHERE id=$1 AND org_id=$2`, [id, org(req)]);
     res.status(201).json(r.rows[0] ?? { id });
   } catch {
     res.status(500).json({ error: "Failed to create alert rule" });
@@ -312,7 +313,7 @@ router.post("/alert-events", (req, res, next) => {
     threshold?: number; operator?: string; severity?: string; message?: string;
     siteUrl?: string; monitorId?: string;
   };
-  const id = `ae_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const id = newId("ae");
   try {
     await db(req)(
       `INSERT INTO alert_events

@@ -16,9 +16,22 @@ import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../service
 import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
 import { loadOrgSettings } from "../services/org-settings.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { lockSignupEmail, lockPendingSignup, resolveOwnerOrgId } from "../services/signup-activation-lock.js";
 import { type ConversionStage } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
+import { resolveAiCreditPurchase, verifyAiCreditBeneficiary, recordAiCreditPurchase } from "../services/ai-credit-verification.js";
+import { resolveAiCreditsFromLineItems, fetchSessionLineItems, type CartVerdict } from "../services/ai-credit-cart.js";
+
+/** (5) Le mode de l'objet doit etre celui de l'evenement (deja controle vs. la cle). */
+async function rejectIfObjectModeMismatch(
+  obj: Record<string, unknown>, eventLivemode: unknown,
+): Promise<{ code: string; detail: string } | null> {
+  if (typeof obj["livemode"] === "boolean" && obj["livemode"] !== eventLivemode) {
+    return { code: "livemode_mismatch", detail: "livemode de l'objet different de celui de l'evenement" };
+  }
+  return null;
+}
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -646,19 +659,60 @@ export async function activateNewSignup(opts: {
   preRegToken:  string;
   orgId:        string;   // email = orgId in FlowPoint
   customerId?:  string;   // Stripe customer ID resolved after confirmed payment/setup
-  subscriptionId: string; // a real Stripe subscription must exist before signup activation
+  subscriptionId?: string; // #410 — souscription Stripe reelle (ou `subscription`, ou requireSubscription)
   selectedPlan: string;
   isTrial:      boolean;
+  /** #410 — fin d'essai REELLE de la souscription (jamais calculee localement). */
   trialEndsAt?: Date | null;
+  /**
+   * A-09 — souscription Stripe deja creee pour cet intent (webhook setup_intent /
+   * payment_intent.succeeded). Quand elle est fournie, l'organisation naît avec
+   * son stripe_subscription_id, son statut REEL et le vrai trial_end de Stripe.
+   */
+  subscription?: {
+    subscriptionId: string;
+    status: string;
+    trialEndUnix: number | null;
+    currentPeriodEndUnix: number | null;
+  } | null;
+  /**
+   * A-09 — chemin « intent » : l'organisation ne passe `trialing` QUE si une
+   * souscription est connue. Sans elle : `pending_billing` (aucun acces premium,
+   * pas de trial_ends_at). Les autres appelants gardent leur comportement.
+   */
+  requireSubscription?: boolean;
 }): Promise<void> {
-  const { preRegToken, orgId, customerId, subscriptionId, selectedPlan, isTrial, trialEndsAt } = opts;
+  const { preRegToken, orgId, customerId, selectedPlan, isTrial } = opts;
+  // Contrat unique (#390 A-09 + #410) : une organisation ne nait `trialing` ou
+  // `active` qu'avec une souscription Stripe REELLE (objet `subscription` ou
+  // `subscriptionId` + `trialEndsAt`). Sans souscription, seul le chemin intent
+  // (`requireSubscription`) est admis, et il cree un etat NON premium
+  // (`pending_billing`). Tout autre appel sans souscription est refuse.
+  const _wbSub = opts.subscription ?? (opts.subscriptionId
+    ? {
+        subscriptionId: opts.subscriptionId,
+        status: isTrial ? "trialing" : "active",
+        trialEndUnix: opts.trialEndsAt ? Math.floor(opts.trialEndsAt.getTime() / 1000) : null,
+        currentPeriodEndUnix: null,
+      }
+    : null);
+  const _wbOrgStatus = _wbSub
+    ? (_wbSub.status === "trialing" ? "trialing" : _wbSub.status === "active" ? "active" : "trialing")
+    : (opts.requireSubscription ? "pending_billing" : (isTrial ? "trialing" : "active"));
+  const _wbTrialEnds: string | null = _wbSub
+    ? (_wbSub.trialEndUnix ? new Date(_wbSub.trialEndUnix * 1000).toISOString() : null)
+    : (opts.requireSubscription ? null : (isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null));
 
   if (!preRegToken || !orgId || orgId === "default") {
     logger.error({ preRegToken, orgId }, "[Webhook/activate] Missing preRegToken or orgId — skipping");
     return;
   }
-  if (!subscriptionId) throw new Error("stripe_subscription_required_before_signup_activation");
-  if (isTrial && !trialEndsAt) throw new Error("stripe_trial_end_required_before_signup_activation");
+  if (!opts.subscription && opts.subscriptionId && isTrial && !opts.trialEndsAt) {
+    throw new Error("stripe_trial_end_required_before_signup_activation");
+  }
+  if (!_wbSub && !opts.requireSubscription) {
+    throw new Error("stripe_subscription_required_before_signup_activation");
+  }
 
   const { pool: pgPool } = await import("@workspace/db");
   const { randomBytes, randomUUID: _wbRandUUID } = await import("crypto");
@@ -705,7 +759,7 @@ export async function activateNewSignup(opts: {
     const orgCheck = await pgPool.connect();
     try {
       const r = await orgCheck.query<{ id: string; subscription_status: string }>(
-        `SELECT id::text, subscription_status FROM organizations WHERE owner_email = $1 LIMIT 1`,
+        `SELECT id::text, subscription_status FROM organizations WHERE lower(owner_email) = lower($1) LIMIT 1`,
         [email]
       );
       const existingRow = r.rows[0] ?? null;
@@ -726,7 +780,8 @@ export async function activateNewSignup(opts: {
     } finally { orgCheck.release(); }
   }
   // Use existing UUID for idempotency, or generate a fresh one for new orgs
-  const orgUUID = _existingOrgUUID ?? _wbRandUUID();
+  // `let` : l'identifiant definitif est resolu DANS la transaction, sous verrou (A-06).
+  let orgUUID = _existingOrgUUID ?? _wbRandUUID();
 
   // ── 2. Upsert org_settings for profile data only ────────────────────────
   // IMPORTANT: org_settings is keyed by org_id. New-user signups have an email-shaped
@@ -793,6 +848,22 @@ export async function activateNewSignup(opts: {
   try {
     await activateClient.query("BEGIN");
 
+    // A-06 — serialiser avec finalize-checkout pour ce meme e-mail, relire le
+    // jeton sous verrou, et reutiliser l'organisation que l'autre chemin vient de
+    // creer. Si finalize a deja active ce jeton, il n'y a plus rien a faire ici.
+    await lockSignupEmail(activateClient, email);
+    const _wbLocked = await lockPendingSignup(activateClient, preRegToken);
+    if (_wbLocked.consumed || !_wbLocked.found) {
+      await activateClient.query("ROLLBACK");
+      logger.info({ preRegToken, orgId }, "[Webhook/activate] pending_signups deja consomme sous verrou — activation deja faite par finalize-checkout, rien a recreer");
+      return;
+    }
+    const _wbResolved = await resolveOwnerOrgId(activateClient, email, orgUUID);
+    if (_wbResolved.reused) {
+      logger.info({ orgUUID: _wbResolved.orgId }, "[Webhook/activate] organisation existante reutilisee pour ce proprietaire");
+      orgUUID = _wbResolved.orgId;
+    }
+
     // Supply an explicit UUID so activation never fails when users.id has no DEFAULT.
     const _wbNewUserId = _wbRandUUID();
     const upsertUser = await activateClient.query<{ id: string }>(
@@ -822,16 +893,20 @@ export async function activateNewSignup(opts: {
     const orgInsert = await activateClient.query<{ id: string }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
-          owner_email, stripe_customer_id, stripe_subscription_id, trial_ends_at, seller_id, fp_lid)
-       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12)
+          owner_email, stripe_customer_id, stripe_subscription_id, trial_ends_at, seller_id, fp_lid,
+          trial_consumed_at, current_period_end)
+       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (id) DO UPDATE
          SET status              = 'active',
              plan                = EXCLUDED.plan,
              subscription_status = EXCLUDED.subscription_status,
              stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, organizations.stripe_customer_id),
-             stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, organizations.stripe_subscription_id),
              seller_id           = COALESCE(organizations.seller_id, EXCLUDED.seller_id),
              fp_lid              = COALESCE(organizations.fp_lid, EXCLUDED.fp_lid),
+             stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, organizations.stripe_subscription_id),
+             trial_consumed_at   = COALESCE(organizations.trial_consumed_at, EXCLUDED.trial_consumed_at),
+             current_period_end  = COALESCE(EXCLUDED.current_period_end, organizations.current_period_end),
+             trial_ends_at       = CASE WHEN EXCLUDED.stripe_subscription_id IS NOT NULL THEN EXCLUDED.trial_ends_at ELSE organizations.trial_ends_at END,
              updated_at          = NOW()
        RETURNING id`,
       [
@@ -840,13 +915,15 @@ export async function activateNewSignup(opts: {
         newOrgSlug,
         userId,
         selectedPlan,
-        isTrial ? "trialing" : "active",
+        _wbOrgStatus,
         email,
         customerId ?? null,
-        subscriptionId,
-        isTrial ? trialEndsAt!.toISOString() : null,
+        _wbSub?.subscriptionId ?? null,
+        _wbTrialEnds,
         _wbSellerId,
         _wbFpLid,
+        _wbSub && _wbSub.status === "trialing" ? new Date().toISOString() : null,
+        _wbSub?.currentPeriodEndUnix ? new Date(_wbSub.currentPeriodEndUnix * 1000).toISOString() : null,
       ]
     );
     newOrgId = orgInsert.rows[0]?.id ?? orgUUID;
@@ -1386,6 +1463,25 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   }
 
   try {
+  // ── Credits IA : remboursement ──────────────────────────────────────────────
+  // Point d'insertion volontairement SEPARE du ledger vendeur (case "charge.refunded"
+  // ci-dessous, inchange) : retire les credits IA non consommes correspondant au
+  // remboursement. No-op si le paiement n'est pas un achat de credits.
+  if (event.type === "charge.refunded" || event.type === "refund.created" || event.type === "refund.updated") {
+    const { processAiCreditRefundEvent } = await import("../services/ai-credit-refunds.js");
+    const { pool: pgPool } = await import("@workspace/db");
+    await processAiCreditRefundEvent(
+      { type: event.type, livemode: event.livemode === true, object: obj },
+      {
+        pool: pgPool as never,
+        getStripe: () => createStripeClient(stripeKey),
+        findOrgByCustomer: async (cus) => {
+          const o = await findOrgByStripeCustomer(cus);
+          return o && UUID_RE_WH.test(o) ? o : null;
+        },
+      },
+    );
+  }
   switch (event.type) {
 
     case "charge.refunded":
@@ -1479,50 +1575,82 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         meta["type"] === "ai_credits" ||
         meta["flowpoint_checkout_type"] === "ai_credits_only";
       if (aiCreditsOnlyCheckout || packFromField) {
-        const AI_CREDITS_FROM_PACK: Record<string, number> = {
-          aiCreditsPack50k:  50000,
-          aiCreditsPack200k: 200000,
-          aiCreditsPack500k: 500000,
-        };
-        const pack    = meta["pack"] || packFromField || "";
-        const credits = parseInt(meta["credits"] ?? "0", 10) || (packFromField ? (AI_CREDITS_FROM_PACK[packFromField] ?? 0) : 0);
-        const amountEurCents = parseInt(meta["amountEurCents"] ?? "0", 10);
-        const sessionId      = String(obj["id"] ?? "");
-        const paymentIntent  = String(obj["payment_intent"] ?? "");
-
-        // P0-3: removed store.me.stripeCustomerId mutation
-
-        if (sessionPaid && credits > 0 && orgId) {
+        // Verification serveur (voir services/ai-credit-verification.ts) : pack du
+        // catalogue, credits et montant RECALCULES (jamais lus des metadata),
+        // beneficiaire = proprietaire du customer, statut paye uniquement.
+        const sessionId     = String(obj["id"] ?? "");
+        const paymentIntent = String(obj["payment_intent"] ?? "");
+        // Composition REELLE du panier : lignes Stripe (price id x quantite) rapprochees du
+        // catalogue serveur (services/ai-credit-cart.ts). Jamais metadata.pack / credits.
+        let verdict: CartVerdict;
+        if (obj["payment_status"] !== "paid") {
+          verdict = { ok: false, code: "not_paid", detail: `payment_status ${String(obj["payment_status"])}` };
+        } else {
+          try {
+            const stripeCli = await createStripeClient(stripeKey);
+            const lineItems = await fetchSessionLineItems(stripeCli, sessionId);
+            verdict = resolveAiCreditsFromLineItems({
+              paymentStatus: obj["payment_status"], livemode: event.livemode === true, lineItems,
+              amountTotal: obj["amount_total"], currency: obj["currency"],
+              creditsOnly: aiCreditsOnlyCheckout, metadata: meta,
+            });
+          } catch (lineErr) {
+            // Stripe indisponible : composition non prouvee. Credits seuls => 500 (Stripe relivre) ;
+            // panier combine => journalise (revue/rejeu manuel), l'abonnement n'est pas bloque.
+            if (aiCreditsOnlyCheckout) throw lineErr;
+            verdict = { ok: false, code: "line_items_unavailable", detail: "lignes Stripe illisibles" };
+          }
+        }
+        let rejection: { code: string; detail: string } | null = verdict.ok ? null : verdict;
+        let creditOrgId: string | null = null;
+        if (!rejection) {
+          rejection = await rejectIfObjectModeMismatch(obj, event.livemode);
+        }
+        if (!rejection) {
+          const { pool: pgPool } = await import("@workspace/db");
+          const ben = await verifyAiCreditBeneficiary(pgPool as never, {
+            resolvedOrgId: orgId, resolvedVia,
+            hasCustomer: typeof obj["customer"] === "string" && String(obj["customer"]).startsWith("cus_"),
+            metadata: meta, requireMetadataOrg: aiCreditsOnlyCheckout,
+          });
+          if (ben.ok) creditOrgId = ben.orgId; else rejection = ben;
+        }
+        if (rejection?.code === "not_paid") {
+          // Session non payee (ex. paiement differe) : rien a crediter, ce n'est pas une anomalie.
+          logger.info({ sessionId }, "[Webhook] AI credits not credited — Checkout session is not paid");
+          if (aiCreditsOnlyCheckout) break;
+        } else if (rejection || !verdict.ok || !creditOrgId) {
+          const code = rejection?.code ?? "rejected";
+          logger.error({ AI_CREDITS_REJECTED: true, code, detail: rejection?.detail, eventId, sessionId, orgId, resolvedVia },
+            "[Webhook] AI credits purchase REJECTED — credits NOT credited (needs review/replay)");
+          if (aiCreditsOnlyCheckout) {
+            // Rien n'est cree : l'evenement reste rejouable (Stripe reessaie, ou rejeu manuel).
+            await markEventStatus("failed", { aiCreditsRejected: code });
+            res.status(422).json({ received: false, error: "ai_credits_verification_failed", code });
+            return;
+          }
+          // Session combinee : ne pas bloquer l'activation de l'abonnement ci-dessous.
+        } else {
+          if (verdict.metadataCreditsMismatch) {
+            logger.warn({ eventId, sessionId, credits: verdict.credits }, "[Webhook] metadata.credits differs from catalogue — catalogue value used");
+          }
           try {
             const { pool: pgPool } = await import("@workspace/db");
-            const client = await pgPool.connect();
-            const month = (() => {
-              const d = new Date();
-              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-            })();
-            try {
-              // Deterministic id keyed on the Stripe session → idempotent on webhook replays
-              const purchaseId = `acp_${sessionId}`;
-              await client.query(
-                `INSERT INTO ai_credit_purchases
-                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (id) DO NOTHING`,
-                [purchaseId, orgId, pack, credits, amountEurCents, sessionId, paymentIntent]
-              );
-            } finally {
-              client.release();
+            // Deterministic id keyed on the Stripe session → idempotent on webhook replays
+            const credited = await recordAiCreditPurchase(pgPool as never, {
+              id: `acp_${sessionId}`, orgId: creditOrgId, pack: verdict.pack, credits: verdict.credits,
+              amountCents: verdict.amountCents, sessionId, paymentIntent,
+            });
+            if (credited) {
+              store.broadcast({ type: "ai:credits_added", pack: verdict.pack, credits: verdict.credits }, creditOrgId);
+              logger.info({ pack: verdict.pack, credits: verdict.credits, orgId: creditOrgId }, "[Webhook] AI credits credited to org");
+            } else {
+              logger.info({ sessionId, paymentIntent }, "[Webhook] AI credits already credited for this purchase — skipped");
             }
-            store.broadcast({ type: "ai:credits_added", pack, credits }, orgId);
-            logger.info({ pack, credits, orgId }, "[Webhook] AI credits credited to org");
           } catch (e) {
             logger.error({ e, orgId }, "[Webhook] Failed to credit AI credits to org");
             throw e;
           }
-        } else if (credits > 0 && !orgId) {
-          logger.error({ pack, credits }, "[Webhook] AI credits purchase: orgId unresolved — credits NOT credited");
-        } else if (!sessionPaid && credits > 0) {
-          logger.info({ pack, credits, sessionId }, "[Webhook] AI credits not credited — Checkout session is not paid");
         }
         // Credit-only sessions have no subscription work below. Combined
         // sessions must continue so the subscription/add-on webhook logic runs.
@@ -1534,6 +1662,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // legacy sessions. Honor the current key first.
       const plan     = meta["selected_plan"] || meta["plan"] || "";
       const planNorm = plan.toLowerCase();
+      // Add-on and credit purchases never touch the main plan subscription.
+      const sessionMode = String(obj["mode"] ?? "");
+      const isPlanCheckout = ["standard","pro","ultra"].includes(planNorm) &&
+        !String(meta["addonKey"] ?? "").trim() &&
+        meta["flowpoint_checkout_type"] !== "addon_only" &&
+        (!sessionMode || sessionMode === "subscription");
 
       if (!orgId) {
         logger.error({ plan: planNorm, sessionId: obj["id"] }, "[Webhook] checkout.session.completed: orgId unresolved — subscription state NOT persisted");
@@ -1602,7 +1736,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           ? String((_rawNewSub as { id: string }).id)
           : undefined);
       let _isDuplicateSub = false;
-      if (_newSubId && customerId && stripeKey) {
+      if (isPlanCheckout && _newSubId && customerId && stripeKey) {
         try {
           const _bsStripe  = await createStripeClient(stripeKey);
           const _bsAllSubs = await _bsStripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
@@ -1711,16 +1845,16 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // overwrite the correct subscription ID before the new one arrives.
       const persistPayload: Parameters<typeof persistSubscriptionMeta>[0] = {
         orgId,
-        subscriptionStatus: "active",
         stripeCustomerId: customerId,
-        ...(_newSubId ? { stripeSubscriptionId: _newSubId } : {}),
+        ...(isPlanCheckout ? { subscriptionStatus: "active" } : {}),
+        ...(isPlanCheckout && _newSubId ? { stripeSubscriptionId: _newSubId } : {}),
       };
-      if (["standard","pro","ultra"].includes(planNorm)) {
+      if (isPlanCheckout) {
         persistPayload.plan = planNorm;
       }
       await persistSubscriptionMeta(persistPayload);
 
-      if (["standard","pro","ultra"].includes(planNorm)) {
+      if (isPlanCheckout) {
         store.broadcastPlanUpdate(planNorm, orgId);
         // Provision plan-bundled add-ons immediately at checkout so the subscriber
         // can access their features without waiting for the subscription.created event.
@@ -1804,19 +1938,18 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       break;
     }
 
-    // A successful SetupIntent confirms only that a payment method was collected.
-    // It does not create a subscription or start a trial; finalize-checkout does
-    // those only after verifying the intent and successfully creating the sub.
-    case "setup_intent.succeeded": {
-      logger.info({ intentId: obj["id"] }, "[Webhook] SetupIntent confirmed; awaiting finalize-checkout before signup activation");
-      break;
-    }
-
-    // ── New checkout-payment.html payment-success recovery ────────────────────
-    // A successful PaymentIntent is authoritative proof of payment. If the
-    // browser closed before finalize-checkout, this path anchors the Customer
-    // and activates the signup. It is awaited so a DB/Stripe failure leaves the
-    // webhook retryable rather than being marked processed prematurely.
+    // ── Intent reussi du parcours checkout-payment.html (onglet ferme ou non) ──
+    // Arbitrage #390 x #410 : le SetupIntent (essai a 0 EUR) ne suffit JAMAIS a
+    // activer un compte « seul » : la branche commune ci-dessous cree d'abord la
+    // souscription Stripe REELLE (A-09, services/signup-subscription.ts, cle
+    // d'idempotence partagee avec finalize-checkout), et l'organisation ne devient
+    // `trialing` qu'avec elle — sinon `pending_billing`, non premium. C'est le
+    // contrat de #410 (« souscription avant activation ») applique aussi a l'essai
+    // dont l'onglet a ete ferme, que #410 laissait sans compte ni souscription.
+    // Le PaymentIntent reussi (paiement prouve) ancre en plus le Customer apres
+    // confirmation (#410, ensurePendingSignupStripeCustomer). Les erreurs sont
+    // attendues (await) : evenement `failed` + 500, Stripe relivre.
+    case "setup_intent.succeeded":
     case "payment_intent.succeeded": {
       const piMeta = (obj["metadata"] as Record<string, string>) ?? {};
       const funnelAttribution = lireAttributionFunnel(piMeta);
@@ -1834,33 +1967,59 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       // ── In-app AI credit pack purchase (PaymentElement modal, no redirect) ──
       if (piMeta["type"] === "ai_credits") {
-        const pack    = piMeta["pack"]    ?? "";
-        const credits = parseInt(piMeta["credits"] ?? "0", 10);
-        const amountEurCents = parseInt(piMeta["amountEurCents"] ?? "0", 10);
-        const piId    = String(obj["id"] ?? "");
-        const aiOrgId = orgId ?? piMeta["orgId"] ?? null;
-
-        if (credits > 0 && aiOrgId && piId) {
-          try {
-            const { pool: pgPool } = await import("@workspace/db");
-            const client = await pgPool.connect();
-            try {
-              // Deterministic id keyed on the PaymentIntent → idempotent on retries
-              await client.query(
-                `INSERT INTO ai_credit_purchases
-                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (id) DO NOTHING`,
-                [`acp_pi_${piId}`, aiOrgId, pack, credits, amountEurCents, "", piId]
-              );
-            } finally { client.release(); }
-            store.broadcast({ type: "ai:credits_added", pack, credits }, aiOrgId);
-            logger.info({ pack, credits, orgId: aiOrgId }, "[Webhook] AI credits credited (payment_intent flow)");
-          } catch (e) {
-            logger.error({ e, orgId: aiOrgId }, "[Webhook] Failed to credit AI credits (payment_intent flow)");
+        const piId = String(obj["id"] ?? "");
+        let rejection: { code: string; detail: string } | null = null;
+        if (event.type !== "payment_intent.succeeded") {
+          rejection = { code: "not_a_payment_intent", detail: `type ${event.type}` };
+        }
+        const verdict = resolveAiCreditPurchase({
+          kind: "payment_intent",
+          status: obj["status"],
+          metadata: piMeta,
+          paidAmountMinor: obj["amount_received"],
+          currency: obj["currency"],
+          checkAmount: true,
+        });
+        if (!rejection && !verdict.ok) rejection = verdict;
+        if (!rejection) rejection = await rejectIfObjectModeMismatch(obj, event.livemode);
+        let creditOrgId: string | null = null;
+        if (!rejection) {
+          const { pool: pgPool } = await import("@workspace/db");
+          const ben = await verifyAiCreditBeneficiary(pgPool as never, {
+            resolvedOrgId: orgId, resolvedVia,
+            hasCustomer: typeof obj["customer"] === "string" && String(obj["customer"]).startsWith("cus_"),
+            metadata: piMeta, requireMetadataOrg: true,
+          });
+          if (ben.ok) creditOrgId = ben.orgId; else rejection = ben;
+        }
+        if (rejection || !verdict.ok || !creditOrgId || !piId) {
+          const code = rejection?.code ?? "rejected";
+          logger.error({ AI_CREDITS_REJECTED: true, code, detail: rejection?.detail, eventId, piId, orgId, resolvedVia },
+            "[Webhook] AI credits PaymentIntent REJECTED — credits NOT credited (needs review/replay)");
+          await markEventStatus("failed", { aiCreditsRejected: code });
+          res.status(422).json({ received: false, error: "ai_credits_verification_failed", code });
+          return;
+        }
+        if (verdict.metadataCreditsMismatch) {
+          logger.warn({ eventId, piId, credits: verdict.credits }, "[Webhook] metadata.credits differs from catalogue — catalogue value used");
+        }
+        try {
+          const { pool: pgPool } = await import("@workspace/db");
+          // Deterministic id keyed on the PaymentIntent → idempotent on retries
+          const credited = await recordAiCreditPurchase(pgPool as never, {
+            id: `acp_pi_${piId}`, orgId: creditOrgId, pack: verdict.pack, credits: verdict.credits,
+            amountCents: verdict.amountCents, sessionId: "", paymentIntent: piId,
+          });
+          if (credited) {
+            store.broadcast({ type: "ai:credits_added", pack: verdict.pack, credits: verdict.credits }, creditOrgId);
+            logger.info({ pack: verdict.pack, credits: verdict.credits, orgId: creditOrgId }, "[Webhook] AI credits credited (payment_intent flow)");
+          } else {
+            logger.info({ piId }, "[Webhook] AI credits already credited for this purchase — skipped");
           }
-        } else {
-          logger.error({ pack, credits, piId }, "[Webhook] AI credits intent: orgId unresolved — credits NOT credited");
+        } catch (e) {
+          // Relance : un echec DB ne doit pas marquer l'evenement traite (credits perdus).
+          logger.error({ e, orgId: creditOrgId }, "[Webhook] Failed to credit AI credits (payment_intent flow)");
+          throw e;
         }
         break;
       }
@@ -2003,132 +2162,116 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         break;
       }
 
-      const piPlan = piMeta["plan"] ?? "standard";
+      const piPlan    = piMeta["plan"] ?? "standard";
+      // For setup_intent (0€ plan-only) always trial; for payment_intent also trial (add-ons don't count)
       const piSelectedPlan = piPlan || "standard";
-      const paymentMethodId =
-        typeof obj["payment_method"] === "string"
-          ? obj["payment_method"]
-          : ((obj["payment_method"] as { id?: string } | null)?.id ?? "");
-      if (!paymentMethodId) {
-        throw new Error(`PaymentIntent ${String(obj["id"] ?? "")} succeeded without a payment method`);
-      }
-      const { createStripeClient: createSignupStripeClient, getStripeKey: getSignupStripeKey } =
-        await import("../services/stripe-factory.js");
-      const signupStripe = await createSignupStripeClient(getSignupStripeKey());
-      const { ensurePendingSignupStripeCustomer } =
-        await import("../services/pending-signup-stripe-customer.js");
-      const rawPiCustomer = obj["customer"];
-      const piCustomerId = typeof rawPiCustomer === "string"
-        ? rawPiCustomer
-        : ((rawPiCustomer as { id?: string } | null)?.id ?? null);
-      const resolvedSignupCustomer = await ensurePendingSignupStripeCustomer(
-        signupStripe,
-        piPreRegToken,
-        paymentMethodId,
-        piCustomerId,
-        piMeta["seller_id"] ?? null,
-      );
-      const rawTrialDays = piMeta["trial_days_remaining"];
-      const intentTrialDays =
-        rawTrialDays !== undefined && Number.isFinite(Number(rawTrialDays))
-          ? Math.max(0, Math.min(90, Math.round(Number(rawTrialDays))))
-          : 14;
-      const planPriceId = getPlanPriceId(piSelectedPlan);
-      if (!planPriceId) {
-        throw new Error(`Stripe plan price missing for new-signup recovery: ${piSelectedPlan}`);
+
+      // Pass the actual Stripe customer ID so activateNewSignup can anchor it to
+      // organizations.stripe_customer_id immediately. Previously this was undefined,
+      // which left the column NULL and forced ESC to create a duplicate customer on
+      // re-subscription (P0 pre-register customer reuse bug).
+      let _piCustomerId = obj["customer"] ? String(obj["customer"]) : undefined;
+
+      // ── A-09 — la souscription d'essai est creee ICI, sans navigateur ────────
+      // Avant : seul finalize-checkout (onglet ouvert) creait l'abonnement Stripe,
+      // alors que cette branche passait deja l'organisation en `trialing` +14 j.
+      // Onglet ferme apres confirmSetup (3DS, mobile, coupure) = essai sans
+      // abonnement, donc aucun prelevement a J+14. Desormais : meme creation que
+      // finalize (services/signup-subscription.ts, cle d'idempotence partagee,
+      // jamais de doublon), AVANT l'activation, et SANS `.catch` : toute erreur
+      // Stripe/DB remonte au catch general -> evenement `failed` + HTTP 500 ->
+      // Stripe renvoie l'evenement. L'organisation ne devient `trialing` qu'avec
+      // une souscription connue.
+      const { provisionSubscriptionFromIntent } = await import("../services/signup-subscription.js");
+      const _piStripe = await createStripeClient(stripeKey);
+
+      // #410 — un intent reussi (PaymentIntent paye OU SetupIntent de l'essai a
+      // 0 EUR) DOIT porter un moyen de paiement (sinon erreur -> 500, relivraison),
+      // et le Customer de l'inscription est resolu/cree APRES confirmation, sous
+      // verrou de la ligne pending_signups (convergence webhook/finalize sur un
+      // seul Customer, cle d'idempotence Stripe derivee du jeton). Depuis #410 le
+      // checkout ne cree plus de Customer avant confirmation : sans cette etape,
+      // un essai dont l'onglet est ferme n'aurait aucun Customer, donc aucune
+      // souscription (A-09 incomplet).
+      let _piResolvedCustomerId: string | null = null;
+      {
+        const paymentMethodId =
+          typeof obj["payment_method"] === "string"
+            ? obj["payment_method"]
+            : ((obj["payment_method"] as { id?: string } | null)?.id ?? "");
+        if (!paymentMethodId) {
+          throw new Error(`${event.type === "setup_intent.succeeded" ? "SetupIntent" : "PaymentIntent"} ${String(obj["id"] ?? "")} succeeded without a payment method`);
+        }
+        const { ensurePendingSignupStripeCustomer } =
+          await import("../services/pending-signup-stripe-customer.js");
+        const rawPiCustomer = obj["customer"];
+        const piCustomerId = typeof rawPiCustomer === "string"
+          ? rawPiCustomer
+          : ((rawPiCustomer as { id?: string } | null)?.id ?? null);
+        const resolvedSignupCustomer = await ensurePendingSignupStripeCustomer(
+          _piStripe as unknown as Stripe,
+          piPreRegToken,
+          paymentMethodId,
+          piCustomerId,
+          piMeta["seller_id"] ?? null,
+        );
+        _piResolvedCustomerId = resolvedSignupCustomer.customerId;
+        _piCustomerId = resolvedSignupCustomer.customerId;
       }
 
-      // Match finalize-checkout exactly: trial eligibility depends on actual
-      // subscription history, and the end timestamp is anchored to PI.created
-      // so both paths submit identical params under the same Stripe idempotency key.
-      const grantTrial = !resolvedSignupCustomer.hasSubscriptionHistory && intentTrialDays > 0;
-      const intentCreatedUnix =
-        typeof obj["created"] === "number" ? Number(obj["created"]) : Math.floor(Date.now() / 1000);
-      const trialEndUnix = grantTrial ? intentCreatedUnix + intentTrialDays * 86400 : undefined;
-
-      const existingSubscriptions = await signupStripe.subscriptions.list({
-        customer: resolvedSignupCustomer.customerId,
-        status: "all",
-        limit: 10,
+      const _piProvision = await provisionSubscriptionFromIntent({
+        stripe: _piStripe,
+        intent: obj as unknown as Parameters<typeof provisionSubscriptionFromIntent>[0]["intent"],
+        preRegisterToken: piPreRegToken,
+        customerIdOverride: _piResolvedCustomerId,
+        caller: "webhook",
       });
-      const subscriptionRows = existingSubscriptions.data as Stripe.Subscription[];
-      const activeSubscriptions = subscriptionRows.filter(
-        (subscription) =>
-          ["active", "trialing", "past_due"].includes(subscription.status) &&
-          !subscription.cancel_at_period_end,
-      );
-      let planSubscription: Stripe.Subscription | undefined = activeSubscriptions.find((subscription) =>
-        subscription.items.data.some((item) => item.price.id === planPriceId),
-      );
-      if (!planSubscription && activeSubscriptions.length > 0) {
-        throw new Error(
-          `New-signup recovery found an active subscription for a different plan: ${activeSubscriptions[0]!.id}`,
-        );
-      }
-      if (!planSubscription) {
-        planSubscription = await createSubscriptionForAttempt({
-          stripe: signupStripe,
-          intentId: intentId || String(obj["id"] ?? ""),
-          scope: "plan",
-          plan: piSelectedPlan,
-          priceId: planPriceId,
-          orgRef: piOrgId,
-          params: {
-            customer: resolvedSignupCustomer.customerId,
-            items: [{ price: planPriceId, quantity: 1 }],
-            ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
-            default_payment_method: paymentMethodId,
-            metadata: {
-              plan: piSelectedPlan,
-              source: "checkout_payment",
-              flowpoint_cart: "true",
-              org_id: piOrgId,
-              orgId: piOrgId,
-              ...(piMeta["seller_id"]
-                ? { seller_id: piMeta["seller_id"], seller_attribution: "ref_link" }
-                : {}),
-              pre_register_token: piPreRegToken,
-              ...metadataAttributionFunnel(
-                piMeta["fp_analytics_consent"],
-                piMeta["fp_visitor_id"],
-                piMeta["fp_source"],
-              ),
-            },
-          },
-        });
-      }
-      if (!["active", "trialing"].includes(planSubscription.status)) {
-        throw new Error(
-          `New-signup recovery subscription is not active: ${planSubscription.status}`,
-        );
-      }
-      const piIsTrial = planSubscription.status === "trialing";
-      const trialEndsAt =
-        piIsTrial && typeof planSubscription.trial_end === "number"
-          ? new Date(planSubscription.trial_end * 1000)
-          : null;
-      if (piIsTrial && !trialEndsAt) {
-        throw new Error("Stripe trialing subscription returned no trial_end");
+      let _piSubscription: import("../services/signup-subscription.js").ProvisionedSubscription | null = null;
+      if (_piProvision.kind === "ready") {
+        _piSubscription = _piProvision.subscription;
+        // #410 — une souscription qui n'est ni active ni en essai (incomplete,
+        // past_due...) n'active pas le compte : erreur, Stripe relivre.
+        if (!["active", "trialing"].includes(_piSubscription.status)) {
+          throw new Error(`New-signup subscription is not active: ${_piSubscription.status}`);
+        }
+        if (_piSubscription.status === "trialing" && !_piSubscription.trialEndUnix) {
+          throw new Error("Stripe trialing subscription returned no trial_end");
+        }
+        _piCustomerId = _piProvision.customerId;
+      } else {
+        // Etat explicite NON premium : l'organisation est creee en pending_billing
+        // et le client termine son abonnement depuis la page de facturation.
+        if (_piProvision.customerId && !_piCustomerId) _piCustomerId = _piProvision.customerId;
+        logger.error({
+          SIGNUP_SUBSCRIPTION_UNRESOLVED: true,
+          reason: _piProvision.reason,
+          eventId, type: event.type, intentId,
+        }, "[Webhook] A-09 — aucune souscription creee pour cet intent : organisation laissee en pending_billing (non premium)");
       }
 
       await activateNewSignup({
         preRegToken:  piPreRegToken,
         orgId:        piOrgId,
-        customerId:   resolvedSignupCustomer.customerId,
-        subscriptionId: planSubscription.id,
+        customerId:   _piCustomerId,
         selectedPlan: piSelectedPlan,
-        isTrial:      piIsTrial,
-        trialEndsAt,
+        // Statut REEL de la souscription (#410) ; sans souscription : pending_billing.
+        isTrial:      _piSubscription ? _piSubscription.status === "trialing" : true,
+        subscription: _piSubscription,
+        requireSubscription: true,
       });
 
-      logger.info({
-        type: event.type,
-        orgId: piOrgId,
-        customerId: resolvedSignupCustomer.customerId,
-        subscriptionId: planSubscription.id,
-        plan: piSelectedPlan,
-        isTrial: piIsTrial,
-      }, "[Webhook] New-signup activation completed from successful PaymentIntent");
+      // Safety net: also persist stripe_customer_id to org_settings[email] so ESC
+      // legacy fallback (Step 2) finds it even if finalize-checkout was never called
+      // (e.g. user abandoned checkout after payment authorisation).
+      if (_piCustomerId && piOrgId) {
+        import("../services/org-data.js").then(({ persistOrgData: _piPod }) =>
+          _piPod(piOrgId, { stripeCustomerId: _piCustomerId })
+        ).catch(_piPodErr =>
+          logger.warn({ _piPodErr, piOrgId }, "[Webhook] PI.succeeded: persistOrgData safety net failed (non-fatal)")
+        );
+      }
+
+      logger.info({ type: event.type, orgId: piOrgId, customerId: _piCustomerId, plan: piSelectedPlan, subscriptionId: _piSubscription?.subscriptionId ?? null }, "[Webhook] New-signup activated from intent");
       break;
     }
 

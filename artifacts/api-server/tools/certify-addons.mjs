@@ -178,11 +178,19 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/routes/agency-packs.test.ts",
       "src/routes/agency-packs-postgres.test.ts",
+      "src/routes/agency-portal.test.ts",
+      "src/services/agency-reporting.test.ts",
+      "src/services/agency-report-scheduler.test.ts",
+      "src/services/agency-report-mail-capture.test.ts",
+      "src/services/pdf-agency-report.test.ts",
       "src/services/stripe-trial-history.test.ts",
       "src/tests/signup-token-over-stale-session.test.ts",
       "src/lib/addon-test-price-coverage.test.ts",
     ],
-    browserTitle: "Agency Reporting Packs quota is atomic and viewer access is denied",
+    browserTitles: [
+      "Agency Reporting Packs quota is atomic and viewer access is denied",
+      "Agency Reporting Packs: multi-site report, PDF, portal, and scheduled delivery",
+    ],
     stripeBrowserTitles: [
       "Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle",
       "Agency checkout CTA completes a new-customer Stripe TEST purchase",
@@ -494,6 +502,8 @@ export function buildLocalEnvironment({
     FLOWPOINT_ADDON_CERT_LOCAL_ONLY: "1",
     DB_HOTE_ATTENDU: `${expectedHost}/${expectedDatabase}`,
     DB_UTILISATEUR_ATTENDU: "runner",
+    PUBLIC_URL: `http://${expectedHost}:${port}`,
+    AGENCY_REPORT_SCHEDULER_ENABLED: "true",
     PGSSLMODE: "disable",
     PGCONNECT_TIMEOUT: "5",
     ENABLE_TEST_MAILER: "true",
@@ -963,7 +973,7 @@ async function runCertification(options, signal) {
       if (unit.status === "interrupted") break;
       const browserSpec = addon.browserSpec ?? E2E_SPEC;
       const browserTitles = [
-        addon.browserTitle,
+        ...(addon.browserTitles ?? (addon.browserTitle ? [addon.browserTitle] : [])),
         ...(useStripeTest ? (addon.stripeBrowserTitles ?? []) : []),
       ].filter(Boolean);
       for (const browserTitle of browserTitles) {

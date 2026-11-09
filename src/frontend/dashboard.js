@@ -1681,16 +1681,38 @@ async function changeTeamMemberRole(memberId, currentRole) {
   });
 }
 
+// Lien de partage de rapport : le jeton n'existe QUE s'il a ete cree et persiste par l'API
+// (POST /api/reports/:id/share). Aucun jeton local, aucun repli factice.
+async function fpCreateReportShareLink(reportId, body) {
+  if (!reportId) throw new Error('REPORT_REQUIRED');
+  const res = await apiAction('POST', '/api/reports/' + encodeURIComponent(reportId) + '/share', body || {});
+  if (!res || !res.token || !res.path) throw new Error('SHARE_TOKEN_MISSING');
+  return { token: res.token, expiresAt: res.expiresAt, url: new URL(res.path, location.origin).toString() };
+}
+async function fpCopyShareLink(url) {
+  try { await navigator.clipboard.writeText(url); return true; }
+  catch (_) { try { window.prompt(fpT('Copiez ce lien de partage'), url); } catch (__) {} return false; }
+}
+function fpShareLinkFailed(err) {
+  console.warn('[FP] Report share link not created', err);
+  showToast('error', fpT("Impossible de créer le lien de partage. Aucun lien n'a été généré."));
+}
+async function fpShareReportAndCopy(reportId, body) {
+  try {
+    const link = await fpCreateReportShareLink(reportId, body);
+    const report = (STATE.reports || []).find(r => r.id === reportId);
+    if (report) report.shared = true;
+    const copied = await fpCopyShareLink(link.url);
+    showToast(copied ? 'success' : 'info', copied ? fpT('Lien copié ! Valable 30 jours.') : fpT('Lien de partage généré'));
+    return link;
+  } catch (err) { fpShareLinkFailed(err); return null; }
+}
+
 async function createShareLink() {
-  const token = 'fp-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-  const base = location.pathname.replace('dashboard.html', 'report-view.html');
-  const url = `${location.origin}${base}?token=${token}`;
-  localStorage.setItem('fp:share-' + token, JSON.stringify({
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
-  }));
-  try { await navigator.clipboard.writeText(url); } catch(e) {}
-  showToast('success', fpT('Lien créé et copié ! Valable 30 jours.'));
+  const reports = (STATE.reports || []).filter(r => r && r.id);
+  if (!reports.length) { showToast('error', fpT("Créez d'abord un rapport avant de générer un lien de partage.")); return; }
+  const latest = reports.slice().sort((x, y) => String(y.date || '').localeCompare(String(x.date || '')))[0];
+  await fpShareReportAndCopy(latest.id, {});
 }
 
 function fullscreenPresent() {
@@ -1741,6 +1763,25 @@ function applyThemeChoice(t) {
   render();
 }
 
+// D-07 — ce que le backend FAIT REELLEMENT. Copie de artifacts/api-server/src/services/automation-capabilities.ts
+// (un test de non-regression verifie que les deux listes restent identiques).
+const FP_AUTOMATION_CAPS = {
+  events: ['monitor.down', 'monitor.up', 'audit.completed'],
+  aliases: { 'monitor.recovered': 'monitor.up', 'monitor_down': 'monitor.down', 'monitor_up': 'monitor.up', 'audit_done': 'audit.completed' },
+  platforms: ['slack', 'discord', 'zapier', 'make', 'n8n', 'custom'],
+  actions: ['run_audit', 'generate_recommendations', 'generate_report', 'analyze_competitors', 'send_alert'],
+};
+function fpNormalizeAutomationEvent(ev) {
+  const raw = String(ev || '').trim();
+  return FP_AUTOMATION_CAPS.aliases[raw] || raw;
+}
+function fpTemplateAvailability(t) {
+  if (!t || FP_AUTOMATION_CAPS.events.indexOf(fpNormalizeAutomationEvent(t.trigger_event)) < 0) return { available: false, reason: 'event_not_emitted' };
+  if (FP_AUTOMATION_CAPS.platforms.indexOf(String(t.platform || '')) < 0) return { available: false, reason: 'platform_not_supported' };
+  return { available: true };
+}
+window.fpTemplateAvailability = fpTemplateAvailability;
+
 function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
   const prefillName = tplName || '';
   const prefillDesc = tplDesc || '';
@@ -1749,20 +1790,24 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
     ${prefillDesc ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;padding:8px 10px;background:var(--fp-inner-card);border-radius:8px">${escHtml(prefillDesc)}</div>` : ''}
     <div class="fp-form-group"><label class="fp-form-label">${fpT('Déclencheur')}</label>
       <select class="fp-select" id="wf-trigger" style="width:100%">
-        <option value="audit_done">${fpT('Audit terminé')}</option>
-        <option value="alert">${fpT('Alerte déclenchée')}</option>
-        <option value="weekly">Planning hebdomadaire</option>
-        <option value="monitor_down">${fpT('Monitor en erreur')}</option>
-        <option value="report_ready">${fpT('Rapport prêt')}</option>
+        <option value="audit.completed">${fpT('Audit terminé')}</option>
+        <option value="monitor.down">${fpT('Monitor en erreur')}</option>
+        <option value="monitor.up">${fpT('Monitor rétabli')}</option>
+        <option value="weekly">${fpT('Planning hebdomadaire (lundi 09:00 UTC)')}</option>
+        <option value="alert" disabled>${fpT('Alerte déclenchée')} — ${fpT('Bientôt disponible')}</option>
+        <option value="report_ready" disabled>${fpT('Rapport prêt')} — ${fpT('Bientôt disponible')}</option>
       </select>
     </div>
     <div class="fp-form-group"><label class="fp-form-label">Action automatique</label>
       <select class="fp-select" id="wf-action" style="width:100%">
-        <option value="send_email">${fpT('Envoyer email')}</option>
-        <option value="gen_report">${fpT('Générer rapport PDF')}</option>
-        <option value="slack_notif">${fpT('Notification Slack')}</option>
-        <option value="webhook">${fpT('Déclencher webhook')}</option>
-        <option value="create_mission">${fpT('Créer mission')}</option>
+        <option value="generate_report">${fpT('Générer rapport PDF')}</option>
+        <option value="run_audit">${fpT('Lancer un audit')}</option>
+        <option value="generate_recommendations">${fpT('Générer des recommandations IA')}</option>
+        <option value="send_alert">${fpT('Envoyer une alerte par email')}</option>
+        <option value="send_email" disabled>${fpT('Envoyer email')} — ${fpT('Bientôt disponible')}</option>
+        <option value="slack_notif" disabled>${fpT('Notification Slack')} — ${fpT('Bientôt disponible')}</option>
+        <option value="webhook" disabled>${fpT('Déclencher webhook')} — ${fpT('Bientôt disponible')}</option>
+        <option value="create_mission" disabled>${fpT('Créer mission')} — ${fpT('Bientôt disponible')}</option>
       </select>
     </div>
     <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="wf-save">${fpT('Créer le workflow')}</button>
@@ -1775,14 +1820,17 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
       if (!name) { showToast('warning', fpT('Entrez un nom pour le workflow')); return; }
       const trigger = document.getElementById('wf-trigger')?.value;
       const action = document.getElementById('wf-action')?.value;
-      const _trigLabels = { audit_done:'Audit terminé', alert:'Alerte déclenchée', weekly:'Planning hebdomadaire', monitor_down:'Monitor en erreur', report_ready:'Rapport prêt' };
-      const _actLabels  = { send_email:'Envoyer email', gen_report:'Générer rapport PDF', slack_notif:'Notification Slack', webhook:'Déclencher webhook', create_mission:'Créer mission' };
+      const _trigLabels = { 'audit.completed':'Audit terminé', 'monitor.down':'Monitor en erreur', 'monitor.up':'Monitor rétabli', weekly:'Planning hebdomadaire (lundi 09:00 UTC)' };
+      const _actLabels  = { generate_report:'Générer rapport PDF', run_audit:'Lancer un audit', generate_recommendations:'Générer des recommandations IA', send_alert:'Envoyer une alerte par email' };
+      if (!_trigLabels[trigger] || !_actLabels[action]) { showToast('warning', fpT('Bientôt disponible')); return; }
       const payload = {
         name,
         enabled: true,
         category: 'Custom',
         trigger_type: trigger === 'weekly' ? 'schedule' : 'event',
-        trigger_config: { event: trigger, description: _trigLabels[trigger] || trigger },
+        trigger_config: trigger === 'weekly'
+          ? { cron: '0 9 * * 1', timezone: 'UTC', description: _trigLabels[trigger] }
+          : { event: trigger, description: _trigLabels[trigger] || trigger },
         actions: [{ type: action, description: _actLabels[action] || action }],
       };
       saveBtn.dataset.submitting = '1';
@@ -1799,10 +1847,11 @@ function openNewWorkflowPanel(tplName, tplIcon, tplDesc) {
       }
       closeFloatPanel();
       render();
-      showToast('success', fpT('Workflow créé !'));
       if (window.FP_AUTOMATION_API && window.FP_AUTOMATION_API.create) {
         // Persist via API then replace the optimistic item with the real one
         window.FP_AUTOMATION_API.create(payload).then((r) => {
+          if (!r || r.ok === false) throw new Error('WORKFLOW_NOT_CREATED');
+          showToast('success', fpT('Workflow créé !'));
           const created = r && r.workflow;
           // Remove optimistic item
           STATE.workflows = (STATE.workflows || []).filter(w => w.id !== _tmpId);
@@ -8874,9 +8923,9 @@ function renderReports() {
         ['Rapport local complet', 'Plan zones cibles', 'Répondre aux avis'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard(fpT('Zones analysées'), String(zones.length), fpT(PREVIEW_MODE ? '1 dominée, 3 en progression' : 'données exemple'), PREVIEW_MODE ? 'up' : 'neutral')}
+        ${statCard(fpT('Zones analysées'), (zones.length > 0 || PREVIEW_MODE) ? String(zones.length) : '—', fpT(PREVIEW_MODE ? '1 dominée, 3 en progression' : (_lseo.state === 'not_connected' ? 'Non connecté' : 'Aucune zone analysée')), PREVIEW_MODE ? 'up' : 'neutral')}
         ${statCard(fpT('Visibilité moy.'), displayStat(null, '54%'), fpT(PREVIEW_MODE ? '+4% vs M-1' : 'Connectez GBP'), 'neutral')}
-        ${statCard(fpT('Note GBP moy.'), displayStat(null, '4.4 ★'), fpT(PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP'), 'neutral')}
+        ${statCard(fpT('Note GBP moy.'), typeof _lseo.avgRating === 'number' ? _lseo.avgRating.toFixed(1) + ' ★' : displayStat(null, '4.4 ★'), typeof _lseo.avgRating === 'number' ? fpT('données de votre fiche GBP') : fpT(PREVIEW_MODE ? '+0.2 vs M-1' : (_lseo.state === 'not_connected' ? 'Non connecté' : 'Connectez GBP')), 'neutral')}
         ${statCard(fpT('Avis sans réponse'), displayStat(null, '14'), fpT(PREVIEW_MODE ? 'Action requise' : 'Connectez GBP'), PREVIEW_MODE ? 'down' : 'neutral')}
       </div>
 
@@ -8902,18 +8951,18 @@ function renderReports() {
                 const vc = z.vis >= 70 ? '#22c55e' : z.vis >= 50 ? '#f59e0b' : '#ef4444';
                 const tc = z.trend > 0 ? '#22c55e' : z.trend < 0 ? '#ef4444' : 'var(--fp-text-faint)';
                 return `<tr>
-                  <td style="font-weight:600">${escHtml(z.name)}${z.dominant ? ' <span style="font-size:9px;color:#22c55e">★</span>' : ''}</td>
+                  <td style="font-weight:600">${escHtml(z.name)}${(z.dominant || z.dominated) ? ' <span style="font-size:9px;color:#22c55e">★</span>' : ''}</td>
                   <td style="text-align:center">
                     <div style="display:inline-flex;align-items:center;gap:6px">
                       <div class="fp-progress-track" style="width:48px;height:5px"><div class="fp-progress-fill" style="width:${z.vis}%;background:${vc}"></div></div>
                       <span style="font-weight:800;color:${vc};min-width:28px;text-align:left">${z.vis}%</span>
                     </div>
                   </td>
-                  <td style="text-align:center;color:var(--fp-text-faint)">${z.prev}%</td>
-                  <td style="text-align:center;font-weight:700">${z.kw}</td>
-                  <td style="text-align:center;font-weight:700;color:#f59e0b">${z.reviews} ★</td>
-                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(PREVIEW_MODE && !(_lseo.zones && _lseo.zones.length > 0) ? fpT(z.comp) : z.comp)}</td>
-                  <td style="text-align:center;font-weight:700;color:${tc}">${z.trend > 0 ? '↑+' : z.trend < 0 ? '↓' : '→'}${Math.abs(z.trend) || '0'}pts</td>
+                  <td style="text-align:center;color:var(--fp-text-faint)">${z.prev != null ? z.prev + '%' : '—'}</td>
+                  <td style="text-align:center;font-weight:700">${z.kw != null ? z.kw : '—'}</td>
+                  <td style="text-align:center;font-weight:700;color:#f59e0b">${z.reviews != null ? z.reviews + ' ★' : '—'}</td>
+                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${z.comp != null ? escHtml(PREVIEW_MODE && !(_lseo.zones && _lseo.zones.length > 0) ? fpT(z.comp) : z.comp) : '—'}</td>
+                  <td style="text-align:center;font-weight:700;color:${tc}">${z.trend != null ? (z.trend > 0 ? '↑+' : z.trend < 0 ? '↓' : '→') + (Math.abs(z.trend) || '0') + 'pts' : '—'}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -9370,7 +9419,7 @@ function _fpSafeColor(v) {
               </div>
               <div style="display:flex;gap:4px;flex-shrink:0">
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="PDF" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓ PDF</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Partager')}" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{var res=await apiAction('POST','/api/reports/'+b.dataset.rid+'/share',{});if(res&&res.token){var u=window.location.origin+'/r/'+res.token;try{await navigator.clipboard.writeText(u);}catch(_){}showToast('success',fpT('Lien copié !'));}else showToast('info',fpT('Lien généré'));}catch(e){showToast('error',fpT('Erreur partage'));}})(this)">🔗</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" title="${fpT('Partager')}" data-rid="${escHtml(r.id)}" onclick="(async function(b){try{await fpShareReportAndCopy(b.dataset.rid,{});}catch(e){fpShareLinkFailed(e);}})(this)">🔗</button>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger,#ef4444)" title="${fpT('Supprimer')}" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(async function(b){if(!confirm(fpT('Supprimer ce rapport ?')))return;try{await apiAction('DELETE','/api/reports/'+b.dataset.rid);STATE.reports=(STATE.reports||[]).filter(x=>x.id!==b.dataset.rid);render();showToast('success',fpT('Rapport supprimé'));}catch(e){showToast('error',fpT('Erreur'));}})(this)">✕</button>
               </div>
             </div>
@@ -9876,7 +9925,7 @@ function renderLocalSEO() {
             { icon:'📍', label:'Zones actives',    val:dominatedZones!=null?dominatedZones + '/' + totalZones:'—', color:'#2563EB', sub:dominatedZones!=null?'couvertes à 70%+':'Configurez vos zones' },
             { icon:'⭐', label:'Note Google moy.', val:STATE.localSeo?.avgRating?STATE.localSeo.avgRating.toFixed(1)+'★':(PREVIEW_MODE?'4.4★':'—'), color:'#f59e0b', sub:STATE.localSeo?.gbpCount?'sur '+STATE.localSeo.gbpCount+' fiche(s) GBP':(PREVIEW_MODE?'sur 3 fiches GBP':'Configurez GBP') },
             { icon:'🔍', label:'Mots-clés locaux', val:STATE.localSeo?.localKeywords!=null?String(STATE.localSeo.localKeywords):(PREVIEW_MODE?'127':'—'), color:'#22c55e', sub:'en top 10' },
-            { icon:'⚔️', label:'Menaces actives',  val:STATE.competitors&&STATE.competitors.length>0?String(STATE.competitors.length):(PREVIEW_MODE?'3':'0'), color:'#ef4444', sub:STATE.competitors&&STATE.competitors.length>0?'concurrents suivis':(PREVIEW_MODE?'concurrents en hausse':'Aucun concurrent') },
+            { icon:'⚔️', label:'Menaces actives',  val:STATE.competitors&&STATE.competitors.length>0?String(STATE.competitors.length):(PREVIEW_MODE?'3':'—'), color:'#ef4444', sub:STATE.competitors&&STATE.competitors.length>0?'concurrents suivis':(PREVIEW_MODE?'concurrents en hausse':'Aucun concurrent') },
           ].map(m => '<div style="padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">'
             + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
             + '<span style="font-size:13px">' + m.icon + '</span>'
@@ -12681,7 +12730,7 @@ function renderSettings() {
            var dateStr = isCur ? fpT('Now') : (rawDate ? new Date(rawDate).toLocaleString(locale,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—');
           var rawUa = l.device||l.userAgent||'';
            var parsedDev = (function(ua){if(!ua)return 'Unknown device';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Unknown device';})(rawUa);
-           return { device: parsedDev, location: fpT('Unknown location'), ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
+           return { id: l.id || '', canRevoke: l.canRevoke === true, device: parsedDev, location: fpT('Unknown location'), ip: l.ip||'***.***.***.***', date: dateStr, current: isCur };
         })
       : [];
      const _parseDeviceUA = function(ua){if(!ua)return 'Unknown device';var u=ua.toLowerCase();if(/iphone/.test(u))return '📱 iPhone';if(/ipad/.test(u))return '📱 iPad';if(/android/.test(u))return '📱 Android';if(/macintosh|mac os/.test(u))return '💻 Mac';if(/windows/.test(u))return '💻 Windows';if(/linux/.test(u))return '🖥 Linux';if(/chrome/.test(u))return '🖥 Chrome';if(/safari/.test(u))return '🖥 Safari';return '🖥 Unknown device';};
@@ -12766,7 +12815,7 @@ function renderSettings() {
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(sess.location)} · IP ${escHtml(sess.ip)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(sess.date)}</div>
               </div>
-               ${!sess.current && sess.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success',fpT('Session revoked'));STATE.activeSessions=(STATE.activeSessions||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error',fpT('Error: {error}',{error:String(e.message||e)}));b.disabled=false;b.textContent=fpT('End session');}})(this)">${fpT('End session')}</button>` : ''}
+               ${!sess.current && sess.id && sess.canRevoke ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-sess-id="${escHtml(String(sess.id))}" onclick="(async(b)=>{b.disabled=true;b.textContent='…';try{await apiFetch('/api/auth/sessions/'+b.dataset.sessId+'/revoke',{method:'POST',body:JSON.stringify({})});showToast('success',fpT('Session revoked'));STATE.loginHistory=(STATE.loginHistory||[]).filter(s=>String(s.id)!==b.dataset.sessId);render(STATE.currentSection);}catch(e){showToast('error',fpT('Error: {error}',{error:String(e.message||e)}));b.disabled=false;b.textContent=fpT('End session');}})(this)">${fpT('End session')}</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -12854,7 +12903,9 @@ function renderSettings() {
           name:     w.name     || 'Workflow',
           icon:     w.icon     || '⚡',
           color:    w.category === 'Monitoring' ? '#ef4444' : w.category === 'IA' ? '#8b5cf6' : w.category === 'SEO' ? '#22c55e' : '#2563EB',
-          active:   w.enabled  ?? true,
+          capability: w.capability || null,
+          unsupported: !!(w.capability && w.capability.supported === false),
+          active:   (w.enabled ?? true) && !(w.capability && w.capability.supported === false),
           trigger:  ((w.trigger_config||w.triggerConfig)?.description) || (w.trigger_type === 'schedule' || w.triggerType === 'schedule' ? 'Planifié' : w.trigger_type === 'event' || w.triggerType === 'event' ? 'Événement' : w.trigger_type || w.triggerType || '—'),
           action:   Array.isArray(w.actions) && w.actions[0] ? (w.actions[0].description || w.actions[0].type || '—') : '—',
           runs:     w.runs_count || w.runsCount || 0,
@@ -12863,11 +12914,11 @@ function renderSettings() {
         }))
       : [];
     const templates = [
-      {name:'Rapport client hebdo',   icon:'📊', desc:'Génère et envoie un résumé client chaque semaine'},
-      {name:'SLA monitoring strict',  icon:'🛡️', desc:'Alerte multi-canal si uptime < 99.5%'},
-      {name:'Pipeline SEO complet',   icon:'🚀', desc:'Audit → analyse → recommandations → rapport'},
-      {name:'Workflow onboarding',    icon:'🎯', desc:'Suite automatisée pour nouveaux clients'},
-      {name:'Veille concurrentielle', icon:'🕵️', desc:'Surveillance hebdo des mouvements concurrents + alerte IA'},
+      {name:'Rapport client hebdo',   icon:'📊', desc:'Génère et envoie un résumé client chaque semaine', ready:true},
+      {name:'SLA monitoring strict',  icon:'🛡️', desc:'Alerte multi-canal si uptime < 99.5%', ready:false},
+      {name:'Pipeline SEO complet',   icon:'🚀', desc:'Audit → analyse → recommandations → rapport', ready:true},
+      {name:'Workflow onboarding',    icon:'🎯', desc:'Suite automatisée pour nouveaux clients', ready:false},
+      {name:'Veille concurrentielle', icon:'🕵️', desc:'Surveillance hebdo des mouvements concurrents + alerte IA', ready:false},
     ];
     return `
       ${isPro
@@ -12882,7 +12933,7 @@ function renderSettings() {
         ${statCard(fpT('Active workflows'), String(workflows.filter(w => w.active).length), fpT('{count} configured', { count: workflows.length }), 'up')}
         ${statCard(fpT('Runs this month'), String(workflows.reduce((s,w) => s + w.runs, 0)), fpT('successful automations'), 'up')}
         ${statCard(fpT('Time saved'), displayStat(null, PREVIEW_MODE ? '~6h/mo' : '—'), PREVIEW_MODE ? fpT('AI estimate') : fpT('Activate workflows'), 'neutral')}
-        ${statCard(fpT('Available templates'), '+99', fpT('ready to use'), 'up')}
+        ${statCard(fpT('Available templates'), String(templates.filter(t => t.ready).length), fpT('ready to use'), 'up')}
       </div>
 
       <!-- WORKFLOWS LIST -->
@@ -12902,13 +12953,14 @@ function renderSettings() {
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;min-width:0">
                   <span style="font-size:12px;font-weight:700;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0">${escHtml(wf.name)}</span>
                   <span style="flex-shrink:0">${badge(wf.category, wf.color)}</span>
+                  ${wf.unsupported ? `<span style="flex-shrink:0">${badge(fpT('Bientôt disponible'), '#f59e0b')}</span>` : ''}
                 </div>
                 <div style="font-size:10px;color:var(--fp-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                   ⚡ <strong>${escHtml(wf.trigger)}</strong> → ${escHtml(wf.action)}
                 </div>
                 <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} ${fpT('runs')} · ${fpT('Last run')}: ${escHtml(wf.lastRun)}</div>
               </div>
-              <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : `showToast('error', fpT('Workflow invalide : identifiant manquant'))`}"></button>
+              <button class="fp-toggle${wf.active ? ' on' : ''}" ${wf.unsupported ? `disabled style="opacity:.45;cursor:not-allowed" title="${fpT('Bientôt disponible')}"` : ''} onclick="${wf.unsupported ? '' : wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : `showToast('error', fpT('Workflow invalide : identifiant manquant'))`}"></button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;${wf.active ? '' : 'opacity:.45;cursor:not-allowed'}" ${wf.active ? '' : `disabled title="${fpT("Activez le workflow avant de l'exécuter")}"`} onclick="${wf.id && wf.active ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error', fpT('Module automations non chargé — rechargez la page'))` : ''}">▶ Run</button>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;color:var(--fp-danger)" onclick="${wf.id ? `window.FP_AUTOMATION_API&&window.FP_AUTOMATION_API.remove('${escHtml(wf.id)}')` : ''}" title="${fpT('Supprimer ce workflow')}">🗑</button>
             </div>
@@ -12925,7 +12977,9 @@ function renderSettings() {
               <div style="font-size:20px;margin-bottom:6px">${t.icon}</div>
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(fpT(t.name))}</div>
               <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(fpT(t.desc))}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">${fpT('Use this template')}</button>
+              ${t.ready
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="window.openNewWorkflowPanel('${escHtml(t.name)}','${escHtml(t.icon)}','${escHtml(t.desc)}')">${fpT('Use this template')}</button>`
+                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="width:100%;font-size:10px;margin-top:auto;opacity:.55;cursor:not-allowed">${fpT('Bientôt disponible')}</button>`}
             </div>
           `).join('')}
         </div>
@@ -13328,7 +13382,7 @@ function renderSettings() {
             ${statCard(fpT('Success rate'), stats.totalDeliveries > 0 && stats.successRate != null ? stats.successRate+'%' : '—', stats.totalDeliveries > 0 ? fpT('successful deliveries') : fpT('No deliveries'), stats.totalDeliveries > 0 && stats.successRate < 90 ? 'down' : 'neutral')}
             ${statCard(fpT('Errors (24h)'), String(stats.recentErrors||0), fpT('recent alerts'), stats.recentErrors>0?'down':'up')}
             ${statCard(fpT('Average latency'), stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', fpT('webhook delivery'), 'neutral')}
-            ${statCard(fpT('Templates'), '+99', fpT('ready to use'), 'up')}
+            ${statCard(fpT('Templates'), String(_allTpl.filter(t => fpTemplateAvailability(t).available).length), fpT('ready to use'), 'up')}
             ${statCard(fpT('Successful syncs'), String(Math.max(0,(stats.totalRuns||0)-(stats.recentErrors||0))), fpT('in the last 30 days'), (stats.recentErrors||0)>0?'neutral':'up')}
             ${statCard(fpT('API quota remaining'), displayStat(null, '85%'), PREVIEW_MODE ? '→ 1,500 / 2,000 ' + fpT('calls') : fpT('View API usage'), 'neutral')}
           </div>
@@ -13502,9 +13556,12 @@ function renderSettings() {
         const planColor = p => p==='Ultra'?'#8b5cf6':p==='Pro'?'#2563EB':'#22c55e';
         // When a category filter is active, show 12 from that category (seeded shuffle)
         const _activeCat = window._intgTemplCat || 'Tous';
+        // D-07 : les modeles reellement activables d'abord ; les autres restent visibles, marques « Bientôt disponible ».
+        const _byAvail = arr => arr.map((t, i) => ({ t, i, a: fpTemplateAvailability(t).available ? 1 : 0 })).sort((x, y) => (y.a - x.a) || (x.i - y.i)).map(x => x.t);
+        const _srcTpl = (intgData.templates && intgData.templates.length > 0) ? intgData.templates : _allTpl;
         const _visibleTpl = _activeCat === 'Tous'
-          ? templates  // already 12 rotated from full library
-          : (() => { const sub = _allTpl.filter(t => t.category === _activeCat); return sub.length <= 12 ? sub : _rotShuffle(_rotSeed, sub).slice(0, 12); })();
+          ? _byAvail(_srcTpl).slice(0, 24)
+          : _byAvail(_srcTpl.filter(t => t.category === _activeCat)).slice(0, 24);
         return `
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
             ${['Tous',...cats].map(c => `
@@ -13533,10 +13590,12 @@ function renderSettings() {
                     ⚡ ${fpT('Trigger')}: <strong>${t.trigger_event}</strong>
                   </div>
                   <div style="display:flex;gap:6px;margin-top:4px">
-                    <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1;font-size:10px"
-                      onclick="window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}')">
+                    ${fpTemplateAvailability(t).available
+                      ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1;font-size:10px"
+                      onclick="window._useTemplate('${escHtml(t.id)}','${escHtml(t.platform)}','${escHtml(t.name)}','${escHtml(t.trigger_event)}')">
                        ${fpT('Use this template')}
-                    </button>
+                    </button>`
+                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="flex:1;font-size:10px;opacity:.55;cursor:not-allowed" title="${fpT('Bientôt disponible')}">${fpT('Bientôt disponible')}</button>`}
                     <span style="font-size:10px;color:var(--fp-text-faint);align-self:center">🔥 ${t.popularity||0}</span>
                   </div>
                 </div>
@@ -13653,7 +13712,7 @@ function renderSettings() {
         ${[
           ['hub',       '🏠 Hub',        ''],
           ['webhooks',  '🔗 Webhooks',   intgs.length > 0 ? String(intgs.length) : ''],
-          ['templates', '📦 Templates',  '+99'],
+          ['templates', '📦 Templates',  String(_allTpl.filter(t => fpTemplateAvailability(t).available).length)],
           ['logs',      '📋 Logs',       runs.length > 0 ? String(runs.length) : ''],
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
@@ -13681,7 +13740,7 @@ function renderSettings() {
             <div>
               <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">${fpT('Événements déclencheurs (laisser vide = tous)')}</label>
               <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:8px;border:1px solid var(--fp-border);border-radius:8px" id="intg-events-container">
-                ${['audit.completed','monitor.down','monitor.recovered','report.generated','mission.created','mission.completed','review.received','keyword.ranking_changed','backlink.detected','competitor.detected','ai.insight.generated','payment.failed'].map(ev => `
+                ${FP_AUTOMATION_CAPS.events.map(ev => `
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--fp-text-muted);padding:3px 8px;border-radius:6px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
                     <input type="checkbox" name="intg-event" value="${ev}" style="accent-color:var(--fp-accent)">
                     ${ev}
@@ -16676,10 +16735,45 @@ function render() {
   if (_renderTimer) clearTimeout(_renderTimer);
   _renderTimer = setTimeout(() => { _renderTimer = null; _doRender(); }, 30);
 }
+// ── Banniere d'etat d'acces : lecture seule / grace past_due / annulation programmee ──
+// Source : /api/me (accessMode, accessReason, graceEndsAt, cancelAtPeriodEnd, currentPeriodEnd).
+// Textes FR/EN via fp-locale.js (fpAccessText), repli anglais pour les autres langues.
+function fpSyncAccessBanner() {
+  const me = STATE.me || {};
+  const T = window.fpAccessText || function () { return ''; };
+  let title = '', body = '';
+  if (me.accessMode === 'read_only') {
+    title = T('readOnlyTitle');
+    body = (String(me.accessReason || '').indexOf('past_due') === 0) ? T('readOnlyPastDue') : T('readOnlyBody');
+  } else if (me.accessMode === 'full' && me.accessReason === 'past_due_grace' && me.graceEndsAt) {
+    title = T('graceTitle'); body = T('graceBody', { date: fmtDate(me.graceEndsAt) });
+  } else if (me.accessMode === 'full' && me.cancelAtPeriodEnd && me.currentPeriodEnd) {
+    title = T('cancelTitle'); body = T('cancelBody', { date: fmtDate(me.currentPeriodEnd) });
+  }
+  let el = document.getElementById('fp-access-banner');
+  document.body.classList.toggle('fp-read-only', me.accessMode === 'read_only');
+  if (!title) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fp-access-banner';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'position:sticky;top:0;z-index:9000;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 16px;background:#78350f;color:#fffbeb;font:13px/1.45 system-ui,sans-serif;border-bottom:1px solid #f59e0b';
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.replaceChildren();
+  const strong = document.createElement('strong'); strong.textContent = title;
+  const span = document.createElement('span'); span.textContent = body; span.style.flex = '1';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.textContent = T('action');
+  btn.style.cssText = 'padding:5px 12px;border:1px solid #fbbf24;border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
+  btn.addEventListener('click', function () { try { navigate('billing'); } catch (_) { window.location.href = '/pricing.html'; } });
+  el.append(strong, span, btn);
+}
 let _fpLastRenderedKey = null;
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
+  try { fpSyncAccessBanner(); } catch (_) {}
 
   // Route-change detection: the overlay spinner + loading bar are ONLY for real
   // navigation. Background data refreshes re-render the same route — showing the
@@ -18295,43 +18389,7 @@ function bindSectionEvents() {
         secondaryColor: _wlbShare.secondaryColor|| '#1d4ed8',
         footerMsg:      _wlbShare.footerMsg     || '',
       };
-      try {
-        const res = await apiAction('POST', `/api/reports/${reportId}/share`, {
-          branding: brandingPayload,
-          auditIds: STATE.audits.slice(0, 4).map(a => a.id),
-        });
-        if (res?.token) {
-          if (report) { report.shared = true; }
-          const base = location.pathname.endsWith('dashboard.html')
-            ? location.pathname.replace('dashboard.html', 'report-view.html')
-            : location.pathname.replace(/\/?$/, '/report-view.html');
-          const shareUrl = `${location.origin}${base}?token=${res.token}`;
-          navigator.clipboard?.writeText(shareUrl).catch(() => {});
-          showToast('success', fpT('Lien copié ! Valable 30 jours.'));
-          return;
-        }
-      } catch(err) {
-        console.warn('[FP] Share API failed, using local fallback', err);
-      }
-      const token = 'fp-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-      let _shareNotes = [];
-      try { if (report?.meetingNotesJson) _shareNotes = JSON.parse(report.meetingNotesJson); } catch {}
-      const payload = {
-        report: report || { id: reportId, name: 'Rapport', date: new Date().toISOString(), type: 'PDF', pages: 8 },
-        branding: brandingPayload,
-        audits: STATE.audits.slice(0, 4),
-        meetingNotes: _shareNotes,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-      };
-      localStorage.setItem('fp:share-' + token, JSON.stringify({ reportId: payload.report?.id||null, createdAt: payload.createdAt, expiresAt: payload.expiresAt }));
-      if (report) { report.shared = true; }
-      const base = location.pathname.endsWith('dashboard.html')
-        ? location.pathname.replace('dashboard.html', 'report-view.html')
-        : location.pathname.replace(/\/?$/, '/report-view.html');
-      const shareUrl = `${location.origin}${base}?token=${token}`;
-      navigator.clipboard?.writeText(shareUrl).catch(() => {});
-      showToast('success', fpT('Lien copié ! Valable 30 jours.'));
+      await fpShareReportAndCopy(reportId, { branding: brandingPayload });
     }));
     $('#report-new-btn')?.addEventListener('click', () => { openFloatPanel(fpT('Générer un rapport PDF'), renderNewReportPanel()); setupNewReportPanel(); });
     $$('.fp-report-card, .fp-report-row').forEach(card => {
@@ -18343,16 +18401,7 @@ function bindSectionEvents() {
           { key:'share', icon:'copy',     label:fpT('Copier le lien'), action: async ()=>{
             const wlb = JSON.parse(fpTenantRead('fp:wl-branding', '{}'));
             const bp = { agencyName: wlb.agencyName || STATE.me?.org?.name || 'Mon Agence', logoUrl: wlb.logoUrl || '', primaryColor: wlb.primaryColor || '#2563EB', secondaryColor: wlb.secondaryColor || '#1d4ed8', footerMsg: wlb.footerMsg || '' };
-            const base = location.pathname.endsWith('dashboard.html') ? location.pathname.replace('dashboard.html','report-view.html') : location.pathname.replace(/\/?$/,'/report-view.html');
-            try {
-              const res = await apiAction('POST', `/api/reports/${report.id}/share`, { branding: bp, auditIds: STATE.audits.slice(0,4).map(a=>a.id) });
-              if (res?.token) { navigator.clipboard?.writeText(`${location.origin}${base}?token=${res.token}`).catch(()=>{}); showToast('success', fpT('Lien copié ! Valable 30 jours.')); return; }
-            } catch(err) { console.warn('[FP] Share API fallback'); }
-            const token = 'fp-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);
-            let _ctxNotes = []; try { if (report?.meetingNotesJson) _ctxNotes = JSON.parse(report.meetingNotesJson); } catch {}
-            localStorage.setItem('fp:share-'+token, JSON.stringify({ reportId: report?.id||null, createdAt:new Date().toISOString(), expiresAt:new Date(Date.now()+30*24*3600*1000).toISOString() }));
-            navigator.clipboard?.writeText(`${location.origin}${base}?token=${token}`).catch(()=>{});
-            showToast('success', fpT('Lien copié ! Valable 30 jours.'));
+            await fpShareReportAndCopy(report.id, { branding: bp });
           } },
           { key:'regen', icon:'refresh',  label:fpT('Regénérer'), action:async()=>{
             try {
@@ -20874,6 +20923,14 @@ function bindGlobalEvents() {
     "Aucun rapport planifié": "No scheduled report",
     "Aucun risque détecté pour le moment": "No risk detected at the moment",
     "Aucun signal de churn détecté": "No churn signal detected",
+    "Analyse de la page": "Page analysis",
+    "Analyse indisponible.": "Analysis unavailable.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "No friction point detected by the automatic checks on this page.",
+    "Preuve :": "Evidence:",
+    "Les mesures locales ne sont pas disponibles : le fournisseur n’est pas configuré.": "Local measurements are unavailable: the data provider is not configured.",
+    "Effort": "Effort",
+    "Aucune recommandation disponible pour le moment.": "No recommendation available at the moment.",
+    "Les recommandations sont indisponibles pour le moment.": "Recommendations are currently unavailable.",
     "Aucun signal détecté pour le moment.": "No signal detected at the moment.",
     "Aucun site GSC trouvé. Vérifiez vos accès.": "No GSC site found. Check your access.",
     "Aucun siège d'équipe —": "No team seats —",
@@ -22830,6 +22887,14 @@ function bindGlobalEvents() {
     "Lien de partage copié": "Share link copied",
     "Lien de partage généré": "Share link generated",
     "Erreur partage": "Sharing error",
+    "Impossible de créer le lien de partage. Aucun lien n'a été généré.": "Could not create the share link. No link was generated.",
+    "Créez d'abord un rapport avant de générer un lien de partage.": "Create a report first before generating a share link.",
+    "Monitor rétabli": "Monitor recovered",
+    "Planning hebdomadaire (lundi 09:00 UTC)": "Weekly schedule (Monday 09:00 UTC)",
+    "Générer des recommandations IA": "Generate AI recommendations",
+    "Envoyer une alerte par email": "Send an email alert",
+    "Aucune zone analysée": "No zone analysed yet",
+    "données de votre fiche GBP": "from your GBP listing",
     "Critères de présence enregistrés.": "Presence criteria saved.",
     "Catalogue des add-ons indisponible.": "Add-on catalog unavailable.",
     "Objectif supprimé": "Goal deleted",
@@ -53143,7 +53208,12 @@ async function init() {
     } catch(e) { showToast('error', String(e)); }
   };
 
-  window._useTemplate = async function(tplId, platform, name) {
+  window._useTemplate = async function(tplId, platform, name, triggerEvent) {
+    // D-07 : un modele dont l'evenement n'est pas emis ou dont la cible n'est pas livrable n'est pas activable.
+    if (!fpTemplateAvailability({ trigger_event: triggerEvent, platform: platform }).available) {
+      showToast('info', fpT('Bientôt disponible'));
+      return;
+    }
     window._currentPlatform = platform;
     const titleEl = document.getElementById('fp-intg-modal-title');
     const nameEl  = document.getElementById('intg-name');
@@ -53151,6 +53221,9 @@ async function init() {
     if (nameEl)  nameEl.value = name;
     const modal = document.getElementById('fp-intg-modal');
     if (modal) modal.style.display = 'flex';
+    // Abonne la connexion a l'evenement du modele (et a lui seul), au lieu de « tous les evenements ».
+    const wanted = fpNormalizeAutomationEvent(triggerEvent);
+    document.querySelectorAll('input[name="intg-event"]').forEach(el => { el.checked = (el.value === wanted); });
     window._intgTab = 'webhooks';
   };
 
@@ -57307,16 +57380,18 @@ function initPageAnimations(route, sub) {
 
 function growthRing(val, color, sz, sw, label, sub) {
   sz = sz || 84; sw = sw || 7; label = label || ''; sub = sub || '';
+  // Donnee absente (null/undefined/NaN) : « — » et anneau vide, jamais un 0 % trompeur.
+  const _na = val === null || val === undefined || val === '' || !isFinite(Number(val));
   const r = sz / 2 - sw - 1;
   const c = +(2 * Math.PI * r).toFixed(2);
   return '<div class="fp-growth-ring-item">' +
     '<div style="position:relative;width:' + sz + 'px;height:' + sz + 'px;flex-shrink:0">' +
       '<svg width="' + sz + '" height="' + sz + '" viewBox="0 0 ' + sz + ' ' + sz + '" style="transform:rotate(-90deg);overflow:visible;display:block">' +
         '<circle cx="' + (sz/2) + '" cy="' + (sz/2) + '" r="' + r + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="' + sw + '"/>' +
-        '<circle cx="' + (sz/2) + '" cy="' + (sz/2) + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '" stroke-dasharray="' + c + '" stroke-dashoffset="' + c + '" stroke-linecap="round" data-ring-target="' + val + '" data-ring-r="' + r + '" style="transition:stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1)"/>' +
+        '<circle cx="' + (sz/2) + '" cy="' + (sz/2) + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '" stroke-dasharray="' + c + '" stroke-dashoffset="' + c + '" stroke-linecap="round"' + (_na ? '' : ' data-ring-target="' + val + '"') + ' data-ring-r="' + r + '" style="transition:stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1)"/>' +
       '</svg>' +
       '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column">' +
-        '<span style="font-size:' + (sz < 72 ? 11 : 13) + 'px;font-weight:800;color:#f1f5ff;font-family:var(--fp-font-head);line-height:1" data-count-to="' + val + '" data-suffix="%">0%</span>' +
+        '<span style="font-size:' + (sz < 72 ? 11 : 13) + 'px;font-weight:800;color:#f1f5ff;font-family:var(--fp-font-head);line-height:1"' + (_na ? '>—' : ' data-count-to="' + val + '" data-suffix="%">0%') + '</span>' +
       '</div>' +
     '</div>' +
     '<div style="margin-top:7px;text-align:center">' +
@@ -58125,11 +58200,11 @@ function renderGrowthCommandCenter() {
         </div>
         <div class="fp-growth-rings">
           ${growthRing(avgSc,'var(--fp-accent)',84,7,fpT('Momentum SEO'), STATE.overview?.scoreChange30d != null ? fpT('{count} pts/mois', { count:(STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d }) : fpT('Score moyen'))}
-          ${growthRing(_mySpeed||0,'#22c55e',84,7,fpT('Performance'), _mySpeed != null ? fpT('Score PSI moyen') : fpT('Connectez PSI'))}
-          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : 0,'#8b5cf6',84,7,fpT('Conversion'), STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : fpT('Connectez GA4'))}
-          ${growthRing(_myAvis,'#f59e0b',84,7,fpT('Avis GBP'), _lseo.avgRating ? _lseo.avgRating+'/5' : '—')}
-          ${growthRing(_c1Score||0,'#06b6d4',84,7,fpT('Concurrence'), _c1Score ? fpT('vs {name}', { name:escHtml(_comp1?.name||'Concurrent').substring(0,12) }) : fpT('Ajoutez concurrents'))}
-          ${growthRing(_myLocal,'#f97316',84,7,fpT('Local SEO'), _lseo.domScore ? _lseo.domScore+'/100' : fpT('Connectez LSEO'))}
+          ${growthRing(_mySpeed,'#22c55e',84,7,fpT('Performance'), _mySpeed != null ? fpT('Score PSI moyen') : fpT('Connectez PSI'))}
+          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : null,'#8b5cf6',84,7,fpT('Conversion'), STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : fpT('Connectez GA4'))}
+          ${growthRing(_myAvis,'#f59e0b',84,7,fpT('Avis GBP'), _lseo.avgRating ? _lseo.avgRating+'/5' : (_lseo.state === 'not_connected' ? fpT('Non connecté') : '—'))}
+          ${growthRing(_c1Score,'#06b6d4',84,7,fpT('Concurrence'), _c1Score ? fpT('vs {name}', { name:escHtml(_comp1?.name||'Concurrent').substring(0,12) }) : fpT('Ajoutez concurrents'))}
+          ${growthRing(_myLocal,'#f97316',84,7,fpT('Local SEO'), _lseo.domScore ? _lseo.domScore+'/100' : (_lseo.state === 'not_connected' ? fpT('Non connecté') : fpT('Connectez LSEO')))}
         </div>
       </div>
     </div>
@@ -60580,6 +60655,17 @@ function renderConversion() {
         ${statCard(fpT("Confiance élevée"), String((_croRecs || []).filter(r => r.confidence === 'high').length), fpT("au moins 30 sessions"), "neutral")}
         ${statCard(fpT("Gain financier"), fpT("Non mesuré"), fpT("aucune conversion/revenu attribué"), "neutral")}
       </div>
+
+      ${(function(){
+        const pa = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.pageAnalysis;
+        if (!pa) return '';
+        if (pa.status !== 'ok') return `<div class="fp-card fp-mb-20" data-cro-page-analysis="unavailable"><div class="fp-card-title" style="margin-bottom:8px">${fpT('Analyse de la page')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(pa.message || fpT('Analyse indisponible.'))}</div></div>`;
+        const fs = pa.findings || [];
+        return `<div class="fp-card fp-mb-20" data-cro-page-analysis="ok"><div class="fp-card-title" style="margin-bottom:8px">${fpT('Analyse de la page')} · ${escHtml(pa.analyzedUrl || '')}</div>
+          ${pa.ai && pa.ai.status === 'unavailable' ? `<div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:8px">${escHtml(pa.ai.message || '')}</div>` : ''}
+          ${fs.length === 0 ? `<div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Aucun point de friction détecté par les contrôles automatiques sur cette page.')}</div>` : fs.map(f => `<div style="padding:8px 0;border-top:1px solid var(--fp-border)"><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(f.title)}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${escHtml(f.description)}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${fpT('Preuve :')} ${escHtml(f.evidence)}</div></div>`).join('')}
+        </div>`;
+      })()}
 
       <!-- ROADMAP -->
       <div class="fp-card fp-mb-20">
@@ -74707,7 +74793,7 @@ window.FP_CRO_API = {
       const r = await apiFetch('/api/cro/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [] };
+        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [], pageAnalysis: r.pageAnalysis || null };
         if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
         showToast('success', fpT('{count} observations CRO analysées', { count:(r.observations || []).length }));
@@ -76451,6 +76537,7 @@ window._fpRenderGBPPostsPanel = function() {
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
             <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString(getLocale()))}` : ''}</div>
+            ${post.status === 'failed' && post.last_error_message ? `<div role="alert" style="font-size:11px;color:var(--fp-danger);margin-top:5px">${escHtml(post.last_error_message)}</div>` : ''}
           </div>
           ${['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
           ${String(post.post_type || '').toLowerCase() === 'product' ? `<span title="Format non pris en charge par l’API Google connectée" style="font-size:10px;color:var(--fp-text-muted)">Brouillon seulement</span>` : ''}
@@ -76738,6 +76825,20 @@ window.FP_LOCAL_MAPS_API = {
   async getAIRecommendations() {
     return await apiFetch('/api/local-maps/ai-recommendations', { method: 'POST', body: JSON.stringify({}) });
   },
+  async showRecommendations() {
+    showToast('info', fpT('Analyse en cours…'));
+    let html;
+    try {
+      const r = await this.getAIRecommendations();
+      const items = Array.isArray(r?.recommendations) ? r.recommendations : [];
+      html = items.length
+        ? items.map(it => '<div style="margin-bottom:10px"><strong>' + escHtml(it.title) + '</strong><br>' + escHtml(it.description) + '<br><span style="font-size:10px;opacity:.7">' + escHtml(fpT('Impact')) + ' : ' + escHtml(it.impact) + ' · ' + escHtml(fpT('Effort')) + ' : ' + escHtml(it.effort) + '</span></div>').join('')
+        : escHtml(r?.message || fpT('Aucune recommandation disponible pour le moment.'));
+    } catch (e) {
+      html = escHtml(fpT('Les recommandations sont indisponibles pour le moment.'));
+    }
+    openFloatPanel('🤖 Recommandations', '<div style="padding:16px;font-size:12px;line-height:1.7;color:var(--fp-text-muted)">' + html + '</div>');
+  },
   async discoverCompetitors(data) {
     return await apiFetch('/api/local-maps/competitors/discover', { method: 'POST', body: JSON.stringify(data) });
   },
@@ -76972,18 +77073,18 @@ function renderLocalDominationMaps() {
                 <div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em">${fpT('domination')}</div>
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
-                onclick="showToast('info', fpT('Analyse IA en cours…'));window.FP_LOCAL_MAPS_API?.getAIRecommendations().then(r=>{showToast('success', fpT('Recommandations générées'));openFloatPanel('🤖 Recommandations IA', '<div style=\'padding:16px;font-size:12px;line-height:1.7;color:var(--fp-text-muted)\'>'+escHtml(r?.summary||'')+'</div>');})">
+                onclick="window.FP_LOCAL_MAPS_API?.showRecommendations()">
                 ✦ IA
               </button>
             </div>
           </div>
 
-          ${['pending','running','partial','failed'].includes(activeHeatmap?.status) ? `
+          ${['pending','running','partial','failed','unavailable'].includes(activeHeatmap?.status) ? `
             <div style="padding:10px 12px;margin:10px 0;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
               ${activeHeatmap?.status === 'running' || activeHeatmap?.status === 'pending'
                 ? fpT('Mesures DataForSEO en cours. Actualisez cette page pour voir leur état.')
-                : escHtml(activeHeatmap?.scan_error || fpT(activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
-              ${activeHeatmap?.status === 'failed' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">${fpT('Relancer la mesure')}</button>` : ''}
+                : escHtml(activeHeatmap?.scan_error || fpT(activeHeatmap?.status === 'unavailable' ? 'Les mesures locales ne sont pas disponibles : le fournisseur n’est pas configuré.' : activeHeatmap?.status === 'partial' ? 'Certaines mesures sont indisponibles.' : 'La mesure a échoué.'))}
+              ${(activeHeatmap?.status === 'failed' || activeHeatmap?.status === 'unavailable') ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-left:8px" onclick="window.FP_LOCAL_MAPS_API.scanHeatmap('${escHtml(activeHeatmap.id)}').then(()=>window.FP_LOCAL_MAPS_API.load()).then(()=>render(STATE.currentSection))">${fpT('Relancer la mesure')}</button>` : ''}
             </div>
           ` : ''}
 

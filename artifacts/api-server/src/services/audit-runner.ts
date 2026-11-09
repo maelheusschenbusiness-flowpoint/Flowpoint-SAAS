@@ -132,6 +132,10 @@ export async function launchAudit(opts: {
       const { evaluateAlertRulesForAudit } = await import("./monitor-cron.js");
       evaluateAlertRulesForAudit(url, score, orgId).catch(() => {});
       store.broadcast({ type: "audit:complete", auditId, score, status }, orgId);
+      // D-07 : declencheur automatique reel (webhooks abonnes + workflows actives).
+      import("./automation-triggers.js")
+        .then(m => m.emitAutomationEvent(orgId, "audit.completed", { auditId, url, score, status, origin }))
+        .catch(() => {});
       store.logActivity({
         type: "audit",
         label: `Audit terminé : ${url} — Score ${score}/100`,

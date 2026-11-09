@@ -46,6 +46,8 @@ const experimentB = randomUUID();
 const auditBeforeA = randomUUID();
 const auditAfterA = randomUUID();
 const auditForeignB = randomUUID();
+const auditAgencyA = randomUUID();
+const auditAgencyB = randomUUID();
 const siteA = "https://addon-a.qa-fixture.invalid";
 const siteB = "https://addon-b.qa-fixture.invalid";
 const pageA = "/pricing";
@@ -231,6 +233,12 @@ test.beforeAll(async () => {
             ($5,$6,$7,31,18,28,'warn',NOW()-INTERVAL '1 day')`,
     [auditBeforeA, orgA, `${siteA}/services/dentist`, auditAfterA, auditForeignB, orgB, `${siteB}/foreign`],
   );
+  await db.query(
+    `INSERT INTO audits (id,org_id,url,score,issues,speed,status,created_at)
+     VALUES ($1,$2,$3,72,5,65,'completed',NOW()-INTERVAL '4 days'),
+            ($4,$2,$5,67,7,62,'completed',NOW()-INTERVAL '3 days')`,
+    [auditAgencyA, orgA, "https://addon-a.qa-fixture.invalid/agency", auditAgencyB, "https://addon-a2.qa-fixture.invalid/agency"],
+  );
 });
 
 test.afterEach(async () => {
@@ -247,6 +255,9 @@ test.afterAll(async () => {
   if (db) {
     try {
       for (const orgId of [orgA, orgB]) {
+        await db.query("DELETE FROM agency_report_schedule_runs WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM agency_report_schedules WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM agency_customer_portals WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM organic_campaign_goals WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM technical_seo_fix_verifications WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM agency_portfolio_priority_settings WHERE org_id=$1", [orgId]);
@@ -424,7 +435,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   const loadedPacks = await packsResponse.json();
   expect(loadedPacks.audits.map(audit => String(audit.id))).toContain(auditAfterA);
   const result = page.locator("#fp-agency-packs-result");
-  await result.locator('input[type="text"]').fill("Quota baseline customer");
+  await result.locator('input[aria-label="Client name"]').fill("Quota baseline customer");
   await result.locator("select").selectOption(auditAfterA);
   const refreshResponsePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/reports" &&
@@ -433,7 +444,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   );
   await page.evaluate(() => window._fpReportsAPI.load({ force: true }));
   expect((await refreshResponsePromise).status()).toBe(200);
-  await expect(result.locator('input[type="text"]')).toHaveValue("Quota baseline customer");
+  await expect(result.locator('input[aria-label="Client name"]')).toHaveValue("Quota baseline customer");
   await expect(result.locator("select")).toHaveValue(auditAfterA);
   const createButton = result.locator("button.fp-btn-primary").first();
   const formState = await result.evaluate(element => ({
@@ -474,7 +485,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   expect(new Set(persistedBaseline.rows.map(row => row.id))).toEqual(
     new Set(baselineBundle.reports.map(report => report.id)),
   );
-  await expect(result.locator('input[type="text"]')).toBeVisible({ timeout: 5_000 });
+  await expect(result.locator('input[aria-label="Client name"]')).toBeVisible({ timeout: 5_000 });
 
   const beforeQuota = await db.query(
     "SELECT COUNT(*)::int AS count FROM reports WHERE org_id=$1 AND created_at > date_trunc('month',now())",
@@ -500,7 +511,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
     );
     expect(Number(atQuota.rows[0]?.count)).toBe(28);
 
-    await result.locator('input[type="text"]').fill("Quota blocked customer");
+    await result.locator('input[aria-label="Client name"]').fill("Quota blocked customer");
     await result.locator("select").selectOption(auditAfterA);
     await expect(createButton).toBeEnabled();
     const quotaResponse = page.waitForResponse(response =>
@@ -559,6 +570,124 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   } finally {
     await viewerContext.close();
   }
+});
+
+test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled delivery", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("reports"));
+  await page.waitForFunction(() => window.STATE?.route === "reports", null, { timeout: 20_000 });
+  const loadPacksButton = page.getByRole("button", {
+    name: /Charger les packs|Actualiser les packs|Load packs/i,
+  });
+  await expect(loadPacksButton).toBeVisible();
+  const packsResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs" &&
+    response.request().method() === "GET",
+  );
+  await loadPacksButton.evaluate(button => button.click());
+  expect((await packsResponsePromise).status()).toBe(200);
+  await page.waitForFunction(() => window._fpAgencyPacksState?.loaded === true, null, { timeout: 15_000 });
+  expect(await page.evaluate(() => window._fpAgencyPacksState.audits.map(audit => audit.id)))
+    .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
+  await page.evaluate(({ auditIds, clientName }) => {
+    Object.assign(window._fpAgencyPacksState, { selectedAuditIds: auditIds, clientName });
+  }, {
+    auditIds: [auditAgencyA, auditAgencyB],
+    clientName: "Synthetic multi-site customer",
+  });
+
+  const consolidateResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/consolidate" &&
+    response.request().method() === "POST",
+  );
+  const portalResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/portals" &&
+    response.request().method() === "POST",
+  );
+  await page.evaluate(() => window.FP_V1_ADDON_PANELS.consolidateAgencySites());
+  const consolidateResponse = await consolidateResponsePromise;
+  expect(consolidateResponse.status()).toBe(201);
+  const consolidated = await consolidateResponse.json();
+  expect(consolidated.auditCount).toBe(2);
+  const portalResponse = await portalResponsePromise;
+  expect(portalResponse.status()).toBe(201);
+  const portal = await portalResponse.json();
+  expect(portal.url).toContain("/api/agency-portal/");
+
+  const pdf = await page.request.get(`/api/reports/${consolidated.id}/download`);
+  expect(pdf.status()).toBe(200);
+  expect(pdf.headers()["content-type"]).toContain("application/pdf");
+  expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
+  const snapshotResult = await db.query(
+    "SELECT generation_metadata_json FROM reports WHERE org_id=$1 AND id=$2",
+    [orgA, consolidated.id],
+  );
+  const rawSnapshot = snapshotResult.rows[0].generation_metadata_json;
+  const snapshot = typeof rawSnapshot === "string" ? JSON.parse(rawSnapshot) : rawSnapshot;
+  expect(snapshot.sites.map(site => site.url)).toEqual([
+    "https://addon-a.qa-fixture.invalid/agency",
+    "https://addon-a2.qa-fixture.invalid/agency",
+  ]);
+
+  const crossOrg = await page.request.post("/api/reports/agency-packs/consolidate", {
+    headers: {
+      origin: new URL(page.url()).origin,
+      referer: page.url(),
+    },
+    data: { clientName: "Foreign audit", auditIds: [auditAgencyA, auditForeignB] },
+  });
+  expect(crossOrg.status()).toBe(404);
+  expect((await crossOrg.json()).code).toBe("AUDIT_NOT_FOUND");
+
+  const recipientEmail = `agency-client-${randomUUID()}@example.test`;
+  await page.evaluate(({ recipientEmail }) => {
+    Object.assign(window._fpAgencyPacksState, {
+      recipientEmail,
+      cron: "0 0 1 1 *",
+      timezone: "UTC",
+    });
+  }, { recipientEmail });
+  const scheduleResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/schedules" &&
+    response.request().method() === "POST",
+  );
+  await page.evaluate(() => window.FP_V1_ADDON_PANELS.createAgencySchedule());
+  const scheduleResponse = await scheduleResponsePromise;
+  expect(scheduleResponse.status()).toBe(201);
+  const schedule = await scheduleResponse.json();
+  expect(schedule.recipient_email).toBe(recipientEmail);
+
+  const pauseSchedulePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/reports/agency-packs/schedules/${schedule.id}` &&
+    response.request().method() === "PATCH",
+  );
+  await page.evaluate(id => window.FP_V1_ADDON_PANELS.toggleAgencySchedule(id, false), schedule.id);
+  expect((await pauseSchedulePromise).status()).toBe(200);
+  const resumeSchedulePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/reports/agency-packs/schedules/${schedule.id}` &&
+    response.request().method() === "PATCH",
+  );
+  await page.evaluate(id => window.FP_V1_ADDON_PANELS.toggleAgencySchedule(id, true), schedule.id);
+  expect((await resumeSchedulePromise).status()).toBe(200);
+
+  const portalPage = await page.context().newPage();
+  try {
+    const portalPageResponse = await portalPage.goto(portal.url);
+    expect(portalPageResponse?.status()).toBe(200);
+    await expect(portalPage.locator("body")).toContainText("Synthetic multi-site customer");
+    await expect(portalPage.locator("body")).toContainText("https://addon-a.qa-fixture.invalid/agency");
+    await expect(portalPage.locator("body")).toContainText("https://addon-a2.qa-fixture.invalid/agency");
+    await expect(portalPage.locator("body")).not.toContainText("Private meeting notes");
+  } finally {
+    await portalPage.close();
+  }
+  const revokePortalPromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/reports/agency-packs/portals/${portal.id}` &&
+    response.request().method() === "DELETE",
+  );
+  await page.evaluate(id => window.FP_V1_ADDON_PANELS.revokeAgencyPortal(id), portal.id);
+  expect((await revokePortalPromise).status()).toBe(200);
+  expect((await page.request.get(portal.url)).status()).toBe(404);
 });
 
 test("Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle", async ({ page }) => {
@@ -1335,7 +1464,7 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
   const agencyPacksCard = page.locator("section.fp-card").filter({ has: page.locator("#fp-agency-packs-result") });
   await agencyPacksCard.getByRole("button", { name: /Charger les packs|Load packs/i }).click();
   const packsResult = page.locator("#fp-agency-packs-result");
-  await packsResult.locator('input[type="text"]').fill("Synthetic UI customer");
+  await packsResult.locator('input[aria-label="Client name"]').fill("Synthetic UI customer");
   await packsResult.locator("select").selectOption(auditAfterA);
   const packResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/reports/agency-packs/generate" &&

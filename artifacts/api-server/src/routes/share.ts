@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { hashAgencyPortalToken } from "../services/agency-reporting.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -94,7 +95,8 @@ interface ShareTokenRow {
   brandingJson: string | null;
 }
 
-router.get("/share/:token", async (req, res) => {
+// /reports/share/:token est l'URL appelee par report-view.html ; /share/:token reste servie (anciens clients).
+router.get(["/share/:token", "/reports/share/:token"], async (req, res) => {
     // Query only the durable share_tokens schema. Older generic share columns
     // (id/type/target_id) are not part of report share links.
   const client = await pool.connect();
@@ -149,6 +151,9 @@ router.get("/share/:token", async (req, res) => {
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     });
+  } catch (err) {
+    logger.error({ err }, "[share] public report share lookup failed");
+    if (!res.headersSent) res.status(503).json({ error: "Share link temporarily unavailable.", code: "SHARE_UNAVAILABLE" });
   } finally {
     client.release();
   }
