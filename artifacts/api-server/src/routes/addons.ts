@@ -146,6 +146,7 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
       stripe_error:         { code: 502, msg: "La facturation Stripe de l'add-on a échoué — activation annulée" },
       no_live_subscription: { code: 402, msg: "Un abonnement actif est requis pour activer cet add-on — passez par la page Tarifs" },
       no_subscription_id:   { code: 402, msg: "Aucun abonnement Stripe trouvé — passez par la page Tarifs pour activer cet add-on" },
+      payment_required:     { code: 402, msg: "Le paiement de cet add-on n'a pas été confirmé — aucun accès n'a été accordé" },
       no_stripe_key:        { code: 503, msg: "Service de facturation indisponible — activation annulée" },
       no_price_id:          { code: 422, msg: "Aucun prix Stripe configuré pour cet add-on — contactez le support" },
       one_time_addon:       { code: 422, msg: "Cet add-on s'achète en paiement unique — utilisez le checkout dédié" },

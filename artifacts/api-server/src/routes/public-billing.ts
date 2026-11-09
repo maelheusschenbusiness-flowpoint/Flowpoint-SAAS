@@ -20,6 +20,8 @@ import {
   type AddonsMap,
 } from "../services/signup-subscription.js";
 
+import { isTrialEligibleForIdentity } from "../services/stripe-trial-history.js";
+
 // Reexport : createSubscriptionForAttempt vivait ici (tests existants).
 export { createSubscriptionForAttempt };
 import { store } from "../services/store.js";
@@ -75,8 +77,6 @@ export function checkoutIdempotencyKey(parts: {
   ].join("|");
   return "fp_" + createHash("sha256").update(material).digest("hex").slice(0, 48);
 }
-
-
 
 /**
  * Turn a Stripe failure into something the page can act on — and nothing more.
@@ -419,19 +419,53 @@ function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
  * Stripe is about to take.
  */
 async function resolveTrialEligibility(req: Request): Promise<boolean> {
-  const authOrgId = (req as Request & { orgId?: string }).orgId;
-  if (authOrgId && authOrgId !== "default") {
-    try {
+  const preRegisterToken =
+    typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  const customerIds = new Set<string>();
+  let email = "";
+
+  try {
+    const { pool } = await import("@workspace/db");
+    let signupIdentityResolved = false;
+
+    // A valid signup token outranks a stale browser session. The token's email
+    // is checked against all existing account and Stripe history before a trial
+    // can be quoted or added to a hosted Checkout Session.
+    if (preRegisterToken) {
+      const signup = await pool.query<{ email: string; stripe_customer_id: string | null }>(
+        `SELECT email, stripe_customer_id
+         FROM pending_signups
+         WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL
+         LIMIT 1`,
+        [preRegisterToken],
+      );
+      const row = signup.rows[0];
+      if (row?.email) {
+        signupIdentityResolved = true;
+        email = row.email;
+        if (row.stripe_customer_id) customerIds.add(row.stripe_customer_id);
+      }
+    }
+
+    // Invalid/expired signup tokens follow the existing identity rule: use a
+    // valid session if present. Resolve the session explicitly because this
+    // router runs before the normal org-context middleware.
+    if (!signupIdentityResolved) {
+      const authOrgId = await resolvePublicBillingOrgId(req);
+      if (!authOrgId || authOrgId === "default") return false;
       const { loadBillingContext } = await import("../services/billing-context.js");
       const ctx = await loadBillingContext(authOrgId);
-      return ctx.canStartTrial === true;
-    } catch (err) {
-      logger.warn({ err, orgId: authOrgId }, "[PublicBilling] trial eligibility lookup failed — quoting without trial");
-      return false;
+      if (!ctx.canStartTrial || !ctx.email) return false;
+      email = ctx.email;
+      if (ctx.stripeCustomerId) customerIds.add(ctx.stripeCustomerId);
     }
+
+    return await isTrialEligibleForIdentity(pool, { email, customerIds: [...customerIds] });
+  } catch (err) {
+    logger.warn({ reason: "trial_history_unavailable" },
+      "[PublicBilling] trial eligibility could not verify account history — no trial");
+    return false;
   }
-  /* Anonymous / pre-registration: a new account has no subscription history. */
-  return true;
 }
 
 /**
@@ -1314,185 +1348,61 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   try {
     const stripe = await createStripeClient(stripeKey);
 
-    // ── Pre-registration: find or create Stripe Customer (1 email = 1 customer invariant) ──
-    // Prevents duplicate customers when user goes back and retries checkout with same token.
+    // ── Pre-registration: read identity and reuse only an already-anchored Customer ──
+    // A fresh signup must not create, attach, or resolve a Stripe Customer for
+    // payment before the card is confirmed. Trial-history checks may perform a
+    // read-only email lookup, but never bind that Customer to the intent.
+    // Customer resolution happens after confirmation in finalize-checkout or
+    // the successful-payment webhook; both converge through the pending row.
     let preRegCustomerId: string | undefined;
     /* defaultValues sent back to the frontend to pre-fill the Stripe Address Element */
     let _piDefaultValues: { name: string; email: string; country: string } | null = null;
     if (preRegisterToken && !_piReqOrgId) {
       try {
         const { pool: _piPool } = await import("@workspace/db");
-        // Hold a single client open for the entire customer-resolution section.
-        // BEGIN + FOR UPDATE serialises concurrent payment-intent / checkout-session
-        // calls for the same pre_register_token, preventing the race that produced
-        // two Stripe Customers from a single signup.
-        const _piC = await _piPool.connect();
-        let _piRow: { email: string; first_name: string; last_name: string; company_name: string; address: string | null; city: string | null; postal_code: string | null; country: string | null; stripe_customer_id: string | null } | null = null;
-        let _piTxOpen = false;
-        try {
-          await _piC.query("BEGIN");
-          _piTxOpen = true;
-          const _piR = await _piC.query(
-            `SELECT email, first_name, last_name, company_name,
-                    address, city, postal_code, country, stripe_customer_id
-             FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1 FOR UPDATE`,
-            [preRegisterToken]
-          );
-          _piRow = _piR.rows[0] ?? null;
-        } catch (_piLockErr) {
-          if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); }
-          _piC.release();
-          throw _piLockErr;
+        const _piR = await _piPool.query(
+          `SELECT email, first_name, last_name, company_name,
+                  address, city, postal_code, country, stripe_customer_id
+             FROM pending_signups
+            WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW()
+            LIMIT 1`,
+          [preRegisterToken],
+        );
+        const _piRow = _piR.rows[0] as {
+          email: string;
+          first_name: string;
+          last_name: string;
+          company_name: string;
+          country: string | null;
+          stripe_customer_id: string | null;
+        } | undefined;
+        if (!_piRow) {
+          res.status(410).json({ error: "Cette inscription a expiré. Recommencez le formulaire." });
+          return;
         }
 
-        if (!_piRow) {
-          await _piC.query("ROLLBACK").catch(() => {});
-          _piC.release();
-        } else {
-          const _piEmail = _piRow.email;
-          metadata["orgId"]  = _piEmail;
-          metadata["org_id"] = _piEmail;
+        metadata["orgId"] = _piRow.email;
+        metadata["org_id"] = _piRow.email;
+        _piDefaultValues = {
+          name: `${_piRow.first_name} ${_piRow.last_name}`.trim() || _piRow.company_name || _piRow.email,
+          email: _piRow.email,
+          country: _piRow.country || "FR",
+        };
 
-          /* Build full customer identity from pending_signups + submitted billingAddress */
-          const _piName = `${_piRow.first_name} ${_piRow.last_name}`.trim() || _piRow.company_name || _piEmail;
-          /* Expose to frontend for Address Element pre-fill */
-          _piDefaultValues = { name: _piName, email: _piEmail, country: _piRow.country || "FR" };
-          /* Merge: submitted form address takes priority over stored address */
-          const _piAddr = billingAddress?.line1 ? billingAddress : (
-            (_piRow.address || _piRow.city || _piRow.country) ? {
-              line1:       _piRow.address  ?? "",
-              line2:       "",
-              city:        _piRow.city     ?? "",
-              postal_code: _piRow.postal_code ?? "",
-              country:     _piRow.country  ?? "",
-            } : null
-          );
-          const _piCustomerData = {
-            email:              _piEmail,
-            name:               _piName,
-            ...(_piRow.company_name ? { description: _piRow.company_name } : {}),
-            preferred_locales:  ["fr"] as string[],
-            metadata: {
-              orgId: _piEmail, org_id: _piEmail, flowpointOrgId: _piEmail,
-              pre_register_token: preRegisterToken,
-              signup_source: "payment_intent",
-              ..._piRow.company_name ? { companyName: _piRow.company_name } : {},
-              environment: process.env["NODE_ENV"] === "production" ? "production" : "development",
-            },
-            ...(_piAddr?.line1 ? { address: {
-              line1:       _piAddr.line1,
-              line2:       _piAddr.line2 || undefined,
-              city:        _piAddr.city,
-              postal_code: _piAddr.postal_code,
-              country:     _piAddr.country,
-            } } : {}),
-          };
-
-          // 1. Reuse customer stored from a previous attempt (checkout-session or prior payment-intent)
-          if (_piRow.stripe_customer_id) {
-            try {
-              const _piEc = await stripe.customers.retrieve(_piRow.stripe_customer_id);
-              if (!(_piEc as { deleted?: boolean }).deleted) {
-                preRegCustomerId = _piRow.stripe_customer_id;
-                /* Patch missing fields on the existing customer */
-                const _piEcFull = _piEc as { name?: string | null; address?: unknown };
-                const _piEcFull2 = _piEc as { name?: string | null; address?: unknown; description?: string | null };
-                const _piNeedsUpdate = !_piEcFull.name || !_piEcFull.address || (!_piEcFull2.description && !!_piRow.company_name);
-                if (_piNeedsUpdate) {
-                  await stripe.customers.update(preRegCustomerId, {
-                    ...(!_piEcFull.name ? { name: _piCustomerData.name } : {}),
-                    ...(!_piEcFull2.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
-                    preferred_locales: ["fr"],
-                    ...(_piAddr?.line1 && !_piEcFull.address && _piCustomerData.address
-                      ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
-                      : {}),
-                  }).catch(() => {});
-                }
-                logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: reusing stored Stripe Customer");
-              }
-            } catch { /* deleted or unreachable — fall through */ }
-          }
-
-          // 2. Search Stripe by email (catches checkout-session customer not yet stored in pending_signups)
-          if (!preRegCustomerId) {
-            const _piFound = await stripe.customers.list({ email: _piEmail, limit: 5 });
-            for (const _piFoundEc of _piFound.data) {
-              if ((_piFoundEc as { deleted?: boolean }).deleted) continue;
-              preRegCustomerId = _piFoundEc.id;
-              /* Patch missing fields */
-              const _piFoundFull = _piFoundEc as { name?: string | null; address?: unknown; description?: string | null };
-              await stripe.customers.update(preRegCustomerId, {
-                ...(!_piFoundFull.name ? { name: _piCustomerData.name } : {}),
-                ...(!_piFoundFull.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
-                preferred_locales: ["fr"],
-                ...(_piAddr?.line1 && !_piFoundFull.address && _piCustomerData.address
-                  ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
-                  : {}),
-              }).catch(() => {});
-              logger.info({ customerId: preRegCustomerId, email: _piEmail }, "[PublicBilling] payment-intent: found existing customer by email");
-              break;
-            }
-          }
-
-          // 3. Create new customer with full data if none exists
-          if (!preRegCustomerId) {
-            const _piNewC = await stripe.customers.create(_piCustomerData);
-            preRegCustomerId = _piNewC.id;
-            logger.info({ customerId: preRegCustomerId }, "[PublicBilling] payment-intent: created Stripe Customer");
-          }
-
-          // Observability — snapshot active subscriptions on the resolved customer so that
-          // a subsequent 409 in finalize-checkout can be correlated back to this moment.
-          // No logic change: fire-and-forget, errors are non-fatal.
-          if (preRegCustomerId) {
-            try {
-              const _piSubSnap = await stripe.subscriptions.list({ customer: preRegCustomerId, status: "all", limit: 10 });
-              const _piActiveSubs = _piSubSnap.data.filter(
-                (s: { status: string; cancel_at_period_end: boolean }) =>
-                  (s.status === "active" || s.status === "trialing" || s.status === "past_due") &&
-                  !s.cancel_at_period_end
-              );
-              logger.info({
-                customerId:      preRegCustomerId,
-                totalSubs:       _piSubSnap.data.length,
-                activeOrTrialing: _piActiveSubs.length,
-                activeSubIds:    _piActiveSubs.map((s: { id: string }) => s.id),
-              }, "[PublicBilling] payment-intent: resolved customer sub snapshot");
-            } catch (_piSubSnapErr) {
-              logger.warn({ err: String(_piSubSnapErr) }, "[PublicBilling] payment-intent: sub snapshot failed (non-fatal)");
-            }
-          }
-
-          // Persist inside the FOR UPDATE transaction — atomic write-back ensures any
-          // concurrent checkout-session that hits the lock after us reads the persisted customer.
-          try {
-            await _piC.query(`UPDATE pending_signups SET stripe_customer_id = $1 WHERE token = $2`, [preRegCustomerId, preRegisterToken]);
-            await _piC.query("COMMIT");
-            _piTxOpen = false;
-          } catch (_piWriteErr) {
-            if (_piTxOpen) { await _piC.query("ROLLBACK").catch(() => {}); _piTxOpen = false; }
-            throw _piWriteErr;
-          } finally {
-            _piC.release();
+        // A Customer from a previously confirmed attempt may be reused, but a
+        // fresh attempt never creates one here.
+        if (_piRow.stripe_customer_id) {
+          const anchored = await stripe.customers.retrieve(_piRow.stripe_customer_id);
+          if (!(anchored as { deleted?: boolean }).deleted) {
+            preRegCustomerId = _piRow.stripe_customer_id;
           }
         }
       } catch (_piLookupErr) {
-        logger.warn({ _piLookupErr }, "[PublicBilling] payment-intent: customer lookup failed (non-fatal — proceeding without customer)");
+        logger.error({ _piLookupErr }, "[PublicBilling] payment-intent: pending signup lookup failed");
+        if (res.headersSent) return;
+        res.status(503).json({ error: "Inscription temporairement indisponible. Réessayez." });
+        return;
       }
-    }
-
-    // Patch an existing Customer too: the first checkout attempt may have
-    // created it before seller attribution was attached to the flow.
-    if (preRegCustomerId && _paymentIntentSellerCode) {
-      await stripe.customers.update(preRegCustomerId, {
-        metadata: {
-          seller_id:          _paymentIntentSellerCode,
-          seller_attribution: "ref_link",
-        },
-      }).catch((_sellerCustomerErr: unknown) => {
-        logger.warn({ _sellerCustomerErr, customerId: preRegCustomerId },
-          "[PublicBilling] payment-intent: seller metadata patch failed (non-fatal)");
-      });
     }
 
     // For authenticated users (cookie session, no preRegisterToken): resolve the Stripe
@@ -1556,6 +1466,15 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: immediateAmountCents,
         }),
       });
+      if (preRegisterToken && !_piReqOrgId) {
+        const { pool: _expiryPool } = await import("@workspace/db");
+        await _expiryPool.query(
+          `UPDATE pending_signups
+              SET expires_at = GREATEST(expires_at, NOW() + INTERVAL '7 days')
+            WHERE token = $1 AND consumed_at IS NULL`,
+          [preRegisterToken],
+        );
+      }
       const _funnelAttribution = lireAttributionFunnel(metadata);
       if (_funnelAttribution) {
         // Mesure uniquement apres la creation reussie du PaymentIntent existant.
@@ -1592,6 +1511,15 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           amountCents: 0,
         }),
       });
+      if (preRegisterToken && !_piReqOrgId) {
+        const { pool: _expiryPool } = await import("@workspace/db");
+        await _expiryPool.query(
+          `UPDATE pending_signups
+              SET expires_at = GREATEST(expires_at, NOW() + INTERVAL '7 days')
+            WHERE token = $1 AND consumed_at IS NULL`,
+          [preRegisterToken],
+        );
+      }
       const _setupFunnelAttribution = lireAttributionFunnel(metadata);
       if (_setupFunnelAttribution) {
         // L'essai a 0€ collecte quand meme la carte : le checkout commence
@@ -1901,7 +1829,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         status: String(pi.status), amountReceived: typeof pi.amount_received === "number" ? pi.amount_received : null,
         currency: String(pi.currency ?? ""), livemode: typeof pi.livemode === "boolean" ? pi.livemode : null,
       };
-      if (pi.status !== "succeeded" && pi.status !== "processing") {
+      // #410 — seul un PaymentIntent REUSSI passe ; `processing` => 400 (le
+      // webhook payment_intent.succeeded prendra le relais une fois le paiement prouve).
+      if (pi.status !== "succeeded") {
         res.status(400).json({ error: "Paiement non confirmé (statut: " + pi.status + ")." });
         return;
       }
@@ -2177,6 +2107,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     let customerId: string | null = intentCustomerId;
     let customerSource: string | null = intentCustomerId ? "payment_or_setup_intent.customer" : null;
     let hasSubscriptionHistory    = false;
+    const _fcPreRegisterToken = preRegisterToken || intentMeta["pre_register_token"] || "";
+    const _fcUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const _fcIsPreRegisterSignup = Boolean(
+      _fcPreRegisterToken && !_fcUuidPattern.test(_authenticatedOrgId || ""),
+    );
 
     if (customerId) {
       try {
@@ -2191,7 +2126,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       } catch { customerId = null; }
     }
 
-    if (!customerId) {
+    if (!customerId && !_fcIsPreRegisterSignup) {
       // (b) email from payment method billing details
       const _fcPm    = await stripe.paymentMethods.retrieve(paymentMethodId!);
       const _fcEmail = _fcPm.billing_details?.email ?? null;
@@ -2214,26 +2149,23 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       }
     }
 
-    if (!customerId) {
-      // (c) pending_signups.stripe_customer_id via pre_register_token
-      const _fcPrt = preRegisterToken || intentMeta["pre_register_token"] || "";
-      if (_fcPrt) {
-        try {
-          const { pool: _fcPsPool } = await import("@workspace/db");
-          const _fcPsC = await _fcPsPool.connect();
-          try {
-            const _fcPsR = await _fcPsC.query(
-              `SELECT stripe_customer_id FROM pending_signups WHERE token = $1 AND consumed_at IS NULL LIMIT 1`,
-              [_fcPrt]
-            );
-            if (_fcPsR.rows[0]?.stripe_customer_id) {
-              customerId = _fcPsR.rows[0].stripe_customer_id;
-              customerSource = "pending_signups.stripe_customer_id";
-              logger.info({ customerId }, "[PublicBilling] finalize: found customer via pre_register_token");
-            }
-          } finally { _fcPsC.release(); }
-        } catch { /* non-fatal */ }
-      }
+    if (_fcIsPreRegisterSignup) {
+      const { ensurePendingSignupStripeCustomer } =
+        await import("../services/pending-signup-stripe-customer.js");
+      const resolvedSignupCustomer = await ensurePendingSignupStripeCustomer(
+        stripe,
+        _fcPreRegisterToken,
+        paymentMethodId,
+        intentCustomerId,
+        _fcSellerCode,
+      );
+      customerId = resolvedSignupCustomer.customerId;
+      customerSource = "pending_signup_after_confirmed_intent";
+      hasSubscriptionHistory = resolvedSignupCustomer.hasSubscriptionHistory;
+      logger.info(
+        { customerId, hasSubscriptionHistory },
+        "[PublicBilling] finalize: signup Customer resolved after confirmed intent",
+      );
     }
 
     // Existing UUID organizations must recover their persistent Customer, never
@@ -2389,6 +2321,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         ...(_fcFinalName    ? { name:        _fcFinalName    } : {}),
         ...(_fcFinalEmail   ? { email:       _fcFinalEmail   } : {}),
         ...(_fcSignupCompany ? { description: _fcSignupCompany } : {}),
+        ...(_fcSellerCode ? {
+          metadata: { seller_id: _fcSellerCode, seller_attribution: "ref_link" },
+        } : {}),
         ...(_fcHasPmAddr  ? {
           address: {
             line1:       _fcPmAddr!.line1  ?? "",
@@ -2422,6 +2357,21 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       res.status(400).json({ error: "Plan introuvable dans Stripe." });
       return;
     }
+
+    // #410 — l'eligibilite a l'essai est REVALIDEE au moment de finaliser (le
+    // devis ou l'intent peuvent etre perimes ; l'e-mail peut porter un historique
+    // chez un autre client Stripe). Un historique verifie OU une eligibilite
+    // refusee => pas d'essai, facturation immediate. Jamais de jeton d'inscription
+    // ranime par une session UUID perimee.
+    const _trialTokenForFinalize = _UUID_RE_FC.test(_authenticatedOrgId)
+      ? ""
+      : preRegisterToken || intentMeta["pre_register_token"] || "";
+    const _trialEligibilityReq = {
+      body: { ...(body ?? {}), preRegisterToken: _trialTokenForFinalize },
+      orgId: _authenticatedOrgId,
+    } as unknown as Request & { orgId?: string };
+    const _trialEligibleAtFinalize = await resolveTrialEligibility(_trialEligibilityReq);
+
     const _fcSubs = await ensureSignupSubscriptions({
       stripe,
       intentId,
@@ -2431,7 +2381,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       intentCreatedUnix,
       customerId:             customerId!,
       paymentMethodId:        paymentMethodId!,
-      hasSubscriptionHistory,
+      hasSubscriptionHistory: hasSubscriptionHistory || !_trialEligibleAtFinalize,
       orgRef:                 _authenticatedOrgId,
       preRegisterToken,
       sellerCode:             _fcSellerCode,
@@ -2745,19 +2695,27 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             const _fcFpLid = normalizeFpLid(_fcSignup["fp_lid"]);
             await _fcActTxC.query(
               `INSERT INTO organizations
-                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,trial_ends_at,seller_id,fp_lid)
-               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,$11)
+                 (id,name,slug,owner_user_id,status,plan,subscription_status,owner_email,stripe_customer_id,
+                  stripe_subscription_id,trial_consumed_at,trial_ends_at,seller_id,fp_lid)
+               VALUES($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,$11,$12,$13)
                ON CONFLICT (id) DO UPDATE
                  SET status='active', plan=EXCLUDED.plan, subscription_status=EXCLUDED.subscription_status,
                      stripe_customer_id=COALESCE(EXCLUDED.stripe_customer_id,organizations.stripe_customer_id),
                       seller_id=COALESCE(organizations.seller_id,EXCLUDED.seller_id),
                      fp_lid=COALESCE(organizations.fp_lid,EXCLUDED.fp_lid),
+                     stripe_subscription_id=COALESCE(EXCLUDED.stripe_subscription_id,organizations.stripe_subscription_id),
+                     trial_consumed_at=COALESCE(organizations.trial_consumed_at,EXCLUDED.trial_consumed_at),
                      updated_at=NOW()`,
               [
                 _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
                 _fcAOrgId.replace(/[^a-z0-9]/gi,"-").toLowerCase().slice(0,60),
                 _fcUserId, planKey, grantTrial ? "trialing" : "active",
                 _fcAEmail, customerId ?? null,
+                // L'abonnement existe deja (cree plus haut) : il est inscrit dans la
+                // MEME transaction que l'organisation, sans dependre de l'ancrage
+                // non fatal ci-dessous (qui echouait sous pool sature, banc A-09 x12).
+                planSubscription?.id ?? null,
+                grantTrial ? new Date().toISOString() : null,
                 trialEndUnix !== undefined ? new Date(trialEndUnix * 1000).toISOString() : null,
                  _fcSellerId,
                 _fcFpLid,

@@ -83,8 +83,15 @@ async function finalizeLikeActivation(email: string, token: string): Promise<str
   }
 }
 
+// Contrat #410 (conserve a la fusion avec #390) : l'activation exige une
+// souscription Stripe reelle — ce banc fournit un identifiant factice, comme
+// conversion-b-fp-lid.test.ts. Seules les entrees changent, pas les assertions.
 const webhook = (email: string, token: string) =>
-  activateNewSignup({ preRegToken: token, orgId: email, selectedPlan: "standard", isTrial: true });
+  activateNewSignup({
+    preRegToken: token, orgId: email, selectedPlan: "standard", isTrial: true,
+    subscriptionId: `sub_a06_${token.slice(4, 12)}`,
+    trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+  });
 
 beforeAll(async () => {
   await pool.query("SELECT 1");

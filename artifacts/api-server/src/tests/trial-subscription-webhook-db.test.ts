@@ -72,8 +72,11 @@ function stripeClient() {
     setupIntents: { retrieve: async (id: string) => fake.intents.get(id) },
     paymentIntents: { retrieve: async (id: string) => fake.intents.get(id) },
     customers: {
-      retrieve: async (id: string) => ({ id }),
-      list: async () => ({ data: [] }),
+      // Contrat #410 (ensurePendingSignupStripeCustomer) : un Customer porte par
+      // l'intent n'est adopte que s'il appartient a l'inscription — comme les
+      // Customers reels crees pour un signup, il porte pre_register_token.
+      retrieve: async (id: string) => ({ id, metadata: { pre_register_token: tokenByCustomer.get(id) ?? "" } }),
+      list: async () => ({ data: [], has_more: false }),
       update: async (id: string) => ({ id }),
     },
     paymentMethods: {
@@ -117,6 +120,7 @@ function stripeClient() {
 const emails: string[] = [];
 const customers: string[] = [];
 const intentIds: string[] = [];
+const tokenByCustomer = new Map<string, string>();
 let seq = 0;
 
 type Signup = { email: string; token: string; customer: string; intent: string; created: number };
@@ -129,6 +133,7 @@ async function seedSignup(opts?: { noCustomer?: boolean }): Promise<Signup> {
   const intent = `seti_a09_${RUN}_${n}`;
   const created = Math.floor(Date.now() / 1000) - 120;
   emails.push(email); customers.push(customer); intentIds.push(intent);
+  tokenByCustomer.set(customer, token);
   await pool.query(
     `INSERT INTO pending_signups (token, email, first_name, last_name, company_name)
      VALUES ($1, $2, 'Test', 'A09', 'Societe A09')`,

@@ -608,9 +608,9 @@ export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
   "localPresenceOptimizer",
 ]);
 
-// TEST prices release only the eight replacement add-ons in TEST mode.
-// No LIVE price or protected/historical entitlement is changed by this gate.
-const TEST_PURCHASABLE_REPLACEMENT_ADDONS = [
+// A dedicated TEST price can open an add-on for isolated QA without changing
+// its LIVE availability or any historical entitlement.
+const TEST_PURCHASABLE_ADDONS = [
   "gbpPerformanceLeads",
   "localPresenceOptimizer",
   "localLandingOpportunities",
@@ -619,11 +619,12 @@ const TEST_PURCHASABLE_REPLACEMENT_ADDONS = [
   "agencyPortfolioPriorities",
   "technicalSeoFixVerification",
   "organicCampaignTracker",
+  "agencyPacks",
 ] as const;
 
 const activeStripeKey = typeof getStripeKey === "function" ? getStripeKey() : "";
 if (typeof activeStripeKey === "string" && activeStripeKey.startsWith("sk_test_")) {
-  for (const addonKey of TEST_PURCHASABLE_REPLACEMENT_ADDONS) {
+  for (const addonKey of TEST_PURCHASABLE_ADDONS) {
     if (!ADDON_PRICE_IDS_TEST[addonKey]) continue;
     COMING_SOON_ADDONS.delete(addonKey);
     VALIDATION_REQUIRED_ADDONS.delete(addonKey);
@@ -827,7 +828,8 @@ const _PRO_EXCLUSIVE = new Set<string>([
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([
-  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON — not purchasable.
+  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON in LIVE.
+  // A dedicated agencyPacks TEST price may open it for isolated QA only.
   "retention365d",
 ]);
 
@@ -953,8 +955,15 @@ export function getPlanForPriceId(priceId: string): string | null {
 }
 
 export function getAddonForPriceId(priceId: string): string | null {
-  for (const [addon, id] of Object.entries(ADDON_PRICE_IDS)) {
-    if (id && id === priceId) return addon;
+  // This is a reverse lookup for verified Stripe events, not a price selector.
+  // Checkout still uses getAddonPriceId(), which enforces the active mode.
+  // Accept both catalogs here so signed TEST subscription events can activate
+  // the same entitlement without ever making a LIVE price usable in TEST checkout.
+  const matches = new Set<string>();
+  for (const priceMap of [ADDON_PRICE_IDS, ADDON_PRICE_IDS_TEST]) {
+    for (const [addon, id] of Object.entries(priceMap)) {
+      if (id && id === priceId) matches.add(addon);
+    }
   }
-  return null;
+  return matches.size === 1 ? [...matches][0] : null;
 }

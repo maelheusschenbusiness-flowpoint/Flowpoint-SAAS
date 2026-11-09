@@ -154,8 +154,8 @@
       "noOrg": 1
     },
     "routes/public-billing.ts": {
-      "total": 2,
-      "noOrg": 2
+      "total": 3,
+      "noOrg": 3
     },
     "routes/qa-fixtures.ts": {
       "total": 2,
@@ -393,6 +393,10 @@
       "total": 3,
       "noOrg": 3
     },
+    "services/pending-signup-stripe-customer.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
     "services/permissions-service.ts": {
       "total": 8,
       "noOrg": 8
@@ -432,6 +436,10 @@
     "services/store.ts": {
       "total": 5,
       "noOrg": 5
+    },
+    "services/stripe-trial-history.ts": {
+      "total": 2,
+      "noOrg": 1
     },
     "services/usage-events.ts": {
       "total": 4,

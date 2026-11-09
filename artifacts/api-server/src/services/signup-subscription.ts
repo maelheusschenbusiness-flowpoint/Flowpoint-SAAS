@@ -451,6 +451,11 @@ export async function provisionSubscriptionFromIntent(args: {
   preRegisterToken: string;
   /** Rattrapage : cle d'organisation connue (owner_email) quand pending_signups a disparu. */
   orgRefOverride?: string | null;
+  /**
+   * #410 — Customer deja resolu APRES confirmation (ensurePendingSignupStripeCustomer,
+   * chemin payment_intent.succeeded). Prioritaire sur intent.customer.
+   */
+  customerIdOverride?: string | null;
   caller: "webhook" | "reconcile";
 }): Promise<ProvisionResult> {
   const { stripe, intent } = args;
@@ -478,7 +483,7 @@ export async function provisionSubscriptionFromIntent(args: {
   }
 
   const planKey = (meta["plan"] ?? "").toLowerCase();
-  const customerId = idOf(intent.customer) ?? signupCustomerId;
+  const customerId = args.customerIdOverride || idOf(intent.customer) || signupCustomerId;
   if (!orgRef) return { kind: "unresolved", reason: "signup_not_found", customerId, orgRef };
   if (!planKey) return { kind: "unresolved", reason: "no_plan", customerId, orgRef };
   if (!getPlanPriceId(planKey)) return { kind: "unresolved", reason: "plan_price_missing", customerId, orgRef };
@@ -489,7 +494,21 @@ export async function provisionSubscriptionFromIntent(args: {
   let addons: AddonsMap = {};
   try { addons = JSON.parse(meta["addons"] || "{}") as AddonsMap; } catch { addons = {}; }
 
-  const history = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+  // #410 — meme decision d'essai que finalize-checkout (resolveTrialEligibility) :
+  // l'historique d'une PERSONNE (toutes ses organisations, tous les clients Stripe
+  // de son e-mail, abonnements annules compris), pas seulement celui de ce
+  // Customer. Echec de la verification => erreur (500, relivraison), jamais un
+  // essai accorde par defaut.
+  const { isTrialEligibleForIdentity } = await import("./stripe-trial-history.js");
+  // Rattrapage (reconcile) : l'organisation existe deja, son eligibilite a ete
+  // decidee a l'inscription — seul l'historique de ce Customer est relu (#390).
+  const trialEligible = args.caller === "webhook" && orgRef.includes("@")
+    ? await isTrialEligibleForIdentity(
+        pool as never,
+        { email: orgRef, customerIds: [customerId] },
+        stripe as never,
+      )
+    : (await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 })).data.length === 0;
   await attachPaymentMethodIdempotent(stripe, customerId, paymentMethodId);
 
   const res = await ensureSignupSubscriptions({
@@ -501,7 +520,7 @@ export async function provisionSubscriptionFromIntent(args: {
     intentCreatedUnix: typeof intent.created === "number" ? intent.created : null,
     customerId,
     paymentMethodId,
-    hasSubscriptionHistory: (history.data?.length ?? 0) > 0,
+    hasSubscriptionHistory: !trialEligible,
     orgRef,
     preRegisterToken: args.preRegisterToken,
     sellerCode: meta["seller_id"] || null,

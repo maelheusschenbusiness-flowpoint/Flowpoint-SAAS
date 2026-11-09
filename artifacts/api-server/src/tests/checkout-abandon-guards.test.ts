@@ -25,6 +25,7 @@ const DIR = import.meta.dirname ?? __dirname;
 const billingTs       = fs.readFileSync(path.join(DIR, "../routes/billing.ts"), "utf8");
 const publicBillingTs = fs.readFileSync(path.join(DIR, "../routes/public-billing.ts"), "utf8");
 const stripeWebhookTs = fs.readFileSync(path.join(DIR, "../routes/stripe-webhook.ts"), "utf8");
+const authTs          = fs.readFileSync(path.join(DIR, "../routes/auth.ts"), "utf8");
 const checkoutReturn  = (() => {
   // Test file: artifacts/api-server/src/tests/ → 3 levels up = artifacts/
   const p = path.join(DIR, "../../../flowpoint-export/checkout-return.html");
@@ -102,10 +103,8 @@ describe("CA-2 — finalize-checkout (checkout_session) rejette les sessions non
 
 /* ── CA-3 : finalize-checkout payment_intent — status non-succeeded → 400 ── */
 describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirmés", () => {
-  it("guard pi.status !== 'succeeded' && !== 'processing' → 400", () => {
-    expect(publicBillingTs).toMatch(
-      /pi\.status\s*!==\s*["']succeeded["']\s*&&\s*pi\.status\s*!==\s*["']processing["']/
-    );
+  it("only a succeeded PaymentIntent passes; processing is rejected with 400", () => {
+    expect(publicBillingTs).toMatch(/pi\.status\s*!==\s*["']succeeded["']/);
     expect(publicBillingTs).toMatch(/pi\.status\s*!==[\s\S]{0,200}res\.status\(400\)/);
   });
 
@@ -120,6 +119,48 @@ describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirm
     expect(piGuardIdx).toBeGreaterThan(0);
     expect(firstDbWrite).toBeGreaterThan(0);
     expect(piGuardIdx, "guard PI doit précéder le premier accès DB").toBeLessThan(firstDbWrite);
+  });
+});
+
+describe("CA-9 — abandoned signup creates no account or Stripe Customer", () => {
+  const preRegisterStart = authTs.indexOf('router.post("/auth/pre-register"');
+  const preRegisterEnd = authTs.indexOf('router.get("/auth/checkout-complete"', preRegisterStart);
+  const preRegister = authTs.slice(preRegisterStart, preRegisterEnd);
+  const customerResolutionStart = publicBillingTs.indexOf(
+    "// ── Pre-registration: read identity and reuse only an already-anchored Customer",
+  );
+  const authenticatedResolutionStart = publicBillingTs.indexOf(
+    "// For authenticated users (cookie session, no preRegisterToken)",
+    customerResolutionStart,
+  );
+  const customerResolution = publicBillingTs.slice(customerResolutionStart, authenticatedResolutionStart);
+
+  it("pre-registration writes only a pending row, never a user, organization, or Stripe Customer", () => {
+    expect(preRegisterStart).toBeGreaterThan(-1);
+    expect(preRegisterEnd).toBeGreaterThan(preRegisterStart);
+    expect(preRegister).toMatch(/INSERT INTO pending_signups/);
+    expect(preRegister).not.toMatch(/INSERT INTO users|INSERT INTO organizations|stripe\.customers\.(create|del)\s*\(/i);
+    expect(preRegister).not.toMatch(/DELETE FROM pending_signups/i);
+    expect(preRegister).toMatch(/SELECT token, fp_lid[\s\S]*FOR UPDATE/);
+    expect(preRegister).toMatch(/UPDATE pending_signups[\s\S]*WHERE token = \$12/);
+  });
+
+  it("opening checkout performs no Customer creation, search, or mutation", () => {
+    expect(customerResolutionStart).toBeGreaterThan(-1);
+    expect(authenticatedResolutionStart).toBeGreaterThan(customerResolutionStart);
+    expect(customerResolution).not.toMatch(/stripe\.customers\.(create|list|update|del)\s*\(/i);
+    expect(publicBillingTs).toMatch(/INTERVAL '7 days'/);
+  });
+
+  it("SetupIntent success alone cannot activate signup; paid-intent recovery is awaited", () => {
+    const setupStart = stripeWebhookTs.indexOf('case "setup_intent.succeeded":');
+    const paymentStart = stripeWebhookTs.indexOf('case "payment_intent.succeeded":', setupStart);
+    const setupCase = stripeWebhookTs.slice(setupStart, paymentStart);
+    const paymentCaseEnd = stripeWebhookTs.indexOf('case "customer.subscription.created":', paymentStart);
+    const paymentCase = stripeWebhookTs.slice(paymentStart, paymentCaseEnd);
+    expect(setupCase).not.toContain("activateNewSignup");
+    expect(paymentCase).toMatch(/await ensurePendingSignupStripeCustomer/);
+    expect(paymentCase).toMatch(/await activateNewSignup/);
   });
 });
 

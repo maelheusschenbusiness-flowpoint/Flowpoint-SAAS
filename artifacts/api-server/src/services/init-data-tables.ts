@@ -2429,7 +2429,9 @@ export async function initDataTables(): Promise<void> {
     `);
 
     // ── pending_signups — temporary pre-registration storage (new signup flow) ──
-    // Rows expire after 2 hours. No account exists until Stripe payment is confirmed.
+    // New rows start with a 2-hour TTL; a created PaymentIntent/SetupIntent
+    // extends its token to 7 days so Stripe webhook retries can recover safely.
+    // A pending row is not an account or an active/trial customer.
     await run(client, `
       CREATE TABLE IF NOT EXISTS pending_signups (
         token        TEXT         PRIMARY KEY,
