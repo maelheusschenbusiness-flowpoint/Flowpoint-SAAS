@@ -149,11 +149,17 @@ describe("Inscription minimale — facturation reportee au paiement", () => {
   });
   it("finalize-checkout recopie adresse, telephone et TVA sur pending_signups avant activation, sans ecraser", () => {
     const ts = read("../routes/public-billing.ts");
-    const copy = ts.indexOf("UPDATE pending_signups SET\n             country     = COALESCE(NULLIF(country, ''),     $2)");
+    const copy = ts.indexOf("await fillPendingSignup(_fcAddrPool, _fcPrt2, _fcBilling)");
+    const stripeUpdate = ts.indexOf("await stripe.customers.update(customerId!, _fcUpdate);");
     const activation = ts.indexOf("[FC] step-1: querying pending_signups");
     expect(copy).toBeGreaterThan(0);
+    // copie en base AVANT la mise a jour Stripe : un echec Stripe ne la perd pas
+    expect(stripeUpdate).toBeGreaterThan(copy);
     expect(activation).toBeGreaterThan(copy);
-    expect(ts).toContain('createTaxId(customerId!, { type: "eu_vat", value: _fcVat })');
+    expect(ts).toContain("ensureEuVatTaxId(");
+    expect(ts).not.toContain("createTaxId(customerId!");
+    // reprise apres interruption : le webhook recupere l'adresse du moyen de paiement
+    expect(read("../routes/stripe-webhook.ts")).toContain("listPaymentMethods(customerId");
     expect(read("../../../flowpoint-export/checkout-return.html")).toContain("fcBody.vat = _fcVat");
   });
   it.each([["FR 12 345.678-901", "FR12345678901"], ["be0123456789", "BE0123456789"]])("normalizeVat(%s)", (a, b) => {

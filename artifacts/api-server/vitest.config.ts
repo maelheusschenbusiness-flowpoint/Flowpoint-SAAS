@@ -17,6 +17,7 @@ export default defineConfig({
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
       "src/tests/signup-minimal-fields.test.ts",
+      "src/tests/billing-profile.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
       "src/tests/ai-lab-conversion-emitters.test.ts",
       // Les handlers eux-memes : prouve que quelqu un appelle l emetteur.
