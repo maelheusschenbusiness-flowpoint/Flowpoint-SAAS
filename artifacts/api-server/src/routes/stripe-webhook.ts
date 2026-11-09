@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import type Stripe from "stripe";
 import { subPeriodEnd } from "./billing.js";
 import { createHash } from "crypto";
 
@@ -7,8 +8,9 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { enregistrerEtape, lireAttributionFunnel } from "../services/funnel-events.js";
-import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { enregistrerEtape, lireAttributionFunnel, metadataAttributionFunnel } from "../services/funnel-events.js";
+import { getPlanForPriceId, getPlanPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { createSubscriptionForAttempt } from "../services/checkout-subscription-create.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { getStripeKey, createStripeClient } from "../services/stripe-factory.js";
@@ -636,23 +638,27 @@ function conversionStagesFor(type: string, obj: Record<string, unknown>): Conver
 }
 
 // ── Shared activation helper — called by checkout.session.completed AND
-//    payment_intent.succeeded / setup_intent.succeeded (new checkout-payment.html flow).
+//    payment_intent.succeeded (new signup PaymentElement recovery flow).
 //    Idempotent: all DB writes use ON CONFLICT DO NOTHING / DO UPDATE.
 //    Exported for QA fixture endpoint (qa-fixtures.ts /qa/billing/activate-signup).
 
 export async function activateNewSignup(opts: {
   preRegToken:  string;
   orgId:        string;   // email = orgId in FlowPoint
-  customerId?:  string;   // Stripe customer ID (may be absent for SetupIntent path)
+  customerId?:  string;   // Stripe customer ID resolved after confirmed payment/setup
+  subscriptionId: string; // a real Stripe subscription must exist before signup activation
   selectedPlan: string;
   isTrial:      boolean;
+  trialEndsAt?: Date | null;
 }): Promise<void> {
-  const { preRegToken, orgId, customerId, selectedPlan, isTrial } = opts;
+  const { preRegToken, orgId, customerId, subscriptionId, selectedPlan, isTrial, trialEndsAt } = opts;
 
   if (!preRegToken || !orgId || orgId === "default") {
     logger.error({ preRegToken, orgId }, "[Webhook/activate] Missing preRegToken or orgId — skipping");
     return;
   }
+  if (!subscriptionId) throw new Error("stripe_subscription_required_before_signup_activation");
+  if (isTrial && !trialEndsAt) throw new Error("stripe_trial_end_required_before_signup_activation");
 
   const { pool: pgPool } = await import("@workspace/db");
   const { randomBytes, randomUUID: _wbRandUUID } = await import("crypto");
@@ -816,13 +822,14 @@ export async function activateNewSignup(opts: {
     const orgInsert = await activateClient.query<{ id: string }>(
       `INSERT INTO organizations
          (id, name, slug, owner_user_id, status, plan, subscription_status,
-          owner_email, stripe_customer_id, trial_ends_at, seller_id, fp_lid)
-       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11)
+          owner_email, stripe_customer_id, stripe_subscription_id, trial_ends_at, seller_id, fp_lid)
+       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (id) DO UPDATE
          SET status              = 'active',
              plan                = EXCLUDED.plan,
              subscription_status = EXCLUDED.subscription_status,
              stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, organizations.stripe_customer_id),
+             stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, organizations.stripe_subscription_id),
              seller_id           = COALESCE(organizations.seller_id, EXCLUDED.seller_id),
              fp_lid              = COALESCE(organizations.fp_lid, EXCLUDED.fp_lid),
              updated_at          = NOW()
@@ -836,7 +843,8 @@ export async function activateNewSignup(opts: {
         isTrial ? "trialing" : "active",
         email,
         customerId ?? null,
-        isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
+        subscriptionId,
+        isTrial ? trialEndsAt!.toISOString() : null,
         _wbSellerId,
         _wbFpLid,
       ]
@@ -1567,7 +1575,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // ── New signup flow: activate account + send magic link after Stripe validates ──
       const preRegToken  = preRegTokenFromMeta;
       const selectedPlan = meta["selected_plan"] || planNorm || "standard";
-      const isTrial      = meta["trial_plan"] === "true";
+      let isTrial        = meta["trial_plan"] === "true";
 
       // ── P0 backstop: detect and auto-cancel duplicate subscriptions ──────────
       // Fires when finalize-checkout's guard missed a race (e.g., two checkout
@@ -1582,7 +1590,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // Upgrade/downgrade path (billing/upgrade) uses stripe.subscriptions.update()
       // and never triggers checkout.session.completed, so this backstop cannot
       // interfere with dashboard plan changes.
-      const _newSubId = obj["subscription"] ? String(obj["subscription"]) : undefined;
+      const _rawNewSub = obj["subscription"];
+      const _newSubId = typeof _rawNewSub === "string"
+        ? _rawNewSub
+        : (_rawNewSub && typeof _rawNewSub === "object" && typeof (_rawNewSub as { id?: unknown }).id === "string"
+          ? String((_rawNewSub as { id: string }).id)
+          : undefined);
       let _isDuplicateSub = false;
       if (_newSubId && customerId && stripeKey) {
         try {
@@ -1654,8 +1667,33 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       }
 
       if (!_isDuplicateSub && preRegToken && orgId) {
-        activateNewSignup({ preRegToken, orgId, customerId, selectedPlan, isTrial })
-          .catch(e => logger.error({ e, orgId }, "[Webhook] checkout.session.completed new-signup activation failed"));
+        if (!_newSubId || !stripeKey) {
+          throw new Error("checkout.session.completed signup is missing a confirmed Stripe subscription");
+        }
+        const activationStripe = await createStripeClient(stripeKey);
+        const activationSubscription = await activationStripe.subscriptions.retrieve(_newSubId);
+        if (!["active", "trialing"].includes(activationSubscription.status)) {
+          throw new Error(
+            `checkout.session.completed signup subscription is not active: ${activationSubscription.status}`,
+          );
+        }
+        isTrial = activationSubscription.status === "trialing";
+        const activationTrialEndsAt =
+          isTrial && typeof activationSubscription.trial_end === "number"
+            ? new Date(activationSubscription.trial_end * 1000)
+            : null;
+        if (isTrial && !activationTrialEndsAt) {
+          throw new Error("checkout.session.completed trial subscription returned no trial_end");
+        }
+        await activateNewSignup({
+          preRegToken,
+          orgId,
+          customerId,
+          subscriptionId: activationSubscription.id,
+          selectedPlan,
+          isTrial,
+          trialEndsAt: activationTrialEndsAt,
+        });
       }
 
       // P0-1: pass explicit orgId — never defaults to "default"
@@ -1761,14 +1799,20 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       break;
     }
 
-    // ── New checkout-payment.html flow ────────────────────────────────────────
-    // The PaymentElement flow fires payment_intent.succeeded (add-ons charged today)
-    // or setup_intent.succeeded (plan-only trial, 0€ today).
-    // Either can carry pre_register_token in metadata — activate the org when present.
-    // orgId is not resolvable via the standard customer lookup (customer is created
-    // later by finalize-checkout), so we derive it from pending_signups via the token.
-    case "payment_intent.succeeded":
+    // A successful SetupIntent confirms only that a payment method was collected.
+    // It does not create a subscription or start a trial; finalize-checkout does
+    // those only after verifying the intent and successfully creating the sub.
     case "setup_intent.succeeded": {
+      logger.info({ intentId: obj["id"] }, "[Webhook] SetupIntent confirmed; awaiting finalize-checkout before signup activation");
+      break;
+    }
+
+    // ── New checkout-payment.html payment-success recovery ────────────────────
+    // A successful PaymentIntent is authoritative proof of payment. If the
+    // browser closed before finalize-checkout, this path anchors the Customer
+    // and activates the signup. It is awaited so a DB/Stripe failure leaves the
+    // webhook retryable rather than being marked processed prematurely.
+    case "payment_intent.succeeded": {
       const piMeta = (obj["metadata"] as Record<string, string>) ?? {};
       const funnelAttribution = lireAttributionFunnel(piMeta);
       const intentId = typeof obj["id"] === "string" ? String(obj["id"]) : "";
@@ -1954,36 +1998,132 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         break;
       }
 
-      const piPlan    = piMeta["plan"] ?? "standard";
-      const piIsTrial = !piMeta["addons"] || piMeta["addons"] === "{}" || piMeta["addons"] === "null";
-      // For setup_intent (0€ plan-only) always trial; for payment_intent also trial (add-ons don't count)
+      const piPlan = piMeta["plan"] ?? "standard";
       const piSelectedPlan = piPlan || "standard";
-
-      // Pass the actual Stripe customer ID so activateNewSignup can anchor it to
-      // organizations.stripe_customer_id immediately. Previously this was undefined,
-      // which left the column NULL and forced ESC to create a duplicate customer on
-      // re-subscription (P0 pre-register customer reuse bug).
-      const _piCustomerId = obj["customer"] ? String(obj["customer"]) : undefined;
-      activateNewSignup({
-        preRegToken:  piPreRegToken,
-        orgId:        piOrgId,
-        customerId:   _piCustomerId,
-        selectedPlan: piSelectedPlan,
-        isTrial:      true,  // all new signups start with a trial
-      }).catch(e => logger.error({ e, orgId: piOrgId, type: event.type }, "[Webhook] new-signup activation via intent failed"));
-
-      // Safety net: also persist stripe_customer_id to org_settings[email] so ESC
-      // legacy fallback (Step 2) finds it even if finalize-checkout was never called
-      // (e.g. user abandoned checkout after payment authorisation).
-      if (_piCustomerId && piOrgId) {
-        import("../services/org-data.js").then(({ persistOrgData: _piPod }) =>
-          _piPod(piOrgId, { stripeCustomerId: _piCustomerId })
-        ).catch(_piPodErr =>
-          logger.warn({ _piPodErr, piOrgId }, "[Webhook] PI.succeeded: persistOrgData safety net failed (non-fatal)")
-        );
+      const paymentMethodId =
+        typeof obj["payment_method"] === "string"
+          ? obj["payment_method"]
+          : ((obj["payment_method"] as { id?: string } | null)?.id ?? "");
+      if (!paymentMethodId) {
+        throw new Error(`PaymentIntent ${String(obj["id"] ?? "")} succeeded without a payment method`);
+      }
+      const { createStripeClient: createSignupStripeClient, getStripeKey: getSignupStripeKey } =
+        await import("../services/stripe-factory.js");
+      const signupStripe = await createSignupStripeClient(getSignupStripeKey());
+      const { ensurePendingSignupStripeCustomer } =
+        await import("../services/pending-signup-stripe-customer.js");
+      const rawPiCustomer = obj["customer"];
+      const piCustomerId = typeof rawPiCustomer === "string"
+        ? rawPiCustomer
+        : ((rawPiCustomer as { id?: string } | null)?.id ?? null);
+      const resolvedSignupCustomer = await ensurePendingSignupStripeCustomer(
+        signupStripe,
+        piPreRegToken,
+        paymentMethodId,
+        piCustomerId,
+        piMeta["seller_id"] ?? null,
+      );
+      const rawTrialDays = piMeta["trial_days_remaining"];
+      const intentTrialDays =
+        rawTrialDays !== undefined && Number.isFinite(Number(rawTrialDays))
+          ? Math.max(0, Math.min(90, Math.round(Number(rawTrialDays))))
+          : 14;
+      const planPriceId = getPlanPriceId(piSelectedPlan);
+      if (!planPriceId) {
+        throw new Error(`Stripe plan price missing for new-signup recovery: ${piSelectedPlan}`);
       }
 
-      logger.info({ type: event.type, orgId: piOrgId, customerId: _piCustomerId, plan: piSelectedPlan }, "[Webhook] New-signup activation queued from intent");
+      // Match finalize-checkout exactly: trial eligibility depends on actual
+      // subscription history, and the end timestamp is anchored to PI.created
+      // so both paths submit identical params under the same Stripe idempotency key.
+      const grantTrial = !resolvedSignupCustomer.hasSubscriptionHistory && intentTrialDays > 0;
+      const intentCreatedUnix =
+        typeof obj["created"] === "number" ? Number(obj["created"]) : Math.floor(Date.now() / 1000);
+      const trialEndUnix = grantTrial ? intentCreatedUnix + intentTrialDays * 86400 : undefined;
+
+      const existingSubscriptions = await signupStripe.subscriptions.list({
+        customer: resolvedSignupCustomer.customerId,
+        status: "all",
+        limit: 10,
+      });
+      const subscriptionRows = existingSubscriptions.data as Stripe.Subscription[];
+      const activeSubscriptions = subscriptionRows.filter(
+        (subscription) =>
+          ["active", "trialing", "past_due"].includes(subscription.status) &&
+          !subscription.cancel_at_period_end,
+      );
+      let planSubscription: Stripe.Subscription | undefined = activeSubscriptions.find((subscription) =>
+        subscription.items.data.some((item) => item.price.id === planPriceId),
+      );
+      if (!planSubscription && activeSubscriptions.length > 0) {
+        throw new Error(
+          `New-signup recovery found an active subscription for a different plan: ${activeSubscriptions[0]!.id}`,
+        );
+      }
+      if (!planSubscription) {
+        planSubscription = await createSubscriptionForAttempt({
+          stripe: signupStripe,
+          intentId: intentId || String(obj["id"] ?? ""),
+          scope: "plan",
+          plan: piSelectedPlan,
+          priceId: planPriceId,
+          orgRef: piOrgId,
+          params: {
+            customer: resolvedSignupCustomer.customerId,
+            items: [{ price: planPriceId, quantity: 1 }],
+            ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
+            default_payment_method: paymentMethodId,
+            metadata: {
+              plan: piSelectedPlan,
+              source: "checkout_payment",
+              flowpoint_cart: "true",
+              org_id: piOrgId,
+              orgId: piOrgId,
+              ...(piMeta["seller_id"]
+                ? { seller_id: piMeta["seller_id"], seller_attribution: "ref_link" }
+                : {}),
+              pre_register_token: piPreRegToken,
+              ...metadataAttributionFunnel(
+                piMeta["fp_analytics_consent"],
+                piMeta["fp_visitor_id"],
+                piMeta["fp_source"],
+              ),
+            },
+          },
+        });
+      }
+      if (!["active", "trialing"].includes(planSubscription.status)) {
+        throw new Error(
+          `New-signup recovery subscription is not active: ${planSubscription.status}`,
+        );
+      }
+      const piIsTrial = planSubscription.status === "trialing";
+      const trialEndsAt =
+        piIsTrial && typeof planSubscription.trial_end === "number"
+          ? new Date(planSubscription.trial_end * 1000)
+          : null;
+      if (piIsTrial && !trialEndsAt) {
+        throw new Error("Stripe trialing subscription returned no trial_end");
+      }
+
+      await activateNewSignup({
+        preRegToken:  piPreRegToken,
+        orgId:        piOrgId,
+        customerId:   resolvedSignupCustomer.customerId,
+        subscriptionId: planSubscription.id,
+        selectedPlan: piSelectedPlan,
+        isTrial:      piIsTrial,
+        trialEndsAt,
+      });
+
+      logger.info({
+        type: event.type,
+        orgId: piOrgId,
+        customerId: resolvedSignupCustomer.customerId,
+        subscriptionId: planSubscription.id,
+        plan: piSelectedPlan,
+        isTrial: piIsTrial,
+      }, "[Webhook] New-signup activation completed from successful PaymentIntent");
       break;
     }
 

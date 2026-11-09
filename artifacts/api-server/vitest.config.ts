@@ -325,6 +325,7 @@ export default defineConfig({
       "src/tests/finalize-checkout-path-c.test.ts",
       // P0 2026-09-15: a valid signup token wins over a stale browser session
       "src/tests/signup-token-over-stale-session.test.ts",
+      "src/services/pending-signup-stripe-customer.test.ts",
       "src/tests/onboarding-frontend.test.ts",
       // Smart billing upgrade routing: server-side reactivation vs Checkout
       "src/tests/billing-upgrade-reactivation.test.ts",
