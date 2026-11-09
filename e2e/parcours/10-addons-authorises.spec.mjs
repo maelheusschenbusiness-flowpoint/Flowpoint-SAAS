@@ -1,7 +1,8 @@
 import { createRequire } from "node:module";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { test, expect } from "@playwright/test";
+import { createStripeTestResourceCleanup } from "../helpers/stripe-test-resource-cleanup.mjs";
 import {
   getAddonCertDatabaseConfig,
   getLocalAddonCertDatabaseConfig,
@@ -9,6 +10,7 @@ import {
 
 const apiRequire = createRequire(new URL("../../artifacts/api-server/package.json", import.meta.url));
 const { Pool } = apiRequire("pg");
+const Stripe = apiRequire("stripe");
 const addonKeys = [
   "agencyPacks",
   "globalMonitoring",
@@ -48,6 +50,43 @@ const siteA = "https://addon-a.qa-fixture.invalid";
 const siteB = "https://addon-b.qa-fixture.invalid";
 const pageA = "/pricing";
 let db;
+let stripeResourceCleanup;
+
+function getStripeResourceCleanup(stripe, stripeKey, label) {
+  if (!stripeResourceCleanup) {
+    stripeResourceCleanup = createStripeTestResourceCleanup(stripe, stripeKey, label);
+  }
+  return stripeResourceCleanup;
+}
+
+async function findStripeEvent(stripe, type, objectId) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const events = await stripe.events.list({ type, limit: 100 });
+    const match = events.data.find(event => event.data?.object?.id === objectId);
+    if (match) {
+      stripeResourceCleanup?.registerEvent(match.id);
+      return match;
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error(`Stripe TEST event was not found: ${type}`);
+}
+
+async function postSignedStripeEvent(page, event, secret, signatureOverride) {
+  const payload = JSON.stringify(event);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = signatureOverride ?? createHmac("sha256", secret)
+    .update(`${timestamp}.${payload}`, "utf8")
+    .digest("hex");
+  return page.request.post("/api/webhooks/stripe", {
+    headers: {
+      "content-type": "application/json",
+      "stripe-signature": `t=${timestamp},v1=${signature}`,
+    },
+    data: payload,
+  });
+}
 
 test.beforeAll(async () => {
   if (!databaseUrl || !expectedDb || !expectedHost || !mailDir || !process.env["ENABLE_TEST_MAILER"]) {
@@ -194,43 +233,66 @@ test.beforeAll(async () => {
   );
 });
 
+test.afterEach(async () => {
+  await stripeResourceCleanup?.cleanup();
+});
+
 test.afterAll(async () => {
-  if (!db) return;
-  for (const orgId of [orgA, orgB]) {
-    await db.query("DELETE FROM organic_campaign_goals WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM technical_seo_fix_verifications WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM agency_portfolio_priority_settings WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM seo_change_impact_settings WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM conversion_opportunity_settings WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM cro_experiments WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM gsc_page_data WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM gsc_keyword_data WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM gbp_performance_settings WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM google_locations WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM user_prefs WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM ai_generated_missions WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM ai_workspace_profiles WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM onboarding_sessions WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM reports WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM audits WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM org_addons WHERE org_id=$1", [orgId]);
-    await db.query("DELETE FROM organization_members WHERE organization_id::text=$1", [orgId]);
-    await db.query("DELETE FROM organizations WHERE id=$1::uuid", [orgId]);
+  const cleanupErrors = [];
+  try {
+    await stripeResourceCleanup?.cleanup();
+  } catch (error) {
+    cleanupErrors.push(error);
   }
-  await db.query("DELETE FROM magic_link_tokens WHERE lower(email)=ANY($1::text[])", [[email, readerEmail]]);
-  const sessionColumns = await db.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='user_sessions'",
-  );
-  const sessionColumnNames = new Set(sessionColumns.rows.map(row => row.column_name));
-  if (sessionColumnNames.has("user_id_v2")) {
-    await db.query("DELETE FROM user_sessions WHERE user_id_v2::text=ANY($1::text[])", [[userId, readerUserId]]);
+  if (db) {
+    try {
+      for (const orgId of [orgA, orgB]) {
+        await db.query("DELETE FROM organic_campaign_goals WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM technical_seo_fix_verifications WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM agency_portfolio_priority_settings WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM seo_change_impact_settings WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM conversion_opportunity_settings WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM cro_experiments WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM gsc_page_data WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM gsc_keyword_data WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM gbp_performance_settings WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM google_locations WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM user_prefs WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM ai_generated_missions WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM ai_workspace_profiles WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM onboarding_sessions WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM reports WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM audits WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM org_addons WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM organization_members WHERE organization_id::text=$1", [orgId]);
+        await db.query("DELETE FROM organizations WHERE id=$1::uuid", [orgId]);
+      }
+      await db.query("DELETE FROM magic_link_tokens WHERE lower(email)=ANY($1::text[])", [[email, readerEmail]]);
+      const sessionColumns = await db.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='user_sessions'",
+      );
+      const sessionColumnNames = new Set(sessionColumns.rows.map(row => row.column_name));
+      if (sessionColumnNames.has("user_id_v2")) {
+        await db.query("DELETE FROM user_sessions WHERE user_id_v2::text=ANY($1::text[])", [[userId, readerUserId]]);
+      }
+      if (sessionColumnNames.has("user_id")) {
+        await db.query("DELETE FROM user_sessions WHERE user_id::text=ANY($1::text[])", [[userId, readerUserId]]);
+      }
+      await db.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [[userId, readerUserId]]);
+    } catch (error) {
+      cleanupErrors.push(error);
+    } finally {
+      try {
+        await db.end();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
   }
-  if (sessionColumnNames.has("user_id")) {
-    await db.query("DELETE FROM user_sessions WHERE user_id::text=ANY($1::text[])", [[userId, readerUserId]]);
+  if (cleanupErrors.length) {
+    throw new AggregateError(cleanupErrors, "Add-on certification cleanup failed.");
   }
-  await db.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [[userId, readerUserId]]);
-  await db.end();
 });
 
 test("authentifie normalement et certifie les add-ons historiques avec des données synthétiques tenant-isolées", async ({ page }) => {
@@ -341,7 +403,7 @@ async function signInToDashboard(page) {
   return me;
 }
 
-test("Agency Reporting Packs enforce the report quota atomically and deny viewers", async ({ page }) => {
+test("Agency Reporting Packs quota is atomic and viewer access is denied", async ({ page }) => {
   await signInToDashboard(page);
 
   await db.query("DELETE FROM reports WHERE org_id=$1", [orgA]);
@@ -440,15 +502,6 @@ test("Agency Reporting Packs enforce the report quota atomically and deny viewer
 
     await result.locator('input[type="text"]').fill("Quota blocked customer");
     await result.locator("select").selectOption(auditAfterA);
-    const refreshResponsePromise = page.waitForResponse(response =>
-      new URL(response.url()).pathname === "/api/reports" &&
-      response.request().method() === "GET",
-      { timeout: 15_000 },
-    );
-    await page.evaluate(() => window._fpReportsAPI.load({ force: true }));
-    expect((await refreshResponsePromise).status()).toBe(200);
-    await expect(result.locator('input[type="text"]')).toHaveValue("Quota blocked customer");
-    await expect(result.locator("select")).toHaveValue(auditAfterA);
     await expect(createButton).toBeEnabled();
     const quotaResponse = page.waitForResponse(response =>
       new URL(response.url()).pathname === "/api/reports/agency-packs/generate" &&
@@ -505,6 +558,506 @@ test("Agency Reporting Packs enforce the report quota atomically and deny viewer
     expect(Number(viewerReports.rows[0]?.count)).toBe(0);
   } finally {
     await viewerContext.close();
+  }
+});
+
+test("Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle", async ({ page }) => {
+  test.setTimeout(150_000);
+  if (process.env["FLOWPOINT_AGENCY_PACKS_STRIPE_TEST"] !== "1") {
+    test.skip(true, "Requires the explicit --stripe-test runner option.");
+  }
+
+  const stripeKey = process.env["STRIPE_TEST_KEY"];
+  const priceId = process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"];
+  const standardPriceId = process.env["STRIPE_TEST_PRICE_ID_STANDARD"];
+  expect(stripeKey).toMatch(/^sk_test_/);
+  expect(priceId).toMatch(/^price_/);
+  expect(standardPriceId).toMatch(/^price_/);
+
+  const stripe = new Stripe(stripeKey);
+  const stripeResources = getStripeResourceCleanup(stripe, stripeKey, "agency-lifecycle");
+  await stripeResources.registerEmail(email);
+  const [price, standardPrice] = await Promise.all([
+    stripe.prices.retrieve(priceId),
+    stripe.prices.retrieve(standardPriceId),
+  ]);
+  expect(price.livemode).toBe(false);
+  expect(price.active).toBe(true);
+  expect(price.currency).toBe("eur");
+  expect(price.unit_amount).toBe(1200);
+  expect(price.recurring?.interval).toBe("month");
+  expect(standardPrice.livemode).toBe(false);
+  expect(standardPrice.active).toBe(true);
+
+  let testClock;
+  let customer;
+  let planSubscriptionId;
+  let addonSubscriptionId;
+  try {
+    const frozenTime = Math.floor(Date.now() / 1000) - 60;
+    testClock = await stripe.testHelpers.testClocks.create({ frozen_time: frozenTime });
+    stripeResources.registerTestClock(testClock.id);
+    customer = await stripe.customers.create({
+      email,
+      test_clock: testClock.id,
+      metadata: { flowpoint_addon_cert: "agencyPacks", orgId: orgA },
+    });
+    stripeResources.registerCustomer(customer.id, email);
+    const paymentMethod = await stripe.paymentMethods.attach("pm_card_visa", { customer: customer.id });
+    await stripe.customers.update(customer.id, {
+      invoice_settings: { default_payment_method: paymentMethod.id },
+    });
+    const planSubscription = await stripe.subscriptions.create({
+      customer: customer.id,
+      items: [{ price: standardPriceId }],
+      trial_period_days: 14,
+      metadata: { orgId: orgA, plan: "standard", source: "agency-preservation-cert" },
+    });
+    planSubscriptionId = planSubscription.id;
+    stripeResources.registerSubscription(planSubscriptionId, customer.id);
+    expect(planSubscription.status).toBe("trialing");
+
+    await db.query(
+      `UPDATE organizations
+       SET stripe_customer_id=$1, stripe_subscription_id=$2,
+           subscription_status='trialing', plan='standard'
+       WHERE id=$3::uuid`,
+      [customer.id, planSubscriptionId, orgA],
+    );
+    await db.query("DELETE FROM org_addons WHERE org_id=$1 AND addon_key='agencyPacks'", [orgA]);
+
+    await signInToDashboard(page);
+    const activation = await page.request.post("/api/addons/agencyPacks/activate", {
+      data: { quantity: 1 },
+    });
+    expect(activation.status()).toBe(200);
+    expect(await activation.json()).toMatchObject({
+      ok: true,
+      addonKey: "agencyPacks",
+      stripe: { synced: true },
+    });
+
+    const entitlementAfterActivation = await db.query(
+      "SELECT active FROM org_addons WHERE org_id=$1 AND addon_key='agencyPacks'",
+      [orgA],
+    );
+    expect(entitlementAfterActivation.rows[0]?.active).toBe(true);
+    const planAfterActivation = await stripe.subscriptions.retrieve(planSubscriptionId);
+    expect(planAfterActivation.status).toBe("trialing");
+    const linkedPlanAfterActivation = await db.query(
+      "SELECT stripe_subscription_id FROM organizations WHERE id=$1::uuid",
+      [orgA],
+    );
+    expect(linkedPlanAfterActivation.rows[0]?.stripe_subscription_id).toBe(planSubscriptionId);
+
+    const listed = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: "all",
+      limit: 100,
+      expand: ["data.items.data.price"],
+    });
+    const addonSubscription = listed.data.find(
+      (subscription) =>
+        subscription.metadata?.addonSub === "true" &&
+        subscription.metadata?.orgId === orgA,
+    );
+    expect(addonSubscription).toBeTruthy();
+    addonSubscriptionId = addonSubscription.id;
+    stripeResources.registerSubscription(addonSubscriptionId, customer.id);
+    expect(["active", "trialing"]).toContain(addonSubscription.status);
+    expect(
+      addonSubscription.items.data.some((item) => item.price.id === priceId),
+    ).toBe(true);
+
+    const invoiceSubscriptionId = (invoice) => {
+      const reference = invoice.subscription ?? invoice.parent?.subscription_details?.subscription;
+      return typeof reference === "string" ? reference : reference?.id;
+    };
+    const paidInvoicesBefore = await stripe.invoices.list({ customer: customer.id, limit: 100 });
+    expect(
+      paidInvoicesBefore.data.filter(
+        (invoice) => invoice.status === "paid" && invoiceSubscriptionId(invoice) === addonSubscriptionId,
+      ).length,
+    ).toBeGreaterThanOrEqual(1);
+
+    await stripe.testHelpers.testClocks.advance(testClock.id, {
+      frozen_time: frozenTime + 40 * 24 * 60 * 60,
+    });
+    const deadline = Date.now() + 90_000;
+    let clockStatus = "advancing";
+    while (Date.now() < deadline && clockStatus !== "ready") {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      testClock = await stripe.testHelpers.testClocks.retrieve(testClock.id);
+      clockStatus = testClock.status;
+    }
+    expect(clockStatus).toBe("ready");
+
+    const renewedSubscription = await stripe.subscriptions.retrieve(addonSubscriptionId);
+    expect(renewedSubscription.status).toBe("active");
+    const renewedPlanSubscription = await stripe.subscriptions.retrieve(planSubscriptionId, {
+      expand: ["items.data.price"],
+    });
+    expect(renewedPlanSubscription.status).toBe("active");
+    expect(renewedPlanSubscription.items.data.some(item => item.price.id === standardPriceId)).toBe(true);
+    expect(renewedPlanSubscription.items.data.some(item => item.price.id === priceId)).toBe(false);
+    const paidInvoicesAfter = await stripe.invoices.list({ customer: customer.id, limit: 100 });
+    expect(
+      paidInvoicesAfter.data.filter(
+        (invoice) => invoice.status === "paid" && invoiceSubscriptionId(invoice) === addonSubscriptionId,
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+
+    const deactivation = await page.request.post("/api/addons/agencyPacks/deactivate", { data: {} });
+    expect(deactivation.status()).toBe(200);
+    expect((await deactivation.json()).stripe).toMatchObject({ synced: true });
+    const entitlementAfterCancellation = await db.query(
+      "SELECT active FROM org_addons WHERE org_id=$1 AND addon_key='agencyPacks'",
+      [orgA],
+    );
+    expect(entitlementAfterCancellation.rows[0]?.active).toBe(false);
+    expect((await stripe.subscriptions.retrieve(addonSubscriptionId)).status).toBe("canceled");
+    expect((await stripe.subscriptions.retrieve(planSubscriptionId)).status).toBe("active");
+    const linkedPlanAfterCancellation = await db.query(
+      "SELECT stripe_subscription_id FROM organizations WHERE id=$1::uuid",
+      [orgA],
+    );
+    expect(linkedPlanAfterCancellation.rows[0]?.stripe_subscription_id).toBe(planSubscriptionId);
+  } finally {
+    await db.query(
+      "UPDATE organizations SET stripe_customer_id='', stripe_subscription_id='', subscription_status='trialing' WHERE id=$1::uuid",
+      [orgA],
+    ).catch(() => {});
+    await db.query(
+      "DELETE FROM org_addons WHERE org_id=$1 AND addon_key='agencyPacks'",
+      [orgA],
+    ).catch(() => {});
+  }
+});
+
+test("Agency checkout CTA completes a new-customer Stripe TEST purchase", async ({ page }) => {
+  test.setTimeout(240_000);
+  const stripeKey = process.env["STRIPE_TEST_KEY"];
+  const standardPriceId = process.env["STRIPE_TEST_PRICE_ID_STANDARD"];
+  const agencyPriceId = process.env["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"];
+  const webhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
+  expect(stripeKey).toMatch(/^sk_test_/);
+  expect(standardPriceId).toMatch(/^price_/);
+  expect(agencyPriceId).toMatch(/^price_/);
+  expect(webhookSecret).toMatch(/^whsec_/);
+
+  const stripe = new Stripe(stripeKey);
+  const stripeResources = getStripeResourceCleanup(stripe, stripeKey, "agency-checkout-cta");
+  const [standardPrice, agencyPrice] = await Promise.all([
+    stripe.prices.retrieve(standardPriceId),
+    stripe.prices.retrieve(agencyPriceId),
+  ]);
+  expect(standardPrice.livemode).toBe(false);
+  expect(agencyPrice.livemode).toBe(false);
+  expect(agencyPrice.unit_amount).toBe(1200);
+  expect(agencyPrice.currency).toBe("eur");
+  expect(agencyPrice.recurring?.interval).toBe("month");
+
+  const signupEmail = `agency-checkout-${randomUUID()}@flowpoint-internal.test`;
+  await stripeResources.registerEmail(signupEmail);
+  const signupToken = randomBytes(32).toString("hex");
+  let customerId;
+  let paymentIntentId;
+  let failurePaymentIntentId;
+  let failureEmail;
+
+  await db.query(
+    `INSERT INTO pending_signups (token,email,first_name,last_name,company_name,country)
+     VALUES ($1,$2,'Checkout','Buyer','Agency QA','BE')`,
+    [signupToken, signupEmail],
+  );
+
+  try {
+    await page.addInitScript((token) => {
+      sessionStorage.setItem("fp_pre_reg_token", token);
+    }, signupToken);
+    await page.goto("/pricing.html");
+    await page.evaluate(() => localStorage.removeItem("fp_cart"));
+    await page.reload();
+    await page.waitForFunction(
+      () => Boolean(window._FP_ADDON_CATALOG_STATES?.agencyPacks),
+      null,
+      { timeout: 20_000 },
+    );
+    const agencyCard = page.locator('[data-addon-card-key="agencyPacks"]');
+    if (!(await agencyCard.isVisible())) await page.locator("#fp-addon-toggle").click();
+    const purchaseButton = agencyCard.locator('button[data-addon-action="add"]');
+    await expect(purchaseButton).toBeEnabled();
+    await purchaseButton.click();
+    await expect(purchaseButton).toContainText(/Dans le panier|In cart/);
+    await expect.poll(
+      () => page.evaluate(() => {
+        try {
+          return JSON.parse(localStorage.getItem("fp_cart") || "{}").addons?.agencyPacks;
+        } catch {
+          return undefined;
+        }
+      }),
+    ).toBe(1);
+
+    // Continue as a pre-registered new customer with no signed-in account.
+    // The real Agency CTA writes the add-on to the cart before Standard is selected.
+    await page.evaluate(() => {
+      const cart = JSON.parse(localStorage.getItem("fp_cart") || "{}");
+      cart.plan = "standard";
+      cart._v = 1;
+      cart._updatedAt = Date.now();
+      localStorage.setItem("fp_cart", JSON.stringify(cart));
+    });
+
+    const quoteResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/billing/quote") &&
+      response.request().method() === "POST",
+    );
+    await page.goto("/checkout.html?plan=standard");
+    const quoteResponse = await quoteResponsePromise;
+    expect(quoteResponse.status()).toBe(200);
+    const quotePayload = await quoteResponse.json();
+    expect(quotePayload.quote.trialEligible).toBe(true);
+    expect(quotePayload.quote.trialDays).toBe(14);
+    expect(quotePayload.quote.paymentIntentAmountMinor).toBe(1200);
+    await expect(page.locator("#fp-pay-btn")).toBeEnabled({ timeout: 20_000 });
+
+    const paymentIntentResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/public/payment-intent") &&
+      response.request().method() === "POST",
+    );
+    await page.locator("#fp-pay-btn").click();
+    const paymentIntentResponse = await paymentIntentResponsePromise;
+    expect(paymentIntentResponse.status()).toBe(200);
+    const paymentIntentPayload = await paymentIntentResponse.json();
+    expect(paymentIntentPayload.quote.trialEligible).toBe(true);
+    expect(paymentIntentPayload.quote.trialDays).toBe(14);
+    expect(paymentIntentPayload.quote.paymentIntentAmountMinor).toBe(1200);
+    paymentIntentId = paymentIntentPayload.paymentIntentId;
+    stripeResources.registerPaymentIntent(paymentIntentId);
+    expect(paymentIntentId).toMatch(/^pi_/);
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    expect(paymentIntent.livemode).toBe(false);
+    expect(paymentIntent.amount).toBe(1200);
+    expect(paymentIntent.customer).toBeNull();
+    expect((await stripe.customers.list({ email: signupEmail, limit: 100 })).data.filter(customer => !customer.deleted)).toHaveLength(0);
+    const pendingSignupBeforePayment = await db.query(
+      "SELECT stripe_customer_id FROM pending_signups WHERE token=$1",
+      [signupToken],
+    );
+    expect(pendingSignupBeforePayment.rows[0]?.stripe_customer_id).toBeNull();
+
+    const accountBeforePayment = await db.query(
+      `SELECT id FROM organizations WHERE lower(owner_email)=lower($1)`,
+      [signupEmail],
+    );
+    expect(accountBeforePayment.rows).toHaveLength(0);
+
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: "card",
+      card: { token: "tok_visa" },
+    });
+    stripeResources.registerPaymentMethod(paymentMethod.id);
+    const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+      payment_method: paymentMethod.id,
+    });
+    expect(confirmedIntent.status).toBe("succeeded");
+    expect(confirmedIntent.customer).toBeNull();
+
+    const finalizeResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/public/finalize-checkout") &&
+      response.request().method() === "POST",
+    );
+    await page.goto(
+      `/checkout-return.html?payment_intent=${encodeURIComponent(paymentIntentId)}&redirect_status=succeeded`,
+    );
+    const finalizeResponse = await finalizeResponsePromise;
+    expect(finalizeResponse.status()).toBe(200);
+    expect(await finalizeResponse.json()).toMatchObject({ success: true });
+
+    const orgResult = await db.query(
+      `SELECT id::text, subscription_status, trial_consumed_at, stripe_customer_id
+       FROM organizations WHERE lower(owner_email)=lower($1) LIMIT 1`,
+      [signupEmail],
+    );
+    expect(orgResult.rows).toHaveLength(1);
+    const org = orgResult.rows[0];
+    expect(org.trial_consumed_at).toBeTruthy();
+    customerId = org.stripe_customer_id;
+    stripeResources.registerCustomer(customerId, signupEmail);
+    expect(customerId).toMatch(/^cus_/);
+    expect(org.stripe_customer_id).toBe(customerId);
+    const createdCustomers = (await stripe.customers.list({ email: signupEmail, limit: 100 }))
+      .data.filter(customer => !customer.deleted);
+    expect(createdCustomers).toHaveLength(1);
+    expect(createdCustomers[0].id).toBe(customerId);
+
+    const addonGrantBeforeWebhook = await db.query(
+      `SELECT active FROM org_addons
+       WHERE org_id=$1::uuid AND addon_key='agencyPacks'`,
+      [org.id],
+    );
+    expect(addonGrantBeforeWebhook.rows.some(row => row.active === true)).toBe(false);
+
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 100,
+      expand: ["data.items.data.price"],
+    });
+    const planSubscription = subscriptions.data.find(subscription =>
+      subscription.metadata?.addonSub !== "true" &&
+      subscription.items.data.some(item => item.price.id === standardPriceId),
+    );
+    const addonSubscription = subscriptions.data.find(subscription =>
+      subscription.metadata?.source === "checkout_payment_addons" &&
+      subscription.items.data.some(item => item.price.id === agencyPriceId),
+    );
+    expect(planSubscription).toBeTruthy();
+    expect(addonSubscription).toBeTruthy();
+    stripeResources.registerSubscription(planSubscription.id, customerId);
+    stripeResources.registerSubscription(addonSubscription.id, customerId);
+    expect(planSubscription.status).toBe("trialing");
+    expect(planSubscription.trial_end - paymentIntent.created).toBe(14 * 24 * 60 * 60);
+    expect(addonSubscription.status).toBe("trialing");
+    expect(addonSubscription.trial_end).toBeGreaterThan(Math.floor(Date.now() / 1000) + 29 * 24 * 60 * 60);
+    expect(planSubscription.items.data.some(item => item.price.id === agencyPriceId)).toBe(false);
+
+    // Access is granted only after a verified Stripe event. Deliver the newer
+    // add-on subscription event before the older plan/payment events to exercise
+    // ordering, signature validation, and replay protection.
+    const planSubscriptionEvent = await findStripeEvent(
+      stripe,
+      "customer.subscription.created",
+      planSubscription.id,
+    );
+    const addonSubscriptionEvent = await findStripeEvent(
+      stripe,
+      "customer.subscription.created",
+      addonSubscription.id,
+    );
+    const paymentEvent = await findStripeEvent(
+      stripe,
+      "payment_intent.succeeded",
+      paymentIntentId,
+    );
+    const invalidSignature = await postSignedStripeEvent(
+      page,
+      paymentEvent,
+      webhookSecret,
+      "0".repeat(64),
+    );
+    expect(invalidSignature.status()).toBe(400);
+
+    const outOfOrderDelivery = await postSignedStripeEvent(page, addonSubscriptionEvent, webhookSecret);
+    expect(outOfOrderDelivery.status()).toBe(200);
+    const addonGrant = await db.query(
+      `SELECT active FROM org_addons
+       WHERE org_id=$1::uuid AND addon_key='agencyPacks'`,
+      [org.id],
+    );
+    expect(addonGrant.rows[0]?.active).toBe(true);
+
+    const planDelivery = await postSignedStripeEvent(page, planSubscriptionEvent, webhookSecret);
+    expect(planDelivery.status()).toBe(200);
+    const paymentDelivery = await postSignedStripeEvent(page, paymentEvent, webhookSecret);
+    expect(paymentDelivery.status()).toBe(200);
+    const replay = await postSignedStripeEvent(page, paymentEvent, webhookSecret);
+    expect(replay.status()).toBe(200);
+    expect(await replay.json()).toMatchObject({ received: true, duplicate: true });
+
+    // Cancel the TEST subscriptions, then remove local trial markers to prove
+    // the email-to-Stripe history check still blocks a former subscriber.
+    for (const subscriptionId of [planSubscription.id, addonSubscription.id]) {
+      await stripe.subscriptions.cancel(subscriptionId, { invoice_now: false, prorate: false });
+    }
+    await db.query(
+      `UPDATE organizations
+       SET stripe_subscription_id='', trial_consumed_at=NULL
+       WHERE id=$1::uuid`,
+      [org.id],
+    );
+    await db.query(
+      `UPDATE org_settings
+       SET stripe_subscription_id='', trial_consumed_at=NULL
+       WHERE lower(org_id)=lower($1)`,
+      [signupEmail],
+    ).catch(() => {});
+    const returningToken = randomBytes(32).toString("hex");
+    await db.query(
+      `INSERT INTO pending_signups (token,email,first_name,last_name,company_name,country)
+       VALUES ($1,$2,'Returning','Buyer','Agency QA','BE')`,
+      [returningToken, signupEmail],
+    );
+    const returningQuoteResponse = await page.request.post("/api/billing/quote", {
+      data: { plan: "standard", addons: {}, preRegisterToken: returningToken },
+    });
+    expect(returningQuoteResponse.status()).toBe(200);
+    const returningQuote = await returningQuoteResponse.json();
+    expect(returningQuote.quote.trialEligible).toBe(false);
+    expect(returningQuote.quote.trialDays).toBe(0);
+
+    // A declined TEST card must not create a signup or grant Agency access.
+    failureEmail = `agency-failed-${randomUUID()}@flowpoint-internal.test`;
+    await stripeResources.registerEmail(failureEmail);
+    const failureToken = randomBytes(32).toString("hex");
+    await db.query(
+      `INSERT INTO pending_signups (token,email,first_name,last_name,company_name,country)
+       VALUES ($1,$2,'Failed','Buyer','Agency QA','BE')`,
+      [failureToken, failureEmail],
+    );
+    const failedIntentResponse = await page.request.post("/api/public/payment-intent", {
+      data: { plan: "standard", addons: { agencyPacks: 1 }, preRegisterToken: failureToken },
+    });
+    expect(failedIntentResponse.status()).toBe(200);
+    const failedIntentPayload = await failedIntentResponse.json();
+    failurePaymentIntentId = failedIntentPayload.paymentIntentId;
+    stripeResources.registerPaymentIntent(failurePaymentIntentId);
+    const pendingIntent = await stripe.paymentIntents.retrieve(failurePaymentIntentId);
+    expect(pendingIntent.customer).toBeNull();
+    try {
+      await stripe.paymentIntents.confirm(failurePaymentIntentId, {
+        payment_method_data: {
+          type: "card",
+          card: { token: "tok_chargeDeclined" },
+        },
+      });
+    } catch {
+      // Stripe may return either the failed PaymentIntent or a card error.
+    }
+    const failedIntent = await stripe.paymentIntents.retrieve(failurePaymentIntentId);
+    expect(failedIntent.status).not.toBe("succeeded");
+    expect(failedIntent.customer).toBeNull();
+    expect((await stripe.customers.list({ email: failureEmail, limit: 100 })).data.filter(customer => !customer.deleted)).toHaveLength(0);
+    const failedPaymentMethod = failedIntent.payment_method;
+    const failedPaymentMethodId = typeof failedPaymentMethod === "string"
+      ? failedPaymentMethod
+      : failedPaymentMethod?.id;
+    if (failedPaymentMethodId) stripeResources.registerPaymentMethod(failedPaymentMethodId);
+    const failedPaymentEvent = await findStripeEvent(
+      stripe,
+      "payment_intent.payment_failed",
+      failurePaymentIntentId,
+    );
+    const failureWebhook = await postSignedStripeEvent(page, failedPaymentEvent, webhookSecret);
+    expect(failureWebhook.status()).toBe(200);
+    const failedSignup = await db.query(
+      `SELECT id FROM organizations WHERE lower(owner_email)=lower($1)`,
+      [failureEmail],
+    );
+    expect(failedSignup.rows).toHaveLength(0);
+    const failedAddon = await db.query(
+      `SELECT active FROM org_addons
+       WHERE org_id IN (SELECT id FROM organizations WHERE lower(owner_email)=lower($1))
+         AND addon_key='agencyPacks' AND active=true`,
+      [failureEmail],
+    );
+    expect(failedAddon.rows).toHaveLength(0);
+  } finally {
+    await db.query("DELETE FROM pending_signups WHERE email = ANY($1::text[])", [
+      [signupEmail, failureEmail].filter(Boolean),
+    ]).catch(() => {});
   }
 });
 
