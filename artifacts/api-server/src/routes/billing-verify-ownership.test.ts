@@ -50,7 +50,7 @@ function stripeError(type: string, code: string | undefined, statusCode: number)
 }
 function session(over: Record<string, unknown> = {}) {
   return {
-    id: "cs_test_ok123", status: "complete", payment_status: "paid", customer: CUS_A,
+    id: "cs_test_ok123", mode: "subscription", status: "complete", payment_status: "paid", customer: CUS_A,
     metadata: { plan: "pro", addons: "{}" },
     subscription: { id: "sub_A", status: "trialing", trial_end: 1900000000 },
     ...over,

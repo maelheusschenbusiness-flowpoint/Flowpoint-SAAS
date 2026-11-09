@@ -3,7 +3,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { sessionCookieSameSite } from "../lib/session-cookie.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId, getPlanForPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
@@ -455,7 +455,26 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }
 
     // Pas de plan par defaut : metadonnees absentes ou invalides => aucune ecriture, aucun broadcast.
-    const planMeta = resolveVerifiedPlan(sessionMeta);
+    // Only a subscription-mode plan checkout may change the organization's plan.
+    // The plan comes from the subscription's Stripe price; metadata is a fallback.
+    const verifiedSub = session.mode === "subscription" && typeof session.subscription === "object" && session.subscription
+      ? session.subscription as { id?: string; status?: string; items?: { data?: Array<{ price?: { id?: string } | null }> } }
+      : null;
+    let planFromSub: string | null = null;
+    for (const item of verifiedSub?.items?.data ?? []) {
+      const found = item?.price?.id ? getPlanForPriceId(item.price.id) : null;
+      if (found) { planFromSub = found; break; }
+    }
+    const planMeta = verifiedSub?.id && ["active", "trialing"].includes(String(verifiedSub.status ?? ""))
+      ? (planFromSub ?? resolveVerifiedPlan(sessionMeta))
+      : null;
+    if (planMeta && billingCtx.stripeSubscriptionId && billingCtx.stripeSubscriptionId !== verifiedSub?.id &&
+        ["active", "trialing", "past_due"].includes(String(billingCtx.subscriptionStatus ?? ""))) {
+      logger.warn({ checkoutType, orgId: orgIdVerify, httpStatus: 409 },
+        "[Billing] verify: session subscription is not the organization's current subscription — nothing persisted");
+      res.status(409).json({ ok: false, error: "Cette session ne correspond pas à l'abonnement actuel.", code: "SUBSCRIPTION_MISMATCH", checkoutType });
+      return;
+    }
     if (!planMeta) {
       logger.warn({ checkoutType, orgId: orgIdVerify, httpStatus: 422 },
         "[Billing] verify: plan absent or invalid in session metadata — nothing persisted");
