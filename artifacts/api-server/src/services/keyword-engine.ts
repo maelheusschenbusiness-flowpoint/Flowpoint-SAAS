@@ -8,6 +8,7 @@
 
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { getQuota } from "../lib/config.js";
 import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
@@ -23,9 +24,13 @@ export interface KeywordStats {
   totalVolume: number; visibilityScore: number;
 }
 
+/**
+ * Plafond de mots-cles suivis du plan. Source unique : CORE_QUOTAS (lib/config.ts).
+ * Avant, une table locale divergeait (agency 9999 au lieu de 5000 comme Ultra ;
+ * plan inconnu 500 au lieu du plus restrictif).
+ */
 export function getKeywordLimit(plan: string): number {
-  const limits: Record<string, number> = { standard: 50, pro: 500, ultra: 5000, agency: 9999 };
-  return limits[plan.toLowerCase()] ?? 500;
+  return getQuota(plan, "keywords");
 }
 
 export async function trackKeyword(

@@ -59,6 +59,7 @@ bloquerait tous les déploiements, correctif urgent compris. Voir
 | `src/migrate.ts` | Entrypoint autonome — compile et exécute les migrations, puis quitte |
 | `src/services/init-rls-migration.ts` | Logique de migration RLS (idempotente) |
 | `src/services/init-rls-setup.ts` | Provision du rôle `app_user` (local dev uniquement) |
+| `docs/MIGRATIONS-025-026-RUNBOOK.md` | Runbook manuel 025/026 (diagnostics, sauvegarde, retour arriere : `migrations/diagnostics/`, `migrations/rollback/`) |
 | `migrations/013_supabase_cloud_rls.sql` | SQL de référence — appliqué par `init-rls-migration.ts` |
 
 ---

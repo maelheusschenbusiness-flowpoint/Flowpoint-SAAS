@@ -38,6 +38,7 @@ const ULTRA_BILLING: OrgBillingData = {
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
   cancelAt: null,
+  pastDueSince: null,
   addons: {},
   pendingPlan: null,
   pendingPlanDate: null,

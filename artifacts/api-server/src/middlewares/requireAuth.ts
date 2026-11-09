@@ -2,6 +2,8 @@ import { type Request, type Response, type NextFunction } from "express";
 import { getSession } from "../services/sessions.js";
 import { logger } from "../lib/logger.js";
 import { API_KEY_DENIED_ROUTES } from "../lib/api-keys.js";
+import { devAuthBypassAllowed } from "../lib/security-config.js";
+import { keysEqual, isSseQueryTokenRequest } from "../lib/auth-token.js";
 
 const MISSING_KEY_WARNING_SHOWN = { shown: false };
 
@@ -48,9 +50,7 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
     provided = cookieToken.trim();
   } else if (
     // EventSource cannot set headers — allow a query token for SSE streams only
-    req.method === "GET" &&
-    typeof req.query["token"] === "string" &&
-    (req.headers["accept"] ?? "").includes("text/event-stream")
+    isSseQueryTokenRequest(req)
   ) {
     provided = (req.query["token"] as string).trim();
   }
@@ -73,8 +73,8 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
     //
     // Elle demande desormais une intention declaree, et refuse de s'appliquer
     // en production meme si le drapeau est pose.
-    const contournementDemande = process.env["ALLOW_UNAUTHENTICATED_DEV"] === "true";
-    if (contournementDemande && !isProduction) {
+    // C-15 : jamais honore en production ni sur Render (devAuthBypassAllowed).
+    if (devAuthBypassAllowed()) {
       if (!MISSING_KEY_WARNING_SHOWN.shown) {
         logger.warn("[Auth] ALLOW_UNAUTHENTICATED_DEV=true — l'authentification est DESACTIVEE sur cette instance.");
         MISSING_KEY_WARNING_SHOWN.shown = true;
@@ -100,7 +100,7 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
   }
 
   // Accept the API_SECRET_KEY as a service credential
-  if (serviceSecret && provided === serviceSecret) {
+  if (serviceSecret && keysEqual(provided, serviceSecret)) {
     next();
     return;
   }
@@ -135,12 +135,13 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
       res.status(503).json({ error: "Authentication unavailable: server is not configured" });
       return;
     }
-    if (!MISSING_KEY_WARNING_SHOWN.shown) {
-      logger.warn("[Auth] API_SECRET_KEY not set. Auth is disabled in development.");
-      MISSING_KEY_WARNING_SHOWN.shown = true;
+    // C-15 : avant, tout jeton INVALIDE traversait ici des que API_SECRET_KEY
+    // etait absente hors production (NODE_ENV=development par defaut, ou test).
+    // Le passage exige maintenant l'intention declaree ALLOW_UNAUTHENTICATED_DEV.
+    if (devAuthBypassAllowed()) {
+      next();
+      return;
     }
-    next();
-    return;
   }
 
   // Bad or expired token — informational, not alarming

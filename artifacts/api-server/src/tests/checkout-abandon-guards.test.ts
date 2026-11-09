@@ -115,7 +115,7 @@ describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirm
 
   it("les guards PI/SI précèdent les premiers appels DB dans finalize-checkout", () => {
     const piGuardIdx   = publicBillingTs.indexOf("pi.status !== \"succeeded\"");
-    const firstDbWrite = publicBillingTs.indexOf("await _aoPool.connect");
+    const firstDbWrite = publicBillingTs.indexOf("verifyAiCreditBeneficiary(_aoPool");
     expect(piGuardIdx).toBeGreaterThan(0);
     expect(firstDbWrite).toBeGreaterThan(0);
     expect(piGuardIdx, "guard PI doit précéder le premier accès DB").toBeLessThan(firstDbWrite);
@@ -152,15 +152,23 @@ describe("CA-9 — abandoned signup creates no account or Stripe Customer", () =
     expect(publicBillingTs).toMatch(/INTERVAL '7 days'/);
   });
 
-  it("SetupIntent success alone cannot activate signup; paid-intent recovery is awaited", () => {
-    const setupStart = stripeWebhookTs.indexOf('case "setup_intent.succeeded":');
-    const paymentStart = stripeWebhookTs.indexOf('case "payment_intent.succeeded":', setupStart);
-    const setupCase = stripeWebhookTs.slice(setupStart, paymentStart);
-    const paymentCaseEnd = stripeWebhookTs.indexOf('case "customer.subscription.created":', paymentStart);
-    const paymentCase = stripeWebhookTs.slice(paymentStart, paymentCaseEnd);
-    expect(setupCase).not.toContain("activateNewSignup");
-    expect(paymentCase).toMatch(/await ensurePendingSignupStripeCustomer/);
-    expect(paymentCase).toMatch(/await activateNewSignup/);
+  // Assertion textuelle de #410 remplacee (fusion #390 x #410, validee le 09/11) :
+  // elle verifiait l'ORDRE des `case` du webhook, pas le comportement, et elle
+  // exprimait l'ancien contrat (SetupIntent sans effet) que A-09 remplace. Le
+  // comportement — un SetupIntent reussi n'aboutit a `trialing` QUE si une
+  // souscription Stripe trialing reelle existe, jamais d'acces premium sinon,
+  // rejeu, concurrence webhook/finalize, echec transitoire puis relivraison,
+  // pas de deuxieme essai — est prouve contre PostgreSQL dans
+  // src/tests/signup-410-guarantees-db.test.ts. Reste verifie ici : les deux
+  // chemins d'intent ATTENDENT la resolution du Customer et l'activation.
+  it("intent recovery awaits Customer resolution and activation (no fire-and-forget)", () => {
+    const start = stripeWebhookTs.indexOf('case "payment_intent.succeeded":');
+    const end = stripeWebhookTs.indexOf('case "customer.subscription.created":', start);
+    const intentCase = stripeWebhookTs.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(intentCase).toMatch(/await ensurePendingSignupStripeCustomer/);
+    expect(intentCase).toMatch(/await activateNewSignup/);
+    expect(intentCase).not.toMatch(/activateNewSignup\([\s\S]{0,400}\)\s*\.catch/);
   });
 });
 
@@ -378,7 +386,13 @@ describe("CA-8 — retours Checkout add-on/crédits confirmés par l’organisat
     const creditWebhookBlock = stripeWebhookTs.slice(creditWebhookStart, subscriptionStart);
     expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout || packFromField)");
     expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout) break");
-    expect(creditWebhookBlock).toContain("if (sessionPaid && credits > 0 && orgId)");
+    // Verification serveur : credits recalcules depuis le catalogue a partir des lignes Stripe (pas les metadata).
+    // Composition lue dans les LIGNES Stripe (price id x quantite), jamais dans les metadata.
+    expect(creditWebhookBlock).toContain("fetchSessionLineItems(");
+    expect(creditWebhookBlock).toContain("resolveAiCreditsFromLineItems({");
+    expect(creditWebhookBlock).toContain("creditsOnly: aiCreditsOnlyCheckout");
+    expect(creditWebhookBlock).not.toContain("resolveAiCreditPurchase(");
+    expect(creditWebhookBlock).toContain("recordAiCreditPurchase(");
     expect(creditWebhookBlock).toContain("throw e");
     expect(verifyBlock).toContain("const aiCreditPacks = String(sessionMeta[\"ai_credits\"] ?? \"\")");
     expect(verifyBlock).toContain("...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {})");
@@ -386,9 +400,11 @@ describe("CA-8 — retours Checkout add-on/crédits confirmés par l’organisat
   });
 
   it("vérifie que la session Stripe appartient à l'organisation authentifiée", () => {
-    expect(verifyBlock).toContain("metadataOrgMatches");
-    expect(verifyBlock).toContain("customerMatches");
-    expect(verifyBlock).toContain("session does not match authenticated organization");
+    // La garde vit desormais dans services/billing-verify-guards.ts (testee en comportement
+    // par routes/billing-verify-ownership.test.ts) ; ici on verifie qu'elle precede 402/credits/plan.
+    expect(verifyBlock).toContain("sessionBelongsToOrg(session");
+    expect(verifyBlock).toContain("does not belong to the authenticated organization");
+    expect(verifyBlock.indexOf("sessionBelongsToOrg(")).toBeLessThan(verifyBlock.indexOf("payment_status !== \"paid\" && session.status"));
   });
 
   it("retourne les achats add-on/crédits vers l'écran dédié et gère l'annulation", () => {

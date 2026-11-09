@@ -12,7 +12,16 @@
   <meta name="robots" content="noindex, nofollow"/>
   <title>Paiement — FlowPoint</title>
   <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
-  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    /* Diagnostic du chargement de Stripe.js : on enregistre la cause AVANT de choisir un message
+       (CSP, réseau/blocage). Un bloqueur n'est jamais supposé par défaut. */
+    window.__fpStripeLoad = { error: false, csp: false };
+    document.addEventListener('securitypolicyviolation', function (e) {
+      if (String(e.blockedURI || '').indexOf('stripe.com') >= 0) window.__fpStripeLoad.csp = true;
+    });
+  </script>
+  <script src="/fp-locale.js?v=20261030"></script>
+  <script src="https://js.stripe.com/v3/" onerror="window.__fpStripeLoad.error = true"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -259,10 +268,36 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-  function showAlert(msg) {
+  function fpT(fr, en) { return window.fpPublicText ? window.fpPublicText(fr, en) : fr; }
+  function showAlert(msg, withRetry) {
     var el = document.getElementById('fp-alert');
     el.textContent = msg;
+    if (withRetry) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.id = 'fp-retry-load';
+      b.className = 'fp-btn fp-btn-ghost';
+      b.style.marginTop = '10px';
+      b.textContent = fpT('Réessayer', 'Try again');
+      b.addEventListener('click', function () { window.location.reload(); });
+      el.appendChild(document.createElement('br'));
+      el.appendChild(b);
+    }
     el.classList.add('show');
+  }
+  /* Message adapté à la cause réelle de l'échec de chargement de Stripe.js. */
+  function stripeLoadMessage() {
+    var st = window.__fpStripeLoad || {};
+    if (st.csp) {
+      return fpT('Le navigateur a bloqué le module de paiement Stripe (politique de sécurité du site). Réessayez ; si le problème persiste, contactez le support.',
+                 'The browser blocked the Stripe payment module (site security policy). Try again; if the problem persists, contact support.');
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return fpT('Vous semblez hors connexion : le module de paiement Stripe n\'a pas pu être chargé. Vérifiez votre connexion Internet, puis réessayez.',
+                 'You appear to be offline: the Stripe payment module could not be loaded. Check your Internet connection, then try again.');
+    }
+    return fpT('Le module de paiement Stripe n\'a pas pu être chargé (réseau instable, pare-feu, extension de navigateur ou service momentanément indisponible). Réessayez ; si le problème persiste, essayez un autre réseau ou désactivez temporairement vos extensions.',
+               'The Stripe payment module could not be loaded (unstable network, firewall, browser extension or temporary outage). Try again; if the problem persists, try another network or temporarily disable your extensions.');
   }
   function hideAlert() { document.getElementById('fp-alert').classList.remove('show'); }
   function setLoading(on, label) {
@@ -425,7 +460,7 @@
       : 'Démarrer l\'essai gratuit →';
 
     if (typeof Stripe === 'undefined') {
-      showAlert('Stripe.js n\'a pas pu se charger. Désactivez votre bloqueur de publicités et réessayez.');
+      showAlert(stripeLoadMessage(), true);
       return;
     }
 
@@ -490,7 +525,9 @@
     });
     paymentElement.on('loaderror', function (e) {
       console.error('[FlowPoint Payment] PaymentElement loaderror', e);
-      showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
+      var le = e && e.error ? (e.error.code || e.error.type || '') : '';
+      showAlert(fpT('Le formulaire de paiement n\'a pas pu s\'afficher (connexion ou service Stripe momentanément indisponible).' + (le ? ' [' + le + ']' : '') + ' Réessayez.',
+                    'The payment form could not be displayed (connection or Stripe service temporarily unavailable).' + (le ? ' [' + le + ']' : '') + ' Try again.'), true);
     });
 
     /* Filet de sécurité : activer le bouton après 8s même si 'ready' ne part pas */

@@ -219,6 +219,8 @@ export interface FetchUrlResult {
   error?: string;
   /** Liens internes (même domaine) découverts sur la page — pour le crawl multi-pages. */
   links?: string[];
+  /** HTML brut (borné à MAX_BODY_BYTES) — uniquement si `includeHtml` est demandé. */
+  html?: string;
 }
 
 /**
@@ -229,6 +231,8 @@ export interface FetchUrlResult {
  */
 export interface FetchUrlOptions {
   timeoutMs?: number;
+  /** Retourne aussi le HTML brut borné (analyses structurelles : formulaires, CTA…). */
+  includeHtml?: boolean;
   beforeRequest?: (url: string) => Promise<{ allowed: boolean; error?: string }>;
 }
 
@@ -261,9 +265,19 @@ interface PinnedResponse {
  * This eliminates the TOCTOU gap present when `fetch()` re-resolves the hostname
  * at connection time — the connected IP is always the one that passed validation.
  */
-async function pinnedRequest(
+export interface PinnedRequestInit {
+  method?: string;
+  /** En-têtes ajoutés/remplaçant les défauts. Host est toujours forcé à l'hôte de l'URL. */
+  headers?: Record<string, string>;
+  body?: string;
+  /** Résolveur injectable (tests) : par défaut dns.lookup(all). */
+  resolve?: (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+}
+
+export async function pinnedRequest(
   rawUrl: string,
   signal: AbortSignal,
+  init?: PinnedRequestInit,
 ): Promise<PinnedResponse> {
   const parsed = new URL(rawUrl);
   const hostname = parsed.hostname;
@@ -285,7 +299,9 @@ async function pinnedRequest(
   //    complete in the OS but we no longer block on it past the deadline.
   let addresses: Array<{ address: string; family: number }>;
   try {
-    const dnsPromise = dns.lookup(hostname, { all: true }) as Promise<Array<{ address: string; family: number }>>;
+    const dnsPromise = (init?.resolve
+      ? init.resolve(hostname)
+      : dns.lookup(hostname, { all: true })) as Promise<Array<{ address: string; family: number }>>;
     const abortPromise = new Promise<never>((_, reject) => {
       if (signal.aborted) {
         reject(new Error("DNS annulé (timeout global)"));
@@ -339,12 +355,14 @@ async function pinnedRequest(
     hostname: pinnedIp,         // TCP/TLS connects here — fixed, validated IP
     port,
     path,
-    method: "GET",
+    method: init?.method ?? "GET",
     headers: {
-      Host: hostname,           // HTTP Host header → original hostname
       "User-Agent": USER_AGENT,
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8",
+      ...(init?.headers ?? {}),
+      ...(init?.body !== undefined ? { "Content-Length": String(Buffer.byteLength(init.body)) } : {}),
+      Host: parsed.host,        // HTTP Host header → original hostname (non surchargeable)
     },
     timeout: TOTAL_TIMEOUT_MS,
   };
@@ -374,6 +392,7 @@ async function pinnedRequest(
     // Clean up listener when the response arrives (to avoid a memory leak)
     req.once("response", () => signal.removeEventListener("abort", onAbort));
 
+    if (init?.body !== undefined) req.write(init.body);
     req.end();
   });
 }
@@ -431,6 +450,72 @@ async function readBodyBounded(
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+export interface ProbeResult {
+  /** `true` quand la destination a ete atteinte (meme avec un statut HTTP d'erreur). */
+  reached: boolean;
+  statusCode: number;
+  /** `true` quand l'URL (ou une redirection) a ete refusee par la protection SSRF. */
+  blocked: boolean;
+  error: string | null;
+}
+
+/**
+ * Sonde HTTP (HEAD par defaut) SSRF-safe pour les monitors (C-16).
+ *
+ * L'ancien controle validait le DNS (`checkDnsResolution`) puis appelait
+ * `fetch()`, qui RE-RESOUT le nom : un DNS a TTL court pouvait repondre une IP
+ * publique a la validation puis une IP interne a la connexion (rebinding).
+ * Ici la resolution, la validation et la connexion utilisent la MEME adresse
+ * (`pinnedRequest`), a chaque saut de redirection.
+ *
+ * Ne leve jamais d'exception.
+ */
+export async function probeUrlPinned(
+  rawUrl: string,
+  opts?: { timeoutMs?: number; method?: "GET" | "HEAD" },
+): Promise<ProbeResult> {
+  let currentUrl = rawUrl;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.min(opts?.timeoutMs ?? 8_000, TOTAL_TIMEOUT_MS));
+  const method = opts?.method ?? "HEAD";
+  try {
+    for (let hop = 0; hop <= MAX_HOPS; hop++) {
+      let parsed: URL;
+      try { parsed = new URL(currentUrl); } catch {
+        return { reached: false, statusCode: 0, blocked: true, error: "URL invalide" };
+      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return { reached: false, statusCode: 0, blocked: true, error: "Protocole non autorise" };
+      }
+      let resp: PinnedResponse;
+      try {
+        resp = await pinnedRequest(currentUrl, ctrl.signal, { method });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const lo = msg.toLowerCase();
+        if (lo.includes("ssrf")) return { reached: false, statusCode: 0, blocked: true, error: msg };
+        if (lo.includes("annul") || lo.includes("abort") || lo.includes("timeout")) {
+          return { reached: false, statusCode: 0, blocked: false, error: "Timeout after 8s" };
+        }
+        return { reached: false, statusCode: 0, blocked: false, error: msg.slice(0, 200) };
+      }
+      resp.incomingMessage.destroy();
+      if (resp.statusCode >= 300 && resp.statusCode < 400) {
+        const location = (resp.headers["location"] as string | undefined)?.trim();
+        if (!location) return { reached: true, statusCode: resp.statusCode, blocked: false, error: null };
+        try { currentUrl = new URL(location, currentUrl).toString(); } catch {
+          return { reached: true, statusCode: resp.statusCode, blocked: false, error: null };
+        }
+        continue;
+      }
+      return { reached: true, statusCode: resp.statusCode, blocked: false, error: null };
+    }
+    return { reached: false, statusCode: 0, blocked: false, error: "Too many redirects" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Fetch une URL externe de façon SSRF-safe (DNS pinned, redirects validés),
@@ -598,7 +683,10 @@ export async function fetchUrlContent(
       clearTimeout(timer);
       const extracted = extractContent(rawHtml);
       const links = extractInternalLinks(rawHtml, currentUrl);
-      return { ok: true, url: currentUrl, statusCode, loadTimeMs, ...extracted, links };
+      return {
+        ok: true, url: currentUrl, statusCode, loadTimeMs, ...extracted, links,
+        ...(opts?.includeHtml ? { html: rawHtml } : {}),
+      };
     }
 
     clearTimeout(timer);

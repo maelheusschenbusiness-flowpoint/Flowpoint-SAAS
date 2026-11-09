@@ -162,13 +162,15 @@ describe("DELETE /team/:id — member access revocation", () => {
     else process.env["API_SECRET_KEY"] = PREVIOUS_SECRET;
   });
 
-  it("sans API_SECRET_KEY, l authentification est desactivee — comportement assume", () => {
+  it("sans API_SECRET_KEY, le contournement exige ALLOW_UNAUTHENTICATED_DEV (C-15)", () => {
     // Ce test existe pour que personne ne retire la ligne ci-dessus en croyant
-    // qu'elle ne sert a rien. Le contournement est intentionnel en developpement
-    // et ferme en production (503 si la cle manque), mais il rend TOUT test de
-    // revocation sans objet s'il n'est pas neutralise.
+    // qu'elle ne sert a rien. Avant C-15, l'absence d'API_SECRET_KEY hors
+    // production desactivait l'authentification pour tout jeton ; le
+    // contournement exige desormais une intention declaree (devAuthBypassAllowed)
+    // et reste ferme en production (503 si la cle manque).
     const src = readFileSync(new URL("../middlewares/requireAuth.ts", import.meta.url), "utf8");
-    expect(src).toContain("API_SECRET_KEY not set. Auth is disabled in development.");
+    expect(src).toContain("devAuthBypassAllowed()");
+    expect(src).not.toContain("Auth is disabled in development.");
     expect(src).toContain('res.status(503).json({ error: "Authentication unavailable: server is not configured" })');
   });
 

@@ -32,7 +32,11 @@ describe("authenticated payment-intent Customer anchor", () => {
   });
 
   it("anchors authenticated Stripe resolution to the session org", () => {
-    const start = routeSource.indexOf('if (!preRegCustomerId && !preRegisterToken)');
+    // Le garde a ete elargi (signup avec jeton ET session d'organisation) : on
+    // ancre la recherche sur la condition actuelle, pas sur l'ancienne.
+    const start = routeSource.indexOf(
+      'if (!preRegCustomerId && (!preRegisterToken || _piReqOrgId))',
+    );
     const end = routeSource.indexOf('// A0 — Closed-tab webhook recovery', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
@@ -40,6 +44,7 @@ describe("authenticated payment-intent Customer anchor", () => {
     const customerBlock = routeSource.slice(start, end);
     expect(customerBlock).toContain("const _authOrgId = _piReqOrgId;");
     expect(customerBlock).toContain("ensureStripeCustomer");
-    expect(customerBlock).toContain("(!preRegisterToken || _piReqOrgId)");
+    expect(customerBlock).toContain("loadBillingContext(_authOrgId)");
+    expect(customerBlock).toContain("_ensureForPI(_authOrgId, _authCtx");
   });
 });

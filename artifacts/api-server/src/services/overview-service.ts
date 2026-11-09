@@ -179,7 +179,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
          WHERE org_id=$1 AND provider IN ('ga4','google_analytics','matomo') AND status='active' LIMIT 1`,
         [orgId]
       ),
-      pool.query(`SELECT COUNT(*) as count FROM gbp_posts WHERE org_id=$1`, [orgId]),
+      pool.query(`SELECT COUNT(*) as count FROM gbp_posts WHERE org_id=$1 AND status='published' AND google_post_id IS NOT NULL`, [orgId]),
       pool.query(`SELECT COUNT(*) as count FROM competitors WHERE org_id=$1`, [orgId]),
       pool.query(`SELECT plan, addons FROM org_settings WHERE org_id=$1 LIMIT 1`, [orgId]),
       getGA4Overview(orgId, rangeAgo, today),

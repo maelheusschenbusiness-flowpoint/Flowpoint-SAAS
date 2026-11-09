@@ -1,0 +1,115 @@
+# Certification navigateur du parcours visiteur -> abonnement (MANUELLE, optionnelle).
+#
+# Ne se declenche PAS sur les PR : ne rend donc jamais la CI principale plus lente ni plus fragile.
+# Lancer : Actions > « Certification navigateur » > Run workflow (workflow_dispatch).
+#
+# Elle demarre l'API de la branche contre un PostgreSQL 17 JETABLE (service du runner), Stripe simule,
+# e-mails captures sur disque, Google simule : aucun service reel, aucun secret.
+# Mode d'emploi, matrice des parcours et criteres GO/NO-GO : docs/CERTIFICATION-NAVIGATEUR.md
+name: Certification navigateur
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_pending:
+        description: "Rejouer aussi les tests marques test.fixme (comportements des PR en cours)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  certification:
+    name: Parcours navigateur (bureau 1440, iPhone 13, Pixel 7)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: flowpoint_ci
+          POSTGRES_PASSWORD: flowpoint_ci
+          POSTGRES_DB: flowpoint_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U flowpoint_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://flowpoint_ci:flowpoint_ci@127.0.0.1:5432/flowpoint_ci
+      NODE_ENV: test
+      STRIPE_TEST_MODE: "true"
+      CERT_RUN_PENDING: ${{ inputs.run_pending && '1' || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Installer les dependances
+        run: pnpm install --frozen-lockfile
+
+      - name: Roles Supabase factices
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE r text;
+          BEGIN
+            FOR r IN SELECT unnest(ARRAY['app_user','anon','authenticated','service_role','authenticator','supabase_admin']) LOOP
+              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+                EXECUTE format('CREATE ROLE %I NOLOGIN', r);
+              END IF;
+            END LOOP;
+          END $$;
+          SQL
+
+      - name: Migration du depot depuis zero
+        working-directory: artifacts/api-server
+        run: pnpm run migrate
+
+      - name: Droits des roles applicatifs
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE r text;
+          BEGIN
+            FOR r IN SELECT unnest(ARRAY['app_user','anon','authenticated','service_role']) LOOP
+              EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', r);
+              EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA public TO %I', r);
+              EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO %I', r);
+            END LOOP;
+          END $$;
+          SQL
+
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Demarrer le serveur de certification
+        # run-local.sh accepte une DATABASE_URL LOCALE deja preparee (127.0.0.1) et refuse toute autre.
+        run: artifacts/api-server/tests/browser/certification/harness/run-local.sh up
+
+      - name: Executer la certification
+        run: npx playwright test -c playwright.certification.config.mjs --trace off
+
+      - name: Journal du serveur en cas d'echec
+        if: failure()
+        run: tail -200 /tmp/fp-cert-run/server.log || true
+
+      - name: Conserver le rapport et les captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: certification-navigateur
+          path: artifacts/api-server/tests/browser/certification/.out
+          retention-days: 14
