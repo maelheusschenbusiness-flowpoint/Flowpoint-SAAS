@@ -38,6 +38,53 @@ export type AgencyAudit = {
   created_at: string;
 };
 
+export type AgencySiteSnapshot = {
+  url: string;
+  auditDate: string;
+  score: number | null;
+  speed: number | null;
+  issues: number | null;
+};
+
+/**
+ * Validate the immutable measured snapshot stored with a consolidated report.
+ * This lets old reports with a valid snapshot become downloadable without
+ * looking up the first audit and accidentally rendering a single-site PDF.
+ */
+export function parseAgencyMultiSiteSnapshot(raw: unknown): AgencySiteSnapshot[] | null {
+  let metadata = raw;
+  if (typeof metadata === "string") {
+    try { metadata = JSON.parse(metadata); }
+    catch { return null; }
+  }
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const value = metadata as Record<string, unknown>;
+  if (value.source !== "agency_multi_site" || !Array.isArray(value.sites) ||
+      value.sites.length < 2 || value.sites.length > 20) return null;
+
+  const metric = (input: unknown): number | null => {
+    if (input === null || input === undefined || input === "") return null;
+    if (typeof input !== "number" && typeof input !== "string") return null;
+    const result = Number(input);
+    return Number.isFinite(result) ? result : null;
+  };
+
+  const sites: AgencySiteSnapshot[] = [];
+  for (const rawSite of value.sites) {
+    if (!rawSite || typeof rawSite !== "object" || Array.isArray(rawSite)) return null;
+    const site = rawSite as Record<string, unknown>;
+    if (typeof site.url !== "string" || !site.url.trim() || site.url.length > 2048) return null;
+    sites.push({
+      url: site.url,
+      auditDate: typeof site.auditDate === "string" ? site.auditDate.slice(0, 50) : "",
+      score: metric(site.score),
+      speed: metric(site.speed),
+      issues: metric(site.issues),
+    });
+  }
+  return sites;
+}
+
 export async function loadSelectedAgencyAudits(orgId: string, auditIds: string[], database: Queryable = pool): Promise<AgencyAudit[]> {
   const result = await database.query<AgencyAudit>(
     `SELECT id, url, score, speed, issues, status, created_at
@@ -100,7 +147,7 @@ export async function createConsolidatedAgencyReport(
       `INSERT INTO reports
         (id, org_id, name, type, template_key, date, pages, shared, audit_id,
          white_label, pdf_ready, meeting_notes_json, generation_metadata_json, date_start, date_end, created_by)
-       VALUES ($1,$2,$3,'REPORT','executive',$4,0,false,$5,false,false,$6,$7,'','',$8)`,
+       VALUES ($1,$2,$3,'REPORT','executive',$4,0,false,$5,false,true,$6,$7,'','',$8)`,
       [reportId, orgId, name, new Date().toISOString(), audits[0].id, JSON.stringify(notes), JSON.stringify(measuredSnapshot), createdBy],
     );
     await client.query("COMMIT");

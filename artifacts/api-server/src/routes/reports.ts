@@ -19,6 +19,7 @@ import {
   isAgencyReportDeliveryReady,
   getAgencyPublicBaseUrl,
   isAgencyReportSchedulerEnabled,
+  parseAgencyMultiSiteSnapshot,
 } from "../services/agency-reporting.js";
 
 const router = Router();
@@ -653,31 +654,38 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
   const rr = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, orgId]);
   const report = rr.rows[0];
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
-  if (report.type === "REPORT" && report.pdf_ready !== true) {
+  const agencySites = report.type === "REPORT"
+    ? parseAgencyMultiSiteSnapshot(report.generation_metadata_json)
+    : null;
+  if (report.type === "REPORT" && !agencySites) {
     res.status(409).json({
-      error: "This consolidated multi-site report is not available as a PDF.",
+      error: "This consolidated multi-site report has no valid measured site snapshot.",
       code: "PDF_NOT_READY",
     });
     return;
   }
 
   let audit: Record<string, unknown> | undefined;
-  if (report.audit_id) {
+  if (!agencySites && report.audit_id) {
     const ar = await db(req)(`SELECT * FROM audits WHERE id=$1 AND org_id=$2`, [report.audit_id, orgId]);
     audit = ar.rows[0];
   }
 
   let meetingNotes: Array<{ title: string; date: string; notes: string; site?: string }> = [];
-  try { meetingNotes = JSON.parse((report.meeting_notes_json as string) || "[]"); } catch {}
+  if (!agencySites) {
+    try { meetingNotes = JSON.parse((report.meeting_notes_json as string) || "[]"); } catch {}
+  }
 
   let monitors: Array<{ name: string; url?: string; status?: string; uptime?: number | null }> = [];
   let missions: Array<{ title: string; status?: string; priority?: string; dueDate?: string | null }> = [];
-  try {
-    const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 20`, [orgId]);
-    monitors = mr.rows as typeof monitors;
-    const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [orgId]);
-    missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
-  } catch {}
+  if (!agencySites) {
+    try {
+      const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 20`, [orgId]);
+      monitors = mr.rows as typeof monitors;
+      const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [orgId]);
+      missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
+    } catch {}
+  }
 
   // White-label branding — canonical source is user_prefs.settings.wlBranding,
   // which is exactly what the Settings → White Label UI writes via PATCH /api/me/prefs.
@@ -702,7 +710,19 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
 
   // Cumulative usage accounting — PDF export counted at download time
   import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "pdf_export")).catch(() => {});
-  await streamReportPdf(res, { ...(report as unknown as Parameters<typeof streamReportPdf>[1]), whiteLabel: !!report.white_label }, audit as Parameters<typeof streamReportPdf>[2], meetingNotes, monitors, missions, wlBranding);
+  await streamReportPdf(
+    res,
+    {
+      ...(report as unknown as Parameters<typeof streamReportPdf>[1]),
+      whiteLabel: !!report.white_label,
+      ...(agencySites ? { agencySites } : {}),
+    },
+    audit as Parameters<typeof streamReportPdf>[2],
+    meetingNotes,
+    monitors,
+    missions,
+    wlBranding,
+  );
 });
 
 // ── POST /reports/:id/share ────────────────────────────────────────────────────

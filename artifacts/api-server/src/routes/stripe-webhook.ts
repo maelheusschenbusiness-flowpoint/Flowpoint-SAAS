@@ -1306,7 +1306,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const { pool: pgPool } = await import("@workspace/db");
       const c = await pgPool.connect();
       try {
-        await c.query(
+        const updated = await c.query(
           `UPDATE billing_events
            SET metadata = jsonb_set(
              COALESCE(metadata, '{}'::jsonb),
@@ -1316,6 +1316,11 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
            WHERE stripe_event_id = $1`,
           [eventId, status, JSON.stringify(extra ?? {})]
         );
+        if (!updated.rowCount) {
+          logger.warn({ eventId, eventType: event.type, status }, "[Webhook] Event status was not persisted");
+          return;
+        }
+        logger.info({ eventId, eventType: event.type, status }, "[Webhook] Event status persisted");
       } finally { c.release(); }
     } catch (e) {
       logger.warn({ e, eventId, status }, "[Webhook] Failed to record event status (non-fatal)");

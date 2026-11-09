@@ -10,6 +10,7 @@ import {
   createConsolidatedAgencyReport,
   getAgencyPublicBaseUrl,
   hashAgencyPortalToken,
+  parseAgencyMultiSiteSnapshot,
 } from "./agency-reporting.js";
 
 const siteA = {
@@ -31,12 +32,16 @@ describe("Agency Reporting Packs persisted behavior", () => {
 
   it("consolidates only selected organization audits and writes each site's measured facts", async () => {
     const insertValues: unknown[][] = [];
+    const insertStatements: string[] = [];
     const client = {
       query: vi.fn(async (sql: string, values: unknown[] = []) => {
         if (sql.includes("FROM audits")) {
           return { rows: [siteA, siteB].filter(audit => (values[1] as string[]).includes(audit.id)) };
         }
-        if (sql.includes("INSERT INTO reports")) insertValues.push(values);
+        if (sql.includes("INSERT INTO reports")) {
+          insertValues.push(values);
+          insertStatements.push(sql);
+        }
         return { rows: [] };
       }),
       release: vi.fn(),
@@ -55,7 +60,49 @@ describe("Agency Reporting Packs persisted behavior", () => {
     expect(notes[0].notes).toContain("Score SEO mesuré : 72/100");
     expect(insertValues[0][6]).toContain("agency_multi_site");
     expect(insertValues[0][7]).toBe("user-a");
+    expect(insertStatements[0]).toContain("white_label, pdf_ready, meeting_notes_json");
+    expect(insertStatements[0]).toContain("false,true,$6");
     expect(client.query).toHaveBeenCalledWith("COMMIT");
+  });
+
+  it("parses only complete multi-site snapshots and keeps unavailable metrics empty", () => {
+    const valid = parseAgencyMultiSiteSnapshot({
+      source: "agency_multi_site",
+      sites: [
+        { url: "https://a.example", auditDate: "2026-11-01", score: 90, speed: null, issues: "3" },
+        { url: "https://b.example", auditDate: "2026-11-02", score: "70", speed: 60, issues: 8 },
+      ],
+    });
+    expect(valid).toEqual([
+      { url: "https://a.example", auditDate: "2026-11-01", score: 90, speed: null, issues: 3 },
+      { url: "https://b.example", auditDate: "2026-11-02", score: 70, speed: 60, issues: 8 },
+    ]);
+    expect(parseAgencyMultiSiteSnapshot('{"source":"agency_multi_site","sites":[' +
+      '{"url":"https://a.example"},{"url":"https://b.example"}]}')).toHaveLength(2);
+    expect(parseAgencyMultiSiteSnapshot({ source: "other", sites: valid })).toBeNull();
+    expect(parseAgencyMultiSiteSnapshot({ source: "agency_multi_site", sites: [{ url: "https://one.example" }] })).toBeNull();
+    expect(parseAgencyMultiSiteSnapshot({ source: "agency_multi_site", sites: [{ url: "" }, { url: "https://b.example" }] })).toBeNull();
+  });
+
+  it("does not create or count a consolidated report when the organization quota is exceeded", async () => {
+    checkQuotaMock.mockResolvedValue({ allowed: false, used: 20, limit: 20 });
+    let inserted = false;
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM audits")) return { rows: [siteA, siteB] };
+        if (sql.includes("INSERT INTO reports")) inserted = true;
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const database = { connect: vi.fn(async () => client) } as any;
+
+    await expect(createConsolidatedAgencyReport("org-a", "Client A", ["audit-a", "audit-b"], "user-a", database))
+      .rejects.toThrow("REPORT_QUOTA_EXCEEDED");
+
+    expect(inserted).toBe(false);
+    expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(client.release).toHaveBeenCalled();
   });
 
   it("rejects consolidation when any selected audit is not authorized by the org scope", async () => {

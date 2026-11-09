@@ -64,11 +64,11 @@ vi.mock("../lib/logger.js", () => ({
 
 import reportsRouter from "./reports.js";
 
-function makeApp() {
+function makeApp(orgId = "org-a") {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    Object.assign(req, { orgId: "org-a", orgDb: orgDbMock, orgContext: { userId: "user-a", email: "owner@example.test" } });
+    Object.assign(req, { orgId, orgDb: orgDbMock, orgContext: { userId: "user-a", email: "owner@example.test" } });
     next();
   });
   app.use("/api", reportsRouter);
@@ -287,11 +287,14 @@ describe("Agency Reporting Packs", () => {
     expect(checkQuotaMock).not.toHaveBeenCalled();
   });
 
-  it("truthfully reports consolidated reports are not PDF-ready and blocks download", async () => {
+  it("blocks a consolidated report whose saved site snapshot is invalid", async () => {
     const report = {
       id: "report-multi", org_id: "org-a", name: "Client — Rapport multi-sites",
       type: "REPORT", template_key: "executive", pdf_ready: false,
-      generation_metadata_json: JSON.stringify({ source: "agency_multi_site" }),
+      generation_metadata_json: JSON.stringify({
+        source: "agency_multi_site",
+        sites: [{ url: "https://only-one.example", score: 90 }],
+      }),
     };
     orgDbMock.mockResolvedValue({ rows: [report] });
 
@@ -299,6 +302,51 @@ describe("Agency Reporting Packs", () => {
 
     expect(response.status).toBe(409);
     expect(response.body.code).toBe("PDF_NOT_READY");
+    expect(streamReportPdfMock).not.toHaveBeenCalled();
+  });
+
+  it("downloads a valid consolidated snapshot as a multi-site PDF, not a single-audit report", async () => {
+    const sites = [
+      { url: "https://a.example", auditDate: "2026-11-01T10:00:00.000Z", score: 91, speed: 84, issues: 3 },
+      { url: "https://b.example", auditDate: "2026-11-02T10:00:00.000Z", score: 72, speed: 68, issues: 9 },
+    ];
+    const report = {
+      id: "report-multi", org_id: "org-a", name: "Client — Rapport multi-sites",
+      type: "REPORT", template_key: "executive", pdf_ready: false, audit_id: "audit-first",
+      generation_metadata_json: JSON.stringify({ source: "agency_multi_site", sites }),
+      meeting_notes_json: "[]",
+    };
+    orgDbMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM reports WHERE id=$1 AND org_id=$2")) return { rows: [report] };
+      return { rows: [] };
+    });
+    streamReportPdfMock.mockImplementation((res: any) => res.end());
+
+    const response = await request(makeApp()).get("/api/reports/report-multi/download");
+
+    expect(response.status).toBe(200);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("FROM reports WHERE id=$1 AND org_id=$2"),
+      ["report-multi", "org-a"],
+    );
+    expect(orgDbMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("FROM audits WHERE id=$1 AND org_id=$2"),
+      expect.anything(),
+    );
+    expect(streamReportPdfMock.mock.calls[0]?.[1]).toMatchObject({ agencySites: sites });
+    expect(streamReportPdfMock.mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  it("does not allow downloading a report owned by another organization", async () => {
+    orgDbMock.mockResolvedValue({ rows: [] });
+
+    const response = await request(makeApp("org-b")).get("/api/reports/report-from-org-a/download");
+
+    expect(response.status).toBe(404);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1 AND org_id=$2"),
+      ["report-from-org-a", "org-b"],
+    );
     expect(streamReportPdfMock).not.toHaveBeenCalled();
   });
 

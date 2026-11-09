@@ -59,6 +59,8 @@ export default defineConfig({
       "src/routes/agency-portal.test.ts",
       "src/services/agency-reporting.test.ts",
       "src/services/agency-report-scheduler.test.ts",
+      "src/services/pdf-agency-report.test.ts",
+      "src/services/agency-report-mail-capture.test.ts",
       "src/routes/sso-readiness.test.ts",
       "src/services/crm-service.test.ts",
       "src/routes/crm-readiness.test.ts",
