@@ -452,10 +452,15 @@
     <button class="fp-scroll-btn" id="fp-plans-prev" onclick="scrollPlans(-1)" aria-label="Précédent" disabled>‹</button>
     <button class="fp-scroll-btn" id="fp-plans-next" onclick="scrollPlans(1)" aria-label="Suivant">›</button>
   </div>
+  <p class="fp-section-sub fp-plans-flow-hint" id="fp-plans-flow-hint" style="margin:18px auto 0">
+    Cliquez sur un plan pour continuer directement. Besoin d'add-ons ou de crédits IA ?
+    <a href="#fp-addons" style="color:inherit;text-decoration:underline;font-weight:600">Ajoutez-les d'abord au panier</a>
+    , puis choisissez votre plan et cliquez sur « Panier ».
+  </p>
 </section>
 
 <!-- ── Add-ons ── -->
-<section class="fp-addons-section">
+<section class="fp-addons-section" id="fp-addons">
   <h2 class="fp-section-title">Personnalisez avec des add-ons</h2>
   <p class="fp-section-sub">Activez uniquement ce dont vous avez besoin — facturé immédiatement par Stripe, annulable à tout moment.</p>
 
@@ -1973,7 +1978,28 @@
     if (card) card.classList.add('cart-selected');
     updateCartBadge();
     updateWhiteLabel(_cart.plan);
-    showToast('Plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' sélectionné — cliquez sur Panier pour continuer');
+    var planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+
+    /* A-01 — le bouton du plan mène directement au parcours d'inscription /
+       paiement, plan conservé dans fp_cart. On NE navigue PAS (le panier
+       reste, le visiteur continue via « Panier ») quand :
+         - le panier contient déjà des add-ons : le visiteur est en train de
+           composer un panier et doit pouvoir le finaliser lui-même ;
+         - l'abonné actif/trialing ou le flux « depuis le dashboard »
+           (changement de plan = appel /api/billing/upgrade, jamais déclenché
+           sans clic explicite sur Panier). */
+    var addonCount = Object.keys(_cart.addons || {}).length;
+    var isSubscriber = bs && (bs.status === 'active' || bs.status === 'trialing');
+    var fromDash = new URLSearchParams(window.location.search).get('from') === 'dashboard';
+    if (addonCount === 0 && !isSubscriber && !fromDash && typeof window.goToCheckout === 'function') {
+      showToast(_fpPricingText('Plan ' + planName + ' sélectionné — redirection…', 'Plan ' + planName + ' selected — redirecting…'));
+      window.goToCheckout();
+      return;
+    }
+    showToast(_fpPricingText(
+      'Plan ' + planName + ' sélectionné — ajoutez des add-ons ou cliquez sur Panier pour continuer',
+      'Plan ' + planName + ' selected — add add-ons or click Cart to continue'
+    ));
   };
 
   /* ── Quantity helpers ──
@@ -2829,5 +2855,6 @@
   }
 })();
 </script>
+<script src="/pricing-funnel.js" defer></script>
 </body>
 </html>

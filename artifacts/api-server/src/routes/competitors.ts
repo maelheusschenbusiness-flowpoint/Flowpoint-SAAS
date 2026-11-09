@@ -7,6 +7,7 @@ import { requireQuota } from "../middlewares/planGate.js";
 import { fetchCompetitorDomainMetrics } from "../services/dataforseo-service.js";
 import { randomUUID } from "node:crypto";
 import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
+import { normalizeCompetitorUrl } from "../services/competitor-url.js";
 import {
   runFullCompetitorAnalysis,
   getCompetitorAnalysis,
@@ -177,18 +178,6 @@ function toPublic(row: Record<string, unknown>) {
   };
 }
 
-function normalizeCompetitorUrl(value: string): { url: string; domain: string } | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname.includes(".")) return null;
-    return { url: `https://${parsed.hostname.toLowerCase()}`, domain: parsed.hostname.toLowerCase() };
-  } catch {
-    return null;
-  }
-}
-
 async function enrichCompetitor(
   req: OrgReq,
   id: string,
@@ -353,7 +342,12 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
   }
 
   if (body.name         !== undefined) addField("name",          body.name);
-  if (body.url          !== undefined) addField("url",           body.url);
+  if (body.url          !== undefined) {
+    // SSRF : l'URL est analysee ensuite cote serveur ; on n'enregistre que des domaines publics normalises.
+    const target = normalizeCompetitorUrl(String(body.url));
+    if (!target) { res.status(400).json({ error: "A public http(s) domain is required" }); return; }
+    addField("url", target.url);
+  }
   if (body.domainRating !== undefined) addField("domain_rating", Number(body.domainRating));
   if (body.keywords     !== undefined) addField("keywords",      Number(body.keywords));
   if (body.traffic      !== undefined) addField("traffic",       Number(body.traffic));

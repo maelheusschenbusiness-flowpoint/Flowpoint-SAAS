@@ -11,7 +11,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
   <script src="/fp-locale.js?v=20261025"></script>
-  <title>Paiement confirmé — FlowPoint</title>
+  <title>Vérification du paiement — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -59,6 +59,12 @@
     .fp-btn-ghost { font-size: 13px; color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; background: none; border: none; cursor: pointer; padding: 4px; }
     .fp-btn-ghost:hover { color: var(--text-soft); }
 
+    .fp-spinner { width: 44px; height: 44px; margin: 0 auto 20px; border: 3px solid var(--border); border-top-color: var(--blue-light); border-radius: 50%; animation: fp-spin .8s linear infinite; }
+    @keyframes fp-spin { to { transform: rotate(360deg); } }
+    .fp-card[data-state="loading"], .fp-card[data-state="pending"] { border-color: var(--border); box-shadow: 0 8px 40px rgba(0,0,0,.4); }
+    .fp-card[data-state="loading"] h1, .fp-card[data-state="pending"] h1, .fp-card[data-state="none"] h1 { color: var(--text); }
+    .fp-card[data-state="none"], .fp-card[data-state="invalid"], .fp-card[data-state="signin"], .fp-card[data-state="failed"], .fp-card[data-state="error"] { border-color: rgba(245,158,11,.35); box-shadow: 0 8px 40px rgba(0,0,0,.4); }
+    .fp-card[data-state="invalid"] h1, .fp-card[data-state="signin"] h1, .fp-card[data-state="failed"] h1, .fp-card[data-state="error"] h1, .fp-card[data-state="none"] h1 { color: #f59e0b; }
     .fp-counter { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
     @media (max-width: 560px) { .fp-card { padding: 32px 20px 28px; } }
   </style>
@@ -78,11 +84,12 @@
   <span class="fp-logo-name">Flow<span>Point</span></span>
 </a>
 
-<div class="fp-card">
-  <div class="fp-check">🎉</div>
-  <h1>Paiement confirmé !</h1>
+<div class="fp-card" id="fp-card" data-state="loading" role="status" aria-live="polite">
+  <div class="fp-spinner" id="fp-spinner" aria-hidden="true"></div>
+  <div class="fp-check" id="fp-icon" style="display:none"></div>
+  <h1 id="fp-title">Vérification de votre paiement…</h1>
   <div id="fp-type-badge" class="fp-type-badge" style="display:none"></div>
-  <p class="fp-subtitle" id="fp-subtitle">Votre espace FlowPoint est prêt.</p>
+  <p class="fp-subtitle" id="fp-subtitle">Nous confirmons votre paiement auprès du serveur. Cela ne prend que quelques secondes.</p>
 
   <div class="fp-purchase-box" id="fp-purchase-box" style="display:none">
     <div class="fp-purchase-title">Ce que vous avez commandé</div>
@@ -90,13 +97,11 @@
   </div>
 
   <div class="fp-actions" id="fp-actions">
-    <a href="/api/dashboard/" class="fp-btn fp-btn-primary" id="fp-dashboard-btn">
-      Accéder au tableau de bord →
-    </a>
-    <a href="/login.html" class="fp-btn fp-btn-secondary" id="fp-login-btn" style="display:none">
-      Se connecter pour accéder au dashboard
-    </a>
-    <a href="/pricing.html" class="fp-btn-ghost">Retour à l'accueil</a>
+    <a href="/api/dashboard/" class="fp-btn fp-btn-primary" id="fp-dashboard-btn" style="display:none">Accéder au tableau de bord →</a>
+    <a href="/login.html" class="fp-btn fp-btn-secondary" id="fp-login-btn" style="display:none">Se connecter pour accéder au dashboard</a>
+    <button type="button" class="fp-btn fp-btn-primary" id="fp-retry-btn" style="display:none">Réessayer la vérification</button>
+    <a href="/pricing.html" class="fp-btn fp-btn-primary" id="fp-pricing-btn" style="display:none">Voir les tarifs</a>
+    <a href="/pricing.html" class="fp-btn-ghost" id="fp-home-link">Retour à l'accueil</a>
   </div>
 
   <p class="fp-counter" id="fp-counter" style="display:none">
@@ -107,6 +112,14 @@
 <script>
 (function () {
   'use strict';
+
+  /* ── Principe : cette page n'affiche "Paiement confirmé" QUE si le serveur
+     (billing/verify ou auth/checkout-complete, qui interrogent Stripe) répond
+     ok. Tout le reste = un état explicite distinct, jamais un succès présumé. ── */
+
+  function T(fr, en) { return window.fpPublicText ? window.fpPublicText(fr, en) : fr; }
+  function go(url) { if (typeof window.__fpNavigate === 'function') window.__fpNavigate(url); else window.location.href = url; }
+  function $(id) { return document.getElementById(id); }
 
   var PLAN_INFO = {
     standard: { name: 'Plan Standard', price: 29 },
@@ -138,108 +151,265 @@
     aiCreditsPack500k: '+500 000 crédits IA'
   };
   var AI_PACKS = new Set(['aiCreditsPack50k','aiCreditsPack200k','aiCreditsPack500k']);
+  var MAX_ATTEMPTS = 15;   /* 15 x 2 s = 30 s max de polling, puis message "en attente" */
+  var POLL_MS = 2000;
 
-  /* Load cart & session_id */
-  var cart = null;
-  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
   var params = new URLSearchParams(window.location.search);
-  var sessionId = params.get('session_id');
+  var sessionId = params.get('session_id') || '';
+  var sessionValid = /^cs_[A-Za-z0-9_]{6,}$/.test(sessionId);
+  var loggedIn = false;
 
-  /* Determine checkout type */
-  var checkoutType = 'subscription';
-  if (cart) {
-    var addonKeys = Object.keys(cart.addons || {}).filter(function(k){ return cart.addons[k]; });
-    if (!cart.plan && addonKeys.length > 0 && addonKeys.every(function(k){ return AI_PACKS.has(k); })) {
-      checkoutType = 'ai_credits_only';
-    } else if (!cart.plan) {
-      checkoutType = 'addon_only';
-    }
+  function authHeaders() {
+    var h = { 'Content-Type': 'application/json' };
+    try { var t = sessionStorage.getItem('fp_session_token'); if (t) h['Authorization'] = 'Bearer ' + t; } catch (e) {}
+    return h;
   }
 
-  /* Type badge */
-  var typeBadge = document.getElementById('fp-type-badge');
-  if (checkoutType === 'ai_credits_only') {
-    typeBadge.textContent = '⚡ Crédits IA ajoutés';
-    typeBadge.style.display = 'inline-flex';
-  } else if (checkoutType === 'addon_only') {
-    typeBadge.textContent = '✓ Add-on activé';
-    typeBadge.style.display = 'inline-flex';
-  } else {
-    typeBadge.textContent = '✓ Abonnement activé — 14 jours d\'essai offerts';
-    typeBadge.style.display = 'inline-flex';
-  }
-
-  /* Purchase summary */
-  if (cart && (cart.plan || Object.keys(cart.addons || {}).length)) {
-    var boxEl   = document.getElementById('fp-purchase-box');
-    var itemsEl = document.getElementById('fp-purchase-items');
-    var html    = '';
-
-    if (cart.plan && PLAN_INFO[cart.plan]) {
-      var p = PLAN_INFO[cart.plan];
-      var afterTrial = window.fpPublicText
-        ? window.fpPublicText(' après essai', ' after trial')
-        : ' après essai';
-      var planPrice = new Intl.NumberFormat(
-        window.fpResolveLocale ? window.fpResolveLocale() : 'fr-FR',
-        { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }
-      ).format(p.price);
-      html += '<div class="fp-purchase-item">' +
-        '<span class="fp-purchase-item-name">' + p.name + ' — ' + planPrice + window.fpPublicText(' par mois', ' per month') + afterTrial + '</span>' +
-        '<span class="fp-badge fp-badge-trial">' + window.fpPublicText('Essai 14j', '14-day trial') + '</span></div>';
-    }
-    Object.keys(cart.addons || {}).forEach(function (id) {
-      var name = ADDON_NAMES[id] || id;
-      var qty  = cart.addons[id];
-      var isAI = AI_PACKS.has(id);
-      html += '<div class="fp-purchase-item">' +
-        '<span class="fp-purchase-item-name">' + name + (qty > 1 ? ' × ' + qty : '') + '</span>' +
-        '<span class="fp-badge ' + (isAI ? 'fp-badge-one' : 'fp-badge-paid') + '">' + (isAI ? 'Payé maintenant' : 'Actif') + '</span></div>';
+  /* Affiche UN état. Les boutons non listés sont masqués. */
+  function setState(state, o) {
+    var card = $('fp-card');
+    card.setAttribute('data-state', state);
+    $('fp-spinner').style.display = (state === 'loading' || state === 'pending-poll') ? 'block' : 'none';
+    var icon = $('fp-icon');
+    if (o.icon) { icon.textContent = o.icon; icon.style.display = 'flex'; } else { icon.style.display = 'none'; }
+    $('fp-title').textContent = o.title;
+    $('fp-subtitle').textContent = o.body;
+    document.title = o.docTitle || (o.title + ' — FlowPoint');
+    var show = o.buttons || [];
+    ['fp-dashboard-btn','fp-login-btn','fp-retry-btn','fp-pricing-btn'].forEach(function (id) {
+      $(id).style.display = show.indexOf(id) >= 0 ? 'flex' : 'none';
     });
-
-    if (html) { itemsEl.innerHTML = html; boxEl.style.display = 'block'; }
-    try { localStorage.removeItem('fp_cart'); } catch(e) {}
+    $('fp-home-link').style.display = state === 'confirmed' ? 'none' : '';
+    $('fp-type-badge').style.display = 'none';
+    $('fp-purchase-box').style.display = 'none';
+    $('fp-counter').style.display = 'none';
   }
 
-  /* Store session_id for post-login activation */
-  if (sessionId) {
-    try { sessionStorage.setItem('fp_session_id', sessionId); } catch(e) {}
+  function loginHref() {
+    return '/login.html?next=/api/dashboard/' + (sessionValid ? '&session_id=' + encodeURIComponent(sessionId) : '');
   }
 
-  /* Check login status */
-  fetch('/api/me', { credentials: 'include' })
-    .then(function (r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-    .then(function (res) {
-      if (res.ok && res.data && res.data.id) {
-        var counter    = document.getElementById('fp-counter');
-        var countEl    = document.getElementById('fp-count');
-        var subtitleEl = document.getElementById('fp-subtitle');
-        var firstName  = res.data.firstName || res.data.first_name || '';
-        subtitleEl.textContent = window.fpPublicText(
-          'Votre espace FlowPoint est prêt' + (firstName ? ', ' + firstName : '') + ' ! Vous allez être redirigé.',
-          'Your FlowPoint workspace is ready' + (firstName ? ', ' + firstName : '') + '! You will be redirected.'
-        );
-        counter.style.display = 'block';
-        var n = 8;
-        var t = setInterval(function () {
-          n--;
-          countEl.textContent = n;
-          if (n <= 0) { clearInterval(t); window.location.href = '/api/dashboard/'; }
-        }, 1000);
-      } else {
-        var loginBtn = document.getElementById('fp-login-btn');
-        var dashBtn  = document.getElementById('fp-dashboard-btn');
-        loginBtn.style.display = 'flex';
-        dashBtn.style.display  = 'none';
-        /* Pass session_id to login for post-login activation */
-        if (sessionId) loginBtn.href = '/login.html?next=/api/dashboard/&session_id=' + encodeURIComponent(sessionId);
-        else loginBtn.href = '/login.html?next=/api/dashboard/';
-        document.getElementById('fp-subtitle').textContent =
-          'Paiement confirmé ! Connectez-vous pour accéder à votre tableau de bord.';
+  function showNone() {
+    setState('none', {
+      icon: 'ℹ️',
+      title: T('Aucun paiement à confirmer', 'No payment to confirm'),
+      body: T('Cette page confirme un paiement après un passage par Stripe. Aucune session de paiement n\'a été trouvée : aucun achat n\'est en cours.',
+              'This page confirms a payment after a Stripe checkout. No payment session was found: no purchase is in progress.'),
+      buttons: ['fp-pricing-btn']
+    });
+  }
+  function showInvalid() {
+    setState('invalid', {
+      icon: '⚠️',
+      title: T('Session de paiement introuvable ou expirée', 'Payment session not found or expired'),
+      body: T('Aucun achat n\'a été confirmé pour ce lien. Si vous avez bien payé, connectez-vous : votre compte indique l\'état réel de votre abonnement. Sinon, reprenez depuis les tarifs.',
+              'No purchase was confirmed for this link. If you did pay, sign in: your account shows the real state of your subscription. Otherwise, start again from the pricing page.'),
+      buttons: ['fp-pricing-btn', 'fp-login-btn']
+    });
+    $('fp-login-btn').href = '/login.html?next=/api/dashboard/';
+  }
+  function showSignIn() {
+    setState('signin', {
+      icon: '🔐',
+      title: T('Connectez-vous pour vérifier votre achat', 'Sign in to verify your purchase'),
+      body: T('Nous ne pouvons pas confirmer ce paiement tant que vous n\'êtes pas connecté au compte utilisé lors de l\'achat. Rien n\'est confirmé à ce stade.',
+              'We cannot confirm this payment until you are signed in to the account used for the purchase. Nothing is confirmed at this stage.'),
+      buttons: ['fp-login-btn']
+    });
+    $('fp-login-btn').href = loginHref();
+  }
+  function showMismatch() {
+    setState('invalid', {
+      icon: '⚠️',
+      title: T('Ce paiement n\'appartient pas à ce compte', 'This payment does not belong to this account'),
+      body: T('Cette session de paiement ne correspond pas à l\'organisation connectée. Connectez-vous avec le compte utilisé lors de l\'achat.',
+              'This payment session does not match the signed-in organization. Sign in with the account used for the purchase.'),
+      buttons: ['fp-login-btn', 'fp-pricing-btn']
+    });
+    $('fp-login-btn').href = '/login.html?next=/api/dashboard/';
+  }
+  function showFailed() {
+    setState('failed', {
+      icon: '↩',
+      title: T('Paiement non finalisé', 'Payment not completed'),
+      body: T('Stripe n\'indique pas de paiement terminé pour cette session : aucun achat n\'est confirmé et rien n\'a été activé. Vous pouvez reprendre depuis les tarifs.',
+              'Stripe does not report a completed payment for this session: no purchase is confirmed and nothing was activated. You can start again from the pricing page.'),
+      buttons: ['fp-pricing-btn']
+    });
+  }
+  function showPending() {
+    setState('pending', {
+      icon: '⏳',
+      title: T('Confirmation en attente', 'Confirmation pending'),
+      body: T('Le serveur n\'a pas encore confirmé ce paiement. Ce n\'est pas un échec, mais rien n\'est confirmé pour le moment. Réessayez dans quelques instants.',
+              'The server has not confirmed this payment yet. This is not a failure, but nothing is confirmed for now. Try again in a few moments.'),
+      buttons: ['fp-retry-btn']
+    });
+  }
+  function showError() {
+    setState('error', {
+      icon: '!',
+      title: T('Vérification impossible pour le moment', 'Verification unavailable right now'),
+      body: T('Une erreur est survenue (serveur ou connexion) : votre paiement n\'a pas pu être vérifié. Ce n\'est pas une confirmation. Réessayez ; si le problème persiste, consultez votre facturation.',
+              'An error occurred (server or connection): your payment could not be verified. This is not a confirmation. Try again; if it persists, check your billing.'),
+      buttons: ['fp-retry-btn']
+    });
+  }
+  function showLoading(attempt) {
+    setState('loading', {
+      title: T('Vérification de votre paiement…', 'Verifying your payment…'),
+      body: attempt > 0
+        ? T('Confirmation en cours auprès du serveur (tentative ' + (attempt + 1) + ')…', 'Confirming with the server (attempt ' + (attempt + 1) + ')…')
+        : T('Nous confirmons votre paiement auprès du serveur. Cela ne prend que quelques secondes.', 'We are confirming your payment with the server. This only takes a few seconds.'),
+      docTitle: T('Vérification du paiement — FlowPoint', 'Verifying payment — FlowPoint')
+    });
+  }
+
+  /* ── Seul chemin vers l'écran de succès ── */
+  function showConfirmed(kind, data) {
+    data = data || {};
+    var cart = null;
+    try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch (e) {}
+    var ct = (data.checkoutType || '').toString();
+    var isCredits = ct === 'ai_credits_only' || ct === 'ai_credits';
+    var isAddon = ct === 'addon_only';
+    var sub;
+    if (kind === 'email') {
+      sub = data.emailFailed
+        ? T('Votre paiement est confirmé et votre compte a été créé, mais l\'e-mail de connexion n\'a pas pu être envoyé. Connectez-vous depuis la page de connexion.',
+            'Your payment is confirmed and your account was created, but the sign-in email could not be sent. Sign in from the login page.')
+        : T('Votre paiement est confirmé. Un lien de connexion vient de vous être envoyé par e-mail : ouvrez-le pour accéder à votre tableau de bord.',
+            'Your payment is confirmed. A sign-in link has just been emailed to you: open it to reach your dashboard.');
+    } else {
+      sub = T('Votre espace FlowPoint est prêt.', 'Your FlowPoint workspace is ready.');
+    }
+    setState('confirmed', {
+      icon: '🎉',
+      title: T('Paiement confirmé !', 'Payment confirmed!'),
+      body: sub,
+      docTitle: T('Paiement confirmé — FlowPoint', 'Payment confirmed — FlowPoint'),
+      buttons: kind === 'email' ? ['fp-login-btn'] : ['fp-dashboard-btn']
+    });
+    $('fp-login-btn').href = '/login.html?next=/api/dashboard/';
+
+    var badge = $('fp-type-badge');
+    if (isCredits) badge.textContent = T('⚡ Crédits IA ajoutés', '⚡ AI credits added');
+    else if (isAddon) badge.textContent = T('✓ Add-on activé', '✓ Add-on activated');
+    else badge.textContent = T('✓ Abonnement activé — 14 jours d\'essai offerts', '✓ Subscription activated — 14-day trial included');
+    badge.style.display = 'inline-flex';
+
+    /* Récapitulatif : uniquement après confirmation serveur */
+    if (cart && (cart.plan || Object.keys(cart.addons || {}).length)) {
+      var html = '';
+      if (cart.plan && PLAN_INFO[cart.plan]) {
+        var p = PLAN_INFO[cart.plan];
+        var planPrice = new Intl.NumberFormat(
+          window.fpResolveLocale ? window.fpResolveLocale() : 'fr-FR',
+          { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }
+        ).format(p.price);
+        html += '<div class="fp-purchase-item"><span class="fp-purchase-item-name">' + p.name + ' — ' + planPrice +
+          T(' par mois', ' per month') + T(' après essai', ' after trial') + '</span>' +
+          '<span class="fp-badge fp-badge-trial">' + T('Essai 14j', '14-day trial') + '</span></div>';
       }
-    })
-    .catch(function () { /* show default buttons */ });
+      Object.keys(cart.addons || {}).forEach(function (id) {
+        var name = ADDON_NAMES[id] || id;
+        var qty = cart.addons[id];
+        var isAI = AI_PACKS.has(id);
+        html += '<div class="fp-purchase-item"><span class="fp-purchase-item-name">' + name.replace(/</g, '&lt;') + (qty > 1 ? ' × ' + Number(qty) : '') + '</span>' +
+          '<span class="fp-badge ' + (isAI ? 'fp-badge-one' : 'fp-badge-paid') + '">' + (isAI ? T('Payé maintenant', 'Paid now') : T('Actif', 'Active')) + '</span></div>';
+      });
+      if (html) { $('fp-purchase-items').innerHTML = html; $('fp-purchase-box').style.display = 'block'; }
+    }
+    try { localStorage.removeItem('fp_cart'); } catch (e) {}
 
+    if (kind === 'session') {
+      var n = 8;
+      $('fp-counter').style.display = 'block';
+      $('fp-count').textContent = n;
+      var t = setInterval(function () {
+        n--;
+        $('fp-count').textContent = n;
+        if (n <= 0) { clearInterval(t); go('/api/dashboard/'); }
+      }, 1000);
+    }
+  }
+
+  function readJson(r) {
+    return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d || {} }; });
+  }
+
+  /* Sonde un endpoint de statut jusqu'à une réponse définitive (max MAX_ATTEMPTS). */
+  function probe(url, opts, attempt, interpret) {
+    return fetch(url, opts).then(readJson).then(function (res) {
+      var verdict = interpret(res);
+      if (verdict === 'retry') {
+        if (attempt + 1 < MAX_ATTEMPTS) {
+          showLoading(attempt + 1);
+          return new Promise(function (ok) { setTimeout(ok, POLL_MS); })
+            .then(function () { return probe(url, opts, attempt + 1, interpret); });
+        }
+        showPending();
+      }
+    }).catch(function () {
+      if (attempt + 1 < MAX_ATTEMPTS) {
+        showLoading(attempt + 1);
+        return new Promise(function (ok) { setTimeout(ok, POLL_MS); })
+          .then(function () { return probe(url, opts, attempt + 1, interpret); });
+      }
+      showError();
+    });
+  }
+
+  function verifyAsUser() {
+    return probe('/api/billing/verify?session_id=' + encodeURIComponent(sessionId),
+      { headers: authHeaders(), credentials: 'include' }, 0, function (res) {
+        var d = res.data, st = (d.status || '').toLowerCase();
+        if (res.status === 401) { showSignIn(); return 'done'; }
+        if (res.status === 403) { showMismatch(); return 'done'; }
+        if (st === 'expired' || st === 'canceled' || st === 'cancelled' || res.status === 404 || res.status === 410) { showInvalid(); return 'done'; }
+        if (res.status === 202 || d.pending || st === 'processing') return 'retry';
+        if (res.status === 402) { showFailed(); return 'done'; }
+        if (res.status === 200 && d.ok === true) { showConfirmed('session', d); return 'done'; }
+        if (res.status === 400 || res.status === 422) { showInvalid(); return 'done'; }
+        showError(); return 'done';
+      });
+  }
+
+  function verifyAnonymous() {
+    return probe('/api/auth/checkout-complete?session_id=' + encodeURIComponent(sessionId),
+      { credentials: 'include' }, 0, function (res) {
+        var d = res.data;
+        if (res.status === 200 && d.ok === true) { showConfirmed('email', d); return 'done'; }
+        if (res.status === 202 || res.status === 402) return 'retry';
+        if (res.status === 409) { showSignIn(); return 'done'; }
+        if (res.status === 400 || res.status === 404 || res.status === 410) { showInvalid(); return 'done'; }
+        showError(); return 'done';
+      });
+  }
+
+  function run() {
+    if (!sessionId) { showNone(); return; }
+    if (!sessionValid) { showInvalid(); return; }
+    try { sessionStorage.setItem('fp_session_id', sessionId); } catch (e) {}
+    showLoading(0);
+    fetch('/api/auth/session-restore', { method: 'POST', headers: authHeaders(), credentials: 'include' })
+      .then(function (r) {
+        if (!r.ok) return false;
+        return r.json().then(function (d) {
+          if (!d || !d.token) return false;
+          try { sessionStorage.setItem('fp_session_token', d.token); } catch (e) {}
+          return true;
+        });
+      })
+      .catch(function () { return false; })
+      .then(function (restored) {
+        loggedIn = restored;
+        return restored ? verifyAsUser() : verifyAnonymous();
+      });
+  }
+
+  $('fp-retry-btn').addEventListener('click', run);
+  run();
 })();
 </script>
 </body>

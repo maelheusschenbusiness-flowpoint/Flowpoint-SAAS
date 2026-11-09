@@ -106,7 +106,11 @@ router.post("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Worksp
       res.status(401).json({ ok: false, error: "An authenticated organization is required." });
       return;
     }
-    const userId = req.userId ?? "anonymous";
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ ok: false, error: "An authenticated user is required." });
+      return;
+    }
     if (scheduleWeeklyReport) {
       try {
         if (!(await hasAddonEntitlementForOrg(orgId, "aiWorkflows"))) {

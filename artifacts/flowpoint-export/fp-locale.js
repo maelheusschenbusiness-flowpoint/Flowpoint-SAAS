@@ -116,6 +116,11 @@
     "Rétention 365 jours": "365-day retention",
     "Démarrer Ultra": "Start Ultra",
     "Personnalisez avec des add-ons": "Customize with add-ons",
+    "Cliquez sur un plan pour continuer directement. Besoin d'add-ons ou de crédits IA ?": "Click a plan to continue right away. Need add-ons or AI credits?",
+    "Ajoutez-les d'abord au panier": "Add them to your cart first",
+    ", puis choisissez votre plan et cliquez sur « Panier ».": ", then choose your plan and click \"Cart\".",
+    "Continuer vers le paiement →": "Continue to payment →",
+    "Votre session d'inscription a expiré. Veuillez renseigner à nouveau le formulaire pour continuer.": "Your signup session has expired. Please fill in the form again to continue.",
     "Activez uniquement ce dont vous avez besoin — facturé immédiatement par Stripe, annulable à tout moment.": "Activate only what you need — billed immediately via Stripe, cancel anytime.",
     "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.": "Real GBP performance, configurable goals, and alerts for drops in local actions.",
     "Priorisation des informations manquantes sur vos fiches GBP": "Prioritize missing information on your GBP profiles",
@@ -226,6 +231,11 @@
     "© 2026 FlowPoint — Tous droits réservés": "© 2026 FlowPoint — All rights reserved",
     "Mentions légales": "Legal notice",
     "Confidentialité": "Privacy",
+    "Réessayer la vérification": "Retry verification",
+    "Voir les tarifs": "View pricing",
+    "Réessayer": "Try again",
+    "Vérification de votre paiement…": "Verifying your payment…",
+    "Nous confirmons votre paiement auprès du serveur. Cela ne prend que quelques secondes.": "We are confirming your payment with the server. This only takes a few seconds.",
     "Paiement annulé — FlowPoint": "Payment canceled — FlowPoint",
     "Paiement annulé": "Payment canceled",
     "Vous avez annulé la procédure de paiement.": "You canceled the payment process.",
@@ -544,6 +554,36 @@
   window.fpResolveLanguage = resolveLanguage;
   window.fpResolveLocale = function (language) {
     return LOCALE_BY_LANGUAGE[resolveLanguage(language)] || 'en-US';
+  };
+  // Textes de l'etat d'acces (lecture seule / grace de paiement). FR et EN ;
+  // toute autre langue retombe sur l'anglais (repli) — jamais de cle brute.
+  var ACCESS_TEXT = {
+    fr: {
+      readOnlyTitle: 'Espace en lecture seule',
+      readOnlyBody: 'Votre abonnement n\u2019est plus actif : vos donn\u00e9es sont conserv\u00e9es et consultables, mais les modifications, g\u00e9n\u00e9rations et actions premium sont d\u00e9sactiv\u00e9es.',
+      readOnlyPastDue: 'Le paiement de votre abonnement a \u00e9chou\u00e9 et le d\u00e9lai de gr\u00e2ce est \u00e9coul\u00e9. Vos donn\u00e9es sont conserv\u00e9es en lecture seule.',
+      graceTitle: 'Paiement \u00e0 r\u00e9gulariser',
+      graceBody: 'Le dernier paiement a \u00e9chou\u00e9. Votre acc\u00e8s reste complet jusqu\u2019au {date}, puis l\u2019espace passera en lecture seule.',
+      cancelTitle: 'Abonnement annul\u00e9',
+      cancelBody: 'Votre acc\u00e8s reste complet jusqu\u2019au {date}, puis l\u2019espace passera en lecture seule (donn\u00e9es conserv\u00e9es).',
+      action: 'G\u00e9rer mon abonnement'
+    },
+    en: {
+      readOnlyTitle: 'Workspace is read-only',
+      readOnlyBody: 'Your subscription is no longer active: your data is kept and can be viewed, but edits, generation and premium actions are disabled.',
+      readOnlyPastDue: 'Your subscription payment failed and the grace period has ended. Your data is kept in read-only mode.',
+      graceTitle: 'Payment needs attention',
+      graceBody: 'The last payment failed. You keep full access until {date}, after which the workspace becomes read-only.',
+      cancelTitle: 'Subscription canceled',
+      cancelBody: 'You keep full access until {date}, after which the workspace becomes read-only (your data is kept).',
+      action: 'Manage my subscription'
+    }
+  };
+  window.fpAccessText = function (key, vars) {
+    var lang = resolveLanguage() === 'fr' ? 'fr' : 'en';
+    var text = (ACCESS_TEXT[lang] && ACCESS_TEXT[lang][key]) || ACCESS_TEXT.en[key] || '';
+    if (vars) text = text.replace(/\{(\w+)\}/g, function (_, k) { return vars[k] !== undefined ? vars[k] : '{' + k + '}'; });
+    return text;
   };
   window.fpPublicText = function (french, english) {
     var language = resolveLanguage();

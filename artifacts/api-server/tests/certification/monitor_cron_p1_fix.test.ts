@@ -12,7 +12,7 @@
  *  T7  LEFT JOIN resolves correct org_email for alert rules
  */
 
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { readFileSync } from "fs";
 import { pool } from "@workspace/db";
 import { evaluateAlertRulesForAudit } from "../../src/services/monitor-cron.js";
@@ -26,7 +26,9 @@ async function ensureOrg(orgId: string, ownerEmail: string | null): Promise<void
     `INSERT INTO organizations (id, name, owner_email, plan, created_at)
      VALUES ($1, $2, $3, 'pro', NOW())
      ON CONFLICT (id) DO NOTHING`,
-    [orgId, `MC Test Org ${RUN}`, ownerEmail]
+    // owner_email est desormais NOT NULL : « pas d adresse » = chaine vide
+    // (monitor-cron fait `rule.org_email || null`).
+    [orgId, `MC Test Org ${RUN}`, ownerEmail ?? ""]
   );
 }
 
@@ -56,13 +58,20 @@ console.log("\n── Bug #238: monitor-cron store.me removal ──────
 // ── T1/T1b: static check — store.me no longer in monitor-cron.ts ─────────────
 const cronPath = new URL("../../src/services/monitor-cron.ts", import.meta.url).pathname;
 const cronSrc = readFileSync(cronPath, "utf8");
-const hasStoreMeImport = cronSrc.includes("from \"./store.js\"") || cronSrc.includes("from './store.js'");
 const hasStoreMeUsage  = /store\.me/.test(cronSrc);
-check("T1  store.me import removed from monitor-cron.ts",  !hasStoreMeImport);
+// monitor-cron.ts importe de nouveau `store`, mais UNIQUEMENT pour diffuser un
+// evenement SSE limite a l'organisation (`store.broadcast(..., orgId)`). Le bug #238
+// etait la lecture du singleton `store.me` ; l'import seul n'en est plus le symptome.
+const storeUses = cronSrc.replace(/^import .*$/gm, "").match(/\bstore\.[A-Za-z_]+/g) ?? [];
+const onlyScopedBroadcast =
+  storeUses.every((u) => u === "store.broadcast") &&
+  /store\.broadcast\([^;]*,\s*orgId\s*\)/.test(cronSrc);
+check("T1  store n'est utilise que pour store.broadcast(..., orgId) (pas de singleton)", onlyScopedBroadcast);
 check("T1b store.me usage removed from monitor-cron.ts",   !hasStoreMeUsage);
 
 // ── T2: function does not throw when owner_email is NULL ─────────────────────
-const ORG_NULL = `mc-null-${RUN}`;
+// organizations.id est un UUID : un identifiant texte plantait avec 22P02.
+const ORG_NULL = randomUUID();
 await ensureOrg(ORG_NULL, null);
 await insertAlertRule(ORG_NULL, { threshold: 90, operator: "lt" });
 
@@ -76,7 +85,7 @@ try {
 check("T2  evaluateAlertRulesForAudit does not throw when org_email is NULL", !threw2);
 
 // ── T3: function does not throw when owner_email is set ──────────────────────
-const ORG_REAL = `mc-real-${RUN}`;
+const ORG_REAL = randomUUID();
 await ensureOrg(ORG_REAL, `mc-owner-${RUN}@test.flowpoint`);
 await insertAlertRule(ORG_REAL, { threshold: 90, operator: "lt" });
 
@@ -89,8 +98,8 @@ try {
 check("T3  evaluateAlertRulesForAudit does not throw when org_email is set", !threw3);
 
 // ── T4: cross-tenant isolation ────────────────────────────────────────────────
-const ORG_X = `mc-x-${RUN}`;
-const ORG_Y = `mc-y-${RUN}`;
+const ORG_X = randomUUID();
+const ORG_Y = randomUUID();
 await ensureOrg(ORG_X, `mc-x-${RUN}@test.flowpoint`);
 await ensureOrg(ORG_Y, `mc-y-${RUN}@test.flowpoint`);
 // Org X has a rule that fires when score > 30
@@ -125,7 +134,7 @@ check("T6  Alert event written even when org_email is NULL (rule still fires)",
 const joinRow = await pool.query(
   `SELECT o.owner_email AS org_email
    FROM alert_rules ar
-   LEFT JOIN organizations o ON ar.org_id = o.id
+   LEFT JOIN organizations o ON ar.org_id::text = o.id::text
    WHERE ar.org_id = $1 AND ar.enabled = true LIMIT 1`,
   [ORG_REAL]
 );
@@ -137,7 +146,7 @@ check("T7  LEFT JOIN resolves correct org_email for alert rules",
 const cleanOrgs = [ORG_NULL, ORG_REAL, ORG_X, ORG_Y];
 await pool.query(`DELETE FROM alert_events WHERE org_id = ANY($1::text[])`, [cleanOrgs]);
 await pool.query(`DELETE FROM alert_rules  WHERE org_id = ANY($1::text[])`, [cleanOrgs]);
-await pool.query(`DELETE FROM organizations WHERE id = ANY($1::text[])`,    [cleanOrgs]);
+await pool.query(`DELETE FROM organizations WHERE id::text = ANY($1::text[])`,    [cleanOrgs]);
 
 // ── summary ───────────────────────────────────────────────────────────────────
 const passed = results.filter(r => r.pass).length;

@@ -13,6 +13,7 @@ import { logger } from "../lib/logger.js";
 import { getOrgAddons } from "./addons-service.js";
 import { selectGbpLocations } from "./gbp-location-quota.js";
 import { GBP_PERFORMANCE_METRICS } from "./gbp-performance-addon.js";
+import { resolveJwtSecret } from "../lib/security-config.js";
 
 const GOOGLE_AUTH_BASE  = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token";
@@ -41,13 +42,14 @@ export const GOOGLE_INTEGRATION_SCOPE_SET = new Set<string>(GOOGLE_INTEGRATION_S
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
-const ENC_KEY = createHash("sha256")
-  .update(process.env["JWT_SECRET"] ?? "dev-key-please-change")
-  .digest();
+// C-15 : cle derivee paresseusement, sans repli code en dur hors tests.
+function encKey(): Buffer {
+  return createHash("sha256").update(resolveJwtSecret()).digest();
+}
 
 export function encryptToken(token: string): string {
   const iv     = randomBytes(16);
-  const cipher = createCipheriv("aes-256-gcm", ENC_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", encKey(), iv);
   const enc    = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
   const tag    = cipher.getAuthTag();
   return [iv.toString("hex"), enc.toString("hex"), tag.toString("hex")].join(":");
@@ -58,7 +60,7 @@ export function decryptToken(encrypted: string): string {
   const iv       = Buffer.from(ivHex, "hex");
   const encBuf   = Buffer.from(encHex, "hex");
   const tag      = Buffer.from(tagHex, "hex");
-  const decipher = createDecipheriv("aes-256-gcm", ENC_KEY, iv);
+  const decipher = createDecipheriv("aes-256-gcm", encKey(), iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(encBuf), decipher.final()]).toString("utf8");
 }
@@ -345,9 +347,17 @@ export async function publishGBPPost(
     }};
     offer?: { couponCode?: string; redeemOnlineUrl?: string; termsConditions?: string };
   }
-): Promise<{ ok: boolean; error?: string; postName?: string }> {
+): Promise<{ ok: boolean; error?: string; postName?: string; code?: string }> {
+  let token: string;
   try {
-    const token = await getValidToken(orgId);
+    token = await getValidToken(orgId);
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    // Jamais connecté / jeton expiré sans refresh : action utilisateur requise (reconnecter Google).
+    if (/not connected|no refresh token/i.test(msg)) return { ok: false, error: msg, code: "GOOGLE_NOT_CONNECTED" };
+    return { ok: false, error: msg, code: "GOOGLE_AUTH_FAILED" };
+  }
+  try {
     const res = await fetch(
       `https://mybusiness.googleapis.com/v4/${locationName}/localPosts`,
       {
@@ -357,11 +367,21 @@ export async function publishGBPPost(
         signal:  AbortSignal.timeout(12_000),
       }
     );
-    if (!res.ok) return { ok: false, error: `GBP API ${res.status}` };
+    if (!res.ok) {
+      const code = res.status === 401 ? "GOOGLE_AUTH_FAILED"
+        : res.status === 403 ? "GBP_API_FORBIDDEN"
+        : res.status === 429 ? "GBP_API_RATE_LIMITED"
+        : res.status >= 500 ? "GBP_API_UNAVAILABLE"
+        : "GBP_API_REJECTED";
+      return { ok: false, error: `GBP API ${res.status}`, code };
+    }
     const body = await res.json() as { name?: string };
+    // Succès réel = Google a renvoyé l'identifiant de la ressource créée.
+    if (!body.name) return { ok: false, error: "GBP API: réponse sans identifiant de post", code: "GBP_API_REJECTED" };
     return { ok: true, postName: body.name };
   } catch (e: any) {
-    return { ok: false, error: e.message };
+    // Réseau / délai dépassé / réponse illisible.
+    return { ok: false, error: e.message, code: "GBP_API_UNAVAILABLE" };
   }
 }
 

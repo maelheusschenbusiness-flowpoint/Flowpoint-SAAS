@@ -3,12 +3,14 @@ import { requireOrgId } from "../lib/require-org-id.js";
 import { Router, Request, Response } from "express";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { pool, withOrgDb } from "@workspace/db";
-import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../middlewares/validateMonitorUrl.js";
+import { validateMonitorUrl, isPrivateHost } from "../middlewares/validateMonitorUrl.js";
+import { probeUrlPinned } from "../services/url-fetcher.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { isQaFixturesEnabled } from "./qa-fixtures.js";
 import { checkQuota } from "../services/billing-service.js";
+import { keysEqual } from "../lib/auth-token.js";
 
 const router = Router();
 const monitorCreateRateLimit = createRateLimit("reportsPerHour");
@@ -70,60 +72,33 @@ interface CheckResult {
 }
 
 async function performCheck(url: string): Promise<CheckResult> {
+  // Verification de forme rapide (protocole, hote litteral prive) avant tout reseau.
   let parsed: URL | null = null;
   try { parsed = new URL(url); } catch { /* ignore */ }
 
   if (
     !parsed ||
     (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-    isPrivateHost(parsed.hostname) ||
-    (await checkDnsResolution(parsed.hostname)) !== null
+    isPrivateHost(parsed.hostname)
   ) {
     return { ok: false, statusCode: 0, latencyMs: 0, error: "URL blocked (private host or invalid protocol)" };
   }
 
-  const start    = Date.now();
-  const ctrl     = new AbortController();
-  const timer    = setTimeout(() => ctrl.abort(), 8_000);
-  const MAX_HOPS = 5;
+  // C-16 : la resolution DNS, la validation des IP et la connexion se font en
+  // UNE seule etape (DNS epingle, a chaque saut de redirection). L'ancien code
+  // validait le DNS puis appelait fetch(), qui re-resolvait le nom : un
+  // rebinding DNS pouvait faire connecter une IP interne apres la validation.
+  const start  = Date.now();
+  const probe  = await probeUrlPinned(url, { timeoutMs: 8_000, method: "HEAD" });
+  const latencyMs = Date.now() - start;
 
-  let currentUrl = url;
-  let ok         = false;
-  let statusCode = 0;
-  let error: string | null = null;
-
-  try {
-    for (let hop = 0; hop <= MAX_HOPS; hop++) {
-      const resp = await fetch(currentUrl, {
-        method: "HEAD",
-        signal: ctrl.signal,
-        redirect: "manual",
-      });
-
-      if (resp.status >= 300 && resp.status < 400) {
-        const location = resp.headers.get("location");
-        if (!location) break;
-        let target: URL;
-        try { target = new URL(location, currentUrl); } catch { break; }
-        if (target.protocol !== "http:" && target.protocol !== "https:") break;
-        if (isPrivateHost(target.hostname)) break;
-        if ((await checkDnsResolution(target.hostname)) !== null) break;
-        currentUrl = target.toString();
-        continue;
-      }
-
-      statusCode = resp.status;
-      ok = resp.ok || resp.status < 400;
-      break;
-    }
-  } catch (e) {
-    const msg = (e as Error).message ?? String(e);
-    error = msg.toLowerCase().includes("abort") ? "Timeout after 8s" : msg;
-  } finally {
-    clearTimeout(timer);
+  if (probe.blocked) {
+    return { ok: false, statusCode: 0, latencyMs, error: "URL blocked (private host or invalid protocol)" };
   }
-
-  return { ok, statusCode, latencyMs: Date.now() - start, error };
+  if (!probe.reached) {
+    return { ok: false, statusCode: 0, latencyMs, error: probe.error };
+  }
+  return { ok: probe.statusCode < 400, statusCode: probe.statusCode, latencyMs, error: null };
 }
 
 // ── Save check + handle incident transitions ───────────────────────────────────
@@ -295,6 +270,14 @@ async function saveCheckResult(
           userId: "system",
           userName: "Système",
         }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
+
+        // D-07 : declencheur automatique reel (webhooks abonnes + workflows actives).
+        import("../services/automation-triggers.js")
+          .then(m => m.emitAutomationEvent(orgId, isDown ? "monitor.down" : "monitor.up", {
+            monitorId, name: String(mon.name), url: String(mon.url),
+            statusCode: result.statusCode ?? null, downDurationMin: downDurationMin ?? 0,
+          }))
+          .catch(err => logger.warn({ err, monitorId }, "[monitors] automation trigger failed (non-fatal)"));
 
         // Resolve recipient using the 3-tier priority chain:
         //   1. per-monitor alertEmail (stored on the monitor row)
@@ -812,7 +795,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       if (typeof apiKeyHeader !== "string") {
         res.status(403).json({ error: "Not authorized" }); return;
       }
-      if (!serviceSecret || apiKeyHeader !== serviceSecret) {
+      if (!serviceSecret || !keysEqual(apiKeyHeader, serviceSecret)) {
         res.status(401).json({ error: "Unauthorized" }); return;
       }
       // Both gates passed — use unscoped pool to find the monitor across any org.

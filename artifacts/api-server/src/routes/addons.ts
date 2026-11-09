@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuotaLimits, ADDON_DEFINITIONS } from "../services/addons-service.js";
+import { activateAddon, deactivateAddon, getOrgAddons, getQuotaLimits, ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
@@ -237,8 +237,23 @@ router.post("/addons/ai-credits/buy", async (req: Request, res: Response) => {
   if (!pack || !["50k", "200k", "500k"].includes(pack)) {
     res.status(400).json({ error: "Pack must be 50k, 200k or 500k" }); return;
   }
-  const credits = await addExtraAICredits(pack as "50k" | "200k" | "500k");
-  res.json({ ok: true, creditsAdded: credits, pack });
+  // AUCUN credit sans paiement reussi. Les credits sont inscrits UNIQUEMENT par le webhook Stripe
+  // (checkout.session.completed / payment_intent.succeeded, metadata.type=ai_credits) dans
+  // ai_credit_purchases, de facon idempotente sur l'identifiant du paiement. Cette route historique
+  // repondait `ok:true, creditsAdded` sans rien payer ni crediter : elle renvoie desormais un etat
+  // explicite et pointe vers le flux de paiement existant.
+  res.status(402).json({
+    ok: false,
+    code: "PAYMENT_REQUIRED",
+    error: "Les crédits IA s'achètent par paiement : aucun crédit n'est ajouté sans paiement réussi.",
+    pack,
+    creditsAdded: 0,
+    checkout: {
+      inApp: "/api/billing/ai-credits-intent",
+      hosted: "/api/billing/checkout-ai-credits",
+      pack: `ai_credits_${pack}`,
+    },
+  });
 });
 
 export default router;

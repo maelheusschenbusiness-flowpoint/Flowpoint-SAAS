@@ -105,10 +105,21 @@ router.post("/sso/providers", requireAdmin, async (req, res) => {
 });
 
 router.patch("/sso/providers/:id", requireAdmin, async (req, res) => {
-  if ((req.body as { enabled?: unknown }).enabled === true) {
+  const body = (req.body ?? {}) as { enabled?: unknown; enforce_sso?: unknown; auto_provision?: unknown };
+  if (body.enabled === true) {
     res.status(501).json({
       error: "SSO_NOT_IMPLEMENTED",
       message: "Un fournisseur SSO ne peut pas être activé avant la disponibilité du flux de connexion.",
+    });
+    return;
+  }
+  // C-11 : ces options étaient enregistrées sans être appliquées nulle part ;
+  // les accepter laissait croire à une protection (SSO obligatoire, création
+  // automatique des comptes) qui n'existe pas encore.
+  if (body.enforce_sso === true || body.auto_provision === true) {
+    res.status(501).json({
+      error: "SSO_NOT_IMPLEMENTED",
+      message: "L'obligation de SSO et le provisionnement automatique ne sont pas appliqués : ils ne peuvent pas être activés avant la disponibilité du flux de connexion.",
     });
     return;
   }
@@ -128,7 +139,7 @@ router.delete("/sso/providers/:id", requireAdmin, async (req, res) => {
 router.get("/sso/auth-config", requireAdmin, async (req, res) => {
   try {
     const config = await getOrgAuthConfig(org(req));
-    res.json({ config });
+    res.json({ config, applied: false, status: "not_implemented" });
   } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
@@ -176,15 +187,25 @@ router.post("/sso/sessions/:id/invalidate", requireAdmin, async (req, res) => {
 // NOTE: SAML ACS, init, metadata, capabilities are on publicSsoRouter (no auth needed).
 // See publicSsoRouter export above — registered BEFORE requireAuth in routes/index.ts.
 
+// C-11 : état explicite. Aucune politique SSO n'est appliquée à la connexion
+// tant que le flux SSO n'existe pas ; on ne renvoie donc jamais `enforceSSO: true`.
+const NON_APPLIQUEE = {
+  enforceSSO: false,
+  applied: false,
+  status: "not_implemented",
+  message: "Les politiques SSO enregistrées ne sont pas appliquées à la connexion.",
+} as const;
+
 // ── GET /sso/policies ─────────────────────────────────────────────────────────
 router.get("/sso/policies", requireAdmin, async (req, res) => {
   try {
     const data = await getSSODashboard(org(req));
-    res.json((data as { policies?: unknown }).policies ?? {
+    const stockees = ((data as { policies?: Record<string, unknown> }).policies ?? {
       requireMFA: false, allowLocalLogin: true, sessionTimeout: 480,
-      ipWhitelist: "", enforceSSO: false,
+      ipWhitelist: "",
     });
-  } catch { res.json({ requireMFA: false, allowLocalLogin: true, sessionTimeout: 480, ipWhitelist: "", enforceSSO: false }); }
+    res.json({ ...stockees, ...NON_APPLIQUEE });
+  } catch { res.json({ requireMFA: false, allowLocalLogin: true, sessionTimeout: 480, ipWhitelist: "", ...NON_APPLIQUEE }); }
 });
 
 router.patch("/sso/policies", requireAdmin, async (req, res) => {
