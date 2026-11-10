@@ -113,6 +113,17 @@ describe("campagne UTM (Instagram) : lue de l'URL, gardee en premiere touche, en
     });
   });
 
+  it("utm_content et utm_term (etape Smartlead) sont lus, ranges et envoyes", () => {
+    const { envois, local } = executer({
+      search: "?utm_source=smartlead&utm_medium=email&utm_campaign=clients_fr_be&utm_content=step1&utm_term=devis",
+    });
+    expect(envois[0]).toMatchObject({
+      utm_source: "smartlead", utm_medium: "email", utm_campaign: "clients_fr_be",
+      utm_content: "step1", utm_term: "devis",
+    });
+    expect(JSON.parse(local.get("fp_funnel_campaign")!)).toMatchObject({ utm_content: "step1", utm_term: "devis" });
+  });
+
   it("premiere touche : la campagne deja rangee l'emporte sur l'URL", () => {
     const { envois } = executer({
       search: "?utm_source=google&utm_campaign=autre",
@@ -136,7 +147,7 @@ describe("campagne UTM (Instagram) : lue de l'URL, gardee en premiere touche, en
 
   it("compatibilite : sans utm, le corps envoye n'a aucune cle utm", () => {
     const { envois } = executer({});
-    for (const cle of ["utm_source", "utm_medium", "utm_campaign"]) expect(envois[0]).not.toHaveProperty(cle);
+    for (const cle of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) expect(envois[0]).not.toHaveProperty(cle);
   });
 
   it("l'inscription (pre-register) et le checkout recoivent la campagne avec visiteurId", () => {

@@ -21,6 +21,7 @@
 // only records them after analytics consent.
 export const CARRIED_PARAMS = [
   "fp_ref", "ref", "plan", "fp_lid", "utm_source", "utm_medium", "utm_campaign",
+  "utm_content", "utm_term",
 ] as const;
 
 /** Values stay short and opaque: anything longer is not one of ours. */

@@ -34,6 +34,14 @@ describe("carry-params — what survives a funnel hop", () => {
     expect(carriedParams({ utm_campaign: "a@b.c" })).toEqual({});
   });
 
+  it("carries utm_content and utm_term (Smartlead sequence step) across a redirect", () => {
+    expect(withCarriedParams("/signin.html", {
+      fp_lid: "AbCdEfGhIjKlMnOpQrStUv", utm_source: "smartlead", utm_medium: "email",
+      utm_campaign: "clients_fr_be", utm_content: "step1", utm_term: "devis",
+    })).toBe("/signin.html?fp_lid=AbCdEfGhIjKlMnOpQrStUv&utm_source=smartlead&utm_medium=email&utm_campaign=clients_fr_be&utm_content=step1&utm_term=devis");
+    expect(carriedParams({ utm_content: "a@b.c" })).toEqual({});
+  });
+
   it("forwards only the allowlist, never an arbitrary parameter", () => {
     const out = carriedParams({
       fp_ref: "SELLER-AB12",

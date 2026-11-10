@@ -8,7 +8,9 @@
   const SOURCE_COOKIE = "fp_source";
   // Campagne UTM (premiere touche), rangee seulement apres consentement.
   const CAMPAIGN_KEY = "fp_funnel_campaign";
-  const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign"];
+  // utm_content (etape de sequence Smartlead) et utm_term : transmis tels quels ;
+  // l'API ne stocke aujourd'hui que source/medium/campaign.
+  const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
   const UTM_RE = /^[a-z0-9._-]{1,64}$/;
   const VISITOR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
   const ALLOWED_SOURCES = new Set(["smartlead", "google", "direct", "social", "other_campaign"]);
