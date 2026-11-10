@@ -172,20 +172,34 @@ router.post("/gbp-posts/:id/publish", canWrite, async (req, res) => {
 });
 
 router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
-  const { content, title, scheduledAt, status, seoKeywords } = req.body as {
+  const { content, title, scheduledAt, status, seoKeywords, manualApproval } = req.body as {
     content?: string; title?: string; scheduledAt?: string; status?: string; seoKeywords?: string[];
+    manualApproval?: boolean;
   };
+  if (content !== undefined && (typeof content !== "string" || !content.trim() || content.length > 1500)) {
+    res.status(400).json({ error: "Le contenu doit contenir entre 1 et 1500 caractères." }); return;
+  }
+  if (scheduledAt !== undefined && (!Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now() || manualApproval !== true || status === "draft")) {
+    res.status(400).json({ error: "Une date future et une nouvelle validation manuelle sont requises pour programmer." }); return;
+  }
   const updates: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
   if (content)     { params.push(content);     updates.push(`content=$${params.length}`); }
   if (title)       { params.push(title);       updates.push(`title=$${params.length}`); }
-  if (scheduledAt) { params.push(scheduledAt); updates.push(`scheduled_at=$${params.length}`); }
   // Le statut n'est jamais posé par le client : « published »/« failed »/« publishing » ne
   // résultent que de l'appel réel à Google (publishPost). Seul le retour en brouillon est permis.
   if (status !== undefined && status !== "draft") {
     res.status(400).json({ error: "Statut non modifiable : seul « draft » est accepté.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
   }
-  if (status)      { params.push(status);      updates.push(`status=$${params.length}`); }
+  // Toute modification invalide l'ancienne validation : sans programmation
+  // explicitement approuvée, le post redevient un brouillon non publiable par le cron.
+  if (scheduledAt) {
+    params.push(scheduledAt);
+    updates.push(`scheduled_at=$${params.length}`, "status='scheduled'", "approved_at=now()");
+  } else {
+    updates.push("status='draft'", "scheduled_at=NULL", "approved_at=NULL");
+  }
+  updates.push("last_error_code=NULL", "last_error_message=NULL");
   if (seoKeywords) { params.push(seoKeywords); updates.push(`seo_keywords=$${params.length}`); }
   params.push(req.params.id, org(req));
   try {
@@ -193,11 +207,13 @@ router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
       `UPDATE gbp_posts SET ${updates.join(",")}
         WHERE id=$${params.length - 1} AND org_id=$${params.length}
           AND status IN ('draft','scheduled','failed')
-        RETURNING id`,
+           ${scheduledAt ? `AND location_id IS NOT NULL AND post_type <> 'product'
+             AND (post_type <> 'event' OR (event_title IS NOT NULL AND event_start IS NOT NULL AND event_end > event_start))` : ""}
+         RETURNING id, status, scheduled_at`,
       params
     );
     if (!r.rows.length) { res.status(404).json({ error: "Post introuvable" }); return; }
-    res.json({ ok: true });
+    res.json({ ok: true, post: r.rows[0] });
   } catch { res.status(500).json({ error: "Update failed" }); }
 });
 

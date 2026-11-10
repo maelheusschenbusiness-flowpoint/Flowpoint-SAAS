@@ -75678,6 +75678,9 @@ window.FP_GBP_POSTS_API = {
   async delete(postId) {
     return await apiFetch(`/api/gbp-posts/${postId}`, { method:'DELETE' });
   },
+  async cancelSchedule(postId) {
+    return await apiFetch(`/api/gbp-posts/${encodeURIComponent(postId)}`, { method:'PATCH', body: JSON.stringify({ status:'draft' }) });
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -76400,7 +76403,16 @@ window._fpRenderReviewThemesPanel = function() {
   </section>`;
 };
 
+function _fpGBPPostRoleCapabilities() {
+  const role = String(STATE.me?.role || 'viewer').toLowerCase();
+  return {
+    canWrite: ['owner', 'admin', 'member'].includes(role),
+    canAdmin: ['owner', 'admin'].includes(role),
+  };
+}
+
 window._fpRenderGBPPostsPanel = function() {
+  const { canWrite, canAdmin } = _fpGBPPostRoleCapabilities();
   const data = window.FP_DATA?.gbpPosts;
   if (!data && !window._fpGbpPostsLoading && !window._fpGbpPostsLoaded && window.FP_GBP_POSTS_API) {
     window._fpGbpPostsLoading = true;
@@ -76438,7 +76450,7 @@ window._fpRenderGBPPostsPanel = function() {
       <div class="fp-card-title" id="fp-gbp-posts-title" style="margin:0">Posts Google Business Profile</div>
       <div style="display:flex;gap:8px">
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpReloadGBPPosts()">Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenGBPPostComposer()">Créer un post</button>
+        ${canWrite ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpOpenGBPPostComposer()">Créer un post</button>` : ''}
       </div>
     </div>
     ${!data ? `<div role="status" aria-live="polite" style="font-size:12px;color:var(--fp-text-muted)">
@@ -76463,7 +76475,7 @@ window._fpRenderGBPPostsPanel = function() {
       </div>` : `<div>
         <label style="font-size:11px;color:var(--fp-text-muted)">Filtrer par statut
           <select class="fp-input" style="max-width:180px;margin-left:6px" onchange="window._fpSetGbpPostStatus(this.value)">
-            ${[['all','Tous'],['draft','Brouillons'],['scheduled','Programmés'],['published','Publiés'],['failed','Échec']].map(([value,label]) => `<option value="${value}" ${statusFilter === value ? 'selected' : ''}>${label}</option>`).join('')}
+            ${[['all','Tous'],['draft','Brouillons'],['scheduled','Programmés'],['publishing','Publication en cours'],['published','Publiés'],['failed','Échec']].map(([value,label]) => `<option value="${value}" ${statusFilter === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
         </label>
         ${filteredPosts.length ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${filteredPosts.map(post => `
@@ -76472,10 +76484,12 @@ window._fpRenderGBPPostsPanel = function() {
             <div style="font-size:12px;color:var(--fp-text);line-height:1.5">${escHtml(post.content || '')}</div>
             <div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">${escHtml(post.location_name || 'Établissement')} · ${escHtml(post.post_type || 'standard')} · ${escHtml(post.status || 'draft')}${post.scheduled_at ? ` · ${escHtml(new Date(post.scheduled_at).toLocaleString(getLocale()))}` : ''}</div>
             ${post.status === 'failed' && post.last_error_message ? `<div role="alert" style="font-size:11px;color:var(--fp-danger);margin-top:5px">${escHtml(post.last_error_message)}</div>` : ''}
+            ${post.published_at && post.google_post_id ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:5px">Confirmation Google : ${escHtml(new Date(post.published_at).toLocaleString(getLocale()))} · ${escHtml(post.google_post_id)}</div>` : ''}
           </div>
-          ${['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          ${canWrite && ['draft','scheduled','failed'].includes(post.status) && String(post.post_type || 'standard').toLowerCase() !== 'product' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpPublishGBPPost(this.dataset.postId)">Publier</button>` : ''}
+          ${canWrite && post.status === 'scheduled' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpCancelGBPPostSchedule(this.dataset.postId)">Annuler la programmation</button>` : ''}
           ${String(post.post_type || '').toLowerCase() === 'product' ? `<span title="Format non pris en charge par l’API Google connectée" style="font-size:10px;color:var(--fp-text-muted)">Brouillon seulement</span>` : ''}
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpDeleteGBPPost(this.dataset.postId)" aria-label="Supprimer ce post">Supprimer</button>
+          ${canAdmin && post.status !== 'publishing' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-post-id="${escHtml(post.id)}" onclick="window._fpDeleteGBPPost(this.dataset.postId)" aria-label="Supprimer ce post">Supprimer</button>` : ''}
         </article>`).join('')}</div>` : `<div style="font-size:12px;color:var(--fp-text-muted);margin-top:10px">Aucun post pour ce filtre.</div>`}
       </div>`}`}
   </section>`;
@@ -76517,6 +76531,7 @@ window._fpReloadGBPPosts = async function() {
 };
 
 window._fpOpenGBPPostComposer = function() {
+  if (!_fpGBPPostRoleCapabilities().canWrite) { showToast('error', fpT('Accès refusé')); return; }
   const locations = Array.isArray(STATE.gbp?.locations) ? STATE.gbp.locations : [];
   const language = String(localStorage.getItem('fp:language') || 'fr').toLowerCase();
   const options = locations.map(loc => {
@@ -76622,6 +76637,7 @@ window._fpOpenGBPPostComposer = function() {
 };
 
 window._fpGenerateGBPPost = async function() {
+  if (!_fpGBPPostRoleCapabilities().canWrite) { showToast('error', fpT('Accès refusé')); return; }
   const locationId = document.getElementById('fp-gbp-location')?.value;
   if (!locationId) { showToast('error', 'Sélectionnez un établissement Google connecté.'); return; }
   try {
@@ -76658,6 +76674,7 @@ window._fpGenerateGBPPost = async function() {
 };
 
 window._fpSaveGBPPost = async function() {
+  if (!_fpGBPPostRoleCapabilities().canWrite) { showToast('error', fpT('Accès refusé')); return; }
   const location = document.getElementById('fp-gbp-location');
   const content = document.getElementById('fp-gbp-content')?.value?.trim();
   const scheduledValue = document.getElementById('fp-gbp-schedule')?.value;
@@ -76717,15 +76734,35 @@ window._fpSaveGBPPost = async function() {
 };
 
 window._fpPublishGBPPost = async function(postId) {
+  if (!_fpGBPPostRoleCapabilities().canWrite) { showToast('error', fpT('Accès refusé')); return; }
+  window._fpGbpPublishing = window._fpGbpPublishing || new Set();
+  if (window._fpGbpPublishing.has(postId)) return;
+  if (!window.confirm('Publier maintenant ce post sur la fiche Google Business Profile ? Cette action sera visible publiquement.')) return;
+  window._fpGbpPublishing.add(postId);
   try {
     const result = await window.FP_GBP_POSTS_API.publish(postId);
     if (result?.ok === false || result?.error) throw new Error(result.error || 'La publication a échoué.');
-    await window._fpReloadGBPPosts();
+    if (!result?.post?.googlePostId || !result?.post?.publishedAt) throw new Error('Aucune confirmation Google reçue. Vérifiez la fiche avant de réessayer.');
     showToast('success', 'Publication Google terminée.');
   } catch (error) { showToast('error', String(error?.message || error)); }
+  finally {
+    window._fpGbpPublishing.delete(postId);
+    await window._fpReloadGBPPosts();
+  }
+};
+
+window._fpCancelGBPPostSchedule = async function(postId) {
+  if (!_fpGBPPostRoleCapabilities().canWrite) { showToast('error', fpT('Accès refusé')); return; }
+  try {
+    const result = await window.FP_GBP_POSTS_API.cancelSchedule(postId);
+    if (result?.ok !== true) throw new Error(result?.error || 'Impossible d’annuler la programmation.');
+    showToast('success', 'Programmation annulée. Le post est conservé en brouillon.');
+  } catch (error) { showToast('error', String(error?.message || error)); }
+  finally { await window._fpReloadGBPPosts(); }
 };
 
 window._fpDeleteGBPPost = async function(postId) {
+  if (!_fpGBPPostRoleCapabilities().canAdmin) { showToast('error', fpT('Accès refusé')); return; }
   try {
     const result = await window.FP_GBP_POSTS_API.delete(postId);
     if (result?.ok === false || result?.error) throw new Error(result.error || 'Impossible de supprimer le post.');

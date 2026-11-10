@@ -118,7 +118,13 @@ describe("publishGBPPost (google-service, fetch simule)", () => {
 describe("route POST /gbp-posts/:id/publish : erreurs explicites", () => {
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { Object.assign(req, { orgId: "org-1" }); next(); });
+  app.use((req, _res, next) => {
+    Object.assign(req, {
+      orgId: "org-1",
+      orgContext: { orgId: "org-1", role: "owner", userId: "owner-org-1", email: "owner@example.test" },
+    });
+    next();
+  });
   app.use(router);
   beforeEach(() => { mocks.query.mockReset(); vi.mocked(publishGBPPost).mockReset(); });
 
