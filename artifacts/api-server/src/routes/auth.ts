@@ -1138,11 +1138,11 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 
   if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
   if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
-  if (!company)    { res.status(400).json({ error: "Le nom de l'entreprise est requis." }); return; }
-  if (!countryVal) { res.status(400).json({ error: "Le pays est requis." });                return; }
-  if (!addressVal) { res.status(400).json({ error: "L'adresse est requise." });             return; }
-  if (!cityVal)    { res.status(400).json({ error: "La ville est requise." });              return; }
-  if (!postalVal)  { res.status(400).json({ error: "Le code postal est requis." });         return; }
+
+  // Societe, pays, adresse, ville et code postal ne sont plus demandes a
+  // l'etape 1 : l'adresse de facturation et la TVA sont collectees ensuite par
+  // Stripe. Les champs restent acceptes et enregistres tels quels quand un
+  // appelant les envoie encore (ancien formulaire en cache, integration tierce).
 
   if (isDisposableEmail(normalizedEmail)) {
     res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
