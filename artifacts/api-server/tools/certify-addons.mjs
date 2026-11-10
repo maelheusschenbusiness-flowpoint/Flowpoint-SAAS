@@ -53,7 +53,13 @@ export const ADDON_REGISTRY = [
     id: "revenue-leak-ai",
     label: "Revenue Leak AI",
     historical: false,
-    tests: ["src/routes/revenue-leak-ownership.test.ts"],
+    tests: [
+      "src/routes/revenue-leak-ownership.test.ts",
+      "src/routes/revenue-leak-ga4.test.ts",
+      "src/services/revenue-leak-attribution.test.ts",
+      "src/tests/revenue-leak-attribution-ui.test.ts",
+    ],
+    browserTitle: "Revenue Leak AI shows GA4 availability and no invented financial loss in the dashboard",
   },
   {
     id: "ai-executive-reporting",
@@ -71,8 +77,11 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/services/forecasting-service.test.ts",
       "src/services/forecasting-service.atomic.test.ts",
+      "src/routes/forecast.test.ts",
+      "src/tests/forecast-ui-state.test.ts",
       "src/tests/forecast-growth-projections.test.ts",
     ],
+    browserTitle: "AI Forecasting Engine shows insufficient history instead of fabricated projections",
   },
   {
     id: "ai-market-intelligence",
@@ -311,6 +320,12 @@ const CHECKOUT_ABANDONMENT_SCENARIO = {
     "Hosted Stripe Checkout session remains unactivated until completion",
   ],
 };
+const STRIPE_3DS_SCENARIO_TITLES = [
+  "3DS requis (4000 0025 0000 3155) : authentification reussie -> une souscription trialing",
+  "3DS echoue (bouton « Fail authentication ») : message d'erreur, aucune souscription, organisation non premium",
+  "3DS requis puis refus apres authentification (4000 0084 0000 1629, a confirmer) : aucune souscription",
+];
+const STRIPE_3DS_SPEC = "artifacts/api-server/tests/browser/certification-stripe/02-3ds.stripe.ts";
 
 const BASE_ENV_KEYS = [
   "PATH",
@@ -353,6 +368,7 @@ export function parseArgs(args) {
     addons: [],
     help: false,
     checkoutAbandonment: false,
+    checkout3ds: false,
     stripeTest: false,
     stripeWebhookReplay: false,
     browserOnly: false,
@@ -369,6 +385,8 @@ export function parseArgs(args) {
       options.selection = "pending";
     } else if (arg === "--checkout-abandonment") {
       options.checkoutAbandonment = true;
+    } else if (arg === "--checkout-3ds") {
+      options.checkout3ds = true;
     } else if (arg === "--stripe-test") {
       options.stripeTest = true;
     } else if (arg === "--stripe-webhook-replay") {
@@ -402,6 +420,7 @@ export function parseArgs(args) {
     throw new Error("--combined-checkout-agency cannot be combined with other certification selections.");
   }
   if (options.checkoutAbandonment && (
+    options.checkout3ds ||
     options.addons.length ||
     options.selection === "all" ||
     options.stripeTest ||
@@ -431,6 +450,15 @@ export function parseArgs(args) {
     options.checkoutAbandonment
   )) {
     throw new Error("--stripe-webhook-replay requires only the Agency webhook browser test and never runs checkout.");
+  }
+  if (options.checkout3ds && (
+    options.checkoutAbandonment ||
+    options.stripeTest ||
+    options.combinedCheckoutAgency ||
+    options.addons.length ||
+    options.selection === "all"
+  )) {
+    throw new Error("--checkout-3ds cannot be combined with other certification selections.");
   }
   if (options.addons.length) options.selection = "explicit";
   return options;
@@ -913,14 +941,22 @@ async function runUnitTests(addon, env, signal) {
   };
 }
 
-async function runBrowserTests(titles, env, signal, spec = E2E_SPEC) {
+async function runBrowserTests(
+  titles,
+  env,
+  signal,
+  spec = E2E_SPEC,
+  config = "playwright.addon-cert.config.mjs",
+  extraArgs = [],
+) {
   if (titles.length === 0) return { status: "skipped" };
   const grep = titles.map(escapeRegex).join("|");
   console.log(`  PLAYWRIGHT — ${titles.join(" | ")}`);
   const result = await runProcess("pnpm", [
     "exec", "playwright", "test",
-    "--config=playwright.addon-cert.config.mjs",
+    `--config=${config}`,
     spec,
+    ...extraArgs,
     "--grep", grep,
   ], { cwd: REPO_ROOT, env, signal, timeoutMs: 20 * 60_000 });
   if (result.interrupted) return { status: "interrupted", code: 130 };
@@ -937,6 +973,7 @@ Options:
   --browser-only         Run only the selected add-on's focused browser test(s)
   --browser-title <name> Run one exact browser-test title (repeatable with --browser-only)
   --checkout-abandonment Run the isolated signup recovery E2E with Stripe TEST only
+  --checkout-3ds         Run the isolated real-card 3DS browser scenarios with Stripe TEST only
   --stripe-test          Run the isolated Agency Packs lifecycle against Stripe TEST only
   --stripe-webhook-replay Replay one Stripe TEST event locally; no checkout or public delivery
   --combined-checkout-agency Run both flows in one disposable Stripe TEST environment
@@ -954,6 +991,8 @@ async function runCertification(options, signal) {
     ? [CHECKOUT_ABANDONMENT_SCENARIO, agencyPacks].filter(Boolean)
     : options.checkoutAbandonment
       ? [CHECKOUT_ABANDONMENT_SCENARIO]
+      : options.checkout3ds
+        ? []
       : selectAddons(options);
   const includesAgencyPacks = selected.some(addon => addon.id === "agency-reporting-packs");
   if (options.stripeTest && (
@@ -965,8 +1004,8 @@ async function runCertification(options, signal) {
   if (options.combinedCheckoutAgency && (!agencyPacks || selected.length !== 2)) {
     throw new Error("Combined checkout/Agency certification requires the Agency registry entry.");
   }
-  const useStripeTest = options.checkoutAbandonment || options.stripeTest ||
-    options.stripeWebhookReplay || options.combinedCheckoutAgency;
+  const useStripeTest = options.checkoutAbandonment || options.checkout3ds ||
+    options.stripeTest || options.stripeWebhookReplay || options.combinedCheckoutAgency;
   const availableBrowserTitles = new Set(selected.flatMap(addon => [
     ...(addon.browserTitles ?? (addon.browserTitle ? [addon.browserTitle] : [])),
     ...(useStripeTest ? (addon.stripeBrowserTitles ?? []) : []),
@@ -1011,9 +1050,31 @@ async function runCertification(options, signal) {
     api = await startApi(apiEnv, signal);
     console.log("Local API is listening on 127.0.0.1.");
 
+    if (options.checkout3ds) {
+      const stripeBrowserEnv = {
+        ...apiEnv,
+        STRIPE_TEST_SECRET_KEY: apiEnv.STRIPE_TEST_KEY,
+        CERT_STRIPE_REEL: "1",
+        CERT_STRIPE_BASE_URL: `http://127.0.0.1:${port}`,
+        CERT_STRIPE_EMAIL_BASE: "stripe-cert@dev.flowpoint.test",
+        ...(apiEnv.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+          ? { FP_CERT_CHROMIUM: apiEnv.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+          : {}),
+      };
+      const browser = await runBrowserTests(
+        STRIPE_3DS_SCENARIO_TITLES,
+        stripeBrowserEnv,
+        signal,
+        STRIPE_3DS_SPEC,
+        "playwright.certification-stripe.config.mjs",
+        ["--project=bureau-1440"],
+      );
+      summary.push({ id: "browser:checkout-3ds", label: "Stripe TEST 3DS browser scenarios", historical: false, unit: browser.status });
+    }
+
     const previouslyRunFiles = new Set();
     const browserRuns = new Set();
-    for (const addon of selected) {
+    for (const addon of (options.checkout3ds ? [] : selected)) {
       if (signal.aborted) break;
       console.log(`\nADD-ON: ${addon.label}${addon.historical ? " (historical attribution; not a new certification)" : ""}`);
       let unit;

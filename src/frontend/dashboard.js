@@ -2652,7 +2652,8 @@ async function loadData(options = {}) {
         const opportunities = Array.isArray(r.opportunities) ? r.opportunities : [];
         window.FP_DATA.revenueLeak = {
           ...r, _fromRealData: true, leaks: opportunities, opportunities,
-          financial: r.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+          financial: r.financial || { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+          attribution: r.attribution || { status: 'insufficient_data', reason: 'no_shared_identifier' },
           noData: r.noData ?? opportunities.length === 0,
         };
       }
@@ -2660,7 +2661,8 @@ async function loadData(options = {}) {
       if (!window.FP_DATA) window.FP_DATA = {};
       window.FP_DATA.revenueLeak = {
         _fromRealData: true, leaks: [], opportunities: [], summary: null,
-        financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        financial: { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+        attribution: { status: 'insufficient_data', reason: 'no_shared_identifier' },
         noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
       };
     }),
@@ -2795,7 +2797,8 @@ async function loadData(options = {}) {
       leaks: [],
       opportunities: [],
       summary: null,
-      financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+      financial: { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+      attribution: { status: 'insufficient_data', reason: 'no_shared_identifier' },
       noData: true,
     };
   }
@@ -20650,6 +20653,10 @@ function bindGlobalEvents() {
     "Rapports multi-sites": "Multi-site reports",
     "Portail client en lecture seule": "Read-only client portal",
     "Livraison planifiée": "Scheduled delivery",
+    "Prévision indisponible — données insuffisantes": "Forecast unavailable — insufficient data",
+    "Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.": "At least 14 days of valid GSC and GA4 data (sessions, conversions, and revenue) are required.",
+    "Attribution financière : données insuffisantes": "Financial attribution: insufficient data",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Behavioral events use a tracker session identifier; available GA4 revenue is aggregated and cannot be joined exactly. No observed or estimated loss will be shown without this evidence.",
     "Créer un dashboard": "Create a dashboard",
     "Ajouter des widgets": "Add widgets",
     "Données historiques insuffisantes pour générer une prévision.": "Not enough historical data to generate a forecast.",
@@ -24960,6 +24967,10 @@ function bindGlobalEvents() {
     "Rage clicks": "Rage clicks",
     "Rapport CTAs complet": "Full CTA report",
     "Revenu relié aux événements": "Revenue linked to events",
+    "Revenu observé par GA4": "Revenue observed by GA4",
+    "Indisponible": "Unavailable",
+    "Total GA4 des pages d’entrée sur les 30 derniers jours. Ce montant n’est pas attribué aux frictions listées.": "GA4 total for landing pages over the last 30 days. This amount is not attributed to the listed friction points.",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Connect an active GA4 property with a recognized currency to view observed revenue. No loss is estimated.",
     "Revenue Leak — Top fuites": "Revenue Leak — Top leaks",
     "Revenue Leak →": "Revenue Leak →",
     "Revenus GA4": "GA4 revenue",
@@ -60573,6 +60584,24 @@ function renderConversion() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'revenue-leak') {
     const _rlData = window.FP_DATA && window.FP_DATA.revenueLeak;
+    const _rlAttribution = _rlData?.attribution || { status: 'insufficient_data' };
+    const _rlFinancial = _rlData?.financial || {};
+    const _rlRevenueObserved = _rlFinancial.status === 'observed'
+      && _rlFinancial.observedRevenue != null
+      && Number.isFinite(Number(_rlFinancial.observedRevenue))
+      && /^[A-Z]{3}$/.test(String(_rlFinancial.currency || ''));
+    let _rlRevenueText = '';
+    if (_rlRevenueObserved) {
+      try {
+        _rlRevenueText = new Intl.NumberFormat(getLocale(), {
+          style: 'currency',
+          currency: _rlFinancial.currency,
+          maximumFractionDigits: 2,
+        }).format(Number(_rlFinancial.observedRevenue));
+      } catch {
+        _rlRevenueText = `${Number(_rlFinancial.observedRevenue).toFixed(2)} ${_rlFinancial.currency}`;
+      }
+    }
     const leaks = (_rlData?.opportunities || []).map(l => ({
       page: l.page || 'Page',
       siteUrl: l.siteUrl || '',
@@ -60586,6 +60615,19 @@ function renderConversion() {
     const _rlEmptyReason = (_rlData && _rlData.error) || null;
     const _rlEmptyText = _rlEmptyReason || fpT("Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.");
     return `
+      <div class="fp-card fp-mb-20" data-attribution-status="${escHtml(_rlAttribution.status || 'insufficient_data')}" style="border-left:3px solid #f59e0b">
+        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:5px">${fpT('Attribution financière : données insuffisantes')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_rlAttribution.message || fpT('Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.'))}</div>
+      </div>
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:8px">📊 ${fpT('Revenu observé par GA4')}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <strong style="font-size:22px;color:var(--fp-text)">${_rlRevenueObserved ? escHtml(_rlRevenueText) : fpT('Indisponible')}</strong>
+          <div style="max-width:620px;font-size:11px;line-height:1.5;color:var(--fp-text-muted)">
+            ${escHtml(_rlFinancial.note || fpT('Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.'))}
+          </div>
+        </div>
+      </div>
       ${_rlIsEmpty
         ? `<div style="padding:32px 24px;text-align:center;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
             <div style="font-size:36px;margin-bottom:12px">💸</div>
@@ -63575,7 +63617,7 @@ function renderDataExplorer() {
       return _points.filter(p => p.scenario === name).slice(0, days)
         .reduce((sum, p) => sum + Number(p[key] ?? 0), 0);
     };
-    const _hasForecast = !!(_fcData?.available && _realistic.length);
+    const _hasForecast = !!(_fcData?.status === 'available' && _fcData?.available && _realistic.length);
     const _hasGA4Forecast = !!(_fcData?.ga4Available);
     const _conversionForecast30d = Number(_fcData?.summary?.expectedConversionsIn30d ?? 0);
     const _revenueForecast90d = Number(_fcData?.summary?.expectedRevenueIn90d ?? 0);
@@ -63593,7 +63635,7 @@ function renderDataExplorer() {
       ${isUltra && _hasForecast
         ? aiBlock(`Prévision de trafic fondée sur GSC${_hasGA4Forecast ? ' et prévision de conversions/revenus fondée sur GA4' : '; conversions et revenus indisponibles sans 14 jours de données GA4'}. Confiance : <strong>${_fcData.summary?.confidenceScore ?? '—'}%</strong>.`, ['Simuler un scénario', 'Rapport prévision'])
         : isUltra
-          ? `<div class="fp-card fp-mb-20" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Prévision indisponible</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_fcData?.reason || 'Au moins 14 jours de données Search Console sont nécessaires pour créer une prévision fiable.')}</div></div>`
+           ? `<div class="fp-card fp-mb-20" role="status" data-forecast-status="${escHtml(_fcData?.status || 'insufficient_data')}" style="padding:22px;text-align:center"><div style="font-size:24px;margin-bottom:8px">📊</div><div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">${fpT('Prévision indisponible — données insuffisantes')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(fpT(_fcData?.reason || 'Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.'))}</div></div>`
           : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🔮</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Forecasting Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions trafic, conversion, revenue et ranking basées sur l\'IA et vos données historiques.</div></div>
@@ -74910,7 +74952,8 @@ window.FP_REVENUE_LEAK_API = {
         leaks:          data.opportunities || [],
         opportunities:  data.opportunities || [],
         summary:        data.summary       || null,
-        financial:      data.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        financial:      data.financial || { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+        attribution:    data.attribution || { status: 'insufficient_data', reason: 'no_shared_identifier' },
         windowDays:     data.windowDays || 30,
         isEmpty:        data.noData        ?? (!(data.opportunities && data.opportunities.length)),
         noData:         data.noData        ?? (!(data.opportunities && data.opportunities.length)),
@@ -74921,7 +74964,8 @@ window.FP_REVENUE_LEAK_API = {
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.revenueLeak = {
         _fromRealData: true, leaks: [], opportunities: [], summary: null,
-        financial: { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+        financial: { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+        attribution: { status: 'insufficient_data', reason: 'no_shared_identifier' },
         noData: true, error: fpT('Les événements comportementaux sont temporairement indisponibles.'),
       };
       console.warn('[FP_REVENUE_LEAK_API] load error:', e);
@@ -74937,7 +74981,8 @@ window.FP_REVENUE_LEAK_API = {
         window.FP_DATA = window.FP_DATA || {};
         window.FP_DATA.revenueLeak = {
           _fromRealData: true, leaks: r.opportunities || [], opportunities: r.opportunities || [],
-          financial: r.financial || { status: 'unavailable', observedLoss: null, estimatedLoss: null, currency: null },
+          financial: r.financial || { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+          attribution: r.attribution || { status: 'insufficient_data', reason: 'no_shared_identifier' },
           noData: r.noData ?? !(r.opportunities || []).length, error: r.error || null,
         };
         render();
@@ -74983,8 +75028,32 @@ window.FP_FORECAST_API = {
         window.FP_DATA.forecast = r;
         render();
         showToast('success', fpT('Prévisions de trafic générées à partir de vos données Search Console'));
-      } else showToast('error', r?.error || 'Erreur');
-    } catch(e) { showToast('error', String(e)); }
+    } else showToast('error', r?.error || 'Erreur');
+  } catch(e) {
+    if (e?.status === 422) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.forecast = {
+        siteUrl,
+        forecasts: [],
+        available: false,
+        status: 'insufficient_data',
+        minimumHistoryDays: 14,
+        ga4Available: false,
+        source: 'none',
+        reason: e.message,
+        summary: {
+          expectedTrafficIn30d: 0,
+          expectedTrafficIn90d: 0,
+          expectedConversionsIn30d: 0,
+          expectedRevenueIn90d: 0,
+          confidenceScore: 0,
+          growthScenarios: { pessimistic: 0, realistic: 0, optimistic: 0 },
+        },
+      };
+      render();
+    }
+    showToast('error', String(e));
+  }
   },
 };
 

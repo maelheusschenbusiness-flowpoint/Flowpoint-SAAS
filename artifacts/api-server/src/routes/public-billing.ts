@@ -2707,7 +2707,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                      trial_consumed_at=COALESCE(organizations.trial_consumed_at,EXCLUDED.trial_consumed_at),
                      updated_at=NOW()`,
               [
-                _fcAOrgId, _fcSignup["company_name"] ?? _fcAEmail,
+                _fcAOrgId, String(_fcSignup["company_name"] ?? "").trim() || _fcAEmail,
                 _fcAOrgId.replace(/[^a-z0-9]/gi,"-").toLowerCase().slice(0,60),
                 _fcUserId, planKey, grantTrial ? "trialing" : "active",
                 _fcAEmail, customerId ?? null,

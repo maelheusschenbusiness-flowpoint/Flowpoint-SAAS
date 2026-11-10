@@ -262,19 +262,20 @@ describe("la mesure ne peut pas nuire", () => {
   });
 });
 
-describe("LE FORMULAIRE N'A PAS ETE MODIFIE", () => {
-  it("les sept champs obligatoires et leurs validations sont intacts", () => {
-    // Contrainte explicite : ne pas toucher au formulaire. La mesure est
-    // purement additive, ce test l'atteste.
-    for (const champ of ["firstName", "lastName", "email", "companyName",
-                         "address", "city", "postalCode"]) {
+describe("LE FORMULAIRE INITIAL EST MINIMAL (prénom, nom, e-mail)", () => {
+  // Exigence du 10/11/2026 : le formulaire initial ne demande plus que prénom,
+  // nom et e-mail. Remplace l'ancienne garde « formulaire intact », qui
+  // protégeait la consigne d'une mission de mesure antérieure.
+  it("les trois champs et leurs validations sont présents ; les sept champs retirés ont disparu", () => {
+    for (const champ of ["firstName", "lastName", "email"]) {
       expect(PAGE, `le champ ${champ} a disparu`).toContain(`val('${champ}')`);
     }
-    for (const message of ["Le prénom est requis.", "Le nom est requis.",
-                           "Adresse email invalide.", "Le pays est requis.",
-                           "L'adresse est requise.", "La ville est requise.",
-                           "Le code postal est requis."]) {
+    for (const message of ["Le prénom est requis.", "Le nom est requis.", "Adresse email invalide."]) {
       expect(PAGE, `la validation « ${message} » a disparu`).toContain(message);
+    }
+    for (const retire of ["companyName", "country", "address", "city", "postalCode", "phone", "vat"]) {
+      expect(PAGE, `le champ ${retire} est encore demandé`).not.toContain(`val('${retire}')`);
+      expect(PAGE, `le champ ${retire} est encore dans le formulaire`).not.toContain(`id="${retire}"`);
     }
   });
 

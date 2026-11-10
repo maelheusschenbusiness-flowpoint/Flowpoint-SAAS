@@ -34,6 +34,11 @@ if (process.env.STRIPE_LIVE_API_KEY || process.env.STRIPE_SECRET_KEY) {
 if (!BASE_URL || process.env.FLOWPOINT_ADDON_CERT_LOCAL_ONLY !== "1") {
   throw new Error("Checkout E2E requires the guarded local API runner.");
 }
+const e2eHost = new URL(BASE_URL).hostname;
+if (!["localhost", "127.0.0.1"].includes(e2eHost)) {
+  throw new Error("Checkout E2E refuses non-local return URLs.");
+}
+const checkoutReturnUrl = new URL("/checkout-return.html", BASE_URL).toString();
 
 const stripe = new Stripe(STRIPE_TEST_KEY, { apiVersion: "2026-04-22.dahlia" });
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: false });
@@ -180,14 +185,35 @@ test("Payment Element abandonment never activates an unconfirmed signup", async 
   const setup = await createSetupIntent(request, setupToken);
   const confirmedSetup = await stripe.setupIntents.confirm(setup.setupIntentId, {
     payment_method: "pm_card_visa",
-    return_url: new URL("/checkout-return.html", BASE_URL).toString(),
+    return_url: checkoutReturnUrl,
   });
   expect(confirmedSetup.status).toBe("succeeded");
   const setupEvent = await findStripeEvent("setup_intent.succeeded", confirmedSetup.id);
   const setupDelivery = await deliverStripeEvent(request, setupEvent);
   expect(setupDelivery.status()).toBe(200);
-  expect(await accountState(setupEmail)).toEqual({ users: [], orgs: [] });
-  expect(await stripeCustomers(setupEmail)).toHaveLength(0);
+  const setupActivated = await accountState(setupEmail);
+  expect(setupActivated.users).toHaveLength(1);
+  expect(setupActivated.users[0].status).toBe("active");
+  expect(setupActivated.orgs).toHaveLength(1);
+  expect(setupActivated.orgs[0].subscription_status).toBe("trialing");
+  expect(setupActivated.orgs[0].stripe_subscription_id).toBeTruthy();
+  const setupCustomers = await stripeCustomers(setupEmail);
+  expect(setupCustomers).toHaveLength(1);
+  stripeCleanup.registerCustomer(setupCustomers[0].id, setupEmail);
+  stripeCleanup.registerSubscription(
+    setupActivated.orgs[0].stripe_subscription_id,
+    setupCustomers[0].id,
+  );
+  const setupSubscription = await stripe.subscriptions.retrieve(
+    setupActivated.orgs[0].stripe_subscription_id,
+  );
+  expect(setupSubscription.status).toBe("trialing");
+  expect(setupSubscription.items.data.some((item) => item.price.id === STANDARD_TEST_PRICE_ID)).toBe(true);
+  expect((await stripe.subscriptions.list({
+    customer: setupCustomers[0].id,
+    status: "all",
+    limit: 100,
+  })).data).toHaveLength(1);
 
   // Simulate a declined payment using Stripe's official TEST card fixture.
   const declinedEmail = uniqueEmail("declined");
@@ -233,11 +259,12 @@ test("Payment Element abandonment never activates an unconfirmed signup", async 
 
   // A real, successful Stripe TEST payment can recover even if the browser never
   // reaches finalize-checkout. No catalog price/product is created or changed.
-  const paidEmail = setupEmail;
-  const paidToken = setupToken;
+  const paidEmail = uniqueEmail("paid-recovery");
+  const paidToken = await preRegister(request, paidEmail);
   const paidIntent = await stripe.paymentIntents.create({
     amount: 100,
     currency: "eur",
+    // This fixture explicitly uses card only, so no redirect return is expected.
     payment_method_types: ["card"],
     payment_method: "pm_card_visa",
     confirm: true,
@@ -338,10 +365,6 @@ test("Hosted Stripe Checkout session remains unactivated until completion", asyn
   expect(expiredSession.status).toBe("expired");
   expect(await stripeCustomers(email)).toHaveLength(0);
   expect(await accountState(email)).toEqual({ users: [], orgs: [] });
-});
-
-test.afterEach(async () => {
-  await stripeCleanup.cleanup();
 });
 
 test.afterAll(async () => {
