@@ -410,6 +410,10 @@
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   } catch (e) {}
 
+  function stripeLocaleFor() {
+    try { return window.fpResolveLanguage && window.fpResolveLanguage() === 'fr' ? 'fr' : 'en'; }
+    catch (e) { return 'en'; }
+  }
   async function initStripe() {
     renderSummaryLoading();
 
@@ -482,7 +486,10 @@
     }
 
     var appearance = stripeAppearance();
-    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance }); }
+    // Langue de Stripe = langue de l'interface FlowPoint (anglais par defaut, francais si choisi),
+    // jamais celle du navigateur.
+    var stripeLocale = stripeLocaleFor();
+    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance, locale: stripeLocale }); }
     catch (e) {
       showAlert('[S2] stripe.elements(): ' + (e.message || e));
       return;

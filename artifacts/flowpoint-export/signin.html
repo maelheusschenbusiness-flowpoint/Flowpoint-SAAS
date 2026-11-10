@@ -5,6 +5,7 @@
   <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
   <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
   <script src="/funnel-theme.js?v=20261110" defer></script>
+  <script src="/funnel-offer.js?v=20261110"></script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -399,7 +400,7 @@
             <div class="plan-card-name">Standard</div>
             <div class="plan-card-desc">Ideal for freelancers and small teams</div>
           </div>
-          <div class="plan-card-price">29 €<span>/month</span></div>
+          <div class="plan-card-price" data-fp-offer="standard">€29<span>/month</span></div>
         </div>
         <div class="plan-card-spinner" style="display:none"></div>
       </button>
@@ -411,7 +412,7 @@
             <div class="plan-card-name">Pro</div>
             <div class="plan-card-desc">For agencies and growing teams</div>
           </div>
-          <div class="plan-card-price">79 €<span>/month</span></div>
+          <div class="plan-card-price" data-fp-offer="pro">€79<span>/month</span></div>
         </div>
         <div class="plan-card-spinner" style="display:none"></div>
       </button>
@@ -422,7 +423,7 @@
             <div class="plan-card-name">Ultra</div>
             <div class="plan-card-desc">For large agencies and enterprises</div>
           </div>
-          <div class="plan-card-price">149 €<span>/month</span></div>
+          <div class="plan-card-price" data-fp-offer="ultra">€149<span>/month</span></div>
         </div>
         <div class="plan-card-spinner" style="display:none"></div>
       </button>
@@ -465,6 +466,8 @@
   .plan-card-desc  { font-size: 12.5px; color: var(--text-muted); }
   .plan-card-price { font-size: 20px; font-weight: 700; white-space: nowrap; color: var(--text); flex-shrink: 0; }
   .plan-card-price span { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+  .plan-card-price .fp-trial-offer { align-items: flex-end; text-align: right; }
+  .plan-card-price .fp-trial-free { font-size: 20px; }
   .plan-card-spinner {
     position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
     width: 18px; height: 18px; border-radius: 50%;
@@ -574,6 +577,8 @@
     }
     document.getElementById('signup-screen').style.display = 'none';
     document.getElementById('plan-screen').style.display   = 'block';
+    // Offre « essai d'abord », prix et duree d'essai du serveur (rendu partage avec checkout.html).
+    if (window.FPOffer) window.FPOffer.fillPlanOffers(document.getElementById('plan-screen'), _preRegisterToken);
   }
 
 (function () {

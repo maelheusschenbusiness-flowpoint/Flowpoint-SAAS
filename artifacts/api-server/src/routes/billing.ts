@@ -119,7 +119,7 @@ function parseAddons(raw: unknown, res: Response): AddonsMap | null {
   const result: AddonsMap = {};
   for (const [key, val] of Object.entries(obj)) {
     if (!KNOWN_ADDON_KEYS.has(key)) {
-      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      res.status(400).json({ error: `Unknown add-on: "${key}"` });
       return null;
     }
     if (VALIDATION_REQUIRED_ADDONS.has(key) && (val === true || (typeof val === "number" && val > 0))) {
