@@ -64,8 +64,12 @@ describe("signup funnel is entirely in English", () => {
 describe("trial-first offer and summary CTA", () => {
   const checkout = lire("checkout.html");
   it("plan cards lead with the free trial, price secondary, and state the conditions", () => {
-    expect(checkout).toMatch(/days free/);
-    expect(checkout).toMatch(/\/month after trial/);
+    // Rendu partagé depuis le 10/11/2026 (funnel-offer.js), utilisé par checkout.html et signin.html.
+    const offre = lire("funnel-offer.js");
+    expect(offre).toMatch(/days free/);
+    expect(offre).toMatch(/\/month after trial/);
+    expect(checkout).toMatch(/src="\/funnel-offer\.js/);
+    expect(checkout).toContain("window.FPOffer.offerHtml(");
     for (const c of ["€0 today", "Card required", "Cancel anytime"]) expect(checkout).toContain(c);
   });
   it("summary CTA starts the free trial and keeps the card requirement visible", () => {

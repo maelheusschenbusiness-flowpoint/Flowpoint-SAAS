@@ -976,6 +976,8 @@
   // converted to the French format.
   var PUBLIC_FRENCH_PATTERNS = [
     [/^(\d+) days free$/, '$1 jours gratuits'],
+    // Message serveur de validation du panier (/billing/quote, /public/payment-intent).
+    [/^Unknown add-on: "(.+)"$/, 'Add-on inconnu : "$1"'],
     [new RegExp('^(' + AMOUNT + ')/month after trial$'), "puis $1/mois après l'essai"],
     [/^Start my (\d+)-day free trial →$/, 'Commencer mon essai gratuit de $1 jours →'],
     [new RegExp('^Pay (' + AMOUNT + ') and subscribe$'), "Payer $1 et s'abonner"],

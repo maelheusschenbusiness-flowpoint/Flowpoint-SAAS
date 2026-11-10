@@ -13,6 +13,7 @@
   <title>Summary — FlowPoint</title>
   <script src="/fp-locale.js?v=20261030"></script>
   <script src="/funnel-theme.js?v=20261110" defer></script>
+  <script src="/funnel-offer.js?v=20261110"></script>
   <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -251,10 +252,8 @@
 
   /* ── Helpers ── */
   function el(id) { return document.getElementById(id); }
-  function eur(minor) {
-    var v = (Number(minor) || 0) / 100;
-    return '€' + (v % 1 === 0 ? String(v) : v.toFixed(2));
-  }
+  /* Rendu partagé avec signin.html : funnel-offer.js. */
+  function eur(minor) { return window.FPOffer.eur(minor); }
   function escHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -353,18 +352,8 @@
   };
 
   /* ── Offre d'essai : dérivée du devis serveur uniquement (jamais codée en dur) ── */
-  function trialDaysOf(q) { return q && q.trialEligible && q.trialDays > 0 ? q.trialDays : 0; }
-  /* Bloc « essai d'abord » : gros « N days free », prix mensuel en second. */
-  function offerHtml(priceMinor, trialDays) {
-    if (trialDays > 0) {
-      return '<div class="fp-trial-offer">' +
-        '<div class="fp-trial-free">' + trialDays + ' days free</div>' +
-        '<div class="fp-trial-after">' + eur(priceMinor) + '/month after trial</div>' +
-      '</div>';
-    }
-    return '<div class="fp-plan-pick-price">' + eur(priceMinor) + '</div>' +
-      '<div class="fp-plan-pick-unit">/month</div>';
-  }
+  function trialDaysOf(q) { return window.FPOffer.trialDaysOf(q); }
+  function offerHtml(priceMinor, trialDays) { return window.FPOffer.offerHtml(priceMinor, trialDays); }
   function ctaLabel(q) {
     var days = trialDaysOf(q);
     if (cart && cart.plan && days > 0) return 'Start my ' + days + '-day free trial →';
@@ -432,8 +421,7 @@
         '</div>' +
         '<div class="fp-plan-price-wrap">' +
           (onTrial
-            ? '<div class="fp-trial-offer"><div class="fp-trial-free">' + days + ' days free</div>' +
-              '<div class="fp-trial-after">' + eur(planLine.amountMinor) + '/month after trial</div></div>'
+            ? offerHtml(planLine.amountMinor, days)
             : '<div class="fp-plan-price">' + eur(planLine.amountMinor) + '</div><div class="fp-plan-price-sub">/month</div>') +
         '</div>' +
       '</div>';

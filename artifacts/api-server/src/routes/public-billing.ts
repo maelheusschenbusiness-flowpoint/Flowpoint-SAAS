@@ -358,7 +358,7 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
   const result: AddonsMap = {};
   for (const [key, val] of Object.entries(obj)) {
     if (!KNOWN_ADDON_KEYS_PUB.has(key)) {
-      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      res.status(400).json({ error: `Unknown add-on: "${key}"` });
       return null;
     }
     if (RETIRED_ADDONS.has(key) && (val === true || (typeof val === "number" && val > 0))) {
