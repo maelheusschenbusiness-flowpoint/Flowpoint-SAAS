@@ -5,6 +5,8 @@ export interface ForecastData {
   siteUrl: string;
   forecasts: ForecastPoint[];
   available: boolean;
+  status: "available" | "insufficient_data";
+  minimumHistoryDays: number;
   ga4Available: boolean;
   source: "gsc" | "gsc+ga4" | "stored" | "none";
   reason?: string;
@@ -34,7 +36,7 @@ export function projectGA4DailyMetric(
   multiplier: number,
   precision = 0,
 ): number {
-  if (values.length < 14) return 0;
+  if (values.length < MINIMUM_HISTORY_DAYS || values.some(value => !Number.isFinite(value) || value < 0)) return 0;
   const recent = values.slice(-14);
   const previous = values.slice(-28, -14);
   const average = (series: number[]) => series.length ? series.reduce((sum, value) => sum + value, 0) / series.length : 0;
@@ -47,10 +49,30 @@ export function projectGA4DailyMetric(
   return Math.max(0, Math.round(baseline * Math.pow(1 + trend, day) * multiplier * scale) / scale);
 }
 
+function isValidForecastDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function storedNumber(value: unknown): number {
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) {
+    return Number.NaN;
+  }
+  return Number(value);
+}
+
+// A forecast requires at least 14 measured daily observations from both
+// Google Search Console and GA4. Zero is valid only when it was explicitly
+// returned as a measured value by the source; missing/invalid values are not.
+export const MINIMUM_HISTORY_DAYS = 14;
+
 const EMPTY_FORECAST: ForecastData = {
   siteUrl: "",
   forecasts: [],
   available: false,
+  status: "insufficient_data",
+  minimumHistoryDays: MINIMUM_HISTORY_DAYS,
   ga4Available: false,
   source: "none",
   reason: "Données historiques insuffisantes pour générer une prévision.",
@@ -80,19 +102,36 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
   try {
     const res = await client.query(
       `SELECT * FROM seo_forecasts
-       WHERE org_id=$1 AND site_url=$2 AND source IN ('gsc','gsc+ga4')
+       WHERE org_id=$1 AND site_url=$2 AND source='gsc+ga4'
        ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
       [orgId, url]
     );
     if (res.rows.length > 0) {
       const forecasts: ForecastPoint[] = res.rows.map((r: Record<string, unknown>) => ({
         date: String(r["forecast_date"]),
-        predictedTraffic: Number(r["predicted_traffic"] ?? 0),
-        predictedConversions: Number(r["predicted_conversions"] ?? 0),
-        predictedRevenue: Number(r["predicted_revenue"] ?? 0),
-        confidence: Number(r["confidence"] ?? 75),
-        scenario: String(r["scenario"] ?? "realistic") as ForecastPoint["scenario"],
+        predictedTraffic: storedNumber(r["predicted_traffic"]),
+        predictedConversions: storedNumber(r["predicted_conversions"]),
+        predictedRevenue: storedNumber(r["predicted_revenue"]),
+        confidence: storedNumber(r["confidence"]),
+        scenario: String(r["scenario"]) as ForecastPoint["scenario"],
       }));
+      const validScenarios = new Set<ForecastPoint["scenario"]>(["pessimistic", "realistic", "optimistic"]);
+      if (forecasts.some(point =>
+        !isValidForecastDate(point.date)
+        || !validScenarios.has(point.scenario)
+        || ![point.predictedTraffic, point.predictedConversions, point.predictedRevenue]
+          .every(value => Number.isFinite(value) && value >= 0)
+        || !Number.isFinite(point.confidence)
+        || point.confidence < 0
+        || point.confidence > 100
+      )) {
+        return {
+          ...EMPTY_FORECAST,
+          siteUrl: url,
+          generatedAt: new Date().toISOString(),
+          reason: "Les prévisions enregistrées contiennent des métriques invalides.",
+        };
+      }
       const realistic = forecasts.filter(f => f.scenario === "realistic");
       const in30 = realistic.slice(0, 30);
       const in90 = realistic.slice(0, 90);
@@ -104,6 +143,8 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
         siteUrl: url,
         forecasts,
         available: realistic.length > 0,
+        status: realistic.length > 0 ? "available" : "insufficient_data",
+        minimumHistoryDays: MINIMUM_HISTORY_DAYS,
         ga4Available: res.rows.some((r: Record<string, unknown>) => r["source"] === "gsc+ga4"),
         source: "stored",
         summary: {
@@ -150,21 +191,47 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
        GROUP BY date ORDER BY date ASC`,
       [orgId]
     );
-    if (history.rows.length < 14) {
+    const measuredClicks = history.rows.map(r => r.clicks == null ? Number.NaN : Number(r.clicks));
+    if (history.rows.length < MINIMUM_HISTORY_DAYS
+      || measuredClicks.some(value => !Number.isFinite(value) || value < 0)) {
       return { ...EMPTY_FORECAST, siteUrl, generatedAt: new Date().toISOString(),
-        reason: "Au moins 14 jours de données Google Search Console sont nécessaires." };
+        reason: `Au moins ${MINIMUM_HISTORY_DAYS} jours de données Google Search Console valides sont nécessaires.` };
     }
     const ga4History = await getGA4ForecastHistory(orgId, "35daysAgo", "yesterday").catch(() => null);
-    const measuredGa4 = ga4History && ga4History.length >= 14 ? ga4History : null;
-    const ga4Conversions = measuredGa4?.map(row => row.conversions) ?? [];
-    const ga4Revenue = measuredGa4?.map(row => row.revenue) ?? [];
-    const clicks = history.rows.map(r => Number(r.clicks) || 0);
+    const measuredGa4 = (ga4History ?? []).filter((row): row is {
+      date: string;
+      sessions: number;
+      conversions: number;
+      revenue: number;
+    } => {
+      const day = new Date(`${row.date}T00:00:00Z`);
+      return /^\d{4}-\d{2}-\d{2}$/.test(row.date)
+        && Number.isFinite(day.getTime())
+        && day.toISOString().slice(0, 10) === row.date
+        && [row.sessions, row.conversions, row.revenue].every(value =>
+          typeof value === "number" && Number.isFinite(value) && value >= 0);
+    });
+    const distinctGa4Days = new Set(measuredGa4.map(row => row.date));
+    if (distinctGa4Days.size < MINIMUM_HISTORY_DAYS) {
+      return {
+        ...EMPTY_FORECAST,
+        siteUrl,
+        generatedAt: new Date().toISOString(),
+        reason: `Au moins ${MINIMUM_HISTORY_DAYS} jours de données GA4 valides (sessions, conversions et revenus mesurés) sont nécessaires.`,
+      };
+    }
+    const uniqueGa4 = measuredGa4.filter((row, index, rows) =>
+      rows.findIndex(candidate => candidate.date === row.date) === index
+    );
+    const ga4Conversions = uniqueGa4.map(row => row.conversions);
+    const ga4Revenue = uniqueGa4.map(row => row.revenue);
+    const clicks = measuredClicks;
     const recent = clicks.slice(-14);
     const previous = clicks.slice(-28, -14);
     const baseline = recent.reduce((sum, value) => sum + value, 0) / recent.length;
     const previousAverage = previous.length ? previous.reduce((sum, value) => sum + value, 0) / previous.length : baseline;
     const dailyTrend = Math.max(-0.05, Math.min(0.05, (baseline - previousAverage) / Math.max(previousAverage, 1) / 14));
-    const confidence = Math.min(85, 45 + history.rows.length);
+    const confidence = Math.min(85, 45 + Math.min(history.rows.length, uniqueGa4.length));
     const forecasts: ForecastPoint[] = [];
     const multipliers = { pessimistic: 0.9, realistic: 1, optimistic: 1.1 } as const;
     for (let day = 1; day <= 90; day++) {
@@ -190,7 +257,7 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
              predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, source=$10, generated_at=NOW()`,
           [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
             orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue,
-            f.confidence, f.scenario, measuredGa4 ? "gsc+ga4" : "gsc"]
+            f.confidence, f.scenario, "gsc+ga4"]
         );
       }
       await client.query("COMMIT");
@@ -206,11 +273,11 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
     return {
       ...data,
       available: true,
-      ga4Available: !!measuredGa4,
-      source: measuredGa4 ? "gsc+ga4" : "gsc",
-      reason: measuredGa4
-        ? "Trafic projeté à partir de GSC; conversions et revenus projetés à partir de GA4 sur les 14 derniers jours mesurés."
-        : "Trafic projeté à partir de GSC. Au moins 14 jours de données GA4 sont nécessaires pour projeter conversions et revenus.",
+      status: "available",
+      minimumHistoryDays: MINIMUM_HISTORY_DAYS,
+      ga4Available: true,
+      source: "gsc+ga4",
+      reason: `Prévisions issues des données mesurées GSC et GA4; minimum requis : ${MINIMUM_HISTORY_DAYS} jours valides.`,
     };
   } finally { client.release(); }
 }

@@ -67,8 +67,11 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/services/forecasting-service.test.ts",
       "src/services/forecasting-service.atomic.test.ts",
+      "src/routes/forecast.test.ts",
+      "src/tests/forecast-ui-state.test.ts",
       "src/tests/forecast-growth-projections.test.ts",
     ],
+    browserTitle: "AI Forecasting Engine shows insufficient history instead of fabricated projections",
   },
   {
     id: "ai-market-intelligence",
