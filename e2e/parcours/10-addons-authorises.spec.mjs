@@ -16,6 +16,7 @@ const addonKeys = [
   "globalMonitoring",
   "aiExecutiveReport",
   "aiWorkspaceLaunch",
+  "aiForecasting",
   "abTestingAI",
   "aiContentStrategist",
   "gbpPerformanceLeads",
@@ -1379,4 +1380,35 @@ test("Global Monitoring fails closed without provider data and shows no fabricat
   const result = page.locator("#fp-global-monitoring-result");
   await expect(result).toContainText(/Impossible de charger les régions|Could not load regions/i);
   await expect(result).not.toContainText(/99\.9|QA monitor|configuredRegionCount/i);
+});
+
+
+test("AI Forecasting Engine shows insufficient history instead of fabricated projections", async ({ page }) => {
+  await db.query("UPDATE organizations SET plan='ultra' WHERE id=$1::uuid", [orgA]);
+  await signInToDashboard(page);
+
+  const response = await page.request.get("/api/forecast?siteUrl=" + encodeURIComponent(siteA));
+  expect(response.status()).toBe(200);
+  const data = await response.json();
+  expect(data.available).toBe(false);
+  expect(data.status).toBe("insufficient_data");
+  expect(data.forecasts ?? data.predictions ?? []).toHaveLength(0);
+
+  await page.evaluate(async siteUrl => {
+    await window.FP_FORECAST_API.load(siteUrl);
+    window.navigate("data-explorer", "forecast");
+  }, siteA);
+  await page.waitForFunction(
+    () => window.STATE?.route === "data-explorer" &&
+      window.STATE?.subRoute === "forecast" &&
+      Boolean(document.querySelector("#fp-page [data-forecast-status]")),
+    null,
+    { timeout: 20_000 },
+  );
+  const panel = page.locator("#fp-page");
+  await expect(panel.locator("[data-forecast-status]"))
+    .toHaveAttribute("data-forecast-status", "insufficient_data");
+  await expect(panel).toContainText(new RegExp("Prévision indisponible|Forecast unavailable", "i"));
+  await expect(panel).toContainText(new RegExp("données insuffisantes|insufficient data", "i"));
+  await expect(panel).not.toContainText(new RegExp("Scénario prudent|Scénario réaliste|Scénario ambitieux", "i"));
 });
