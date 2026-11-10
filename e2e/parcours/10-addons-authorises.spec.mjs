@@ -15,6 +15,7 @@ const addonKeys = [
   "agencyPacks",
   "globalMonitoring",
   "aiExecutiveReport",
+  "revenueLeak",
   "aiWorkspaceLaunch",
   "aiForecasting",
   "abTestingAI",
@@ -1383,6 +1384,7 @@ test("Global Monitoring fails closed without provider data and shows no fabricat
 });
 
 
+
 test("AI Forecasting Engine shows insufficient history instead of fabricated projections", async ({ page }) => {
   await db.query("UPDATE organizations SET plan='ultra' WHERE id=$1::uuid", [orgA]);
   await signInToDashboard(page);
@@ -1405,10 +1407,35 @@ test("AI Forecasting Engine shows insufficient history instead of fabricated pro
     null,
     { timeout: 20_000 },
   );
-  const panel = page.locator("#fp-page");
-  await expect(panel.locator("[data-forecast-status]"))
+  const forecastPanel = page.locator("#fp-page");
+  await expect(forecastPanel.locator("[data-forecast-status]"))
     .toHaveAttribute("data-forecast-status", "insufficient_data");
-  await expect(panel).toContainText(new RegExp("Prévision indisponible|Forecast unavailable", "i"));
-  await expect(panel).toContainText(new RegExp("données insuffisantes|insufficient data", "i"));
-  await expect(panel).not.toContainText(new RegExp("Scénario prudent|Scénario réaliste|Scénario ambitieux", "i"));
+  await expect(forecastPanel).toContainText(new RegExp("Prévision indisponible|Forecast unavailable", "i"));
+  await expect(forecastPanel).toContainText(new RegExp("données insuffisantes|insufficient data", "i"));
+  await expect(forecastPanel).not.toContainText(new RegExp("Scénario prudent|Scénario réaliste|Scénario ambitieux", "i"));
+});
+
+test("Revenue Leak AI shows GA4 availability and no invented financial loss in the dashboard", async ({ page }) => {
+  await signInToDashboard(page);
+  const response = await page.request.get("/api/revenue-leak");
+  expect(response.status()).toBe(200);
+  const data = await response.json();
+  expect(data.attribution?.status).toBe("insufficient_data");
+  expect(data.financial?.observedLoss ?? null).toBeNull();
+  expect(data.financial?.estimatedLoss ?? null).toBeNull();
+
+  await page.evaluate(() => window.navigate("conversion", "revenue-leak"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion" &&
+      window.STATE?.subRoute === "revenue-leak" &&
+      Boolean(document.querySelector("#fp-page [data-attribution-status]")),
+    null,
+    { timeout: 20_000 },
+  );
+  const revenuePanel = page.locator("#fp-page");
+  await expect(revenuePanel.locator("[data-attribution-status]"))
+    .toHaveAttribute("data-attribution-status", "insufficient_data");
+  await expect(revenuePanel).toContainText(new RegExp("Attribution financière : données insuffisantes|Financial attribution: insufficient data", "i"));
+  await expect(revenuePanel).toContainText(new RegExp("Revenu observé par GA4|Revenue observed by GA4", "i"));
+  await expect(revenuePanel).toContainText(new RegExp("Indisponible|Unavailable", "i"));
 });

@@ -43,7 +43,13 @@ export const ADDON_REGISTRY = [
     id: "revenue-leak-ai",
     label: "Revenue Leak AI",
     historical: false,
-    tests: ["src/routes/revenue-leak-ownership.test.ts"],
+    tests: [
+      "src/routes/revenue-leak-ownership.test.ts",
+      "src/routes/revenue-leak-ga4.test.ts",
+      "src/services/revenue-leak-attribution.test.ts",
+      "src/tests/revenue-leak-attribution-ui.test.ts",
+    ],
+    browserTitle: "Revenue Leak AI shows GA4 availability and no invented financial loss in the dashboard",
   },
   {
     id: "ai-executive-reporting",

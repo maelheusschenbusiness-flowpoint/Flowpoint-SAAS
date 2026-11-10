@@ -25,6 +25,7 @@ export interface GA4Row {
 interface GA4ReportResponse {
   rows?:    GA4Row[];
   totals?:  Array<{ metricValues?: MetricValue[] }>;
+  metadata?: { currencyCode?: string; timeZone?: string };
   rowCount?: number;
 }
 
@@ -589,9 +590,13 @@ export async function getGA4Campaigns(
  */
 export async function getGA4ConversionPages(
   orgId: string, startDate: string, endDate: string
-): Promise<{ rows: GA4Row[] }> {
+): Promise<{
+  rows: GA4Row[];
+  totals?: Array<{ metricValues?: MetricValue[] }>;
+  currencyCode?: string | null;
+}> {
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return { rows: [] };
+  if (!ctx) return { rows: [], totals: [], currencyCode: null };
   try {
     const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
       dateRanges: [{ startDate, endDate }],
@@ -600,13 +605,18 @@ export async function getGA4ConversionPages(
         { name: "sessions" }, { name: "totalUsers" },
         { name: "conversions" }, { name: "totalRevenue" },
       ],
+      metricAggregations: ["TOTAL"],
       orderBys: [{ metric: { metricName: "conversions" }, desc: true }],
       limit: 20,
     });
-    return { rows: data.rows ?? [] };
+    return {
+      rows: data.rows ?? [],
+      totals: data.totals ?? [],
+      currencyCode: data.metadata?.currencyCode ?? null,
+    };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4ConversionPages failed");
-    return { rows: [] };
+    return { rows: [], totals: [], currencyCode: null };
   }
 }
 
