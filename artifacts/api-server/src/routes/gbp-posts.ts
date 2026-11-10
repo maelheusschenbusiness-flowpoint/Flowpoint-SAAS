@@ -5,6 +5,7 @@ import {
 } from "../services/gbp-posting-service.js";
 import { GbpPublishError, GBP_PUBLISH_ERRORS } from "../services/gbp-publish-errors.js";
 import { requireAddon, requireFeature } from "../middlewares/planGate.js";
+import { canAdmin, canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.get("/gbp-posts/queue", async (req, res) => {
   } catch { res.json({ queue: [], count: 0 }); }
 });
 
-router.post("/gbp-posts", async (req, res) => {
+router.post("/gbp-posts", canWrite, async (req, res) => {
   const {
     locationId, locationName, postType, title, content, ctaType, ctaUrl,
     mediaUrls, scheduledAt, seoKeywords, eventTitle, eventStart, eventEnd, offerCode, offerTerms, manualApproval,
@@ -123,7 +124,7 @@ router.post("/gbp-posts", async (req, res) => {
 });
 
 // AI post generation requires the aiGbpPosting add-on
-router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), async (req, res) => {
+router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), canWrite, async (req, res) => {
   const { locationId, locationName, postType, industry, keywords, tone, objective, language, maxCharacters } = req.body as {
     locationId?: string; locationName?: string; postType?: string; industry?: string;
     keywords?: string[]; tone?: string; objective?: string; language?: string; maxCharacters?: number;
@@ -144,9 +145,10 @@ router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posti
   }
 });
 
-router.post("/gbp-posts/:id/publish", async (req, res) => {
+router.post("/gbp-posts/:id/publish", canWrite, async (req, res) => {
   try {
-    const post = await publishPost(org(req), req.params.id);
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const post = await publishPost(org(req), postId);
     res.json({ ok: true, post });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
@@ -169,7 +171,7 @@ router.post("/gbp-posts/:id/publish", async (req, res) => {
   }
 });
 
-router.patch("/gbp-posts/:id", async (req, res) => {
+router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
   const { content, title, scheduledAt, status, seoKeywords } = req.body as {
     content?: string; title?: string; scheduledAt?: string; status?: string; seoKeywords?: string[];
   };
@@ -199,9 +201,10 @@ router.patch("/gbp-posts/:id", async (req, res) => {
   } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
-router.delete("/gbp-posts/:id", async (req, res) => {
+router.delete("/gbp-posts/:id", canAdmin, async (req, res) => {
   try {
-    const deleted = await deletePost(org(req), req.params.id);
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const deleted = await deletePost(org(req), postId);
     if (deleted === false) { res.status(404).json({ error: "Post introuvable" }); return; }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
