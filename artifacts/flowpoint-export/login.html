@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';})();</script>
+  <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
+  <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
+  <script src="/funnel-theme.js?v=20261110" defer></script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -12,44 +14,12 @@
   <meta id="fp-meta-tc" name="theme-color" content="#050810">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <script src="/fp-locale.js?v=20261025"></script>
-  <title>Connexion — FlowPoint</title>
+  <title>Sign in — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      --bg:        #0b1120;
-      --bg2:       #111827;
-      --surface:   #1e293b;
-      --border:    #2d3f55;
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#3b82f6;
-      --text:      #f1f5f9;
-      --text-soft: #94a3b8;
-      --text-muted:#64748b;
-      --input-bg:  #162032;
-      --radius:    14px;
-      --shadow:    0 8px 40px rgba(0,0,0,.5);
-    }
-
-    html[data-theme="light"] {
-      --bg:        #f8fafc;
-      --bg2:       #ffffff;
-      --surface:   #f1f5f9;
-      --border:    rgba(0,0,0,.1);
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#2563eb;
-      --text:      #0f172a;
-      --text-soft: #475569;
-      --text-muted:#94a3b8;
-      --input-bg:  #f8fafc;
-      --shadow:    0 4px 24px rgba(0,0,0,.1);
-    }
-    html[data-theme="light"] .fp-alert-success { background: rgba(34,197,94,.08);  border-color: rgba(34,197,94,.25);  color: #16a34a; }
-    html[data-theme="light"] .fp-alert-error   { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: #dc2626; }
+    :root { --radius: 14px; }
     html[data-theme="light"] .fp-btn-oauth:hover { background: #e8f0fe; border-color: #93c5fd; }
-    html[data-theme="light"] .fp-spinner { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
 
     html, body {
       min-height: 100%; background: var(--bg); color: var(--text);
@@ -87,7 +57,7 @@
       background: var(--input-bg); color: var(--text);
       outline: none; transition: border-color 0.15s, box-shadow 0.15s;
     }
-    input[type="email"]:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
+    input[type="email"]:focus { border-color: var(--blue); box-shadow: var(--focus-ring); }
     input[type="email"]::placeholder { color: var(--text-muted); }
 
     .fp-btn {
@@ -119,8 +89,8 @@
       display: none; padding: 12px 14px; border-radius: 8px;
       font-size: 13px; margin-bottom: 16px; line-height: 1.55;
     }
-    .fp-alert-success { background: rgba(34,197,94,.1); border: 1px solid rgba(34,197,94,.3); color: #86efac; }
-    .fp-alert-error   { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #fca5a5; }
+    .fp-alert-success { background: var(--green-bg); border: 1px solid var(--green-border); color: var(--green); }
+    .fp-alert-error   { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); }
 
     .fp-footer {
       margin-top: 20px; text-align: center; font-size: 12px; color: var(--text-muted); line-height: 1.6;
@@ -288,25 +258,25 @@
     </a>
 
     <div class="fp-card">
-      <h1>Bienvenue</h1>
-      <p class="fp-subtitle">Connectez-vous à votre espace FlowPoint</p>
+      <h1>Welcome back</h1>
+      <p class="fp-subtitle">Sign in to your FlowPoint workspace</p>
 
       <div class="fp-alert fp-alert-success" id="fp-success"></div>
       <div class="fp-alert fp-alert-error"   id="fp-error"></div>
 
       <form id="fp-login-form">
         <div class="fp-form-group">
-          <label for="fp-email">Adresse e-mail</label>
+          <label for="fp-email">Email address</label>
           <input type="email" id="fp-email" name="email"
-                 placeholder="vous@exemple.com"
+                 placeholder="you@company.com"
                  required autocomplete="email" autofocus/>
         </div>
         <button type="submit" class="fp-btn fp-btn-primary" id="fp-submit-btn">
-          Recevoir le lien de connexion
+          Send me a sign-in link
         </button>
       </form>
 
-      <div class="fp-divider" id="fp-oauth-divider">ou</div>
+      <div class="fp-divider" id="fp-oauth-divider">or</div>
 
       <div id="fp-oauth-btns">
         <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-google-btn" data-loginurl="/api/auth/google/login">
@@ -316,7 +286,7 @@
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
-          Continuer avec Google
+          Continue with Google
         </button>
 
       </div>
@@ -324,16 +294,16 @@
     </div>
 
     <p class="fp-create-link">
-      Pas encore de compte ? <a href="/">Créer mon compte →</a>
+      No account yet? <a href="/">Create your account →</a>
     </p>
     <p class="fp-create-link" style="margin-top:6px;">
-      <a href="/pricing.html" style="color:var(--blue-light);font-weight:600;font-size:12px;">Voir les plans et tarifs</a>
+      <a href="/pricing.html" style="color:var(--blue-light);font-weight:600;font-size:12px;">See plans and pricing</a>
     </p>
 
     <div class="fp-footer">
-      En vous connectant, vous acceptez nos
-      <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Conditions d'utilisation</a>
-      et notre <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Politique de confidentialité</a>.
+      By signing in, you agree to our
+      <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Terms of Use</a>
+      and our <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
     </div>
 
   </div>
@@ -371,8 +341,8 @@
     function setLoading(on) {
       submitBtn.disabled = on;
       submitBtn.innerHTML = on
-        ? '<span class="fp-spinner"></span>Envoi\u2026'
-        : 'Recevoir le lien de connexion';
+        ? '<span class="fp-spinner"></span>Sending\u2026'
+        : 'Send me a sign-in link';
     }
 
     /* ── Preserve ?next= across magic-link flow ── */
@@ -389,12 +359,15 @@
       var e = p.get('error');
       if (!e) return;
       var msgs = {
-        google_auth_failed   : '\u00C9chec de la connexion Google. R\u00E9essayez.',
-        missing_code         : 'Connexion annul\u00E9e.',
-        access_denied        : 'Acc\u00E8s refus\u00E9.',
-        github_auth_failed   : '\u00C9chec de la connexion GitHub. R\u00E9essayez.',
+        google_auth_failed   : 'Google sign-in failed. Please try again.',
+        missing_code         : 'Sign-in was cancelled.',
+        access_denied        : 'Access denied.',
+        github_auth_failed   : 'GitHub sign-in failed. Please try again.',
+        invalid_state        : 'Your sign-in session expired. Please try again.',
+        email_not_verified   : 'Your Google email address is not verified.',
+        no_active_org        : 'No active FlowPoint workspace is linked to this account.',
       };
-      showError(msgs[e] || 'Erreur\u00a0: ' + e.replace(/_/g, ' ') + '.');
+      showError(msgs[e] || 'Error: ' + e.replace(/_/g, ' ') + '.');
       history.replaceState({}, '', '/login.html');
     })();
 
@@ -403,7 +376,7 @@
       e.preventDefault();
       clearAlerts();
       var email = emailIn.value.trim();
-      if (!email) { showError('Veuillez saisir votre adresse e-mail.'); return; }
+      if (!email) { showError('Please enter your email address.'); return; }
 
       setLoading(true);
       fetch('/api/auth/login-request', {
@@ -419,19 +392,19 @@
         setLoading(false);
         if (r.ok) {
           form.style.display = 'none';
-          showSuccess('\u2709\uFE0F Si cette adresse correspond \u00E0 un compte autoris\u00E9, un lien de connexion peut \u00EAtre envoy\u00E9.<br>V\u00E9rifiez aussi les spams.');
+          showSuccess('\u2709\uFE0F If this address matches an authorized account, a sign-in link may be sent.<br>Please also check your spam folder.');
         } else if (r.status === 503) {
-          showError('Service e-mail indisponible. Connectez-vous avec Google.');
+          showError('Email service unavailable. Please continue with Google.');
         } else {
-          var errMsg = localizeError(r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.');
+          var errMsg = localizeError(r.data.error || 'An error occurred. Please try again.');
           var dest   = r.data.redirectTo || '';
           if (dest === '/signin.html') {
             errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
-              ' <a href="/signin.html" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Cr\u00E9er mon compte</a>';
+              ' <a href="/signin.html" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Create your account</a>';
             errorEl.style.display = 'block';
           } else if (dest) {
             errorEl.innerHTML = errMsg.replace(/[<>&"]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) +
-              ' <a href="' + dest.replace(/"/g,'') + '" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Continuer</a>';
+              ' <a href="' + dest.replace(/"/g,'') + '" style="font-weight:700;text-decoration:underline;color:inherit">\u2192 Continue</a>';
             errorEl.style.display = 'block';
           } else {
             errorEl.textContent = errMsg;
@@ -442,7 +415,7 @@
       })
       .catch(function () {
         setLoading(false);
-        showError('Impossible de contacter le serveur. V\u00E9rifiez votre connexion.');
+        showError('Unable to reach the server. Please check your connection.');
       });
     });
 

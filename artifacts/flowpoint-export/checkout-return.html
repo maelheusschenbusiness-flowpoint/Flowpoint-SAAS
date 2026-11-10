@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -9,14 +10,13 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="robots" content="noindex, nofollow"/>
-  <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#0b1120"/>
   <script src="/fp-locale.js?v=20261025"></script>
-  <title>Vérification du paiement — FlowPoint</title>
-  <script>(function(){try{var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';}catch(e){}})();</script>
+  <title>Verifying payment — FlowPoint</title>
+  <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
+  <script src="/funnel-theme.js?v=20261110" defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --bg: #0b1120; --surface: #111827; --border: rgba(255,255,255,0.08); --blue: #2563eb; --text: #f1f5f9; --text-soft: #94a3b8; --green: #34d399; }
-    html[data-theme="light"] { --bg: #f8faff; --surface: #fff; --border: rgba(0,0,0,0.09); --text: #0f172a; --text-soft: #475569; }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; }
     body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; gap: 16px; text-align: center; }
     .fp-spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: fp-spin .7s linear infinite; }
@@ -40,8 +40,8 @@
   </a>
   <div class="fp-spinner" id="fp-spinner"></div>
   <div class="fp-check" id="fp-check" style="display:none">✅</div>
-  <div class="fp-title" id="fp-title">Finalisation de votre compte…</div>
-  <div class="fp-sub" id="fp-sub">Merci de patienter quelques instants.</div>
+  <div class="fp-title" id="fp-title">Finalizing your account…</div>
+  <div class="fp-sub" id="fp-sub">Please wait a moment.</div>
 
   <script>
   (function(){
@@ -86,7 +86,6 @@
       .catch(function() { return false; });
     }
 
-    function T(fr, en) { return window.fpPublicText ? window.fpPublicText(fr, en) : fr; }
     function go(url) { if (typeof window.__fpNavigate === 'function') window.__fpNavigate(url); else window.location.href = url; }
     function reloadHref() { return window.location.href; }
 
@@ -111,10 +110,9 @@
     function showSignInRequired() {
       showReturnState(
         '🔐',
-        T('Connectez-vous pour vérifier votre achat', 'Sign in to verify your purchase'),
-        T('Nous ne pouvons pas confirmer ce paiement sans être connecté au compte utilisé lors de l’achat. Rien n’est confirmé à ce stade : connectez-vous, puis consultez la facturation.',
-          'We cannot confirm this payment without being signed in to the account used for the purchase. Nothing is confirmed at this stage: sign in, then check your billing.'),
-        T('Se connecter', 'Sign in'),
+        'Sign in to verify your purchase',
+        'We cannot confirm this payment without being signed in to the account used for the purchase. Nothing is confirmed at this stage: sign in, then check your billing.',
+        'Sign in',
         '/login.html'
       );
     }
@@ -122,10 +120,9 @@
     function showInvalidSession() {
       showReturnState(
         '⚠️',
-        T('Session de paiement introuvable ou expirée', 'Payment session not found or expired'),
-        T('Aucun achat n’a été confirmé pour ce lien. Reprenez depuis les offres, ou connectez-vous pour voir l’état réel de votre compte.',
-          'No purchase was confirmed for this link. Start again from the pricing page, or sign in to see the real state of your account.'),
-        T('Voir les offres', 'View plans'),
+        'Payment session not found or expired',
+        'No purchase was confirmed for this link. Start again from the pricing page, or sign in to see the real state of your account.',
+        'View plans',
         '/pricing.html'
       );
     }
@@ -133,10 +130,9 @@
     function showMismatch() {
       showReturnState(
         '⚠️',
-        T('Ce paiement n’appartient pas à ce compte', 'This payment does not belong to this account'),
-        T('Cette session de paiement ne correspond pas à l’organisation connectée. Connectez-vous avec le compte utilisé lors de l’achat.',
-          'This payment session does not match the signed-in organization. Sign in with the account used for the purchase.'),
-        T('Se connecter', 'Sign in'),
+        'This payment does not belong to this account',
+        'This payment session does not match the signed-in organization. Sign in with the account used for the purchase.',
+        'Sign in',
         '/login.html'
       );
     }
@@ -146,10 +142,9 @@
       try { hasCart = !!JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
       showReturnState(
         '↩',
-        T('Paiement échoué', 'Payment failed'),
-        T('Votre paiement n’a pas abouti : aucun achat n’est confirmé et rien n’a été activé. Vous pouvez réessayer avec le même moyen de paiement ou un autre.',
-          'Your payment did not go through: no purchase is confirmed and nothing was activated. You can try again with the same payment method or another one.'),
-        T('Réessayer le paiement', 'Try the payment again'),
+        'Payment failed',
+        'Your payment did not go through: no purchase is confirmed and nothing was activated. You can try again with the same payment method or another one.',
+        'Try the payment again',
         hasCart ? '/checkout-payment.html' : '/pricing.html'
       );
     }
@@ -157,10 +152,9 @@
     function showPendingState() {
       showReturnState(
         '⏳',
-        T('Confirmation en attente', 'Confirmation pending'),
-        T('Le serveur n’a pas encore confirmé ce paiement. Ce n’est pas un échec, mais rien n’est confirmé pour le moment. Réessayez dans quelques instants.',
-          'The server has not confirmed this payment yet. This is not a failure, but nothing is confirmed for now. Try again in a few moments.'),
-        T('Réessayer la vérification', 'Retry verification'),
+        'Confirmation pending',
+        'The server has not confirmed this payment yet. This is not a failure, but nothing is confirmed for now. Try again in a few moments.',
+        'Retry verification',
         reloadHref()
       );
     }
@@ -168,10 +162,9 @@
     function showServerError() {
       showReturnState(
         '!',
-        T('Vérification impossible pour le moment', 'Verification unavailable right now'),
-        T('Une erreur est survenue (serveur ou connexion) : votre paiement n’a pas pu être vérifié. Ce n’est pas une confirmation. Réessayez ; si le problème persiste, consultez votre facturation.',
-          'An error occurred (server or connection): your payment could not be verified. This is not a confirmation. Try again; if it persists, check your billing.'),
-        T('Réessayer', 'Try again'),
+        'Verification unavailable right now',
+        'An error occurred (server or connection): your payment could not be verified. This is not a confirmation. Try again; if it persists, check your billing.',
+        'Try again',
         reloadHref()
       );
     }
@@ -181,9 +174,9 @@
         isAlreadyLoggedIn = restored;
         showReturnState(
           '↩',
-          'Paiement annulé',
-          'Aucun achat n’a été confirmé. Vous pouvez revenir à la facturation et réessayer.',
-          restored ? 'Retour à la facturation' : 'Se connecter',
+          'Payment canceled',
+          'No purchase was confirmed and you have not been charged. You can go back to billing and try again.',
+          restored ? 'Back to billing' : 'Sign in',
           restored ? '/dashboard.html#billing' : '/login.html'
         );
       });
@@ -243,13 +236,13 @@
           /* Email delivery failed but account was created — offer manual login */
           if (res.data.emailFailed) {
             document.getElementById('fp-check').style.display = '';
-            document.getElementById('fp-title').textContent = 'Compte activé !';
+            document.getElementById('fp-title').textContent = 'Your account is ready!';
             document.getElementById('fp-sub').innerHTML =
-              'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
-              "L'email de connexion n'a pas pu être envoyé.<br>" +
-              'Connectez-vous directement depuis la page de connexion&nbsp;:' +
-              '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>' +
-              '<br><br><small style="opacity:.65">Vous pourrez demander un nouveau lien de connexion depuis cette page.</small>';
+              'Your payment is confirmed and your account has been created.<br><br>' +
+              "We could not send your sign-in email.<br>" +
+              'Sign in directly from the login page:' +
+              '<br><br><a href="/login.html" class="fp-btn">Sign in →</a>' +
+              '<br><br><small style="opacity:.65">You can request a new sign-in link from that page.</small>';
             return;
           }
 
@@ -261,10 +254,10 @@
           }
           if (_ct === 'addon_only') {
             document.getElementById('fp-check').style.display = '';
-            document.getElementById('fp-title').textContent = 'Add-on activé !';
+            document.getElementById('fp-title').textContent = 'Add-on activated!';
             document.getElementById('fp-sub').innerHTML =
-              'Votre add-on est <strong>immédiatement disponible</strong>.<br>' +
-              'Vous allez être redirigé vers le tableau de bord…';
+              'Your add-on is <strong>available right away</strong>.<br>' +
+              'Redirecting you to your dashboard…';
             setTimeout(function(){ go('/dashboard.html?checkout=success#billing'); }, 2200);
             return;
           }
@@ -272,11 +265,11 @@
           if (res.data.awaitingWebhook) {
             /* checkout_session path (reactivation) — subscription created by Stripe,
                webhook will activate it. Show a brief waiting state then go to dashboard. */
-            document.getElementById('fp-title').textContent = T('Abonnement en cours d\'activation', 'Subscription activation in progress');
+            document.getElementById('fp-title').textContent = 'Subscription activation in progress';
             document.getElementById('fp-sub').innerHTML =
-              T('Votre paiement est confirmé.', 'Your payment is confirmed.') + '<br>' +
-              T('Activation de votre abonnement en cours…', 'Activating your subscription…') + '<br>' +
-              '<small style="opacity:.6;display:block;margin-top:8px">' + T('Vous serez redirigé dès que l\'activation est confirmée.', 'You will be redirected as soon as activation is confirmed.') + '</small>';
+              'Your payment is confirmed.' + '<br>' +
+              'Activating your subscription…' + '<br>' +
+              '<small style="opacity:.6;display:block;margin-top:8px">' + 'You will be redirected as soon as activation is confirmed.' + '</small>';
             /* Poll billing/verify up to 4× (2 s apart) to detect webhook completion,
                then fall through to dashboard regardless. */
             var pollsLeft = 15;
@@ -302,15 +295,15 @@
             })();
             } else if (isNewSignup) {
             /* New signup: account activated, magic link sent to email — no session yet */
-            document.getElementById('fp-title').textContent = 'Compte activé ! Vérifiez vos emails';
+            document.getElementById('fp-title').textContent = 'Your account is ready! Check your email';
             document.getElementById('fp-sub').innerHTML =
-              'Votre abonnement est confirmé.<br>' +
-              'Un <strong>lien de connexion</strong> vient de vous être envoyé par email.<br>' +
-              'Cliquez dessus pour accéder à votre tableau de bord.<br><br>' +
-              '<a href="/login.html" class="fp-btn">Déjà connecté ? Se connecter →</a>';
+              'Your subscription is confirmed.<br>' +
+              'We just emailed you a <strong>sign-in link</strong>.<br>' +
+              'Click it to go to your dashboard.<br><br>' +
+              '<a href="/login.html" class="fp-btn">Already have access? Sign in →</a>';
           } else {
-            document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
-            document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
+            document.getElementById('fp-title').textContent = 'Your order is confirmed!';
+            document.getElementById('fp-sub').innerHTML = 'Subscription activated · your 14-day free trial has started.<br>Redirecting you…';
             setTimeout(function(){ go('/dashboard.html?checkout=success'); }, 1800);
           }
         } else if (res.status === 401) {
@@ -321,8 +314,8 @@
         } else if (res.status === 402 || (res.status === 400 && /statut:\s*(processing|requires_action|requires_confirmation|requires_capture)/i.test(res.data.error || ''))) {
           /* Paiement en cours côté Stripe : polling borné, puis état "en attente" explicite. */
           if (poll < FC_MAX_POLLS) {
-            document.getElementById('fp-title').textContent = T('Confirmation du paiement en cours…', 'Confirming your payment…');
-            document.getElementById('fp-sub').textContent = T('Nous attendons la confirmation de votre banque.', 'We are waiting for confirmation from your bank.');
+            document.getElementById('fp-title').textContent = 'Confirming your payment…';
+            document.getElementById('fp-sub').textContent = 'We are waiting for confirmation from your bank.';
             setTimeout(function(){ runFinalize(poll + 1); }, 2000);
           } else {
             showPendingState();
@@ -340,24 +333,24 @@
           var errCode = res.data.code || '';
           if (errCode === 'activation_email_failed') {
             document.getElementById('fp-check').style.display = '';
-            document.getElementById('fp-title').textContent = 'Compte activé !';
+            document.getElementById('fp-title').textContent = 'Your account is ready!';
             document.getElementById('fp-sub').innerHTML =
-              'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
-              "L'email de connexion n'a pas pu être envoyé — connectez-vous directement&nbsp;:" +
-              '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+              'Your payment is confirmed and your account has been created.<br><br>' +
+              "We could not send your sign-in email — sign in directly:" +
+              '<br><br><a href="/login.html" class="fp-btn">Sign in →</a>';
           } else {
-            document.getElementById('fp-title').textContent = 'Erreur de finalisation';
-            var finalizationError = res.data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
-            if (window.fpResolveLanguage() === 'en') {
-              var translatedError = window.fpPublicTranslateText(finalizationError);
-              finalizationError = translatedError !== finalizationError
-                ? translatedError
-                : 'An error occurred while creating your subscription.';
-            }
+            document.getElementById('fp-title').textContent = 'Could not finalize your account';
+            /* Le serveur renvoie des erreurs en français : on affiche la traduction
+               connue, sinon un message générique anglais. */
+            var finalizationError = res.data.error || 'An error occurred while creating your subscription.';
+            var translatedError = window.fpPublicTranslateText ? window.fpPublicTranslateText(finalizationError) : finalizationError;
+            finalizationError = translatedError !== finalizationError
+              ? translatedError
+              : 'An error occurred while creating your subscription.';
             document.getElementById('fp-sub').textContent = finalizationError;
             document.getElementById('fp-sub').innerHTML += isAlreadyLoggedIn
-              ? '<br><br><a href="/dashboard.html#billing/plans" class="fp-btn">Retour aux abonnements</a>'
-              : '<br><br><a href="/pricing.html" class="fp-btn">Réessayer</a>';
+              ? '<br><br><a href="/dashboard.html#billing/plans" class="fp-btn">Back to plans</a>'
+              : '<br><br><a href="/pricing.html" class="fp-btn">Try again</a>';
           }
         }
       })
@@ -378,12 +371,12 @@
        Called when billing/verify reports checkoutType=ai_credits_only/ai_credits.
        Shows a "tokens added" success screen then redirects to the billing tab.    */
     function showAiCreditsSuccess(credits) {
-      var label = credits >= 500000 ? '500 000' : credits >= 200000 ? '200 000' : '50 000';
+      var label = credits >= 500000 ? '500,000' : credits >= 200000 ? '200,000' : '50,000';
       showReturnState(
         '✅',
-        'Crédits IA ajoutés',
-        label + ' crédits ont été confirmés dans votre compte.',
-        'Ouvrir la facturation',
+        'AI credits added',
+        label + ' AI credits have been added to your account.',
+        'Open billing',
         '/dashboard.html?checkout=success#billing'
       );
     }
@@ -391,14 +384,14 @@
     function showAddonSuccess(credits) {
       var creditsMessage = '';
       if (credits > 0) {
-        var creditLabel = credits >= 500000 ? '500 000' : credits >= 200000 ? '200 000' : '50 000';
-        creditsMessage = ' ' + creditLabel + ' crédits IA ont aussi été confirmés.';
+        var creditLabel = credits >= 500000 ? '500,000' : credits >= 200000 ? '200,000' : '50,000';
+        creditsMessage = ' ' + creditLabel + ' AI credits have also been added.';
       }
       showReturnState(
         '✅',
-        credits > 0 ? 'Add-on et crédits activés' : 'Add-on activé',
-        'L’activation a été confirmée et vos droits ont été mis à jour.' + creditsMessage,
-        'Ouvrir la facturation',
+        credits > 0 ? 'Add-on and credits activated' : 'Add-on activated',
+        'Activation is confirmed and your account access has been updated.' + creditsMessage,
+        'Open billing',
         '/dashboard.html?checkout=success#billing'
       );
     }
@@ -406,9 +399,9 @@
     function showActivationPending() {
       showReturnState(
         '⏳',
-        'Activation en cours',
-        'Le paiement est confirmé, mais la mise à jour de vos droits prend plus de temps que prévu. Réessayez dans quelques instants ou ouvrez la facturation pour actualiser votre compte.',
-        'Réessayer la vérification',
+        'Activation in progress',
+        'Your payment is confirmed, but updating your account is taking longer than expected. Try again in a few moments or open billing to refresh your account.',
+        'Retry verification',
         window.location.href
       );
     }
@@ -446,9 +439,9 @@
         if (status === 'expired' || status === 'canceled' || status === 'cancelled') {
           showReturnState(
             '↩',
-            'Session de paiement expirée',
-            'Aucun achat n’a été confirmé. Retournez à la facturation pour recommencer.',
-            'Retour à la facturation',
+            'Payment session expired',
+            'No purchase was confirmed. Go back to billing to start again.',
+            'Back to billing',
             isAlreadyLoggedIn ? '/dashboard.html#billing' : '/login.html'
           );
           return;
@@ -456,8 +449,8 @@
 
         if (result.status === 202 || data.pending || status === 'processing') {
           if (attempt < 15) {
-            document.getElementById('fp-title').textContent = 'Activation en cours';
-            document.getElementById('fp-sub').textContent = 'Vérification de la mise à jour de votre compte…';
+            document.getElementById('fp-title').textContent = 'Activation in progress';
+            document.getElementById('fp-sub').textContent = 'Checking your account update…';
             setTimeout(function() { runBillingVerify(attempt + 1); }, 2000);
           } else {
             showActivationPending();
@@ -492,32 +485,32 @@
         if (result.status === 402) {
           showReturnState(
             '⌛',
-            'Paiement non confirmé',
-            'La session Stripe n’indique pas encore un paiement terminé. Vérifiez votre mode de paiement ou retournez à la facturation.',
-            isAlreadyLoggedIn ? 'Retour à la facturation' : 'Se connecter',
+            'Payment not confirmed',
+            'Stripe does not report a completed payment for this session yet. Check your payment method or go back to billing.',
+            isAlreadyLoggedIn ? 'Back to billing' : 'Sign in',
             isAlreadyLoggedIn ? '/dashboard.html#billing' : '/login.html'
           );
           return;
         }
         showReturnState(
           '!',
-          'Vérification impossible',
-          data.error || 'Le statut de cet achat n’a pas pu être confirmé. Consultez la facturation avant de réessayer.',
-          isAlreadyLoggedIn ? 'Ouvrir la facturation' : 'Se connecter',
+          'Verification unavailable',
+          data.error || 'We could not confirm the status of this purchase. Check your billing before trying again.',
+          isAlreadyLoggedIn ? 'Open billing' : 'Sign in',
           isAlreadyLoggedIn ? '/dashboard.html#billing' : '/login.html'
         );
       })
       .catch(function() {
         if (attempt < 15) {
-          document.getElementById('fp-title').textContent = 'Vérification en cours';
-          document.getElementById('fp-sub').textContent = 'Connexion temporairement indisponible. Nouvelle tentative…';
+          document.getElementById('fp-title').textContent = 'Verification in progress';
+          document.getElementById('fp-sub').textContent = 'Connection temporarily unavailable. Retrying…';
           setTimeout(function() { runBillingVerify(attempt + 1); }, 2000);
         } else {
           showReturnState(
             '!',
-            'Vérification impossible',
-            'Le serveur de paiement ne répond pas. Réessayez ou consultez votre compte.',
-            isAlreadyLoggedIn ? 'Ouvrir la facturation' : 'Se connecter',
+            'Verification unavailable',
+            'The payment server is not responding. Try again or check your account.',
+            isAlreadyLoggedIn ? 'Open billing' : 'Sign in',
             isAlreadyLoggedIn ? '/dashboard.html#billing' : '/login.html'
           );
         }
@@ -535,14 +528,14 @@
         if (res.status === 200 && res.data.ok) {
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
           document.getElementById('fp-spinner').style.display = 'none';
-          document.getElementById('fp-title').textContent = 'Compte activé !';
-          document.getElementById('fp-sub').innerHTML = 'Votre abonnement est actif.<br>Connexion automatique en cours…';
+          document.getElementById('fp-title').textContent = 'Your account is ready!';
+          document.getElementById('fp-sub').innerHTML = 'Your subscription is active.<br>Signing you in automatically…';
           setTimeout(function(){
             go(res.data.redirectTo || '/dashboard.html');
           }, 1200);
         } else if ((res.status === 402 || res.status === 202) && retries > 0) {
           /* Stripe webhook / session not yet confirmed — retry */
-          document.getElementById('fp-sub').textContent = 'Confirmation du paiement en cours (' + retries + ')…';
+          document.getElementById('fp-sub').textContent = 'Confirming your payment (' + retries + ')…';
           setTimeout(function(){ runCheckoutComplete(retries - 1); }, 2000);
         } else if (res.status === 409) {
           /* An existing account must sign in; never route it as a new signup. */
@@ -551,39 +544,37 @@
         } else if (res.status === 410) {
           showReturnState(
             '↩',
-            'Session de paiement expirée',
-            'Aucun achat n’a été confirmé. Retournez aux offres pour recommencer.',
-            'Voir les offres',
+            'Payment session expired',
+            'No purchase was confirmed. Go back to the plans to start again.',
+            'View plans',
             '/pricing.html'
           );
         } else if (res.status === 200 && res.data.emailFailed) {
           /* Account activated but email delivery failed — offer direct login */
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-check').style.display = '';
-          document.getElementById('fp-title').textContent = 'Compte activé !';
+          document.getElementById('fp-title').textContent = 'Your account is ready!';
           document.getElementById('fp-sub').innerHTML =
-            'Votre paiement est confirmé et votre compte a été créé.<br><br>' +
-            "L'email de connexion n'a pas pu être envoyé.<br>" +
-            'Connectez-vous directement depuis la page de connexion&nbsp;:' +
-            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>' +
-            '<br><br><small style="opacity:.65">Vous pourrez demander un nouveau lien depuis cette page.</small>';
+            'Your payment is confirmed and your account has been created.<br><br>' +
+            "We could not send your sign-in email.<br>" +
+            'Sign in directly from the login page:' +
+            '<br><br><a href="/login.html" class="fp-btn">Sign in →</a>' +
+            '<br><br><small style="opacity:.65">You can request a new link from that page.</small>';
         } else if (res.status === 400 || res.status === 404) {
           showInvalidSession();
         } else if (res.status >= 500) {
           showServerError();
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
-          document.getElementById('fp-title').textContent = 'Erreur de finalisation';
-          var activationError = res.data.error || 'Une erreur inattendue est survenue.';
-          if (window.fpResolveLanguage() === 'en') {
-            var translatedActivationError = window.fpPublicTranslateText(activationError);
-            activationError = translatedActivationError !== activationError
-              ? translatedActivationError
-              : 'An unexpected error occurred while activating your account.';
-          }
+          document.getElementById('fp-title').textContent = 'Could not finalize your account';
+          var activationError = res.data.error || 'An unexpected error occurred while activating your account.';
+          var translatedActivationError = window.fpPublicTranslateText ? window.fpPublicTranslateText(activationError) : activationError;
+          activationError = translatedActivationError !== activationError
+            ? translatedActivationError
+            : 'An unexpected error occurred while activating your account.';
           document.getElementById('fp-sub').innerHTML =
             activationError +
-            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+            '<br><br><a href="/login.html" class="fp-btn">Sign in →</a>';
         }
       })
       .catch(function() {
@@ -620,14 +611,14 @@
           /* New signup auto-login success */
           try { localStorage.removeItem('fp_cart'); } catch(e) {}
           document.getElementById('fp-spinner').style.display = 'none';
-          document.getElementById('fp-title').textContent = 'Compte activé !';
-          document.getElementById('fp-sub').innerHTML = 'Votre abonnement est actif.<br>Connexion automatique en cours…';
+          document.getElementById('fp-title').textContent = 'Your account is ready!';
+          document.getElementById('fp-sub').innerHTML = 'Your subscription is active.<br>Signing you in automatically…';
           setTimeout(function(){
             go(res.data.redirectTo || '/dashboard.html');
           }, 1200);
         } else if (res.status === 402 || res.status === 202) {
           /* Payment/webhook not yet confirmed — retry up to 4 more times */
-          document.getElementById('fp-sub').textContent = 'Confirmation du paiement en cours…';
+          document.getElementById('fp-sub').textContent = 'Confirming your payment…';
           setTimeout(function(){ runCheckoutComplete(4); }, 2000);
         } else if (res.status === 409) {
           /* Existing account already owns the purchase; require its login. */
@@ -635,9 +626,9 @@
         } else if (res.status === 410) {
           showReturnState(
             '↩',
-            'Session de paiement expirée',
-            'Aucun achat n’a été confirmé. Retournez aux offres pour recommencer.',
-            'Voir les offres',
+            'Payment session expired',
+            'No purchase was confirmed. Go back to the plans to start again.',
+            'View plans',
             '/pricing.html'
           );
         } else if (res.status === 400 || res.status === 404) {

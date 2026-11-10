@@ -109,6 +109,7 @@ const noFalseSuccess = (t: string) => {
   expect(t).not.toMatch(/Abonnement activé/i);
   expect(t).not.toMatch(/Subscription activated/i);
   expect(t).not.toMatch(/14 jours d'essai offerts/);
+  expect(t).not.toMatch(/14-day free trial started/i);
 };
 
 describe("success.html — jamais de succes presume", () => {
@@ -116,7 +117,8 @@ describe("success.html — jamais de succes presume", () => {
     const html = read("success.html");
     const body = html.slice(html.indexOf("<body"), html.indexOf("<script>", html.indexOf("<body")));
     noFalseSuccess(body);
-    expect(html).toMatch(/<title>[^<]*Vérification/);
+    // Source anglaise depuis le 10/11/2026 : le titre statique annonce une verification, jamais un succes.
+    expect(html).toMatch(/<title>[^<]*Verifying/);
   });
 
   it("ouverte sans parametre : 'aucun paiement a confirmer', aucun appel serveur", async () => {
@@ -238,14 +240,14 @@ describe("success.html — jamais de succes presume", () => {
     p.close();
   });
 
-  it("langue : EN pour 'en', repli francais pour une langue sans traduction", async () => {
+  it("langue : EN pour 'en', repli anglais pour une langue sans traduction", async () => {
     const en = load("success.html", "", {}, { lang: "en" });
     await en.waitFor(() => en.state() === "none");
     expect(en.text()).toMatch(/No payment to confirm/);
     en.close();
     const de = load("success.html", "", {}, { lang: "de" });
     await de.waitFor(() => de.state() === "none");
-    expect(de.text()).toMatch(/Aucun paiement à confirmer/);
+    expect(de.text()).toMatch(/No payment to confirm/);
     de.close();
   });
 });
