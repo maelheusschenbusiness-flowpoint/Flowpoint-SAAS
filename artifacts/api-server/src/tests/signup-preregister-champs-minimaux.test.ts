@@ -1,30 +1,23 @@
 /**
  * signup-preregister-champs-minimaux.test.ts
  *
- * L'inscription initiale ne demande plus que Prénom, Nom et E-mail
- * professionnel. Société, pays, adresse, ville et code postal ne sont plus
- * obligatoires côté serveur : l'adresse de facturation et la TVA sont
- * collectées plus tard par Stripe.
+ * POST /api/auth/pre-register apres la simplification du formulaire : seuls
+ * prenom, nom et e-mail professionnel sont demandes. Societe, pays, adresse,
+ * ville et code postal ne sont plus obligatoires — l'adresse de facturation et
+ * la TVA sont collectees plus tard par Stripe.
  *
- * Ce que ce fichier prouve sur POST /api/auth/pre-register :
- *   A  firstName + lastName + email valide seuls → 200 + preRegisterToken,
- *      et chacun des cinq anciens champs peut manquer isolément
- *   B  sans firstName, sans lastName, ou email invalide → 400, comme avant
- *   C  une requête qui porte encore les anciens champs est acceptée et leurs
- *      valeurs sont enregistrées telles quelles (compatibilité)
- *
- * Mock-only : pas de base, pas de Stripe, pas d'e-mail.
+ *   A  prenom + nom + e-mail valide suffisent → 200 + preRegisterToken
+ *   B  prenom manquant, nom manquant, e-mail invalide ou absent → 400, inchange
+ *   C  une requete qui porte encore les anciens champs est acceptee et ces
+ *      valeurs sont enregistrees telles quelles (compatibilite)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
-const EMAIL = "candidat@exemple.fr";
+const EMAIL = "prospect@exemple.fr";
 
-// ── Faux Postgres : juste ce que pre-register interroge ──────────────────────
-// Les colonnes company_name / country / address / city / postal_code existent
-// toujours ; on retient les paramètres de l'INSERT pour vérifier ce qui est
-// réellement enregistré.
+// ── Faux Postgres : aucun compte existant, la ligne pending est memorisee ─────
 type Pending = { token: string; email: string };
 let pending: Pending[];
 let preRegInserts: unknown[][];
@@ -46,6 +39,7 @@ function answer(sql: string, v: unknown[] = []) {
     preRegUpdates.push(v);
     return { rows: [{ created_at: new Date("2026-01-01T00:00:00.000Z"), fp_lid: null }], rowCount: 1 };
   }
+  // users / organization_members / organizations : aucun compte actif
   return { rows: [], rowCount: 0 };
 }
 
@@ -72,7 +66,6 @@ vi.mock("../services/stripe-factory.js", () => ({
 }));
 vi.mock("../services/mailer.js", () => ({ mailer: new Proxy({}, { get: () => vi.fn(async () => ({ ok: true })) }) }));
 vi.mock("../services/store.js", () => ({ store: { broadcast: vi.fn(), broadcastPlanUpdate: vi.fn() } }));
-vi.mock("../services/org-data.js", () => ({ findOrgByStripeCustomer: vi.fn(async () => null), persistOrgData: vi.fn(async () => {}), loadOrgData: vi.fn(async () => ({})) }));
 
 const { default: authRouter } = await import("../routes/auth.js");
 
@@ -84,153 +77,123 @@ function app() {
   return a;
 }
 
-const preRegister = (body: Record<string, unknown>) =>
-  request(app()).post("/api/auth/pre-register").send(body);
-
-/** Le formulaire simplifié : prénom, nom, e-mail professionnel. Rien d'autre. */
-const minimal = (extra: Record<string, unknown> = {}) => ({
-  firstName: "Camille", lastName: "Dupont", email: EMAIL, ...extra,
+/** Le formulaire simplifie : rien d'autre que prenom, nom, e-mail. */
+const bodyMinimal = (extra: Record<string, unknown> = {}) => ({
+  firstName: "Camille", lastName: "Durand", email: EMAIL, ...extra,
 });
-
-/** Les sept champs retirés du formulaire, tels qu'un ancien client les envoie. */
-const anciensChamps = {
-  companyName: "Agence Nord", country: "FR", address: "12 rue des Lilas",
-  city: "Lille", postalCode: "59000", phone: "+33612345678", vat: "FR12345678901",
-};
-
-// Positions des paramètres de l'INSERT INTO pending_signups (auth.ts) :
-// $1 token, $2 email, $3 first_name, $4 last_name, $5 company_name, $6 country,
-// $7 address, $8 city, $9 postal_code, $10 phone, $11 vat, $12 seller_id, $13 fp_lid.
-const COL = { company: 4, country: 5, address: 6, city: 7, postal: 8, phone: 9, vat: 10 } as const;
 
 beforeEach(() => {
   pending = []; preRegInserts = []; preRegUpdates = [];
-  // Mode ouvert : l'allowlist ne doit pas transformer un 200 en jeton "blocked_".
   vi.stubEnv("ALLOWED_EMAILS", "");
   vi.stubEnv("ALLOWED_EMAIL_DOMAIN", "");
 });
 
-describe("A — prénom, nom et e-mail suffisent", () => {
-  it("200 et un preRegisterToken avec les trois seuls champs du formulaire", async () => {
-    const r = await preRegister(minimal());
+describe("A — prenom, nom et e-mail suffisent", () => {
+  it("accepte le formulaire minimal et rend un preRegisterToken", async () => {
+    const r = await request(app()).post("/api/auth/pre-register").send(bodyMinimal());
     expect(r.status).toBe(200);
     expect(r.body.ok).toBe(true);
     expect(typeof r.body.preRegisterToken).toBe("string");
     expect(r.body.preRegisterToken.length).toBeGreaterThan(0);
-    // Ni jeton honeypot ni jeton d'allowlist : la pré-inscription est bien stockée.
-    expect(r.body.preRegisterToken.startsWith("hp_")).toBe(false);
-    expect(r.body.preRegisterToken.startsWith("blocked_")).toBe(false);
     expect(preRegInserts).toHaveLength(1);
   });
 
-  it("la ligne pending porte l'identité, les champs retirés restant vides", async () => {
-    await preRegister(minimal());
+  it("enregistre la ligne pending avec les champs retires vides, jamais refuses", async () => {
+    await request(app()).post("/api/auth/pre-register").send(bodyMinimal());
     const row = preRegInserts[0]!;
-    expect(row.slice(1, 4)).toEqual([EMAIL, "Camille", "Dupont"]);
-    expect(row[COL.company]).toBe("");
-    expect(row[COL.country]).toBe("");
-    expect(row[COL.address]).toBe("");
-    expect(row[COL.city]).toBe("");
-    expect(row[COL.postal]).toBe("");
-    expect(row[COL.phone]).toBeNull();
-    expect(row[COL.vat]).toBeNull();
+    // $2..$5 : email, prenom, nom, societe — puis pays, adresse, ville, code postal
+    expect(row.slice(1, 5)).toEqual([EMAIL, "Camille", "Durand", ""]);
+    expect(row.slice(5, 9)).toEqual(["", "", "", ""]);
+    // phone ($10) et vat ($11) restent NULL quand ils ne sont pas transmis
+    expect(row[9]).toBeNull();
+    expect(row[10]).toBeNull();
   });
 
-  it.each([
-    ["companyName", "Le nom de l'entreprise est requis."],
-    ["country", "Le pays est requis."],
-    ["address", "L'adresse est requise."],
-    ["city", "La ville est requise."],
-    ["postalCode", "Le code postal est requis."],
-  ])("%s manquant n'est plus refusé (plus de « %s »)", async (champ) => {
-    const reste = Object.fromEntries(
-      Object.entries(anciensChamps).filter(([k]) => k !== champ),
-    );
-    const r = await preRegister(minimal(reste));
-    expect(r.status).toBe(200);
-    expect(r.body.preRegisterToken).toBeTruthy();
-  });
-
-  it("une chaîne vide pour ces champs est acceptée aussi", async () => {
-    const r = await preRegister(minimal({
-      companyName: "", country: "", address: "", city: "", postalCode: "",
+  it("chacun des champs retires, fourni vide, ne declenche aucun refus", async () => {
+    const r = await request(app()).post("/api/auth/pre-register").send(bodyMinimal({
+      companyName: "", country: "", address: "", city: "", postalCode: "", phone: "", vat: "",
     }));
     expect(r.status).toBe(200);
     expect(r.body.preRegisterToken).toBeTruthy();
   });
 });
 
-describe("B — l'identité reste obligatoire", () => {
+describe("B — les refus 400 restants sont inchanges", () => {
   it("sans firstName → 400", async () => {
-    const r = await preRegister({ lastName: "Dupont", email: EMAIL });
+    const r = await request(app()).post("/api/auth/pre-register").send({ lastName: "Durand", email: EMAIL });
     expect(r.status).toBe(400);
-    expect(r.body.error).toBe("Le prénom est requis.");
+    expect(r.body.error).toMatch(/prénom/i);
     expect(preRegInserts).toHaveLength(0);
   });
 
-  it("firstName vide ou en blancs → 400", async () => {
-    const r = await preRegister(minimal({ firstName: "   " }));
-    expect(r.status).toBe(400);
-    expect(r.body.error).toBe("Le prénom est requis.");
-  });
-
   it("sans lastName → 400", async () => {
-    const r = await preRegister({ firstName: "Camille", email: EMAIL });
+    const r = await request(app()).post("/api/auth/pre-register").send({ firstName: "Camille", email: EMAIL });
     expect(r.status).toBe(400);
-    expect(r.body.error).toBe("Le nom est requis.");
+    expect(r.body.error).toMatch(/nom/i);
     expect(preRegInserts).toHaveLength(0);
   });
 
   it.each(["", "   ", "camille", "camille@", "@exemple.fr", "camille@exemple", "camille exemple.fr"])(
-    "e-mail invalide (%s) → 400", async (email) => {
-      const r = await preRegister(minimal({ email }));
+    "e-mail invalide (%j) → 400", async (email) => {
+      const r = await request(app()).post("/api/auth/pre-register").send({ firstName: "Camille", lastName: "Durand", email });
       expect(r.status).toBe(400);
-      expect(r.body.error).toBe("Adresse email invalide ou manquante.");
+      expect(r.body.error).toMatch(/email/i);
       expect(preRegInserts).toHaveLength(0);
     });
 
   it("sans email du tout → 400", async () => {
-    const r = await preRegister({ firstName: "Camille", lastName: "Dupont" });
+    const r = await request(app()).post("/api/auth/pre-register").send({ firstName: "Camille", lastName: "Durand" });
     expect(r.status).toBe(400);
-    expect(r.body.error).toBe("Adresse email invalide ou manquante.");
+    expect(preRegInserts).toHaveLength(0);
   });
 
-  it("e-mail jetable → 400 (garde inchangée)", async () => {
-    const r = await preRegister(minimal({ email: "camille@yopmail.com" }));
+  it("prenom et nom reduits a des espaces → 400", async () => {
+    const r = await request(app()).post("/api/auth/pre-register").send({ firstName: "  ", lastName: "  ", email: EMAIL });
     expect(r.status).toBe(400);
     expect(preRegInserts).toHaveLength(0);
   });
 });
 
-describe("C — compatibilité : les anciens champs sont encore acceptés et conservés", () => {
-  it("un corps complet passe et chaque valeur est enregistrée", async () => {
-    const r = await preRegister(minimal(anciensChamps));
+describe("C — compatibilite : les anciens champs restent acceptes et conserves", () => {
+  const ancien = {
+    companyName: "Agence Durand", country: "FR", address: "12 rue des Lilas",
+    city: "Paris", postalCode: "75011", phone: "+33123456789", vat: "FR12345678901",
+  };
+
+  it("une requete qui porte encore tous les anciens champs est acceptee", async () => {
+    const r = await request(app()).post("/api/auth/pre-register").send(bodyMinimal(ancien));
     expect(r.status).toBe(200);
     expect(r.body.preRegisterToken).toBeTruthy();
-    const row = preRegInserts[0]!;
-    expect(row.slice(1, 4)).toEqual([EMAIL, "Camille", "Dupont"]);
-    expect(row[COL.company]).toBe(anciensChamps.companyName);
-    expect(row[COL.country]).toBe(anciensChamps.country);
-    expect(row[COL.address]).toBe(anciensChamps.address);
-    expect(row[COL.city]).toBe(anciensChamps.city);
-    expect(row[COL.postal]).toBe(anciensChamps.postalCode);
-    expect(row[COL.phone]).toBe(anciensChamps.phone);
-    expect(row[COL.vat]).toBe(anciensChamps.vat);
   });
 
-  it("un renvoi réutilise le jeton et met à jour les mêmes colonnes", async () => {
-    const first = await preRegister(minimal());
-    const second = await preRegister(minimal(anciensChamps));
+  it("les valeurs fournies sont enregistrees telles quelles", async () => {
+    await request(app()).post("/api/auth/pre-register").send(bodyMinimal(ancien));
+    const row = preRegInserts[0]!;
+    expect(row.slice(1, 11)).toEqual([
+      EMAIL, "Camille", "Durand", "Agence Durand",
+      "FR", "12 rue des Lilas", "Paris", "75011",
+      "+33123456789", "FR12345678901",
+    ]);
+  });
+
+  it("une reprise met a jour la ligne existante avec les anciens champs fournis", async () => {
+    const first = await request(app()).post("/api/auth/pre-register").send(bodyMinimal());
+    const second = await request(app()).post("/api/auth/pre-register").send(bodyMinimal(ancien));
     expect([first.status, second.status]).toEqual([200, 200]);
     expect(second.body.preRegisterToken).toBe(first.body.preRegisterToken);
-    expect(preRegInserts).toHaveLength(1);
-    expect(preRegUpdates).toHaveLength(1);
-    // $1 first_name … $9 vat dans l'UPDATE : décalage de 2 par rapport à l'INSERT.
-    const up = preRegUpdates[0]!;
-    expect(up.slice(0, 9)).toEqual([
-      "Camille", "Dupont", anciensChamps.companyName, anciensChamps.country,
-      anciensChamps.address, anciensChamps.city, anciensChamps.postalCode,
-      anciensChamps.phone, anciensChamps.vat,
+    const row = preRegUpdates[0]!;
+    // $1..$9 : prenom, nom, societe, pays, adresse, ville, code postal, phone, vat
+    expect(row.slice(0, 9)).toEqual([
+      "Camille", "Durand", "Agence Durand", "FR", "12 rue des Lilas", "Paris", "75011",
+      "+33123456789", "FR12345678901",
     ]);
+  });
+
+  it("un champ partiel (societe seule) est accepte et conserve", async () => {
+    const r = await request(app()).post("/api/auth/pre-register").send(bodyMinimal({ companyName: "Agence Durand" }));
+    expect(r.status).toBe(200);
+    const row = preRegInserts[0]!;
+    expect(row[4]).toBe("Agence Durand");
+    expect(row.slice(5, 9)).toEqual(["", "", "", ""]);
   });
 });

@@ -1138,11 +1138,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 
   if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
   if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
-
   // Société, pays, adresse, ville et code postal ne sont plus demandés à
   // l'inscription : l'adresse de facturation et la TVA sont collectées plus
-  // tard par Stripe. Les colonnes restent écrites telles quelles lorsque le
-  // client les envoie encore — un ancien formulaire garde donc son effet.
+  // tard par Stripe. Les champs restent acceptés et enregistrés tels quels
+  // quand un appelant les fournit encore (compatibilité).
 
   if (isDisposableEmail(normalizedEmail)) {
     res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
