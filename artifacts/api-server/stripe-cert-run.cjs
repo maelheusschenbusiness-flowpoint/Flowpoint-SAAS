@@ -488,7 +488,6 @@ async function sectionC() {
     const pi = await stripe.paymentIntents.create({
       amount: pack.amount, currency: 'eur', customer: cus,
       payment_method: 'pm_card_visa', confirm: true,
-      return_url: 'https://app.flowpoint.pro/billing/checkout-return.html',
       metadata: { orgId: stdOrg.id, type: 'ai_credits', pack: pack.key, addonKey: pack.key, credits: String(pack.credits), amountEurCents: String(pack.amount), cert: 'cert2026' },
     });
     const piObj = await stripe.paymentIntents.retrieve(pi.id);
@@ -520,7 +519,6 @@ async function sectionC() {
     const pi = await stripe.paymentIntents.create({
       amount: 400, currency: 'eur', customer: cus,
       payment_method: 'pm_card_visa', confirm: true,
-      return_url: 'https://app.flowpoint.pro/billing/checkout-return.html',
       metadata: { orgId: stdOrg.id, addonKey: 'aiCreditsPack50k', credits: '50000', cert: 'cert2026-idem' },
     });
     const piObj = await stripe.paymentIntents.retrieve(pi.id);

@@ -12,6 +12,13 @@ const RESOURCE_PREFIXES = {
   testClock: "clock_",
 };
 
+function redactStripeIdentifiers(value) {
+  return String(value)
+    .replace(/\b(?:acct|cs|cus|evt|in|pi|pm|seti|sub|clock|price|prod)_[A-Za-z0-9_]+\b/g, "[redacted-id]")
+    .replace(/\b(?:sk|pk)_(?:test|live)_[A-Za-z0-9]+\b/g, "[redacted-key]")
+    .replace(/\b(?:whsec|rk)_[A-Za-z0-9_]+\b/g, "[redacted-secret]");
+}
+
 function stripeObjectId(value) {
   return typeof value === "string" ? value : value?.id;
 }
@@ -79,7 +86,7 @@ export function createStripeTestResourceCleanup(stripe, stripeTestKey, label) {
     }[kind];
     if (!set.has(id)) {
       set.add(id);
-      console.log(`[Stripe TEST cleanup:${label}] registered ${kind} ${id}`);
+      console.log(`[Stripe TEST cleanup:${label}] registered ${kind} [redacted-id]`);
     }
     return id;
   }
@@ -140,13 +147,13 @@ export function createStripeTestResourceCleanup(stripe, stripeTestKey, label) {
       try {
         await operation();
       } catch (error) {
-        failures.push(`${description}: ${error?.message ?? String(error)}`);
+        failures.push(redactStripeIdentifiers(`${description}: ${error?.message ?? String(error)}`));
       }
     };
 
     try {
       for (const [email, baselineIds] of emails) {
-        await attempt(`discover test Customer for ${email.split("@")[0]}`, async () => {
+        await attempt("discover test Customer by reserved email", async () => {
           const customers = await listAll(stripe.customers, { email });
           for (const customer of customers.filter((row) => !row.deleted)) {
             if (baselineIds.has(customer.id)) continue;
@@ -349,7 +356,7 @@ export function createStripeTestResourceCleanup(stripe, stripeTestKey, label) {
         notes.push(`Event ${eventId} is immutable in Stripe TEST and cannot be deleted.`);
       }
 
-      for (const note of notes) console.log(`[Stripe TEST cleanup:${label}] ${note}`);
+      for (const note of notes) console.log(`[Stripe TEST cleanup:${label}] ${redactStripeIdentifiers(note)}`);
       if (failures.length) {
         throw new AggregateError(
           failures.map((failure) => new Error(failure)),
