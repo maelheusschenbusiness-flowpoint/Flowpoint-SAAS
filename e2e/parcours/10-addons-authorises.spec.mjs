@@ -15,6 +15,7 @@ const addonKeys = [
   "agencyPacks",
   "globalMonitoring",
   "aiExecutiveReport",
+  "revenueLeak",
   "aiWorkspaceLaunch",
   "abTestingAI",
   "aiContentStrategist",
@@ -1379,4 +1380,30 @@ test("Global Monitoring fails closed without provider data and shows no fabricat
   const result = page.locator("#fp-global-monitoring-result");
   await expect(result).toContainText(/Impossible de charger les régions|Could not load regions/i);
   await expect(result).not.toContainText(/99\.9|QA monitor|configuredRegionCount/i);
+});
+
+
+test("Revenue Leak AI shows GA4 availability and no invented financial loss in the dashboard", async ({ page }) => {
+  await signInToDashboard(page);
+  const response = await page.request.get("/api/revenue-leak");
+  expect(response.status()).toBe(200);
+  const data = await response.json();
+  expect(data.attribution?.status).toBe("insufficient_data");
+  expect(data.financial?.observedLoss ?? null).toBeNull();
+  expect(data.financial?.estimatedLoss ?? null).toBeNull();
+
+  await page.evaluate(() => window.navigate("conversion", "revenue-leak"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion" &&
+      window.STATE?.subRoute === "revenue-leak" &&
+      Boolean(document.querySelector("#fp-page [data-attribution-status]")),
+    null,
+    { timeout: 20_000 },
+  );
+  const panel = page.locator("#fp-page");
+  await expect(panel.locator("[data-attribution-status]"))
+    .toHaveAttribute("data-attribution-status", "insufficient_data");
+  await expect(panel).toContainText(new RegExp("Attribution financière : données insuffisantes|Financial attribution: insufficient data", "i"));
+  await expect(panel).toContainText(new RegExp("Revenu observé par GA4|Revenue observed by GA4", "i"));
+  await expect(panel).toContainText(new RegExp("Indisponible|Unavailable", "i"));
 });
