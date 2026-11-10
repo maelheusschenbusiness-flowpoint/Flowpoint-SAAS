@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect } from "@playwright/test";
 import { createStripeTestResourceCleanup } from "../helpers/stripe-test-resource-cleanup.mjs";
 import {
@@ -19,6 +20,7 @@ const addonKeys = [
   "abTestingAI",
   "aiContentStrategist",
   "gbpPerformanceLeads",
+  "conversionOpportunityEngine",
   "localPresenceOptimizer",
   "localLandingOpportunities",
   "seoChangeImpact",
@@ -59,6 +61,15 @@ function getStripeResourceCleanup(stripe, stripeKey, label) {
     stripeResourceCleanup = createStripeTestResourceCleanup(stripe, stripeKey, label);
   }
   return stripeResourceCleanup;
+}
+
+async function grantOrgBAddon(addonKey) {
+  await db.query("DELETE FROM org_addons WHERE org_id=$1 AND addon_key=$2", [orgB, addonKey]);
+  await db.query(
+    `INSERT INTO org_addons (id,org_id,addon_key,active,quantity,activated_at)
+     VALUES ($1,$2,$3,true,1,NOW())`,
+    [`cert-${orgB}-${addonKey}`, orgB, addonKey],
+  );
 }
 
 async function findStripeEvent(stripe, type, objectId) {
@@ -717,6 +728,210 @@ test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled deli
   await revokePortalButton.click();
   expect((await revokePortalPromise).status()).toBe(200);
   expect((await page.request.get(portal.url)).status()).toBe(404);
+});
+
+test("Agency Reporting Packs: cron delivery is captured and tenant-isolated", async ({ page }) => {
+  test.setTimeout(240_000);
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("reports"));
+  await page.waitForFunction(() => window.STATE?.route === "reports", null, { timeout: 20_000 });
+
+  const loadPacksButton = page.getByRole("button", {
+    name: /Charger les packs|Actualiser les packs|Load packs/i,
+  });
+  const packsResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs" &&
+    response.request().method() === "GET",
+  );
+  await loadPacksButton.evaluate(button => button.click());
+  expect((await packsResponsePromise).status()).toBe(200);
+  await page.waitForFunction(() => window._fpAgencyPacksState?.loaded === true, null, { timeout: 15_000 });
+
+  const panel = page.locator("#fp-agency-packs-result");
+  await panel.locator('input[type="text"][maxlength="160"]').fill("Scheduled E2E customer");
+  await panel.locator(`input[type="checkbox"][value="${auditAgencyA}"]`).check();
+  await panel.locator(`input[type="checkbox"][value="${auditAgencyB}"]`).check();
+  expect(await page.evaluate(() => window._fpAgencyPacksState.selectedAuditIds))
+    .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
+  const recipientEmail = `agency-scheduler-${randomUUID()}@example.test`;
+  await panel.locator('input[type="email"]').fill(recipientEmail);
+  await panel.locator('input[maxlength="100"]').fill("* * * * *");
+  await panel.locator('input[maxlength="80"]').fill("UTC");
+  expect(await panel.locator('input[type="email"]').inputValue()).toBe(recipientEmail);
+  expect(await panel.locator('input[maxlength="100"]').inputValue()).toBe("* * * * *");
+
+  const createScheduleButton = panel.getByRole("button", {
+    name: /Planifier la génération et l’envoi|Schedule generation and delivery/i,
+  });
+  const scheduleResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/schedules" &&
+    response.request().method() === "POST",
+  );
+  await createScheduleButton.click();
+  const scheduleResponse = await scheduleResponsePromise;
+  const schedule = await scheduleResponse.json();
+  expect(scheduleResponse.status(), JSON.stringify(schedule)).toBe(201);
+  expect(schedule.recipient_email).toBe(recipientEmail);
+
+  await expect.poll(async () => {
+    const result = await db.query(
+      `SELECT status FROM agency_report_schedule_runs
+        WHERE schedule_id=$1 AND org_id=$2 ORDER BY slot DESC LIMIT 1`,
+      [schedule.id, orgA],
+    );
+    return result.rows[0]?.status ?? null;
+  }, { timeout: 190_000, intervals: [1_000, 3_000, 5_000] }).toBe("delivered");
+
+  const run = await db.query(
+    `SELECT report_ids FROM agency_report_schedule_runs
+      WHERE schedule_id=$1 AND org_id=$2 AND status='delivered' ORDER BY slot DESC LIMIT 1`,
+    [schedule.id, orgA],
+  );
+  const reportIds = typeof run.rows[0]?.report_ids === "string"
+    ? JSON.parse(run.rows[0].report_ids)
+    : run.rows[0]?.report_ids;
+  expect(reportIds).toHaveLength(1);
+  const report = await db.query(
+    "SELECT id,name FROM reports WHERE org_id=$1 AND id=$2",
+    [orgA, reportIds[0]],
+  );
+  expect(report.rows[0]?.name).toContain("Scheduled E2E customer");
+
+  const captured = readdirSync(mailDir)
+    .map(name => JSON.parse(readFileSync(join(mailDir, name), "utf8")))
+    .find(message => message.to === recipientEmail && message.tag === "report_generated");
+  expect(captured).toBeTruthy();
+  expect(captured.subject).toContain("Rapport multi-sites");
+  expect(captured.html).toContain("/api/agency-portal/[PORTAL_TOKEN_REDACTED]");
+  expect(captured.html).not.toMatch(/\/api\/agency-portal\/[a-f0-9]{64}/i);
+
+  const foreignScheduleId = `agency_schedule_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  await db.query(
+    `INSERT INTO agency_report_schedules
+      (id,org_id,client_name,recipient_email,audit_ids,cron_expression,timezone,enabled)
+     VALUES ($1,$2,'Foreign tenant schedule','foreign@example.test','[]'::jsonb,'* * * * *','UTC',false)`,
+    [foreignScheduleId, orgB],
+  );
+  const ownTenantSchedules = await page.request.get("/api/reports/agency-packs/schedules");
+  expect(ownTenantSchedules.status()).toBe(200);
+  const ownTenantScheduleIds = (await ownTenantSchedules.json()).schedules.map(row => row.id);
+  expect(ownTenantScheduleIds).toContain(schedule.id);
+  expect(ownTenantScheduleIds).not.toContain(foreignScheduleId);
+  const foreignSchedule = await db.query(
+    "SELECT COUNT(*)::int AS count FROM agency_report_schedules WHERE org_id=$1 AND id=$2",
+    [orgB, foreignScheduleId],
+  );
+  expect(Number(foreignSchedule.rows[0]?.count)).toBe(1);
+});
+
+test("Conversion Opportunity Engine saves thresholds without fabricating GA4 data", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("conversion-opportunity-engine"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion-opportunity-engine",
+    null,
+    { timeout: 20_000 },
+  );
+
+  const panel = page.locator("#fp-addon-conversion-opportunity-engine");
+  const settingsForm = panel.locator("form[data-coe-settings]");
+  await expect(settingsForm).toBeVisible({ timeout: 20_000 });
+  const initialDataResponse = await page.request.get("/api/conversion-opportunity-engine");
+  expect(initialDataResponse.status()).toBe(200);
+  const initialData = await initialDataResponse.json();
+  expect(initialData.source).toBe("ga4");
+  expect(initialData.opportunities).toEqual([]);
+  await expect(panel).toContainText(/GA4/);
+
+  await settingsForm.locator('input[name="minimumSessions"]').fill("250");
+  await settingsForm.locator('input[name="maximumConversionRate"]').fill("1.5");
+  const expectedSettings = { minimumSessions: 250, maximumConversionRate: 0.015 };
+  const saveResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/conversion-opportunity-engine/settings" &&
+    response.request().method() === "PUT",
+  );
+  await settingsForm.locator('button[type="submit"]').click();
+  const saveResponse = await saveResponsePromise;
+  const saveBody = await saveResponse.json();
+  expect(saveResponse.status(), JSON.stringify(saveBody)).toBe(200);
+  expect(saveBody.settings).toEqual(expectedSettings);
+  await expect(settingsForm.locator('input[name="minimumSessions"]')).toHaveValue("250");
+  await expect(settingsForm.locator('input[name="maximumConversionRate"]')).toHaveValue("1.5");
+
+  const persisted = await db.query(
+    "SELECT settings FROM conversion_opportunity_settings WHERE org_id=$1",
+    [orgA],
+  );
+  const settings = typeof persisted.rows[0]?.settings === "string"
+    ? JSON.parse(persisted.rows[0].settings)
+    : persisted.rows[0]?.settings;
+  expect(settings).toEqual(expectedSettings);
+
+  await grantOrgBAddon("conversionOpportunityEngine");
+  const foreignSettings = { minimumSessions: 900, maximumConversionRate: 0.9 };
+  await db.query(
+    `INSERT INTO conversion_opportunity_settings (org_id,settings,updated_at)
+     VALUES ($1,$2::jsonb,NOW())
+     ON CONFLICT (org_id) DO UPDATE SET settings=$2::jsonb,updated_at=NOW()`,
+    [orgB, JSON.stringify(foreignSettings)],
+  );
+  const ownTenantResponse = await page.request.get("/api/conversion-opportunity-engine");
+  expect(ownTenantResponse.status()).toBe(200);
+  const ownTenantData = await ownTenantResponse.json();
+  expect(ownTenantData.settings).toEqual(settings);
+  expect(ownTenantData.settings).not.toEqual(foreignSettings);
+  expect(ownTenantData.opportunities).toEqual([]);
+});
+
+test("Agency Reporting Packs: valid Stripe TEST webhook is processed locally", async ({ page }) => {
+  test.setTimeout(90_000);
+  if (process.env["STRIPE_TEST_MODE"] !== "true") {
+    test.skip(true, "Requires the dedicated local Stripe TEST webhook replay runner.");
+  }
+  const stripeKey = process.env["STRIPE_TEST_KEY"];
+  const webhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
+  expect(stripeKey?.startsWith("sk_test_")).toBe(true);
+  expect(webhookSecret?.startsWith("whsec_")).toBe(true);
+
+  const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+  const cleanup = getStripeResourceCleanup(stripe, stripeKey, "agency-webhook-replay");
+  const probe = `agency-webhook-${randomUUID()}`;
+  const created = await stripe.setupIntents.create({
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    usage: "off_session",
+    metadata: { qa_probe: probe },
+  });
+  cleanup.registerSetupIntent(created.id);
+  const setupIntent = await stripe.setupIntents.confirm(created.id, { payment_method: "pm_card_visa" });
+  expect(setupIntent.status).toBe("succeeded");
+  expect(setupIntent.livemode).toBe(false);
+  expect(setupIntent.customer ?? null).toBeNull();
+  expect(setupIntent.metadata).toEqual({ qa_probe: probe });
+
+  const event = await findStripeEvent(stripe, "setup_intent.succeeded", setupIntent.id);
+  expect(event.livemode).toBe(false);
+  expect(event.data.object.id).toBe(setupIntent.id);
+  expect(event.data.object.metadata).toEqual({ qa_probe: probe });
+  const addonCountBefore = await db.query(
+    "SELECT COUNT(*)::int AS count FROM org_addons WHERE org_id=ANY($1::uuid[])",
+    [[orgA, orgB]],
+  );
+
+  const invalid = await postSignedStripeEvent(
+    page,
+    event,
+    webhookSecret,
+    `t=${Math.floor(Date.now() / 1000)},v1=${"0".repeat(64)}`,
+  );
+  expect(invalid.status()).toBe(400);
+  const accepted = await postSignedStripeEvent(page, event, webhookSecret);
+  expect(accepted.status()).toBe(200);
+
+  const addonCountAfter = await db.query(
+    "SELECT COUNT(*)::int AS count FROM org_addons WHERE org_id=ANY($1::uuid[])",
+    [[orgA, orgB]],
+  );
+  expect(Number(addonCountAfter.rows[0]?.count)).toBe(Number(addonCountBefore.rows[0]?.count));
 });
 
 test("Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle", async ({ page }) => {
