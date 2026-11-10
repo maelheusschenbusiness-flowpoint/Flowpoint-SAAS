@@ -3,10 +3,10 @@ import { test, expect, exigerConfiguration, preparerContexte, inscriptionJusquAu
 
 exigerConfiguration();
 
-test("double clic sur « Demarrer l'essai » : une seule souscription", async ({ page, context, nouvelEmail }) => {
-  const email = nouvelEmail("double-clic");
+test("double clic sur « Demarrer l'essai » : une seule souscription", async ({ page, context, nouvelEmail, stripeCleanup }) => {
+  const email = await nouvelEmail("double-clic");
   await preparerContexte(context);
-  await inscriptionJusquAuPaiement(page, email);
+  await inscriptionJusquAuPaiement(page, email, stripeCleanup);
   await attendrePaymentElementReel(page);
   await saisirCarte(page, CARTES.succes);
   await page.locator("#fp-pay-btn").dblclick();
@@ -15,10 +15,10 @@ test("double clic sur « Demarrer l'essai » : une seule souscription", async ({
   await exigerUneSeuleSouscriptionStable(email);
 });
 
-test("deux onglets : les deux confirment la meme carte en meme temps : une seule souscription", async ({ page, context, nouvelEmail }) => {
-  const email = nouvelEmail("deux-onglets");
+test("deux onglets : les deux confirment la meme carte en meme temps : une seule souscription", async ({ page, context, nouvelEmail, stripeCleanup }) => {
+  const email = await nouvelEmail("deux-onglets");
   await preparerContexte(context);
-  await inscriptionJusquAuPaiement(page, email);
+  await inscriptionJusquAuPaiement(page, email, stripeCleanup);
   const url = page.url();
   const second = await context.newPage();                      // meme contexte : le jeton de pre-inscription (localStorage) est partage
   await second.goto(url);

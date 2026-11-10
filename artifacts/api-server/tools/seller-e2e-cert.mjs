@@ -24,7 +24,7 @@ import crypto from "node:crypto";
 import Stripe from "stripe";
 
 const BASE        = "http://localhost:8081";
-const DEV_DOMAIN  = process.env.REPLIT_DEV_DOMAIN || "";
+const CHECKOUT_RETURN_URL = new URL("/checkout-return.html", BASE).toString();
 const ADMIN_KEY   = process.env.ADMIN_KEY || "";
 const STRIPE_KEY  = process.env.STRIPE_TEST_KEY || "";
 const WH_SECRET   = process.env.STRIPE_TEST_WEBHOOK_SECRET || "";
@@ -237,7 +237,7 @@ if (mode === "setup" || intentId.startsWith("seti_")) {
   // SetupIntent (trial case)
   const si = await stripe.setupIntents.confirm(intentId, {
     payment_method: "pm_card_visa",
-    return_url:     `https://${DEV_DOMAIN}/checkout-return.html`,
+    return_url:     CHECKOUT_RETURN_URL,
   });
   assert("SETUP_INTENT_CONFIRMED", si.status === "succeeded", `status=${si.status}`);
   paymentMethodId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
@@ -247,7 +247,7 @@ if (mode === "setup" || intentId.startsWith("seti_")) {
   // PaymentIntent (immediate charge case)
   const pi = await stripe.paymentIntents.confirm(intentId, {
     payment_method: "pm_card_visa",
-    return_url:     `https://${DEV_DOMAIN}/checkout-return.html`,
+    return_url:     CHECKOUT_RETURN_URL,
   });
   assert("PAYMENT_INTENT_CONFIRMED", pi.status === "succeeded", `status=${pi.status}`);
   paymentMethodId = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id;

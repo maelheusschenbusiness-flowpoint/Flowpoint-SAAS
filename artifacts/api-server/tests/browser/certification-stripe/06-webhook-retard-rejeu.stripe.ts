@@ -12,14 +12,14 @@ exigerConfiguration();
 test.skip(cfg.mode !== "L", "Rejeu signe : Mode L uniquement (en Mode R, rejouer depuis le tableau de bord Stripe : docs/CERTIFICATION-STRIPE-REEL.md).");
 test.skip(process.env["CERT_STRIPE_LISTENER_ARRETE"] !== "1", "Webhook en retard : arretez `stripe listen`, puis relancez avec CERT_STRIPE_LISTENER_ARRETE=1.");
 
-test("webhook en retard puis rejeu x3 : aucune souscription avant, UNE apres, toujours UNE ensuite", async ({ page, context, nouvelEmail }) => {
-  const email = nouvelEmail("retard");
+test("webhook en retard puis rejeu x3 : aucune souscription avant, UNE apres, toujours UNE ensuite", async ({ page, context, nouvelEmail, stripeCleanup }) => {
+  const email = await nouvelEmail("retard");
   await preparerContexte(context);
   await context.route("**/api/public/finalize-checkout", (r) => r.abort());
-  await inscriptionJusquAuPaiement(page, email);
+  await inscriptionJusquAuPaiement(page, email, stripeCleanup);
   await attendrePaymentElementReel(page);
   await saisirCarte(page, CARTES.succes);
-  const conf = attendreConfirmationStripe(page);
+  const conf = attendreConfirmationStripe(page, stripeCleanup);
   await page.locator("#fp-pay-btn").click();
   const seti = /(seti_[A-Za-z0-9]+)/.exec((await conf).url())![1]!;
   await page.close();
