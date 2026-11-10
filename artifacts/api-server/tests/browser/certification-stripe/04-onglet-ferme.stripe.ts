@@ -7,14 +7,14 @@ import { test, expect, exigerConfiguration, preparerContexte, inscriptionJusquAu
 
 exigerConfiguration();
 
-test("onglet ferme apres confirmSetup : le webhook seul cree UNE souscription trialing", async ({ page, context, nouvelEmail }) => {
-  const email = nouvelEmail("onglet-ferme");
+test("onglet ferme apres confirmSetup : le webhook seul cree UNE souscription trialing", async ({ page, context, nouvelEmail, stripeCleanup }) => {
+  const email = await nouvelEmail("onglet-ferme");
   await preparerContexte(context);
   await context.route("**/api/public/finalize-checkout", (r) => r.abort());
-  await inscriptionJusquAuPaiement(page, email);
+  await inscriptionJusquAuPaiement(page, email, stripeCleanup);
   await attendrePaymentElementReel(page);
   await saisirCarte(page, CARTES.succes);
-  const confirmation = attendreConfirmationStripe(page);
+  const confirmation = attendreConfirmationStripe(page, stripeCleanup);
   await page.locator("#fp-pay-btn").click();
   const rep = await confirmation;
   expect(rep.status(), "confirmation Stripe acceptee").toBe(200);

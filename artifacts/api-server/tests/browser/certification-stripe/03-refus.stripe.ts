@@ -4,10 +4,10 @@ import { test, expect, exigerConfiguration, preparerContexte, inscriptionJusquAu
 exigerConfiguration();
 
 for (const [nom, carte] of [["4000 0000 0000 0002", CARTES.refusee], ["4000 0000 0000 9995 (a confirmer sur SetupIntent)", CARTES.refuseeFonds]] as const) {
-  test(`carte refusee ${nom} puis reprise reussie`, async ({ page, context, nouvelEmail }) => {
-    const email = nouvelEmail("refus");
+  test(`carte refusee ${nom} puis reprise reussie`, async ({ page, context, nouvelEmail, stripeCleanup }) => {
+    const email = await nouvelEmail("refus");
     await preparerContexte(context);
-    await inscriptionJusquAuPaiement(page, email);
+    await inscriptionJusquAuPaiement(page, email, stripeCleanup);
     await attendrePaymentElementReel(page);
     await saisirCarte(page, carte);
     await page.locator("#fp-pay-btn").click();

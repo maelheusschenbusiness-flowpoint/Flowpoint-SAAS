@@ -367,10 +367,6 @@ test("Hosted Stripe Checkout session remains unactivated until completion", asyn
   expect(await accountState(email)).toEqual({ users: [], orgs: [] });
 });
 
-test.afterEach(async () => {
-  await stripeCleanup.cleanup();
-});
-
 test.afterAll(async () => {
   let cleanupError;
   try {

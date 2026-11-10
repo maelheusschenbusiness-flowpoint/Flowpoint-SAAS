@@ -4,16 +4,16 @@ import { test, expect, exigerConfiguration, preparerContexte, inscriptionJusquAu
 
 exigerConfiguration();
 
-test("nominal : inscription e-mail -> carte 4242 -> essai 14 j -> une souscription Stripe trialing", async ({ page, context, nouvelEmail }) => {
-  const email = nouvelEmail("nominal");
+test("nominal : inscription e-mail -> carte 4242 -> essai 14 j -> une souscription Stripe trialing", async ({ page, context, nouvelEmail, stripeCleanup }) => {
+  const email = await nouvelEmail("nominal");
   await preparerContexte(context);
   const hotes = new Set<string>();
   page.on("request", (r) => { try { hotes.add(new URL(r.url()).host); } catch { /* ignore */ } });
-  await inscriptionJusquAuPaiement(page, email);
+  await inscriptionJusquAuPaiement(page, email, stripeCleanup);
   await attendrePaymentElementReel(page);
   expect(await page.evaluate(() => document.documentElement.innerHTML.match(/pk_(test|live)_/g)?.[0] ?? "")).not.toBe("pk_live_");
   await saisirCarte(page, CARTES.succes);
-  const confirmation = attendreConfirmationStripe(page);
+  const confirmation = attendreConfirmationStripe(page, stripeCleanup);
   await page.locator("#fp-pay-btn").click();
   await confirmation;
   await page.waitForURL(/\/checkout-return\.html/, { timeout: 90_000 });
