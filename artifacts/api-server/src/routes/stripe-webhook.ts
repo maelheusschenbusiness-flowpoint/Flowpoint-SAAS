@@ -883,7 +883,7 @@ export async function activateNewSignup(opts: {
 
     // orgUUID is a proper UUID — either the existing org's UUID or a freshly generated one.
     // Email (orgId) is stored only in owner_email; never used as the primary key.
-    const newOrgSlug = (signupRow["company_name"] ?? email).replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
+    const newOrgSlug = (String(signupRow["company_name"] ?? "").trim() || email).replace(/[^a-z0-9]/gi, "-").toLowerCase().slice(0, 60);
     // Seller attribution: propagate seller_id from pending_signup → organization.
     // Pure data propagation — does not affect plan, trial, customer, or billing logic.
     const _wbSellerId = (signupRow["seller_id"] as string | null) ?? null;
@@ -911,7 +911,8 @@ export async function activateNewSignup(opts: {
        RETURNING id`,
       [
         orgUUID,
-        signupRow["company_name"] ?? email,
+        // Société facultative depuis le formulaire minimal : une chaîne vide retombe sur l'e-mail.
+        String(signupRow["company_name"] ?? "").trim() || email,
         newOrgSlug,
         userId,
         selectedPlan,
