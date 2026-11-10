@@ -22664,6 +22664,7 @@ function bindGlobalEvents() {
     'Pondérations de priorité': 'Priority weights',
     'Urgent': 'Urgent',
     'À traiter': 'Needs attention',
+    'Programmation annulée. Le post est conservé en brouillon.': 'Schedule canceled. The post is saved as a draft.',
     'Stable': 'Stable',
     'problèmes critiques': 'critical issues',
     'clics GSC / 30 jours': 'GSC clicks / 30 days',
