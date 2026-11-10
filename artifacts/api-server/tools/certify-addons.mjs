@@ -17,6 +17,10 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const API_DIR = resolve(SCRIPT_DIR, "..");
 const REPO_ROOT = resolve(API_DIR, "../..");
 const E2E_SPEC = "e2e/parcours/10-addons-authorises.spec.mjs";
+const SHARED_REPLACEMENT_ADDON_BROWSER_TITLE =
+  "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session";
+const SHARED_REPLACEMENT_ADDON_BROWSER_LABEL =
+  "Shared browser flow: four remaining replacement add-ons";
 
 export const ADDON_REGISTRY = [
   {
@@ -236,7 +240,6 @@ export const ADDON_REGISTRY = [
       "src/services/conversion-opportunity-engine.test.ts",
       "src/routes/conversion-opportunity-engine.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
   },
   {
     id: "seo-change-impact",
@@ -246,7 +249,8 @@ export const ADDON_REGISTRY = [
       "src/services/seo-change-impact.test.ts",
       "src/routes/seo-change-impact.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
     id: "agency-portfolio-priorities",
@@ -256,7 +260,8 @@ export const ADDON_REGISTRY = [
       "src/services/agency-portfolio-priorities.test.ts",
       "src/routes/agency-portfolio-priorities.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
     id: "technical-seo-fix-verification",
@@ -266,7 +271,8 @@ export const ADDON_REGISTRY = [
       "src/services/technical-seo-fix-verification.test.ts",
       "src/routes/technical-seo-fix-verification.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
     id: "organic-campaign-tracker",
@@ -276,7 +282,8 @@ export const ADDON_REGISTRY = [
       "src/services/organic-campaign-tracker.test.ts",
       "src/routes/organic-campaign-tracker.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
 ];
 
@@ -981,7 +988,12 @@ async function runCertification(options, signal) {
         if (browserRuns.has(browserRunKey) || signal.aborted) continue;
         browserRuns.add(browserRunKey);
         const browser = await runBrowserTests([browserTitle], apiEnv, signal, browserSpec);
-        summary.push({ id: `browser:${addon.id}`, label: addon.label, historical: addon.historical, unit: browser.status });
+        summary.push({
+          id: `browser:${addon.id}`,
+          label: addon.browserLabel ?? addon.label,
+          historical: addon.historical,
+          unit: browser.status,
+        });
         if (browser.status === "interrupted") break;
       }
     }

@@ -1419,7 +1419,18 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
     response.request().method() === "PUT"
   );
   await seoForm.locator('button[type="submit"]').click();
-  expect((await seoSave).status()).toBe(200);
+  const seoSaveResponse = await seoSave;
+  expect(seoSaveResponse.status()).toBe(200);
+  expect((await seoSaveResponse.json()).settings).toMatchObject({
+    lookbackDays: 60,
+    minimumScoreChange: 5,
+  });
+  const persistedSeoResponse = await page.request.get("/api/seo-change-impact");
+  expect(persistedSeoResponse.status()).toBe(200);
+  expect((await persistedSeoResponse.json()).settings).toMatchObject({
+    lookbackDays: 60,
+    minimumScoreChange: 5,
+  });
   await expect(seo.locator('input[name="lookbackDays"]')).toHaveValue("60");
   await expect(seo.locator('input[name="minimumScoreChange"]')).toHaveValue("5");
 
@@ -1504,13 +1515,13 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
   expect(generatedPack.status()).toBe(201);
   expect((await generatedPack.json()).verifiedCount).toBe(3);
   await expect(page.locator("#fp-page")).toContainText("Synthetic UI customer");
-  const persistedAgencyReports = await page.request.get("/api/reports");
-  expect(
-    (await persistedAgencyReports.json())
-      .filter(row => row.org_id === orgA && row.name.includes("Synthetic UI customer"))
-      .map(row => row.template_key)
-      .sort(),
-  ).toEqual(["executive", "local", "seo"]);
+  const persistedAgencyReports = await db.query(
+    `SELECT template_key FROM reports
+      WHERE org_id=$1 AND name LIKE 'Synthetic UI customer%'`,
+    [orgA],
+  );
+  expect(persistedAgencyReports.rows.map(row => row.template_key).sort())
+    .toEqual(["executive", "local", "seo"]);
 
 });
 

@@ -1200,7 +1200,11 @@ async function apiAction(method, path, body, options = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
+      const result = await apiFetch(path, {
+        method,
+        body: body ? JSON.stringify(body) : undefined,
+        ...(method === 'GET' && options.force ? { force: true } : {}),
+      });
       const ms = Math.round(performance.now() - _t0);
       if(window.__DEV__) console.log('[FP_ACTION] method=' + method + ' route=' + path + ' status=ok ms=' + ms + ' attempt=' + attempt);
       return result;
