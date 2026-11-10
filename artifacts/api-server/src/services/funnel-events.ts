@@ -35,7 +35,7 @@ const SOURCES_AUTORISEES = new Set([
 ]);
 
 /**
- * Campagne d'acquisition (UTM) : trois libelles courts, en minuscules, sans
+ * Campagne d'acquisition (UTM) : cinq libelles courts, en minuscules, sans
  * donnee personnelle. Une valeur hors du motif est ignoree, pas tronquee : un
  * libelle de campagne n'est jamais un texte libre.
  */
@@ -43,6 +43,10 @@ export interface CampagneUtm {
   utmSource: string | null;
   utmMedium: string | null;
   utmCampaign: string | null;
+  /** Etape de sequence (ex. Smartlead `step1`) — migration 021. */
+  utmContent?: string | null;
+  /** Mot-cle — migration 021. */
+  utmTerm?: string | null;
 }
 
 export interface AttributionFunnel {
@@ -61,9 +65,9 @@ function normaliserValeurUtm(valeur: unknown): string | null {
 }
 
 /**
- * Lit `utm_source`, `utm_medium` et `utm_campaign` d'un objet brut (corps de
+ * Lit `utm_source`, `utm_medium`, `utm_campaign`, `utm_content` et `utm_term` d'un objet brut (corps de
  * requete). Meme regle que l'attribution : rien sans consentement `accepted`.
- * Renvoie `null` si aucune des trois valeurs n'est valide.
+ * Renvoie `null` si aucune des cinq valeurs n'est valide.
  */
 export function normaliserCampagne(
   consentement: unknown,
@@ -73,12 +77,19 @@ export function normaliserCampagne(
     return null;
   }
   const b = brut as Record<string, unknown>;
+  const utmContent = normaliserValeurUtm(b["utm_content"]);
+  const utmTerm = normaliserValeurUtm(b["utm_term"]);
+  // utm_content/utm_term n'apparaissent que valides : la forme a trois cles
+  // (et les metadonnees Stripe) reste identique quand ils sont absents.
   const campagne: CampagneUtm = {
     utmSource: normaliserValeurUtm(b["utm_source"]),
     utmMedium: normaliserValeurUtm(b["utm_medium"]),
     utmCampaign: normaliserValeurUtm(b["utm_campaign"]),
+    ...(utmContent ? { utmContent } : {}),
+    ...(utmTerm ? { utmTerm } : {}),
   };
-  return campagne.utmSource || campagne.utmMedium || campagne.utmCampaign
+  return campagne.utmSource || campagne.utmMedium || campagne.utmCampaign ||
+    campagne.utmContent || campagne.utmTerm
     ? campagne
     : null;
 }
@@ -120,6 +131,8 @@ export function metadataDepuisAttribution(
     ...(c?.utmSource ? { fp_utm_source: c.utmSource } : {}),
     ...(c?.utmMedium ? { fp_utm_medium: c.utmMedium } : {}),
     ...(c?.utmCampaign ? { fp_utm_campaign: c.utmCampaign } : {}),
+    ...(c?.utmContent ? { fp_utm_content: c.utmContent } : {}),
+    ...(c?.utmTerm ? { fp_utm_term: c.utmTerm } : {}),
   };
 }
 
@@ -145,6 +158,8 @@ export function lireAttributionFunnel(
       utm_source: metadata["fp_utm_source"],
       utm_medium: metadata["fp_utm_medium"],
       utm_campaign: metadata["fp_utm_campaign"],
+      utm_content: metadata["fp_utm_content"],
+      utm_term: metadata["fp_utm_term"],
     },
   );
 }
@@ -168,6 +183,13 @@ function tronquer(value: string | null | undefined): string | null {
 const INSERT_ETAPE = `INSERT INTO funnel_events
          (etape, visiteur_id, org_ref, plan, source, cle_idempotence)
        VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (cle_idempotence)
+         WHERE cle_idempotence IS NOT NULL DO NOTHING`;
+
+const INSERT_ETAPE_CAMPAGNE_COMPLETE = `INSERT INTO funnel_events
+         (etape, visiteur_id, org_ref, plan, source, cle_idempotence,
+          utm_source, utm_medium, utm_campaign, utm_content, utm_term)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (cle_idempotence)
          WHERE cle_idempotence IS NOT NULL DO NOTHING`;
 
@@ -196,6 +218,8 @@ export async function enregistrerEtape(
         utm_source: event.campagne.utmSource,
         utm_medium: event.campagne.utmMedium,
         utm_campaign: event.campagne.utmCampaign,
+        utm_content: event.campagne.utmContent,
+        utm_term: event.campagne.utmTerm,
       })
     : null;
   try {
@@ -204,13 +228,23 @@ export async function enregistrerEtape(
       const result = await pool.query(INSERT_ETAPE, base);
       return (result.rowCount ?? 0) > 0;
     }
+    const trois = [...base, campagne.utmSource, campagne.utmMedium, campagne.utmCampaign];
     try {
-      const result = await pool.query(INSERT_ETAPE_CAMPAGNE, [
-        ...base,
-        campagne.utmSource,
-        campagne.utmMedium,
-        campagne.utmCampaign,
-      ]);
+      if (campagne.utmContent || campagne.utmTerm) {
+        try {
+          const result = await pool.query(INSERT_ETAPE_CAMPAGNE_COMPLETE, [
+            ...trois,
+            campagne.utmContent ?? null,
+            campagne.utmTerm ?? null,
+          ]);
+          return (result.rowCount ?? 0) > 0;
+        } catch (error) {
+          // Migration 021 pas encore appliquee : on garde source/medium/campaign.
+          if ((error as { code?: string } | null)?.code !== "42703") throw error;
+          logger.warn({ etape: event.etape }, "[Tunnel] utm_content/utm_term columns missing — stored without them");
+        }
+      }
+      const result = await pool.query(INSERT_ETAPE_CAMPAGNE, trois);
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
       // Migration 020 pas encore appliquee (colonne absente, 42703) : on garde
@@ -228,8 +262,10 @@ export async function enregistrerEtape(
 
 // ── Schema UTM (migration 020) ──────────────────────────────────────────────
 
-/** Colonnes de campagne exigees par l'attribution (migration 020_funnel_events_utm.sql). */
-export const COLONNES_UTM = ["utm_source", "utm_medium", "utm_campaign"] as const;
+/** Colonnes de campagne exigees par l'attribution (migrations 020 et 021). */
+export const COLONNES_UTM = [
+  "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
+] as const;
 
 export type EtatColonnesUtm =
   | { etat: "table_absente" }
