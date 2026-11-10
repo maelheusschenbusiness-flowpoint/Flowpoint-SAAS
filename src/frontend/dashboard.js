@@ -74419,6 +74419,7 @@ window.FP_V1_ADDON_PANELS = {
     const ids = new Set(state.selectedAuditIds || []);
     if (selected) ids.add(String(auditId)); else ids.delete(String(auditId));
     state.selectedAuditIds = [...ids];
+    render();
   },
   async consolidateAgencySites() {
     const state = window._fpAgencyPacksState;
@@ -74435,7 +74436,7 @@ window.FP_V1_ADDON_PANELS = {
         body: JSON.stringify({ clientName: state.clientName, reportIds: [consolidated.id] }),
       });
       showToast('success', fpT('Rapport multi-sites créé. Portail client : {url}', {url: portal.url}));
-      state.portals = await apiFetch('/api/reports/agency-packs/portals');
+      state.portals = await apiFetch('/api/reports/agency-packs/portals', { force: true });
       await window._fpReportsAPI.load({ force: true });
     } catch (error) {
       showToast('error', error?.message || fpT('Impossible de créer le rapport et le portail'));
@@ -74454,7 +74455,7 @@ window.FP_V1_ADDON_PANELS = {
           auditIds: state.selectedAuditIds, cron: state.cron, timezone: state.timezone,
         }),
       });
-      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules');
+      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules', { force: true });
       state.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
       state.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
       showToast('success', fpT('Génération et livraison planifiées'));
@@ -74465,7 +74466,7 @@ window.FP_V1_ADDON_PANELS = {
   async revokeAgencyPortal(id) {
     try {
       await apiFetch(`/api/reports/agency-packs/portals/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      window._fpAgencyPacksState.portals = await apiFetch('/api/reports/agency-packs/portals');
+      window._fpAgencyPacksState.portals = await apiFetch('/api/reports/agency-packs/portals', { force: true });
       render();
     } catch (error) { showToast('error', error?.message || fpT('Impossible de révoquer le portail')); }
   },
@@ -74474,7 +74475,7 @@ window.FP_V1_ADDON_PANELS = {
       await apiFetch(`/api/reports/agency-packs/schedules/${encodeURIComponent(id)}`, {
         method: 'PATCH', body: JSON.stringify({ enabled }),
       });
-      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules');
+      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules', { force: true });
       window._fpAgencyPacksState.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
       window._fpAgencyPacksState.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
       render();

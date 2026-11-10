@@ -589,12 +589,19 @@ test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled deli
   await page.waitForFunction(() => window._fpAgencyPacksState?.loaded === true, null, { timeout: 15_000 });
   expect(await page.evaluate(() => window._fpAgencyPacksState.audits.map(audit => audit.id)))
     .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
-  await page.evaluate(({ auditIds, clientName }) => {
-    Object.assign(window._fpAgencyPacksState, { selectedAuditIds: auditIds, clientName });
-  }, {
-    auditIds: [auditAgencyA, auditAgencyB],
-    clientName: "Synthetic multi-site customer",
+  const agencyPanel = page.locator("#fp-agency-packs-result");
+  const clientNameInput = agencyPanel.locator('input[type="text"][maxlength="160"]');
+  await clientNameInput.fill("Synthetic multi-site customer");
+  const auditACheckbox = agencyPanel.locator(`input[type="checkbox"][value="${auditAgencyA}"]`);
+  const auditBCheckbox = agencyPanel.locator(`input[type="checkbox"][value="${auditAgencyB}"]`);
+  await auditACheckbox.check();
+  await auditBCheckbox.check();
+  expect(await page.evaluate(() => window._fpAgencyPacksState.selectedAuditIds))
+    .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
+  const consolidateButton = agencyPanel.getByRole("button", {
+    name: /Consolider les sites et créer un portail|Consolidate sites and create a portal/i,
   });
+  await expect(consolidateButton).toBeEnabled();
 
   const consolidateResponsePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/reports/agency-packs/consolidate" &&
@@ -613,11 +620,24 @@ test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled deli
   expect(portalResponse.status()).toBe(201);
   const portal = await portalResponse.json();
   expect(portal.url).toContain("/api/agency-portal/");
+  const revokePortalButton = agencyPanel.getByRole("button", {
+    name: /Révoquer le portail|Revoke portal/i,
+  });
+  await expect(revokePortalButton).toBeVisible();
 
   const pdf = await page.request.get(`/api/reports/${consolidated.id}/download`);
   expect(pdf.status()).toBe(200);
   expect(pdf.headers()["content-type"]).toContain("application/pdf");
   expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
+  const reportDownloadButton = page.locator(`button[title="PDF"][data-rid="${consolidated.id}"]`);
+  await expect(reportDownloadButton).toBeVisible();
+  const browserDownloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+  await reportDownloadButton.click();
+  const browserDownload = await browserDownloadPromise;
+  expect(browserDownload.suggestedFilename()).toMatch(/\.pdf$/i);
+  const browserDownloadPath = await browserDownload.path();
+  expect(browserDownloadPath).toBeTruthy();
+  expect(readFileSync(browserDownloadPath).subarray(0, 4).toString()).toBe("%PDF");
   const snapshotResult = await db.query(
     "SELECT generation_metadata_json FROM reports WHERE org_id=$1 AND id=$2",
     [orgA, consolidated.id],
@@ -640,35 +660,43 @@ test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled deli
   expect((await crossOrg.json()).code).toBe("AUDIT_NOT_FOUND");
 
   const recipientEmail = `agency-client-${randomUUID()}@example.test`;
-  await page.evaluate(({ recipientEmail }) => {
-    Object.assign(window._fpAgencyPacksState, {
-      recipientEmail,
-      cron: "0 0 1 1 *",
-      timezone: "UTC",
-    });
-  }, { recipientEmail });
+  await agencyPanel.locator('input[type="email"]').fill(recipientEmail);
+  await agencyPanel.locator('input[maxlength="100"]').fill("0 0 1 1 *");
+  await agencyPanel.locator('input[maxlength="80"]').fill("UTC");
+  const createScheduleButton = agencyPanel.getByRole("button", {
+    name: /Planifier la génération et l’envoi|Schedule generation and delivery/i,
+  });
+  await expect(createScheduleButton).toBeEnabled();
   const scheduleResponsePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/reports/agency-packs/schedules" &&
     response.request().method() === "POST",
   );
-  await page.evaluate(() => window.FP_V1_ADDON_PANELS.createAgencySchedule());
+  await createScheduleButton.click();
   const scheduleResponse = await scheduleResponsePromise;
   expect(scheduleResponse.status()).toBe(201);
   const schedule = await scheduleResponse.json();
   expect(schedule.recipient_email).toBe(recipientEmail);
 
+  const pauseScheduleButton = agencyPanel.getByRole("button", { name: /Suspendre|Pause/i });
+  await expect(pauseScheduleButton).toBeVisible();
   const pauseSchedulePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === `/api/reports/agency-packs/schedules/${schedule.id}` &&
     response.request().method() === "PATCH",
   );
-  await page.evaluate(id => window.FP_V1_ADDON_PANELS.toggleAgencySchedule(id, false), schedule.id);
-  expect((await pauseSchedulePromise).status()).toBe(200);
+  await pauseScheduleButton.click();
+  const pausedSchedule = await pauseSchedulePromise;
+  expect(pausedSchedule.status()).toBe(200);
+  expect((await pausedSchedule.json()).enabled).toBe(false);
+  const resumeScheduleButton = agencyPanel.getByRole("button", { name: /Reprendre|Resume/i });
+  await expect(resumeScheduleButton).toBeVisible();
   const resumeSchedulePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === `/api/reports/agency-packs/schedules/${schedule.id}` &&
     response.request().method() === "PATCH",
   );
-  await page.evaluate(id => window.FP_V1_ADDON_PANELS.toggleAgencySchedule(id, true), schedule.id);
-  expect((await resumeSchedulePromise).status()).toBe(200);
+  await resumeScheduleButton.click();
+  const resumedSchedule = await resumeSchedulePromise;
+  expect(resumedSchedule.status()).toBe(200);
+  expect((await resumedSchedule.json()).enabled).toBe(true);
 
   const portalPage = await page.context().newPage();
   try {
@@ -681,11 +709,12 @@ test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled deli
   } finally {
     await portalPage.close();
   }
+  await expect(revokePortalButton).toBeVisible();
   const revokePortalPromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === `/api/reports/agency-packs/portals/${portal.id}` &&
     response.request().method() === "DELETE",
   );
-  await page.evaluate(id => window.FP_V1_ADDON_PANELS.revokeAgencyPortal(id), portal.id);
+  await revokePortalButton.click();
   expect((await revokePortalPromise).status()).toBe(200);
   expect((await page.request.get(portal.url)).status()).toBe(404);
 });
