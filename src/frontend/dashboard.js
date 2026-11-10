@@ -60649,8 +60649,8 @@ function renderConversion() {
   if (sub === 'cro') {
     const _croRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
     const _priEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
-    const roadmap = (_croRecs && _croRecs.length) ? _croRecs.slice(0, 6).map(function(r) {
-      return { week: fpT(r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer'), action: r.title || r.recommendation, impact: fpT('{events} événements · {sessions} sessions', { events:r.frequency || r.observedEvents || 0, sessions:r.affectedSessions || 0 }), done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
+    const roadmap = (_croRecs && _croRecs.length) ? _croRecs.map(function(r) {
+      return { id:r.id, status:r.status || 'pending', week: fpT(r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer'), action: r.title || r.recommendation, impact: fpT('{events} événements · {sessions} sessions', { events:r.frequency || r.observedEvents || 0, sessions:r.affectedSessions || 0 }), done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
     }) : [];
     const experiments = (STATE.cro?.experiments?.length > 0
       ? STATE.cro.experiments.slice(0, 6).map(ex => ({
@@ -60663,6 +60663,7 @@ function renderConversion() {
       : []);
     const forecast = [];
     return `
+      ${window.FP_DATA?.cro?.error ? `<div role="alert" class="fp-card fp-mb-20">${escHtml(window.FP_DATA.cro.error)}</div>` : ''}
       ${aiBlock((_croRecs || []).length
         ? fpT("Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.")
         : fpT("Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé."),
@@ -60704,6 +60705,9 @@ function renderConversion() {
                 <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${escHtml(r.impact)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Source :')} ${escHtml(r.source)} · ${fpT('confiance')} ${escHtml(({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[r.confidence] || r.confidence)}</div>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ(fpT('Optimiser la conversion'),'Conversion','medium')">${fpT('Mission')}</button>
+                ${r.id ? `<select class="fp-input" aria-label="${fpT('Statut de la recommandation')}" data-rec-id="${escHtml(r.id)}" onchange="window.FP_CRO_API.updateStatus(this.dataset.recId,this.value)" ${['owner','admin','member'].includes(String(STATE.me?.role || 'viewer').toLowerCase()) ? '' : 'disabled'}>
+                  ${[['pending','À traiter'],['in_progress','En cours'],['implemented','Appliquée'],['dismissed','Écartée']].map(([value,label]) => `<option value="${value}" ${r.status === value ? 'selected' : ''}>${fpT(label)}</option>`).join('')}
+                </select>` : ''}
               </div>
             </div>
           `).join("")}
@@ -74676,21 +74680,26 @@ window.FP_CRO_API = {
   async load(siteUrl) {
     try {
       const url = siteUrl ? `/api/cro?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/cro';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const data = await apiFetch(url);
+      if (!data || data.ok === false) throw new Error(data?.error || fpT('Données CRO indisponibles'));
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.cro = {
         recommendations: data.recommendations || [],
         scores:          data.scores          || [],
         experiments:     data.experiments     || [],
         avgCroScore:     data.avgCroScore     || null,
+        error: null,
       };
       if (window.FP_AB_TEST_API) {
         const ab = await window.FP_AB_TEST_API.load(siteUrl);
         window.FP_DATA.cro.experiments = ab || [];
       }
       if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
-    } catch(e) { console.warn('[FP_CRO_API] load error:', e); }
+    } catch(e) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.cro = { ...(window.FP_DATA.cro || {}), error: e?.message || fpT('Données CRO indisponibles') };
+      console.warn('[FP_CRO_API] load error:', e);
+    }
   },
 
   async generate(siteUrl) {
@@ -74700,7 +74709,7 @@ window.FP_CRO_API = {
       const r = await apiFetch('/api/cro/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [], pageAnalysis: r.pageAnalysis || null };
+        window.FP_DATA.cro = { recommendations: r.recommendations || [], scores: [], experiments: window.FP_DATA.cro?.experiments || [], pageAnalysis: r.pageAnalysis || null, error:null };
         if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
         showToast('success', fpT('{count} observations CRO analysées', { count:(r.observations || []).length }));
@@ -74710,12 +74719,13 @@ window.FP_CRO_API = {
 
   async updateStatus(recId, status) {
     try {
-      await apiFetch(`/api/cro/recommendations/${encodeURIComponent(recId)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      const result = await apiFetch(`/api/cro/recommendations/${encodeURIComponent(recId)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      if (result?.ok !== true || result?.recommendation?.status !== status) throw new Error(result?.error || fpT('Statut non enregistré'));
       if (window.FP_DATA?.cro?.recommendations) {
         const rec = window.FP_DATA.cro.recommendations.find(r => r.id === recId);
         if (rec) { rec.status = status; render(); }
       }
-    } catch(e) { showToast('error', String(e)); }
+    } catch(e) { showToast('error', String(e)); render(); }
   },
 };
 
