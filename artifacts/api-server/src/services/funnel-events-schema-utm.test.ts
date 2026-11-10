@@ -28,13 +28,15 @@ const alters = () => query.mock.calls.map((c) => String(c[0])).filter((s) => s.s
 describe("assurerColonnesUtm", () => {
   beforeEach(() => { query.mockReset(); release.mockReset(); });
 
-  it("ajoute les trois colonnes absentes, dans une transaction bornee par lock_timeout", async () => {
+  it("ajoute les cinq colonnes absentes, dans une transaction bornee par lock_timeout", async () => {
     reponses("funnel_events", []);
-    expect(await assurerColonnesUtm()).toEqual({ etat: "ajoutees", colonnes: ["utm_source", "utm_medium", "utm_campaign"] });
+    expect(await assurerColonnesUtm()).toEqual({ etat: "ajoutees", colonnes: ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] });
     expect(alters()).toEqual([
       "ALTER TABLE public.funnel_events ADD COLUMN IF NOT EXISTS utm_source TEXT NULL",
       "ALTER TABLE public.funnel_events ADD COLUMN IF NOT EXISTS utm_medium TEXT NULL",
       "ALTER TABLE public.funnel_events ADD COLUMN IF NOT EXISTS utm_campaign TEXT NULL",
+      "ALTER TABLE public.funnel_events ADD COLUMN IF NOT EXISTS utm_content TEXT NULL",
+      "ALTER TABLE public.funnel_events ADD COLUMN IF NOT EXISTS utm_term TEXT NULL",
     ]);
     const sqls = query.mock.calls.map((c) => String(c[0]));
     expect(sqls).toContain("SET LOCAL lock_timeout = '5s'");
@@ -43,13 +45,19 @@ describe("assurerColonnesUtm", () => {
   });
 
   it("n'ajoute que la colonne manquante", async () => {
-    reponses("funnel_events", ["utm_source", "utm_medium"]);
+    reponses("funnel_events", ["utm_source", "utm_medium", "utm_content", "utm_term"]);
     expect(await assurerColonnesUtm()).toEqual({ etat: "ajoutees", colonnes: ["utm_campaign"] });
     expect(alters()).toHaveLength(1);
   });
 
-  it("colonnes deja presentes : aucun ALTER, donc aucun verrou", async () => {
+  it("base deja en 020 : n'ajoute que utm_content et utm_term (021)", async () => {
     reponses("funnel_events", ["utm_source", "utm_medium", "utm_campaign"]);
+    expect(await assurerColonnesUtm()).toEqual({ etat: "ajoutees", colonnes: ["utm_content", "utm_term"] });
+    expect(alters()).toHaveLength(2);
+  });
+
+  it("colonnes deja presentes : aucun ALTER, donc aucun verrou", async () => {
+    reponses("funnel_events", ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]);
     expect(await assurerColonnesUtm()).toEqual({ etat: "deja_presentes" });
     expect(alters()).toEqual([]);
     expect(query.mock.calls.map((c) => String(c[0]))).not.toContain("BEGIN");

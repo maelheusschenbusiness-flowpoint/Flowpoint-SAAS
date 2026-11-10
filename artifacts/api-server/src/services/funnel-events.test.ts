@@ -169,6 +169,95 @@ describe("campagne UTM : normalisation, consentement, metadonnees Stripe", () =>
   });
 });
 
+describe("utm_content / utm_term (migration 021)", () => {
+  beforeEach(() => query.mockReset());
+
+  const smartlead = {
+    utm_source: "smartlead", utm_medium: "email", utm_campaign: "clients_fr_be",
+    utm_content: "Step1", utm_term: "agence_seo",
+  };
+
+  it("normalises avec le meme motif que utm_source (minuscules, ^[a-z0-9._-]{1,64}$)", () => {
+    expect(normaliserCampagne("accepted", smartlead)).toEqual({
+      utmSource: "smartlead", utmMedium: "email", utmCampaign: "clients_fr_be",
+      utmContent: "step1", utmTerm: "agence_seo",
+    });
+    const c = normaliserCampagne("accepted", { utm_source: "x", utm_content: "a".repeat(65), utm_term: "a b&c=é" });
+    expect(c).toStrictEqual({ utmSource: "x", utmMedium: null, utmCampaign: null });
+    expect(normaliserCampagne("accepted", { utm_term: "kw" })).toStrictEqual({
+      utmSource: null, utmMedium: null, utmCampaign: null, utmTerm: "kw",
+    });
+  });
+
+  it("meme consentement que utm_source : rien sans `accepted`", () => {
+    for (const consent of ["refused", undefined, null, "", "ACCEPTED", true]) {
+      expect(normaliserCampagne(consent, smartlead)).toBeNull();
+      expect(normaliserAttributionFunnel(consent, visitorId, "smartlead", smartlead)).toBeNull();
+      expect(metadataAttributionFunnel(consent, visitorId, "smartlead", smartlead)).toEqual({});
+    }
+    expect(lireAttributionFunnel({ fp_visitor_id: visitorId, fp_utm_content: "step1", fp_utm_term: "kw" })).toBeNull();
+  });
+
+  it("metadonnees Stripe fp_utm_content / fp_utm_term et aller-retour", () => {
+    const meta = metadataAttributionFunnel("accepted", visitorId, "smartlead", smartlead);
+    expect(meta).toStrictEqual({
+      fp_analytics_consent: "accepted", fp_visitor_id: visitorId, fp_source: "smartlead",
+      fp_utm_source: "smartlead", fp_utm_medium: "email", fp_utm_campaign: "clients_fr_be",
+      fp_utm_content: "step1", fp_utm_term: "agence_seo",
+    });
+    const relue = lireAttributionFunnel(meta);
+    expect(relue?.campagne?.utmContent).toBe("step1");
+    expect(relue?.campagne?.utmTerm).toBe("agence_seo");
+    expect(metadataDepuisAttribution(relue)).toStrictEqual(meta);
+    expect(lireAttributionFunnel({ ...meta, fp_utm_content: "<x>" })?.campagne?.utmContent).toBeUndefined();
+  });
+
+  it("enregistrerEtape ecrit les cinq colonnes utm", async () => {
+    query.mockResolvedValue({ rowCount: 1 });
+    const attribution = normaliserAttributionFunnel("accepted", visitorId, "smartlead", smartlead)!;
+    await enregistrerEtape({ etape: "landing_vue", visiteurId: visitorId, source: "smartlead", campagne: attribution.campagne });
+    expect(query).toHaveBeenCalledTimes(1);
+    const [sql, params] = query.mock.calls[0]!;
+    expect(sql).toContain("utm_source, utm_medium, utm_campaign, utm_content, utm_term");
+    expect(params).toEqual([
+      "landing_vue", visitorId, null, null, "smartlead", null,
+      "smartlead", "email", "clients_fr_be", "step1", "agence_seo",
+    ]);
+  });
+
+  it("enregistrerEtape re-normalise : une valeur hors motif n'entre pas en base", async () => {
+    query.mockResolvedValue({ rowCount: 1 });
+    await enregistrerEtape({
+      etape: "landing_vue", visiteurId: visitorId,
+      campagne: { utmSource: "x", utmMedium: null, utmCampaign: null, utmContent: "DROP TABLE;", utmTerm: null },
+    });
+    const [sql, params] = query.mock.calls[0]!;
+    expect(sql).not.toContain("utm_content");
+    expect(params).toHaveLength(9);
+  });
+
+  it("migration 021 absente : repli sur les trois colonnes de 020, l'etape est gardee", async () => {
+    query
+      .mockRejectedValueOnce(Object.assign(new Error('column "utm_content" does not exist'), { code: "42703" }))
+      .mockResolvedValueOnce({ rowCount: 1 });
+    const attribution = normaliserAttributionFunnel("accepted", visitorId, "smartlead", smartlead)!;
+    expect(await enregistrerEtape({ etape: "landing_vue", visiteurId: visitorId, campagne: attribution.campagne })).toBe(true);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1]![1]).toEqual([
+      "landing_vue", visitorId, null, null, null, null, "smartlead", "email", "clients_fr_be",
+    ]);
+  });
+
+  it("migrations 020 et 021 absentes : l'etape est gardee sans campagne", async () => {
+    const absent = () => Object.assign(new Error("column does not exist"), { code: "42703" });
+    query.mockRejectedValueOnce(absent()).mockRejectedValueOnce(absent()).mockResolvedValueOnce({ rowCount: 1 });
+    const attribution = normaliserAttributionFunnel("accepted", visitorId, "smartlead", smartlead)!;
+    expect(await enregistrerEtape({ etape: "landing_vue", visiteurId: visitorId, campagne: attribution.campagne })).toBe(true);
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(query.mock.calls[2]![1]).toHaveLength(6);
+  });
+});
+
 describe("plage de l'endpoint admin d'attribution", () => {
   it("exige from et to valides", () => {
     expect(validerPlageAttribution(undefined, "2026-10-01").ok).toBe(false);

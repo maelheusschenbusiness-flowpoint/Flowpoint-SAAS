@@ -49,6 +49,24 @@ async function ligne(v: string) {
 }
 
 describe("route publique : la campagne entre en base normalisee", () => {
+  it("utm_content / utm_term (021) : ecrits normalises avec consentement, jamais sans", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const v = visiteur();
+    await request(app).post("/api/public/funnel-event").send({
+      etape: "landing_vue", visiteurId: v, consentement: "accepted", source: "smartlead",
+      utm_source: "smartlead", utm_content: "Step1", utm_term: "a b&c",
+    });
+    const r = await pool.query(
+      `SELECT utm_source, utm_content, utm_term FROM funnel_events WHERE visiteur_id = $1`, [v]);
+    expect(r.rows).toEqual([{ utm_source: "smartlead", utm_content: "step1", utm_term: null }]);
+    const refuse = visiteur();
+    await request(app).post("/api/public/funnel-event").send({
+      etape: "landing_vue", visiteurId: refuse, consentement: "refused",
+      utm_content: "step1", utm_term: "kw",
+    });
+    expect(await ligne(refuse)).toEqual([]);
+  });
+
   it("landing_vue Instagram : utm en minuscules, valeur invalide ignoree", async (ctx) => {
     if (!dbOk) return ctx.skip();
     const v = visiteur();
