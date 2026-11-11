@@ -304,6 +304,7 @@ async function saveCheckResult(
           if (isDown) {
             await mailer.sendMonitorDown({
               to: recipient,
+              orgId,
               monitorName: String(mon.name),
               url: String(mon.url),
               statusCode: result.statusCode ?? undefined,
@@ -311,6 +312,7 @@ async function saveCheckResult(
           } else {
             await mailer.sendMonitorUp({
               to: recipient,
+              orgId,
               monitorName: String(mon.name),
               url: String(mon.url),
               downDurationMin: downDurationMin ?? 0,
