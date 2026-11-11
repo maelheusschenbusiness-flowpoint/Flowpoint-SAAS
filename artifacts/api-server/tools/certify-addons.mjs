@@ -149,7 +149,9 @@ export const ADDON_REGISTRY = [
       "src/routes/ab-testing-suggest.test.ts",
       "src/routes/ab-testing-lifecycle.test.ts",
       "src/routes/ab-testing-postgres.test.ts",
+      "src/routes/cro-recommendation-state.test.ts",
     ],
+    browserTitle: "AI CRO Strategist persists measured recommendations with owner and viewer permissions",
   },
   {
     id: "ai-workspace-launch",

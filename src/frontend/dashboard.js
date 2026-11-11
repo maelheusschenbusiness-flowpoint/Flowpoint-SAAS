@@ -16485,8 +16485,22 @@ function navigate(route, subRoute) {
   // when user navigates to another tab before the touchend fires hideTip).
   if (typeof hideTip === 'function') hideTip();
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  _fpRefreshCroViewData();
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function _fpRefreshCroViewData() {
+  if (STATE.route !== 'conversion' || STATE.subRoute !== 'cro' || !window.FP_CRO_API) return;
+  if (window._fpCroViewLoad) return;
+  const siteUrl = window.FP_DATA?.activeSite || STATE.me?.org?.website || '';
+  const load = Promise.resolve(window.FP_CRO_API.load(siteUrl));
+  window._fpCroViewLoad = load;
+  load.finally(() => {
+    if (window._fpCroViewLoad !== load) return;
+    window._fpCroViewLoad = null;
+    if (STATE.route === 'conversion' && STATE.subRoute === 'cro') render();
+  });
 }
 
 function navigateSub(sub) {
@@ -16508,6 +16522,7 @@ function navigateSub(sub) {
     }
   } catch(_) {}
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+  _fpRefreshCroViewData();
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -22676,6 +22691,20 @@ function bindGlobalEvents() {
     'Pondérations de priorité': 'Priority weights',
     'Urgent': 'Urgent',
     'À traiter': 'Needs attention',
+    'Statut de la recommandation': 'Recommendation status',
+    'Données CRO indisponibles': 'CRO data is unavailable',
+    'Statut non enregistré': 'Status was not saved',
+    'Analyse de page': 'Page analysis',
+    'Analyse de la page': 'Page analysis',
+    'Analyser le site actif': 'Analyze active site',
+    'Preuve relevée sur la page': 'Evidence found on the page',
+    'Constats de page mesurés uniquement.': 'Showing measured page findings only.',
+    'Analyse de page indisponible': 'Page analysis unavailable',
+    'Aucune recommandation n’est générée sans lecture de la page.': 'No recommendations are generated unless the page can be read.',
+    '{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action': '{h1} H1 headings · {forms} forms · {ctas} calls to action',
+    'Mise en œuvre :': 'Implementation:',
+    'Analyse IA': 'AI analysis',
+    'Événements observés': 'Observed events',
     'Programmation annulée. Le post est conservé en brouillon.': 'Schedule canceled. The post is saved as a draft.',
     'Stable': 'Stable',
     'problèmes critiques': 'critical issues',
@@ -60662,9 +60691,27 @@ function renderConversion() {
   if (sub === 'cro') {
     const _croRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
     const _priEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
-    const roadmap = (_croRecs && _croRecs.length) ? _croRecs.slice(0, 6).map(function(r) {
-      return { week: fpT(r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer'), action: r.title || r.recommendation, impact: fpT('{events} événements · {sessions} sessions', { events:r.frequency || r.observedEvents || 0, sessions:r.affectedSessions || 0 }), done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡', source: r.source || 'behavior_events', confidence: r.confidence || 'low' };
+    const roadmap = (_croRecs && _croRecs.length) ? _croRecs.map(function(r) {
+      const pageFinding = r.source === 'page' || r.source === 'ai';
+      return {
+        id:r.id, status:r.status || 'pending',
+        week: pageFinding ? fpT('Analyse de page') : fpT(r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer'),
+        action: r.title || r.recommendation,
+        impact: pageFinding ? fpT('Preuve relevée sur la page') : fpT('{events} événements · {sessions} sessions', { events:r.frequency || r.observedEvents || 0, sessions:r.affectedSessions || 0 }),
+        priority: _priEmoji[r.priority] || (pageFinding ? _priEmoji.medium : '🟡'),
+        source: r.source || 'behavior_events', confidence: r.confidence || '',
+        evidence:r.evidence || '', implementation:r.implementation || '',
+        description:r.description || '',
+      };
     }) : [];
+    const _croPageAnalysis = window.FP_DATA?.cro?.pageAnalysis;
+    const _croPagePanel = !_croPageAnalysis ? '' : _croPageAnalysis.status === 'ok'
+      ? `<div class="fp-card fp-mb-20"><div class="fp-card-title">${fpT('Analyse de la page')} · ${escHtml(_croPageAnalysis.analyzedUrl || _croPageAnalysis.siteUrl || '')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action', { h1:_croPageAnalysis.signals?.h1Count ?? '—', forms:_croPageAnalysis.signals?.formCount ?? '—', ctas:_croPageAnalysis.signals?.ctaCount ?? '—' })}</div>
+          ${_croPageAnalysis.ai?.status === 'unavailable' ? `<div role="status" style="font-size:11px;color:var(--fp-text-muted);margin-top:6px">${escHtml(_croPageAnalysis.ai.message || fpT('Constats de page mesurés uniquement.'))}</div>` : ''}
+          ${(_croPageAnalysis.findings || []).map(f => `<div style="padding:9px 0;border-top:1px solid var(--fp-border);margin-top:7px"><strong style="font-size:12px">${escHtml(f.title)}</strong><div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${escHtml(f.description)}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fpT('Preuve :')} ${escHtml(f.evidence)}</div></div>`).join('')}
+        </div>`
+      : `<div class="fp-card fp-mb-20" role="status"><strong>${fpT('Analyse de page indisponible')}</strong><div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">${escHtml(_croPageAnalysis.message || fpT('Aucune recommandation n’est générée sans lecture de la page.'))}</div></div>`;
     const experiments = (STATE.cro?.experiments?.length > 0
       ? STATE.cro.experiments.slice(0, 6).map(ex => ({
           id: ex.id, name: ex.name || ex.page, hypo: ex.hypothesis || '',
@@ -60676,6 +60723,8 @@ function renderConversion() {
       : []);
     const forecast = [];
     return `
+      ${window.FP_DATA?.cro?.error ? `<div role="alert" class="fp-card fp-mb-20">${escHtml(window.FP_DATA.cro.error)}</div>` : ''}
+      ${_croPagePanel}
       ${aiBlock((_croRecs || []).length
         ? fpT("Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.")
         : fpT("Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé."),
@@ -60701,9 +60750,12 @@ function renderConversion() {
 
       <!-- ROADMAP -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">
-          ${svgIcon("map").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-          ${fpT('Signaux comportementaux et actions CRO')}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <div class="fp-card-title" style="margin-bottom:0">
+            ${svgIcon("map").replace('stroke="currentColor"', 'stroke="#2563EB"')}
+            ${fpT('Signaux comportementaux et actions CRO')}
+          </div>
+          ${['owner','admin','member'].includes(String(STATE.me?.role || 'viewer').toLowerCase()) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_CRO_API.generate(window.FP_DATA?.activeSite || STATE.me?.org?.website || '')">${fpT('Analyser le site actif')}</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${roadmap.map((r, i) => `
@@ -60715,8 +60767,14 @@ function renderConversion() {
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${escHtml(r.impact)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Source :')} ${escHtml(r.source)} · ${fpT('confiance')} ${escHtml(({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[r.confidence] || r.confidence)}</div>
+                ${r.description ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${escHtml(r.description)}</div>` : ''}
+                ${r.evidence ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fpT('Preuve :')} ${escHtml(r.evidence)}</div>` : ''}
+                ${r.implementation ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:3px">${fpT('Mise en œuvre :')} ${escHtml(r.implementation)}</div>` : ''}
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Source :')} ${escHtml(r.source === 'ai' ? fpT('Analyse IA') : r.source === 'page' ? fpT('Analyse de page') : 'behavior_events')}${r.confidence ? ` · ${fpT('confiance')} ${escHtml(({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[r.confidence] || r.confidence)}` : ''}</div>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ(fpT('Optimiser la conversion'),'Conversion','medium')">${fpT('Mission')}</button>
+                ${r.id ? `<select class="fp-input" aria-label="${fpT('Statut de la recommandation')}" data-rec-id="${escHtml(r.id)}" onchange="window.FP_CRO_API.updateStatus(this.dataset.recId,this.value)" ${['owner','admin','member'].includes(String(STATE.me?.role || 'viewer').toLowerCase()) ? '' : 'disabled'}>
+                  ${[['pending','À traiter'],['in_progress','En cours'],['implemented','Appliquée'],['dismissed','Écartée']].map(([value,label]) => `<option value="${value}" ${r.status === value ? 'selected' : ''}>${fpT(label)}</option>`).join('')}
+                </select>` : ''}
               </div>
             </div>
           `).join("")}
@@ -74691,21 +74749,26 @@ window.FP_CRO_API = {
   async load(siteUrl) {
     try {
       const url = siteUrl ? `/api/cro?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/cro';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const data = await apiFetch(url);
+      if (!data || data.ok === false) throw new Error(data?.error || fpT('Données CRO indisponibles'));
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.cro = {
         recommendations: data.recommendations || [],
         scores:          data.scores          || [],
         experiments:     data.experiments     || [],
         avgCroScore:     data.avgCroScore     || null,
+        error: null,
       };
       if (window.FP_AB_TEST_API) {
         const ab = await window.FP_AB_TEST_API.load(siteUrl);
         window.FP_DATA.cro.experiments = ab || [];
       }
       if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
-    } catch(e) { console.warn('[FP_CRO_API] load error:', e); }
+    } catch(e) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.cro = { ...(window.FP_DATA.cro || {}), error: e?.message || fpT('Données CRO indisponibles') };
+      console.warn('[FP_CRO_API] load error:', e);
+    }
   },
 
   async generate(siteUrl) {
@@ -74715,7 +74778,7 @@ window.FP_CRO_API = {
       const r = await apiFetch('/api/cro/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.cro = { recommendations: (r.observations || []).map(o => ({ ...o, title: o.recommendation })), scores: [], experiments: r.experiments || [], pageAnalysis: r.pageAnalysis || null };
+        window.FP_DATA.cro = { recommendations: r.recommendations || [], scores: [], experiments: window.FP_DATA.cro?.experiments || [], pageAnalysis: r.pageAnalysis || null, error:null };
         if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
         showToast('success', fpT('{count} observations CRO analysées', { count:(r.observations || []).length }));
@@ -74725,12 +74788,13 @@ window.FP_CRO_API = {
 
   async updateStatus(recId, status) {
     try {
-      await apiFetch(`/api/cro/recommendations/${encodeURIComponent(recId)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      const result = await apiFetch(`/api/cro/recommendations/${encodeURIComponent(recId)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      if (result?.ok !== true || result?.recommendation?.status !== status) throw new Error(result?.error || fpT('Statut non enregistré'));
       if (window.FP_DATA?.cro?.recommendations) {
         const rec = window.FP_DATA.cro.recommendations.find(r => r.id === recId);
         if (rec) { rec.status = status; render(); }
       }
-    } catch(e) { showToast('error', String(e)); }
+    } catch(e) { showToast('error', String(e)); render(); }
   },
 };
 
