@@ -99,8 +99,7 @@ export async function getPostsDashboard(orgId: string): Promise<{
         }).length,
       },
     };
-  } catch { return { posts: [], stats: { total:0, published:0, scheduled:0, draft:0, thisMonth:0 } }; }
-  finally { client.release(); }
+  } finally { client.release(); }
 }
 
 export async function createPost(orgId: string, data: {
@@ -300,7 +299,7 @@ async function markPostFailed(orgId: string, postId: string, code: string): Prom
 export async function deletePost(orgId: string, postId: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const r = await client.query(`DELETE FROM gbp_posts WHERE id=$1 AND org_id=$2`, [postId, orgId]);
+    const r = await client.query(`DELETE FROM gbp_posts WHERE id=$1 AND org_id=$2 AND status <> 'publishing'`, [postId, orgId]);
     return (r.rowCount ?? 0) > 0;
   } finally { client.release(); }
 }
@@ -313,7 +312,7 @@ export async function getScheduledPosts(orgId: string): Promise<GBPPost[]> {
       [orgId]
     );
     return res.rows;
-  } catch { return []; } finally { client.release(); }
+  } finally { client.release(); }
 }
 
 /** Publish due scheduled posts through the already-authorized GBP token. */
