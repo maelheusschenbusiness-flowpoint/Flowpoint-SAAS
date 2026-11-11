@@ -97,6 +97,7 @@ router.post("/reports/:reportId/send", async (req: Request, res: Response) => {
   try {
     const result = await mailer.sendReportGenerated({
       to: to.trim(),
+      orgId,
       name: (clientName ?? to.trim()).slice(0, 100),
       reportName,
       reportUrl,

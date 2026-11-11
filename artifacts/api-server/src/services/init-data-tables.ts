@@ -2468,6 +2468,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
     // Conversion B: opaque lead id carried from the outreach email to the organization.
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
+    // Langue choisie a l'inscription (whitelist fp-locale.js), recopiee a l'activation
+    // dans user_prefs.settings.language. Nullable : les lignes existantes restent intactes.
+    await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS language TEXT`);
     await run(client, `ALTER TABLE organizations   ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
 
     // ── Deduplicate & purge before creating unique index ──────────────────────

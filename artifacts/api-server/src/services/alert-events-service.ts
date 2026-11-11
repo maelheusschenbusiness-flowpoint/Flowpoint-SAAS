@@ -104,6 +104,7 @@ export async function fireAlertEvent(opts: FireAlertEventOpts): Promise<void> {
         if (channels.includes("email")) {
           mailer.sendAlertRule({
             to:          row.org_email,
+            orgId:       opts.orgId,
             ruleName:    opts.ruleName,
             type:        opts.type,
             metricValue: opts.metricValue,
