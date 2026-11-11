@@ -94,6 +94,7 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
           if (alertEmail) {
             mailer.sendSeoAlert({
               to: String(alertEmail),
+              orgId: String(rule.org_id),
               ruleName: String(rule.name),
               url,
               score,
@@ -167,6 +168,7 @@ export async function checkTrialEndingReminders(): Promise<void> {
       try {
         const result = await mailer.sendTrialEnding({
           to: row.email,
+          orgId: row.org_id,
           name: row.first_name ?? row.email.split("@")[0] ?? "there",
           daysLeft,
           plan: row.plan ?? "standard",
@@ -237,7 +239,7 @@ export async function retryLifecycleEmails(): Promise<void> {
           [row.id],
         );
         if (claim.rowCount) {
-          const result = await mailer.sendWelcome({ to: row.owner_email, name });
+          const result = await mailer.sendWelcome({ to: row.owner_email, orgId: row.id, name });
           await client.query(
             result.ok
               ? `UPDATE organizations SET welcome_email_sent_at = NOW(), welcome_email_claimed_at = NULL WHERE id = $1`
@@ -257,7 +259,7 @@ export async function retryLifecycleEmails(): Promise<void> {
         );
         if (claim.rowCount) {
           const result = await mailer.sendTrialStarted({
-            to: row.owner_email, name, plan: row.plan || "standard", trialEndsAt: new Date(row.trial_ends_at).toISOString(),
+            to: row.owner_email, orgId: row.id, name, plan: row.plan || "standard", trialEndsAt: new Date(row.trial_ends_at).toISOString(),
           });
           await client.query(
             result.ok

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { resolveRequestLanguage } from "../lib/request-language.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { logger } from "../lib/logger.js";
 
@@ -123,10 +124,10 @@ function parseGoogleGeoResult(result: Record<string, unknown>): Omit<GeoOut, "ok
   };
 }
 
-async function googleGeocode(params: string): Promise<{ ok: boolean; status: string; result?: Record<string, unknown> }> {
+async function googleGeocode(params: string, language = "en"): Promise<{ ok: boolean; status: string; result?: Record<string, unknown> }> {
   const key = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
   if (!key) return { ok: false, status: "NO_SERVER_KEY" };
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?${params}&language=fr&key=${key}`;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?${params}&language=${encodeURIComponent(language)}&key=${key}`;
   // Cette fonction ne doit jamais lever : son appelant compte sur `ok: false`
   // pour basculer sur Nominatim. Un delai depasse est donc rendu comme un
   // echec ordinaire, et le repli s'applique.
@@ -156,7 +157,7 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
   try {
     if (lat !== undefined && lng !== undefined) {
       // ── Reverse geocoding (Google primary) ────────────────────────────────
-      const g = await googleGeocode(`latlng=${Number(lat)},${Number(lng)}`);
+      const g = await googleGeocode(`latlng=${Number(lat)},${Number(lng)}`, await resolveRequestLanguage(req));
       if (g.ok && g.result) {
         const loc = ((g.result["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, number>;
         res.json({ ok: true, ...parseGoogleGeoResult(g.result), latitude: loc.lat ?? Number(lat), longitude: loc.lng ?? Number(lng) });
@@ -168,7 +169,7 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
         return;
       }
       // Explicit opt-in fallback
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${Number(lat)}&lon=${Number(lng)}&accept-language=fr`;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${Number(lat)}&lon=${Number(lng)}&accept-language=${encodeURIComponent(await resolveRequestLanguage(req))}`;
       const r = await fetchBorne(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } }, DELAIS.cartographie);
       if (!r.ok) throw new Error(`Nominatim reverse ${r.status}`);
       const data = await r.json() as Record<string, unknown>;
@@ -186,7 +187,7 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
 
     } else if (address?.trim()) {
       // ── Forward geocoding (Google primary) ────────────────────────────────
-      const g = await googleGeocode(`address=${encodeURIComponent(address.trim())}`);
+      const g = await googleGeocode(`address=${encodeURIComponent(address.trim())}`, await resolveRequestLanguage(req));
       if (g.ok && g.result) {
         const loc = ((g.result["geometry"] as Record<string, unknown>)?.["location"] ?? {}) as Record<string, number>;
         res.json({ ok: true, ...parseGoogleGeoResult(g.result), latitude: loc.lat, longitude: loc.lng });
@@ -203,7 +204,7 @@ router.post("/org/geocode", async (req: Request, res: Response): Promise<void> =
       }
       // Explicit opt-in fallback
       const encoded = encodeURIComponent(address.trim());
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1&accept-language=fr&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1&accept-language=${encodeURIComponent(await resolveRequestLanguage(req))}&addressdetails=1`;
       const r = await fetchBorne(url, { headers: { "User-Agent": "FlowPoint/1.0 (contact@flowpoint.pro)" } }, DELAIS.cartographie);
       if (!r.ok) throw new Error(`Nominatim search ${r.status}`);
       const data = await r.json() as Record<string, unknown>[];

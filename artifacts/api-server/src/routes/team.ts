@@ -463,6 +463,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
           const settings = await loadOrgSettings(invOrgId).catch(() => null);
           await mailer.sendInvitationAccepted({
             to:          inviterEmail,
+            orgId:       invOrgId,
             memberEmail: email,
             memberName:  email.split("@")[0],
             orgName:     settings?.orgName ?? invOrgId,
@@ -771,7 +772,7 @@ router.post("/team/invite", ownerOnly, async (req: Request, res: Response) => {
   let emailId: string | undefined;
   try {
     const { mailer } = await import("../services/mailer.js");
-    const result = await mailer.sendTeamInvitation({ to: email, inviterName, orgName, role: memberRole, inviteUrl });
+    const result = await mailer.sendTeamInvitation({ to: email, orgId: org, inviterName, orgName, role: memberRole, inviteUrl });
     emailOk = result.ok;
     emailId = result.ok ? result.id : undefined;
   } catch (mailerErr) {
@@ -1129,7 +1130,7 @@ router.post("/team/invitations/:id/resend", ownerOnly, async (req: Request, res:
     const inviterName = settings?.firstName ?? "Un collègue";
     const orgName     = settings?.orgName   ?? "FlowPoint";
     const inviteUrl   = buildInviteUrl(rawToken, email);
-    const result = await mailer.sendTeamInvitation({ to: email, inviterName, orgName, role: inv.role as string, inviteUrl });
+    const result = await mailer.sendTeamInvitation({ to: email, orgId: org, inviterName, orgName, role: inv.role as string, inviteUrl });
     emailOk = result.ok;
   } catch (mailerErr) {
     logger.warn({ err: (mailerErr as Error).message }, "[team/resend] mailer threw");

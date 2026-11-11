@@ -818,8 +818,8 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
       const _cancelAt = subPeriodEnd(sub);
       if (email) {
         mailer.sendSubscriptionCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan,
-          cancelDate: _cancelAt ? new Date(_cancelAt * 1000).toLocaleDateString("fr-FR") : null,
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan,
+          cancelDate: _cancelAt ? new Date(_cancelAt * 1000).toISOString() : null,
         }).catch(() => {});
       }
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: _cancelAt });
@@ -828,7 +828,7 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
       await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       if (email) {
         mailer.sendSubscriptionCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
       res.json({ ok: true, cancelAtPeriodEnd: false });
@@ -875,7 +875,7 @@ router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response
     const email = billingCtx.email ?? req.orgContext?.email;
     if (email) {
       mailer.sendSubscriptionReactivated({
-        to: email, name: email.split("@")[0], plan: billingCtx.plan,
+        to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan,
       }).catch(() => {});
     }
 
@@ -941,8 +941,8 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
       await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
       if (email) {
         mailer.sendTrialCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan,
-          cancelDate: new Date(sub.trial_end! * 1000).toLocaleDateString("fr-FR"),
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan,
+          cancelDate: new Date(sub.trial_end! * 1000).toISOString(),
         }).catch(() => {});
       }
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.trial_end });
@@ -951,7 +951,7 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
       await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       if (email) {
         mailer.sendTrialCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
       // Revoke ALL active sessions for this user so that any open browser/device
@@ -2849,6 +2849,11 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
     const billingCtx = await loadBillingContext(orgId);
     const email      = billingCtx.email ?? "";
     const name       = billingCtx.firstName ?? email.split("@")[0] ?? "utilisateur";
+    const emailLocale = email
+      ? await import("../services/email-localization.js")
+          .then(({ resolveEmailLocale }) => resolveEmailLocale(email, { orgId }))
+          .catch(() => undefined)
+      : undefined;
 
     const { deleteAccount } = await import("../services/account-deletion.js");
     const report = await deleteAccount({
@@ -2860,7 +2865,10 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
 
     // Confirmation email — only after the transaction has committed.
     if (email) {
-      mailer.sendAccountDeleted({ to: email, name }).catch((mailErr: unknown) => {
+      const emailLocaleContext = emailLocale
+        ? { resolvedLocale: emailLocale, lookupByEmail: false }
+        : { language: "en", lookupByEmail: false };
+      mailer.sendAccountDeleted({ to: email, name, ...emailLocaleContext }).catch((mailErr: unknown) => {
         logger.warn({ mailErr, orgId }, "[Billing/DeleteAccount] Confirmation email failed (non-fatal)");
       });
     }

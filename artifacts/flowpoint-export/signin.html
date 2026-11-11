@@ -659,6 +659,12 @@
       sessionStorage.setItem('fp_lid', fpLidValue);
     }
   } catch (_) {}
+  /* Langue envoyee au serveur (pre-register et depart Google) : celle de
+     l'interface publique (fp-locale.js), jamais le navigateur ni le pays. */
+  function fpSignupLanguage() {
+    try { return window.fpResolveLanguage ? window.fpResolveLanguage() : 'en'; }
+    catch (_) { return 'en'; }
+  }
   /* Lien Google : /api/auth/google/login?plan=…&seller_code=…&fp_lid=…
      Le plan choisi sur pricing.html (fp_cart) voyage avec le lien pour que le
      callback le renvoie ici (?plan=…) et que l'écran de choix soit sauté. */
@@ -670,6 +676,7 @@
     if (plan) qs.push('plan=' + encodeURIComponent(plan));
     if (sellerRefValid) qs.push('seller_code=' + encodeURIComponent(sellerRefParam));
     if (fpLidValue) qs.push('fp_lid=' + encodeURIComponent(fpLidValue));
+    qs.push('language=' + encodeURIComponent(fpSignupLanguage()));
     if (qs.length) googleLink.href = '/api/auth/google/login?' + qs.join('&');
     /* On retient le plan réellement envoyé : le callback renvoie un plan par
        défaut quand aucun n'a été transmis, il ne doit pas être pris pour un choix. */
@@ -898,6 +905,8 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ _hp: hp, firstName: firstName, lastName: lastName,
         email: email,
+        // Langue de l'interface publique, stockee durablement a l'activation.
+        language: fpSignupLanguage(),
         seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})(),
         fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})(),
         // Mesure du tunnel : relie `signup_form_completed` au meme visiteur que

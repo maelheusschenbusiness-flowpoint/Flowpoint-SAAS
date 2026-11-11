@@ -7,8 +7,7 @@ const mocks = vi.hoisted(() => ({
   poolQuery: vi.fn(),
   poolConnect: vi.fn(),
   loadOrgSettings: vi.fn(),
-  resendSend: vi.fn(),
-  smtpSend: vi.fn(),
+  loginLinkSend: vi.fn(),
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -24,21 +23,15 @@ vi.mock("@workspace/db", () => ({
   },
 }));
 
-vi.mock("resend", () => ({
-  Resend: class {
-    emails = { send: mocks.resendSend };
-  },
-}));
-vi.mock("nodemailer", () => ({
-  createTransport: vi.fn(() => ({ sendMail: mocks.smtpSend })),
-}));
-
 vi.mock("../services/org-settings.js", () => ({
   loadOrgSettings: mocks.loadOrgSettings,
 }));
 
 vi.mock("../lib/logger.js", () => ({ logger: mocks.logger }));
-vi.mock("../services/mailer.js", () => ({ captureTestMail: vi.fn() }));
+vi.mock("../services/mailer.js", () => ({
+  mailer: { sendLoginLink: mocks.loginLinkSend },
+  captureTestMail: vi.fn(),
+}));
 vi.mock("../services/store.js", () => ({ store: {} }));
 vi.mock("../services/funnel-events.js", () => ({
   enregistrerEtape: vi.fn(),
@@ -105,8 +98,7 @@ describe("POST /api/auth/login-request", () => {
     mocks.poolQuery.mockResolvedValue({ rows: [{ status: "active" }] });
     mocks.poolConnect.mockReset();
     mocks.loadOrgSettings.mockResolvedValue(null);
-    mocks.resendSend.mockResolvedValue({ data: { id: "resend-test-id" }, error: null });
-    mocks.smtpSend.mockResolvedValue({ messageId: "smtp-test-id" });
+    mocks.loginLinkSend.mockReset().mockResolvedValue({ ok: true, id: "mailer-test-id" });
     vi.clearAllMocks();
   });
 
@@ -125,7 +117,7 @@ describe("POST /api/auth/login-request", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     expect(mocks.poolConnect).not.toHaveBeenCalled();
-    expect(mocks.resendSend).not.toHaveBeenCalled();
+    expect(mocks.loginLinkSend).not.toHaveBeenCalled();
     expect(JSON.stringify(mocks.logger.warn.mock.calls)).toContain("aucun compte");
   });
 
@@ -139,7 +131,7 @@ describe("POST /api/auth/login-request", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     expect(mocks.poolQuery).not.toHaveBeenCalled();
-    expect(mocks.resendSend).not.toHaveBeenCalled();
+    expect(mocks.loginLinkSend).not.toHaveBeenCalled();
     expect(JSON.stringify(mocks.logger.warn.mock.calls)).toContain("not on allowlist");
   });
 
@@ -164,10 +156,10 @@ describe("POST /api/auth/login-request", () => {
     expect(legacyResponse.status).toBe(200);
     expect(legacyResponse.body).toEqual(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     expect(mocks.poolConnect).not.toHaveBeenCalled();
-    expect(mocks.resendSend).not.toHaveBeenCalled();
+    expect(mocks.loginLinkSend).not.toHaveBeenCalled();
   });
 
-  it("uses the same neutral response after Resend accepts the message", async () => {
+  it("uses the same neutral response after the shared mailer accepts the message", async () => {
     readyMailTokenStore();
 
     const response = await request(makeApp())
@@ -176,21 +168,22 @@ describe("POST /api/auth/login-request", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(LOGIN_REQUEST_ACCEPTED_RESPONSE);
-    expect(mocks.resendSend).toHaveBeenCalledOnce();
-    expect(mocks.resendSend.mock.calls[0][0]).toMatchObject({
+    expect(mocks.loginLinkSend).toHaveBeenCalledOnce();
+    expect(mocks.loginLinkSend.mock.calls[0][0]).toMatchObject({
       to: "qa@example.test",
-      from: "FlowPoint <noreply@example.test>",
-      subject: "Votre lien de connexion FlowPoint",
+      magicLinkUrl: expect.stringContaining("/login-verify.html?token="),
     });
+    expect(mocks.loginLinkSend.mock.calls[0][0]).not.toHaveProperty("from");
+    expect(mocks.loginLinkSend.mock.calls[0][0]).not.toHaveProperty("subject");
     expect(JSON.stringify(mocks.logger.info.mock.calls)).toContain("email accepted by transport");
     expect(JSON.stringify(mocks.logger.info.mock.calls)).not.toContain("qa@example.test");
   });
 
   it("keeps a suppressed-recipient/provider rejection neutral and logs the failure", async () => {
     readyMailTokenStore();
-    mocks.resendSend.mockResolvedValue({
-      data: null,
-      error: { message: "Recipient qa@example.test is suppressed" },
+    mocks.loginLinkSend.mockResolvedValue({
+      ok: false,
+      error: "EMAIL_SEND_FAILED: Recipient qa@example.test is suppressed",
     });
 
     const response = await request(makeApp())
@@ -206,9 +199,9 @@ describe("POST /api/auth/login-request", () => {
     expect(tokenCleanupQueryCount()).toBe(1);
   });
 
-  it("keeps a thrown Resend error neutral, logs it and removes its token", async () => {
+  it("keeps a thrown shared-mailer error neutral, logs it and removes its token", async () => {
     readyMailTokenStore();
-    mocks.resendSend.mockRejectedValue(new Error("network failure for qa@example.test"));
+    mocks.loginLinkSend.mockRejectedValue(new Error("network failure for qa@example.test"));
 
     const response = await request(makeApp())
       .post("/api/auth/login-request")
@@ -225,7 +218,10 @@ describe("POST /api/auth/login-request", () => {
     vi.stubEnv("SMTP_HOST", "smtp.example.test");
     vi.stubEnv("SMTP_PASS", "test-only-placeholder");
     readyMailTokenStore();
-    mocks.smtpSend.mockRejectedValue(new Error("SMTP rejected qa@example.test"));
+    mocks.loginLinkSend.mockResolvedValue({
+      ok: false,
+      error: "SMTP_SEND_FAILED: SMTP rejected qa@example.test",
+    });
 
     const response = await request(makeApp())
       .post("/api/auth/login-request")
@@ -236,13 +232,13 @@ describe("POST /api/auth/login-request", () => {
     expect(JSON.stringify(response.body)).not.toContain("qa@example.test");
     expect(JSON.stringify(mocks.logger.error.mock.calls)).not.toContain("qa@example.test");
     expect(JSON.stringify(mocks.logger.error.mock.calls)).toContain("SMTP_SEND_FAILED");
-    expect(mocks.smtpSend).toHaveBeenCalledOnce();
+    expect(mocks.loginLinkSend).toHaveBeenCalledOnce();
     expect(tokenCleanupQueryCount()).toBe(1);
   });
 
   it("logs token cleanup failure while keeping the response neutral", async () => {
     readyMailTokenStore();
-    mocks.resendSend.mockRejectedValue(new Error("delivery failure"));
+    mocks.loginLinkSend.mockRejectedValue(new Error("delivery failure"));
     mocks.poolQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("DELETE FROM magic_link_tokens")) {
         throw new Error("cleanup database unavailable");
@@ -271,7 +267,7 @@ describe("POST /api/auth/login-request", () => {
     expect(response.status).toBe(503);
     expect(response.body.error).toContain("temporairement indisponible");
     expect(mocks.poolConnect).not.toHaveBeenCalled();
-    expect(mocks.resendSend).not.toHaveBeenCalled();
+    expect(mocks.loginLinkSend).not.toHaveBeenCalled();
   });
 
   it("keeps a magic-token storage failure neutral and does not send email", async () => {
@@ -283,7 +279,7 @@ describe("POST /api/auth/login-request", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(LOGIN_REQUEST_ACCEPTED_RESPONSE);
-    expect(mocks.resendSend).not.toHaveBeenCalled();
+    expect(mocks.loginLinkSend).not.toHaveBeenCalled();
     expect(JSON.stringify(mocks.logger.error.mock.calls)).toContain("MAGIC_TOKEN_STORE_FAILED");
     expect(JSON.stringify(mocks.logger.error.mock.calls)).not.toContain("qa@example.test");
   });
@@ -300,6 +296,6 @@ describe("POST /api/auth/login-request", () => {
     expect(response.body.error).toContain("non configuré");
     expect(mocks.poolConnect).not.toHaveBeenCalled();
     expect(mocks.poolQuery).not.toHaveBeenCalled();
-    expect(mocks.resendSend).not.toHaveBeenCalled();
+    expect(mocks.loginLinkSend).not.toHaveBeenCalled();
   });
 });

@@ -323,6 +323,7 @@ router.post("/missions/generate", canWrite, async (req: Request, res: Response) 
         const { mailer } = await import("../services/mailer.js");
         mailer.sendNewMissions({
           to: _orgData.email,
+          orgId: oid,
           name: _orgData.firstName || "Utilisateur",
           missions,
           siteUrl: undefined,

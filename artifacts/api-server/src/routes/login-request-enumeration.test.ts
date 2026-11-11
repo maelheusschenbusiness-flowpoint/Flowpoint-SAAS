@@ -80,6 +80,7 @@ describe("échecs de livraison et erreurs Resend", () => {
   it("classifie les erreurs internes sans exposer les détails du fournisseur", () => {
     const providerError = new Error("EMAIL_SEND_FAILED: recipient qa@example.com rejected");
     expect(loginEmailFailureCode(providerError)).toBe("EMAIL_SEND_FAILED");
+    expect(loginEmailFailureCode(new Error("SMTP_SEND_FAILED: server rejected connection"))).toBe("SMTP_SEND_FAILED");
     expect(loginEmailFailureCode(new Error("EMAIL_TRANSPORT_MISSING"))).toBe("EMAIL_TRANSPORT_MISSING");
     expect(loginEmailFailureCode(new Error("DOMAIN_NOT_VERIFIED: private diagnostic"))).toBe("DOMAIN_NOT_VERIFIED");
     expect(loginEmailFailureCode(new Error("TEST_MAILER_NOT_ENABLED"))).toBe("TEST_MAILER_NOT_ENABLED");
@@ -89,9 +90,9 @@ describe("échecs de livraison et erreurs Resend", () => {
     const senderStart = SOURCE.indexOf("async function sendMagicEmail");
     const routeStart = SOURCE.indexOf('router.post("/auth/login-request"');
     const sender = SOURCE.slice(senderStart, routeStart);
-    expect(sender).toContain("if (result.error)");
-    expect(sender).toContain('throw new Error("DOMAIN_NOT_VERIFIED: " + errMsg)');
-    expect(sender).toContain('throw new Error("RESEND_ERROR: " + errMsg)');
+    expect(sender).toContain("if (!localizedResult.ok)");
+    expect(sender).toContain('message.startsWith("SMTP_SEND_FAILED:")');
+    expect(sender).toContain("EMAIL_SEND_FAILED");
     expect(LOGIN_ROUTE).toContain("loginEmailFailureCode(err)");
     expect(LOGIN_ROUTE).toContain("deleteMagicToken(token)");
     expect(LOGIN_ROUTE).toContain("MAGIC_TOKEN_CLEANUP_FAILED");
