@@ -55247,6 +55247,7 @@ function renderAuditsAnalysis() {
             <div style="flex:1"><div class="fp-progress-track" style="height:6px"><div class="fp-progress-fill" style="width:${p.pct}%;background:${p.color}"></div></div></div>
             <div style="font-size:12px;font-weight:700;color:${p.color};min-width:30px;text-align:right">${p.count}</div>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigate('missions')">${fpT('Corriger')}</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" data-revenue-leak-resolve="${escHtml(l.id || '')}" title="${fpT('Fuite marquée comme résolue')}" onclick="window.FP_REVENUE_LEAK_API.resolve(this.dataset.revenueLeakResolve, this)">✓ ${fpT('Résolu')}</button>
           </div>
         `).join('')}
       </div>
@@ -74863,15 +74864,26 @@ window.FP_REVENUE_LEAK_API = {
     } catch(e) { showToast('error', String(e)); }
   },
 
-  async resolve(leakId) {
+  async resolve(leakId, button) {
+    if (!leakId) return;
+    if (button) button.disabled = true;
     try {
-      await apiFetch(`/api/revenue-leak/${encodeURIComponent(leakId)}/resolve`, { method: 'PATCH' });
-      if (window.FP_DATA?.revenueLeak?.leaks) {
-        window.FP_DATA.revenueLeak.leaks = window.FP_DATA.revenueLeak.leaks.filter(l => l.id !== leakId);
-        render();
-        showToast('success', fpT('Fuite marquée comme résolue'));
+      const result = await apiFetch(`/api/revenue-leak/${encodeURIComponent(leakId)}/resolve`, { method: 'PATCH' });
+      if (!result?.ok) throw new Error(result?.error || fpT('Erreur'));
+      const data = window.FP_DATA?.revenueLeak;
+      if (data) {
+        const remaining = (data.opportunities || data.leaks || []).filter(l => l.id !== leakId);
+        data.opportunities = remaining;
+        data.leaks = remaining;
+        data.noData = remaining.length === 0;
+        data.isEmpty = remaining.length === 0;
       }
-    } catch(e) { showToast('error', String(e)); }
+      render();
+      showToast('success', fpT('Fuite marquée comme résolue'));
+    } catch(e) {
+      if (button) button.disabled = false;
+      showToast('error', String(e));
+    }
   },
 };
 
