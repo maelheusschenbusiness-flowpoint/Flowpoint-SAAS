@@ -89,10 +89,15 @@ export async function applySignupLanguage(
  * `userId` est accepte pour l'avenir : les preferences sont aujourd'hui
  * stockees par organisation (user_prefs.org_id).
  */
-export async function getRecipientLanguage(
+export interface RecipientLanguageSources {
+  userLanguage: string | null;
+  organizationLanguage: string | null;
+}
+
+export async function getRecipientLanguageSources(
   opts: { orgId?: string | null; userId?: string | null },
   db?: Queryable,
-): Promise<string> {
+): Promise<RecipientLanguageSources> {
   try {
     const q: Queryable = db ?? (await import("@workspace/db")).pool;
     let orgId = opts.orgId ?? null;
@@ -104,17 +109,30 @@ export async function getRecipientLanguage(
       );
       orgId = m.rows[0]?.id ?? null;
     }
-    if (!orgId) return "en";
+    if (!orgId) return { userLanguage: null, organizationLanguage: null };
     const r = await q.query(
       `SELECT (SELECT settings->>'language' FROM user_prefs WHERE org_id = $1) AS pref,
               (SELECT language FROM organizations WHERE id::text = $1) AS org`,
       [orgId],
     );
     const row = r.rows[0] ?? {};
-    return normalizeSignupLanguage(resolveDashboardLanguage(row.pref, row.org));
+    return {
+      userLanguage: typeof row.pref === "string" && row.pref.trim() ? row.pref : null,
+      organizationLanguage: typeof row.org === "string" && row.org.trim() ? row.org : null,
+    };
   } catch {
-    return "en";
+    return { userLanguage: null, organizationLanguage: null };
   }
+}
+
+export async function getRecipientLanguage(
+  opts: { orgId?: string | null; userId?: string | null },
+  db?: Queryable,
+): Promise<string> {
+  const sources = await getRecipientLanguageSources(opts, db);
+  return normalizeSignupLanguage(
+    resolveDashboardLanguage(sources.userLanguage, sources.organizationLanguage),
+  );
 }
 
 export async function getUserLanguage(userId: string, db?: Queryable): Promise<string> {

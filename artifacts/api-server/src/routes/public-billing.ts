@@ -2947,6 +2947,9 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           }
           const _fcMailResult = await _fcMailer.sendActivationMagicLink({
               to:           _fcAEmail,
+              orgId:        _fcAOrgId,
+              language:     _fcSignup["language"],
+              country:      _fcSignup["country"],
               name:         _fcSignup["first_name"] || _fcAEmail.split("@")[0],
               plan:         planKey,
               magicLinkUrl: _fcMagicLinkUrl,

@@ -187,7 +187,7 @@ async function sendWelcomeOnce(orgId: string, email: string, name: string): Prom
       [orgId],
     );
     if (!claim.rowCount) return;
-    const result = await mailer.sendWelcome({ to: email, name });
+    const result = await mailer.sendWelcome({ to: email, orgId, name });
     if (result.ok) {
       await client.query(
         `UPDATE organizations
@@ -1078,6 +1078,7 @@ export async function activateNewSignup(opts: {
     if (_mailer) {
       const mailResult = await _mailer.sendActivationMagicLink({
         to:          email,
+        orgId,
         name:        firstName || email.split("@")[0],
         plan:        selectedPlan,
         magicLinkUrl,
@@ -2781,6 +2782,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             "[Webhook] invoice.payment_succeeded: subscription_update on addon — routing to sendPaymentSucceeded(isAddon)");
           mailer.sendPaymentSucceeded({
             to:        orgData.email,
+            orgId,
             name:      recipientName,
             plan:      orgData.plan,
             amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
@@ -2793,6 +2795,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             "[Webhook] invoice.payment_succeeded: subscription_update with plan price line — sending sendPlanChanged");
           mailer.sendPlanChanged({
             to:        orgData.email,
+            orgId,
             name:      recipientName,
             plan:      orgData.plan,
             amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
@@ -2804,6 +2807,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         // subscription_cycle (renewal) or manual (add-on) → standard payment confirmed
         mailer.sendPaymentSucceeded({
           to:        orgData.email,
+          orgId,
           name:      recipientName,
           plan:      orgData.plan,
           amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
@@ -2835,6 +2839,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           : undefined;
         mailer.sendPaymentFailed({
           to:          orgDataFailed.email,
+          orgId,
           name:        orgDataFailed.firstName || orgDataFailed.email.split("@")[0] || "Utilisateur",
           plan:        orgDataFailed.plan,
           attemptCount,
