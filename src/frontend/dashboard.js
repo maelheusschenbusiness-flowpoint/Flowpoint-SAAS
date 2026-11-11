@@ -5190,13 +5190,24 @@ function _showMapsBlockedFallback() {
 // Google Maps appelle window.gm_authFailure quand la clé est invalide/non autorisée
 // pour ce domaine (RefererNotAllowedMapError) — on affiche un état honnête.
 window.gm_authFailure = function() {
-  const el = document.getElementById('fp-gmap');
-  if (!el) return;
-  el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))">' +
-    '<div style="font-size:28px">🗺️</div>' +
-    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + fpT('Carte indisponible sur ce domaine') + '</div>' +
-    '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'autorise pas ce domaine. Ajoutez-le dans les restrictions de la clé (Google Cloud Console).</div>' +
-    '</div>';
+  // Google peint son propre ecran d'erreur (dans la langue du navigateur) APRES cet appel :
+  // le message FlowPoint est donc pose apres le rendu de Google, et marque pour ne pas etre ecrase.
+  const fr = (function(){ try { return String((typeof STATE !== 'undefined' && STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'en').toLowerCase().indexOf('fr') === 0; } catch (e) { return false; } })();
+  const paint = function() {
+    const el = document.getElementById('fp-gmap');
+    if (!el) return;
+    el._mapBlocked = true;
+    el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;background:var(--fp-map-placeholder-bg, rgba(10,14,27,0.95))">' +
+      '<div style="font-size:28px">🗺️</div>' +
+      '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">' + (fr ? 'Carte indisponible sur ce domaine' : 'Map unavailable on this domain') + '</div>' +
+      '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">' +
+        (fr ? 'La clé Google Maps n\'autorise pas ce domaine. Ajoutez-le dans les restrictions de la clé (Google Cloud Console).'
+            : 'The Google Maps key does not allow this domain. Add it to the key\'s website restrictions (Google Cloud Console).') +
+      '</div></div>';
+  };
+  paint();
+  setTimeout(paint, 300);
+  setTimeout(paint, 1500);
 };
 
 // Le code interne de Google Maps peut appeler IntersectionObserver.observe avec un
@@ -5302,7 +5313,8 @@ function loadGoogleMaps(cb) {
     }
     window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
     const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb&libraries=places,visualization`;
+    // Langue de la carte = langue de l'interface (anglais par defaut), jamais celle du navigateur.
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb&libraries=places,visualization&language=${(function(){try{var l=(typeof STATE!=='undefined'&&STATE.settings&&STATE.settings.language)||localStorage.getItem('fp:language')||'en';return encodeURIComponent(String(l).split(/[-_]/)[0].toLowerCase()||'en');}catch(e){return 'en';}})()}`;
     s.async = true;
     // ERR_BLOCKED_BY_CLIENT: Brave Shield / uBlock blocks maps.googleapis.com
     s.onerror = () => {
