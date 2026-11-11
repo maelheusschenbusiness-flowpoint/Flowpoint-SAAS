@@ -10,6 +10,6 @@ Le 10 novembre 2026, la boucle de suivi a été reliée de bout en bout :
 - 404 sans modification pour une recommandation absente ou étrangère ; écritures interdites aux viewers.
 - Création du schéma sur base vierge et ajout de `updated_at` sur schéma existant ; RLS activée.
 
-Vérification : 16 tests ciblés réussis sur trois fichiers, dont quatre tests SQL/API sur PostgreSQL jetable loopback ; TypeScript réussi. Aucun service externe ni donnée de production utilisé. Le navigateur connecté n’a pas été vérifié.
+Vérification : 17 tests ciblés réussis sur trois fichiers, dont cinq tests API sur PostgreSQL jetable limité à loopback ; TypeScript réussi. Le parcours navigateur local a vérifié la persistance après rechargement, la gestion d’un site illisible et les droits owner/viewer. Aucun appel IA fournisseur réel ni donnée de production utilisé.
 
-Le module reste **partiel** dans la matrice globale : ce lot ne revendique ni certification fournisseur ni complétude de toutes les fonctions CRO. Aucun incrément au compteur fonctionnel de 24 modules.
+Les fonctions applicatives du module sont maintenant **terminées** : observations réelles, analyse de page avec repli explicite si l’IA est indisponible, recommandations persistées et statuts conservés avec contrôle des rôles. Le compteur fonctionnel passe à **12/24** (12 modules terminés, 12 encore partiels). La certification d’un fournisseur IA réel et la disponibilité bêta restent à confirmer séparément.
