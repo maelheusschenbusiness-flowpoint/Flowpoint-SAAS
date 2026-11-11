@@ -2142,7 +2142,8 @@ window.__fpPageLoadTs = Date.now();
         self._tryInit('fp-gmap'); self._tryInit('fp-competitors-map');
       };
       var s = document.createElement('script');
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places,visualization&callback=__fpGMapsReady&loading=async';
+      // Langue de la carte = langue de l'interface (anglais par defaut), jamais celle du navigateur.
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places,visualization&callback=__fpGMapsReady&loading=async&language=' + (function(){try{var l=(typeof STATE!=='undefined'&&STATE.settings&&STATE.settings.language)||localStorage.getItem('fp:language')||'en';return encodeURIComponent(String(l).split(/[-_]/)[0].toLowerCase()||'en');}catch(e){return 'en';}})();
       s.async = true;
       s.onerror = function () {
         self._loading = false;

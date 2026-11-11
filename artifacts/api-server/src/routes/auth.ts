@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { normalizeSignupLanguage, SIGNUP_LANGUAGE_COOKIE } from "../services/signup-language.js";
 import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 import { randomBytes, randomUUID, createHash, createPrivateKey, sign as cryptoSign } from "crypto";
 
@@ -1114,7 +1115,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     phone, vat,
     seller_code: _rawSellerCode,
     fp_lid: _rawFpLid,
+    language: _rawLanguage,
   } = req.body as Record<string, string | undefined>;
+  // Langue de l'interface publique ; whitelist fp-locale.js, sinon 'en'.
+  const _preRegLanguage = normalizeSignupLanguage(_rawLanguage);
 
   // Honeypot — bots fill hidden fields, humans don't
   if (_hp && String(_hp).trim().length > 0) {
@@ -1290,6 +1294,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
                phone = $8, vat = $9,
                seller_id = COALESCE(seller_id, $10),
                fp_lid = COALESCE(fp_lid, $11),
+               language = $13,
                expires_at = GREATEST(expires_at, NOW() + INTERVAL '2 hours')
            WHERE token = $12
            RETURNING created_at, fp_lid`,
@@ -1297,13 +1302,13 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
             fn, ln, company, countryVal, addressVal, cityVal, postalVal,
             String(phone || "").trim() || null,
             String(vat || "").trim() || null,
-            _preRegSellerId, _submittedFpLid, _existingToken,
+            _preRegSellerId, _submittedFpLid, _existingToken, _preRegLanguage,
           ],
         )
       : await client.query<{ created_at: Date; fp_lid: string | null }>(
           `INSERT INTO pending_signups
-             (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
+             (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, language, created_at, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW() + INTERVAL '2 hours')
            RETURNING created_at, fp_lid`,
           [
             preToken, normalizedEmail, fn, ln, company,
@@ -1312,6 +1317,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
             String(vat || "").trim() || null,
             _preRegSellerId,
             _submittedFpLid,
+            _preRegLanguage,
           ],
         );
 
@@ -2093,6 +2099,11 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   const oauth = startOAuthState(res, "google",
     { plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid },
     isDeployedProd());
+  // Langue d'inscription : cookie court httpOnly limite a /api/auth (le cookie
+  // d'etat OAuth est type et filtre par oauth-state.ts). Valeur whitelistee.
+  res.cookie(SIGNUP_LANGUAGE_COOKIE, normalizeSignupLanguage(req.query["language"]), {
+    httpOnly: true, secure: isDeployedProd(), sameSite: "lax", path: "/api/auth", maxAge: 10 * 60 * 1000,
+  });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -2120,6 +2131,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     return;
   }
   const oauthState = stateCheck.record;
+  const signupLanguageFromCookie = normalizeSignupLanguage(
+    (req as unknown as { cookies?: Record<string, string> }).cookies?.[SIGNUP_LANGUAGE_COOKIE],
+  );
+  res.clearCookie(SIGNUP_LANGUAGE_COOKIE, { path: "/api/auth" });
   // Le plan choisi reste porte vers la page d'inscription en cas d'erreur.
   const carriedQuery: Record<string, unknown> = { ...req.query, ...(oauthState.plan ? { plan: oauthState.plan } : {}) };
 
@@ -2318,10 +2333,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               // `locationConfigured` n'est plus faussement vrai.
               await _gpClient.query(
                 `INSERT INTO pending_signups
-                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours')`,
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at, language)
+                 VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours',$8)`,
                 // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid, signupLanguageFromCookie],
               );
               await _gpClient.query("COMMIT");
               logger.info("[Auth] Google signup — pending_signups record created for checkout");

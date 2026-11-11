@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { applySignupLanguage } from "../services/signup-language.js";
 import { subPeriodEnd } from "./billing.js";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
@@ -2525,7 +2526,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           try {
             const _fcActR0 = await _fcActC0.query(
               `SELECT email, first_name, last_name, company_name, country, address, city,
-                      postal_code, phone, vat, seller_id, fp_lid, consumed_at, expires_at
+                      postal_code, phone, vat, seller_id, fp_lid, consumed_at, expires_at, language
                FROM pending_signups
                WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
               [_fcActToken]
@@ -2729,6 +2730,8 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
                ON CONFLICT(organization_id,user_id) DO UPDATE SET status='active',role='owner',updated_at=NOW()`,
               [_fcAOrgId, _fcUserId]
             );
+            // Langue d'inscription -> user_prefs / organizations, sans ecraser un choix existant.
+            await applySignupLanguage(_fcActTxC, { orgId: _fcAOrgId, language: _fcSignup["language"] });
             logger.info({ step: "FC-4c-ok" }, "[FC] step-4c: organization_members upserted");
 
             // 4d — consume pending_signup token

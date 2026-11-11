@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { applySignupLanguage } from "../services/signup-language.js";
 import type Stripe from "stripe";
 import { subPeriodEnd } from "./billing.js";
 import { createHash } from "crypto";
@@ -722,7 +723,7 @@ export async function activateNewSignup(opts: {
   let signupRow: Record<string, string | null> | null = null;
   try {
     const r = await dbClient.query(
-      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid
+      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, language
        FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
       [preRegToken]
     );
@@ -936,6 +937,9 @@ export async function activateNewSignup(opts: {
          SET status = 'active', role = 'owner', updated_at = NOW()`,
       [newOrgId, userId]
     );
+
+    // Langue d'inscription -> user_prefs / organizations, sans ecraser un choix existant.
+    await applySignupLanguage(activateClient, { orgId: newOrgId, language: signupRow["language"] });
 
     await activateClient.query(
       `UPDATE pending_signups SET consumed_at = NOW()
