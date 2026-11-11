@@ -74,7 +74,7 @@
       "raison": "heritage : messages d'erreur en francais, a traduire"
     },
     "artifacts/api-server/src/routes/gbp-posts.ts": {
-      "compte": 7,
+      "compte": 6,
       "raison": "heritage : messages d'erreur en francais, a traduire"
     },
     "artifacts/api-server/src/routes/integrations.ts": {
