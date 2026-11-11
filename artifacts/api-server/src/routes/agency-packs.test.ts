@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   orgDbMock, poolConnectMock, streamReportPdfMock, aiChatMock, loadOrgAIPrefsMock,
   resolveAIModelMock, checkAIQuotaMock, checkQuotaMock, recordCompletedUsageDeferredMock,
+  getGA4OverviewMock, getTopPagesMock,
 } = vi.hoisted(() => ({
   orgDbMock: vi.fn(),
   poolConnectMock: vi.fn(),
@@ -15,6 +16,8 @@ const {
   checkAIQuotaMock: vi.fn(),
   checkQuotaMock: vi.fn(),
   recordCompletedUsageDeferredMock: vi.fn(),
+  getGA4OverviewMock: vi.fn(),
+  getTopPagesMock: vi.fn(),
 }));
 
 vi.mock("@workspace/db", () => ({
@@ -53,6 +56,8 @@ vi.mock("../services/ai-engine.js", () => ({
 vi.mock("../services/ai-quota.js", () => ({
   buildQuotaGuidance: vi.fn(),
 }));
+vi.mock("../services/ga4-service.js", () => ({ getGA4Overview: getGA4OverviewMock }));
+vi.mock("../services/gsc-service.js", () => ({ getTopPages: getTopPagesMock }));
 vi.mock("../services/usage-events.js", () => ({
   recordUsageEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -77,6 +82,8 @@ describe("Agency Reporting Packs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [] });
+    getTopPagesMock.mockResolvedValue([]);
   });
 
   it("loads audits scoped to the requesting organization", async () => {
@@ -244,6 +251,8 @@ describe("AI Executive Reporting", () => {
   });
 
   it("persists an organization-scoped AI report and makes it visible in the Reports list", async () => {
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [{ metricValues: [{ value: "100" }, { value: "80" }, { value: "20" }, { value: "0.4" }, { value: "0.6" }, { value: "90" }, { value: "400" }, { value: "7" }] }] });
+    getTopPagesMock.mockResolvedValue([{ page: "https://client.example/", clicks: 30, impressions: 900, avg_position: 2.5 }]);
     const saved: Array<Record<string, unknown>> = [];
     orgDbMock.mockImplementation(async (sql: string, values: unknown[] = []) => {
       if (sql.includes("FROM audits")) return { rows: [{ url: "https://client.example", score: 42, status: "completed", created_at: "2026-10-20T10:00:00.000Z" }] };
@@ -271,6 +280,10 @@ describe("AI Executive Reporting", () => {
     expect(generated.body.ok).toBe(true);
     expect(generated.body.measured.latestAuditScore).toBe(42);
     expect(generated.body.measured.averageUptime).toBe(99.9);
+    expect(generated.body.measured.analytics.ga4).toMatchObject({ status: "observed", sessions: 100, users: 80, conversions: 7, pageViews: 400 });
+    expect(generated.body.measured.analytics.searchConsole).toMatchObject({ status: "observed", pagesIncluded: 1, sampledClicks: 30, sampledImpressions: 900 });
+    expect(getGA4OverviewMock).toHaveBeenCalledWith("org-a", "30daysAgo", "yesterday");
+    expect(getTopPagesMock).toHaveBeenCalledWith("org-a", 5, 28);
     expect(orgDbMock).toHaveBeenCalledWith(expect.stringContaining("FROM audits WHERE org_id=$1"), ["org-a"]);
     expect(orgDbMock).toHaveBeenCalledWith(expect.stringContaining("FROM monitors WHERE org_id=$1"), ["org-a"]);
     expect(client.query).toHaveBeenCalledWith("COMMIT");
