@@ -28,7 +28,12 @@ export const ADDON_REGISTRY = [
       "src/services/gbp-posting-publish.test.ts",
       "src/services/gbp-location-quota.test.ts",
       "src/routes/gbp-posts.test.ts",
+      "src/routes/gbp-posts-org-isolation.test.ts",
+      "src/routes/gbp-posts-lifecycle-postgres.test.ts",
+      "src/services/gbp-publish-honesty.test.ts",
+      "src/tests/gbp-posting-ui-lifecycle.test.ts",
     ],
+    browserTitle: "AI GBP Posting saves and cancels a manual schedule without publishing to Google",
   },
   {
     id: "behavioral-ai",
