@@ -20,10 +20,35 @@ import { createPost, generateAiPost, publishPost } from "../services/gbp-posting
 
 const app = express();
 app.use(express.json());
+app.use((req, _res, next) => {
+  (req as any).orgContext = {
+    role: req.get("x-test-role") || "admin",
+    userId: "gbp-post-test-user",
+  };
+  next();
+});
 app.use(router);
 
 describe("GBP post studio API", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("blocks viewers from GBP writes and members from deleting posts", async () => {
+    const viewerWrites = await Promise.all([
+      request(app).post("/gbp-posts").set("x-test-role", "viewer").send({ content: "Draft" }),
+      request(app).post("/gbp-posts/ai-generate").set("x-test-role", "viewer").send({ locationId: "loc-1" }),
+      request(app).post("/gbp-posts/post-1/publish").set("x-test-role", "viewer").send({}),
+      request(app).patch("/gbp-posts/post-1").set("x-test-role", "viewer").send({ content: "Updated" }),
+    ]);
+    const memberDelete = await request(app)
+      .delete("/gbp-posts/post-1")
+      .set("x-test-role", "member");
+
+    expect(viewerWrites.map(response => response.status)).toEqual([403, 403, 403, 403]);
+    expect(memberDelete.status).toBe(403);
+    expect(createPost).not.toHaveBeenCalled();
+    expect(generateAiPost).not.toHaveBeenCalled();
+    expect(publishPost).not.toHaveBeenCalled();
+  });
 
   it("requires manual approval before scheduling", async () => {
     const response = await request(app).post("/gbp-posts").send({
