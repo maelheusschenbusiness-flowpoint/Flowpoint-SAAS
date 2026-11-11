@@ -20,7 +20,9 @@ describe("Nodemailer 10 SMTP fallback — mocked, no network delivery", () => {
       previousEnv.set(key, process.env[key]);
       delete process.env[key];
     }
-    process.env.NODE_ENV = "test";
+    // This suite explicitly replaces Nodemailer's transport with a mock, so it
+    // can exercise the SMTP path without opening a network connection.
+    process.env.NODE_ENV = "development";
     process.env.SMTP_HOST = "smtp.invalid";
     process.env.SMTP_PASS = "mock-only";
     process.env.SMTP_USER = "flowpoint-test";
@@ -40,7 +42,12 @@ describe("Nodemailer 10 SMTP fallback — mocked, no network delivery", () => {
   });
 
   it("keeps SMTP host, TLS, port, and authentication options intact", async () => {
-    const result = await mailer.sendWelcome({ to: "external@example.net", name: "Test" });
+    const result = await mailer.sendWelcome({
+      to: "external@example.net",
+      name: "Test",
+      language: "fr",
+      lookupByEmail: false,
+    });
     expect(result).toEqual({ ok: true, id: "mock-message-id" });
     expect(createTransport).toHaveBeenCalledWith({
       host: "smtp.invalid",
@@ -62,6 +69,7 @@ describe("Nodemailer 10 SMTP fallback — mocked, no network delivery", () => {
       plan: "standard",
       magicLinkUrl: "https://app.example.test/signin.html?token=mock",
       isTrial: false,
+      lookupByEmail: false,
     });
     const notification = await mailer.sendAlertRule({
       to: "ops@example.net",
@@ -70,6 +78,7 @@ describe("Nodemailer 10 SMTP fallback — mocked, no network delivery", () => {
       severity: "high",
       message: "Latency threshold exceeded",
       siteUrl: "https://example.test",
+      lookupByEmail: false,
     });
     expect(activation.ok).toBe(true);
     expect(notification.ok).toBe(true);
@@ -80,7 +89,7 @@ describe("Nodemailer 10 SMTP fallback — mocked, no network delivery", () => {
 
   it("returns SMTP errors to callers without throwing or retrying via a real transport", async () => {
     sendMail.mockRejectedValueOnce(new Error("mock timeout"));
-    await expect(mailer.sendWelcome({ to: "external@example.net", name: "Test" }))
-      .resolves.toEqual({ ok: false, error: "mock timeout" });
+    await expect(mailer.sendWelcome({ to: "external@example.net", name: "Test", lookupByEmail: false }))
+      .resolves.toEqual({ ok: false, error: "SMTP_SEND_FAILED: mock timeout" });
   });
 });

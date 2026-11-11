@@ -469,6 +469,9 @@ async function sendMagicEmail(
     const message = localizedResult.error || "EMAIL_SEND_FAILED";
     if (message === "NO_EMAIL_TRANSPORT") throw new Error("EMAIL_TRANSPORT_MISSING");
     if (message === "TEST_MAILER_NOT_ENABLED") throw new Error(message);
+    if (message.startsWith("SMTP_SEND_FAILED:") || message.startsWith("DOMAIN_NOT_VERIFIED:")) {
+      throw new Error(message);
+    }
     const domainFailure = /domain|not verified|sender/i.test(message);
     throw new Error(`${domainFailure ? "DOMAIN_NOT_VERIFIED" : "EMAIL_SEND_FAILED"}: ${message}`);
   }

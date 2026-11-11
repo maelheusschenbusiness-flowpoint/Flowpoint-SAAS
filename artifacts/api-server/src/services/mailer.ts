@@ -329,7 +329,7 @@ async function sendViaSmtp(opts: SendOptions): Promise<MailResult | null> {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error({ err, to: opts.to, tag: opts.tag }, "[Mailer] SMTP send failed");
-    return { ok: false, error: message };
+    return { ok: false, error: `SMTP_SEND_FAILED: ${message}` };
   }
 }
 
