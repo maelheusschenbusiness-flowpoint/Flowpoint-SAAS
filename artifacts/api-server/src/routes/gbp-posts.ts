@@ -177,10 +177,10 @@ router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
     manualApproval?: boolean;
   };
   if (content !== undefined && (typeof content !== "string" || !content.trim() || content.length > 1500)) {
-    res.status(400).json({ error: "Le contenu doit contenir entre 1 et 1500 caractères." }); return;
+    res.status(400).json({ error: "Content must contain between 1 and 1500 characters." }); return;
   }
   if (scheduledAt !== undefined && (!Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now() || manualApproval !== true || status === "draft")) {
-    res.status(400).json({ error: "Une date future et une nouvelle validation manuelle sont requises pour programmer." }); return;
+    res.status(400).json({ error: "A future date and fresh manual approval are required to schedule." }); return;
   }
   const updates: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
@@ -189,7 +189,7 @@ router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
   // Le statut n'est jamais posé par le client : « published »/« failed »/« publishing » ne
   // résultent que de l'appel réel à Google (publishPost). Seul le retour en brouillon est permis.
   if (status !== undefined && status !== "draft") {
-    res.status(400).json({ error: "Statut non modifiable : seul « draft » est accepté.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
+    res.status(400).json({ error: "Status cannot be changed by the client; only draft is accepted.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
   }
   // Toute modification invalide l'ancienne validation : sans programmation
   // explicitement approuvée, le post redevient un brouillon non publiable par le cron.
