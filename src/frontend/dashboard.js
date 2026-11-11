@@ -65452,6 +65452,8 @@ function renderLocalSEOGBP() {
       </div>
     </div>
 
+    ${window._fpRenderGBPPostsPanel ? window._fpRenderGBPPostsPanel() : ''}
+
     ${!STATE.gbp?.connected ? `
     <!-- CONNECT BANNER -->
     <div style="background:linear-gradient(135deg,rgba(66,133,244,0.08),rgba(52,168,83,0.06));border:1px solid rgba(66,133,244,0.25);border-radius:16px;padding:24px 28px;margin-bottom:20px;display:flex;align-items:center;gap:20px">

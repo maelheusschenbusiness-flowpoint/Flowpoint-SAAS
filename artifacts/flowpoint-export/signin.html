@@ -2,6 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
+  <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
+  <script src="/funnel-theme.js?v=20261110" defer></script>
+  <script src="/funnel-offer.js?v=20261110"></script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -9,45 +13,16 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <link rel="manifest" href="/site.webmanifest">
   <meta id="fp-meta-tc" name="theme-color" content="#050810">
-  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#050810';})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/fp-locale.js?v=20261025"></script>
-  <title>FlowPoint — Créer votre compte</title>
+  <title>FlowPoint — Create your account</title>
   <meta name="robots" content="noindex, nofollow" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg:        #0b1120;
-      --bg2:       #111827;
-      --surface:   #1e293b;
-      --border:    #2d3f55;
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#3b82f6;
-      --text:      #f1f5f9;
-      --text-soft: #94a3b8;
-      --text-muted:#64748b;
-      --input-bg:  #162032;
-    }
-    html[data-theme="light"] {
-      --bg:        #f8fafc;
-      --bg2:       #ffffff;
-      --surface:   #f1f5f9;
-      --border:    rgba(0,0,0,.1);
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#2563eb;
-      --text:      #0f172a;
-      --text-soft: #475569;
-      --text-muted:#94a3b8;
-      --input-bg:  #f8fafc;
-    }
-    html[data-theme="light"] .card { box-shadow: 0 4px 24px rgba(0,0,0,.1); }
+    :root { --fp-warn-text: #fcd34d; }
+    html[data-theme="light"] { --fp-warn-text: #92400e; }
     html[data-theme="light"] .btn-oauth:hover { background: #e8f0fe; border-color: #93c5fd; }
-    html[data-theme="light"] .msg.error   { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: #dc2626; }
-    html[data-theme="light"] .msg.success { background: rgba(34,197,94,.08);  border-color: rgba(34,197,94,.25);  color: #16a34a; }
-    html[data-theme="light"] .s-icon { background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.3); }
-    html[data-theme="light"] .field select option { background: #f1f5f9; }
+    html[data-theme="light"] .plan-trial-note strong { color: var(--green); }
 
     html, body {
       min-height: 100%; background: var(--bg); color: var(--text);
@@ -70,7 +45,7 @@
     .card {
       width: 100%; max-width: 580px; background: var(--bg2);
       border: 1px solid var(--border); border-radius: 18px;
-      padding: 36px 44px 32px; box-shadow: 0 8px 40px rgba(0,0,0,.5);
+      padding: 36px 44px 32px; box-shadow: var(--shadow);
     }
     @media (max-width: 620px) { .card { padding: 28px 20px 24px; } }
     .fp-hidden { display: none !important; }
@@ -102,9 +77,9 @@
     }
     .field input::placeholder { color: var(--text-muted); }
     .field input:focus, .field select:focus {
-      outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.2);
+      outline: none; border-color: var(--blue); box-shadow: var(--focus-ring);
     }
-    .field select option { background: #1e293b; }
+    .field select option { background: var(--bg2); color: var(--text); }
 
     .hp-field { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
 
@@ -119,8 +94,8 @@
     .btn-primary:disabled { opacity: .6; cursor: default; }
 
     .msg { padding: 11px 14px; border-radius: 8px; font-size: 13.5px; margin-top: 14px; display: none; line-height: 1.45; }
-    .msg.error   { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #fca5a5; display: block; }
-    .msg.success { background: rgba(34,197,94,.1);  border: 1px solid rgba(34,197,94,.3);  color: #86efac;  display: block; }
+    .msg.error   { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); display: block; }
+    .msg.success { background: var(--green-bg);  border: 1px solid var(--green-border);  color: var(--green);  display: block; }
 
     .footer-link { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 22px; }
     .footer-link a { color: var(--blue-light); text-decoration: none; font-weight: 500; }
@@ -129,7 +104,7 @@
     #success-screen { display: none; text-align: center; }
     .s-icon {
       width: 64px; height: 64px; border-radius: 50%;
-      background: rgba(34,197,94,.12); border: 2px solid rgba(34,197,94,.3);
+      background: var(--green-bg); border: 2px solid var(--green-border);
       display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;
     }
     #success-screen h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
@@ -164,7 +139,7 @@
     }
     .plan-trial-note {
       font-size: 12px; color: var(--text-muted); text-align: center;
-      background: rgba(34,197,94,.07); border: 1px solid rgba(34,197,94,.2);
+      background: var(--green-bg); border: 1px solid var(--green-border);
       border-radius: 7px; padding: 8px 12px; line-height: 1.45;
     }
     .plan-trial-note strong { color: #4ade80; }
@@ -206,8 +181,8 @@
         // Show a green info banner once the DOM is ready.
         document.addEventListener('DOMContentLoaded', function() {
           var banner = document.createElement('div');
-          banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#166534;color:#dcfce7;padding:14px 24px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:420px;text-align:center';
-          banner.textContent = '✅ Votre compte a été supprimé définitivement. Toutes vos données ont été effacées.';
+          banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#166534;color:#f0fdf4;padding:14px 24px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:420px;text-align:center';
+          banner.textContent = '✅ Your account has been permanently deleted. All your data has been erased.';
           document.body.appendChild(banner);
           setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 6000);
         });
@@ -229,7 +204,7 @@
           notice = document.createElement('div');
           notice.id = 'session-restore-notice';
           notice.setAttribute('role', 'status');
-          notice.style.cssText = 'max-width:440px;margin:16px auto;padding:12px 14px;border:1px solid rgba(245,158,11,.45);border-radius:8px;background:rgba(245,158,11,.1);color:#fcd34d;font-size:13px;line-height:1.5;text-align:center';
+          notice.style.cssText = 'max-width:440px;margin:16px auto;padding:12px 14px;border:1px solid rgba(245,158,11,.45);border-radius:8px;background:rgba(245,158,11,.1);color:var(--fp-warn-text);font-size:13px;line-height:1.5;text-align:center';
           var form = document.querySelector('.card');
           (form || document.body).prepend(notice);
         }
@@ -240,7 +215,7 @@
         if (retry) {
           var button = document.createElement('button');
           button.type = 'button';
-          button.textContent = 'Réessayer';
+          button.textContent = 'Try again';
           button.style.cssText = 'display:block;margin:10px auto 0;padding:7px 14px;border:1px solid rgba(245,158,11,.6);border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
           button.addEventListener('click', function() {
             button.disabled = true;
@@ -303,18 +278,18 @@
             try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
             try { localStorage.removeItem('fp_had_session'); } catch(_) {}
             document.body.style.visibility = 'visible';
-            _showSessionRestoreNotice('Votre session a expiré. Connectez-vous à nouveau.', false);
+            _showSessionRestoreNotice('Your session has expired. Please sign in again.', false);
           } else {
             // A server/protocol failure is not proof that the session is invalid.
             document.body.style.visibility = 'visible';
-            _showSessionRestoreNotice('La vérification de votre session est temporairement indisponible. Votre session est conservée.', true);
+            _showSessionRestoreNotice('Session verification is temporarily unavailable. Your session has been kept.', true);
           }
         }).catch(function(err) {
           clearTimeout(timeoutId);
           // Timeout/network failure → preserve the credential and require a
           // deliberate user retry; never start an automatic retry loop.
           document.body.style.visibility = 'visible';
-          _showSessionRestoreNotice('Impossible de vérifier votre session pour le moment. Vérifiez votre connexion puis réessayez.', true);
+          _showSessionRestoreNotice('We could not verify your session right now. Check your connection and try again.', true);
         });
       }
 
@@ -354,8 +329,8 @@
 
   <!-- ── ÉTAPE 1 : Formulaire d'inscription ── -->
   <div id="signup-screen">
-    <h1 class="card-title">Créer votre compte FlowPoint</h1>
-    <p class="card-sub">Renseignez vos informations pour créer votre compte FlowPoint.</p>
+    <h1 class="card-title">Create your account</h1>
+    <p class="card-sub">Enter your details to create your FlowPoint account.</p>
 
     <a href="/api/auth/google/login" class="btn-oauth fp-hidden" id="btn-google-oauth">
       <svg width="18" height="18" viewBox="0 0 48 48">
@@ -364,9 +339,9 @@
         <path fill="#FBBC05" d="M24 45c5.5 0 10.5-1.8 14.4-5l-6.7-5.4C29.8 36.2 27 37 24 37c-5.8 0-10.7-3.9-12.3-9.3l-7 5.4C8 40.2 15.5 45 24 45z"/>
         <path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.7 2.9-2.4 5.3-4.8 7l6.7 5.4C41.8 37.7 44.5 31.5 44.5 24c0-1.4-.1-2.7-.5-4z"/>
       </svg>
-      Continuer avec Google
+      Continue with Google
     </a>
-    <div class="divider fp-hidden" id="signup-oauth-divider">ou remplissez le formulaire</div>
+    <div class="divider fp-hidden" id="signup-oauth-divider">or fill in the form</div>
 
     <form id="signup-form" novalidate>
       <div class="hp-field" aria-hidden="true">
@@ -376,18 +351,18 @@
       <div class="fields">
         <div class="row-2">
           <div class="field">
-            <label for="firstName">Prénom *</label>
-            <input type="text" id="firstName" name="firstName" placeholder="Marie" required autocomplete="given-name" />
+            <label for="firstName">First name *</label>
+            <input type="text" id="firstName" name="firstName" placeholder="Jane" required autocomplete="given-name" />
           </div>
           <div class="field">
-            <label for="lastName">Nom *</label>
-            <input type="text" id="lastName" name="lastName" placeholder="Dupont" required autocomplete="family-name" />
+            <label for="lastName">Last name *</label>
+            <input type="text" id="lastName" name="lastName" placeholder="Smith" required autocomplete="family-name" />
           </div>
         </div>
 
         <div class="field">
-          <label for="email">Email professionnel *</label>
-          <input type="email" id="email" name="email" placeholder="marie@monentreprise.fr" required autocomplete="email" />
+          <label for="email">Work email *</label>
+          <input type="email" id="email" name="email" placeholder="jane@company.com" required autocomplete="email" />
         </div>
       </div>
 
@@ -395,12 +370,12 @@
 
       <button type="submit" class="btn-primary" id="signup-btn" style="margin-top:20px">
         <div class="spinner"></div>
-        <span class="btn-text" id="signup-btn-text">Continuer vers le choix du plan →</span>
+        <span class="btn-text" id="signup-btn-text">Continue to plan selection →</span>
       </button>
     </form>
 
-    <p class="footer-link">Déjà un compte ? <a id="existing-account-link" href="/login.html">Se connecter</a></p>
-    <p class="footer-link" style="margin-top:6px"><a href="/pricing.html">Voir les plans et tarifs →</a></p>
+    <p class="footer-link">Already have an account? <a id="existing-account-link" href="/login.html">Sign in</a></p>
+    <p class="footer-link" style="margin-top:6px"><a href="/pricing.html">See plans and pricing →</a></p>
   </div>
 
   <!-- ── ÉTAPE 2 : Choix du plan ── -->
@@ -412,8 +387,8 @@
         </svg>
       </div>
     </div>
-    <h1 class="card-title">Choisissez votre plan</h1>
-    <p class="card-sub">14 jours d'essai gratuit · Carte requise · Annulation à tout moment</p>
+    <h1 class="card-title">Choose your plan</h1>
+    <p class="card-sub">14-day free trial · Card required · Cancel anytime</p>
 
     <div id="plan-msg" class="msg" role="alert"></div>
 
@@ -423,21 +398,21 @@
         <div class="plan-card-inner">
           <div>
             <div class="plan-card-name">Standard</div>
-            <div class="plan-card-desc">Idéal pour les indépendants et petites équipes</div>
+            <div class="plan-card-desc">Ideal for freelancers and small teams</div>
           </div>
-          <div class="plan-card-price">29 €<span>/mois</span></div>
+          <div class="plan-card-price" data-fp-offer="standard">€29<span>/month</span></div>
         </div>
         <div class="plan-card-spinner" style="display:none"></div>
       </button>
 
       <button class="plan-card-btn plan-card-popular" data-plan="pro" onclick="choosePlan('pro',this)">
-        <div class="plan-card-badge">Recommandé</div>
+        <div class="plan-card-badge">Recommended</div>
         <div class="plan-card-inner">
           <div>
             <div class="plan-card-name">Pro</div>
-            <div class="plan-card-desc">Pour les agences et équipes en croissance</div>
+            <div class="plan-card-desc">For agencies and growing teams</div>
           </div>
-          <div class="plan-card-price">79 €<span>/mois</span></div>
+          <div class="plan-card-price" data-fp-offer="pro">€79<span>/month</span></div>
         </div>
         <div class="plan-card-spinner" style="display:none"></div>
       </button>
@@ -446,9 +421,9 @@
         <div class="plan-card-inner">
           <div>
             <div class="plan-card-name">Ultra</div>
-            <div class="plan-card-desc">Pour les grandes agences et entreprises</div>
+            <div class="plan-card-desc">For large agencies and enterprises</div>
           </div>
-          <div class="plan-card-price">149 €<span>/mois</span></div>
+          <div class="plan-card-price" data-fp-offer="ultra">€149<span>/month</span></div>
         </div>
         <div class="plan-card-spinner" style="display:none"></div>
       </button>
@@ -456,18 +431,18 @@
     </div>
 
     <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted)">
-      Paiement sécurisé via Stripe · Aucune carte débitée avant la fin de l'essai
+      Secure payment via Stripe · Your card is not charged until the trial ends
     </p>
-    <p class="footer-link"><a href="/pricing.html" target="_blank">Comparer les plans en détail →</a></p>
+    <p class="footer-link"><a href="/pricing.html" target="_blank">Compare plans in detail →</a></p>
   </div>
 
 </div>
 
 <p class="legal-footer">
-  En créant un compte, vous acceptez nos
-  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Conditions Générales</a>
-  et notre
-  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Politique de confidentialité</a>.
+  By creating an account, you agree to our
+  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Terms and Conditions</a>
+  and our
+  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Privacy Policy</a>.
 </p>
 
 <style>
@@ -491,10 +466,12 @@
   .plan-card-desc  { font-size: 12.5px; color: var(--text-muted); }
   .plan-card-price { font-size: 20px; font-weight: 700; white-space: nowrap; color: var(--text); flex-shrink: 0; }
   .plan-card-price span { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+  .plan-card-price .fp-trial-offer { align-items: flex-end; text-align: right; }
+  .plan-card-price .fp-trial-free { font-size: 20px; }
   .plan-card-spinner {
     position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
     width: 18px; height: 18px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,.3); border-top-color: var(--blue-light);
+    border: 2px solid var(--border); border-top-color: var(--blue-light);
     animation: spin .7s linear infinite;
   }
 </style>
@@ -560,7 +537,7 @@
   function proceedWithPlan(plan, btn) {
     if (_planBtnsLocked) return;
     if (!_preRegisterToken) {
-      fpBackToSignupForm('Votre session d\'inscription a expiré. Veuillez renseigner à nouveau le formulaire pour continuer.');
+      fpBackToSignupForm('Your sign-up session has expired. Please fill in the form again to continue.');
       return;
     }
     _planBtnsLocked = true;
@@ -600,6 +577,8 @@
     }
     document.getElementById('signup-screen').style.display = 'none';
     document.getElementById('plan-screen').style.display   = 'block';
+    // Offre « essai d'abord », prix et duree d'essai du serveur (rendu partage avec checkout.html).
+    if (window.FPOffer) window.FPOffer.fillPlanOffers(document.getElementById('plan-screen'), _preRegisterToken);
   }
 
 (function () {
@@ -634,11 +613,11 @@
   var errorParam = urlParams.get('error');
   if (errorParam) {
     var ERROR_MAP = {
-      access_denied:         "Accès refusé. Autorisez l'accès à votre compte Google.",
-      google_auth_failed:    "Erreur d'authentification Google. Veuillez réessayer.",
-      github_auth_failed:    "Erreur d'authentification GitHub. Veuillez réessayer.",
-      missing_code:          "Code OAuth manquant. Veuillez réessayer.",
-      google_signup_retry:   "Une erreur temporaire s'est produite lors de la création de votre session d'inscription Google. Veuillez réessayer."
+      access_denied:         "Access denied. Please allow access to your Google account.",
+      google_auth_failed:    "Google sign-in failed. Please try again.",
+      github_auth_failed:    "GitHub sign-in failed. Please try again.",
+      missing_code:          "The sign-in code is missing. Please try again.",
+      google_signup_retry:   "A temporary error occurred while creating your Google sign-up session. Please try again."
     };
     var msgEl = document.getElementById('signup-msg');
     var oauthError = ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ');
@@ -704,7 +683,7 @@
   /* Plan déjà choisi : le bouton annonce la suite réelle (paiement). */
   if (fpCartPlan()) {
     var submitLabel = document.getElementById('signup-btn-text');
-    if (submitLabel) submitLabel.textContent = 'Continuer vers le paiement →';
+    if (submitLabel) submitLabel.textContent = 'Continue to payment →';
   }
   /* A-11 — le jeton de pré-inscription Google est rangé en sessionStorage dès
      l'arrivée (et retiré de l'URL) : un rechargement ne le détruit plus. Sans
@@ -903,13 +882,13 @@
     var lastName   = val('lastName');
     var email      = val('email').toLowerCase();
 
-    if (!firstName)   { showMsg(signupMsg,'error','Le prénom est requis.');              return; }
-    if (!lastName)    { showMsg(signupMsg,'error','Le nom est requis.');                 return; }
+    if (!firstName)   { showMsg(signupMsg,'error','First name is required.');              return; }
+    if (!lastName)    { showMsg(signupMsg,'error','Last name is required.');                 return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      showMsg(signupMsg,'error','Adresse email invalide.'); return;
+      showMsg(signupMsg,'error','Please enter a valid email address.'); return;
     }
     if (isDisposable(email)) {
-      showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
+      showMsg(signupMsg,'error','Temporary email addresses are not accepted.'); return;
     }
 
     setLoading(signupBtn, true);
@@ -931,7 +910,7 @@
     .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
-        var rawError = res.data.error || 'Une erreur est survenue.';
+        var rawError = res.data.error || 'An error occurred. Please try again.';
         if (window.fpResolveLanguage() === 'en') {
           var translatedError = window.fpPublicTranslateText(rawError);
           rawError = translatedError !== rawError ? translatedError : 'An error occurred. Please try again.';
@@ -944,18 +923,18 @@
             ' <a href="/login.html" id="signin-redir-link" ' +
             'style="display:inline-block;margin-top:8px;font-weight:700;' +
             'text-decoration:underline;color:inherit">' +
-            '→ Me connecter</a>'
+            '→ Sign in</a>'
           );
           var _secs = 3;
           var _iv = setInterval(function() {
             _secs--;
             var lk = document.getElementById('signin-redir-link');
-            if (lk) lk.textContent = window.fpPublicText('→ Me connecter (' + _secs + 's)', '→ Sign in (' + _secs + 's)');
+            if (lk) lk.textContent = '→ Sign in (' + _secs + 's)';
             if (_secs <= 0) { clearInterval(_iv); window.location.href = '/login.html'; }
           }, 1000);
         } else if (redir) {
           showMsg(signupMsg, 'error',
-            errTxt + ' <a href="' + escHtml(redir) + '" style="font-weight:700;text-decoration:underline;color:inherit">→ Continuer</a>'
+            errTxt + ' <a href="' + escHtml(redir) + '" style="font-weight:700;text-decoration:underline;color:inherit">→ Continue</a>'
           );
         } else {
           showMsg(signupMsg, 'error', errTxt);
@@ -970,7 +949,7 @@
     })
     .catch(function() {
       setLoading(signupBtn, false);
-      showMsg(signupMsg, 'error', 'Impossible de joindre le serveur. Vérifiez votre connexion.');
+      showMsg(signupMsg, 'error', 'Unable to reach the server. Please check your connection.');
     });
   });
 

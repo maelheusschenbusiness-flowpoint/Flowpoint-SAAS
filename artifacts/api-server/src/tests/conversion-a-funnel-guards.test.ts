@@ -32,7 +32,7 @@ describe("pending signup can be resumed instead of bouncing", () => {
   });
 
   it("leaves the invited-team-member guard untouched", () => {
-    expect(authSrc).toMatch(/Cette adresse est déjà associée à une organisation FlowPoint/);
+    expect(authSrc).toMatch(/This email address is already linked to a FlowPoint organization/);
   });
 });
 
@@ -90,7 +90,7 @@ describe("checkout failures are actionable", () => {
   it("anything unknown stays a 500 with the original message", () => {
     const unknown = describeStripeFailure(new Error("boom"));
     expect(unknown.status).toBe(500);
-    expect(unknown.error).toBe("Erreur lors de la création du paiement.");
+    expect(unknown.error).toBe("We could not set up your payment.");
   });
 
   it("never leaks a Stripe internal into the user-facing message", () => {
@@ -181,12 +181,12 @@ describe("nothing arbitrary reaches the browser", () => {
 
   it("the message is always one of the allowlisted literals", () => {
     const allowed = new Set([
-      "Votre carte a été refusée. Vérifiez vos informations ou utilisez un autre moyen de paiement.",
-      "Service de paiement momentanément saturé. Réessayez dans quelques instants.",
-      "Service de paiement momentanément indisponible. Réessayez dans quelques instants.",
-      "Cette tentative de paiement a changé en cours de route. Rechargez la page et recommencez.",
-      "Cette demande de paiement est invalide. Rechargez la page et recommencez.",
-      "Erreur lors de la création du paiement.",
+      "Your card was declined. Check your details or use another payment method.",
+      "The payment service is busy right now. Please try again in a moment.",
+      "The payment service is temporarily unavailable. Please try again in a moment.",
+      "This payment attempt changed while in progress. Reload the page and start again.",
+      "This payment request is invalid. Reload the page and start again.",
+      "We could not set up your payment.",
     ]);
     const probes: unknown[] = [
       { type: "StripeCardError", message: "cus_42 raw", raw: { secret: "sk_live_x" } },
@@ -211,7 +211,7 @@ describe("nothing arbitrary reaches the browser", () => {
   it("an unknown error class gets the generic answer, not its own detail", () => {
     const view = describeStripeFailure({ type: "StripeSomethingNew", message: "internal detail", stack: "at foo()" });
     expect(view.status).toBe(500);
-    expect(view.error).toBe("Erreur lors de la création du paiement.");
+    expect(view.error).toBe("We could not set up your payment.");
     expect(JSON.stringify(view)).not.toContain("internal detail");
     expect(JSON.stringify(view)).not.toContain("at foo()");
   });

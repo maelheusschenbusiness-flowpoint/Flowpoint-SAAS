@@ -122,14 +122,14 @@ describe("B — les refus 400 restants sont inchanges", () => {
   it("sans firstName → 400", async () => {
     const r = await request(app()).post("/api/auth/pre-register").send({ lastName: "Durand", email: EMAIL });
     expect(r.status).toBe(400);
-    expect(r.body.error).toMatch(/prénom/i);
+    expect(r.body.error).toMatch(/first name/i);
     expect(preRegInserts).toHaveLength(0);
   });
 
   it("sans lastName → 400", async () => {
     const r = await request(app()).post("/api/auth/pre-register").send({ firstName: "Camille", email: EMAIL });
     expect(r.status).toBe(400);
-    expect(r.body.error).toMatch(/nom/i);
+    expect(r.body.error).toMatch(/last name/i);
     expect(preRegInserts).toHaveLength(0);
   });
 
