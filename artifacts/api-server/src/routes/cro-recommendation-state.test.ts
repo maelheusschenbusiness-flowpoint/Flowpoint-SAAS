@@ -8,7 +8,19 @@ vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 vi.mock("../services/cro-service.js", () => ({
-  analyzeCroPage: vi.fn().mockResolvedValue({ status: "available", findings: [] }),
+  analyzeCroPage: vi.fn().mockResolvedValue({
+    status: "ok", siteUrl: "https://a.example", analyzedUrl: "https://a.example/pricing",
+    analyzedAt: "2026-11-10T00:00:00.000Z",
+    signals: { h1Count: 1, formCount: 0, ctaCount: 0, httpStatus: 200, loadTimeMs: 20, title: "Pricing", formFieldCounts: [], genericSubmitLabels: [], hasViewportMeta: true, socialProofKeywordsFound: [], wordCount: 50 },
+    findings: [{
+      id: "page-no-cta", type: "cta", priority: "high", title: "Add a clear primary action",
+      description: "No call to action was found on the page.",
+      evidence: "The page contains no buttons or action links.",
+      implementation: "Add a clearly labeled action near the main heading.",
+      source: "page",
+    }],
+    ai: { status: "skipped" }, score: null,
+  }),
 }));
 import router from "./cro.js";
 
@@ -96,5 +108,21 @@ describe.skipIf(!process.env.DATABASE_URL)("CRO recommendation state on isolated
     expect(generated.status).toBe(200);
     expect(generated.body.recommendations[0].id).toBe(first.body.recommendations[0].id);
     expect((await request(appFor("org-b")).post("/cro/generate").send({ siteUrl: "https://a.example" })).status).toBe(404);
+  });
+  it("persists measured page findings, source evidence and their status across refresh", async () => {
+    const generated = await request(appFor()).post("/cro/generate").send({ siteUrl: "https://a.example" });
+    expect(generated.status).toBe(200);
+    const finding = generated.body.recommendations.find((r: { source: string }) => r.source === "page");
+    expect(finding).toMatchObject({
+      title: "Add a clear primary action",
+      evidence: "The page contains no buttons or action links.",
+      implementation: "Add a clearly labeled action near the main heading.",
+      status: "pending",
+      priority: "high",
+    });
+    const updated = await request(appFor()).patch(`/cro/recommendations/${finding.id}`).send({ status: "implemented" });
+    expect(updated.status).toBe(200);
+    const refreshed = await request(appFor()).get("/cro?siteUrl=https%3A%2F%2Fa.example");
+    expect(refreshed.body.recommendations.find((r: { id: string }) => r.id === finding.id)?.status).toBe("implemented");
   });
 });

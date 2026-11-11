@@ -122,37 +122,37 @@ const FAILURE_VIEWS: Record<string, StripeFailureView> = {
   StripeCardError: {
     status: 402,
     code: "card_declined",
-    error: "Votre carte a été refusée. Vérifiez vos informations ou utilisez un autre moyen de paiement.",
+    error: "Your card was declined. Check your details or use another payment method.",
     retryable: true,
   },
   StripeRateLimitError: {
     status: 503,
     code: "provider_rate_limited",
-    error: "Service de paiement momentanément saturé. Réessayez dans quelques instants.",
+    error: "The payment service is busy right now. Please try again in a moment.",
     retryable: true,
   },
   StripeConnectionError: {
     status: 503,
     code: "provider_unavailable",
-    error: "Service de paiement momentanément indisponible. Réessayez dans quelques instants.",
+    error: "The payment service is temporarily unavailable. Please try again in a moment.",
     retryable: true,
   },
   StripeAPIError: {
     status: 503,
     code: "provider_unavailable",
-    error: "Service de paiement momentanément indisponible. Réessayez dans quelques instants.",
+    error: "The payment service is temporarily unavailable. Please try again in a moment.",
     retryable: true,
   },
   StripeIdempotencyError: {
     status: 409,
     code: "idempotency_conflict",
-    error: "Cette tentative de paiement a changé en cours de route. Rechargez la page et recommencez.",
+    error: "This payment attempt changed while in progress. Reload the page and start again.",
     retryable: false,
   },
   StripeInvalidRequestError: {
     status: 400,
     code: "invalid_request",
-    error: "Cette demande de paiement est invalide. Rechargez la page et recommencez.",
+    error: "This payment request is invalid. Reload the page and start again.",
     retryable: false,
   },
 };
@@ -160,7 +160,7 @@ const FAILURE_VIEWS: Record<string, StripeFailureView> = {
 const GENERIC_FAILURE: StripeFailureView = {
   status: 500,
   code: "payment_setup_failed",
-  error: "Erreur lors de la création du paiement.",
+  error: "We could not set up your payment.",
   retryable: true,
 };
 
@@ -311,17 +311,15 @@ router.post("/billing/quote", async (req: Request, res: Response): Promise<void>
     const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
     const quote = createBillingQuote({ plan, addons, trialEligible, mechanism, inclusionPlan });
     if (!quote.lines.length) {
-      res.status(400).json({ error: "Sélectionnez un plan ou un add-on facturable." });
+      res.status(400).json({ error: "Select a plan or a billable add-on." });
       return;
     }
     res.json({ quote });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     const errorMessage = code === "ADDON_NOT_SOLD_SEPARATELY"
-      ? (req.acceptsLanguages("en", "fr") === "en"
-        ? "This add-on is not sold separately."
-        : "Cet add-on n'est pas vendu séparément.")
-      : "Sélection non facturable.";
+      ? "This add-on is not sold separately."
+      : "This selection cannot be billed.";
     res.status(400).json({ error: errorMessage, code });
   }
 });
@@ -360,7 +358,7 @@ function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
   const result: AddonsMap = {};
   for (const [key, val] of Object.entries(obj)) {
     if (!KNOWN_ADDON_KEYS_PUB.has(key)) {
-      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      res.status(400).json({ error: `Unknown add-on: "${key}"` });
       return null;
     }
     if (RETIRED_ADDONS.has(key) && (val === true || (typeof val === "number" && val > 0))) {
@@ -1175,11 +1173,11 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
   // customer/payment-intent lookup. A pre-registration token is the narrowly
   // scoped credential used by the existing new-account continuation.
   if (!_piReqOrgId && !preRegisterToken) {
-    res.status(401).json({ error: "Authentification requise avant de continuer.", code: "UNAUTHENTICATED" });
+    res.status(401).json({ error: "Please sign in before continuing.", code: "UNAUTHENTICATED" });
     return;
   }
   if (!_piReqOrgId && !(await isValidPreRegisterToken(preRegisterToken))) {
-    res.status(401).json({ error: "Session d'inscription invalide ou expirée.", code: "INVALID_PRE_REGISTER_TOKEN" });
+    res.status(401).json({ error: "Your signup session is invalid or has expired.", code: "INVALID_PRE_REGISTER_TOKEN" });
     return;
   }
 
@@ -1226,7 +1224,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     const addonKeys = Object.keys(addons as Record<string, unknown>);
     if (addonKeys.length > 0) {
       logger.warn({ addonKeys }, "[PublicBilling] payment-intent: addon-only cart rejected — unauthenticated (no orgId)");
-      res.status(401).json({ error: "Authentification requise pour acheter des add-ons.", code: "UNAUTHENTICATED" });
+      res.status(401).json({ error: "Please sign in to buy add-ons.", code: "UNAUTHENTICATED" });
       return;
     }
   }
@@ -1237,7 +1235,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "payment_intent", inclusionPlan });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
-    res.status(400).json({ error: "Sélection non facturable.", code });
+    res.status(400).json({ error: "This selection cannot be billed.", code });
     return;
   }
   /* Trial length comes from the server-validated quote — never from the browser,
@@ -1377,7 +1375,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           stripe_customer_id: string | null;
         } | undefined;
         if (!_piRow) {
-          res.status(410).json({ error: "Cette inscription a expiré. Recommencez le formulaire." });
+          res.status(410).json({ error: "This signup has expired. Please fill in the form again." });
           return;
         }
 
@@ -1400,7 +1398,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       } catch (_piLookupErr) {
         logger.error({ _piLookupErr }, "[PublicBilling] payment-intent: pending signup lookup failed");
         if (res.headersSent) return;
-        res.status(503).json({ error: "Inscription temporairement indisponible. Réessayez." });
+        res.status(503).json({ error: "Signup is temporarily unavailable. Please try again." });
         return;
       }
     }
@@ -1537,7 +1535,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       return;
     }
 
-    res.status(400).json({ error: "Panier invalide." });
+    res.status(400).json({ error: "Invalid cart." });
   } catch (err) {
     const failure = describeStripeFailure(err);
     logger.error(

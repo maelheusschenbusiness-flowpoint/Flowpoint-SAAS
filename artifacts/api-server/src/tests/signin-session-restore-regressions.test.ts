@@ -32,15 +32,15 @@ describe("Sign In session-restore regressions", () => {
 
   it.each([503, 504])("classifies %i as temporary and offers manual retry", (status) => {
     expect(classify(status, false)).toBe("temporary");
-    expect(restore).toContain("Votre session est conservée.");
+    expect(restore).toContain("Your session has been kept.");
     expect(restore).toContain("_showSessionRestoreNotice");
-    expect(restore).toContain("Réessayer");
+    expect(restore).toContain("Try again");
     expect(status).toBeGreaterThanOrEqual(500);
   });
 
   it("preserves the token on timeout and network errors without automatic retries", () => {
     expect(restore).toContain("controller.abort()");
-    expect(restore).toContain("Impossible de vérifier votre session");
+    expect(restore).toContain("We could not verify your session");
     expect(restore).toContain("_showSessionRestoreNotice");
     expect(restore).toContain("catch(function(err)");
     expect(restore).toContain("clearTimeout(timeoutId)");

@@ -122,8 +122,9 @@ describe("protection des journaux et interface", () => {
 
   it("n'annonce pas un email envoyé dans login.html ou les toasts du dashboard", () => {
     expect(CLIENT).toContain("if (r.ok)");
-    expect(CLIENT).toContain("un lien de connexion peut");
+    expect(CLIENT).toContain("a sign-in link may be sent");
     expect(CLIENT).not.toContain("Lien envoy");
+    expect(CLIENT).not.toMatch(/link (?:has been |was )?sent to/i);
     expect(DASHBOARD).not.toContain("fpT('Lien de connexion envoyé à') + ' ' + emailVal");
     expect(DASHBOARD).not.toContain("fpT('Lien de connexion envoyé à') + ' ' + email");
     expect(DASHBOARD_SOURCE).not.toContain("fpT('Lien de connexion envoyé à') + ' ' + emailVal");

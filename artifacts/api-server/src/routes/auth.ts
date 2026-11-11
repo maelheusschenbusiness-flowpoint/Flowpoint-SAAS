@@ -1125,7 +1125,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // Validate required fields
   const normalizedEmail = String(email ?? "").toLowerCase().trim();
   if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
-    res.status(400).json({ error: "Adresse email invalide ou manquante." });
+    res.status(400).json({ error: "Please enter a valid email address." });
     return;
   }
   const fn          = String(firstName   || "").trim();
@@ -1136,15 +1136,15 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   const cityVal     = String(city        || "").trim();
   const postalVal   = String(postalCode  || "").trim();
 
-  if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
-  if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
+  if (!fn)         { res.status(400).json({ error: "First name is required." });              return; }
+  if (!ln)         { res.status(400).json({ error: "Last name is required." });                 return; }
   // Société, pays, adresse, ville et code postal ne sont plus demandés à
   // l'inscription : l'adresse de facturation et la TVA sont collectées plus
   // tard par Stripe. Les champs restent acceptés et enregistrés tels quels
   // quand un appelant les fournit encore (compatibilité).
 
   if (isDisposableEmail(normalizedEmail)) {
-    res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
+    res.status(400).json({ error: "Temporary email addresses are not accepted." });
     return;
   }
   if (!isEmailAllowed(normalizedEmail)) {
@@ -1181,7 +1181,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     const _existingStatus = _activeUser.rows[0]?.status ?? "";
     if (_activeUser.rows.length > 0 && _existingStatus !== "pending") {
       res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+        error: "An account already exists with this email address. Please sign in.",
         redirectTo: "/login.html",
       });
       return;
@@ -1199,14 +1199,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     );
     if (_activeMember.rows.length > 0) {
       res.status(409).json({
-        error: "Cette adresse est déjà associée à une organisation FlowPoint. Veuillez vous connecter.",
+        error: "This email address is already linked to a FlowPoint organization. Please sign in.",
         redirectTo: "/login.html",
       });
       return;
     }
   } catch (_activeCheckErr) {
     logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] account guard failed");
-    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    res.status(503).json({ error: "Account verification is unavailable. Please try again." });
     return;
   }
 
@@ -1223,13 +1223,13 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     const ownedOrg = await pool.query(
       `SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
     if ((_dup?.orgId && _isExistingAccount) || ownedOrg.rows.length) {
-      res.status(409).json({ error: "Un compte existe déjà. Connectez-vous pour gérer votre abonnement.", redirectTo: "/login.html" });
+      res.status(409).json({ error: "An account already exists. Sign in to manage your subscription.", redirectTo: "/login.html" });
       return;
     }
     // Never erase billing identity as a side effect of public pre-registration.
   } catch (_dupErr) {
     logger.warn({ err: _dupErr }, "[Auth/PreRegister] duplicate check unavailable");
-    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    res.status(503).json({ error: "Account verification is unavailable. Please try again." });
     return;
   }
 
@@ -1348,7 +1348,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     if ((_insertErr as { code?: string }).code === "23505") {
       logger.warn({ email: normalizedEmail }, "[Auth/PreRegister] concurrent signup race (23505) — user asked to retry");
       res.status(409).json({
-        error: "Une inscription est déjà en cours pour cet email. Patientez quelques secondes puis réessayez.",
+        error: "A sign-up is already in progress for this email. Please wait a few seconds and try again.",
         code: "CONCURRENT_SIGNUP",
       });
       return;
