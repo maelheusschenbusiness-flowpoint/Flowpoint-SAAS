@@ -1,6 +1,6 @@
 # Matrice de suivi — add-ons bêta 2.0
 
-Mise à jour : 11 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
+Mise à jour : 12 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
 
 Le rapport archivé du 3 novembre 2026 attribue historiquement **8/24** validations aux huit add-ons de remplacement (`docs/flowpoint-audit-status-2026-11-03.md`, commit `6c78d7d`). En ajoutant la certification locale complète actuelle d’Agency Reporting Packs, **9/24 modules ont une preuve de certification** : huit attributions historiques non rejouées et une certification locale complète produite. Ce total ne signifie pas que neuf fournisseurs ont été certifiés.
 
