@@ -436,7 +436,7 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   monitorsPack10:       { name: "+10 Monitors",             category: "Monitoring",   description: "+10 monitors actifs", priceEur: 9, oneTime: false, quantity: true },
   monitorsPack50:       { name: "+50 Monitors",             category: "Monitoring",   description: "+50 monitors actifs", priceEur: 19, oneTime: false, quantity: true },
   globalMonitoring:     { name: "Global Monitoring",        category: "Monitoring",   description: "Synthèse des régions de contrôle Better Stack configurées", priceEur: 15, oneTime: false, quantity: false },
-  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.", priceEur: 19, oneTime: false, quantity: false },
+  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Disponibilité Better Stack par moniteur et période, cibles SLA par moniteur, conformité mesurée et export CSV; aucune alerte SLA automatique.", priceEur: 19, oneTime: false, quantity: false },
   advancedSeoLab:       { name: "Advanced SEO Lab",         category: "SEO",          description: "Audit SEO avancé et recommandations IA", priceEur: 29, oneTime: false, quantity: false },
   keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },

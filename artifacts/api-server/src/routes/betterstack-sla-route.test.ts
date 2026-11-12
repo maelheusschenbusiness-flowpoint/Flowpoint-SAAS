@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  exigerAppartenance: vi.fn(),
   getMonitorSLA: vi.fn(),
   listMonitors: vi.fn(),
   isBSConfigured: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("../services/betterstack-service.js", () => ({
   createStatusPage: vi.fn(),
   getMonitoringStats: vi.fn(),
   isBSConfigured: mocks.isBSConfigured,
+  exigerAppartenance: mocks.exigerAppartenance,
 }));
 vi.mock("@workspace/db", () => ({
   pool: { query: mocks.poolQuery, connect: mocks.poolConnect },
@@ -61,10 +63,11 @@ import betterstackRouter from "./betterstack.js";
 const QA_ORG_A = "10000000-0000-4000-8000-00000000000a";
 const QA_ORG_B = "10000000-0000-4000-8000-00000000000b";
 
-function makeApp(orgId = QA_ORG_A) {
+function makeApp(orgId = QA_ORG_A, orgDb?: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) {
   const app = express();
+  app.use(express.json());
   app.use((req, _res, next) => {
-    Object.assign(req, { orgId });
+    Object.assign(req, { orgId, ...(orgDb ? { orgDb } : {}) });
     next();
   });
   app.use("/api", betterstackRouter);
@@ -249,5 +252,113 @@ describe("Better Stack SLA report route", () => {
     expect(source).toMatch(
       /router\.get\("\/betterstack\/global-overview",\s*requireAddon\("globalMonitoring",\s*"Global Monitoring"\)/,
     );
+  });
+});
+
+describe("SLA Monitoring Avancé — cibles, conformité et export", () => {
+  /** Faux orgDb en memoire : une table (org_id, monitor_id) -> cible, comme la vraie contrainte. */
+  function memoryDb() {
+    const rows = new Map<string, number>();
+    const seen: Array<{ sql: string; values: unknown[] }> = [];
+    const orgDb = async (sql: string, values: unknown[] = []) => {
+      seen.push({ sql, values });
+      if (sql.includes("INSERT INTO sla_targets")) { rows.set(`${values[0]}|${values[1]}`, Number(values[2])); return { rows: [] }; }
+      if (sql.includes("DELETE FROM sla_targets")) { rows.delete(`${values[0]}|${values[1]}`); return { rows: [] }; }
+      if (sql.includes("monitor_id, target_pct FROM sla_targets")) {
+        return { rows: [...rows].filter(([k]) => k.startsWith(`${values[0]}|`)).map(([k, v]) => ({ monitor_id: k.split("|")[1], target_pct: v })) };
+      }
+      if (sql.includes("target_pct FROM sla_targets")) {
+        const v = rows.get(`${values[0]}|${values[1]}`);
+        return { rows: v === undefined ? [] : [{ target_pct: v }] };
+      }
+      return { rows: [] };
+    };
+    return { orgDb, rows, seen };
+  }
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.isBSConfigured.mockReturnValue(true);
+    mocks.poolConnect.mockResolvedValue({ query: mocks.poolQuery, release: vi.fn() });
+    mocks.poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan FROM organizations")) return { rows: [{ plan: "standard" }] };
+      if (sql.includes("SELECT active FROM org_addons")) return { rows: [{ active: true }] };
+      return { rows: [] };
+    });
+    mocks.exigerAppartenance.mockResolvedValue(undefined);
+    mocks.getMonitorSLA.mockResolvedValue({ data: { attributes: { availability: 99.8, total_downtime: 900, number_of_incidents: 2, longest_incident: 600, average_incident: 450 } } });
+  });
+
+  it("sans cible : no_target ; avec cible : conforme ou dépassé selon la mesure Better Stack", async () => {
+    const { orgDb } = memoryDb();
+    const app = makeApp(QA_ORG_A, orgDb);
+    let r = await request(app).get("/api/betterstack/monitors/m1/sla");
+    expect(r.body.compliance).toMatchObject({ status: "no_target", targetPct: null, availabilityPct: 99.8 });
+    expect((await request(app).put("/api/betterstack/monitors/m1/sla-target").send({ targetPct: 99.5 })).status).toBe(200);
+    r = await request(app).get("/api/betterstack/monitors/m1/sla");
+    expect(r.body.compliance).toMatchObject({ status: "met", targetPct: 99.5 });
+    await request(app).put("/api/betterstack/monitors/m1/sla-target").send({ targetPct: 99.95 });
+    r = await request(app).get("/api/betterstack/monitors/m1/sla");
+    expect(r.body.compliance).toMatchObject({ status: "breached", targetPct: 99.95 });
+    expect(r.body.data.attributes.availability).toBe(99.8); // la mesure d'origine est intacte
+  });
+
+  it("mesure absente : insufficient_data, jamais « conforme »", async () => {
+    mocks.getMonitorSLA.mockResolvedValue({ data: { attributes: {} } });
+    const { orgDb } = memoryDb();
+    const app = makeApp(QA_ORG_A, orgDb);
+    await request(app).put("/api/betterstack/monitors/m1/sla-target").send({ targetPct: 99.5 });
+    const r = await request(app).get("/api/betterstack/monitors/m1/sla");
+    expect(r.body.compliance.status).toBe("insufficient_data");
+  });
+
+  it("refuse une cible invalide sans rien écrire", async () => {
+    const { orgDb, rows } = memoryDb();
+    const app = makeApp(QA_ORG_A, orgDb);
+    for (const bad of [89, 100, "abc", null, undefined, -5, "99,9"]) {
+      const r = await request(app).put("/api/betterstack/monitors/m1/sla-target").send({ targetPct: bad });
+      expect(r.status).toBe(400);
+      expect(r.body.code).toBe("INVALID_SLA_TARGET");
+    }
+    expect(rows.size).toBe(0);
+  });
+
+  it("isole les organisations : même moniteur, cibles distinctes, rien ne fuit", async () => {
+    const { orgDb, rows } = memoryDb();
+    await request(makeApp(QA_ORG_A, orgDb)).put("/api/betterstack/monitors/shared-id/sla-target").send({ targetPct: 99.9 });
+    await request(makeApp(QA_ORG_B, orgDb)).put("/api/betterstack/monitors/shared-id/sla-target").send({ targetPct: 95 });
+    expect(rows.get(`${QA_ORG_A}|shared-id`)).toBe(99.9);
+    expect(rows.get(`${QA_ORG_B}|shared-id`)).toBe(95);
+    const a = await request(makeApp(QA_ORG_A, orgDb)).get("/api/betterstack/sla-targets");
+    expect(a.body.targets).toEqual([{ monitorId: "shared-id", targetPct: 99.9 }]);
+    await request(makeApp(QA_ORG_B, orgDb)).delete("/api/betterstack/monitors/shared-id/sla-target");
+    expect(rows.get(`${QA_ORG_A}|shared-id`)).toBe(99.9); // la suppression de B ne touche pas A
+  });
+
+  it("refuse l'écriture d'une cible sur un moniteur d'une autre organisation", async () => {
+    mocks.exigerAppartenance.mockRejectedValue(Object.assign(new Error("Monitor not found"), { statusCode: 404 }));
+    const { orgDb, rows } = memoryDb();
+    const r = await request(makeApp(QA_ORG_A, orgDb)).put("/api/betterstack/monitors/foreign/sla-target").send({ targetPct: 99 });
+    expect(r.status).toBe(404);
+    expect(rows.size).toBe(0);
+    expect(mocks.exigerAppartenance).toHaveBeenCalledWith("foreign", QA_ORG_A);
+  });
+
+  it("export CSV : en-têtes de téléchargement, conformité incluse, période validée", async () => {
+    const { orgDb } = memoryDb();
+    const app = makeApp(QA_ORG_A, orgDb);
+    await request(app).put("/api/betterstack/monitors/m1/sla-target").send({ targetPct: 99.5 });
+    const r = await request(app).get("/api/betterstack/monitors/m1/sla/export.csv?from=2026-09-01&to=2026-09-30");
+    expect(r.status).toBe(200);
+    expect(r.headers["content-type"]).toContain("text/csv");
+    expect(r.headers["content-disposition"]).toContain("attachment");
+    expect(r.text.trim().split("\r\n")[1]).toBe("m1,2026-09-01,2026-09-30,99.8,99.5,met,0.3,900,2,600,450");
+    const bad = await request(app).get("/api/betterstack/monitors/m1/sla/export.csv?from=2026-02-30");
+    expect(bad.status).toBe(400);
+  });
+
+  it("sans configuration Better Stack : 503, aucune mesure inventée", async () => {
+    mocks.isBSConfigured.mockReturnValue(false);
+    const r = await request(makeApp()).get("/api/betterstack/monitors/m1/sla/export.csv");
+    expect(r.status).toBe(503);
   });
 });

@@ -10864,7 +10864,7 @@ function renderBilling() {
       { key:'monitorsPack10', cat:'Monitoring', name:'+10 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack10),  tag:'Starter',         roi:'Pack de monitors supplémentaires',    desc:'Étendez votre surveillance uptime avec 10 monitors supplémentaires.', features:['10 monitors simultanés','Vérification toutes les minutes','Alertes email instantanées','Historique uptime','Cumulable avec les autres packs'] },
       { key:'monitorsPack50', cat:'Monitoring', name:'+50 Monitors', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'Pack de monitors supplémentaires',    desc:'Pack de monitors supplémentaires avec suivi de disponibilité et rapports.', features:['50 monitors simultanés','Alertes SMS — bientôt disponible','Suivi SLA','Rapport PDF de disponibilité','Escalade par équipe'] },
       { key:'globalMonitoring', cat:'Monitoring', name:'Global Monitoring', icon:'🌍', color:'#f59e0b', active:!!(me.addons?.globalMonitoring), tag:'Ultra',      roi:'Vue agrégée des monitors Better Stack', desc:'Synthèse des statuts des monitors configurés dans les régions Better Stack. Les résultats ne sont pas des mesures indépendantes par région.', features:['Régions configurées sur les monitors','Statuts et disponibilité agrégés','Détail des monitors concernés','Aucune mesure régionale indépendante'] },
-      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.', features:['Bientôt disponible'] },
+      { key:'slaMonitoring', cat:'Monitoring', name:'SLA Monitoring Avancé', icon:'🛡️', color:'#f59e0b', active:!!(me.addons?.slaMonitoring), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Disponibilité Better Stack par moniteur et période, cibles SLA par moniteur, conformité mesurée et export CSV; aucune alerte SLA automatique.', features:['Bientôt disponible'] },
       // ── SEO ──
       { key:'advancedSeoLab', cat:'SEO',        name:'Advanced SEO Lab', icon:'🔬', color:'#2563EB', active:!!(me.addons?.advancedSeoLab), tag:'Pro inclus',      roi:'Analyse sémantique des pages',    desc:'Lab SEO IA : analyse sémantique, gap analysis et topical authority.', features:['Analyse sémantique IA par page','Analyse des écarts dans les résultats de recherche','Score topical authority','Suggestions de silos thématiques','Rapport de couverture sémantique'] },
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'Suivi et analyse des mots-clés', desc:'Suivi des mots-clés, clustering, fonctionnalités SERP et cannibalisation.', features:['Suivi de mots-clés','Clustering sémantique','Détection de cannibalisation','Suivi des fonctionnalités SERP','Alertes de volatilité des résultats'] },
@@ -20617,7 +20617,7 @@ function bindGlobalEvents() {
   var FP_I18N_EN_EXTRA = {
     "Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.": "Creates three saved reports (Executive, SEO, and Local) from a selected audit; no scheduled delivery, client portal, or multi-site consolidation.",
     "Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.": "Generates an on-demand AI summary from measured audits and monitors and saves it in Reports; no email, Slack, or weekly schedule.",
-    "Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.": "Better Stack availability statistics by monitor and period; no SLA alert rules or dedicated export.",
+    "Disponibilité Better Stack par moniteur et période, cibles SLA par moniteur, conformité mesurée et export CSV; aucune alerte SLA automatique.": "Better Stack availability statistics by monitor and period; no SLA alert rules or dedicated export.",
     "Vérification du TXT DNS et de la négociation TLS uniquement; le routage FlowPoint et le certificat géré ne sont pas fournis.": "Checks DNS TXT and TLS negotiation only; FlowPoint routing and managed certificates are not provided.",
     "Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.": "No SSO provider is operational; SAML and OIDC sign-in flows are not yet available.",
     "Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.": "Generates a strategy and missions from the workspace profile. Scheduled reports also require AI Workflows and are saved without email or Slack delivery.",
@@ -74401,10 +74401,85 @@ window.FP_V1_ADDON_PANELS = {
         grid.appendChild(card);
       }
       target.appendChild(grid);
+      window.FP_V1_ADDON_PANELS.renderSlaCompliance(target, report?.compliance, select.value, from, to);
       status.textContent = fpT('Mesures Better Stack du {from} au {to}.', {from, to});
     } catch (err) {
       status.textContent = err?.message || fpT('Impossible de charger le rapport SLA Better Stack.');
     }
+  },
+  renderSlaCompliance(container, compliance, monitorId, from, to) {
+    const box = document.createElement('div');
+    box.id = 'fp-bs-sla-compliance';
+    box.style.cssText = 'margin-top:14px;display:grid;gap:8px';
+    const verdict = document.createElement('p');
+    verdict.setAttribute('role', 'status');
+    const status = compliance && compliance.status;
+    const pct = value => Number(value).toFixed(3) + ' %';
+    if (status === 'met') verdict.textContent = fpT('Cible SLA respectée : {availability} pour une cible de {target} (marge {margin} pt).', { availability: pct(compliance.availabilityPct), target: pct(compliance.targetPct), margin: Number(compliance.marginPct).toFixed(3) });
+    else if (status === 'breached') verdict.textContent = fpT('Cible SLA non respectée : {availability} pour une cible de {target} (écart {margin} pt).', { availability: pct(compliance.availabilityPct), target: pct(compliance.targetPct), margin: Number(compliance.marginPct).toFixed(3) });
+    else if (status === 'insufficient_data') verdict.textContent = fpT('Données insuffisantes pour évaluer la cible SLA sur cette période.');
+    else if (status === 'no_target') verdict.textContent = fpT('Aucune cible SLA définie pour ce monitor.');
+    else verdict.textContent = fpT('La conformité SLA est momentanément indisponible.');
+    if (status === 'breached') verdict.style.color = 'var(--fp-danger, #dc2626)';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:end;flex-wrap:wrap';
+    const label = document.createElement('label');
+    label.style.cssText = 'display:grid;gap:4px;font-size:11px;color:var(--fp-text-muted)';
+    label.append(document.createTextNode(fpT('Cible de disponibilité (%)')));
+    const input = document.createElement('input');
+    input.id = 'fp-bs-sla-target';
+    input.className = 'fp-input';
+    input.type = 'number'; input.min = '90'; input.max = '99.999'; input.step = '0.001';
+    if (compliance && compliance.targetPct != null) input.value = String(compliance.targetPct);
+    label.appendChild(input);
+    const mkBtn = (text, handler) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'fp-btn fp-btn-ghost fp-btn-sm'; b.textContent = text;
+      b.addEventListener('click', handler);
+      return b;
+    };
+    const msg = document.createElement('span');
+    msg.className = 'fp-text-muted'; msg.setAttribute('role', 'status');
+    const reload = () => window.FP_V1_ADDON_PANELS.loadSla();
+    row.append(label,
+      mkBtn(fpT('Enregistrer la cible'), async () => {
+        try { await window.FP_V1_ADDON_PANELS.saveSlaTarget(monitorId, input.value); await reload(); }
+        catch (err) { msg.textContent = err?.message || fpT('Impossible d’enregistrer la cible.'); }
+      }),
+      mkBtn(fpT('Supprimer la cible'), async () => {
+        try { await window.FP_V1_ADDON_PANELS.clearSlaTarget(monitorId); await reload(); }
+        catch (err) { msg.textContent = err?.message || fpT('Impossible de supprimer la cible.'); }
+      }),
+      mkBtn(fpT('Exporter en CSV'), async () => {
+        try { await window.FP_V1_ADDON_PANELS.exportSla(monitorId, from, to); msg.textContent = ''; }
+        catch (err) { msg.textContent = err?.message || fpT('Export impossible.'); }
+      }),
+      msg);
+    box.append(verdict, row);
+    container.appendChild(box);
+  },
+  async saveSlaTarget(monitorId, value) {
+    const targetPct = Number(String(value).replace(',', '.'));
+    if (!Number.isFinite(targetPct) || targetPct < 90 || targetPct > 99.999) {
+      throw new Error(fpT('La cible doit être un pourcentage entre 90 et 99,999.'));
+    }
+    return apiFetch(`/api/betterstack/monitors/${encodeURIComponent(monitorId)}/sla-target`, { method: 'PUT', body: JSON.stringify({ targetPct }) });
+  },
+  async clearSlaTarget(monitorId) {
+    return apiFetch(`/api/betterstack/monitors/${encodeURIComponent(monitorId)}/sla-target`, { method: 'DELETE' });
+  },
+  async exportSla(monitorId, from, to) {
+    const headers = {};
+    try { const tok = sessionStorage.getItem('fp_session_token'); if (tok) headers['Authorization'] = 'Bearer ' + tok; } catch (_) {}
+    const q = new URLSearchParams({ from, to });
+    const response = await fetch(`/api/betterstack/monitors/${encodeURIComponent(monitorId)}/sla/export.csv?${q}`, { credentials: 'include', headers });
+    if (!response.ok) throw new Error(fpT('Export impossible pour le moment.'));
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = 'sla-report.csv';
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
   async loadGlobal() {
     const target = document.getElementById('fp-global-monitoring-result');

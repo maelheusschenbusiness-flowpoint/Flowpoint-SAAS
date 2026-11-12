@@ -183,7 +183,7 @@ export async function monitorsDeLOrganisation(orgId: string): Promise<Set<string
 }
 
 /** Leve si le moniteur n'appartient pas explicitement a cette organisation. */
-async function exigerAppartenance(bsId: string, orgId: string): Promise<void> {
+export async function exigerAppartenance(bsId: string, orgId: string): Promise<void> {
   const possedes = await monitorsDeLOrganisation(orgId);
   if (!possedes.has(String(bsId))) throw new MonitorIntrouvable();
 }

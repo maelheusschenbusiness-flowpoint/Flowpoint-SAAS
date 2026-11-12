@@ -2324,6 +2324,42 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
+    // ── sla_targets — cibles SLA par moniteur et par organisation ─────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS sla_targets (
+        org_id TEXT NOT NULL,
+        monitor_id TEXT NOT NULL,
+        target_pct NUMERIC(6,3) NOT NULL CHECK (target_pct >= 90 AND target_pct <= 99.999),
+        updated_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, monitor_id)
+      )
+    `);
+    await run(client, `ALTER TABLE sla_targets ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE sla_targets FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_select') THEN
+          CREATE POLICY sla_targets_tenant_select ON sla_targets FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_insert') THEN
+          CREATE POLICY sla_targets_tenant_insert ON sla_targets FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_update') THEN
+          CREATE POLICY sla_targets_tenant_update ON sla_targets FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_delete') THEN
+          CREATE POLICY sla_targets_tenant_delete ON sla_targets FOR DELETE
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
     // ── traffic_losses — FORCE RLS + isolation policy ─────────────────────────
     // RLS was already enabled; add FORCE RLS so superuser connections (pooler)
     // are also subject to the policy, and add the org_id isolation policy.
