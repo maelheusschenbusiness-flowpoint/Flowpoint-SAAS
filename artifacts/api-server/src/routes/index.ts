@@ -61,6 +61,7 @@ import gscRouter from "./gsc.js";
 import betterstackRouter from "./betterstack.js";
 import diagnosticsRouter from "./diagnostics.js";
 import adminRouter from "./admin.js";
+import adminConversionRouter from "./admin-conversion.js";
 import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
@@ -113,6 +114,7 @@ router.use(gscOAuthPublicRouter);
 // Admin routes — protected by x-admin-key header (not user session).
 // Must be registered before requireAuth so ops scripts don't need a user session.
 router.use(adminRouter);
+router.use(adminConversionRouter);
 
 // Behavioral tracking endpoints — called from external client-side JS snippets;
 // must be public (no API key from browser context possible).
