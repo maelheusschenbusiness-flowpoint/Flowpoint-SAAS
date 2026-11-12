@@ -46,7 +46,7 @@
 
   function el(tag, text, cls) { var e = document.createElement(tag); if (text !== undefined && text !== null) e.textContent = String(text); if (cls) e.className = cls; return e; }
   function num(v) { return v === null || v === undefined ? '—' : String(v); }
-  var REASONS = { mixed_coverage: 'not comparable (browser vs server coverage)', no_denominator: 'no data' };
+  var REASONS = { mixed_coverage: 'not comparable (consenting visitors vs all visitors)', no_denominator: 'no data' };
 
   function renderView(root, data) {
     root.replaceChildren();
@@ -57,7 +57,7 @@
       var tr = el('tr'), first = el('td');
       first.appendChild(el('div', s.label)); first.appendChild(el('div', s.definition, 'def'));
       tr.appendChild(first); tr.appendChild(el('td', num(s.events), 'n')); tr.appendChild(el('td', num(s.uniqueVisitors), 'n'));
-      tr.appendChild(el('td', s.coverage === 'server' ? 'all visitors (server)' : 'consenting visitors only'));
+      tr.appendChild(el('td', s.coverage === 'all' ? 'all visitors (signed Stripe event)' : 'consenting visitors only'));
       t.appendChild(tr);
     });
     root.appendChild(t);

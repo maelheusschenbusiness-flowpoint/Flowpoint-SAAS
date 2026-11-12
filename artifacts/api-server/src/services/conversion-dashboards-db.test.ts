@@ -36,10 +36,11 @@ beforeAll(async () => {
     await ev("cta_clique", v(2), "smartlead", "dash:c2");
     await ev("cta_clique", v(1), "google", "dash:c1");
     await ev("signup_started", v(2), "smartlead", "dash:s2");
+    await ev("signup_started", v(1), "google", "dash:s1");
     // Serveur : couvre aussi les non-consentants (sans visiteur)
-    await ev("signup_form_completed", null, null, "dash:f1");
+    await ev("signup_form_completed", v(1), "google", "dash:f1");
     await ev("signup_form_completed", v(2), "smartlead", "dash:f2");
-    await ev("checkout_started", null, null, "dash:k1");
+    await ev("checkout_started", v(1), "google", "dash:k1");
     await ev("trial_activated", v(2), "smartlead", "trial_activated:sub_a");
     await ev("trial_activated", null, null, "trial_activated:sub_b");
     await ev("subscription_activated", v(2), "smartlead", "subscription_activated:sub_a");
@@ -55,18 +56,22 @@ describe("conversion globale (SQL réel)", () => {
     const s = Object.fromEntries(g.stages.map(x => [x.key, x]));
     expect(s["tarifs_vus"]).toMatchObject({ events: 4, uniqueVisitors: 3 }); // v1, v2 (x1), v3 (x2) ; test exclu ; rejeu dédoublonné
     expect(s["cta_clique"]).toMatchObject({ events: 2, uniqueVisitors: 2 });
-    expect(s["signup_form_completed"]).toMatchObject({ events: 2, uniqueVisitors: 1 }); // une inscription sans visiteur identifié
-    expect(s["checkout_started"]).toMatchObject({ events: 1, uniqueVisitors: null });   // null, pas 0
+    expect(s["signup_form_completed"]).toMatchObject({ events: 2, uniqueVisitors: 2 }); // enregistrée seulement avec consentement
+    expect(s["checkout_started"]).toMatchObject({ events: 1, uniqueVisitors: 1 });
+    expect(s["trial_activated"]).toMatchObject({ events: 2, uniqueVisitors: 1 });         // essai sans consentement : compté, visiteur non identifié (null côté visiteurs, pas 0)
     expect(s["landing_vue"]).toMatchObject({ events: 0, uniqueVisitors: null });
     expect(g.measurableVisitors).toBe(3);
+    expect(s["trial_activated"]!.coverage).toBe("all");
+    expect(s["signup_form_completed"]!.coverage).toBe("consented");
   });
   it("calcule un taux seulement entre étapes de même couverture", async (ctx) => {
     if (!ok) return ctx.skip();
     const g = await globalConversion(poolQuery, W.from, W.to);
     const r = Object.fromEntries(g.rates.map(x => [`${x.from}>${x.to}`, x]));
     expect(r["tarifs_vus>cta_clique"]).toEqual({ from: "tarifs_vus", to: "cta_clique", ratio: 0.5, reason: "ok" });
-    expect(r["signup_started>signup_form_completed"]).toMatchObject({ ratio: null, reason: "mixed_coverage" }); // navigateur -> serveur
+    expect(r["signup_started>signup_form_completed"]).toMatchObject({ ratio: 1, reason: "ok" });             // consenti -> consenti
     expect(r["signup_form_completed>checkout_started"]).toMatchObject({ ratio: 0.5, reason: "ok" });
+    expect(r["checkout_started>trial_activated"]).toMatchObject({ ratio: null, reason: "mixed_coverage" }); // consenti -> tous : jamais de taux
     expect(r["trial_activated>subscription_activated"]).toMatchObject({ ratio: 0.5, reason: "ok" });
   });
   it("une fenêtre sans donnée renvoie des zéros d'événements et des null, jamais d'invention", async (ctx) => {

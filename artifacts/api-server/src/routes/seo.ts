@@ -396,7 +396,7 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
       keyword = textParam(tracked.rows[0]?.keyword, 120);
     }
     if (!keyword) {
-      res.status(422).json({ error: "Aucun mot-clé cible : indiquez `keyword` ou suivez au moins un mot-clé.", code: "KEYWORD_REQUIRED" });
+      res.status(422).json({ error: "No target keyword: provide `keyword` or track at least one keyword.", code: "KEYWORD_REQUIRED" });
       return;
     }
     const data = await getContentOptimization(url, keyword, orgId);
