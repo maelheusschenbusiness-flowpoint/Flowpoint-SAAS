@@ -423,11 +423,23 @@ describe("Signature et separation des environnements", () => {
     // terminaison de test, evenements livemode=false.
     activeStripeKey = TEST_KEY;
     process.env["STRIPE_TEST_WEBHOOK_SECRET"] = TEST_SECRET;
-    const res = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_test_env_sub", livemode: false },
+    // Test-Replit : le mode TEST doit etre declare explicitement (fail-closed). Sans
+    // STRIPE_TEST_MODE=true, une cle sk_test_ est refusee en 503 — plus strict que
+    // la regle d'origine de Flowpoint, conservee ici.
+    process.env["STRIPE_TEST_MODE"] = "true";
+    try {
+      const res = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_test_env_sub", livemode: false },
+        { signWith: TEST_SECRET });
+      await settle();
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual({ received: true });
+    } finally {
+      delete process.env["STRIPE_TEST_MODE"];
+    }
+    // Sans la declaration explicite du mode : refuse, aucune ecriture.
+    const refused = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_test_env_sub_nomode", livemode: false },
       { signWith: TEST_SECRET });
-    await settle();
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
+    expect(refused.statusCode).toBe(503);
   });
 
   it("la production traite normalement un evenement live", async () => {
