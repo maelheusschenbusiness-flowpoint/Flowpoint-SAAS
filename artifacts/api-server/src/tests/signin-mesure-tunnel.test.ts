@@ -249,8 +249,9 @@ describe("la mesure est posee et exploitable", () => {
     // A-09 : la creation de l'abonnement (et sa metadonnee d'attribution) est
     // portee par le service partage finalize-checkout / webhook.
     const billing = readFileSync(join(process.cwd(), "src/services/signup-subscription.ts"), "utf8");
-    expect(billing).toContain("metadataAttributionFunnel(");
-    expect(billing).toContain('intentMeta["fp_visitor_id"]');
+    // Reconciliation Flowpoint : l'attribution (visiteur, source ET campagne UTM) est relue
+    // depuis les metadonnees de l'intention, puis recopiee sur l'abonnement.
+    expect(billing).toContain("metadataDepuisAttribution(lireAttributionFunnel(intentMeta))");
   });
 });
 

@@ -28,6 +28,12 @@ describe("carry-params — what survives a funnel hop", () => {
       .toBe("https://app.flowpoint.pro/signin.html?fp_ref=SELLER-X#form");
   });
 
+  it("carries the UTM campaign labels across a redirect (Instagram attribution)", () => {
+    expect(withCarriedParams("/signin.html", { utm_source: "instagram", utm_medium: "social", utm_campaign: "reel_oct" }))
+      .toBe("/signin.html?utm_source=instagram&utm_medium=social&utm_campaign=reel_oct");
+    expect(carriedParams({ utm_campaign: "a@b.c" })).toEqual({});
+  });
+
   it("forwards only the allowlist, never an arbitrary parameter", () => {
     const out = carriedParams({
       fp_ref: "SELLER-AB12",
