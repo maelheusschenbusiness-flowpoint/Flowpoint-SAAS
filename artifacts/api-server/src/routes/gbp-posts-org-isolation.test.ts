@@ -48,11 +48,15 @@ const orgDbPatch = (_sql: string, params: unknown[]) => {
   return Promise.resolve({ rows: hit.map(r => ({ id: r.id })) });
 };
 
-function appFor(orgId: string) {
+function appFor(orgId: string, role = "owner") {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    Object.assign(req, { orgId, orgDb: orgDbPatch });
+    Object.assign(req, {
+      orgId,
+      orgDb: orgDbPatch,
+      orgContext: { orgId, role, userId: `${role}-${orgId}`, email: `${role}@example.test` },
+    });
     next();
   });
   app.use(router);
@@ -93,5 +97,18 @@ describe("GBP posts - isolation entre organisations (C-05)", () => {
     const r = await request(appFor("org-B")).patch("/gbp-posts/gp_b1").send({ status: "published" });
     expect(r.status).toBe(400);
     expect(r.body.code).toBe("GBP_STATUS_NOT_CLIENT_SETTABLE");
+  });
+
+  it("un viewer ne peut pas publier", async () => {
+    const r = await request(appFor("org-B", "viewer")).post("/gbp-posts/gp_b1/publish");
+    expect(r.status).toBe(403);
+    expect((store.rows[0] as Row).status).toBe("draft");
+    expect(publishGBPPost).not.toHaveBeenCalled();
+  });
+
+  it("un membre ne peut pas supprimer un post", async () => {
+    const r = await request(appFor("org-B", "member")).delete("/gbp-posts/gp_b1");
+    expect(r.status).toBe(403);
+    expect(store.rows).toHaveLength(1);
   });
 });
