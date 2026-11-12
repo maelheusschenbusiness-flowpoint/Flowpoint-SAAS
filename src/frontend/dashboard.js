@@ -1200,7 +1200,11 @@ async function apiAction(method, path, body, options = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
+      const result = await apiFetch(path, {
+        method,
+        body: body ? JSON.stringify(body) : undefined,
+        ...(method === 'GET' && options.force ? { force: true } : {}),
+      });
       const ms = Math.round(performance.now() - _t0);
       if(window.__DEV__) console.log('[FP_ACTION] method=' + method + ' route=' + path + ' status=ok ms=' + ms + ' attempt=' + attempt);
       return result;
@@ -8465,6 +8469,25 @@ function setupEditCalEventPanel(ev) {
 
 /* ── REPORTS ── */
 function renderReports() {
+  if (!window.fpViewExecutiveReport) {
+    window.fpViewExecutiveReport = async function(reportId) {
+      try {
+        const report = await apiFetch('/api/reports/' + encodeURIComponent(String(reportId)), { force: true });
+        if (!report || report.error) throw new Error(report?.error || fpT('Impossible de charger ce rapport.'));
+        const rawNotes = report.meeting_notes_json ?? report.meetingNotesJson;
+        const notes = Array.isArray(rawNotes) ? rawNotes : JSON.parse(typeof rawNotes === 'string' ? rawNotes : '[]');
+        if (!Array.isArray(notes) || notes.length === 0) throw new Error(fpT('Ce rapport ne contient pas de contenu consultable.'));
+        const reportName = String(report.name || fpT('Synthèse exécutive'));
+        const noteHtml = notes.map(note => '<section style="padding:12px 0;border-bottom:1px solid var(--fp-border)"><h3 style="font-size:14px;font-weight:700;color:var(--fp-text);margin:0 0 8px">' + escHtml(String(note.title || reportName)) + '</h3><div style="font-size:12px;line-height:1.6;color:var(--fp-text-muted);white-space:pre-wrap">' + escHtml(String(note.notes || '')) + '</div></section>').join('');
+        const id = String(report.id || reportId);
+        const download = '<button class="fp-btn fp-btn-primary fp-btn-sm" data-report-id="' + escHtml(id) + '" data-report-name="' + escHtml(reportName) + '" onclick="window._fpReportsAPI.downloadPdf(this.dataset.reportId,this.dataset.reportName)">' + fpT('Télécharger le PDF') + '</button>';
+        openFloatPanel(fpT('Consulter le rapport'), '<div style="padding:8px 2px"><h2 style="font-size:16px;font-weight:800;color:var(--fp-text);margin:0 0 10px">' + escHtml(reportName) + '</h2>' + noteHtml + '<div style="display:flex;justify-content:flex-end;margin-top:14px">' + download + '</div></div>');
+      } catch (error) {
+        showToast('error', error instanceof Error ? error.message : fpT('Impossible de charger ce rapport.'));
+      }
+    };
+  }
+
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
   }
@@ -8477,37 +8500,18 @@ function renderReports() {
   const circ52  = 2 * Math.PI * 52;
 
   // ── Shared data ────────────────────────────────────────────
-  const reportScores = PREVIEW_MODE ? [
-    { label: 'BI Score',            val: 74, color: '#2563EB', icon: '🧠' },
-    { label: 'Automation Score',    val: 61, color: '#06b6d4', icon: '⚙️' },
-    { label: 'Client Reporting',    val: 82, color: '#22c55e', icon: '👔' },
-    { label: 'Engagement Score',    val: 58, color: '#f59e0b', icon: '📊' },
-    { label: 'SEO Reporting',       val: 71, color: '#8b5cf6', icon: '🔍' },
-    { label: 'Performance Score',   val: 88, color: '#22c55e', icon: '⚡' },
-    { label: 'Vitesse Publication', val: 79, color: '#f97316', icon: '🚀' },
-    { label: 'Score Fidélisation',  val: 66, color: '#ec4899', icon: '💎' },
-  ] : [];
 
-  // allReports: real STATE data or PREVIEW_MODE demo
-  const _stRepts = (STATE.reports||[]);
-  const _DEMO_AR = PREVIEW_MODE ? [
-    { id:'r1', name:'Rapport SEO Executive — '+CUR_MONTH, date:"Aujourd'hui", type:'PDF', pages:14, shared:true,  size:'2.8 MB', client:'Global',  score:'+7 pts',  color:'#2563EB' },
-    { id:'r2', name:'Monitoring SLA — '+PREV_MONTH,        date:'01/'+PREV_MONTH, type:'PDF', pages:6, shared:false, size:'0.9 MB', client:'Interne', score:'99.1%',   color:'#22c55e' },
-    { id:'r3', name:'Rapport concurrent — '+CUR_MONTH,     date:'29/04/2026', type:'PDF', pages:10, shared:false, size:'2.1 MB', client:'Interne', score:'Critique', color:'#ef4444' },
-    { id:'r4', name:'Export données CSV — Audits',     date:'28/04/2026', type:'CSV', pages:1,  shared:false, size:'34 KB',  client:'Interne', score:'—',   color:'#64748b' },
-  ] : [];
-  const allReports = _stRepts.length > 0
-    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString(getLocale()):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }))
-    : _DEMO_AR;
+
+  // Persisted organization reports only.
+  const _stRepts = Array.isArray(STATE.reports) ? STATE.reports : [];
+
+  const allReports = _stRepts.filter(r => r && (r.id || r._id))
+    .map(r=>({ id:r.id||r._id, template_key:r.template_key||r.templateKey||null, name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString(getLocale()):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }));
 
   const _scheduledRaw = STATE.scheduledReports || STATE.reportSchedules || null;
-  const scheduled = _scheduledRaw && Array.isArray(_scheduledRaw) && _scheduledRaw.length > 0
-    ? _scheduledRaw.map(r => ({ name: r.name||r.title||'Rapport', freq: r.frequency||r.freq||'Manuel', dest: r.email||r.destination||'—', next: r.nextDate||r.next||'—', active: r.active||r.enabled||false }))
-    : (PREVIEW_MODE ? [
-        { name: 'Rapport SEO mensuel',         freq: 'Mensuel · 1er', dest: 'client@exemple.fr',  next: '01/06', active: true  },
-        { name: 'Rapport Executive interne',   freq: 'Hebdo · Lundi', dest: 'equipe@agence.fr',   next: '13/05', active: true  },
-        { name: 'Export CSV données',           freq: 'Quotidien · 8h',dest: 'Webhook CRM',        next: 'Demain', active: false },
-      ] : []);
+  const scheduled = Array.isArray(_scheduledRaw)
+    ? _scheduledRaw.map(r => ({ name: r.name||r.title||'Rapport', freq: r.frequency||r.freq||'Manuel', dest: r.email||r.destination||'—', next: r.nextDate||r.next||'—', active: !!(r.active||r.enabled) }))
+    : [];
 
   // ─── AI Block (rapport page context) ───────────────────────
     const _rpAiBlock = aiBlock(
@@ -8578,30 +8582,43 @@ function renderReports() {
       if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.', gain:'À mesurer', color:'#22c55e' });
       return r;
     })();
-    const recs = _recs_live.length > 0 ? _recs_live : (PREVIEW_MODE ? [
-      { icon: '🎯', title: 'Priorité absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
-      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.',    gain: 'À mesurer', color: '#22c55e' },
-      { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
-    ] : []);
+    const recs = _recs_live;
     const _execAvg = _execCurAvg;
     const _hasAiExecutive = !!(STATE.me && STATE.me.addons && STATE.me.addons.aiExecutiveReport);
     window.FP_EXECUTIVE_REPORT_API = window.FP_EXECUTIVE_REPORT_API || {
       generating: false,
       async generate() {
         if (this.generating) return;
+        const subjectInput = document.getElementById('fp-ai-exec-subject');
+        const subject = String(subjectInput?.value || '').trim();
+        if (subject.length > 120) { showToast('error', fpT('Le sujet ne peut pas dépasser 120 caractères.')); return; }
         this.generating = true;
         const button = document.getElementById('fp-ai-exec-generate');
         if (button) button.disabled = true;
+        if (subjectInput) subjectInput.disabled = true;
         showToast('info', fpT('Génération de la synthèse exécutive…'));
         try {
-          const result = await apiFetch('/api/reports/ai-executive-summary', { method: 'POST', body: JSON.stringify({}) });
+          const result = await apiFetch('/api/reports/ai-executive-summary', { method: 'POST', body: JSON.stringify({ subject }) });
           if (!result || result.ok === false || !result.reportId) throw new Error(result?.error || fpT('La synthèse n’a pas pu être générée.'));
-          const reports = await apiFetch('/api/reports');
-          if (!Array.isArray(reports) || !reports.some(report => String(report.id) === String(result.reportId))) {
-            throw new Error(fpT('La synthèse n’a pas pu être générée.'));
+          if (subjectInput) subjectInput.value = '';
+          let reportsRefreshed = false;
+          try {
+            const reports = await apiFetch('/api/reports', { force: true });
+            if (!Array.isArray(reports)) throw new Error('Invalid reports response');
+            STATE.reports = reports;
+            reportsRefreshed = reports.some(report => String(report.id) === String(result.reportId));
+          } catch (refreshError) {
+            console.warn('[FP] Executive report saved; report list refresh failed', refreshError);
           }
-          STATE.reports = reports;
-          showToast('success', fpT('Synthèse créée dans vos rapports.'));
+          const currentReports = Array.isArray(STATE.reports) ? STATE.reports : [];
+          if (!currentReports.some(report => String(report.id) === String(result.reportId))) {
+            currentReports.unshift({ id: result.reportId, name: result.name || 'Synthèse exécutive IA', type: 'PDF', template_key: 'executive', date: new Date().toISOString() });
+          }
+          STATE.reports = currentReports;
+          if (window._fpReportsState && typeof window._fpReportsState === 'object') {
+            window._fpReportsState = { ...window._fpReportsState, loading: false, loaded: true, reports: currentReports, error: null };
+          }
+          showToast(reportsRefreshed ? 'success' : 'info', fpT(reportsRefreshed ? 'Synthèse créée dans vos rapports.' : 'Rapport créé; la liste sera actualisée ultérieurement.'));
           render(STATE.currentSection);
         } catch (error) {
           showToast('error', error instanceof Error ? error.message : fpT('La synthèse n’a pas pu être générée.'));
@@ -8609,6 +8626,8 @@ function renderReports() {
           this.generating = false;
           const currentButton = document.getElementById('fp-ai-exec-generate');
           if (currentButton) currentButton.disabled = false;
+          const currentInput = document.getElementById('fp-ai-exec-subject');
+          if (currentInput) currentInput.disabled = false;
         }
       },
     };
@@ -8618,6 +8637,7 @@ function renderReports() {
           <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('Synthèse exécutive IA')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${fpT('Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.')}</div>
         </div>
+        ${_hasAiExecutive ? `<div style="flex:1 1 280px;min-width:220px;max-width:460px"><label for="fp-ai-exec-subject" style="display:block;font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:5px">${fpT('Sujet du rapport (facultatif)')}</label><input id="fp-ai-exec-subject" type="text" maxlength="120" autocomplete="off" aria-label="Sujet du rapport (facultatif)" placeholder="${fpT('Ex. : acquisition organique')}" style="width:100%;padding:8px 10px;border:1px solid var(--fp-border);border-radius:8px;background:var(--fp-inner-card);color:var(--fp-text);font:inherit;font-size:12px"></div>` : ''}
         ${_hasAiExecutive
           ? `<button id="fp-ai-exec-generate" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_EXECUTIVE_REPORT_API.generate()">${fpT('Générer la synthèse')}</button>`
           : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled title="${fpT('Add-on non disponible à l’achat')}">${fpT('Bientôt disponible')}</button>`}
@@ -8625,18 +8645,16 @@ function renderReports() {
       ${isPro
         ? aiBlock(_execAvg !== null
             ? fpT("Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.", { score: _execAvg })
-            : PREVIEW_MODE
-              ? fpT("Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité.")
-              : fpT("Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé."),
+            : fpT("Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé."),
             ['Rapport complet PDF', 'Plan actions prioritaires', 'Partager au client'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${fpT('Rapports Executive — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Synthèses business IA, recommandations stratégiques et analyse de performance executive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard(fpT('Score business global'), displayStat(_execAvg !== null ? _execAvg + '/100' : null, '72/100'), fpT(_execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+14 pts en 4 mois' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard(fpT('Score SEO'), displayStat(_execAvg !== null ? _execAvg + '/100' : null, '74/100'), fpT(_execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 4 mois' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard(fpT('Score conversion'), displayStat(null, '48/100'), fpT(PREVIEW_MODE ? '+10 pts — encore critique' : 'Connectez une source de données'), 'neutral')}
-        ${statCard(fpT('Score performance'), displayStat(_execUp !== null ? _execUp + '/100' : null, '88/100'), fpT(_execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : PREVIEW_MODE ? 'Excellent — SLA tenu' : 'Aucun monitor'), _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
+        ${statCard(fpT('Score business global'), displayStat(null), fpT('Aucune donnée'), 'neutral')}
+        ${statCard(fpT('Score SEO'), displayStat(_execAvg !== null ? _execAvg + '/100' : null), fpT(_execAvg !== null ? 'score moyen portfolio' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
+        ${statCard(fpT('Score conversion'), displayStat(null), fpT('Connectez une source de données'), 'neutral')}
+        ${statCard(fpT('Score performance'), displayStat(_execUp !== null ? _execUp + '/100' : null), fpT(_execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : 'Aucun monitor'), _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
       </div>
 
       <!-- 4-MONTH PERFORMANCE CHART — measured audit history only -->
@@ -10885,7 +10903,7 @@ function renderBilling() {
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), availability:'coming_soon', tag:'Données requises', roi:'Aucune perte estimée sans preuve', desc:'Les pertes financières restent masquées tant que des événements de conversion réels ne les mesurent pas.', features:['Aucune perte financière inventée','Aucune estimation sans événements réels','Données comportementales requises'] },
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Exports personnalisés à votre marque', desc:'Rapports PDF personnalisés avec le logo et les couleurs de votre agence.', features:['Logo et couleurs de votre agence','Personnalisation des exports','URL de rapport personnalisée','Modèles PDF','Livraison de rapports aux clients'] },
-      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.', features:['Bientôt disponible'] },
+      { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère des packs persistés, des rapports multi-sites, des portails clients et des livraisons planifiées.', features:['Packs persistés', 'Rapports multi-sites', 'Portail client en lecture seule', 'Livraison planifiée'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.', features:['Bientôt disponible'] },
       { key:'agencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), availability:'coming_soon', tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
       // ── IA ──
@@ -20653,6 +20671,29 @@ function bindGlobalEvents() {
     "Ajouter des attributs alt descriptifs sur toutes les images": "Add descriptive alt attributes to all images",
     "Données structurées Schema.org": "Schema.org structured data",
     "Données insuffisantes": "Insufficient data",
+    "Rapport multi-sites": "Multi-site report",
+    "Sélectionnez les audits terminés à inclure; seules ces mesures seront consolidées.": "Select the completed audits to include; only these measurements will be consolidated.",
+    "Consolider les sites et créer un portail": "Consolidate sites and create a portal",
+    "Email client": "Client email",
+    "Expression cron": "Cron expression",
+    "Planifier la génération et l’envoi": "Schedule generation and delivery",
+    "La livraison planifiée est désactivée par la configuration du serveur.": "Scheduled delivery is disabled by the server configuration.",
+    "Révoqué": "Revoked",
+    "Révoquer le portail": "Revoke portal",
+    "Jamais exécuté": "Never run",
+    "Suspendre": "Pause",
+    "Rapport multi-sites créé. Portail client : {url}": "Multi-site report created. Client portal: {url}",
+    "Impossible de créer le rapport et le portail": "Could not create the report and portal",
+    "Génération et livraison planifiées": "Generation and delivery scheduled",
+    "Impossible de planifier la livraison": "Could not schedule delivery",
+    "Impossible de révoquer le portail": "Could not revoke the portal",
+    "Impossible de modifier la planification": "Could not update the schedule",
+    "Génère des packs persistés, des rapports multi-sites, des portails clients en lecture seule et des livraisons planifiées.": "Creates saved packs, multi-site reports, read-only client portals, and scheduled deliveries.",
+    "Génère des packs persistés, des rapports multi-sites, des portails clients et des livraisons planifiées.": "Creates saved packs, multi-site reports, client portals, and scheduled deliveries.",
+    "Packs persistés": "Saved packs",
+    "Rapports multi-sites": "Multi-site reports",
+    "Portail client en lecture seule": "Read-only client portal",
+    "Livraison planifiée": "Scheduled delivery",
     "Prévision indisponible — données insuffisantes": "Forecast unavailable — insufficient data",
     "Au moins 14 jours de données GSC et GA4 valides (sessions, conversions et revenus) sont nécessaires.": "At least 14 days of valid GSC and GA4 data (sessions, conversions, and revenue) are required.",
     "Attribution financière : données insuffisantes": "Financial attribution: insufficient data",
@@ -22746,6 +22787,16 @@ function bindGlobalEvents() {
     "Synthèse exécutive IA": "AI executive summary",
     "Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.": "Generated from actual recorded audits and monitors. Metrics remain calculated from verified data.",
     "Générer la synthèse": "Generate summary",
+    "Synthèse exécutive": "Executive summary",
+    "Sujet du rapport (facultatif)": "Report subject (optional)",
+    "Ex. : acquisition organique": "e.g. organic acquisition",
+    "Le sujet ne peut pas dépasser 120 caractères.": "The subject must not exceed 120 characters.",
+    "Consulter": "View",
+    "Consulter le rapport": "View report",
+    "Télécharger le PDF": "Download PDF",
+    "Impossible de charger ce rapport.": "Unable to load this report.",
+    "Ce rapport ne contient pas de contenu consultable.": "This report has no viewable content.",
+    "Rapport créé; la liste sera actualisée ultérieurement.": "Report created; the list will refresh shortly.",
     "Add-on non disponible à l’achat": "Add-on not available for purchase",
     ". Tous les sites respectent leur SLA. Latence moyenne :": ". All sites are meeting their SLA. Average latency:",
     "Impossible de charger vos clients — réessayez.": "Unable to load your clients — retry.",
@@ -74268,6 +74319,7 @@ function renderAgencyPacksPanel() {
   const audits = Array.isArray(panelState.audits) ? panelState.audits : [];
   const packs = Array.isArray(panelState.packs) ? panelState.packs : [];
   const selectedAuditId = String(panelState.selectedAuditId || '');
+  const selectedAuditIds = Array.isArray(panelState.selectedAuditIds) ? panelState.selectedAuditIds : [];
   const controls = panelState.loaded ? `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
       <input type="text" maxlength="160" aria-label="${fpT('Nom du client')}"
@@ -74300,6 +74352,37 @@ function renderAgencyPacksPanel() {
           onclick="window.FP_V1_ADDON_PANELS.createAgencySinglePack(this.dataset.fpAgencyPackIndex)"
           ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le rapport')}</button>
       </div>`).join('')}
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--fp-border)">
+      <h3>${fpT('Rapport multi-sites')}</h3>
+      <p class="fp-text-muted">${fpT('Sélectionnez les audits terminés à inclure; seules ces mesures seront consolidées.')}</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        ${audits.filter(audit => audit.status === 'completed').map(audit => `
+          <label><input type="checkbox" ${selectedAuditIds.includes(String(audit.id)) ? 'checked' : ''}
+            onchange="window.FP_V1_ADDON_PANELS.toggleAgencySite(this.value,this.checked)" value="${escHtml(audit.id)}">
+            ${escHtml(audit.url || audit.id)} · ${escHtml(audit.score ?? '—')}</label>`).join('')}
+      </div>
+      <button type="button" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.consolidateAgencySites()"
+        ${selectedAuditIds.length < 2 || panelState.submitting ? 'disabled' : ''}>${fpT('Consolider les sites et créer un portail')}</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <input type="email" maxlength="254" aria-label="${fpT('Email client')}" placeholder="${fpT('Email client')}"
+          value="${escHtml(panelState.recipientEmail || '')}" oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('recipientEmail',this.value)">
+        <input type="text" maxlength="100" aria-label="${fpT('Expression cron')}" placeholder="0 9 * * 1"
+          value="${escHtml(panelState.cron || '0 9 * * 1')}" oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('cron',this.value)">
+        <input type="text" maxlength="80" aria-label="${fpT('Fuseau horaire')}" placeholder="Europe/Paris"
+          value="${escHtml(panelState.timezone || 'Europe/Paris')}" oninput="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('timezone',this.value)">
+        <button type="button" class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.createAgencySchedule()"
+          ${selectedAuditIds.length < 2 || panelState.submitting || !panelState.schedulerEnabled ? 'disabled' : ''}>${fpT('Planifier la génération et l’envoi')}</button>
+      </div>
+      ${panelState.schedulerEnabled ? '' : `<p class="fp-text-muted">${fpT('La livraison planifiée est désactivée par la configuration du serveur.')}</p>`}
+      ${(panelState.portals || []).map(portal => `<div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+        <span>${escHtml(portal.client_name)} · ${escHtml(portal.expires_at)}</span>
+        ${portal.revoked_at ? `<span>${fpT('Révoqué')}</span>` : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.revokeAgencyPortal('${escHtml(portal.id)}')">${fpT('Révoquer le portail')}</button>`}
+      </div>`).join('')}
+      ${(panelState.schedules || []).map(schedule => `<div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+        <span>${escHtml(schedule.client_name)} · ${escHtml(schedule.recipient_email)} · ${escHtml(schedule.cron_expression)} (${escHtml(schedule.timezone)}) · ${escHtml(schedule.last_status || fpT('Jamais exécuté'))}</span>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.toggleAgencySchedule('${escHtml(schedule.id)}',${!schedule.enabled})">${schedule.enabled ? fpT('Suspendre') : fpT('Reprendre')}</button>
+      </div>`).join('')}
+    </div>
   ` : `<div class="fp-text-muted">${escHtml(panelState.error || (panelState.loading ? fpT('Chargement…') : fpT('Aucun pack chargé.')))}</div>`;
   return `<section class="fp-card" style="margin-top:18px">
     <div class="fp-card-header"><div><h2>${fpT('Packs de rapports d’agence')}</h2><p class="fp-text-muted">${fpT('Modèles réutilisables pour les rapports clients')}</p></div>
@@ -74318,6 +74401,13 @@ window._fpAgencyPacksState = window._fpAgencyPacksState || {
   audits: [],
   clientName: '',
   selectedAuditId: '',
+  selectedAuditIds: [],
+  recipientEmail: '',
+  cron: '0 9 * * 1',
+  timezone: 'Europe/Paris',
+  portals: [],
+  schedules: [],
+  schedulerEnabled: false,
   error: '',
 };
 
@@ -74520,6 +74610,13 @@ window.FP_V1_ADDON_PANELS = {
       const result = await apiFetch('/api/reports/agency-packs');
       panelState.audits = Array.isArray(result?.audits) ? result.audits : [];
       panelState.packs = Array.isArray(result?.packs) ? result.packs : [];
+      const [portalResult, scheduleResult] = await Promise.all([
+        apiFetch('/api/reports/agency-packs/portals'),
+        apiFetch('/api/reports/agency-packs/schedules'),
+      ]);
+      panelState.portals = Array.isArray(portalResult) ? portalResult : [];
+      panelState.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
+      panelState.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
       if (!panelState.audits.some(audit => String(audit.id || '') === panelState.selectedAuditId)) {
         panelState.selectedAuditId = String(panelState.audits[0]?.id || '');
       }
@@ -74533,8 +74630,75 @@ window.FP_V1_ADDON_PANELS = {
     }
   },
   updateAgencyPackDraft(field, value) {
-    if (field !== 'clientName' && field !== 'selectedAuditId') return;
+    if (!['clientName', 'selectedAuditId', 'recipientEmail', 'cron', 'timezone'].includes(field)) return;
     window._fpAgencyPacksState[field] = String(value || '');
+  },
+  toggleAgencySite(auditId, selected) {
+    const state = window._fpAgencyPacksState;
+    const ids = new Set(state.selectedAuditIds || []);
+    if (selected) ids.add(String(auditId)); else ids.delete(String(auditId));
+    state.selectedAuditIds = [...ids];
+    render();
+  },
+  async consolidateAgencySites() {
+    const state = window._fpAgencyPacksState;
+    if (state.submitting) return;
+    state.submitting = true;
+    render();
+    try {
+      const consolidated = await apiFetch('/api/reports/agency-packs/consolidate', {
+        method: 'POST',
+        body: JSON.stringify({ clientName: state.clientName, auditIds: state.selectedAuditIds }),
+      });
+      const portal = await apiFetch('/api/reports/agency-packs/portals', {
+        method: 'POST',
+        body: JSON.stringify({ clientName: state.clientName, reportIds: [consolidated.id] }),
+      });
+      showToast('success', fpT('Rapport multi-sites créé. Portail client : {url}', {url: portal.url}));
+      state.portals = await apiFetch('/api/reports/agency-packs/portals', { force: true });
+      await window._fpReportsAPI.load({ force: true });
+    } catch (error) {
+      showToast('error', error?.message || fpT('Impossible de créer le rapport et le portail'));
+    } finally { state.submitting = false; render(); }
+  },
+  async createAgencySchedule() {
+    const state = window._fpAgencyPacksState;
+    if (state.submitting) return;
+    state.submitting = true;
+    render();
+    try {
+      await apiFetch('/api/reports/agency-packs/schedules', {
+        method: 'POST',
+        body: JSON.stringify({
+          clientName: state.clientName, recipientEmail: state.recipientEmail,
+          auditIds: state.selectedAuditIds, cron: state.cron, timezone: state.timezone,
+        }),
+      });
+      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules', { force: true });
+      state.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
+      state.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
+      showToast('success', fpT('Génération et livraison planifiées'));
+    } catch (error) {
+      showToast('error', error?.message || fpT('Impossible de planifier la livraison'));
+    } finally { state.submitting = false; render(); }
+  },
+  async revokeAgencyPortal(id) {
+    try {
+      await apiFetch(`/api/reports/agency-packs/portals/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      window._fpAgencyPacksState.portals = await apiFetch('/api/reports/agency-packs/portals', { force: true });
+      render();
+    } catch (error) { showToast('error', error?.message || fpT('Impossible de révoquer le portail')); }
+  },
+  async toggleAgencySchedule(id, enabled) {
+    try {
+      await apiFetch(`/api/reports/agency-packs/schedules/${encodeURIComponent(id)}`, {
+        method: 'PATCH', body: JSON.stringify({ enabled }),
+      });
+      const scheduleResult = await apiFetch('/api/reports/agency-packs/schedules', { force: true });
+      window._fpAgencyPacksState.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
+      window._fpAgencyPacksState.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
+      render();
+    } catch (error) { showToast('error', error?.message || fpT('Impossible de modifier la planification')); }
   },
   async createAgencyPack() {
     const panelState = window._fpAgencyPacksState;
@@ -78421,6 +78585,7 @@ function renderGA4Reports() {
                 <td style="text-align:center;color:var(--fp-text-muted);font-size:11px">${rPages != null ? rPages : '—'}</td>
                 <td style="text-align:center">
                   <div style="display:inline-flex;gap:4px">
+                    ${rId && (r.template_key === 'executive' || r.templateKey === 'executive') ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-report-view="${escHtml(String(rId))}" onclick="window.fpViewExecutiveReport(this.dataset.reportView)">${fpT('Consulter')}</button>` : ''}
                     ${rId ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.downloadPdf('${escHtml(rId)}','${escHtml(rName.replace(/'/g,"'"))}')">⬇ PDF</button>` : ''}
                     ${rId && !rShared ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.share('${escHtml(rId)}')">🔗 Partager</button>` : ''}
                     ${rId ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:#ef4444" onclick="window._fpReportsAPI.delete('${escHtml(rId)}','${escHtml(rName.replace(/'/g,"'"))}')">Suppr.</button>` : ''}

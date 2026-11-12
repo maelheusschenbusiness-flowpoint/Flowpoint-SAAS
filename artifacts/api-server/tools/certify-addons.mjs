@@ -17,6 +17,16 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const API_DIR = resolve(SCRIPT_DIR, "..");
 const REPO_ROOT = resolve(API_DIR, "../..");
 const E2E_SPEC = "e2e/parcours/10-addons-authorises.spec.mjs";
+const SHARED_REPLACEMENT_ADDON_BROWSER_TITLE =
+  "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session";
+const SHARED_REPLACEMENT_ADDON_BROWSER_LABEL =
+  "Shared browser flow: four remaining replacement add-ons";
+const AGENCY_SCHEDULER_BROWSER_TITLE =
+  "Agency Reporting Packs: cron delivery is captured and tenant-isolated";
+const AGENCY_WEBHOOK_BROWSER_TITLE =
+  "Agency Reporting Packs: valid Stripe TEST webhook is processed locally";
+const CONVERSION_BROWSER_TITLE =
+  "Conversion Opportunity Engine saves thresholds without fabricating GA4 data";
 
 export const ADDON_REGISTRY = [
   {
@@ -194,14 +204,24 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/routes/agency-packs.test.ts",
       "src/routes/agency-packs-postgres.test.ts",
+      "src/routes/agency-portal.test.ts",
+      "src/services/agency-reporting.test.ts",
+      "src/services/agency-report-scheduler.test.ts",
+      "src/services/agency-report-mail-capture.test.ts",
+      "src/services/pdf-agency-report.test.ts",
       "src/services/stripe-trial-history.test.ts",
       "src/tests/signup-token-over-stale-session.test.ts",
       "src/lib/addon-test-price-coverage.test.ts",
     ],
-    browserTitle: "Agency Reporting Packs quota is atomic and viewer access is denied",
+    browserTitles: [
+      "Agency Reporting Packs quota is atomic and viewer access is denied",
+      "Agency Reporting Packs: multi-site report, PDF, portal, and scheduled delivery",
+      AGENCY_SCHEDULER_BROWSER_TITLE,
+    ],
     stripeBrowserTitles: [
       "Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle",
       "Agency checkout CTA completes a new-customer Stripe TEST purchase",
+      AGENCY_WEBHOOK_BROWSER_TITLE,
     ],
   },
   {
@@ -244,7 +264,7 @@ export const ADDON_REGISTRY = [
       "src/services/conversion-opportunity-engine.test.ts",
       "src/routes/conversion-opportunity-engine.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: CONVERSION_BROWSER_TITLE,
   },
   {
     id: "seo-change-impact",
@@ -254,7 +274,8 @@ export const ADDON_REGISTRY = [
       "src/services/seo-change-impact.test.ts",
       "src/routes/seo-change-impact.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
     id: "agency-portfolio-priorities",
@@ -264,7 +285,8 @@ export const ADDON_REGISTRY = [
       "src/services/agency-portfolio-priorities.test.ts",
       "src/routes/agency-portfolio-priorities.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
     id: "technical-seo-fix-verification",
@@ -274,7 +296,8 @@ export const ADDON_REGISTRY = [
       "src/services/technical-seo-fix-verification.test.ts",
       "src/routes/technical-seo-fix-verification.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
     id: "organic-campaign-tracker",
@@ -284,7 +307,8 @@ export const ADDON_REGISTRY = [
       "src/services/organic-campaign-tracker.test.ts",
       "src/routes/organic-campaign-tracker.test.ts",
     ],
-    browserTitle: "the four remaining replacement add-ons save, measure, and reload in one tenant-isolated session",
+    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
 ];
 
@@ -353,6 +377,9 @@ export function parseArgs(args) {
     checkoutAbandonment: false,
     checkout3ds: false,
     stripeTest: false,
+    stripeWebhookReplay: false,
+    browserOnly: false,
+    browserTitles: [],
     combinedCheckoutAgency: false,
   };
   for (let index = 0; index < args.length; index += 1) {
@@ -369,6 +396,15 @@ export function parseArgs(args) {
       options.checkout3ds = true;
     } else if (arg === "--stripe-test") {
       options.stripeTest = true;
+    } else if (arg === "--stripe-webhook-replay") {
+      options.stripeWebhookReplay = true;
+    } else if (arg === "--browser-only") {
+      options.browserOnly = true;
+    } else if (arg === "--browser-title") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--browser-title requires an exact test title.");
+      options.browserTitles.push(value);
+      index += 1;
     } else if (arg === "--combined-checkout-agency") {
       options.combinedCheckoutAgency = true;
     } else if (arg === "--addon") {
@@ -394,9 +430,33 @@ export function parseArgs(args) {
     options.checkout3ds ||
     options.addons.length ||
     options.selection === "all" ||
-    options.stripeTest
+    options.stripeTest ||
+    options.stripeWebhookReplay
   )) {
     throw new Error("--checkout-abandonment cannot be combined with add-on selections or --stripe-test; use --combined-checkout-agency for both flows.");
+  }
+  if (options.browserOnly && (
+    options.addons.length !== 1 ||
+    options.browserTitles.length === 0 ||
+    options.combinedCheckoutAgency ||
+    options.checkoutAbandonment
+  )) {
+    throw new Error("--browser-only requires one --addon and at least one --browser-title.");
+  }
+  if (options.browserTitles.length && !options.browserOnly) {
+    throw new Error("--browser-title requires --browser-only.");
+  }
+  if (options.stripeWebhookReplay && (
+    options.stripeTest ||
+    !options.browserOnly ||
+    options.addons.length !== 1 ||
+    options.addons[0].trim().toLowerCase() !== "agency-reporting-packs" ||
+    options.browserTitles.length !== 1 ||
+    options.browserTitles[0] !== AGENCY_WEBHOOK_BROWSER_TITLE ||
+    options.combinedCheckoutAgency ||
+    options.checkoutAbandonment
+  )) {
+    throw new Error("--stripe-webhook-replay requires only the Agency webhook browser test and never runs checkout.");
   }
   if (options.checkout3ds && (
     options.checkoutAbandonment ||
@@ -529,6 +589,8 @@ export function buildLocalEnvironment({
     FLOWPOINT_ADDON_CERT_LOCAL_ONLY: "1",
     DB_HOTE_ATTENDU: `${expectedHost}/${expectedDatabase}`,
     DB_UTILISATEUR_ATTENDU: "runner",
+    PUBLIC_URL: `http://${expectedHost}:${port}`,
+    AGENCY_REPORT_SCHEDULER_ENABLED: "true",
     PGSSLMODE: "disable",
     PGCONNECT_TIMEOUT: "5",
     ENABLE_TEST_MAILER: "true",
@@ -915,9 +977,12 @@ Options:
   --pending              Run add-ons without historical certification attribution (default)
   --all                  Run the complete 24-add-on registry
   --addon <name-or-id>   Run one add-on (repeatable)
+  --browser-only         Run only the selected add-on's focused browser test(s)
+  --browser-title <name> Run one exact browser-test title (repeatable with --browser-only)
   --checkout-abandonment Run the isolated signup recovery E2E with Stripe TEST only
   --checkout-3ds         Run the isolated real-card 3DS browser scenarios with Stripe TEST only
   --stripe-test          Run the isolated Agency Packs lifecycle against Stripe TEST only
+  --stripe-webhook-replay Replay one Stripe TEST event locally; no checkout or public delivery
   --combined-checkout-agency Run both flows in one disposable Stripe TEST environment
   --help                 Show this help
 
@@ -946,7 +1011,16 @@ async function runCertification(options, signal) {
   if (options.combinedCheckoutAgency && (!agencyPacks || selected.length !== 2)) {
     throw new Error("Combined checkout/Agency certification requires the Agency registry entry.");
   }
-  const useStripeTest = options.checkoutAbandonment || options.checkout3ds || options.stripeTest || options.combinedCheckoutAgency;
+  const useStripeTest = options.checkoutAbandonment || options.checkout3ds ||
+    options.stripeTest || options.stripeWebhookReplay || options.combinedCheckoutAgency;
+  const availableBrowserTitles = new Set(selected.flatMap(addon => [
+    ...(addon.browserTitles ?? (addon.browserTitle ? [addon.browserTitle] : [])),
+    ...(useStripeTest ? (addon.stripeBrowserTitles ?? []) : []),
+  ]).filter(Boolean));
+  const unavailableTitles = options.browserTitles.filter(title => !availableBrowserTitles.has(title));
+  if (unavailableTitles.length) {
+    throw new Error(`Browser title is not registered for the selected mode: ${unavailableTitles.join(", ")}.`);
+  }
   const standardPlanTestPriceId = useStripeTest
     ? await resolveStandardTestPlanPriceId(process.env["STRIPE_TEST_KEY"])
     : undefined;
@@ -975,7 +1049,7 @@ async function runCertification(options, signal) {
         tempDir,
         stripeTest: true,
         standardPlanTestPriceId,
-        includeAgencyPacks: includesAgencyPacks,
+        includeAgencyPacks: (options.stripeTest || options.combinedCheckoutAgency) && includesAgencyPacks,
       })
       : testEnv;
     validateLocalDatabaseEnv(testEnv);
@@ -1010,36 +1084,45 @@ async function runCertification(options, signal) {
     for (const addon of (options.checkout3ds ? [] : selected)) {
       if (signal.aborted) break;
       console.log(`\nADD-ON: ${addon.label}${addon.historical ? " (historical attribution; not a new certification)" : ""}`);
-      const freshTests = addon.tests.filter(file => !previouslyRunFiles.has(file));
-      const reusedTests = addon.tests.length - freshTests.length;
-
-      let unit = { status: "reused", files: addon.tests };
-      if (freshTests.length !== addon.tests.length) {
-        if (freshTests.length) {
-          unit = await runUnitTests({ ...addon, tests: freshTests }, testEnv, signal);
-        } else if (addon.tests.length) {
-          console.log(`  REUSED ${reusedTests} targeted test file(s) already executed in this run.`);
-        }
+      let unit;
+      if (options.browserOnly) {
+        unit = { status: "skipped", files: [] };
       } else {
-        unit = await runUnitTests(addon, testEnv, signal);
-      }
-      for (const file of freshTests) {
-        if (!unit.missingFiles?.includes(file)) previouslyRunFiles.add(file);
+        const freshTests = addon.tests.filter(file => !previouslyRunFiles.has(file));
+        const reusedTests = addon.tests.length - freshTests.length;
+        unit = { status: "reused", files: addon.tests };
+        if (freshTests.length !== addon.tests.length) {
+          if (freshTests.length) {
+            unit = await runUnitTests({ ...addon, tests: freshTests }, testEnv, signal);
+          } else if (addon.tests.length) {
+            console.log(`  REUSED ${reusedTests} targeted test file(s) already executed in this run.`);
+          }
+        } else {
+          unit = await runUnitTests(addon, testEnv, signal);
+        }
+        for (const file of freshTests) {
+          if (!unit.missingFiles?.includes(file)) previouslyRunFiles.add(file);
+        }
       }
 
       summary.push({ id: addon.id, label: addon.label, historical: addon.historical, unit: unit.status });
       if (unit.status === "interrupted") break;
       const browserSpec = addon.browserSpec ?? E2E_SPEC;
       const browserTitles = [
-        addon.browserTitle,
+        ...(addon.browserTitles ?? (addon.browserTitle ? [addon.browserTitle] : [])),
         ...(useStripeTest ? (addon.stripeBrowserTitles ?? []) : []),
-      ].filter(Boolean);
+      ].filter(Boolean).filter(title => !options.browserTitles.length || options.browserTitles.includes(title));
       for (const browserTitle of browserTitles) {
         const browserRunKey = `${browserSpec}::${browserTitle}`;
         if (browserRuns.has(browserRunKey) || signal.aborted) continue;
         browserRuns.add(browserRunKey);
         const browser = await runBrowserTests([browserTitle], apiEnv, signal, browserSpec);
-        summary.push({ id: `browser:${addon.id}`, label: addon.label, historical: addon.historical, unit: browser.status });
+        summary.push({
+          id: `browser:${addon.id}`,
+          label: addon.browserLabel ?? addon.label,
+          historical: addon.historical,
+          unit: browser.status,
+        });
         if (browser.status === "interrupted") break;
       }
     }

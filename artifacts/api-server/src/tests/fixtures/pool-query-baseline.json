@@ -34,8 +34,8 @@
       "noOrg": 8
     },
     "lib/conversion-outbox.ts": {
-      "total": 9,
-      "noOrg": 8
+      "total": 11,
+      "noOrg": 10
     },
     "middlewares/customDomainHost.ts": {
       "total": 4,
@@ -178,8 +178,8 @@
       "noOrg": 1
     },
     "routes/share.ts": {
-      "total": 1,
-      "noOrg": 1
+      "total": 2,
+      "noOrg": 2
     },
     "routes/team.ts": {
       "total": 22,
@@ -202,6 +202,14 @@
       "noOrg": 0
     },
     "services/addons-service.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/agency-report-scheduler.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/agency-reporting.ts": {
       "total": 1,
       "noOrg": 1
     },
