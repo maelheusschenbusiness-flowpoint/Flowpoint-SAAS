@@ -10,6 +10,7 @@ const {
   checkQuotaMock,
   recordUsageMock,
   logActivityMock,
+  poolQueryMock,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
   queryMock: vi.fn(),
@@ -18,9 +19,10 @@ const {
   checkQuotaMock: vi.fn(),
   recordUsageMock: vi.fn(),
   logActivityMock: vi.fn(),
+  poolQueryMock: vi.fn(),
 }));
 
-vi.mock("@workspace/db", () => ({ pool: { connect: connectMock } }));
+vi.mock("@workspace/db", () => ({ pool: { connect: connectMock, query: poolQueryMock } }));
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
@@ -313,5 +315,37 @@ describe("AI Workspace Launch persisted flow", () => {
       ["session-a", "org-b"],
     );
     expect(releaseMock).toHaveBeenCalledOnce();
+  });
+
+  describe("history of launches", () => {
+    it("lists only the requesting organization's launches, with summary fields", async () => {
+      poolQueryMock.mockResolvedValueOnce({ rows: [
+        { id: "s2", status: "completed", site_url: "https://b.example", business_name: "B", niche: null, location: "", started_at: new Date("2026-11-02T10:00:00Z"), mission_count: 12 },
+        { id: "s1", status: "completed", site_url: null, business_name: "A", niche: "seo", location: "Lyon", started_at: "2026-11-01T10:00:00.000Z", mission_count: "7" },
+      ] });
+      const response = await request(makeApp({ orgId: "org-a" })).get("/ai-workspace-launch");
+      expect(response.status).toBe(200);
+      expect(response.body.launches).toEqual([
+        { sessionId: "s2", status: "completed", siteUrl: "https://b.example", businessName: "B", niche: null, location: null, startedAt: "2026-11-02T10:00:00.000Z", missionCount: 12 },
+        { sessionId: "s1", status: "completed", siteUrl: null, businessName: "A", niche: "seo", location: "Lyon", startedAt: "2026-11-01T10:00:00.000Z", missionCount: 7 },
+      ]);
+      expect(poolQueryMock.mock.calls[0]![1]).toEqual(["org-a"]);
+      expect(String(poolQueryMock.mock.calls[0]![0])).toContain("s.org_id = $1");
+    });
+
+    it("rejects a request without an organization context", async () => {
+      poolQueryMock.mockClear();
+      const response = await request(makeApp({ orgId: "default" })).get("/ai-workspace-launch");
+      expect(response.status).toBe(401);
+      expect(poolQueryMock).not.toHaveBeenCalled();
+    });
+
+    it("answers 503 instead of an empty history when the database fails", async () => {
+      poolQueryMock.mockRejectedValueOnce(new Error("db down"));
+      const response = await request(makeApp({ orgId: "org-a" })).get("/ai-workspace-launch");
+      expect(response.status).toBe(503);
+      expect(response.body.code).toBe("HISTORY_UNAVAILABLE");
+      expect(response.body.launches).toBeUndefined();
+    });
   });
 });
