@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AWL_HISTORY_LIMIT, listWorkspaceLaunches } from "../services/awl-history.js";
 
 const url = process.env["DATABASE_URL"] ?? "";
 const certUrl = process.env["FLOWPOINT_ADDON_CERT_DATABASE_URL"] ?? "";
@@ -214,5 +215,33 @@ suite("AI Workspace Launch PostgreSQL persistence certification (synthetic data;
     expect(result.missions.map((mission) => mission.id)).toEqual([missionA]);
     expect(result.foreign).toEqual([]);
   });
+
+  it("lists the history from the real SQL, scoped to the organization, newest first", async () => {
+    const olderSession = `qa-awl-${randomUUID()}`;
+    const olderProfile = `qa-awl-profile-${randomUUID()}`;
+    await scoped(orgA, async (client) => {
+      await client.query(
+        `INSERT INTO onboarding_sessions (id, org_id, user_id, status, business_name, started_at, metadata)
+         VALUES ($1, $2, 'qa-user', 'completed', 'Older', now() - interval '2 days', '{}'::jsonb)`,
+        [olderSession, orgA]);
+      await client.query(
+        `INSERT INTO ai_workspace_profiles (id, org_id, session_id, business_name, generated_roadmap, generated_strategy, seo_score)
+         VALUES ($1, $2, $3, 'Older', '[]'::jsonb, 's', 1)`, [olderProfile, orgA, olderSession]);
+      // Une session sans profil genere n'a rien a restaurer : elle n'apparait pas.
+      await client.query(
+        `INSERT INTO onboarding_sessions (id, org_id, user_id, status, metadata) VALUES ($1, $2, 'qa-user', 'in_progress', '{}'::jsonb)`,
+        [`qa-awl-${randomUUID()}`, orgA]);
+    });
+    const a = await scoped(orgA, (client) => listWorkspaceLaunches((sql, params) => client.query(sql, params), orgA));
+    const b = await scoped(orgB, (client) => listWorkspaceLaunches((sql, params) => client.query(sql, params), orgB));
+    expect(a.map(item => item.sessionId)).toEqual([sessionA, olderSession]);
+    expect(a[0]).toMatchObject({ businessName: "Synthetic workspace", missionCount: 1, siteUrl: "https://qa-fixture.invalid" });
+    expect(a[1]!.missionCount).toBe(0);
+    expect(b.map(item => item.sessionId)).toEqual([sessionB]);
+    expect(a.length).toBeLessThanOrEqual(AWL_HISTORY_LIMIT);
+    await scoped(orgA, async (client) => {
+      await client.query("DELETE FROM ai_workspace_profiles WHERE id = $1", [olderProfile]);
+      await client.query("DELETE FROM onboarding_sessions WHERE org_id = $1 AND id <> $2", [orgA, sessionA]);
+    });
+  });
 });
-    

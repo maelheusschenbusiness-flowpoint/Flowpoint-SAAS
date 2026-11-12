@@ -118,4 +118,18 @@ describe("AI Workspace Launch frontend", () => {
     expect(flow.indexOf("STATE.reports = currentReports")).toBeLessThan(flow.indexOf("showToast(reportsRefreshed ? 'success' : 'info'"));
     expect(flow).not.toContain("apiFetch('/api/reports').catch(() => null)");
   });
+
+  it("restores the latest launch from the database when this browser has none (source and served)", () => {
+    for (const source of [dashboard, servedDashboard]) {
+      const open = source.slice(source.indexOf("function openAIWorkspaceLaunch()"), source.indexOf("window.openAIWorkspaceLaunch"));
+      const loader = source.slice(source.indexOf("async function loadAIWorkspaceLast()"), source.indexOf("async function loadAIWorkspaceLast()") + 600);
+      const helper = source.slice(source.indexOf("async function fpAwlLatestSessionId()"), source.indexOf("async function fpAwlLatestSessionId()") + 700);
+      expect(helper).toContain("fetch('/api/ai-workspace-launch'");
+      expect(helper).toContain("Array.isArray(result.launches)");
+      expect(helper).toContain("return ''"); // aucune session : jamais d'identifiant invente
+      expect(open).toContain("fpAwlLatestSessionId()");
+      expect(open).toContain("fpTenantWrite('fp:ai-workspace-launch:last-session', id)");
+      expect(loader).toContain("await fpAwlLatestSessionId()");
+    }
+  });
 });
