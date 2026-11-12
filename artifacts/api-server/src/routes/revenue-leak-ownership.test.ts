@@ -8,6 +8,10 @@ vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
+vi.mock("../middlewares/requireRole.js", () => ({
+  canWrite: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 vi.mock("../services/ga4-service.js", () => ({
   getGA4ConversionPages: mocks.getGA4ConversionPages,
 }));
@@ -97,6 +101,67 @@ describe("Revenue Leak site ownership errors", () => {
       expect(response.body.financial.estimatedLoss).toBeNull();
       expect(JSON.stringify(response.body)).not.toContain("fp_tracker_session");
     }
+  });
+
+  it("resolves only the observed snapshot and resurfaces an opportunity when new sessions appear", async () => {
+    let behaviorRows = [{
+      siteUrl: SITE_URL,
+      page: "/checkout",
+      sessionId: "session-1",
+      eventType: "form_abandon",
+      scrollDepth: null,
+    }];
+    let resolutions: Record<string, unknown>[] = [];
+    mocks.orgDb.mockImplementation(async (sql: string, values: unknown[] = []) => {
+      if (sql.includes("behavior_site_tokens")) return { rows: [{ owned: 1 }] };
+      if (sql.includes("FROM behavior_events")) return { rows: behaviorRows };
+      if (sql.includes("FROM revenue_leak_resolutions")) return { rows: resolutions };
+      if (sql.includes("INSERT INTO revenue_leak_resolutions")) {
+        const [id, orgId, siteUrl, page, eventType, events, sessions] = values as [
+          string, string, string, string, string, number, number,
+        ];
+        resolutions = [{
+          id,
+          orgId,
+          siteUrl,
+          page,
+          eventType,
+          resolvedObservedEvents: events,
+          resolvedAffectedSessions: sessions,
+        }];
+        return { rows: [{ id }] };
+      }
+      return { rows: [] };
+    });
+
+    const first = await request(makeApp()).get("/api/revenue-leak").query({ siteUrl: SITE_URL });
+    expect(first.status).toBe(200);
+    expect(first.body.opportunities).toHaveLength(1);
+    const opportunityId = first.body.opportunities[0].id as string;
+    expect(opportunityId).toMatch(/^[a-f0-9]{64}$/);
+
+    const resolved = await request(makeApp()).patch(`/api/revenue-leak/${opportunityId}/resolve`);
+    expect(resolved.status).toBe(200);
+    expect(resolved.body).toEqual({ ok: true, id: opportunityId });
+
+    const afterResolution = await request(makeApp()).get("/api/revenue-leak").query({ siteUrl: SITE_URL });
+    expect(afterResolution.body.opportunities).toEqual([]);
+    expect(afterResolution.body.noData).toBe(true);
+
+    behaviorRows = [...behaviorRows, {
+      siteUrl: SITE_URL,
+      page: "/checkout",
+      sessionId: "session-2",
+      eventType: "form_abandon",
+      scrollDepth: null,
+    }];
+    const afterNewEvidence = await request(makeApp()).get("/api/revenue-leak").query({ siteUrl: SITE_URL });
+    expect(afterNewEvidence.body.opportunities).toHaveLength(1);
+    expect(afterNewEvidence.body.opportunities[0]).toMatchObject({
+      id: opportunityId,
+      observedEvents: 2,
+      affectedSessions: 2,
+    });
   });
 
   it("returns the same generic 404 for missing and non-owned sites", async () => {

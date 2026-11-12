@@ -509,6 +509,9 @@ async function main() {
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
+    import("./services/agency-report-scheduler.js")
+      .then(({ startAgencyReportScheduler }) => startAgencyReportScheduler())
+      .catch(err => logger.warn({ err }, "[agency-report-scheduler] not started"));
     // Do not publish real GBP content from development/test servers.
     if (env.NODE_ENV === "production") startGBPPostScheduler();
 

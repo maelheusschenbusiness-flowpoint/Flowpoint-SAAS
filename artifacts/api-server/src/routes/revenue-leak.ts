@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from "express";
+import { createHash } from "crypto";
 import { requireAddon } from "../middlewares/planGate.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import { deriveConversionObservations } from "../services/conversion-observations.js";
 import { REVENUE_LEAK_ATTRIBUTION } from "../services/revenue-leak-attribution.js";
 import { getGA4ConversionPages } from "../services/ga4-service.js";
@@ -11,6 +13,7 @@ type OrgReq = Request & {
   orgId?: string;
 };
 const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+const ISO_4217_CURRENCIES = new Set(Intl.supportedValuesOf("currency"));
 
 const unavailableGA4Revenue = () => ({
   status: "unavailable",
@@ -25,10 +28,12 @@ const unavailableGA4Revenue = () => ({
 
 function summarizeGA4Revenue(report: Awaited<ReturnType<typeof getGA4ConversionPages>>) {
   const metrics = report.totals?.[0]?.metricValues ?? [];
-  const revenue = Number(metrics[3]?.value);
-  const conversions = Number(metrics[2]?.value);
+  const rawRevenue = String(metrics[3]?.value ?? "").trim();
+  const revenue = rawRevenue ? Number(rawRevenue) : Number.NaN;
+  const rawConversions = String(metrics[2]?.value ?? "").trim();
+  const conversions = rawConversions ? Number(rawConversions) : Number.NaN;
   const currency = String(report.currencyCode ?? "").trim().toUpperCase();
-  if (!Number.isFinite(revenue) || !/^[A-Z]{3}$/.test(currency)) return unavailableGA4Revenue();
+  if (!Number.isFinite(revenue) || !ISO_4217_CURRENCIES.has(currency)) return unavailableGA4Revenue();
   return {
     status: "observed",
     source: "ga4",
@@ -90,14 +95,42 @@ async function loadRevenueOpportunities(req: Request, siteUrl?: string) {
       LIMIT 20000`,
     params,
   );
-  return deriveConversionObservations(rows).map((observation) => ({
-    ...observation,
-    kind: "conversion_opportunity",
-    financialClassification: "unmeasured",
-    observedRevenueLoss: null,
-    estimatedRevenueLoss: null,
-    note: "Événements observés; aucune donnée de revenu reliée à ces événements.",
-  }));
+  const observations = deriveConversionObservations(rows).map((observation) => {
+    const observedSite = observation.siteUrl ?? siteUrl ?? null;
+    const id = createHash("sha256")
+      .update(`${orgId}|${observedSite ?? ""}|${observation.page}|${observation.eventType}`)
+      .digest("hex");
+    return { ...observation, id, siteUrl: observedSite };
+  });
+  const resolutionRows = await db(req)(
+    `SELECT id, resolved_observed_events AS "resolvedObservedEvents",
+            resolved_affected_sessions AS "resolvedAffectedSessions"
+       FROM revenue_leak_resolutions
+      WHERE org_id = $1`,
+    [orgId],
+  );
+  const resolutions = new Map(resolutionRows.rows.map((row) => [
+    String(row.id),
+    {
+      events: Number(row.resolvedObservedEvents) || 0,
+      sessions: Number(row.resolvedAffectedSessions) || 0,
+    },
+  ]));
+  return observations
+    .filter((observation) => {
+      const resolved = resolutions.get(observation.id);
+      return !resolved ||
+        observation.observedEvents > resolved.events ||
+        observation.affectedSessions > resolved.sessions;
+    })
+    .map((observation) => ({
+      ...observation,
+      kind: "conversion_opportunity",
+      financialClassification: "unmeasured",
+      observedRevenueLoss: null,
+      estimatedRevenueLoss: null,
+      note: "Événements observés; aucune donnée de revenu reliée à ces événements.",
+    }));
 }
 
 async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
@@ -170,16 +203,38 @@ router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/revenue-leak/:id/resolve", async (req: Request, res: Response) => {
+router.patch("/revenue-leak/:id/resolve", canWrite, async (req: Request, res: Response) => {
   const { id } = req.params;
   const orgId = (req as OrgReq).orgId ?? "default";
   try {
+    const opportunity = (await loadRevenueOpportunities(req)).find((item) => item.id === id);
+    if (!opportunity) { res.status(404).json({ error: "Opportunity not found" }); return; }
     const result = await db(req)(
-      `UPDATE revenue_leaks SET status='resolved', resolved_at=now() WHERE id=$1 AND org_id=$2 RETURNING id`,
-      [id, orgId]
+      `INSERT INTO revenue_leak_resolutions (
+         id, org_id, site_url, page, event_type,
+         resolved_observed_events, resolved_affected_sessions, resolved_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+       ON CONFLICT (id) DO UPDATE SET
+         site_url = EXCLUDED.site_url,
+         page = EXCLUDED.page,
+         event_type = EXCLUDED.event_type,
+         resolved_observed_events = EXCLUDED.resolved_observed_events,
+         resolved_affected_sessions = EXCLUDED.resolved_affected_sessions,
+         resolved_at = now()
+       WHERE revenue_leak_resolutions.org_id = EXCLUDED.org_id
+       RETURNING id`,
+      [
+        opportunity.id,
+        orgId,
+        opportunity.siteUrl ?? "",
+        opportunity.page,
+        opportunity.eventType,
+        opportunity.observedEvents,
+        opportunity.affectedSessions,
+      ],
     );
     if (!result.rows.length) { res.status(404).json({ error: "Opportunity not found" }); return; }
-    res.json({ ok: true });
+    res.json({ ok: true, id: opportunity.id });
   } catch {
     res.status(500).json({ error: "Failed to resolve leak" });
   }

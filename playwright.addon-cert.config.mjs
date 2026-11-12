@@ -6,6 +6,7 @@ export default defineConfig({
     "10-addons-authorises.spec.mjs",
     "advanced-seo-lab.spec.mjs",
     "backlink-intelligence.spec.mjs",
+    "11-executive-reporting.spec.mjs",
     "checkout-abandonment.spec.mjs",
   ],
   globalSetup: undefined,
