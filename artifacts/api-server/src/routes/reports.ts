@@ -268,7 +268,7 @@ router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireA
         `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
          VALUES ($1,$2,$3,'PDF','executive',$4,0,false,'',false,true,$5,'','',$6)`,
         [reportId, orgId, reportName, new Date().toISOString(),
-          JSON.stringify([{ title: summary.headline.trim().slice(0, 200), date: new Date().toISOString(), notes: note }]),
+          JSON.stringify([{ title: `${reportSubject} — ${summary.headline}`.slice(0, 200), date: new Date().toISOString(), notes: note }]),
           (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
       );
       await client.query("COMMIT"); txActive = false;

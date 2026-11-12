@@ -8465,6 +8465,25 @@ function setupEditCalEventPanel(ev) {
 
 /* ── REPORTS ── */
 function renderReports() {
+  if (!window.fpViewExecutiveReport) {
+    window.fpViewExecutiveReport = async function(reportId) {
+      try {
+        const report = await apiFetch('/api/reports/' + encodeURIComponent(String(reportId)), { force: true });
+        if (!report || report.error) throw new Error(report?.error || fpT('Impossible de charger ce rapport.'));
+        const rawNotes = report.meeting_notes_json ?? report.meetingNotesJson;
+        const notes = Array.isArray(rawNotes) ? rawNotes : JSON.parse(typeof rawNotes === 'string' ? rawNotes : '[]');
+        if (!Array.isArray(notes) || notes.length === 0) throw new Error(fpT('Ce rapport ne contient pas de contenu consultable.'));
+        const reportName = String(report.name || fpT('Synthèse exécutive'));
+        const noteHtml = notes.map(note => '<section style="padding:12px 0;border-bottom:1px solid var(--fp-border)"><h3 style="font-size:14px;font-weight:700;color:var(--fp-text);margin:0 0 8px">' + escHtml(String(note.title || reportName)) + '</h3><div style="font-size:12px;line-height:1.6;color:var(--fp-text-muted);white-space:pre-wrap">' + escHtml(String(note.notes || '')) + '</div></section>').join('');
+        const id = String(report.id || reportId);
+        const download = '<button class="fp-btn fp-btn-primary fp-btn-sm" data-report-id="' + escHtml(id) + '" data-report-name="' + escHtml(reportName) + '" onclick="window._fpReportsAPI.downloadPdf(this.dataset.reportId,this.dataset.reportName)">' + fpT('Télécharger le PDF') + '</button>';
+        openFloatPanel(fpT('Consulter le rapport'), '<div style="padding:8px 2px"><h2 style="font-size:16px;font-weight:800;color:var(--fp-text);margin:0 0 10px">' + escHtml(reportName) + '</h2>' + noteHtml + '<div style="display:flex;justify-content:flex-end;margin-top:14px">' + download + '</div></div>');
+      } catch (error) {
+        showToast('error', error instanceof Error ? error.message : fpT('Impossible de charger ce rapport.'));
+      }
+    };
+  }
+
   if (STATE.loading) {
     return renderPageSkeleton({ stats: 0, rows: 4, rowH: 72, cards: 0 });
   }
@@ -8578,30 +8597,43 @@ function renderReports() {
       if (STATE.gbp && Number(STATE.gbp.completionScore) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description, puis mesurez l’évolution de la visibilité locale.', gain:'À mesurer', color:'#22c55e' });
       return r;
     })();
-    const recs = _recs_live.length > 0 ? _recs_live : (PREVIEW_MODE ? [
-      { icon: '🎯', title: 'Priorité absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
-      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Renforcez la fiche GBP et les avis, puis comparez la visibilité locale mesurée avant et après optimisation.',    gain: 'À mesurer', color: '#22c55e' },
-      { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
-    ] : []);
+    const recs = _recs_live;
     const _execAvg = _execCurAvg;
     const _hasAiExecutive = !!(STATE.me && STATE.me.addons && STATE.me.addons.aiExecutiveReport);
     window.FP_EXECUTIVE_REPORT_API = window.FP_EXECUTIVE_REPORT_API || {
       generating: false,
       async generate() {
         if (this.generating) return;
+        const subjectInput = document.getElementById('fp-ai-exec-subject');
+        const subject = String(subjectInput?.value || '').trim();
+        if (subject.length > 120) { showToast('error', fpT('Le sujet ne peut pas dépasser 120 caractères.')); return; }
         this.generating = true;
         const button = document.getElementById('fp-ai-exec-generate');
         if (button) button.disabled = true;
+        if (subjectInput) subjectInput.disabled = true;
         showToast('info', fpT('Génération de la synthèse exécutive…'));
         try {
-          const result = await apiFetch('/api/reports/ai-executive-summary', { method: 'POST', body: JSON.stringify({}) });
+          const result = await apiFetch('/api/reports/ai-executive-summary', { method: 'POST', body: JSON.stringify({ subject }) });
           if (!result || result.ok === false || !result.reportId) throw new Error(result?.error || fpT('La synthèse n’a pas pu être générée.'));
-          const reports = await apiFetch('/api/reports');
-          if (!Array.isArray(reports) || !reports.some(report => String(report.id) === String(result.reportId))) {
-            throw new Error(fpT('La synthèse n’a pas pu être générée.'));
+          if (subjectInput) subjectInput.value = '';
+          let reportsRefreshed = false;
+          try {
+            const reports = await apiFetch('/api/reports', { force: true });
+            if (!Array.isArray(reports)) throw new Error('Invalid reports response');
+            STATE.reports = reports;
+            reportsRefreshed = reports.some(report => String(report.id) === String(result.reportId));
+          } catch (refreshError) {
+            console.warn('[FP] Executive report saved; report list refresh failed', refreshError);
           }
-          STATE.reports = reports;
-          showToast('success', fpT('Synthèse créée dans vos rapports.'));
+          const currentReports = Array.isArray(STATE.reports) ? STATE.reports : [];
+          if (!currentReports.some(report => String(report.id) === String(result.reportId))) {
+            currentReports.unshift({ id: result.reportId, name: result.name || 'Synthèse exécutive IA', type: 'PDF', template_key: 'executive', date: new Date().toISOString() });
+          }
+          STATE.reports = currentReports;
+          if (window._fpReportsState && typeof window._fpReportsState === 'object') {
+            window._fpReportsState = { ...window._fpReportsState, loading: false, loaded: true, reports: currentReports, error: null };
+          }
+          showToast(reportsRefreshed ? 'success' : 'info', fpT(reportsRefreshed ? 'Synthèse créée dans vos rapports.' : 'Rapport créé; la liste sera actualisée ultérieurement.'));
           render(STATE.currentSection);
         } catch (error) {
           showToast('error', error instanceof Error ? error.message : fpT('La synthèse n’a pas pu être générée.'));
@@ -8609,6 +8641,8 @@ function renderReports() {
           this.generating = false;
           const currentButton = document.getElementById('fp-ai-exec-generate');
           if (currentButton) currentButton.disabled = false;
+          const currentInput = document.getElementById('fp-ai-exec-subject');
+          if (currentInput) currentInput.disabled = false;
         }
       },
     };
@@ -8618,6 +8652,7 @@ function renderReports() {
           <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${fpT('Synthèse exécutive IA')}</div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${fpT('Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.')}</div>
         </div>
+        ${_hasAiExecutive ? `<div style="flex:1 1 280px;min-width:220px;max-width:460px"><label for="fp-ai-exec-subject" style="display:block;font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:5px">${fpT('Sujet du rapport (facultatif)')}</label><input id="fp-ai-exec-subject" type="text" maxlength="120" autocomplete="off" aria-label="Sujet du rapport (facultatif)" placeholder="${fpT('Ex. : acquisition organique')}" style="width:100%;padding:8px 10px;border:1px solid var(--fp-border);border-radius:8px;background:var(--fp-inner-card);color:var(--fp-text);font:inherit;font-size:12px"></div>` : ''}
         ${_hasAiExecutive
           ? `<button id="fp-ai-exec-generate" class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_EXECUTIVE_REPORT_API.generate()">${fpT('Générer la synthèse')}</button>`
           : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled title="${fpT('Add-on non disponible à l’achat')}">${fpT('Bientôt disponible')}</button>`}
@@ -8625,18 +8660,16 @@ function renderReports() {
       ${isPro
         ? aiBlock(_execAvg !== null
             ? fpT("Votre score SEO moyen est <strong>{score}/100</strong>. Consultez les rapports de chaque site pour les priorités d'optimisation.", { score: _execAvg })
-            : PREVIEW_MODE
-              ? fpT("Votre business affiche une trajectoire positive sur 4 mois : score SEO +12 pts, santé business +14 pts. <strong>Point critique</strong> : la conversion reste votre maillon faible. Action recommandée : corriger le formulaire mobile en priorité.")
-              : fpT("Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé."),
+            : fpT("Ajoutez vos sites et connectez vos sources de données pour obtenir votre rapport executive personnalisé."),
             ['Rapport complet PDF', 'Plan actions prioritaires', 'Partager au client'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📈</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${fpT('Rapports Executive — Pro requis')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Synthèses business IA, recommandations stratégiques et analyse de performance executive.')}</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('pro')">${fpT('Passer Pro')}</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard(fpT('Score business global'), displayStat(_execAvg !== null ? _execAvg + '/100' : null, '72/100'), fpT(_execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+14 pts en 4 mois' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard(fpT('Score SEO'), displayStat(_execAvg !== null ? _execAvg + '/100' : null, '74/100'), fpT(_execAvg !== null ? 'score moyen portfolio' : PREVIEW_MODE ? '+12 pts en 4 mois' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
-        ${statCard(fpT('Score conversion'), displayStat(null, '48/100'), fpT(PREVIEW_MODE ? '+10 pts — encore critique' : 'Connectez une source de données'), 'neutral')}
-        ${statCard(fpT('Score performance'), displayStat(_execUp !== null ? _execUp + '/100' : null, '88/100'), fpT(_execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : PREVIEW_MODE ? 'Excellent — SLA tenu' : 'Aucun monitor'), _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
+        ${statCard(fpT('Score business global'), displayStat(null), fpT('Aucune donnée'), 'neutral')}
+        ${statCard(fpT('Score SEO'), displayStat(_execAvg !== null ? _execAvg + '/100' : null), fpT(_execAvg !== null ? 'score moyen portfolio' : 'Aucune donnée'), _execAvg !== null ? (_execAvg >= 70 ? 'up' : 'down') : 'neutral')}
+        ${statCard(fpT('Score conversion'), displayStat(null), fpT('Connectez une source de données'), 'neutral')}
+        ${statCard(fpT('Score performance'), displayStat(_execUp !== null ? _execUp + '/100' : null), fpT(_execUp !== null ? (_execUp >= 99 ? 'Excellent — SLA tenu' : 'Surveillance active') : 'Aucun monitor'), _execUp !== null ? (_execUp >= 99 ? 'up' : 'neutral') : 'neutral')}
       </div>
 
       <!-- 4-MONTH PERFORMANCE CHART — measured audit history only -->
@@ -22746,6 +22779,15 @@ function bindGlobalEvents() {
     "Synthèse exécutive IA": "AI executive summary",
     "Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.": "Generated from actual recorded audits and monitors. Metrics remain calculated from verified data.",
     "Générer la synthèse": "Generate summary",
+    "Sujet du rapport (facultatif)": "Report subject (optional)",
+    "Ex. : acquisition organique": "e.g. organic acquisition",
+    "Le sujet ne peut pas dépasser 120 caractères.": "The subject must not exceed 120 characters.",
+    "Consulter": "View",
+    "Consulter le rapport": "View report",
+    "Télécharger le PDF": "Download PDF",
+    "Impossible de charger ce rapport.": "Unable to load this report.",
+    "Ce rapport ne contient pas de contenu consultable.": "This report has no viewable content.",
+    "Rapport créé; la liste sera actualisée ultérieurement.": "Report created; the list will refresh shortly.",
     "Add-on non disponible à l’achat": "Add-on not available for purchase",
     ". Tous les sites respectent leur SLA. Latence moyenne :": ". All sites are meeting their SLA. Average latency:",
     "Impossible de charger vos clients — réessayez.": "Unable to load your clients — retry.",
@@ -78334,6 +78376,7 @@ function renderGA4Reports() {
                 <td style="text-align:center;color:var(--fp-text-muted);font-size:11px">${rPages != null ? rPages : '—'}</td>
                 <td style="text-align:center">
                   <div style="display:inline-flex;gap:4px">
+                    ${rId && (r.template_key === 'executive' || r.templateKey === 'executive') ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" data-report-view="${escHtml(String(rId))}" onclick="window.fpViewExecutiveReport(this.dataset.reportView)">${fpT('Consulter')}</button>` : ''}
                     ${rId ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.downloadPdf('${escHtml(rId)}','${escHtml(rName.replace(/'/g,"'"))}')">⬇ PDF</button>` : ''}
                     ${rId && !rShared ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.share('${escHtml(rId)}')">🔗 Partager</button>` : ''}
                     ${rId ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:#ef4444" onclick="window._fpReportsAPI.delete('${escHtml(rId)}','${escHtml(rName.replace(/'/g,"'"))}')">Suppr.</button>` : ''}
