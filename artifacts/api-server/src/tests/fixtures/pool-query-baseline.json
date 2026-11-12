@@ -290,8 +290,8 @@
       "noOrg": 2
     },
     "services/funnel-events.ts": {
-      "total": 3,
-      "noOrg": 3
+      "total": 6,
+      "noOrg": 6
     },
     "services/ga4-service.ts": {
       "total": 5,
