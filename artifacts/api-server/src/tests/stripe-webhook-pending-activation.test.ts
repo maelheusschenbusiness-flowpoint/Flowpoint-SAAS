@@ -216,6 +216,33 @@ function subscriptionCreated(overrides: Record<string, unknown> = {}): Record<st
   };
 }
 
+describe("Stripe webhook processing evidence", () => {
+  it("persists and logs successful processing of a no-customer TEST SetupIntent event", async () => {
+    const eventId = "evt_TEST_SETUP_PROCESSING_EVIDENCE";
+    const { logger } = await import("../lib/logger.js");
+    vi.mocked(logger.info).mockClear();
+
+    const response = await deliver({
+      id: eventId,
+      type: "setup_intent.succeeded",
+      data: {
+        object: {
+          id: "seti_TEST_SETUP_PROCESSING_EVIDENCE",
+          object: "setup_intent",
+          metadata: {},
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(billingEvents.get(eventId)).toMatchObject({ status: "processed", orgId: "_system_" });
+    expect(logger.info).toHaveBeenCalledWith(
+      { eventId, eventType: "setup_intent.succeeded", status: "processed" },
+      "[Webhook] Event status persisted",
+    );
+  });
+});
+
 beforeEach(async () => {
   const { logger } = await import("../lib/logger.js");
   vi.mocked(logger.error).mockClear();
