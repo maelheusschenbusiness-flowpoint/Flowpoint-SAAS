@@ -136,4 +136,42 @@ describe("Revenue Leak GA4 revenue evidence", () => {
       currency: null,
     });
   });
+
+  it("rejects a three-letter value that is not an ISO 4217 currency", async () => {
+    mocks.getGA4ConversionPages.mockResolvedValue({
+      rows: [],
+      totals: [{ metricValues: [{ value: "100" }, { value: "80" }, { value: "4" }, { value: "1234.56" }] }],
+      currencyCode: "AAA",
+    });
+
+    const response = await request(makeApp()).get("/api/revenue-leak");
+
+    expect(response.status).toBe(200);
+    expect(response.body.financial).toMatchObject({
+      status: "unavailable",
+      observedRevenue: null,
+      observedLoss: null,
+      estimatedLoss: null,
+      currency: null,
+    });
+  });
+
+  it("does not treat a missing GA4 total as zero observed revenue", async () => {
+    mocks.getGA4ConversionPages.mockResolvedValue({
+      rows: [],
+      totals: [{ metricValues: [{ value: "100" }, { value: "80" }, { value: "4" }, { value: "" }] }],
+      currencyCode: "EUR",
+    });
+
+    const response = await request(makeApp()).get("/api/revenue-leak");
+
+    expect(response.status).toBe(200);
+    expect(response.body.financial).toMatchObject({
+      status: "unavailable",
+      observedRevenue: null,
+      observedLoss: null,
+      estimatedLoss: null,
+      currency: null,
+    });
+  });
 });
