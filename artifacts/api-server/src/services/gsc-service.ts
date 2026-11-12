@@ -5,6 +5,7 @@
  * in gsc_keyword_data.  All read functions query that table — never fake data.
  */
 
+import { stableId } from "../lib/stable-id.js";
 import { pool } from "@workspace/db";
 import { getGscValidToken } from "./gsc-oauth-service.js";
 import { logger } from "../lib/logger.js";
@@ -125,7 +126,7 @@ export async function getVerifiedActiveSite(orgId: string): Promise<string | nul
 
 export async function setActiveSite(orgId: string, siteUrl: string, displayName?: string): Promise<void> {
   const client = await pool.connect();
-  const id = `gsc_${orgId}_${Buffer.from(siteUrl).toString("base64url").slice(0, 40)}`;
+  const id = stableId("gsc", orgId, siteUrl);
   try {
     await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId]);
     await client.query(
@@ -154,7 +155,7 @@ export async function discoverAndStoreSites(orgId: string): Promise<number> {
     const client = await pool.connect();
     try {
       for (const site of sites) {
-        const siteId = `gsc_${orgId}_${Buffer.from(site.siteUrl).toString("base64url").slice(0, 40)}`;
+        const siteId = stableId("gsc", orgId, site.siteUrl);
         await client.query(
           `INSERT INTO gsc_sites (id, org_id, site_url, permission_level, is_active, created_at)
            VALUES ($1, $2, $3, $4, false, NOW())

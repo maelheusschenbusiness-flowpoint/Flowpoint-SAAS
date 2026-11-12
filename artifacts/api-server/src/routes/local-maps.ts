@@ -1,3 +1,4 @@
+import { stableId } from "../lib/stable-id.js";
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { canWrite } from "../middlewares/requireRole.js";
@@ -139,7 +140,7 @@ router.post("/local-maps/competitors/discover", canWrite, async (req, res) => {
     try {
       for (const [idx, item] of results.entries()) {
         const placeId = item.placeId || `result_${idx}_${Buffer.from(`${item.name}|${item.address}|${item.rank}`).toString("base64url")}`;
-        const id = `map_${Buffer.from(`${orgId}|${normalizedKeyword}|${normalizedLocation}|${placeId}`).toString("base64url").slice(0, 64)}`;
+        const id = stableId("map", orgId, normalizedKeyword, normalizedLocation, placeId);
         const authority = Math.min(100, Math.round((Number(item.rating) / 5) * 55 + Math.min(Number(item.reviews), 500) / 500 * 45));
         await client.query(
           `INSERT INTO competitor_map_results (id,org_id,keyword,location,place_id,name,address,category,rating,review_count,rank,photo_url,authority_score,fetched_at)

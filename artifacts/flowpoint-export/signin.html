@@ -940,7 +940,9 @@
         // `signup_started`. Sans ce lien, les deux etapes ne se joignent pas et
         // le taux d'abandon du formulaire reste incalculable. Champ purement
         // additionnel — aucun champ du formulaire n'est modifie.
-        visiteurId: fpVid() || undefined })
+        visiteurId: fpVid() || undefined,
+        // Meme source que `signup_started` : sans elle, l'inscription n'est pas rattachee a sa campagne.
+        source: fpSource() || undefined })
     })
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {

@@ -18,6 +18,8 @@ export interface KeywordDominationItem {
   url: string | null;
   intent: string | null;
   priorityScore: number;
+  /** false : la difficulte n'est pas mesuree ; le score suppose alors une difficulte neutre (50). */
+  difficultyKnown: boolean;
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -50,6 +52,7 @@ export function buildKeywordDominationReport(rows: KeywordDominationRow[]) {
         url: row.url ? String(row.url) : null,
         intent: row.intent ? String(row.intent) : null,
         priorityScore,
+        difficultyKnown: difficulty !== null,
       };
     })
     .filter((item) => item.keyword.length > 0);

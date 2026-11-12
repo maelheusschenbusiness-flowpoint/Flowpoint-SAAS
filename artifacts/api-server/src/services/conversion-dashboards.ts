@@ -7,10 +7,10 @@
  *
  * REGLES.
  *  - Aucune donnee fictive : une mesure absente est `null`, jamais 0 par defaut.
- *  - Consentement : un identifiant de visiteur n'existe que si l'analytique a ete
- *    acceptee. Les etapes NAVIGATEUR ne couvrent donc que les visiteurs
- *    consentants ; les etapes SERVEUR (Stripe, inscription) couvrent tout le monde.
- *    Un taux n'est calcule qu'entre deux etapes de MEME couverture, sinon
+ *  - Consentement : les etapes navigateur, l'inscription validee et le debut de checkout ne
+ *    sont enregistres qu'avec le consentement analytique (couverture `consented`) ; seuls
+ *    l'essai et l'abonnement payant, issus d'evenements Stripe signes, couvrent tout le monde
+ *    (`all`). Un taux n'est calcule qu'entre deux etapes de MEME couverture, sinon
  *    `ratio: null` avec la raison — jamais un taux trompeur.
  *  - Doublons : on compte des evenements distincts par cle d'idempotence (a defaut,
  *    par ligne), et des visiteurs distincts.
@@ -23,19 +23,28 @@
  */
 import { pool } from "@workspace/db";
 
-export type Coverage = "browser_consented" | "server";
+/**
+ * Couverture d'une etape, telle que le code l'ecrit reellement :
+ *  - `consented` : l'etape n'est enregistree qu'avec le consentement analytique (etapes navigateur,
+ *    mais aussi `signup_form_completed` et `checkout_started`, emises par le serveur SEULEMENT si le
+ *    visiteur a consenti) ;
+ *  - `all` : l'etape est comptee pour tout le monde, avec ou sans consentement (evenements Stripe
+ *    signes : essai, abonnement payant).
+ * Un taux n'a de sens qu'entre deux etapes de meme couverture.
+ */
+export type Coverage = "consented" | "all";
 
 export interface StageDef { key: string; label: string; coverage: Coverage; definition: string }
 
 export const GLOBAL_STAGES: readonly StageDef[] = [
-  { key: "landing_vue", label: "Visites (site vitrine)", coverage: "browser_consented", definition: "Page vitrine affichee, visiteur ayant accepte l'analytique." },
-  { key: "tarifs_vus", label: "Vues des tarifs", coverage: "browser_consented", definition: "Page tarifs affichee, visiteur consentant." },
-  { key: "cta_clique", label: "Clics CTA", coverage: "browser_consented", definition: "Clic sur un appel a l'action. Un clic n'est pas une conversion." },
-  { key: "signup_started", label: "Debuts d'inscription", coverage: "browser_consented", definition: "Formulaire d'inscription affiche, visiteur consentant." },
-  { key: "signup_form_completed", label: "Inscriptions validees", coverage: "server", definition: "Formulaire envoye et accepte par le serveur." },
-  { key: "checkout_started", label: "Debuts de checkout", coverage: "server", definition: "Parcours de paiement ouvert cote serveur." },
-  { key: "trial_activated", label: "Essais actives", coverage: "server", definition: "Abonnement passe au statut `trialing` signe par Stripe." },
-  { key: "subscription_activated", label: "Abonnements payants", coverage: "server", definition: "Abonnement passe au statut `active` signe par Stripe." },
+  { key: "landing_vue", label: "Visites (site vitrine)", coverage: "consented", definition: "Page vitrine affichee, visiteur ayant accepte l'analytique." },
+  { key: "tarifs_vus", label: "Vues des tarifs", coverage: "consented", definition: "Page tarifs affichee, visiteur consentant." },
+  { key: "cta_clique", label: "Clics CTA", coverage: "consented", definition: "Clic sur un appel a l'action. Un clic n'est pas une conversion." },
+  { key: "signup_started", label: "Debuts d'inscription", coverage: "consented", definition: "Formulaire d'inscription affiche, visiteur consentant." },
+  { key: "signup_form_completed", label: "Inscriptions validees", coverage: "consented", definition: "Formulaire envoye et accepte par le serveur ; enregistre seulement si le visiteur a consenti a l'analytique." },
+  { key: "checkout_started", label: "Debuts de checkout", coverage: "consented", definition: "Parcours de paiement ouvert cote serveur ; enregistre seulement si le visiteur a consenti a l'analytique." },
+  { key: "trial_activated", label: "Essais actives", coverage: "all", definition: "Abonnement passe au statut `trialing` signe par Stripe." },
+  { key: "subscription_activated", label: "Abonnements payants", coverage: "all", definition: "Abonnement passe au statut `active` signe par Stripe." },
 ] as const;
 
 const RATE_PAIRS: ReadonlyArray<[string, string]> = [

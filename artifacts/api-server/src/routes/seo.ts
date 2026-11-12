@@ -141,6 +141,20 @@ async function releaseRankingSearch(orgId: string, id: string): Promise<void> {
 // ── Helper — quota check middleware factory ───────────────────────────────────
 
 /**
+ * Parametre texte obligatoire. Aucune valeur d'exemple n'est substituee : un appel fournisseur
+ * paye (et decompte du quota) porterait sinon sur un domaine ou un mot-cle qui n'est pas celui
+ * du client, et la reponse presenterait des mesures sans rapport avec lui.
+ */
+function textParam(value: unknown, max = 253): string | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  return v.length > 0 && v.length <= max ? v : null;
+}
+function missingParam(res: import("express").Response, name: string): void {
+  res.status(400).json({ error: `${name} required`, code: "MISSING_PARAMETER", parameter: name });
+}
+
+/**
  * Reserve une unite de quota DataForSEO avant de laisser passer la requete.
  *
  * Trois reponses possibles :
@@ -204,12 +218,14 @@ router.get("/seo/status", async (req, res) => {
 
 router.get("/seo/keywords", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { keyword = "seo local", location = "France", language = "fr" } = req.query as Record<string,string>;
+  const { keyword: raw_keyword, location = "France", language = "fr" } = req.query as Record<string,string>;
+  const keyword = textParam(raw_keyword, 120);
+  if (!keyword) { missingParam(res, "keyword"); return; }
   try {
     const data = await getKeywordSuggestions(keyword, location, language, orgId);
     res.json({ keyword, location, language, count: data.length, keywords: data });
   } catch (e) {
-    res.status(500).json({ error: "Keyword fetch failed", detail: String(e) });
+    res.status(500).json({ error: "Keyword fetch failed" });
   }
 }));
 
@@ -217,12 +233,14 @@ router.get("/seo/keywords", withQuota(async (req, res) => {
 
 router.get("/seo/serp", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { keyword = "seo local", location = "France", language = "fr" } = req.query as Record<string,string>;
+  const { keyword: raw_keyword, location = "France", language = "fr" } = req.query as Record<string,string>;
+  const keyword = textParam(raw_keyword, 120);
+  if (!keyword) { missingParam(res, "keyword"); return; }
   try {
     const data = await getSERP(keyword, location, language, orgId);
     res.json({ keyword, location, count: data.length, results: data });
   } catch (e) {
-    res.status(500).json({ error: "SERP fetch failed", detail: String(e) });
+    res.status(500).json({ error: "SERP fetch failed" });
   }
 }));
 
@@ -230,12 +248,14 @@ router.get("/seo/serp", withQuota(async (req, res) => {
 
 router.get("/seo/competitors", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain = "exemple.fr" } = req.query as Record<string,string>;
+  const { domain: raw_domain } = req.query as Record<string,string>;
+  const domain = textParam(raw_domain);
+  if (!domain) { missingParam(res, "domain"); return; }
   try {
     const data = await getCompetitors(domain, orgId);
     res.json({ domain, count: data.length, competitors: data });
   } catch (e) {
-    res.status(500).json({ error: "Competitors fetch failed", detail: String(e) });
+    res.status(500).json({ error: "Competitors fetch failed" });
   }
 }));
 
@@ -270,12 +290,14 @@ router.get("/seo/backlinks", withQuota(async (req, res) => {
 
 router.get("/seo/domain-metrics", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain = "exemple.fr" } = req.query as Record<string,string>;
+  const { domain: raw_domain } = req.query as Record<string,string>;
+  const domain = textParam(raw_domain);
+  if (!domain) { missingParam(res, "domain"); return; }
   try {
     const data = await getDomainMetrics(domain, orgId);
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: "Domain metrics fetch failed", detail: String(e) });
+    res.status(500).json({ error: "Domain metrics fetch failed" });
   }
 }));
 
@@ -283,7 +305,9 @@ router.get("/seo/domain-metrics", withQuota(async (req, res) => {
 
 router.get("/seo/keyword-difficulty", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { keyword = "seo local" } = req.query as Record<string,string>;
+  const { keyword: raw_keyword } = req.query as Record<string,string>;
+  const keyword = textParam(raw_keyword, 120);
+  if (!keyword) { missingParam(res, "keyword"); return; }
   try {
     const difficulty = await getKeywordDifficulty(keyword, orgId);
     res.json({ keyword, difficulty });
@@ -296,12 +320,16 @@ router.get("/seo/keyword-difficulty", withQuota(async (req, res) => {
 
 router.get("/seo/local-rank", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
+  const { keyword: raw_keyword, location: raw_location } = req.query as Record<string,string>;
+  const keyword = textParam(raw_keyword, 120);
+  if (!keyword) { missingParam(res, "keyword"); return; }
+  const location = textParam(raw_location, 120);
+  if (!location) { missingParam(res, "location"); return; }
   try {
     const data = await getLocalPackRank(keyword, location, orgId);
     res.json({ keyword, location, count: data.length, results: data });
   } catch (e) {
-    res.status(500).json({ error: "Local rank fetch failed", detail: String(e) });
+    res.status(500).json({ error: "Local rank fetch failed" });
   }
 }));
 
@@ -309,20 +337,26 @@ router.get("/seo/local-rank", withQuota(async (req, res) => {
 
 router.get("/seo/maps", withQuota(async (req, res) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
+  const { keyword: raw_keyword, location: raw_location } = req.query as Record<string,string>;
+  const keyword = textParam(raw_keyword, 120);
+  if (!keyword) { missingParam(res, "keyword"); return; }
+  const location = textParam(raw_location, 120);
+  if (!location) { missingParam(res, "location"); return; }
   try {
     const data = await getGoogleMapsResults(keyword, location, orgId);
     if (data.error) { res.status(502).json({ error: "Maps fetch failed" }); return; }
     res.json({ keyword, location, count: data.results.length, results: data.results });
   } catch (e) {
-    res.status(500).json({ error: "Maps fetch failed", detail: String(e) });
+    res.status(500).json({ error: "Maps fetch failed" });
   }
 }));
 
 // ── GET /api/seo/ai-mentions ──────────────────────────────────────────────────
 
 router.get("/seo/ai-mentions", withQuota(async (req, res) => {
-      const { keyword = "seo local" } = req.query as Record<string, string>;
+      const { keyword: raw_keyword } = req.query as Record<string,string>;
+  const keyword = textParam(raw_keyword, 120);
+  if (!keyword) { missingParam(res, "keyword"); return; }
       try {
         const data = await getAIVisibility(keyword);
         if ("available" in data && data.available === false) {
@@ -352,7 +386,20 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
       });
       return;
     }
-    const data = await getContentOptimization(url, "seo local", orgId);
+    // Mot-cle cible : celui fourni, sinon le mot-cle suivi par l'organisation qui a le plus de volume.
+    // Jamais une valeur d'exemple : la page d'un client ne doit pas etre evaluee contre « seo local ».
+    const asked = textParam((req.body as { keyword?: unknown }).keyword, 120);
+    let keyword = asked;
+    if (!keyword) {
+      const tracked = await (req as unknown as { orgDb: (sql: string, v?: unknown[]) => Promise<{ rows: Array<{ keyword?: string }> }> })
+        .orgDb(`SELECT keyword FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST, created_at ASC LIMIT 1`, [orgId]);
+      keyword = textParam(tracked.rows[0]?.keyword, 120);
+    }
+    if (!keyword) {
+      res.status(422).json({ error: "No target keyword: provide `keyword` or track at least one keyword.", code: "KEYWORD_REQUIRED" });
+      return;
+    }
+    const data = await getContentOptimization(url, keyword, orgId);
     await store.logActivity({
       type: "audit", label: `Analyse de contenu : ${url}`, targetId: url, targetType: "url", orgId,
       userId: (req as any).orgContext?.userId || (req as any).orgContext?.email,
@@ -646,13 +693,15 @@ router.delete("/local-seo/rankings/history/:id", canWrite, async (req, res) => {
 });
 
 router.get("/seo/llm-visibility", withQuota(async (req, res) => {
-  const { domain = "exemple.fr", sector } = req.query as Record<string,string>;
+  const { domain: raw_domain, sector } = req.query as Record<string,string>;
+  const domain = textParam(raw_domain);
+  if (!domain) { missingParam(res, "domain"); return; }
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
     const data = await checkLLMVisibility(domain, sector, orgId);
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: "LLM visibility check failed", detail: String(e) });
+    res.status(500).json({ error: "LLM visibility check failed" });
   }
 }));
 
