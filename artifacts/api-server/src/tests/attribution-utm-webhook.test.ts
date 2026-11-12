@@ -6,10 +6,16 @@
  * Banc repris de stripe-webhook-delivery.test.ts : signature Stripe reelle
  * (HMAC de test local), base simulee. Aucun appel Stripe, aucun secret reel.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import Stripe from "stripe";
 
 let funnelInserts: Array<{ sql: string; params: unknown[] }>;
+/** La CI pose STRIPE_TEST_MODE=true ; ces fixtures sont en mode LIVE : valeur d'origine restauree en fin de fichier. */
+const ORIGINAL_STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"];
+afterAll(() => {
+  if (ORIGINAL_STRIPE_TEST_MODE === undefined) delete process.env["STRIPE_TEST_MODE"];
+  else process.env["STRIPE_TEST_MODE"] = ORIGINAL_STRIPE_TEST_MODE;
+});
 const LIVE_SECRET = "whsec_local_live_fixture_only";
 const LIVE_KEY    = "sk_live_local_fixture_only";
 
@@ -210,6 +216,7 @@ beforeEach(() => {
   mailCalls = [];
   addonCalls = [];
   activeStripeKey = LIVE_KEY;
+  delete process.env["STRIPE_TEST_MODE"]; // fixtures en mode LIVE (la CI pose « true »)
   customerOrg = ORG;
   orgRowExists = true;
   process.env["STRIPE_WEBHOOK_SECRET"] = LIVE_SECRET;
