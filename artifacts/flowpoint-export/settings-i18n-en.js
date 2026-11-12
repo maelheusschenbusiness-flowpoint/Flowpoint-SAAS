@@ -1019,5 +1019,19 @@ window.FP_I18N_EN_SETTINGS = {
   "Campagnes Facebook & Instagram Ads": "Facebook & Instagram Ads campaigns",
   "Peu de recommandations, fortes certitudes": "Few recommendations, high confidence",
   "Équilibre pertinence/fréquence": "Relevance/frequency balance",
-  "Toutes les recommandations IA activées": "All AI recommendations enabled"
+  "Toutes les recommandations IA activées": "All AI recommendations enabled",
+  "Cible SLA respectée : {availability} pour une cible de {target} (marge {margin} pt).": "SLA target met: {availability} against a target of {target} (margin {margin} pt).",
+  "Cible SLA non respectée : {availability} pour une cible de {target} (écart {margin} pt).": "SLA target missed: {availability} against a target of {target} (gap {margin} pt).",
+  "Données insuffisantes pour évaluer la cible SLA sur cette période.": "Not enough data to assess the SLA target for this period.",
+  "Aucune cible SLA définie pour ce monitor.": "No SLA target set for this monitor.",
+  "La conformité SLA est momentanément indisponible.": "SLA compliance is temporarily unavailable.",
+  "Cible de disponibilité (%)": "Availability target (%)",
+  "Enregistrer la cible": "Save target",
+  "Supprimer la cible": "Remove target",
+  "Exporter en CSV": "Export as CSV",
+  "Impossible d’enregistrer la cible.": "Could not save the target.",
+  "Impossible de supprimer la cible.": "Could not remove the target.",
+  "Export impossible.": "Export failed.",
+  "La cible doit être un pourcentage entre 90 et 99,999.": "The target must be a percentage between 90 and 99.999.",
+  "Export impossible pour le moment.": "Export is not available right now."
 };
