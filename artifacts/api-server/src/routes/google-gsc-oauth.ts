@@ -1,3 +1,4 @@
+import { stableId } from "../lib/stable-id.js";
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "node:crypto";
 import { pool } from "@workspace/db";
@@ -45,7 +46,7 @@ gscOAuthPublicRouter.get("/google/gsc/callback", async (req: Request, res: Respo
       `INSERT INTO gsc_sites (id,org_id,site_url,display_name,permission_level,is_active,created_at)
        VALUES ($1,$2,$3,$3,$4,true,NOW())
        ON CONFLICT (org_id,site_url) DO UPDATE SET is_active=true,permission_level=$4,updated_at=NOW()`,
-      [`gsc_${orgId}_${Buffer.from(url).toString("base64url").slice(0,40)}`, orgId, url, permissionLevel]
+      [stableId("gsc", orgId, url), orgId, url, permissionLevel]
     );
     res.redirect(`${frontend}/dashboard?gsc_connected=1`);
   } catch (cause) {

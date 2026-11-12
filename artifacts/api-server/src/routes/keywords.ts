@@ -1,9 +1,6 @@
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
-import { db, trackedKeywordsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { store } from "../services/store.js";
-import { isDemoMode } from "../services/mock-data.js";
 import {
   trackKeyword, syncOrgRankings, getRankingHistory, getKeywordStats,
   generateClusters, generateOpportunities, getAIRecommendations, getKeywordLimit,
@@ -209,17 +206,6 @@ router.get("/keywords/domination", requireAddon("keywordDomination", "Keyword Do
   }
 });
 
-const SEED: Array<typeof trackedKeywordsTable.$inferInsert> = [
-  { id:"kw1", orgId:"default", keyword:"agence seo paris",                currentPosition:3,  prevPosition:5,  searchVolume:1900, difficulty:62, tag:"Local",       intent:"commercial" },
-  { id:"kw2", orgId:"default", keyword:"audit seo gratuit",               currentPosition:7,  prevPosition:6,  searchVolume:4400, difficulty:48, tag:"Acquisition", intent:"informational" },
-  { id:"kw3", orgId:"default", keyword:"référencement naturel entreprise", currentPosition:12, prevPosition:14, searchVolume:2200, difficulty:55, tag:"Notoriété",   intent:"informational" },
-  { id:"kw4", orgId:"default", keyword:"consultant seo freelance",         currentPosition:4,  prevPosition:4,  searchVolume:880,  difficulty:43, tag:"Local",       intent:"commercial" },
-  { id:"kw5", orgId:"default", keyword:"optimisation google my business",  currentPosition:2,  prevPosition:3,  searchVolume:3600, difficulty:38, tag:"Local SEO",   intent:"transactional" },
-  { id:"kw6", orgId:"default", keyword:"backlinks de qualité",             currentPosition:18, prevPosition:15, searchVolume:1300, difficulty:71, tag:"Netlinking",  intent:"commercial" },
-  { id:"kw7", orgId:"default", keyword:"core web vitals optimisation",     currentPosition:9,  prevPosition:11, searchVolume:720,  difficulty:52, tag:"Technique",   intent:"informational" },
-  { id:"kw8", orgId:"default", keyword:"seo local restaurant paris",       currentPosition:1,  prevPosition:1,  searchVolume:590,  difficulty:29, tag:"Local",       intent:"navigational" },
-];
-
 // GET /api/keywords
 router.get("/keywords", withCache(60), async (req, res) => {
   const orgId = getOrg(req);
@@ -243,22 +229,10 @@ router.get("/keywords", withCache(60), async (req, res) => {
     else                              query += ` ORDER BY current_position ASC NULLS LAST`;
     const kwRes = await (req as OrgReq).orgDb(query, params);
     if (kwRes.rows.length === 0) {
-      if (!isDemoMode()) {
-        res.json({ keywords: [], total: 0, hasData: false, source: "empty" });
-        return;
-      }
-      // Demo/dev: seed tracked_keywords with sample data
-      const existing = await db.select().from(trackedKeywordsTable).limit(1);
-      if (existing.length === 0) {
-        await db.insert(trackedKeywordsTable).values(SEED).onConflictDoNothing();
-      } else {
-        for (const s of SEED) {
-          await db.update(trackedKeywordsTable).set({ intent: s.intent }).where(eq(trackedKeywordsTable.id, s.id!));
-        }
-      }
-      const seeded = await db.select().from(trackedKeywordsTable)
-        .orderBy(trackedKeywordsTable.currentPosition).limit(500);
-      res.json({ keywords: seeded, total: seeded.length, source: "seeded" });
+      // Aucune donnee fictive, dans aucun environnement : une organisation sans mot-cle suivi
+      // recoit une liste vide et `hasData: false`. (Avant : hors production, des mots-cles
+      // d'exemple etaient inseres puis TOUS les mots-cles de TOUTES les organisations renvoyes.)
+      res.json({ keywords: [], total: 0, hasData: false, source: "empty" });
       return;
     }
     res.json({ keywords: kwRes.rows, total: kwRes.rows.length, source: "tracked" });
