@@ -1043,6 +1043,27 @@
   }
 
   window.fpResolveLanguage = resolveLanguage;
+
+  /* CONTINUITE DE LANGUE depuis le site vitrine (autre origine : son localStorage
+     n'est pas le notre). Le lien peut porter `?lang=fr`. Regles, dans l'ordre :
+       1. une preference deja enregistree dans ce navigateur gagne toujours ;
+       2. sinon la langue du lien, si elle est supportee (liste fermee) ;
+       3. sinon rien n'est ecrit : resolveLanguage() retombe sur l'anglais.
+     Le francais n'est jamais un repli : il n'est retenu que s'il est demande. */
+  (function seedLanguageFromUrl() {
+    try {
+      var asked = new URLSearchParams(window.location.search).get('lang');
+      if (!asked) return;
+      var raw = String(asked).trim().replace(/_/g, '-').toLowerCase();
+      if (!/^[a-z]{2}(-[a-z]{2})?$/.test(raw)) return;
+      var base = raw.split('-')[0];
+      var known = Object.prototype.hasOwnProperty.call(LOCALE_BY_LANGUAGE, raw) ? raw
+        : (Object.prototype.hasOwnProperty.call(LOCALE_BY_LANGUAGE, base) ? base : '');
+      if (!known) return;
+      if (localStorage.getItem('fp:language')) return;
+      localStorage.setItem('fp:language', known);
+    } catch (_) {}
+  })();
   window.fpResolveLocale = function (language) {
     return LOCALE_BY_LANGUAGE[resolveLanguage(language)] || 'en-US';
   };
