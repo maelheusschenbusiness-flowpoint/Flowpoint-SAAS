@@ -108,4 +108,12 @@
       }
     } catch (e) { /* ne bloque jamais le clic */ }
   }, true);
+
+  /* Vue de la page tarifs. Cette etape etait emise par le tracker de la branche
+     Flowpoint (funnel-tracking.js, non repris : second identifiant de visiteur).
+     Meme identite (`fp_vid`), meme consentement, une fois par chargement ; le serveur
+     deduplique par visiteur + etape + jour. */
+  try {
+    if (/\/pricing\.html$/i.test(window.location.pathname || '')) track('tarifs_vus');
+  } catch (e) { /* une mesure ratee ne bloque jamais la page */ }
 })();
