@@ -22760,6 +22760,7 @@ function bindGlobalEvents() {
     "Synthèse exécutive IA": "AI executive summary",
     "Une génération à partir des audits et monitors réellement enregistrés. Les mesures restent calculées depuis les données vérifiées.": "Generated from actual recorded audits and monitors. Metrics remain calculated from verified data.",
     "Générer la synthèse": "Generate summary",
+    "Synthèse exécutive": "Executive summary",
     "Sujet du rapport (facultatif)": "Report subject (optional)",
     "Ex. : acquisition organique": "e.g. organic acquisition",
     "Le sujet ne peut pas dépasser 120 caractères.": "The subject must not exceed 120 characters.",

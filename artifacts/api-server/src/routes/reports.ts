@@ -467,7 +467,7 @@ router.post("/reports/send-invoice", canAdmin, async (req, res) => {
     ok: false,
     sent: false,
     code: "not_implemented",
-    error: "L'envoi des factures par e-mail n'est pas encore disponible. Téléchargez la facture depuis le portail de facturation.",
+    error: "Invoice email delivery is not available yet. Download the invoice from the billing portal.",
     invoiceId: invoiceId ?? null,
   });
 });
