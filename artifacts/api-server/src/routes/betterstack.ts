@@ -6,8 +6,9 @@ import {
   listIncidents, getIncident, acknowledgeIncident,
   listHeartbeats, createHeartbeat,
   listStatusPages, createStatusPage,
-  getMonitoringStats, isBSConfigured,
+  getMonitoringStats, isBSConfigured, exigerAppartenance,
 } from "../services/betterstack-service.js";
+import { evaluateSla, extractAvailability, parseSlaTarget, slaReportCsv, SLA_TARGET_MIN, SLA_TARGET_MAX } from "../services/sla-compliance.js";
 import { logger } from "../lib/logger.js";
 import { canAdmin, canWrite } from "../middlewares/requireRole.js";
 import { pool } from "@workspace/db";
@@ -187,25 +188,101 @@ function isSlaDate(value: unknown): value is string {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+type SlaReq = import("express").Request & { orgId?: string; orgDb?: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
+const slaOrg = (req: import("express").Request) => (req as SlaReq).orgId ?? "default";
+/** Requetes SLA : transaction RLS de l'organisation, et filtre `org_id` ecrit a la main en plus. */
+const slaDb = (req: import("express").Request) => {
+  const r = req as SlaReq;
+  return r.orgDb ? r.orgDb.bind(r) : pool.query.bind(pool) as unknown as NonNullable<SlaReq["orgDb"]>;
+};
+async function loadSlaTarget(req: import("express").Request, monitorId: string): Promise<number | null> {
+  const r = await slaDb(req)(`SELECT target_pct FROM sla_targets WHERE org_id = $1 AND monitor_id = $2`, [slaOrg(req), monitorId]);
+  return parseSlaTarget(r.rows[0]?.["target_pct"] === undefined ? null : String(r.rows[0]?.["target_pct"]));
+}
+
+/** Valide la periode ; rend la reponse 400 deja envoyee, ou la periode. */
+function slaRange(req: import("express").Request, res: import("express").Response): { from?: string; to?: string } | null {
+  const { from, to } = req.query as Record<string, unknown>;
+  if ((from !== undefined && !isSlaDate(from)) || (to !== undefined && !isSlaDate(to))) {
+    res.status(400).json({ error: "from et to doivent être des dates valides au format AAAA-MM-JJ.", code: "INVALID_SLA_RANGE" });
+    return null;
+  }
+  if (typeof from === "string" && typeof to === "string" && from > to) {
+    res.status(400).json({ error: "La date from doit être antérieure ou égale à la date to.", code: "INVALID_SLA_RANGE" });
+    return null;
+  }
+  return { from: from as string | undefined, to: to as string | undefined };
+}
+
 router.get("/betterstack/monitors/:id/sla", requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
-    const { from, to } = req.query as Record<string, unknown>;
-    if ((from !== undefined && !isSlaDate(from)) || (to !== undefined && !isSlaDate(to))) {
-      res.status(400).json({ error: "from et to doivent être des dates valides au format AAAA-MM-JJ.", code: "INVALID_SLA_RANGE" });
-      return;
-    }
-    if (typeof from === "string" && typeof to === "string" && from > to) {
-      res.status(400).json({ error: "La date from doit être antérieure ou égale à la date to.", code: "INVALID_SLA_RANGE" });
-      return;
-    }
-    const data = await getMonitorSLA(String(req.params.id), (req as unknown as { orgId?: string }).orgId ?? "default", from, to);
-    res.json(data);
+    const range = slaRange(req, res);
+    if (!range) return;
+    const monitorId = String(req.params.id);
+    const data = await getMonitorSLA(monitorId, slaOrg(req), range.from, range.to);
+    // La cible est facultative : si sa lecture echoue, la mesure reste servie, sans conformite.
+    let target: number | null = null;
+    let compliance: ReturnType<typeof evaluateSla> | null = null;
+    try { target = await loadSlaTarget(req, monitorId); compliance = evaluateSla(extractAvailability(data), target); }
+    catch (err) { logger.warn({ err: (err as Error)?.name }, "[SLA] target lookup failed — compliance omitted"); }
+    res.json({ ...(data as object), compliance });
   } catch (err) {
     // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
-      // croire a une panne alors que l'acces est simplement refuse.
-      res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
+    // croire a une panne alors que l'acces est simplement refuse.
+    res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
   }
+});
+
+router.get("/betterstack/monitors/:id/sla/export.csv", requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
+  if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
+  try {
+    const range = slaRange(req, res);
+    if (!range) return;
+    const monitorId = String(req.params.id);
+    const data = await getMonitorSLA(monitorId, slaOrg(req), range.from, range.to);
+    const compliance = evaluateSla(extractAvailability(data), await loadSlaTarget(req, monitorId));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="sla-report.csv"');
+    res.setHeader("Cache-Control", "no-store");
+    res.send(slaReportCsv({ monitorId, from: range.from, to: range.to, report: data, compliance }));
+  } catch (err) {
+    res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
+  }
+});
+
+router.get("/betterstack/sla-targets", requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
+  try {
+    const r = await slaDb(req)(`SELECT monitor_id, target_pct FROM sla_targets WHERE org_id = $1 ORDER BY monitor_id LIMIT 500`, [slaOrg(req)]);
+    res.json({ targets: r.rows.map(row => ({ monitorId: String(row["monitor_id"]), targetPct: Number(row["target_pct"]) })) });
+  } catch { res.status(500).json({ error: "Unable to load SLA targets.", code: "SLA_TARGETS_UNAVAILABLE" }); }
+});
+
+router.put("/betterstack/monitors/:id/sla-target", canAdmin, requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
+  const target = parseSlaTarget((req.body as { targetPct?: unknown } | undefined)?.targetPct);
+  if (target === null) {
+    res.status(400).json({ error: `The target must be a percentage between ${SLA_TARGET_MIN} and ${SLA_TARGET_MAX}.`, code: "INVALID_SLA_TARGET" });
+    return;
+  }
+  try {
+    const monitorId = String(req.params.id);
+    await exigerAppartenance(monitorId, slaOrg(req));
+    const who = String((req as { orgContext?: { userId?: string; email?: string } }).orgContext?.userId ?? (req as { orgContext?: { email?: string } }).orgContext?.email ?? "");
+    await slaDb(req)(
+      `INSERT INTO sla_targets (org_id, monitor_id, target_pct, updated_by) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (org_id, monitor_id) DO UPDATE SET target_pct = EXCLUDED.target_pct, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+      [slaOrg(req), monitorId, target, who || null]);
+    res.json({ ok: true, monitorId, targetPct: target });
+  } catch (err) {
+    res.status((err as { statusCode?: number }).statusCode ?? 500).json({ error: safeErrMsg(err) });
+  }
+});
+
+router.delete("/betterstack/monitors/:id/sla-target", canAdmin, requireAddon("slaMonitoring", "SLA Monitoring Avancé"), async (req, res) => {
+  try {
+    await slaDb(req)(`DELETE FROM sla_targets WHERE org_id = $1 AND monitor_id = $2`, [slaOrg(req), String(req.params.id)]);
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: "Unable to remove the SLA target.", code: "SLA_TARGETS_UNAVAILABLE" }); }
 });
 
 router.get("/betterstack/monitors/:id/response-times", async (req, res) => {
