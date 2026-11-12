@@ -1,10 +1,34 @@
 # Matrice de suivi — add-ons bêta 2.0
 
-Mise à jour : 11 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
+Mise à jour : 12 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
 
 Le rapport archivé du 3 novembre 2026 attribue historiquement **8/24** validations aux huit add-ons de remplacement (`docs/flowpoint-audit-status-2026-11-03.md`, commit `6c78d7d`). En ajoutant la certification locale complète actuelle d’Agency Reporting Packs, **9/24 modules ont une preuve de certification** : huit attributions historiques non rejouées et une certification locale complète produite. Ce total ne signifie pas que neuf fournisseurs ont été certifiés.
 
 **Compteur fonctionnel documenté : 12/24** — huit remplacements historiques, Agency Reporting Packs, SEO Content Decay Radar, AI GBP Posting et AI CRO Strategist (fonctions applicatives). Ce compteur inclut des branches en revue et des preuves historiques non rejouées ; il ne signifie ni disponibilité commerciale, ni certification fournisseur. La certification IA réelle de CRO reste à confirmer.
+
+## Synthèse bêta 2.0 — 12 novembre 2026 (audit des neuf modules restants)
+
+Trois niveaux **distincts** : *implémentation terminée* (le code fait ce qu'il annonce, sans donnée inventée), *tests automatisés réussis* (preuve locale, fixtures synthétiques), *certification réelle restante* (fournisseur, compte ou site réel — **jamais** revendiquée ici).
+
+**Résultat : 15 modules déjà validés + 8 des 9 restants avec implémentation terminée = 23/24 ; 1 module (CRM Integrations) n'est pas implémenté.** Aucune certification fournisseur réelle n'a été obtenue (0/24) : les accès n'existent pas dans l'environnement.
+
+Suite complète (environnement exact de la CI) : **4 614 réussis, 0 échec, 6 ignorés** (376 fichiers) ; migrations sur base neuve : 819 étapes OK, 0 échec, 0 sans RLS.
+
+| Module | Implémentation | Détail / défauts corrigés | Tests automatisés réussis | Certification réelle restante |
+|---|---|---|---|---|
+| Behavioral AI | Terminée | Snippet généré avec consentement explicite et GPC (#436), ingestion publique attestée (jeton, origine, horodatage, nonce), statut, insights, entonnoirs, recommandations IA sous quota et agrégats anonymisés (aucun chiffre inventé, repli sur règles). | 26 tests (4 fichiers) | Site de test contrôlé + visiteurs synthétiques : `docs/behavioral-ai-certification-plan.md`. |
+| AI Forecasting Engine | Terminée **après correctif** | **Défaut corrigé** : l'identifiant de ligne `seo_forecasts` était tronqué à 80 caractères et servait de clé primaire ; pour un site réaliste, 270 lignes n'avaient que 1 à 10 identifiants, donc `POST /forecast/generate` échouait (500). Identifiant haché stable. États « données insuffisantes » et site actif vérifiés, isolation par organisation. | 29 tests (6 fichiers), dont 4 sur la vraie table (270 lignes, rejeu, deux organisations) | Propriété GA4 + Search Console réelles avec ≥ 14 jours valides. |
+| AI Market Intelligence | Terminée (mesures GSC et classements concurrents) | Aucune IA ni donnée inventée. **Corrigé** : une panne base était présentée comme « aucune donnée » (200 vide) ; elle répond désormais 503 `MARKET_DATA_UNAVAILABLE`, et l'interface affiche un état indisponible. Limite connue : titres de rapports persistés en français. | 15 tests (3 fichiers) (dont 11 nouveaux tests de routes : isolation, 503 vs vide, rôles, validation) | Classements concurrents issus d'un fournisseur réel (DataForSEO). |
+| CRM Integrations | **NON terminée** | `connect`, `test` et `webhook` répondent **501** explicite (`CRM_OAUTH_UNAVAILABLE`, `CRM_TEST_UNAVAILABLE`, `CRM_WEBHOOK_UNAVAILABLE`) ; `sync` lève `CRM_SYNC_UNAVAILABLE`. Aucun jeton n'est enregistré, rien n'est inventé. Manque : flux OAuth2 (state, jetons chiffrés, rafraîchissement), test de connexion, synchronisation, webhooks signés. | 9 tests (2 fichiers) (contrat 501, isolation, quotas) | Application OAuth de test chez au moins un fournisseur (HubSpot recommandé) ; **ne peut pas être terminé ni testé de façon fiable sans elle**. |
+| Keyword Domination Engine | Terminée **après correctif** | **Défaut corrigé (fuite)** : hors production, `GET /keywords` pour une organisation sans mot-clé insérait des mots-clés d'exemple puis renvoyait les mots-clés de **toutes** les organisations. Supprimé : liste vide + `hasData:false`. Le score de priorité signale désormais `difficultyKnown:false` quand la difficulté est supposée neutre. | 12 tests (4 fichiers) (dont garde anti-données-d'exemple, 4 environnements) | Suivi réel (DataForSEO) et quotas sur tâches réelles. |
+| Advanced SEO Lab | Terminée **après correctifs** | **Défauts corrigés** : 9 routes `/seo/*` substituaient `exemple.fr`, `seo local`, `restaurant`, `Paris` aux paramètres manquants et déclenchaient un appel payant sur un domaine fictif (et le client en ajoutait d'autres) → 400 avant tout appel ; l'optimisation de contenu évaluait toute page contre « seo local » → mot-clé du client ou mot-clé suivi (422 sinon) ; détail d'erreur interne divulgué (`detail: String(e)`) supprimé. | 69 tests (8 fichiers) (dont 17 tests de paramètres obligatoires) | Réponses DataForSEO réelles. |
+| Global Monitoring | Terminée (fail-closed) | 503 `configured:false` sans Better Stack ; aucune métrique fabriquée ; ajout réservé à l'add-on ; écriture réservée aux administrateurs. | 66 tests (5 fichiers) | Lecture d'un moniteur Better Stack QA préexistant et autorisé. |
+| Backlink Intelligence | Terminée | Add-on exigé, cooldown, quota DataForSEO consommé puis remboursé si aucun appel abouti, 503 explicite `BACKLINK_DATA_UNAVAILABLE`, aucune métrique synthétique. | 5 tests (2 fichiers) + tests DataForSEO | DataForSEO réel (backlinks). |
+| AI Workspace Launch | Terminée | Génération sous quota IA, missions persistées et vérifiées, **historique restauré depuis la base** (#432), planification derrière deux add-ons et désactivée en production par défaut. | 34 tests (5 fichiers) | IA réelle ; rapports planifiés avec e-mail réel. |
+
+Défauts transverses corrigés dans cet audit : identifiants tronqués servant de clés primaires (`seo_forecasts`, `gsc_sites` — où l'échec était avalé par un `.catch(() => {})` et où le callback OAuth désactivait tous les sites avant l'insertion —, `competitor_map_results`), tous remplacés par `lib/stable-id.ts` ; valeurs d'exemple substituées à des paramètres manquants ; états de panne présentés comme « aucune donnée ».
+
+---
 
 **Légende**
 - **Fonctionnalité développée**, **preuve locale/E2E**, **certification locale complète**, **certification fournisseur réelle**, **facturation Stripe TEST**, **intégration GitHub/Test-Replit** et **disponibilité commerciale** sont suivies séparément.
