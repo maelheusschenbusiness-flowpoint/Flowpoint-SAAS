@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Conversion dashboards</title>
+<style>
+  :root { --bg:#f8fafc; --fg:#0f172a; --muted:#64748b; --card:#fff; --line:#e2e8f0; --accent:#2563eb; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1220; --fg:#e2e8f0; --muted:#94a3b8; --card:#111a2e; --line:#243049; --accent:#60a5fa; --warn:#fbbf24; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:8px 0 12px; } h2 { font-size:16px; margin:0 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin:12px 0; overflow-x:auto; }
+  form { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+  label { display:grid; gap:4px; font-size:12px; color:var(--muted); }
+  input, button { font:inherit; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); min-height:40px; }
+  button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+  table { width:100%; border-collapse:collapse; min-width:520px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; } td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .def { color:var(--muted); font-size:12px; } .warn { color:var(--warn); } #status { color:var(--muted); min-height:1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Conversion dashboards</h1>
+  <p class="def">Read-only. Counts come from consented analytics and Stripe-signed events; a missing measurement is shown as “—”, never as 0. No email, IP or lead identifier is read.</p>
+  <form id="f" class="card">
+    <label>Admin key <input id="key" type="password" autocomplete="off" required minlength="32"></label>
+    <label>From <input id="from" type="date" required></label>
+    <label>To <input id="to" type="date" required></label>
+    <button type="submit">Load</button>
+  </form>
+  <div id="status" role="status" aria-live="polite"></div>
+  <section class="card"><h2>Overall conversion</h2><p class="def" id="g-meta"></p><div id="g"></div></section>
+  <section class="card"><h2>Outbound conversion (Smartlead)</h2><p class="def" id="o-meta"></p><div id="o"></div><div id="o-extra"></div></section>
+</main>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var today = new Date().toISOString().slice(0, 10);
+  $('to').value = today;
+  $('from').value = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+
+  function el(tag, text, cls) { var e = document.createElement(tag); if (text !== undefined && text !== null) e.textContent = String(text); if (cls) e.className = cls; return e; }
+  function num(v) { return v === null || v === undefined ? '—' : String(v); }
+  var REASONS = { mixed_coverage: 'not comparable (browser vs server coverage)', no_denominator: 'no data' };
+
+  function renderView(root, data) {
+    root.replaceChildren();
+    var t = el('table'), head = el('tr');
+    ['Indicator', 'Events', 'Unique visitors', 'Coverage'].forEach(function (h) { head.appendChild(el('th', h)); });
+    t.appendChild(head);
+    data.stages.forEach(function (s) {
+      var tr = el('tr'), first = el('td');
+      first.appendChild(el('div', s.label)); first.appendChild(el('div', s.definition, 'def'));
+      tr.appendChild(first); tr.appendChild(el('td', num(s.events), 'n')); tr.appendChild(el('td', num(s.uniqueVisitors), 'n'));
+      tr.appendChild(el('td', s.coverage === 'server' ? 'all visitors (server)' : 'consenting visitors only'));
+      t.appendChild(tr);
+    });
+    root.appendChild(t);
+    var r = el('table'), rh = el('tr');
+    ['Step', 'Event ratio', 'Note'].forEach(function (h) { rh.appendChild(el('th', h)); });
+    r.appendChild(rh);
+    data.rates.forEach(function (x) {
+      var tr = el('tr');
+      tr.appendChild(el('td', x.from + ' → ' + x.to));
+      tr.appendChild(el('td', x.ratio === null ? '—' : (Math.round(x.ratio * 1000) / 10) + ' %', 'n'));
+      tr.appendChild(el('td', x.reason === 'ok' ? '' : (REASONS[x.reason] || ''), 'def'));
+      r.appendChild(tr);
+    });
+    root.appendChild(el('h3', 'Step ratios (events, same coverage only)')); root.appendChild(r);
+  }
+
+  function get(path, key, from, to) {
+    return fetch('/api/admin/conversion/' + path + '?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to),
+      { headers: { 'x-admin-key': key }, cache: 'no-store' }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) throw new Error(r.status === 403 ? 'Invalid admin key.' : (b && b.error) || 'Request failed (' + r.status + ').');
+          return b;
+        });
+      });
+  }
+
+  $('f').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var key = $('key').value, from = $('from').value, to = $('to').value;
+    $('status').textContent = 'Loading…'; $('status').className = '';
+    Promise.all([get('global', key, from, to), get('outbound', key, from, to)]).then(function (res) {
+      var g = res[0], o = res[1];
+      $('g-meta').textContent = 'Measurable visitors (consenting): ' + num(g.measurableVisitors) + ' · ' + g.from + ' to ' + g.to;
+      $('o-meta').textContent = 'Measurable Smartlead visitors (consenting): ' + num(o.measurableVisitors);
+      renderView($('g'), g); renderView($('o'), o);
+      var extra = $('o-extra'); extra.replaceChildren();
+      var d = o.delivery || {};
+      extra.appendChild(el('h3', 'Milestone delivery to the acquisition engine'));
+      extra.appendChild(el('p', d.status === 'observed'
+        ? 'Delivered ' + num(d.delivered) + ' · pending ' + num(d.pending) + ' · rejected ' + num(d.rejected) + ' (abandoned after retries ' + num(d.abandonedAfterRetries) + ')'
+        : 'Delivery status: ' + (d.status || 'unavailable'), d.pending > 0 || d.abandonedAfterRetries > 0 ? 'warn' : ''));
+      extra.appendChild(el('p', 'Prospects contacted and per-lead attribution live in the acquisition engine and are not duplicated here.', 'def'));
+      $('status').textContent = 'Loaded.';
+    }).catch(function (err) { $('status').textContent = err.message || 'Request failed.'; $('status').className = 'warn'; });
+  });
+})();
+</script>
+</body>
+</html>
