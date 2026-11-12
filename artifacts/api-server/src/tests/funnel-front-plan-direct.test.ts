@@ -196,3 +196,40 @@ describe("A-11 — jeton de pre-inscription Google", () => {
     expect(SIGNIN).toContain("fpBackToSignupForm(");
   });
 });
+
+describe("signin.html?plan= — lien direct du site vitrine", () => {
+  const start = SIGNIN.indexOf("Lien direct depuis le site vitrine");
+  const end = SIGNIN.indexOf("/* A-04 —", start);
+  const block = SIGNIN.slice(SIGNIN.lastIndexOf("(function () {", start), end);
+
+  function run(search: string, cart: unknown = null) {
+    const store: Record<string, string> = cart ? { fp_cart: JSON.stringify(cart) } : {};
+    const history: string[] = [];
+    runInNewContext(block, {
+      FP_PLANS: ["standard", "pro", "ultra"],
+      URLSearchParams,
+      Date, JSON, String,
+      window: { location: { search } },
+      localStorage: { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } },
+      history: { replaceState: (_s: unknown, _t: string, url: string) => { history.push(url); } },
+    });
+    return { cart: store["fp_cart"] ? JSON.parse(store["fp_cart"]) : null, history };
+  }
+
+  it("retient un plan de la liste blanche, garde les add-ons, nettoie l'URL", () => {
+    const r = run("?plan=PRO&utm_source=x", { plan: "standard", addons: { seats: 2 } });
+    expect(r.cart.plan).toBe("pro");
+    expect(r.cart.addons).toEqual({ seats: 2 });
+    expect(r.history).toEqual(["/signin.html?utm_source=x"]);
+  });
+
+  it("ignore tout identifiant hors liste blanche : aucun panier n'est créé", () => {
+    for (const bad of ["?plan=enterprise", "?plan=pro%27%3Balert(1)", "?plan=", "?plan=__proto__", "?plan=29"]) {
+      expect(run(bad).cart).toBeNull();
+    }
+  });
+
+  it("ne touche pas au retour du callback Google (traité à part)", () => {
+    expect(run("?google_signup=1&plan=ultra&pre_reg=abc").cart).toBeNull();
+  });
+});

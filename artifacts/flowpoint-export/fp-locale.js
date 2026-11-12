@@ -215,7 +215,7 @@
     "Account Manager dédié": "Dedicated account manager",
     "Questions fréquentes": "Frequently asked questions",
     "Comment fonctionne l'essai de 14 jours ?": "How does the 14-day trial work?",
-    "Tous les plans incluent 14 jours d'essai avec accès complet à toutes les fonctionnalités.\n      Une carte bancaire est requise à l'inscription — elle ne sera débitée qu'à la fin de l'essai si vous décidez de continuer.\n      Vous pouvez annuler à tout moment avant la fin de l'essai sans frais.": "All plans include a 14-day trial with full access to every feature.\n      A credit card is required at sign-up. It will only be charged at the end of the trial if you choose to continue.\n      You can cancel at any time before the trial ends at no cost.",
+    "Tous les plans incluent 14 jours d'essai gratuit avec accès complet. Vous choisissez votre plan avant de commencer, et une carte bancaire est requise à l'inscription.\n      Rien n'est débité pendant l'essai. À la fin des 14 jours, l'abonnement au plan choisi démarre et la carte est débitée automatiquement, sauf si vous annulez avant cette date.\n      Vous pouvez annuler à tout moment avant la fin de l'essai, sans frais.": "All plans include a free 14-day trial with full access. You choose your plan before you start, and a credit card is required at sign-up.\n      Nothing is charged during the trial. When the 14 days end, your subscription to the chosen plan starts and your card is charged automatically, unless you cancel before that date.\n      You can cancel at any time before the trial ends, at no cost.",
     "Puis-je acheter des add-ons pendant l'essai ?": "Can I buy add-ons during the trial?",
     "Oui — les add-ons sont disponibles immédiatement, même pendant la période d'essai.\n      Chaque add-on est facturé séparément dès l'activation via Stripe, indépendamment de votre statut d'essai.\n      Ils sont sans engagement et annulables à tout moment depuis votre tableau de bord.": "Yes. Add-ons are available immediately, even during the trial.\n      Each add-on is billed separately through Stripe as soon as it is activated, regardless of trial status.\n      They have no commitment and can be canceled from your dashboard at any time.",
     "Puis-je changer de plan à tout moment ?": "Can I change plans at any time?",
@@ -1043,6 +1043,27 @@
   }
 
   window.fpResolveLanguage = resolveLanguage;
+
+  /* CONTINUITE DE LANGUE depuis le site vitrine (autre origine : son localStorage
+     n'est pas le notre). Le lien peut porter `?lang=fr`. Regles, dans l'ordre :
+       1. une preference deja enregistree dans ce navigateur gagne toujours ;
+       2. sinon la langue du lien, si elle est supportee (liste fermee) ;
+       3. sinon rien n'est ecrit : resolveLanguage() retombe sur l'anglais.
+     Le francais n'est jamais un repli : il n'est retenu que s'il est demande. */
+  (function seedLanguageFromUrl() {
+    try {
+      var asked = new URLSearchParams(window.location.search).get('lang');
+      if (!asked) return;
+      var raw = String(asked).trim().replace(/_/g, '-').toLowerCase();
+      if (!/^[a-z]{2}(-[a-z]{2})?$/.test(raw)) return;
+      var base = raw.split('-')[0];
+      var known = Object.prototype.hasOwnProperty.call(LOCALE_BY_LANGUAGE, raw) ? raw
+        : (Object.prototype.hasOwnProperty.call(LOCALE_BY_LANGUAGE, base) ? base : '');
+      if (!known) return;
+      if (localStorage.getItem('fp:language')) return;
+      localStorage.setItem('fp:language', known);
+    } catch (_) {}
+  })();
   window.fpResolveLocale = function (language) {
     return LOCALE_BY_LANGUAGE[resolveLanguage(language)] || 'en-US';
   };

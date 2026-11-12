@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect } from "@playwright/test";
 import { createStripeTestResourceCleanup } from "../helpers/stripe-test-resource-cleanup.mjs";
 import {
@@ -21,6 +22,7 @@ const addonKeys = [
   "abTestingAI",
   "aiContentStrategist",
   "gbpPerformanceLeads",
+  "conversionOpportunityEngine",
   "localPresenceOptimizer",
   "localLandingOpportunities",
   "seoChangeImpact",
@@ -50,6 +52,8 @@ const experimentB = randomUUID();
 const auditBeforeA = randomUUID();
 const auditAfterA = randomUUID();
 const auditForeignB = randomUUID();
+const auditAgencyA = randomUUID();
+const auditAgencyB = randomUUID();
 const siteA = "https://addon-a.qa-fixture.invalid";
 const siteB = "https://addon-b.qa-fixture.invalid";
 const pageA = "/pricing";
@@ -61,6 +65,15 @@ function getStripeResourceCleanup(stripe, stripeKey, label) {
     stripeResourceCleanup = createStripeTestResourceCleanup(stripe, stripeKey, label);
   }
   return stripeResourceCleanup;
+}
+
+async function grantOrgBAddon(addonKey) {
+  await db.query("DELETE FROM org_addons WHERE org_id=$1 AND addon_key=$2", [orgB, addonKey]);
+  await db.query(
+    `INSERT INTO org_addons (id,org_id,addon_key,active,quantity,activated_at)
+     VALUES ($1,$2,$3,true,1,NOW())`,
+    [`cert-${orgB}-${addonKey}`, orgB, addonKey],
+  );
 }
 
 async function findStripeEvent(stripe, type, objectId) {
@@ -275,6 +288,12 @@ test.beforeAll(async () => {
             ($5,$6,$7,31,18,28,'warn',NOW()-INTERVAL '1 day')`,
     [auditBeforeA, orgA, `${siteA}/services/dentist`, auditAfterA, auditForeignB, orgB, `${siteB}/foreign`],
   );
+  await db.query(
+    `INSERT INTO audits (id,org_id,url,score,issues,speed,status,created_at)
+     VALUES ($1,$2,$3,72,5,65,'completed',NOW()-INTERVAL '4 days'),
+            ($4,$2,$5,67,7,62,'completed',NOW()-INTERVAL '3 days')`,
+    [auditAgencyA, orgA, "https://addon-a.qa-fixture.invalid/agency", auditAgencyB, "https://addon-a2.qa-fixture.invalid/agency"],
+  );
 });
 test.afterEach(async () => {
   await stripeResourceCleanup?.cleanup();
@@ -290,6 +309,9 @@ test.afterAll(async () => {
   if (db) {
     try {
       for (const orgId of [orgA, orgB]) {
+        await db.query("DELETE FROM agency_report_schedule_runs WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM agency_report_schedules WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM agency_customer_portals WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM organic_campaign_goals WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM technical_seo_fix_verifications WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM agency_portfolio_priority_settings WHERE org_id=$1", [orgId]);
@@ -477,7 +499,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   const loadedPacks = await packsResponse.json();
   expect(loadedPacks.audits.map(audit => String(audit.id))).toContain(auditAfterA);
   const result = page.locator("#fp-agency-packs-result");
-  await result.locator('input[type="text"]').fill("Quota baseline customer");
+  await result.locator('input[aria-label="Client name"]').fill("Quota baseline customer");
   await result.locator("select").selectOption(auditAfterA);
   const refreshResponsePromise = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/reports" &&
@@ -486,7 +508,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   );
   await page.evaluate(() => window._fpReportsAPI.load({ force: true }));
   expect((await refreshResponsePromise).status()).toBe(200);
-  await expect(result.locator('input[type="text"]')).toHaveValue("Quota baseline customer");
+  await expect(result.locator('input[aria-label="Client name"]')).toHaveValue("Quota baseline customer");
   await expect(result.locator("select")).toHaveValue(auditAfterA);
   const createButton = result.locator("button.fp-btn-primary").first();
   const formState = await result.evaluate(element => ({
@@ -527,7 +549,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   expect(new Set(persistedBaseline.rows.map(row => row.id))).toEqual(
     new Set(baselineBundle.reports.map(report => report.id)),
   );
-  await expect(result.locator('input[type="text"]')).toBeVisible({ timeout: 5_000 });
+  await expect(result.locator('input[aria-label="Client name"]')).toBeVisible({ timeout: 5_000 });
 
   const beforeQuota = await db.query(
     "SELECT COUNT(*)::int AS count FROM reports WHERE org_id=$1 AND created_at > date_trunc('month',now())",
@@ -553,7 +575,7 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
     );
     expect(Number(atQuota.rows[0]?.count)).toBe(28);
 
-    await result.locator('input[type="text"]').fill("Quota blocked customer");
+    await result.locator('input[aria-label="Client name"]').fill("Quota blocked customer");
     await result.locator("select").selectOption(auditAfterA);
     await expect(createButton).toBeEnabled();
     const quotaResponse = page.waitForResponse(response =>
@@ -612,6 +634,357 @@ test("Agency Reporting Packs quota is atomic and viewer access is denied", async
   } finally {
     await viewerContext.close();
   }
+});
+
+test("Agency Reporting Packs: multi-site report, PDF, portal, and scheduled delivery", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("reports"));
+  await page.waitForFunction(() => window.STATE?.route === "reports", null, { timeout: 20_000 });
+  const loadPacksButton = page.getByRole("button", {
+    name: /Charger les packs|Actualiser les packs|Load packs/i,
+  });
+  await expect(loadPacksButton).toBeVisible();
+  const packsResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs" &&
+    response.request().method() === "GET",
+  );
+  await loadPacksButton.evaluate(button => button.click());
+  expect((await packsResponsePromise).status()).toBe(200);
+  await page.waitForFunction(() => window._fpAgencyPacksState?.loaded === true, null, { timeout: 15_000 });
+  expect(await page.evaluate(() => window._fpAgencyPacksState.audits.map(audit => audit.id)))
+    .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
+  const agencyPanel = page.locator("#fp-agency-packs-result");
+  const clientNameInput = agencyPanel.locator('input[type="text"][maxlength="160"]');
+  await clientNameInput.fill("Synthetic multi-site customer");
+  const auditACheckbox = agencyPanel.locator(`input[type="checkbox"][value="${auditAgencyA}"]`);
+  const auditBCheckbox = agencyPanel.locator(`input[type="checkbox"][value="${auditAgencyB}"]`);
+  await auditACheckbox.check();
+  await auditBCheckbox.check();
+  expect(await page.evaluate(() => window._fpAgencyPacksState.selectedAuditIds))
+    .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
+  const consolidateButton = agencyPanel.getByRole("button", {
+    name: /Consolider les sites et créer un portail|Consolidate sites and create a portal/i,
+  });
+  await expect(consolidateButton).toBeEnabled();
+
+  const consolidateResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/consolidate" &&
+    response.request().method() === "POST",
+  );
+  const portalResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/portals" &&
+    response.request().method() === "POST",
+  );
+  await page.evaluate(() => window.FP_V1_ADDON_PANELS.consolidateAgencySites());
+  const consolidateResponse = await consolidateResponsePromise;
+  expect(consolidateResponse.status()).toBe(201);
+  const consolidated = await consolidateResponse.json();
+  expect(consolidated.auditCount).toBe(2);
+  const portalResponse = await portalResponsePromise;
+  expect(portalResponse.status()).toBe(201);
+  const portal = await portalResponse.json();
+  expect(portal.url).toContain("/api/agency-portal/");
+  const revokePortalButton = agencyPanel.getByRole("button", {
+    name: /Révoquer le portail|Revoke portal/i,
+  });
+  await expect(revokePortalButton).toBeVisible();
+
+  const pdf = await page.request.get(`/api/reports/${consolidated.id}/download`);
+  expect(pdf.status()).toBe(200);
+  expect(pdf.headers()["content-type"]).toContain("application/pdf");
+  expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
+  const reportDownloadButton = page.locator(`button[title="PDF"][data-rid="${consolidated.id}"]`);
+  await expect(reportDownloadButton).toBeVisible();
+  const browserDownloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+  await reportDownloadButton.click();
+  const browserDownload = await browserDownloadPromise;
+  expect(browserDownload.suggestedFilename()).toMatch(/\.pdf$/i);
+  const browserDownloadPath = await browserDownload.path();
+  expect(browserDownloadPath).toBeTruthy();
+  expect(readFileSync(browserDownloadPath).subarray(0, 4).toString()).toBe("%PDF");
+  const snapshotResult = await db.query(
+    "SELECT generation_metadata_json FROM reports WHERE org_id=$1 AND id=$2",
+    [orgA, consolidated.id],
+  );
+  const rawSnapshot = snapshotResult.rows[0].generation_metadata_json;
+  const snapshot = typeof rawSnapshot === "string" ? JSON.parse(rawSnapshot) : rawSnapshot;
+  expect(snapshot.sites.map(site => site.url)).toEqual([
+    "https://addon-a.qa-fixture.invalid/agency",
+    "https://addon-a2.qa-fixture.invalid/agency",
+  ]);
+
+  const crossOrg = await page.request.post("/api/reports/agency-packs/consolidate", {
+    headers: {
+      origin: new URL(page.url()).origin,
+      referer: page.url(),
+    },
+    data: { clientName: "Foreign audit", auditIds: [auditAgencyA, auditForeignB] },
+  });
+  expect(crossOrg.status()).toBe(404);
+  expect((await crossOrg.json()).code).toBe("AUDIT_NOT_FOUND");
+
+  const recipientEmail = `agency-client-${randomUUID()}@example.test`;
+  await agencyPanel.locator('input[type="email"]').fill(recipientEmail);
+  await agencyPanel.locator('input[maxlength="100"]').fill("0 0 1 1 *");
+  await agencyPanel.locator('input[maxlength="80"]').fill("UTC");
+  const createScheduleButton = agencyPanel.getByRole("button", {
+    name: /Planifier la génération et l’envoi|Schedule generation and delivery/i,
+  });
+  await expect(createScheduleButton).toBeEnabled();
+  const scheduleResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/schedules" &&
+    response.request().method() === "POST",
+  );
+  await createScheduleButton.click();
+  const scheduleResponse = await scheduleResponsePromise;
+  expect(scheduleResponse.status()).toBe(201);
+  const schedule = await scheduleResponse.json();
+  expect(schedule.recipient_email).toBe(recipientEmail);
+
+  const pauseScheduleButton = agencyPanel.getByRole("button", { name: /Suspendre|Pause/i });
+  await expect(pauseScheduleButton).toBeVisible();
+  const pauseSchedulePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/reports/agency-packs/schedules/${schedule.id}` &&
+    response.request().method() === "PATCH",
+  );
+  await pauseScheduleButton.click();
+  const pausedSchedule = await pauseSchedulePromise;
+  expect(pausedSchedule.status()).toBe(200);
+  expect((await pausedSchedule.json()).enabled).toBe(false);
+  const resumeScheduleButton = agencyPanel.getByRole("button", { name: /Reprendre|Resume/i });
+  await expect(resumeScheduleButton).toBeVisible();
+  const resumeSchedulePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/reports/agency-packs/schedules/${schedule.id}` &&
+    response.request().method() === "PATCH",
+  );
+  await resumeScheduleButton.click();
+  const resumedSchedule = await resumeSchedulePromise;
+  expect(resumedSchedule.status()).toBe(200);
+  expect((await resumedSchedule.json()).enabled).toBe(true);
+
+  const portalPage = await page.context().newPage();
+  try {
+    const portalPageResponse = await portalPage.goto(portal.url);
+    expect(portalPageResponse?.status()).toBe(200);
+    await expect(portalPage.locator("body")).toContainText("Synthetic multi-site customer");
+    await expect(portalPage.locator("body")).toContainText("https://addon-a.qa-fixture.invalid/agency");
+    await expect(portalPage.locator("body")).toContainText("https://addon-a2.qa-fixture.invalid/agency");
+    await expect(portalPage.locator("body")).not.toContainText("Private meeting notes");
+  } finally {
+    await portalPage.close();
+  }
+  await expect(revokePortalButton).toBeVisible();
+  const revokePortalPromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/reports/agency-packs/portals/${portal.id}` &&
+    response.request().method() === "DELETE",
+  );
+  await revokePortalButton.click();
+  expect((await revokePortalPromise).status()).toBe(200);
+  expect((await page.request.get(portal.url)).status()).toBe(404);
+});
+
+test("Agency Reporting Packs: cron delivery is captured and tenant-isolated", async ({ page }) => {
+  test.setTimeout(240_000);
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("reports"));
+  await page.waitForFunction(() => window.STATE?.route === "reports", null, { timeout: 20_000 });
+
+  const loadPacksButton = page.getByRole("button", {
+    name: /Charger les packs|Actualiser les packs|Load packs/i,
+  });
+  const packsResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs" &&
+    response.request().method() === "GET",
+  );
+  await loadPacksButton.evaluate(button => button.click());
+  expect((await packsResponsePromise).status()).toBe(200);
+  await page.waitForFunction(() => window._fpAgencyPacksState?.loaded === true, null, { timeout: 15_000 });
+
+  const panel = page.locator("#fp-agency-packs-result");
+  await panel.locator('input[type="text"][maxlength="160"]').fill("Scheduled E2E customer");
+  await panel.locator(`input[type="checkbox"][value="${auditAgencyA}"]`).check();
+  await panel.locator(`input[type="checkbox"][value="${auditAgencyB}"]`).check();
+  expect(await page.evaluate(() => window._fpAgencyPacksState.selectedAuditIds))
+    .toEqual(expect.arrayContaining([auditAgencyA, auditAgencyB]));
+  const recipientEmail = `agency-scheduler-${randomUUID()}@example.test`;
+  await panel.locator('input[type="email"]').fill(recipientEmail);
+  await panel.locator('input[maxlength="100"]').fill("* * * * *");
+  await panel.locator('input[maxlength="80"]').fill("UTC");
+  expect(await panel.locator('input[type="email"]').inputValue()).toBe(recipientEmail);
+  expect(await panel.locator('input[maxlength="100"]').inputValue()).toBe("* * * * *");
+
+  const createScheduleButton = panel.getByRole("button", {
+    name: /Planifier la génération et l’envoi|Schedule generation and delivery/i,
+  });
+  const scheduleResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/reports/agency-packs/schedules" &&
+    response.request().method() === "POST",
+  );
+  await createScheduleButton.click();
+  const scheduleResponse = await scheduleResponsePromise;
+  const schedule = await scheduleResponse.json();
+  expect(scheduleResponse.status(), JSON.stringify(schedule)).toBe(201);
+  expect(schedule.recipient_email).toBe(recipientEmail);
+
+  await expect.poll(async () => {
+    const result = await db.query(
+      `SELECT status FROM agency_report_schedule_runs
+        WHERE schedule_id=$1 AND org_id=$2 ORDER BY slot DESC LIMIT 1`,
+      [schedule.id, orgA],
+    );
+    return result.rows[0]?.status ?? null;
+  }, { timeout: 190_000, intervals: [1_000, 3_000, 5_000] }).toBe("delivered");
+
+  const run = await db.query(
+    `SELECT report_ids FROM agency_report_schedule_runs
+      WHERE schedule_id=$1 AND org_id=$2 AND status='delivered' ORDER BY slot DESC LIMIT 1`,
+    [schedule.id, orgA],
+  );
+  const reportIds = typeof run.rows[0]?.report_ids === "string"
+    ? JSON.parse(run.rows[0].report_ids)
+    : run.rows[0]?.report_ids;
+  expect(reportIds).toHaveLength(1);
+  const report = await db.query(
+    "SELECT id,name FROM reports WHERE org_id=$1 AND id=$2",
+    [orgA, reportIds[0]],
+  );
+  expect(report.rows[0]?.name).toContain("Scheduled E2E customer");
+
+  const captured = readdirSync(mailDir)
+    .map(name => JSON.parse(readFileSync(join(mailDir, name), "utf8")))
+    .find(message => message.to === recipientEmail && message.tag === "report_generated");
+  expect(captured).toBeTruthy();
+  expect(captured.subject).toContain("Rapport multi-sites");
+  expect(captured.html).toContain("/api/agency-portal/[PORTAL_TOKEN_REDACTED]");
+  expect(captured.html).not.toMatch(/\/api\/agency-portal\/[a-f0-9]{64}/i);
+
+  const foreignScheduleId = `agency_schedule_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+  await db.query(
+    `INSERT INTO agency_report_schedules
+      (id,org_id,client_name,recipient_email,audit_ids,cron_expression,timezone,enabled)
+     VALUES ($1,$2,'Foreign tenant schedule','foreign@example.test','[]'::jsonb,'* * * * *','UTC',false)`,
+    [foreignScheduleId, orgB],
+  );
+  const ownTenantSchedules = await page.request.get("/api/reports/agency-packs/schedules");
+  expect(ownTenantSchedules.status()).toBe(200);
+  const ownTenantScheduleIds = (await ownTenantSchedules.json()).schedules.map(row => row.id);
+  expect(ownTenantScheduleIds).toContain(schedule.id);
+  expect(ownTenantScheduleIds).not.toContain(foreignScheduleId);
+  const foreignSchedule = await db.query(
+    "SELECT COUNT(*)::int AS count FROM agency_report_schedules WHERE org_id=$1 AND id=$2",
+    [orgB, foreignScheduleId],
+  );
+  expect(Number(foreignSchedule.rows[0]?.count)).toBe(1);
+});
+
+test("Conversion Opportunity Engine saves thresholds without fabricating GA4 data", async ({ page }) => {
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("conversion-opportunity-engine"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion-opportunity-engine",
+    null,
+    { timeout: 20_000 },
+  );
+
+  const panel = page.locator("#fp-addon-conversion-opportunity-engine");
+  const settingsForm = panel.locator("form[data-coe-settings]");
+  await expect(settingsForm).toBeVisible({ timeout: 20_000 });
+  const initialDataResponse = await page.request.get("/api/conversion-opportunity-engine");
+  expect(initialDataResponse.status()).toBe(200);
+  const initialData = await initialDataResponse.json();
+  expect(initialData.source).toBe("ga4");
+  expect(initialData.opportunities).toEqual([]);
+  await expect(panel).toContainText(/GA4/);
+
+  await settingsForm.locator('input[name="minimumSessions"]').fill("250");
+  await settingsForm.locator('input[name="maximumConversionRate"]').fill("1.5");
+  const expectedSettings = { minimumSessions: 250, maximumConversionRate: 0.015 };
+  const saveResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/conversion-opportunity-engine/settings" &&
+    response.request().method() === "PUT",
+  );
+  await settingsForm.locator('button[type="submit"]').click();
+  const saveResponse = await saveResponsePromise;
+  const saveBody = await saveResponse.json();
+  expect(saveResponse.status(), JSON.stringify(saveBody)).toBe(200);
+  expect(saveBody.settings).toEqual(expectedSettings);
+  await expect(settingsForm.locator('input[name="minimumSessions"]')).toHaveValue("250");
+  await expect(settingsForm.locator('input[name="maximumConversionRate"]')).toHaveValue("1.5");
+
+  const persisted = await db.query(
+    "SELECT settings FROM conversion_opportunity_settings WHERE org_id=$1",
+    [orgA],
+  );
+  const settings = typeof persisted.rows[0]?.settings === "string"
+    ? JSON.parse(persisted.rows[0].settings)
+    : persisted.rows[0]?.settings;
+  expect(settings).toEqual(expectedSettings);
+
+  await grantOrgBAddon("conversionOpportunityEngine");
+  const foreignSettings = { minimumSessions: 900, maximumConversionRate: 0.9 };
+  await db.query(
+    `INSERT INTO conversion_opportunity_settings (org_id,settings,updated_at)
+     VALUES ($1,$2::jsonb,NOW())
+     ON CONFLICT (org_id) DO UPDATE SET settings=$2::jsonb,updated_at=NOW()`,
+    [orgB, JSON.stringify(foreignSettings)],
+  );
+  const ownTenantResponse = await page.request.get("/api/conversion-opportunity-engine");
+  expect(ownTenantResponse.status()).toBe(200);
+  const ownTenantData = await ownTenantResponse.json();
+  expect(ownTenantData.settings).toEqual(settings);
+  expect(ownTenantData.settings).not.toEqual(foreignSettings);
+  expect(ownTenantData.opportunities).toEqual([]);
+});
+
+test("Agency Reporting Packs: valid Stripe TEST webhook is processed locally", async ({ page }) => {
+  test.setTimeout(90_000);
+  if (process.env["STRIPE_TEST_MODE"] !== "true") {
+    test.skip(true, "Requires the dedicated local Stripe TEST webhook replay runner.");
+  }
+  const stripeKey = process.env["STRIPE_TEST_KEY"];
+  const webhookSecret = process.env["STRIPE_TEST_WEBHOOK_SECRET"];
+  expect(stripeKey?.startsWith("sk_test_")).toBe(true);
+  expect(webhookSecret?.startsWith("whsec_")).toBe(true);
+
+  const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+  const cleanup = getStripeResourceCleanup(stripe, stripeKey, "agency-webhook-replay");
+  const probe = `agency-webhook-${randomUUID()}`;
+  const created = await stripe.setupIntents.create({
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    usage: "off_session",
+    metadata: { qa_probe: probe },
+  });
+  cleanup.registerSetupIntent(created.id);
+  const setupIntent = await stripe.setupIntents.confirm(created.id, { payment_method: "pm_card_visa" });
+  expect(setupIntent.status).toBe("succeeded");
+  expect(setupIntent.livemode).toBe(false);
+  expect(setupIntent.customer ?? null).toBeNull();
+  expect(setupIntent.metadata).toEqual({ qa_probe: probe });
+
+  const event = await findStripeEvent(stripe, "setup_intent.succeeded", setupIntent.id);
+  expect(event.livemode).toBe(false);
+  expect(event.data.object.id).toBe(setupIntent.id);
+  expect(event.data.object.metadata).toEqual({ qa_probe: probe });
+  const addonCountBefore = await db.query(
+    "SELECT COUNT(*)::int AS count FROM org_addons WHERE org_id=ANY($1::uuid[])",
+    [[orgA, orgB]],
+  );
+
+  const invalid = await postSignedStripeEvent(
+    page,
+    event,
+    webhookSecret,
+    `t=${Math.floor(Date.now() / 1000)},v1=${"0".repeat(64)}`,
+  );
+  expect(invalid.status()).toBe(400);
+  const accepted = await postSignedStripeEvent(page, event, webhookSecret);
+  expect(accepted.status()).toBe(200);
+
+  const addonCountAfter = await db.query(
+    "SELECT COUNT(*)::int AS count FROM org_addons WHERE org_id=ANY($1::uuid[])",
+    [[orgA, orgB]],
+  );
+  expect(Number(addonCountAfter.rows[0]?.count)).toBe(Number(addonCountBefore.rows[0]?.count));
 });
 
 test("Agency Reporting Packs enforce the report quota atomically and deny viewers — Stripe TEST lifecycle", async ({ page }) => {
@@ -1314,7 +1687,18 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
     response.request().method() === "PUT"
   );
   await seoForm.locator('button[type="submit"]').click();
-  expect((await seoSave).status()).toBe(200);
+  const seoSaveResponse = await seoSave;
+  expect(seoSaveResponse.status()).toBe(200);
+  expect((await seoSaveResponse.json()).settings).toMatchObject({
+    lookbackDays: 60,
+    minimumScoreChange: 5,
+  });
+  const persistedSeoResponse = await page.request.get("/api/seo-change-impact");
+  expect(persistedSeoResponse.status()).toBe(200);
+  expect((await persistedSeoResponse.json()).settings).toMatchObject({
+    lookbackDays: 60,
+    minimumScoreChange: 5,
+  });
   await expect(seo.locator('input[name="lookbackDays"]')).toHaveValue("60");
   await expect(seo.locator('input[name="minimumScoreChange"]')).toHaveValue("5");
 
@@ -1388,7 +1772,7 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
   const agencyPacksCard = page.locator("section.fp-card").filter({ has: page.locator("#fp-agency-packs-result") });
   await agencyPacksCard.getByRole("button", { name: /Charger les packs|Load packs/i }).click();
   const packsResult = page.locator("#fp-agency-packs-result");
-  await packsResult.locator('input[type="text"]').fill("Synthetic UI customer");
+  await packsResult.locator('input[aria-label="Client name"]').fill("Synthetic UI customer");
   await packsResult.locator("select").selectOption(auditAfterA);
   const packResponse = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/reports/agency-packs/generate" &&
@@ -1399,13 +1783,13 @@ test("the four remaining replacement add-ons save, measure, and reload in one te
   expect(generatedPack.status()).toBe(201);
   expect((await generatedPack.json()).verifiedCount).toBe(3);
   await expect(page.locator("#fp-page")).toContainText("Synthetic UI customer");
-  const persistedAgencyReports = await page.request.get("/api/reports");
-  expect(
-    (await persistedAgencyReports.json())
-      .filter(row => row.org_id === orgA && row.name.includes("Synthetic UI customer"))
-      .map(row => row.template_key)
-      .sort(),
-  ).toEqual(["executive", "local", "seo"]);
+  const persistedAgencyReports = await db.query(
+    `SELECT template_key FROM reports
+      WHERE org_id=$1 AND name LIKE 'Synthetic UI customer%'`,
+    [orgA],
+  );
+  expect(persistedAgencyReports.rows.map(row => row.template_key).sort())
+    .toEqual(["executive", "local", "seo"]);
 
 });
 
