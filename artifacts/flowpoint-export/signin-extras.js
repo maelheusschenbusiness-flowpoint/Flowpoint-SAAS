@@ -27,7 +27,7 @@
         'font-weight:600', 'box-shadow:0 4px 24px rgba(0,0,0,.45)',
         'max-width:440px', 'text-align:center', 'line-height:1.5',
       ].join(';');
-      banner.textContent = '\u2705 Votre compte a \u00e9t\u00e9 supprim\u00e9 d\u00e9finitivement. Toutes vos donn\u00e9es ont \u00e9t\u00e9 effac\u00e9es.';
+      banner.textContent = '\u2705 Your account has been permanently deleted. All your data has been erased.';
       document.body.appendChild(banner);
       setTimeout(function () { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 7000);
     });
