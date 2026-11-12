@@ -12,6 +12,8 @@ import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { buildExecutiveReportFacts } from "../services/executive-report-facts.js";
+import { getGA4Overview } from "../services/ga4-service.js";
+import { getTopPages } from "../services/gsc-service.js";
 
 const router = Router();
 
@@ -163,9 +165,23 @@ router.get("/reports", async (req, res) => {
 });
 
 router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireAddon("aiExecutiveReport", "AI Executive Reporting"), async (req, res) => {
+  const rawSubject = req.body?.subject;
+  if (rawSubject !== undefined && typeof rawSubject !== "string") {
+    res.status(400).json({ error: "Le sujet du rapport doit être du texte.", code: "INVALID_SUBJECT" });
+    return;
+  }
+  const cleanedSubject = typeof rawSubject === "string"
+    ? rawSubject.replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001F\u007F-\u009F]/g, " ").replace(/\s+/g, " ").trim()
+    : "";
+  if (cleanedSubject.length > 120) {
+    res.status(400).json({ error: "Le sujet ne peut pas dépasser 120 caractères.", code: "INVALID_SUBJECT" });
+    return;
+  }
+  const reportSubject = cleanedSubject || "Synthèse exécutive";
   const orgId = org(req);
   const userId = String((req as any).orgContext?.userId ?? (req as any).orgContext?.email ?? "anonymous");
   const requestId = `exec_${randomBytes(12).toString("hex")}`;
+  let stage: "data" | "ai" | "persistence" = "data";
   try {
     const reportQuota = await (await import("../services/billing-service.js")).checkQuota("reports", orgId);
     if (!reportQuota.allowed) {
@@ -178,20 +194,34 @@ router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireA
       res.status(402).json(buildQuotaGuidance(aiQuota, prefs));
       return;
     }
-    const [audits, monitors, priorReports] = await Promise.all([
+    const [audits, monitors, priorReports, ga4Overview, searchConsolePages] = await Promise.all([
       db(req)(`SELECT url, score, status, created_at FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 8`, [orgId]),
       db(req)(`SELECT name, url, status, uptime, response_time FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 12`, [orgId]),
       db(req)(`SELECT name, template_key, date FROM reports WHERE org_id=$1 ORDER BY date DESC LIMIT 5`, [orgId]),
+      getGA4Overview(orgId, "30daysAgo", "yesterday").catch(() => ({ rows: [], totals: [] })),
+      getTopPages(orgId, 5, 28).catch(() => []),
     ]);
-    const facts = buildExecutiveReportFacts(audits.rows, monitors.rows);
-    if (!facts.measured.auditsIncluded && !facts.measured.monitorsIncluded && !priorReports.rows.length) {
-      res.status(422).json({ error: "Ajoutez des audits ou des monitors mesurés avant de générer une synthèse.", code: "NO_REAL_DATA" });
+    const facts = buildExecutiveReportFacts(audits.rows, monitors.rows, { ga4: ga4Overview, searchConsolePages });
+    const measuredFacts = { ...facts.measured, analytics: {
+      ga4: facts.analytics.ga4,
+      searchConsole: {
+        status: facts.analytics.searchConsole.status, source: facts.analytics.searchConsole.source,
+        periodDays: facts.analytics.searchConsole.periodDays, scope: facts.analytics.searchConsole.scope,
+        pagesIncluded: facts.analytics.searchConsole.pagesIncluded, sampledClicks: facts.analytics.searchConsole.sampledClicks,
+        sampledImpressions: facts.analytics.searchConsole.sampledImpressions,
+        weightedAveragePosition: facts.analytics.searchConsole.weightedAveragePosition,
+        clickThroughRate: facts.analytics.searchConsole.clickThroughRate,
+      },
+    } };
+    const hasExternalAnalytics = facts.analytics.ga4.status === "observed" || facts.analytics.searchConsole.status === "observed";
+    if (!facts.measured.auditsIncluded && !facts.measured.monitorsIncluded && !hasExternalAnalytics) {
+      res.status(422).json({ error: "Ajoutez des audits, monitors ou données analytiques avant de générer une synthèse.", code: "NO_REAL_DATA" });
       return;
     }
-
+    stage = "ai";
     const prefs = await loadOrgAIPrefs(orgId);
     const aiCfg = resolveAIModel(prefs, "strategist");
-    const prompt = `Rédige une synthèse exécutive concise à partir exclusivement de ces données JSON. Les rapports antérieurs sont des références, pas des mesures. N'invente aucune donnée ni évolution; évite tout chiffre dans le texte narratif. Si les données sont insuffisantes, dis-le. Retourne uniquement le JSON {"headline":string,"summary":string,"priorities":string[]} avec au plus 3 priorités.\n\nDonnées mesurées: ${JSON.stringify(facts)}\nRapports antérieurs: ${JSON.stringify(priorReports.rows)}`;
+    const prompt = `Rédige une synthèse exécutive concise pour le sujet demandé : ${JSON.stringify(reportSubject)}. Le sujet définit uniquement l’angle, jamais les faits. Utilise exclusivement les données JSON ci-dessous. Les rapports antérieurs sont des références, pas des mesures. N'invente aucune donnée ni évolution; évite tout chiffre dans le texte narratif. Si les données sont insuffisantes, dis-le. Retourne uniquement le JSON {"headline":string,"summary":string,"priorities":string[]} avec au plus 3 priorités.\n\nDonnées mesurées: ${JSON.stringify(facts)}\nRapports antérieurs: ${JSON.stringify(priorReports.rows)}`;
     const startedAt = Date.now();
     const generated = await aiChat({
       provider: aiCfg.provider, model: aiCfg.model,
@@ -211,9 +241,17 @@ router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireA
         !Array.isArray(summary.priorities) || !summary.priorities.every(item => typeof item === "string")) {
       throw new Error("AI_EXECUTIVE_INVALID_SHAPE");
     }
+    const cleanGeneratedText = (value: string, maxLength: number) => value
+      .replace(/<[^>]*>/g, " ").replace(/[\u0000-\u001F\u007F-\u009F]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+    summary.headline = cleanGeneratedText(summary.headline, 200);
+    summary.summary = cleanGeneratedText(summary.summary, 1200);
+    summary.priorities = summary.priorities.slice(0, 3)
+      .map(item => cleanGeneratedText(item as string, 240)).filter(Boolean);
+    if (!summary.headline || !summary.summary) throw new Error("AI_EXECUTIVE_INVALID_CONTENT");
     const reportId = `r_${randomBytes(12).toString("hex")}`;
-    const reportName = `Synthèse exécutive IA — ${new Date().toLocaleDateString("fr-BE")}`;
-    const note = `${summary.headline.trim()}\n\n${summary.summary.trim()}\n\nPriorités:\n${summary.priorities.slice(0, 3).map(item => `• ${String(item).trim()}`).join("\n")}\n\nMesures vérifiées:\n${JSON.stringify(facts.measured)}`.slice(0, 2000);
+    const reportName = `Synthèse exécutive IA — ${reportSubject} — ${new Date().toLocaleDateString("fr-BE")}`;
+    const note = `Sujet demandé : ${reportSubject}\n\n${summary.headline}\n\n${summary.summary}\n\nPriorités :\n${summary.priorities.map(item => `• ${String(item)}`).join("\n")}\n\nMesures vérifiées :\n${JSON.stringify(measuredFacts)}`.slice(0, 6000);
+    stage = "persistence";
     const client = await pool.connect();
     let txActive = false;
     try {
@@ -230,7 +268,7 @@ router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireA
         `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
          VALUES ($1,$2,$3,'PDF','executive',$4,0,false,'',false,true,$5,'','',$6)`,
         [reportId, orgId, reportName, new Date().toISOString(),
-          JSON.stringify([{ title: summary.headline.trim().slice(0, 200), date: new Date().toISOString(), notes: note }]),
+          JSON.stringify([{ title: `${reportSubject} — ${summary.headline}`.slice(0, 200), date: new Date().toISOString(), notes: note }]),
           (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
       );
       await client.query("COMMIT"); txActive = false;
@@ -240,10 +278,14 @@ router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireA
     } finally { client.release(); }
     store.logActivity({ type: "report", label: `Synthèse exécutive générée : ${reportName}`, targetId: reportId, targetType: "report", orgId, userId }).catch(() => {});
     import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "report_created")).catch(() => {});
-    res.status(201).json({ ok: true, reportId, name: reportName, templateKey: "executive", summary, measured: facts.measured });
+    res.status(201).json({ ok: true, reportId, name: reportName, templateKey: "executive", subject: reportSubject, summary, measured: measuredFacts });
   } catch (err) {
-    logger.error({ err, orgId, requestId }, "[reports] AI executive summary failed");
-    res.status(502).json({ error: "La synthèse exécutive n’a pas pu être générée à partir des données actuelles.", code: "AI_EXECUTIVE_FAILED" });
+    logger.error({ err, orgId, requestId, stage }, "[reports] AI executive summary failed");
+    const aiFailure = stage === "ai";
+    res.status(aiFailure ? 502 : 503).json({
+      error: aiFailure ? "La synthèse exécutive n’a pas pu être générée par le service IA." : "Les données ou l’enregistrement du rapport sont temporairement indisponibles.",
+      code: aiFailure ? "AI_EXECUTIVE_FAILED" : "EXECUTIVE_REPORT_UNAVAILABLE",
+    });
   }
 });
 
@@ -425,7 +467,7 @@ router.post("/reports/send-invoice", canAdmin, async (req, res) => {
     ok: false,
     sent: false,
     code: "not_implemented",
-    error: "L'envoi des factures par e-mail n'est pas encore disponible. Téléchargez la facture depuis le portail de facturation.",
+    error: "Invoice email delivery is not available yet. Download the invoice from the billing portal.",
     invoiceId: invoiceId ?? null,
   });
 });

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   orgDbMock, poolConnectMock, streamReportPdfMock, aiChatMock, loadOrgAIPrefsMock,
   resolveAIModelMock, checkAIQuotaMock, checkQuotaMock, recordCompletedUsageDeferredMock,
+  getGA4OverviewMock, getTopPagesMock,
 } = vi.hoisted(() => ({
   orgDbMock: vi.fn(),
   poolConnectMock: vi.fn(),
@@ -15,6 +16,8 @@ const {
   checkAIQuotaMock: vi.fn(),
   checkQuotaMock: vi.fn(),
   recordCompletedUsageDeferredMock: vi.fn(),
+  getGA4OverviewMock: vi.fn(),
+  getTopPagesMock: vi.fn(),
 }));
 
 vi.mock("@workspace/db", () => ({
@@ -31,8 +34,8 @@ vi.mock("../middlewares/rateLimiter.js", () => ({
   reportRateLimit: (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../middlewares/requireRole.js", () => ({
-  canWrite: (_req: any, _res: any, next: any) => next(),
-  canAdmin: (_req: any, _res: any, next: any) => next(),
+  canWrite: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : next(),
+  canAdmin: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : next(),
 }));
 vi.mock("../services/pdf.js", () => ({ streamReportPdf: streamReportPdfMock }));
 vi.mock("../services/store.js", () => ({
@@ -53,6 +56,8 @@ vi.mock("../services/ai-engine.js", () => ({
 vi.mock("../services/ai-quota.js", () => ({
   buildQuotaGuidance: vi.fn(),
 }));
+vi.mock("../services/ga4-service.js", () => ({ getGA4Overview: getGA4OverviewMock }));
+vi.mock("../services/gsc-service.js", () => ({ getTopPages: getTopPagesMock }));
 vi.mock("../services/usage-events.js", () => ({
   recordUsageEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -62,11 +67,11 @@ vi.mock("../lib/logger.js", () => ({
 
 import reportsRouter from "./reports.js";
 
-function makeApp() {
+function makeApp(role = "owner", orgId = "org-a") {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    Object.assign(req, { orgId: "org-a", orgDb: orgDbMock, orgContext: { userId: "user-a", email: "owner@example.test" } });
+    Object.assign(req, { orgId, orgDb: orgDbMock, orgContext: { userId: "user-a", email: "owner@example.test", role } });
     next();
   });
   app.use("/api", reportsRouter);
@@ -77,6 +82,8 @@ describe("Agency Reporting Packs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [] });
+    getTopPagesMock.mockResolvedValue([]);
   });
 
   it("loads audits scoped to the requesting organization", async () => {
@@ -237,6 +244,9 @@ describe("AI Executive Reporting", () => {
     loadOrgAIPrefsMock.mockResolvedValue({});
     resolveAIModelMock.mockReturnValue({ provider: "openai", model: "gpt-4o-mini", maxTokens: 900 });
     checkAIQuotaMock.mockResolvedValue({ allowed: true });
+    checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [] });
+    getTopPagesMock.mockResolvedValue([]);
     aiChatMock.mockResolvedValue({
       text: JSON.stringify({ headline: "Priorité SEO", summary: "Corriger les pages critiques.", priorities: ["Auditer les pages lentes"] }),
       usage: { promptTokens: 120, completionTokens: 60 },
@@ -244,11 +254,14 @@ describe("AI Executive Reporting", () => {
   });
 
   it("persists an organization-scoped AI report and makes it visible in the Reports list", async () => {
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [{ metricValues: [{ value: "100" }, { value: "80" }, { value: "20" }, { value: "0.4" }, { value: "0.6" }, { value: "90" }, { value: "400" }, { value: "7" }] }] });
+    getTopPagesMock.mockResolvedValue([{ page: "https://client.example/", clicks: 30, impressions: 900, avg_position: 2.5 }]);
     const saved: Array<Record<string, unknown>> = [];
     orgDbMock.mockImplementation(async (sql: string, values: unknown[] = []) => {
       if (sql.includes("FROM audits")) return { rows: [{ url: "https://client.example", score: 42, status: "completed", created_at: "2026-10-20T10:00:00.000Z" }] };
       if (sql.includes("FROM monitors")) return { rows: [{ name: "Main site", url: "https://client.example", status: "up", uptime: 99.9, response_time: 180 }] };
       if (sql.includes("SELECT name, template_key, date FROM reports")) return { rows: [] };
+      if (sql.includes("FROM reports WHERE id=$1 AND org_id=$2")) return { rows: saved.filter(row => row.id === values[0] && row.org_id === values[1]) };
       if (sql.includes("SELECT * FROM reports WHERE org_id=$1")) return { rows: saved.filter(row => row.org_id === values[0]) };
       return { rows: [] };
     });
@@ -266,11 +279,17 @@ describe("AI Executive Reporting", () => {
     };
     poolConnectMock.mockResolvedValue(client as any);
 
-    const generated = await request(makeApp()).post("/api/reports/ai-executive-summary").send({});
+    const generated = await request(makeApp()).post("/api/reports/ai-executive-summary").send({ subject: "Acquisition organique" });
     expect(generated.status).toBe(201);
     expect(generated.body.ok).toBe(true);
+    expect(generated.body.subject).toBe("Acquisition organique");
+    expect(aiChatMock.mock.calls[0]?.[0]?.messages?.[0]?.content).toContain("Acquisition organique");
     expect(generated.body.measured.latestAuditScore).toBe(42);
     expect(generated.body.measured.averageUptime).toBe(99.9);
+    expect(generated.body.measured.analytics.ga4).toMatchObject({ status: "observed", sessions: 100, users: 80, conversions: 7, pageViews: 400 });
+    expect(generated.body.measured.analytics.searchConsole).toMatchObject({ status: "observed", pagesIncluded: 1, sampledClicks: 30, sampledImpressions: 900 });
+    expect(getGA4OverviewMock).toHaveBeenCalledWith("org-a", "30daysAgo", "yesterday");
+    expect(getTopPagesMock).toHaveBeenCalledWith("org-a", 5, 28);
     expect(orgDbMock).toHaveBeenCalledWith(expect.stringContaining("FROM audits WHERE org_id=$1"), ["org-a"]);
     expect(orgDbMock).toHaveBeenCalledWith(expect.stringContaining("FROM monitors WHERE org_id=$1"), ["org-a"]);
     expect(client.query).toHaveBeenCalledWith("COMMIT");
@@ -279,11 +298,57 @@ describe("AI Executive Reporting", () => {
       expect.arrayContaining([generated.body.reportId, "org-a", expect.stringContaining("Synthèse exécutive IA")]),
     );
     expect(client.release).toHaveBeenCalled();
+    const savedNotes = JSON.parse(String(saved[0]?.meeting_notes_json));
+    expect(savedNotes[0].title).toContain("Acquisition organique");
+    expect(savedNotes[0].notes).toContain("Sujet demandé : Acquisition organique");
 
     const listed = await request(makeApp()).get("/api/reports");
     expect(listed.status).toBe(200);
     expect(listed.body).toHaveLength(1);
     expect(listed.body[0]).toMatchObject({ id: generated.body.reportId, org_id: "org-a", template_key: "executive" });
+
+    const detail = await request(makeApp()).get(`/api/reports/${generated.body.reportId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.meeting_notes_json).toContain("Acquisition organique");
+    streamReportPdfMock.mockImplementationOnce((res: any) => res.type("application/pdf").end("%PDF-1.4 executive"));
+    const download = await request(makeApp()).get(`/api/reports/${generated.body.reportId}/download`);
+    expect(download.status).toBe(200);
+    expect(download.headers["content-type"]).toContain("application/pdf");
+    expect(streamReportPdfMock.mock.calls[0]?.[3]?.[0]?.notes).toContain("Sujet demandé : Acquisition organique");
+  });
+
+  it("denies viewers before generating an executive report", async () => {
+    const response = await request(makeApp("viewer")).post("/api/reports/ai-executive-summary").send({ subject: "Acquisition organique" });
+    expect(response.status).toBe(403);
+    expect(aiChatMock).not.toHaveBeenCalled();
+    expect(poolConnectMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the report quota and rejects generation before calling AI", async () => {
+    checkQuotaMock.mockResolvedValueOnce({ allowed: false, limit: 20, used: 20 });
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({ subject: "Acquisition organique" });
+    expect(response.status).toBe(402);
+    expect(response.body.code).toBe("QUOTA_EXCEEDED");
+    expect(response.body.limit).toBe(20);
+    expect(aiChatMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid subjects before quota checks", async () => {
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({ subject: "x".repeat(121) });
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_SUBJECT");
+    expect(checkQuotaMock).not.toHaveBeenCalled();
+  });
+
+  it("does not treat prior reports as measured data", async () => {
+    orgDbMock.mockImplementation(async (sql: string) => sql.includes("SELECT name, template_key, date FROM reports")
+      ? { rows: [{ name: "Old report", template_key: "executive", date: "2026-10-20" }] }
+      : { rows: [] });
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({});
+    expect(response.status).toBe(422);
+    expect(response.body.code).toBe("NO_REAL_DATA");
+    expect(aiChatMock).not.toHaveBeenCalled();
+    expect(poolConnectMock).not.toHaveBeenCalled();
   });
 
   it("does not generate or persist an executive report when the organization has no measured data", async () => {

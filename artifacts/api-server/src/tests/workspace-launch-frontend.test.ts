@@ -111,9 +111,11 @@ describe("AI Workspace Launch frontend", () => {
     const end = dashboard.indexOf("return `", start);
     const flow = dashboard.slice(start, end);
     expect(flow).toContain("!result.reportId");
-    expect(flow).toContain("await apiFetch('/api/reports')");
+    expect(flow).toContain("await apiFetch('/api/reports', { force: true })");
     expect(flow).toContain("String(report.id) === String(result.reportId)");
-    expect(flow.indexOf("STATE.reports = reports")).toBeLessThan(flow.indexOf("showToast('success'"));
+    expect(flow).toContain("reportsRefreshed = reports.some");
+    expect(flow).toContain("currentReports.unshift");
+    expect(flow.indexOf("STATE.reports = currentReports")).toBeLessThan(flow.indexOf("showToast(reportsRefreshed ? 'success' : 'info'"));
     expect(flow).not.toContain("apiFetch('/api/reports').catch(() => null)");
   });
 });
