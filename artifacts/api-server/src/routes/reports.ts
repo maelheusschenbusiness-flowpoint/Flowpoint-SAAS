@@ -597,6 +597,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         const { mailer } = await import("../services/mailer.js");
         mailer.sendReportGenerated({
           to: _orgData.email,
+          orgId: org(req),
           name: _orgData.firstName || "Utilisateur",
           reportName,
           // Deep link to the report detail page so the button works without navigating

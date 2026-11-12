@@ -1,4 +1,5 @@
 import { newId } from "../lib/ids.js";
+import { resolveOrgLanguage } from "../lib/request-language.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import {
@@ -176,13 +177,13 @@ export interface MapsDashboard {
 //
 // Nominatim is deliberately not an implicit error-swallowing fallback. Enable
 // it only when the operator explicitly sets ALLOW_NOMINATIM_FALLBACK=true.
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodeAddress(address: string, language = "en"): Promise<{ lat: number; lng: number } | null> {
   const googleKey = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
   const allowNominatimFallback = process.env["ALLOW_NOMINATIM_FALLBACK"] === "true";
 
   if (googleKey) {
     try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}&language=fr`;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}&language=${encodeURIComponent(language)}`;
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 6000);
       const r = await fetch(url, { signal: ctrl.signal });
@@ -214,7 +215,7 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
 
   // Explicit fallback: Nominatim / OSM (no API key required).
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=fr`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=${encodeURIComponent(language)}`;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 6000);
     const r = await fetch(url, {
@@ -254,7 +255,7 @@ async function getBusinessPoint(orgId: string): Promise<BusinessPoint | null> {
     // If we have an address but no coords → geocode and persist
     const geoQuery = [address, city].filter(Boolean).join(", ");
     if (geoQuery && (lat == null || lng == null || isNaN(lat) || isNaN(lng))) {
-      const coords = await geocodeAddress(geoQuery);
+      const coords = await geocodeAddress(geoQuery, await resolveOrgLanguage(orgId));
       if (coords) {
         lat = coords.lat;
         lng = coords.lng;

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { normalizeSignupLanguage, SIGNUP_LANGUAGE_COOKIE } from "../services/signup-language.js";
 import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 import { randomBytes, randomUUID, createHash, createPrivateKey, sign as cryptoSign } from "crypto";
 
@@ -14,8 +15,7 @@ import { withCarriedParams } from "../lib/carry-params.js";
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
-import { Resend } from "resend";
-import { captureTestMail } from "../services/mailer.js";
+import { mailer } from "../services/mailer.js";
 import {
   hasLoginEmailTransport,
   isLoginEmailAllowed,
@@ -454,245 +454,31 @@ function getPublicUrl(): string {
   ).replace(/\/$/, "");
 }
 
-async function sendMagicEmail(email: string, link: string): Promise<void> {
-  const resendKey = process.env["RESEND_API_KEY"];
-  const smtpPass  = process.env["SMTP_PASS"];
-  const smtpHost  = process.env["SMTP_HOST"];
-
-  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var.
-  // Do NOT fall back to ALERT_EMAIL_FROM: that variable may hold a domain that is
-  // not verified in Resend, causing a synchronous "Invalid from field" error.
-  const fromEmail =
-    process.env["RESEND_FROM"] ||
-    process.env["SMTP_FROM"] ||
-    "FlowPoint <noreply@flowpoint.pro>";
-
+async function sendMagicEmail(
+  email: string,
+  link: string,
+  localeHints: { language?: unknown; country?: unknown; region?: unknown; orgId?: string | null } = {},
+): Promise<void> {
+  const localizedResult = await mailer.sendLoginLink({
+    to: email,
+    magicLinkUrl: link,
+    expiresMinutes: 15,
+    ...localeHints,
+  });
+  if (!localizedResult.ok) {
+    const message = localizedResult.error || "EMAIL_SEND_FAILED";
+    if (message === "NO_EMAIL_TRANSPORT") throw new Error("EMAIL_TRANSPORT_MISSING");
+    if (message === "TEST_MAILER_NOT_ENABLED") throw new Error(message);
+    if (message.startsWith("SMTP_SEND_FAILED:") || message.startsWith("DOMAIN_NOT_VERIFIED:")) {
+      throw new Error(message);
+    }
+    const domainFailure = /domain|not verified|sender/i.test(message);
+    throw new Error(`${domainFailure ? "DOMAIN_NOT_VERIFIED" : "EMAIL_SEND_FAILED"}: ${message}`);
+  }
   logger.info({
     email: maskEmailForAuthLog(email),
-    from: fromEmail,
-    transport: resendKey ? "resend-sdk" : "smtp",
-    publicBaseUrl: process.env["PUBLIC_BASE_URL"] || "(not set)",
-  }, "[Auth] Sending magic link email");
-
-  // ── Send via available transport ────────────────────────────────────────────
-  const _emailSubject = "Votre lien de connexion FlowPoint";
-  const _emailHtml = `<!DOCTYPE html>
-<html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta name="color-scheme" content="light dark"/>
-  <meta name="supported-color-schemes" content="light dark"/>
-  <title>Connexion FlowPoint</title>
-  <style>
-    :root { color-scheme: light dark; }
-
-    /* ── Dark mode overrides ──────────────────────────────────────────── */
-    @media (prefers-color-scheme: dark) {
-      .email-body   { background-color: #0d0f1a !important; }
-      .email-card   { background-color: #13162a !important; border-color: #252a45 !important; }
-      .email-header { background-color: #1d4ed8 !important; }
-      .email-footer { background-color: #1e3a8a !important; }
-      .text-main    { color: #e8eeff !important; }
-      .text-muted   { color: #8891b8 !important; }
-      .divider      { border-color: #252a45 !important; }
-      .copy-block   { background-color: #0d0f1a !important; border-color: #252a45 !important; color: #8891b8 !important; }
-    }
-  </style>
-</head>
-<body class="email-body" style="margin:0;padding:0;background-color:#f0f2fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
-    <tr>
-      <td align="center" style="padding:40px 16px;">
-
-        <!-- Card -->
-        <table class="email-card" width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"
-               style="max-width:560px;background-color:#ffffff;border-radius:16px;border:1px solid #dde1f0;overflow:hidden;">
-
-          <!-- Header -->
-          <tr>
-            <td class="email-header" style="background-color:#2563EB;padding:32px 40px 28px;text-align:center;">
-              <!-- Wordmark -->
-              <div style="display:inline-flex;align-items:center;justify-content:center;gap:12px;">
-                <!-- Zap icon — white on translucent bg -->
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="36" height="36" style="display:inline-block;vertical-align:middle;flex-shrink:0;">
-                  <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill="rgba(255,255,255,0.18)"/>
-                  <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                  </g>
-                </svg>
-                <span style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-.03em;vertical-align:middle;">FlowPoint</span>
-              </div>
-              <div style="margin-top:10px;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:.1em;text-transform:uppercase;font-weight:500;">SEO &nbsp;·&nbsp; Monitoring &nbsp;·&nbsp; Local SEO &nbsp;·&nbsp; IA</div>
-            </td>
-          </tr>
-
-          <!-- Body -->
-          <tr>
-            <td style="padding:40px 40px 32px;">
-
-              <!-- Eyebrow -->
-              <div style="display:inline-block;background:#eff2ff;border:1px solid #c7d0ff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;color:#3d6bff;letter-spacing:.06em;text-transform:uppercase;margin-bottom:20px;">Lien de connexion</div>
-
-              <!-- Title -->
-              <h1 class="text-main" style="margin:0 0 12px;font-size:26px;font-weight:800;color:#0d0f1a;letter-spacing:-.03em;line-height:1.2;">Connecte-toi à FlowPoint</h1>
-
-              <!-- Body copy -->
-              <p class="text-muted" style="margin:0 0 32px;font-size:15px;color:#4a5280;line-height:1.65;">
-                Clique sur le bouton ci-dessous pour accéder à ton espace. Ce lien est valide <strong style="color:#0d0f1a;">15&nbsp;minutes</strong> et ne peut être utilisé qu'une seule fois.
-              </p>
-
-              <!-- CTA -->
-              <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-bottom:32px;">
-                <tr>
-                  <td style="border-radius:10px;background:linear-gradient(135deg,#3d6bff 0%,#1a3de8 100%);">
-                    <a href="${link}"
-                       style="display:inline-block;padding:15px 36px;border-radius:10px;background:linear-gradient(135deg,#3d6bff 0%,#1a3de8 100%);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:-.01em;white-space:nowrap;">
-                      Se connecter →
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Fallback link -->
-              <p class="text-muted" style="margin:0 0 8px;font-size:13px;color:#6878b0;">Bouton qui ne fonctionne pas ? Copie ce lien dans ton navigateur :</p>
-              <div class="copy-block" style="background:#f5f6fc;border:1px solid #dde1f0;border-radius:8px;padding:10px 14px;font-size:12px;color:#6878b0;word-break:break-all;line-height:1.5;font-family:'Courier New',monospace;">
-                ${link}
-              </div>
-
-              <!-- Divider -->
-              <hr class="divider" style="border:none;border-top:1px solid #eaedf5;margin:28px 0;"/>
-
-              <!-- Security note -->
-              <p class="text-muted" style="margin:0;font-size:13px;color:#8891b8;line-height:1.6;">
-                🔒 Si tu n'as pas demandé ce lien, ignore cet e-mail — ton compte est en sécurité. Ce lien expirera automatiquement.
-              </p>
-
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td class="email-footer" style="background-color:#2563EB;padding:22px 40px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:13px;color:rgba(255,255,255,0.9);line-height:1.5;">
-                <a href="https://flowpoint.pro" style="color:#ffffff;text-decoration:none;font-weight:700;">flowpoint.pro</a>
-                &nbsp;&nbsp;·&nbsp;&nbsp;
-                <a href="https://app.flowpoint.pro" style="color:rgba(255,255,255,0.85);text-decoration:none;">Dashboard</a>
-                &nbsp;&nbsp;·&nbsp;&nbsp;
-                <a href="mailto:support@flowpoint.pro" style="color:rgba(255,255,255,0.85);text-decoration:none;">Support</a>
-              </p>
-              <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.55);">
-                © ${new Date().getFullYear()} FlowPoint. Tous droits réservés.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-        <!-- /Card -->
-
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>`;
-
-  // A configured test mailbox is a strict, local-only transport. Fail closed if
-  // its safety guards do not pass; never fall through to Resend or SMTP.
-  if (process.env["TEST_MAIL_DIR"]) {
-    const captured = await captureTestMail({
-      to: email,
-      subject: _emailSubject,
-      html: _emailHtml,
-      from: fromEmail,
-      tag: "magic-link",
-    });
-    if (!captured) throw new Error("TEST_MAILER_NOT_ENABLED");
-    return;
-  }
-
-  if (!resendKey && (!smtpPass || !smtpHost)) {
-    logger.warn("[Auth] No complete email transport (Resend, or SMTP_HOST + SMTP_PASS) — cannot send magic link");
-    throw new Error("EMAIL_TRANSPORT_MISSING");
-  }
-
-  if (resendKey) {
-    // ── Resend SDK path ──────────────────────────────────────────────────────
-    const resendClient = new Resend(resendKey);
-    let result: Awaited<ReturnType<typeof resendClient.emails.send>>;
-    try {
-      result = await resendClient.emails.send({
-        from:    fromEmail,
-        to:      email,
-        subject: _emailSubject,
-        html:    _emailHtml,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({
-        failureCode: "RESEND_SDK_ERROR",
-        errorName: err instanceof Error ? err.name : "UnknownError",
-        email: maskEmailForAuthLog(email),
-        from: fromEmail,
-      }, "[Auth] Resend SDK threw error");
-      throw new Error("EMAIL_SEND_FAILED: " + msg);
-    }
-    if (result.error) {
-      const errMsg = (result.error as { message?: string }).message || JSON.stringify(result.error);
-      const resendError = result.error as { name?: string; statusCode?: number; code?: string };
-      logger.error({
-        failureCode: errMsg.toLowerCase().includes("domain") ||
-          errMsg.toLowerCase().includes("not verified") ||
-          errMsg.toLowerCase().includes("sender")
-          ? "DOMAIN_NOT_VERIFIED"
-          : "RESEND_API_ERROR",
-        errorName: resendError.name ?? "ResendError",
-        statusCode: resendError.statusCode,
-        errorCode: resendError.code,
-        email: maskEmailForAuthLog(email),
-      }, "[Auth] Resend API error");
-      if (
-        errMsg.toLowerCase().includes("domain") ||
-        errMsg.toLowerCase().includes("not verified") ||
-        errMsg.toLowerCase().includes("sender")
-      ) {
-        throw new Error("DOMAIN_NOT_VERIFIED: " + errMsg);
-      }
-      throw new Error("RESEND_ERROR: " + errMsg);
-    }
-    logger.info({
-      email: maskEmailForAuthLog(email),
-      id: result.data?.id,
-      from: fromEmail,
-    }, "[Auth] Magic link sent (Resend SDK)");
-  } else {
-    // ── SMTP path (nodemailer) — used when RESEND_API_KEY absent ────────────
-    const { createTransport } = await import("nodemailer");
-    const smtp = createTransport({
-      host:   smtpHost!,
-      port:   parseInt(process.env["SMTP_PORT"] || "465", 10),
-      secure: process.env["SMTP_SECURE"] !== "false",
-      auth:   { user: process.env["SMTP_USER"] || "resend", pass: smtpPass! },
-    });
-    try {
-      const info = await smtp.sendMail({ from: fromEmail, to: email, subject: _emailSubject, html: _emailHtml });
-      logger.info({
-        messageId: info.messageId,
-        email: maskEmailForAuthLog(email),
-        from: fromEmail,
-      }, "[Auth] Magic link sent (SMTP)");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({
-        failureCode: "SMTP_SEND_FAILED",
-        errorName: err instanceof Error ? err.name : "UnknownError",
-        email: maskEmailForAuthLog(email),
-        from: fromEmail,
-      }, "[Auth] SMTP send failed");
-      throw new Error("EMAIL_SEND_FAILED: " + msg);
-    }
-  }
+    id: localizedResult.id,
+  }, "[Auth] Localized magic link sent via shared mailer");
 }
 
 router.post("/auth/magic-link", authRateLimit, async (req: Request, res: Response) => {
@@ -700,7 +486,8 @@ router.post("/auth/magic-link", authRateLimit, async (req: Request, res: Respons
 });
 
 router.post("/auth/login-request", authRateLimit, async (req: Request, res: Response) => {
-  const rawEmail = (req.body as { email?: string } | undefined)?.email;
+  const loginBody = req.body as { email?: string; language?: unknown; country?: unknown; region?: unknown } | undefined;
+  const rawEmail = loginBody?.email;
 
   // ── Entry diagnostic log — always visible in Render logs ─────────────────────
   logger.info({
@@ -835,7 +622,11 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   // ── Send via configured email transport ───────────────────────────────────────
   if (emailTransportConfigured) {
     try {
-      await sendMagicEmail(email, verifyPath);
+      await sendMagicEmail(email, verifyPath, {
+        language: loginBody?.language,
+        country: loginBody?.country,
+        region: loginBody?.region,
+      });
       logger.info({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: email accepted by transport");
       // In dev workspace always include debugLink so Playwright tests can auth
       if (isDevWorkspace || process.env["TEST_MAIL_DIR"]) {
@@ -872,7 +663,7 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] No configured email transport — returning debugLink");
     res.json({ ...LOGIN_REQUEST_ACCEPTED_RESPONSE, debugLink: verifyPath });
   } else {
-    logger.error("[Auth] RESEND_API_KEY not set in production");
+    logger.error("[Auth] No supported email transport configured in production");
     res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
   }
 });
@@ -914,7 +705,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   const {
     _hp,          // honeypot
     firstName, lastName, email,
-    companyName, website, country,
+    companyName, website, country, language,
     companySize, objective, city, address,
     plan: planField,
   } = req.body as Record<string, string | undefined>;
@@ -1038,13 +829,17 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     return;
   }
 
-  const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = isDeployedProd();
   const isDevWorkspaceS = !!process.env["REPLIT_DEV_DOMAIN"];
+  const emailTransportConfigured = hasLoginEmailTransport(isProduction ? {
+    RESEND_API_KEY: process.env["RESEND_API_KEY"],
+    SMTP_HOST: process.env["SMTP_HOST"],
+    SMTP_PASS: process.env["SMTP_PASS"],
+  } : process.env);
 
-  if (resendKey) {
+  if (emailTransportConfigured) {
     try {
-      await sendMagicEmail(normalizedEmail, verifyPath);
+      await sendMagicEmail(normalizedEmail, verifyPath, { language, country, orgId });
       logger.info({ email: normalizedEmail, company, plan: selectedPlan }, "[Auth/Signup] Account created — magic link sent");
       const _signupMsg = _signupIsNewAccount
         ? "Compte créé. Lien envoyé par email."
@@ -1084,7 +879,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
        // delayed or misleading welcome messages after abandoned signups.
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg }, "[Auth/Signup] Resend failed");
+      logger.error({ err: msg }, "[Auth/Signup] Email send failed");
       // In dev mode, return the magic link directly so the flow can be tested without email
       if (!isProduction) {
         res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: envoi email échoué, lien retourné directement." });
@@ -1095,7 +890,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   } else if (!isProduction) {
     res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
   } else {
-    logger.error("[Auth/Signup] RESEND_API_KEY not set in production");
+    logger.error("[Auth/Signup] No supported email transport configured in production");
     res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
   }
 });
@@ -1114,7 +909,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     phone, vat,
     seller_code: _rawSellerCode,
     fp_lid: _rawFpLid,
+    language: _rawLanguage,
   } = req.body as Record<string, string | undefined>;
+  // Langue de l'interface publique ; whitelist fp-locale.js, sinon 'en'.
+  const _preRegLanguage = normalizeSignupLanguage(_rawLanguage);
 
   // Honeypot — bots fill hidden fields, humans don't
   if (_hp && String(_hp).trim().length > 0) {
@@ -1125,7 +923,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // Validate required fields
   const normalizedEmail = String(email ?? "").toLowerCase().trim();
   if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
-    res.status(400).json({ error: "Adresse email invalide ou manquante." });
+    res.status(400).json({ error: "Please enter a valid email address." });
     return;
   }
   const fn          = String(firstName   || "").trim();
@@ -1136,15 +934,15 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   const cityVal     = String(city        || "").trim();
   const postalVal   = String(postalCode  || "").trim();
 
-  if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
-  if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
+  if (!fn)         { res.status(400).json({ error: "First name is required." });              return; }
+  if (!ln)         { res.status(400).json({ error: "Last name is required." });                 return; }
   // Société, pays, adresse, ville et code postal ne sont plus demandés à
   // l'inscription : l'adresse de facturation et la TVA sont collectées plus
   // tard par Stripe. Les champs restent acceptés et enregistrés tels quels
   // quand un appelant les fournit encore (compatibilité).
 
   if (isDisposableEmail(normalizedEmail)) {
-    res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
+    res.status(400).json({ error: "Temporary email addresses are not accepted." });
     return;
   }
   if (!isEmailAllowed(normalizedEmail)) {
@@ -1181,7 +979,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     const _existingStatus = _activeUser.rows[0]?.status ?? "";
     if (_activeUser.rows.length > 0 && _existingStatus !== "pending") {
       res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+        error: "An account already exists with this email address. Please sign in.",
         redirectTo: "/login.html",
       });
       return;
@@ -1199,14 +997,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     );
     if (_activeMember.rows.length > 0) {
       res.status(409).json({
-        error: "Cette adresse est déjà associée à une organisation FlowPoint. Veuillez vous connecter.",
+        error: "This email address is already linked to a FlowPoint organization. Please sign in.",
         redirectTo: "/login.html",
       });
       return;
     }
   } catch (_activeCheckErr) {
     logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] account guard failed");
-    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    res.status(503).json({ error: "Account verification is unavailable. Please try again." });
     return;
   }
 
@@ -1223,13 +1021,13 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     const ownedOrg = await pool.query(
       `SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
     if ((_dup?.orgId && _isExistingAccount) || ownedOrg.rows.length) {
-      res.status(409).json({ error: "Un compte existe déjà. Connectez-vous pour gérer votre abonnement.", redirectTo: "/login.html" });
+      res.status(409).json({ error: "An account already exists. Sign in to manage your subscription.", redirectTo: "/login.html" });
       return;
     }
     // Never erase billing identity as a side effect of public pre-registration.
   } catch (_dupErr) {
     logger.warn({ err: _dupErr }, "[Auth/PreRegister] duplicate check unavailable");
-    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    res.status(503).json({ error: "Account verification is unavailable. Please try again." });
     return;
   }
 
@@ -1290,6 +1088,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
                phone = $8, vat = $9,
                seller_id = COALESCE(seller_id, $10),
                fp_lid = COALESCE(fp_lid, $11),
+               language = $13,
                expires_at = GREATEST(expires_at, NOW() + INTERVAL '2 hours')
            WHERE token = $12
            RETURNING created_at, fp_lid`,
@@ -1297,13 +1096,13 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
             fn, ln, company, countryVal, addressVal, cityVal, postalVal,
             String(phone || "").trim() || null,
             String(vat || "").trim() || null,
-            _preRegSellerId, _submittedFpLid, _existingToken,
+            _preRegSellerId, _submittedFpLid, _existingToken, _preRegLanguage,
           ],
         )
       : await client.query<{ created_at: Date; fp_lid: string | null }>(
           `INSERT INTO pending_signups
-             (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
+             (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, language, created_at, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW() + INTERVAL '2 hours')
            RETURNING created_at, fp_lid`,
           [
             preToken, normalizedEmail, fn, ln, company,
@@ -1312,6 +1111,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
             String(vat || "").trim() || null,
             _preRegSellerId,
             _submittedFpLid,
+            _preRegLanguage,
           ],
         );
 
@@ -1348,7 +1148,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     if ((_insertErr as { code?: string }).code === "23505") {
       logger.warn({ email: normalizedEmail }, "[Auth/PreRegister] concurrent signup race (23505) — user asked to retry");
       res.status(409).json({
-        error: "Une inscription est déjà en cours pour cet email. Patientez quelques secondes puis réessayez.",
+        error: "A sign-up is already in progress for this email. Please wait a few seconds and try again.",
         code: "CONCURRENT_SIGNUP",
       });
       return;
@@ -1523,6 +1323,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
         if (_ccMailerFwd) {
           const fwdResult = await _ccMailerFwd.sendActivationMagicLink({
             to:         email,
+            orgId:      metaOrgId || undefined,
             name:       email.split("@")[0],
             plan:       meta["plan"] || "standard",
             magicLinkUrl,
@@ -1570,6 +1371,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       if (_ccMailer) {
         const mailResult = await _ccMailer.sendActivationMagicLink({
           to:          email,
+          orgId:       metaOrgId || undefined,
           name:        email.split("@")[0],
           plan:        meta["plan"] || "standard",
           magicLinkUrl,
@@ -2093,6 +1895,11 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   const oauth = startOAuthState(res, "google",
     { plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid },
     isDeployedProd());
+  // Langue d'inscription : cookie court httpOnly limite a /api/auth (le cookie
+  // d'etat OAuth est type et filtre par oauth-state.ts). Valeur whitelistee.
+  res.cookie(SIGNUP_LANGUAGE_COOKIE, normalizeSignupLanguage(req.query["language"]), {
+    httpOnly: true, secure: isDeployedProd(), sameSite: "lax", path: "/api/auth", maxAge: 10 * 60 * 1000,
+  });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -2120,6 +1927,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     return;
   }
   const oauthState = stateCheck.record;
+  const signupLanguageFromCookie = normalizeSignupLanguage(
+    (req as unknown as { cookies?: Record<string, string> }).cookies?.[SIGNUP_LANGUAGE_COOKIE],
+  );
+  res.clearCookie(SIGNUP_LANGUAGE_COOKIE, { path: "/api/auth" });
   // Le plan choisi reste porte vers la page d'inscription en cas d'erreur.
   const carriedQuery: Record<string, unknown> = { ...req.query, ...(oauthState.plan ? { plan: oauthState.plan } : {}) };
 
@@ -2318,10 +2129,10 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               // `locationConfigured` n'est plus faussement vrai.
               await _gpClient.query(
                 `INSERT INTO pending_signups
-                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours')`,
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at, language)
+                 VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours',$8)`,
                 // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid, signupLanguageFromCookie],
               );
               await _gpClient.query("COMMIT");
               logger.info("[Auth] Google signup — pending_signups record created for checkout");

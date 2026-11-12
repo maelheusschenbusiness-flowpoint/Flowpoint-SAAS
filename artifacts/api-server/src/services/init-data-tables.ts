@@ -2125,7 +2125,20 @@ export async function initDataTables(): Promise<void> {
     `);
 
     // ── cro_recommendations — add org_id, source, fix ai_generated type ──────
-    // Wrapped in IF EXISTS: table absent on deployments without the CRO module.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS cro_recommendations (
+        id TEXT PRIMARY KEY, org_id TEXT NOT NULL DEFAULT 'default',
+        site_url TEXT NOT NULL, page TEXT NOT NULL, type TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'medium', title TEXT NOT NULL,
+        description TEXT, implementation TEXT, estimated_uplift REAL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending', ai_generated BOOLEAN DEFAULT false,
+        source TEXT DEFAULT 'rules', metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+      );
+      ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+      ALTER TABLE cro_recommendations ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE cro_recommendations FORCE ROW LEVEL SECURITY;
+    `);
     await run(client, `
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='cro_recommendations') THEN
@@ -2527,6 +2540,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
     // Conversion B: opaque lead id carried from the outreach email to the organization.
     await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
+    // Langue choisie a l'inscription (whitelist fp-locale.js), recopiee a l'activation
+    // dans user_prefs.settings.language. Nullable : les lignes existantes restent intactes.
+    await run(client, `ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS language TEXT`);
     await run(client, `ALTER TABLE organizations   ADD COLUMN IF NOT EXISTS fp_lid TEXT`);
 
     // ── Deduplicate & purge before creating unique index ──────────────────────

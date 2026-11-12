@@ -29,6 +29,8 @@ const addonKeys = [
   "agencyPortfolioPriorities",
   "technicalSeoFixVerification",
   "organicCampaignTracker",
+  "aiCro",
+  "aiGbpPosting",
 ];
 const databaseUrl = process.env["FLOWPOINT_ADDON_CERT_DATABASE_URL"];
 const expectedDb = process.env["FLOWPOINT_ADDON_CERT_EXPECTED_DB"];
@@ -138,10 +140,15 @@ test.beforeAll(async () => {
   );
   await db.query(
     `INSERT INTO organizations
-      (id,name,slug,owner_user_id,status,plan,subscription_status,trial_ends_at,trial_consumed_at)
-     VALUES ($1::uuid,'Addon certification A',$2,$3,'active','standard','trialing',NOW()+INTERVAL '14 days',NOW()),
-            ($4::uuid,'Addon certification B',$5,$6,'active','standard','trialing',NOW()+INTERVAL '14 days',NOW())`,
-    [orgA, `addon-cert-a-${orgA}`, userId, orgB, `addon-cert-b-${orgB}`, randomUUID()],
+      (id,name,slug,owner_user_id,status,plan,subscription_status,trial_ends_at,trial_consumed_at,website)
+     VALUES ($1::uuid,'Addon certification A',$2,$3,'active','standard','trialing',NOW()+INTERVAL '14 days',NOW(),$7),
+            ($4::uuid,'Addon certification B',$5,$6,'active','standard','trialing',NOW()+INTERVAL '14 days',NOW(),NULL)`,
+    [orgA, `addon-cert-a-${orgA}`, userId, orgB, `addon-cert-b-${orgB}`, randomUUID(), siteA],
+  );
+  await db.query(
+    `INSERT INTO org_settings (org_id,org_name,website)
+     VALUES ($1,'Synthetic workspace',$2)`,
+    [orgA, siteA],
   );
   await db.query(
     `INSERT INTO organization_members (id,organization_id,user_id,role,status,joined_at)
@@ -196,6 +203,41 @@ test.beforeAll(async () => {
       gbpLocationB,
       orgB,
     ],
+  );
+  // Synthetic, expired connection state is confined to the disposable local DB.
+  // It loads the test location in the authenticated UI but cannot call Google.
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS google_tokens (
+       id bigserial PRIMARY KEY,
+       org_id text NOT NULL,
+       account_id text NOT NULL,
+       access_token text,
+       refresh_token text,
+       expires_at timestamptz,
+       created_at timestamptz NOT NULL DEFAULT NOW(),
+       updated_at timestamptz NOT NULL DEFAULT NOW()
+     )`,
+  );
+  await db.query(
+    `INSERT INTO google_tokens (org_id,account_id,access_token,refresh_token,expires_at)
+     VALUES ($1,'addon-cert-local-only','expired-test-token',NULL,NOW()-INTERVAL '1 day')`,
+    [orgA],
+  );
+  await db.query(
+    `INSERT INTO google_product_connections (org_id,product,connected,updated_at)
+     VALUES ($1,'gbp',true,NOW())`,
+    [orgA],
+  );
+  await db.query(
+    `INSERT INTO behavior_site_tokens (token_hash,site_url,org_id)
+     VALUES ($1,$2,$3),($4,$5,$6)`,
+    [randomBytes(32).toString("hex"), siteA, orgA, randomBytes(32).toString("hex"), siteB, orgB],
+  );
+  await db.query(
+    `INSERT INTO behavior_events (id,org_id,session_id,site_url,page,event_type,metadata)
+     VALUES ($1,$2,'cro-session-a',$3,$4,'dead_click','{}'::jsonb),
+            ($5,$2,'cro-session-b',$3,$4,'dead_click','{}'::jsonb)`,
+    [randomUUID(), orgA, siteA, pageA, randomUUID()],
   );
   await db.query(
     `INSERT INTO gsc_keyword_data (id,org_id,keyword,date,impressions,clicks,ctr,position)
@@ -253,7 +295,6 @@ test.beforeAll(async () => {
     [auditAgencyA, orgA, "https://addon-a.qa-fixture.invalid/agency", auditAgencyB, "https://addon-a2.qa-fixture.invalid/agency"],
   );
 });
-
 test.afterEach(async () => {
   await stripeResourceCleanup?.cleanup();
 });
@@ -276,11 +317,18 @@ test.afterAll(async () => {
         await db.query("DELETE FROM agency_portfolio_priority_settings WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM seo_change_impact_settings WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM conversion_opportunity_settings WHERE org_id=$1", [orgId]);
-        await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
+        const croTable = await db.query("SELECT to_regclass('public.cro_recommendations') AS table_name");
+        if (croTable.rows[0]?.table_name) {
+          await db.query("DELETE FROM cro_recommendations WHERE org_id=$1", [orgId]);
+        }
+        await db.query("DELETE FROM gbp_posts WHERE org_id=$1", [orgId]);        await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM behavior_site_tokens WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM cro_experiments WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM gsc_page_data WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM gsc_keyword_data WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM gbp_performance_settings WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM google_product_connections WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM google_tokens WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM google_locations WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM user_prefs WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM ai_generated_missions WHERE org_id=$1", [orgId]);
@@ -289,6 +337,7 @@ test.afterAll(async () => {
         await db.query("DELETE FROM reports WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM audits WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM org_addons WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM org_settings WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM organization_members WHERE organization_id::text=$1", [orgId]);
         await db.query("DELETE FROM organizations WHERE id=$1::uuid", [orgId]);
       }
@@ -1823,3 +1872,129 @@ test("Revenue Leak AI shows GA4 availability and no invented financial loss in t
   await expect(revenuePanel).toContainText(new RegExp("Revenu observé par GA4|Revenue observed by GA4", "i"));
   await expect(revenuePanel).toContainText(new RegExp("Indisponible|Unavailable", "i"));
 });
+
+test("AI CRO Strategist persists measured recommendations with owner and viewer permissions", async ({ page }) => {
+  await signInToDashboard(page);
+  const me = await page.request.get("/api/me");
+  expect((await me.json()).org?.website).toBe(siteA);
+  const insightsResponse = await page.request.get(`/api/cro?siteUrl=${encodeURIComponent(siteA)}`);
+  expect(insightsResponse.status()).toBe(200);
+  const insights = await insightsResponse.json();
+  const observation = insights.recommendations.find(row => row.type === "dead_click");
+  expect(observation).toMatchObject({ source: "behavior_events", status: "pending", observedEvents: 2, affectedSessions: 2 });
+
+  const croViewResponsePromise = page.waitForResponse(
+    response => new URL(response.url()).pathname === "/api/cro" && response.request().method() === "GET",
+    { timeout: 15_000 },
+  );
+  await page.evaluate(() => window.navigate("conversion", "cro"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion" && window.STATE?.subRoute === "cro",
+    null,
+    { timeout: 5_000 },
+  );
+  const croViewResponse = await croViewResponsePromise;
+  expect(croViewResponse.status()).toBe(200);
+  const croViewData = await croViewResponse.json();
+  expect(croViewData.recommendations.map(row => row.id)).toContain(observation.id);
+  const statusSelect = page.locator(`#fp-page select[data-rec-id="${observation.id}"]`);
+  await expect(statusSelect).toBeVisible();
+  await statusSelect.selectOption("implemented");
+  await expect(statusSelect).toHaveValue("implemented");
+  await page.reload();
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.evaluate(() => window.navigate("conversion", "cro"));
+  await expect(page.locator(`#fp-page select[data-rec-id="${observation.id}"]`)).toHaveValue("implemented");
+
+  // The fixture domain is reserved and cannot reach a real website. This checks
+  // that unavailable page reads are explicit and do not create synthetic findings.
+  const generationPromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/cro/generate" && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: /Analyze active site|Analyser le site actif/i }).click();
+  const generation = await generationPromise;
+  expect(generation.status()).toBe(200);
+  const generated = await generation.json();
+  expect(generated.pageAnalysis.status).toBe("unavailable");
+  expect(generated.pageAnalysis.findings).toEqual([]);
+  expect(generated.recommendations.filter(row => row.source === "page" || row.source === "ai")).toHaveLength(0);
+
+  const viewerContext = await page.context().browser().newContext({
+    baseURL: process.env["E2E_BASE_URL"] ?? "http://127.0.0.1:8083",
+    locale: "fr-FR",
+    timezoneId: "Europe/Brussels",
+  });
+  try {
+    const viewerPage = await viewerContext.newPage();
+    const viewerLogin = await viewerPage.request.post("/api/auth/login-request", { data: { email: readerEmail } });
+    expect(viewerLogin.ok()).toBe(true);
+    const viewerLoginBody = await viewerLogin.json();
+    expect(viewerLoginBody.debugLink).toBeTruthy();
+    await viewerPage.goto(viewerLoginBody.debugLink);
+    await viewerPage.waitForURL(/dashboard\.html/, { timeout: 20_000 });
+    await viewerPage.evaluate(() => window.navigate("conversion", "cro"));
+    const viewerSelect = viewerPage.locator(`#fp-page select[data-rec-id="${observation.id}"]`);
+    await expect(viewerSelect).toBeDisabled();
+    await expect(viewerPage.getByRole("button", { name: /Analyze active site|Analyser le site actif/i })).toHaveCount(0);
+    const denied = await viewerPage.request.patch(`/api/cro/recommendations/${observation.id}`, { data: { status: "dismissed" } });
+    expect(denied.status()).toBe(403);
+  } finally {
+    await viewerContext.close();
+  }
+});
+
+test("AI GBP Posting saves and cancels a manual schedule without publishing to Google", async ({ page }) => {
+  const publishRequests = [];
+  page.on("request", request => {
+    if (request.method() === "POST" && /\/api\/gbp-posts\/[^/]+\/publish(?:\?|$)/.test(request.url())) {
+      publishRequests.push(request.url());
+    }
+  });
+  // GBP posting is an Ultra feature; AI generation is the separate add-on.
+  // Keep this plan override confined to the attested disposable certification DB.
+  await db.query("UPDATE organizations SET plan='ultra' WHERE id=$1::uuid", [orgA]);
+  const me = await signInToDashboard(page);
+  expect(["owner", "admin", "member"]).toContain(String(me.role || "").toLowerCase());
+  await expect.poll(() => page.evaluate(() => String(window.STATE?.me?.role || "").toLowerCase()))
+    .toMatch(/^(owner|admin|member)$/);
+  await page.evaluate(() => window.navigate("local-seo", "gbp"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "local-seo" && Boolean(document.querySelector("#fp-gbp-posts-title")),
+    null,
+    { timeout: 20_000 },
+  );
+  await page.waitForFunction(() => Array.isArray(window.STATE?.gbp?.locations) && window.STATE.gbp.locations.length > 0, null, { timeout: 20_000 });
+
+  const panel = page.locator("section.fp-card").filter({ has: page.locator("#fp-gbp-posts-title") });
+  await expect(panel.getByRole("button", { name: /Créer un post|Create a post|Create post/i })).toBeVisible({ timeout: 5_000 });
+  await panel.getByRole("button", { name: /Créer un post|Create a post|Create post/i }).click();
+  const location = page.locator("#fp-gbp-location");
+  await expect(location).toBeEnabled();
+  await expect(location.locator("option")).not.toHaveCount(0);
+  await page.locator("#fp-gbp-content").fill("Publication synthétique vérifiée avant toute programmation.");
+  await page.locator("#fp-gbp-schedule").fill("2027-03-15T09:00");
+  await page.locator("#fp-gbp-schedule").dispatchEvent("change");
+  await expect(page.locator("#fp-gbp-approval-row")).toBeVisible();
+  await page.locator("#fp-gbp-manual-approval").check();
+
+  const createResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/gbp-posts" && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: /Enregistrer le brouillon \/ planifier|Save draft \/ schedule/i }).click();
+  const createdResponse = await createResponsePromise;
+  expect(createdResponse.status()).toBe(201);
+  const created = (await createdResponse.json()).post;
+  expect(created).toMatchObject({ status: "scheduled", google_post_id: null, published_at: null });
+
+  await page.getByRole("button", { name: /Historique et brouillons|History and drafts/i }).click();
+  const postCard = page.locator("article").filter({ hasText: "Publication synthétique vérifiée avant toute programmation." });
+  await expect(postCard).toContainText(/scheduled|programmé/i);
+  const cancelResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === `/api/gbp-posts/${created.id}` && response.request().method() === "PATCH",
+  );
+  await postCard.getByRole("button", { name: /Annuler la programmation|Cancel schedule/i }).click();
+  expect((await cancelResponsePromise).status()).toBe(200);
+  const persistedPosts = await page.request.get("/api/gbp-posts/list");
+  const persisted = (await persistedPosts.json()).posts.find(post => post.id === created.id);
+  expect(persisted).toMatchObject({ status: "draft", scheduled_at: null, google_post_id: null, published_at: null });
+  expect(publishRequests).toHaveLength(0);});

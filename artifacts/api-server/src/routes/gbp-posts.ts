@@ -5,6 +5,7 @@ import {
 } from "../services/gbp-posting-service.js";
 import { GbpPublishError, GBP_PUBLISH_ERRORS } from "../services/gbp-publish-errors.js";
 import { requireAddon, requireFeature } from "../middlewares/planGate.js";
+import { canAdmin, canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.get("/gbp-posts/queue", async (req, res) => {
   } catch { res.json({ queue: [], count: 0 }); }
 });
 
-router.post("/gbp-posts", async (req, res) => {
+router.post("/gbp-posts", canWrite, async (req, res) => {
   const {
     locationId, locationName, postType, title, content, ctaType, ctaUrl,
     mediaUrls, scheduledAt, seoKeywords, eventTitle, eventStart, eventEnd, offerCode, offerTerms, manualApproval,
@@ -123,7 +124,7 @@ router.post("/gbp-posts", async (req, res) => {
 });
 
 // AI post generation requires the aiGbpPosting add-on
-router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), async (req, res) => {
+router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), canWrite, async (req, res) => {
   const { locationId, locationName, postType, industry, keywords, tone, objective, language, maxCharacters } = req.body as {
     locationId?: string; locationName?: string; postType?: string; industry?: string;
     keywords?: string[]; tone?: string; objective?: string; language?: string; maxCharacters?: number;
@@ -144,9 +145,10 @@ router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posti
   }
 });
 
-router.post("/gbp-posts/:id/publish", async (req, res) => {
+router.post("/gbp-posts/:id/publish", canWrite, async (req, res) => {
   try {
-    const post = await publishPost(org(req), req.params.id);
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const post = await publishPost(org(req), postId);
     res.json({ ok: true, post });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
@@ -169,21 +171,35 @@ router.post("/gbp-posts/:id/publish", async (req, res) => {
   }
 });
 
-router.patch("/gbp-posts/:id", async (req, res) => {
-  const { content, title, scheduledAt, status, seoKeywords } = req.body as {
+router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
+  const { content, title, scheduledAt, status, seoKeywords, manualApproval } = req.body as {
     content?: string; title?: string; scheduledAt?: string; status?: string; seoKeywords?: string[];
+    manualApproval?: boolean;
   };
+  if (content !== undefined && (typeof content !== "string" || !content.trim() || content.length > 1500)) {
+    res.status(400).json({ error: "Content must contain between 1 and 1500 characters." }); return;
+  }
+  if (scheduledAt !== undefined && (!Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now() || manualApproval !== true || status === "draft")) {
+    res.status(400).json({ error: "A future date and fresh manual approval are required to schedule." }); return;
+  }
   const updates: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
   if (content)     { params.push(content);     updates.push(`content=$${params.length}`); }
   if (title)       { params.push(title);       updates.push(`title=$${params.length}`); }
-  if (scheduledAt) { params.push(scheduledAt); updates.push(`scheduled_at=$${params.length}`); }
   // Le statut n'est jamais posé par le client : « published »/« failed »/« publishing » ne
   // résultent que de l'appel réel à Google (publishPost). Seul le retour en brouillon est permis.
   if (status !== undefined && status !== "draft") {
-    res.status(400).json({ error: "Statut non modifiable : seul « draft » est accepté.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
+    res.status(400).json({ error: "Status cannot be changed by the client; only draft is accepted.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
   }
-  if (status)      { params.push(status);      updates.push(`status=$${params.length}`); }
+  // Toute modification invalide l'ancienne validation : sans programmation
+  // explicitement approuvée, le post redevient un brouillon non publiable par le cron.
+  if (scheduledAt) {
+    params.push(scheduledAt);
+    updates.push(`scheduled_at=$${params.length}`, "status='scheduled'", "approved_at=now()");
+  } else {
+    updates.push("status='draft'", "scheduled_at=NULL", "approved_at=NULL");
+  }
+  updates.push("last_error_code=NULL", "last_error_message=NULL");
   if (seoKeywords) { params.push(seoKeywords); updates.push(`seo_keywords=$${params.length}`); }
   params.push(req.params.id, org(req));
   try {
@@ -191,17 +207,20 @@ router.patch("/gbp-posts/:id", async (req, res) => {
       `UPDATE gbp_posts SET ${updates.join(",")}
         WHERE id=$${params.length - 1} AND org_id=$${params.length}
           AND status IN ('draft','scheduled','failed')
-        RETURNING id`,
+           ${scheduledAt ? `AND location_id IS NOT NULL AND post_type <> 'product'
+             AND (post_type <> 'event' OR (event_title IS NOT NULL AND event_start IS NOT NULL AND event_end > event_start))` : ""}
+         RETURNING id, status, scheduled_at`,
       params
     );
     if (!r.rows.length) { res.status(404).json({ error: "Post introuvable" }); return; }
-    res.json({ ok: true });
+    res.json({ ok: true, post: r.rows[0] });
   } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
-router.delete("/gbp-posts/:id", async (req, res) => {
+router.delete("/gbp-posts/:id", canAdmin, async (req, res) => {
   try {
-    const deleted = await deletePost(org(req), req.params.id);
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const deleted = await deletePost(org(req), postId);
     if (deleted === false) { res.status(404).json({ error: "Post introuvable" }); return; }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }

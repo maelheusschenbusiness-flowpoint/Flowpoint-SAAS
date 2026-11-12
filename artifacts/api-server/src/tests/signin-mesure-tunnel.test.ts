@@ -270,7 +270,7 @@ describe("LE FORMULAIRE INITIAL EST MINIMAL (prénom, nom, e-mail)", () => {
     for (const champ of ["firstName", "lastName", "email"]) {
       expect(PAGE, `le champ ${champ} a disparu`).toContain(`val('${champ}')`);
     }
-    for (const message of ["Le prénom est requis.", "Le nom est requis.", "Adresse email invalide."]) {
+    for (const message of ["First name is required.", "Last name is required.", "Please enter a valid email address."]) {
       expect(PAGE, `la validation « ${message} » a disparu`).toContain(message);
     }
     for (const retire of ["companyName", "country", "address", "city", "postalCode", "phone", "vat"]) {

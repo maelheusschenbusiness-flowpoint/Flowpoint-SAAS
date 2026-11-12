@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { applySignupLanguage } from "../services/signup-language.js";
 import type Stripe from "stripe";
 import { subPeriodEnd } from "./billing.js";
 import { createHash } from "crypto";
@@ -186,7 +187,7 @@ async function sendWelcomeOnce(orgId: string, email: string, name: string): Prom
       [orgId],
     );
     if (!claim.rowCount) return;
-    const result = await mailer.sendWelcome({ to: email, name });
+    const result = await mailer.sendWelcome({ to: email, orgId, name });
     if (result.ok) {
       await client.query(
         `UPDATE organizations
@@ -722,7 +723,7 @@ export async function activateNewSignup(opts: {
   let signupRow: Record<string, string | null> | null = null;
   try {
     const r = await dbClient.query(
-      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid
+      `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, language
        FROM pending_signups WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW() LIMIT 1`,
       [preRegToken]
     );
@@ -937,6 +938,9 @@ export async function activateNewSignup(opts: {
       [newOrgId, userId]
     );
 
+    // Langue d'inscription -> user_prefs / organizations, sans ecraser un choix existant.
+    await applySignupLanguage(activateClient, { orgId: newOrgId, language: signupRow["language"] });
+
     await activateClient.query(
       `UPDATE pending_signups SET consumed_at = NOW()
        WHERE token = $1 AND consumed_at IS NULL`,
@@ -1074,6 +1078,7 @@ export async function activateNewSignup(opts: {
     if (_mailer) {
       const mailResult = await _mailer.sendActivationMagicLink({
         to:          email,
+        orgId,
         name:        firstName || email.split("@")[0],
         plan:        selectedPlan,
         magicLinkUrl,
@@ -2782,6 +2787,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             "[Webhook] invoice.payment_succeeded: subscription_update on addon — routing to sendPaymentSucceeded(isAddon)");
           mailer.sendPaymentSucceeded({
             to:        orgData.email,
+            orgId,
             name:      recipientName,
             plan:      orgData.plan,
             amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
@@ -2794,6 +2800,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             "[Webhook] invoice.payment_succeeded: subscription_update with plan price line — sending sendPlanChanged");
           mailer.sendPlanChanged({
             to:        orgData.email,
+            orgId,
             name:      recipientName,
             plan:      orgData.plan,
             amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
@@ -2805,6 +2812,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         // subscription_cycle (renewal) or manual (add-on) → standard payment confirmed
         mailer.sendPaymentSucceeded({
           to:        orgData.email,
+          orgId,
           name:      recipientName,
           plan:      orgData.plan,
           amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
@@ -2836,6 +2844,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           : undefined;
         mailer.sendPaymentFailed({
           to:          orgDataFailed.email,
+          orgId,
           name:        orgDataFailed.firstName || orgDataFailed.email.split("@")[0] || "Utilisateur",
           plan:        orgDataFailed.plan,
           attemptCount,

@@ -46,6 +46,7 @@ export function maskEmailForAuthLog(email: string | null | undefined): string {
 export type LoginEmailFailureCode =
   | "EMAIL_TRANSPORT_MISSING"
   | "DOMAIN_NOT_VERIFIED"
+  | "SMTP_SEND_FAILED"
   | "TEST_MAILER_NOT_ENABLED"
   | "EMAIL_SEND_FAILED";
 
@@ -53,6 +54,7 @@ export function loginEmailFailureCode(error: unknown): LoginEmailFailureCode {
   const message = error instanceof Error ? error.message : String(error);
   if (message.startsWith("EMAIL_TRANSPORT_MISSING")) return "EMAIL_TRANSPORT_MISSING";
   if (message.startsWith("DOMAIN_NOT_VERIFIED")) return "DOMAIN_NOT_VERIFIED";
+  if (message.startsWith("SMTP_SEND_FAILED")) return "SMTP_SEND_FAILED";
   if (message.startsWith("TEST_MAILER_NOT_ENABLED")) return "TEST_MAILER_NOT_ENABLED";
   return "EMAIL_SEND_FAILED";
 }

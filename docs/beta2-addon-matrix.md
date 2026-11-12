@@ -1,8 +1,10 @@
 # Matrice de suivi — add-ons bêta 2.0
 
-Mise à jour : 10 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
+Mise à jour : 11 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
 
 Le rapport archivé du 3 novembre 2026 attribue historiquement **8/24** validations aux huit add-ons de remplacement (`docs/flowpoint-audit-status-2026-11-03.md`, commit `6c78d7d`). En ajoutant la certification locale complète actuelle d’Agency Reporting Packs, **9/24 modules ont une preuve de certification** : huit attributions historiques non rejouées et une certification locale complète produite. Ce total ne signifie pas que neuf fournisseurs ont été certifiés.
+
+**Compteur fonctionnel documenté : 12/24** — huit remplacements historiques, Agency Reporting Packs, SEO Content Decay Radar, AI GBP Posting et AI CRO Strategist (fonctions applicatives). Ce compteur inclut des branches en revue et des preuves historiques non rejouées ; il ne signifie ni disponibilité commerciale, ni certification fournisseur. La certification IA réelle de CRO reste à confirmer.
 
 **Légende**
 - **Fonctionnalité développée**, **preuve locale/E2E**, **certification locale complète**, **certification fournisseur réelle**, **facturation Stripe TEST**, **intégration GitHub/Test-Replit** et **disponibilité commerciale** sont suivies séparément.
@@ -11,7 +13,7 @@ Le rapport archivé du 3 novembre 2026 attribue historiquement **8/24** validati
 
 | # | Module | Historique | Fonctionnalité | Preuve locale / E2E | Cert. locale complète | Cert. fournisseur réelle | Stripe TEST | GitHub / Test-Replit | Disponibilité commerciale | Prêt bêta 2.0 | État / preuve à suivre |
 |---:|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | AI GBP Posting | — | Partiel | 17 tests ciblés; publication simulée | Non | Non — aucune publication Google réelle | Non vérifiée | Oui | À confirmer | À confirmer | Campagne du 6 novembre; terminer le chemin de publication et le vérifier sur un compte GBP autorisé. |
+| 1 | AI GBP Posting | — | Présent — parcours applicatifs | 51 tests ciblés réussis le 10 novembre, dont 4 sur PostgreSQL jetable et 4 sur les handlers UI ; typage et syntaxe réussis | Non — navigateur connecté non vérifié | Non — aucune publication Google réelle | Non vérifiée | PR #418 fusionnée dans Test-Replit | À confirmer | À confirmer | Création, génération, approbation, programmation/annulation, calendrier, publication API, statuts et erreurs persistés. Réponses Google simulées uniquement dans les tests ; un succès exige un identifiant Google. |
 | 2 | Behavioral AI | — | Partiel | 10 tests service/session sur événements synthétiques | Non | Non — site/snippet réel non certifié | Non vérifiée | Oui | À confirmer | À confirmer | Campagne du 6 novembre; vérifier l’ingestion d’événements observés sur un site autorisé. |
 | 3 | Revenue Leak AI | — | Partiel | 4 tests de propriété/erreur | Non | Non — revenus observés non certifiés | Non vérifiée | Oui | À confirmer | À confirmer | Campagne du 6 novembre; vérifier une source réelle de revenus/conversions. |
 | 4 | AI Executive Reporting | — | Partiel | 3 tests ciblés | Non | Non — données externes non vérifiées | Non vérifiée | Oui | À confirmer | À confirmer | Campagne du 6 novembre; clarifier la portée de planification/personnalisation avant de l’élargir. |
@@ -22,7 +24,7 @@ Le rapport archivé du 3 novembre 2026 attribue historiquement **8/24** validati
 | 9 | Advanced SEO Lab | — | Partiel | 20 tests ciblés et 1 E2E locaux; droits, quotas et persistance | Non | Non — réponses DataForSEO interceptées | Non vérifiée | PR #351 et #352 intégrées | À confirmer | À confirmer | Aucun appel DataForSEO réel. Les tests du 8 novembre étaient sur PostgreSQL jetable; aucun secret fournisseur transmis. |
 | 10 | Global Monitoring | — | Partiel | E2E fail-closed réussi; 503/configured=false sans métrique inventée | Non | Non — monitor Better Stack QA non autorisé | Sans objet | Socle présent | `coming_soon` | Non | Seule une lecture autorisée d’un monitor QA préexistant débloquera sa certification fournisseur; aucun monitor ne sera créé ou modifié. |
 | 11 | SLA Monitoring Avancé | — | Partiel | 1 test ciblé; essais Better Stack antérieurs simulés | Non | Non — données Better Stack réelles non vérifiées | Non vérifiée | Oui | À confirmer | À confirmer | Vérifier les données d’un monitor existant autorisé. |
-| 12 | AI CRO Strategist | — | Partiel | 19 tests ciblés | Non | Non — fournisseur réel non certifié | Non vérifiée | Oui | À confirmer | À confirmer | Campagne du 6 novembre; fermer les parcours fonctionnels et données observées manquants. |
+| 12 | AI CRO Strategist | — | Terminé — fonctions applicatives | 17 tests ciblés API/service sur PostgreSQL jetable, TypeScript réussi; parcours navigateur local passé pour owner/viewer, persistance et site illisible | Oui — parcours navigateur local | Non — fournisseur IA réel non certifié | Non vérifiée | PR #420 synchronisée avec Test-Replit; CI à relancer | À confirmer | À confirmer | Observations réelles, analyse de page avec repli IA, recommandations persistées et statuts par rôle. |
 | 13 | AI Workspace Launch | — | Partiel | 21 tests et 1 E2E; restauration de stratégie vérifiée | Non | Non — service externe non certifié | Non vérifiée | Oui | À confirmer | À confirmer | Données et IA de test seulement; garder ce résultat distinct d’une certification fournisseur. |
 | 14 | SEO Content Decay Radar | — | Présent | 13 tests ciblés; E2E navigateur local réussi le 9 novembre avec fixture tenant-isolée | Non | Non — GSC réel non vérifié | Non vérifiée | PR #410 intégrée à Test-Replit | À confirmer | À confirmer | La page de l’organisation s’affiche et la page étrangère est exclue; aucune certification GSC réelle. |
 | 15 | Backlink Intelligence | — | Partiel | 10 tests ciblés et 1 E2E local; accès direct/hydratation vérifiés | Non | Non — DataForSEO réel absent | Non vérifiée | PR #358 intégrée à Test-Replit (`994e5983`) | À confirmer | À confirmer | Aucun appel DataForSEO réel; l’interface affiche l’absence de configuration sans métrique synthétique. |
@@ -42,6 +44,8 @@ Le rapport archivé du 3 novembre nomme exactement ces huit remplacements : GBP 
 
 ## Résultats vérifiés
 
+- **10 novembre — AI GBP Posting :** 51 tests ciblés réussis sur 7 fichiers, dont un cycle SQL/API réel sur PostgreSQL jetable loopback. Approbation renouvelée à la reprogrammation ; une modification sans reprogrammation approuvée revient en brouillon. Annulation depuis l’interface, confirmation avant publication publique, protection contre les doubles clics, rechargement des erreurs et contrôle des rôles. Les tests de publication utilisent un fournisseur simulé ; aucune publication publique envoyée. Le navigateur connecté n’a pas été vérifié dans cette passe.
+- **Compteur fonctionnel : 12/24**, distinct du compteur de preuves de certification ci-dessous. AI CRO Strategist est terminé pour ses fonctions applicatives; la certification fournisseur IA reste non vérifiée.
 - **Compteur : 9/24 avec preuve de certification** — 8 historiques explicitement attribuées, non rejouées, et 1 certification locale complète actuelle pour Agency Reporting Packs. Ce n’est pas un compteur de certifications fournisseur.
 - **Fonctionnalité : 14/24 modules partiels, 10/24 présents.** Ces états ne signifient ni certification complète ni disponibilité commerciale.
 - **Intégration : 23/24 évolutions de modules suivies sont dans Test-Replit.** Le socle Agency est présent via PR #346/#350/#410, mais ses nouveaux parcours cron/webhook sont des changements locaux non poussés au brouillon #413; le test navigateur Conversion ajouté dans ce worktree est également local et non poussé.

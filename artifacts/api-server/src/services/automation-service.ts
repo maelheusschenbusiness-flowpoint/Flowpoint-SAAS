@@ -452,6 +452,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         if (template === "client_weekly") {
           await mailer.sendReportGenerated({
             to: recipient.email,
+            orgId: orgId ?? undefined,
             name: recipient.name,
             reportName: "Rapport hebdomadaire",
             reportUrl: "https://app.flowpoint.pro/reports",
@@ -471,6 +472,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         const { mailer } = await import("./mailer.js");
         await mailer.sendSeoAlert({
           to: recipient.email,
+          orgId: orgId ?? undefined,
           ruleName: "Alerte automatisation",
           url: String(params["url"] || "votre site"),
           score: 0,

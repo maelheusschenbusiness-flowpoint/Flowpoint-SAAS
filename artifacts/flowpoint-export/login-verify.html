@@ -1,7 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
+  <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
+  <script src="/funnel-theme.js?v=20261110" defer></script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -12,27 +15,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
   <script src="/fp-locale.js?v=20261025"></script>
-  <title>Vérification — FlowPoint</title>
-  <script>
-    (function(){
-      try {
-        var t = localStorage.getItem('fp:theme') || localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', t);
-        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
-      } catch(e){}
-    })();
-  </script>
+  <title>Verifying — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
-      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
-      --fp-shadow: 0 4px 24px rgba(37,99,235,0.08), 0 1px 3px rgba(0,0,0,0.06);
-    }
-    html[data-theme="dark"] {
-      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
-      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
-      --fp-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    /* Alias des anciens noms --fp-* vers les jetons partagés (funnel-theme.css). */
+    :root, html[data-theme="light"] {
+      --fp-bg: var(--bg); --fp-surface: var(--bg2); --fp-border: var(--border);
+      --fp-text: var(--text); --fp-text-muted: var(--text-soft); --fp-accent: var(--blue);
+      --fp-shadow: var(--shadow);
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -61,7 +51,7 @@
       background: var(--fp-accent); color: #fff; border: none; border-radius: 8px;
       font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
     }
-    .fp-btn:hover { opacity: 0.9; }
+    .fp-btn:hover { background: var(--blue-h); }
     #fp-error { display: none; }
     #fp-error .fp-icon { font-size: 40px; }
     #fp-success { display: none; }
@@ -88,26 +78,26 @@
     </a>
     <div id="fp-loading">
       <div class="fp-icon">🔐</div>
-      <h1>Vérification en cours…</h1>
-      <p>Nous validons votre lien de connexion, veuillez patienter.</p>
+      <h1>Verifying…</h1>
+      <p>We are checking your sign-in link. Please wait.</p>
       <div class="fp-spinner-wrap"><div class="fp-spinner"></div></div>
     </div>
     <div id="fp-success">
       <div class="fp-icon">✅</div>
-      <h1>Connexion réussie !</h1>
-      <p>Vous êtes connecté. Redirection vers votre tableau de bord…</p>
+      <h1>You are signed in!</h1>
+      <p>Redirecting you to your dashboard…</p>
       <div class="fp-spinner-wrap"><div class="fp-spinner"></div></div>
     </div>
     <div id="fp-error">
       <div class="fp-icon">❌</div>
-      <h1>Lien invalide</h1>
-      <p id="fp-error-msg">Ce lien de connexion est invalide ou a expiré.</p>
+      <h1>Invalid link</h1>
+      <p id="fp-error-msg">This sign-in link is invalid or has expired.</p>
       <!-- fp-retry-btn is shown by login-verify.js when the server returns canRetry:true
            (expired / already_used / not_found).  Hidden by default. -->
       <button id="fp-retry-btn" class="fp-btn" style="display:none;margin-top:12px;">
-        Demander un nouveau lien
+        Request a new link
       </button>
-      <a href="/login.html" class="fp-btn" style="margin-top:8px;">Retour à la connexion</a>
+      <a href="/login.html" class="fp-btn" style="margin-top:8px;">Back to sign in</a>
     </div>
   </div>
   <script src="fp-config.js"></script>
