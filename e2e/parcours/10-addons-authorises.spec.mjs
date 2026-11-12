@@ -317,13 +317,15 @@ test.afterAll(async () => {
         await db.query("DELETE FROM agency_portfolio_priority_settings WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM seo_change_impact_settings WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM conversion_opportunity_settings WHERE org_id=$1", [orgId]);
-        const croTable = await db.query("SELECT to_regclass('public.cro_recommendations') AS table_name");
-        if (croTable.rows[0]?.table_name) {
-          await db.query("DELETE FROM cro_recommendations WHERE org_id=$1", [orgId]);
-        }
-        await db.query("DELETE FROM gbp_posts WHERE org_id=$1", [orgId]);        await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
-        await db.query("DELETE FROM behavior_site_tokens WHERE org_id=$1", [orgId]);
-        await db.query("DELETE FROM cro_experiments WHERE org_id=$1", [orgId]);
+        await db.query("DELETE FROM revenue_leak_resolutions WHERE org_id=$1", [orgId]);
+            const croTable = await db.query("SELECT to_regclass('public.cro_recommendations') AS table_name");
+            if (croTable.rows[0]?.table_name) {
+              await db.query("DELETE FROM cro_recommendations WHERE org_id=$1", [orgId]);
+            }
+            await db.query("DELETE FROM gbp_posts WHERE org_id=$1", [orgId]);
+            await db.query("DELETE FROM behavior_events WHERE org_id=$1", [orgId]);
+            await db.query("DELETE FROM behavior_site_tokens WHERE org_id=$1", [orgId]);
+            await db.query("DELETE FROM cro_experiments WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM gsc_page_data WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM gsc_keyword_data WHERE org_id=$1", [orgId]);
         await db.query("DELETE FROM gbp_performance_settings WHERE org_id=$1", [orgId]);
@@ -1849,6 +1851,19 @@ test("AI Forecasting Engine shows insufficient history instead of fabricated pro
 });
 
 test("Revenue Leak AI shows GA4 availability and no invented financial loss in the dashboard", async ({ page }) => {
+  const leakPage = "/revenue-leak-checkout";
+  const initialSession = "e2e-revenue-leak-" + randomUUID();
+  const foreignSession = "e2e-revenue-leak-" + randomUUID();
+  const initialEventId = randomUUID();
+  const foreignEventId = randomUUID();
+  await db.query(
+    `INSERT INTO behavior_events
+      (id,org_id,session_id,site_url,page,event_type,scroll_depth,created_at)
+     VALUES ($1,$2,$3,$4,$5,'form_abandon',45,NOW()),
+            ($6,$7,$8,$4,$5,'form_abandon',45,NOW())`,
+    [initialEventId, orgA, initialSession, siteA, leakPage, foreignEventId, orgB, foreignSession],
+  );
+
   await signInToDashboard(page);
   const response = await page.request.get("/api/revenue-leak");
   expect(response.status()).toBe(200);
@@ -1856,7 +1871,13 @@ test("Revenue Leak AI shows GA4 availability and no invented financial loss in t
   expect(data.attribution?.status).toBe("insufficient_data");
   expect(data.financial?.observedLoss ?? null).toBeNull();
   expect(data.financial?.estimatedLoss ?? null).toBeNull();
+  expect(data.financial?.observedRevenue ?? null).toBeNull();
+  const opportunity = data.opportunities.find(row => row.siteUrl === siteA && row.page === leakPage);
+  expect(opportunity).toMatchObject({ observedEvents: 1, affectedSessions: 1, financialClassification: "unmeasured" });
+  expect(opportunity.id).toMatch(/^[a-f0-9]{64}$/);
+  expect(JSON.stringify(data)).not.toContain(foreignSession);
 
+  const selector = '#fp-page [data-revenue-leak-resolve="' + opportunity.id + '"]';
   await page.evaluate(() => window.navigate("conversion", "revenue-leak"));
   await page.waitForFunction(
     () => window.STATE?.route === "conversion" &&
@@ -1871,6 +1892,48 @@ test("Revenue Leak AI shows GA4 availability and no invented financial loss in t
   await expect(revenuePanel).toContainText(new RegExp("Attribution financière : données insuffisantes|Financial attribution: insufficient data", "i"));
   await expect(revenuePanel).toContainText(new RegExp("Revenu observé par GA4|Revenue observed by GA4", "i"));
   await expect(revenuePanel).toContainText(new RegExp("Indisponible|Unavailable", "i"));
+  const resolveButton = page.locator(selector);
+  await expect(resolveButton).toHaveCount(1);
+  const patchPromise = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/api/revenue-leak/" + opportunity.id + "/resolve"));
+  await resolveButton.click();
+  const patchResponse = await patchPromise;
+  expect(patchResponse.status()).toBe(200);
+  expect((await patchResponse.json()).ok).toBe(true);
+  await expect(resolveButton).toHaveCount(0);
+
+  await page.reload();
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.evaluate(() => window.navigate("conversion", "revenue-leak"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion" && window.STATE?.subRoute === "revenue-leak" &&
+      Boolean(document.querySelector("#fp-page [data-attribution-status]")),
+    null,
+    { timeout: 20_000 },
+  );
+  await expect(page.locator(selector)).toHaveCount(0);
+
+  await db.query(
+    `INSERT INTO behavior_events
+      (id,org_id,session_id,site_url,page,event_type,scroll_depth,created_at)
+     VALUES ($1,$2,$3,$4,$5,'form_abandon',45,NOW())`,
+    [randomUUID(), orgA, "e2e-revenue-leak-" + randomUUID(), siteA, leakPage],
+  );
+  await page.reload();
+  await page.waitForSelector('[data-route="overview"]', { timeout: 20_000 });
+  await page.evaluate(() => window.navigate("conversion", "revenue-leak"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion" && window.STATE?.subRoute === "revenue-leak" &&
+      Boolean(document.querySelector("#fp-page [data-attribution-status]")),
+    null,
+    { timeout: 20_000 },
+  );
+  await expect(page.locator(selector)).toHaveCount(1);
+  const afterNewEvidenceResponse = await page.request.get("/api/revenue-leak");
+  const afterNewEvidence = await afterNewEvidenceResponse.json();
+  const resurfaced = afterNewEvidence.opportunities.find(row => row.id === opportunity.id);
+  expect(resurfaced).toMatchObject({ observedEvents: 2, affectedSessions: 2 });
+  expect(resurfaced.observedRevenueLoss).toBeNull();
+  expect(resurfaced.estimatedRevenueLoss).toBeNull();
 });
 
 test("AI CRO Strategist persists measured recommendations with owner and viewer permissions", async ({ page }) => {

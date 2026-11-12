@@ -2245,6 +2245,30 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id);`);
 
+    // ── revenue_leak_resolutions — status for behavior-derived observations ───
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS revenue_leak_resolutions (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        site_url TEXT NOT NULL DEFAULT '',
+        page TEXT NOT NULL DEFAULT '/',
+        event_type TEXT NOT NULL DEFAULT 'conversion',
+        resolved_observed_events INTEGER NOT NULL DEFAULT 0,
+        resolved_affected_sessions INTEGER NOT NULL DEFAULT 0,
+        resolved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS id TEXT;`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS site_url TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS page TEXT NOT NULL DEFAULT '/';`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT 'conversion';`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS resolved_observed_events INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS resolved_affected_sessions INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS revenue_leak_resolutions_id_idx ON revenue_leak_resolutions(id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS revenue_leak_resolutions_org_id_idx ON revenue_leak_resolutions(org_id);`);
+
     // ── Fix RLS on behavioral/CRO tables: USING=(true) → org_id filter ───────
     // Drop both old *_isolation policies AND old tenant_* permissive bypass policies.
     // Old tenant_select/update/delete with USING(true) coexist with *_isolation ALL
@@ -2342,6 +2366,31 @@ export async function initDataTables(): Promise<void> {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leaks' AND policyname='revenue_leaks_tenant_delete') THEN
           CREATE POLICY revenue_leaks_tenant_delete ON revenue_leaks FOR DELETE
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
+    await run(client, `ALTER TABLE revenue_leak_resolutions ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE revenue_leak_resolutions FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        DROP POLICY IF EXISTS revenue_leak_resolutions_isolation ON revenue_leak_resolutions;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leak_resolutions' AND policyname='revenue_leak_resolutions_tenant_select') THEN
+          CREATE POLICY revenue_leak_resolutions_tenant_select ON revenue_leak_resolutions FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leak_resolutions' AND policyname='revenue_leak_resolutions_tenant_insert') THEN
+          CREATE POLICY revenue_leak_resolutions_tenant_insert ON revenue_leak_resolutions FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leak_resolutions' AND policyname='revenue_leak_resolutions_tenant_update') THEN
+          CREATE POLICY revenue_leak_resolutions_tenant_update ON revenue_leak_resolutions FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leak_resolutions' AND policyname='revenue_leak_resolutions_tenant_delete') THEN
+          CREATE POLICY revenue_leak_resolutions_tenant_delete ON revenue_leak_resolutions FOR DELETE
             USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$;
