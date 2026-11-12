@@ -269,6 +269,14 @@ async function send(opts: SendOptions): Promise<MailResult> {
         tag: opts.tag || null,
         sentAt: new Date().toISOString(),
       };
+      // Keep a redacted copy of the agency-report email body for TEST
+      // certification. The bearer portal token is never written to the capture.
+      if (opts.tag === "report_generated") {
+        payload["html"] = opts.html.replace(
+          /(\/api\/agency-portal\/)[A-Za-z0-9_-]{40,50}/g,
+          "$1[PORTAL_TOKEN_REDACTED]",
+        );
+      }
       const tokenMatch = `${opts.html}\n${opts.text}`.match(/[?&]token=([a-f0-9]{64})/i);
       if (tokenMatch) payload["token"] = tokenMatch[1];
       const inviteMatch = opts.text.match(/https?:\/\/\S*accept-invitation\S*/i);

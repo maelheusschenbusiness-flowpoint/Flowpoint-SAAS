@@ -396,6 +396,78 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE share_tokens ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `CREATE INDEX IF NOT EXISTS share_tokens_report_id_idx ON share_tokens(report_id);`);
 
+    // Agency Reporting Packs: org-scoped recurring deliveries and revocable,
+    // read-only customer portals. Portal bearer tokens are SHA-256 hashed.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS agency_report_schedules (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        client_name TEXT NOT NULL,
+        recipient_email TEXT NOT NULL,
+        audit_ids JSONB NOT NULL,
+        cron_expression TEXT NOT NULL,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        last_run_at TIMESTAMPTZ,
+        last_status TEXT,
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS agency_report_schedules_org_idx ON agency_report_schedules(org_id, enabled)`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS agency_report_schedule_runs (
+        id TEXT PRIMARY KEY,
+        schedule_id TEXT NOT NULL,
+        org_id TEXT NOT NULL,
+        slot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        report_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (schedule_id, slot)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS agency_report_schedule_runs_org_idx ON agency_report_schedule_runs(org_id, created_at DESC)`);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS agency_customer_portals (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        client_name TEXT NOT NULL,
+        report_ids JSONB NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by TEXT
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS agency_customer_portals_org_idx ON agency_customer_portals(org_id, created_at DESC)`);
+    for (const table of ["agency_report_schedules", "agency_report_schedule_runs", "agency_customer_portals"]) {
+      await run(client, `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
+      await run(client, `ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`);
+      await run(client, `
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='${table}' AND policyname='${table}_tenant') THEN
+            CREATE POLICY ${table}_tenant ON ${table}
+              USING (org_id = current_setting('app.current_org_id', true))
+              WITH CHECK (org_id = current_setting('app.current_org_id', true));
+          END IF;
+        END $$
+      `);
+    }
+    // Public portal reads prove possession of the one-way token hash inside a
+    // transaction, then switch the same transaction to the portal's org scope.
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='agency_customer_portals' AND policyname='agency_portal_bearer_select') THEN
+          CREATE POLICY agency_portal_bearer_select ON agency_customer_portals FOR SELECT
+            USING (token_hash = current_setting('app.agency_portal_token_hash', true));
+        END IF;
+      END $$
+    `);
+
     // ── tracked_keywords ─────────────────────────────────────────────────────
     // BUGFIX: production's tracked_keywords table existed but was missing the
     // `url` column (and several others) that keyword-engine.ts's trackKeyword()
@@ -1936,7 +2008,7 @@ export async function initDataTables(): Promise<void> {
     const tokenColumnRows = await client.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='behavior_site_tokens'`,
     );
-    const tokenColumns = new Set(tokenColumnRows.rows.map((row) => row.column_name));
+    const tokenColumns = new Set(tokenColumnRows.rows.map((row: { column_name: string }) => row.column_name));
     if (tokenColumns.has("token")) {
       const siteParts = ["NULLIF(site_url, '')"];
       if (tokenColumns.has("domain")) siteParts.push("NULLIF(domain, '')");
@@ -2319,6 +2391,42 @@ export async function initDataTables(): Promise<void> {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='revenue_leak_resolutions' AND policyname='revenue_leak_resolutions_tenant_delete') THEN
           CREATE POLICY revenue_leak_resolutions_tenant_delete ON revenue_leak_resolutions FOR DELETE
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
+    // ── sla_targets — cibles SLA par moniteur et par organisation ─────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS sla_targets (
+        org_id TEXT NOT NULL,
+        monitor_id TEXT NOT NULL,
+        target_pct NUMERIC(6,3) NOT NULL CHECK (target_pct >= 90 AND target_pct <= 99.999),
+        updated_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, monitor_id)
+      )
+    `);
+    await run(client, `ALTER TABLE sla_targets ENABLE ROW LEVEL SECURITY`);
+    await run(client, `ALTER TABLE sla_targets FORCE ROW LEVEL SECURITY`);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_select') THEN
+          CREATE POLICY sla_targets_tenant_select ON sla_targets FOR SELECT
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_insert') THEN
+          CREATE POLICY sla_targets_tenant_insert ON sla_targets FOR INSERT
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_update') THEN
+          CREATE POLICY sla_targets_tenant_update ON sla_targets FOR UPDATE
+            USING  (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sla_targets' AND policyname='sla_targets_tenant_delete') THEN
+          CREATE POLICY sla_targets_tenant_delete ON sla_targets FOR DELETE
             USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$;
@@ -3408,7 +3516,7 @@ export async function initDataTables(): Promise<void> {
             `SELECT column_name FROM information_schema.columns
              WHERE table_schema='public' AND table_name=$1`, [t]
           );
-          const colSet = new Set(colr.rows.map(r => r.column_name));
+          const colSet = new Set(colr.rows.map((r: { column_name: string }) => r.column_name));
           for (const col of reqCols) {
             if (!colSet.has(col)) failures.push(`${t}:missing_col_${col}`);
           }

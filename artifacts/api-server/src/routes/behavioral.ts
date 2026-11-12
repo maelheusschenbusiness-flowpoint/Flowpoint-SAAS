@@ -330,12 +330,20 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
 
   const baseUrl = process.env["REPLIT_DEV_DOMAIN"]
     ? `https://${process.env["REPLIT_DEV_DOMAIN"]}`
-    : (process.env["PUBLIC_BASE_URL"] ?? "https://app.flowpoint.io");
+    : (process.env["PUBLIC_BASE_URL"] ?? "https://app.flowpoint.pro");
   const apiBase = `${baseUrl}/api`;
 
   const snippet = `<!-- FlowPoint Behavioral Analytics — paste before </body> -->
 <script>
 (function(w,d,s,u,k){
+  /* CONSENTEMENT : rien n'est collecte ni envoye avant un accord explicite.
+     - Global Privacy Control actif : le suivi ne demarre jamais.
+     - Sinon le site declare l'accord : window.fpBehavioralConsent = true, ou
+       window.dispatchEvent(new CustomEvent('fp:behavioral-consent',{detail:{granted:true}})). */
+  if(w.navigator&&w.navigator.globalPrivacyControl===true)return;
+  var _fpBooted=false;
+  function _fpBoot(){
+  if(_fpBooted)return;_fpBooted=true;
   var _fpSid=(${BEHAVIORAL_SESSION_ID_FACTORY})(w);
   var _fpStart=Date.now();var _fpToken=null;var _fpTokenExp=0;
   var _fpRageMap={};var _fpRageTs=0;
@@ -424,6 +432,9 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
     _fpSend('exit',{timeOnPage:Math.round((Date.now()-_fpStart)/1000)});
     _fpSend('session_end',{timeOnPage:Math.round((Date.now()-_fpStart)/1000)});
   });
+  }
+  if(w.fpBehavioralConsent===true)_fpBoot();
+  else w.addEventListener('fp:behavioral-consent',function(e){if(e&&e.detail&&e.detail.granted===true)_fpBoot();});
 })(window,document,'${siteUrl}','${apiBase}','${plainToken}');
 </script>`;
 
@@ -432,8 +443,9 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
     instructions: [
       "1. Copiez le snippet ci-dessus.",
       "2. Collez-le juste avant la balise </body> sur chaque page de votre site.",
-      "3. Publiez les changements — les premiers événements apparaîtront dans FlowPoint en quelques minutes.",
-      "4. Pour vérifier l'installation, consultez GET /api/behavioral/status?siteUrl=<votre-site>.",
+      "3. Tracking only starts after the visitor consents: call window.dispatchEvent(new CustomEvent('fp:behavioral-consent',{detail:{granted:true}})) from your consent banner (or set window.fpBehavioralConsent = true). Visitors with Global Privacy Control are never tracked.",
+      "4. Publiez les changements — les premiers événements apparaîtront dans FlowPoint en quelques minutes.",
+      "5. Pour vérifier l'installation, consultez GET /api/behavioral/status?siteUrl=<votre-site>.",
     ],
     trackedEvents: ["page_view", "click", "rage_click", "scroll_depth", "form_submit", "session_end"],
     note: "Le snippet intègre un token d'installation qui sert de clé HMAC pour prouver la possession du site lors de l'échange de token.",
