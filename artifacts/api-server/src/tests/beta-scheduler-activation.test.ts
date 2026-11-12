@@ -34,4 +34,19 @@ describe("planificateurs de la bêta : aucune activation implicite en production
     expect(total).toBe(2);
     expect((block.match(call) ?? []).length).toBe(total);
   });
+
+  it("Agency Reporting : aucune livraison planifiée sans interrupteur ET URL publique explicites", async () => {
+    const saved = { flag: process.env["AGENCY_REPORT_SCHEDULER_ENABLED"], a: process.env["PUBLIC_URL"], b: process.env["PUBLIC_BASE_URL"] };
+    try {
+      const { isAgencyReportDeliveryReady } = await import("../services/agency-reporting.js");
+      delete process.env["AGENCY_REPORT_SCHEDULER_ENABLED"]; delete process.env["PUBLIC_URL"]; delete process.env["PUBLIC_BASE_URL"];
+      expect(isAgencyReportDeliveryReady()).toBe(false);
+      process.env["AGENCY_REPORT_SCHEDULER_ENABLED"] = "true"; // interrupteur seul : sans URL publique, toujours inactif
+      expect(isAgencyReportDeliveryReady()).toBe(false);
+    } finally {
+      for (const [k, v] of [["AGENCY_REPORT_SCHEDULER_ENABLED", saved.flag], ["PUBLIC_URL", saved.a], ["PUBLIC_BASE_URL", saved.b]] as const) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+    }
+  });
 });
