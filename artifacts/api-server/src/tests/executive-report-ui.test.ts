@@ -8,7 +8,7 @@ const dashboards = [
 ] as const;
 
 describe("AI Executive Reporting UI", () => {
-  it.each(dashboards)("supports a bounded report subject and saved report consultation in the %s dashboard", (_name, path) => {
+  it.each(dashboards)("supports a bounded subject and saved report consultation in the %s dashboard", (_name, path) => {
     const dashboard = readFileSync(path, "utf8");
     expect(dashboard).toContain('id="fp-ai-exec-subject"');
     expect(dashboard).toContain('maxlength="120"');
@@ -27,6 +27,19 @@ describe("AI Executive Reporting UI", () => {
     for (const inventedValue of ["72/100", "74/100", "48/100", "88/100", "2.8x", "+12 clients/mois", "+400 sessions/mois", "+14 pts en 4 mois"]) {
       expect(executive).not.toContain(inventedValue);
     }
+  });
+
+  it.each(dashboards)("shows only persisted reports in the %s report overview", (_name, path) => {
+    const dashboard = readFileSync(path, "utf8");
+    const start = dashboard.indexOf("function renderReports() {");
+    const end = dashboard.indexOf("if (sub === 'exec')", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const overview = dashboard.slice(start, end);
+    expect(overview).not.toContain("PREVIEW_MODE");
+    expect(overview).not.toContain("_DEMO_AR");
+    expect(overview).not.toContain("Math.random()");
+    expect(overview).toContain("template_key:r.template_key||r.templateKey||null");
   });
 
   it("keeps the source and served dashboards synchronized", () => {

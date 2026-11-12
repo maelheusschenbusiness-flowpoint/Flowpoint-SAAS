@@ -8496,37 +8496,18 @@ function renderReports() {
   const circ52  = 2 * Math.PI * 52;
 
   // ── Shared data ────────────────────────────────────────────
-  const reportScores = PREVIEW_MODE ? [
-    { label: 'BI Score',            val: 74, color: '#2563EB', icon: '🧠' },
-    { label: 'Automation Score',    val: 61, color: '#06b6d4', icon: '⚙️' },
-    { label: 'Client Reporting',    val: 82, color: '#22c55e', icon: '👔' },
-    { label: 'Engagement Score',    val: 58, color: '#f59e0b', icon: '📊' },
-    { label: 'SEO Reporting',       val: 71, color: '#8b5cf6', icon: '🔍' },
-    { label: 'Performance Score',   val: 88, color: '#22c55e', icon: '⚡' },
-    { label: 'Vitesse Publication', val: 79, color: '#f97316', icon: '🚀' },
-    { label: 'Score Fidélisation',  val: 66, color: '#ec4899', icon: '💎' },
-  ] : [];
 
-  // allReports: real STATE data or PREVIEW_MODE demo
-  const _stRepts = (STATE.reports||[]);
-  const _DEMO_AR = PREVIEW_MODE ? [
-    { id:'r1', name:'Rapport SEO Executive — '+CUR_MONTH, date:"Aujourd'hui", type:'PDF', pages:14, shared:true,  size:'2.8 MB', client:'Global',  score:'+7 pts',  color:'#2563EB' },
-    { id:'r2', name:'Monitoring SLA — '+PREV_MONTH,        date:'01/'+PREV_MONTH, type:'PDF', pages:6, shared:false, size:'0.9 MB', client:'Interne', score:'99.1%',   color:'#22c55e' },
-    { id:'r3', name:'Rapport concurrent — '+CUR_MONTH,     date:'29/04/2026', type:'PDF', pages:10, shared:false, size:'2.1 MB', client:'Interne', score:'Critique', color:'#ef4444' },
-    { id:'r4', name:'Export données CSV — Audits',     date:'28/04/2026', type:'CSV', pages:1,  shared:false, size:'34 KB',  client:'Interne', score:'—',   color:'#64748b' },
-  ] : [];
-  const allReports = _stRepts.length > 0
-    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString(getLocale()):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }))
-    : _DEMO_AR;
+
+  // Persisted organization reports only.
+  const _stRepts = Array.isArray(STATE.reports) ? STATE.reports : [];
+
+  const allReports = _stRepts.filter(r => r && (r.id || r._id))
+    .map(r=>({ id:r.id||r._id, template_key:r.template_key||r.templateKey||null, name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString(getLocale()):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }));
 
   const _scheduledRaw = STATE.scheduledReports || STATE.reportSchedules || null;
-  const scheduled = _scheduledRaw && Array.isArray(_scheduledRaw) && _scheduledRaw.length > 0
-    ? _scheduledRaw.map(r => ({ name: r.name||r.title||'Rapport', freq: r.frequency||r.freq||'Manuel', dest: r.email||r.destination||'—', next: r.nextDate||r.next||'—', active: r.active||r.enabled||false }))
-    : (PREVIEW_MODE ? [
-        { name: 'Rapport SEO mensuel',         freq: 'Mensuel · 1er', dest: 'client@exemple.fr',  next: '01/06', active: true  },
-        { name: 'Rapport Executive interne',   freq: 'Hebdo · Lundi', dest: 'equipe@agence.fr',   next: '13/05', active: true  },
-        { name: 'Export CSV données',           freq: 'Quotidien · 8h',dest: 'Webhook CRM',        next: 'Demain', active: false },
-      ] : []);
+  const scheduled = Array.isArray(_scheduledRaw)
+    ? _scheduledRaw.map(r => ({ name: r.name||r.title||'Rapport', freq: r.frequency||r.freq||'Manuel', dest: r.email||r.destination||'—', next: r.nextDate||r.next||'—', active: !!(r.active||r.enabled) }))
+    : [];
 
   // ─── AI Block (rapport page context) ───────────────────────
     const _rpAiBlock = aiBlock(
