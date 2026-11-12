@@ -795,7 +795,8 @@
       var params = new URLSearchParams(window.location.search);
       if (fpConsent()) {
         var incomingVisitorId = params.get('fp_vid');
-        var incomingSource = params.get('fp_src');
+        var incomingSource = params.get('fp_source');
+        if (!fpValidSource(incomingSource)) incomingSource = params.get('fp_src');
         if (fpValidVisitorId(incomingVisitorId)) {
           localStorage.setItem('fp_vid', incomingVisitorId);
         }
@@ -804,9 +805,10 @@
         }
       }
 
-      if (params.has('fp_vid') || params.has('fp_src')) {
+      if (params.has('fp_vid') || params.has('fp_src') || params.has('fp_source')) {
         params.delete('fp_vid');
         params.delete('fp_src');
+        params.delete('fp_source');
         var remainingQuery = params.toString();
         window.history.replaceState(
           window.history.state,
