@@ -109,7 +109,9 @@ describe("AUCUNE DONNEE PERSONNELLE NE PEUT ENTRER", () => {
         WHERE table_schema='public' AND table_name='funnel_events'`);
     const colonnes = r.rows.map((x) => x.column_name).sort();
     expect(colonnes).toEqual(
-      ["cle_idempotence", "created_at", "etape", "id", "org_ref", "plan", "source", "visiteur_id"]);
+      ["cle_idempotence", "created_at", "etape", "id", "org_ref", "plan", "source", "utm_campaign", "utm_medium", "utm_source", "visiteur_id"]);
+    // Les trois colonnes `utm_*` portent des libelles de campagne (motif ^[a-z0-9._-]{1,64}$),
+    // jamais un texte libre : elles ne peuvent contenir ni email ni IP.
     // `org_ref` et non `org_id` : cette table n'est pas une table de
     // locataire, et l'invariant de schema qui exige une policy d'isolation sur
     // `org_id` doit continuer de proteger les vraies.

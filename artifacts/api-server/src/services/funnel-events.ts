@@ -229,6 +229,22 @@ const INSERT_ETAPE_CAMPAGNE = `INSERT INTO funnel_events
        ON CONFLICT (cle_idempotence)
          WHERE cle_idempotence IS NOT NULL DO NOTHING`;
 
+/**
+ * Execute une ecriture ; si la table n'existe pas encore (42P01), la cree puis
+ * rejoue UNE fois. Comportement herite de Test-Replit (table creee a la demande),
+ * sans requete supplementaire quand la table est la.
+ */
+async function ecrire(sql: string, params: unknown[]) {
+  try {
+    return await pool.query(sql, params);
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code !== "42P01") throw error;
+    tablePrete = false;
+    await assurerTable();
+    return await pool.query(sql, params);
+  }
+}
+
 export async function enregistrerEtape(
   event: EvenementTunnel,
 ): Promise<boolean> {
@@ -250,14 +266,13 @@ export async function enregistrerEtape(
       })
     : null;
   try {
-    await assurerTable();
     if (!campagne) {
       // Sans campagne : la requete d'origine, a l'identique.
-      const result = await pool.query(INSERT_ETAPE, base);
+      const result = await ecrire(INSERT_ETAPE, base);
       return (result.rowCount ?? 0) > 0;
     }
     try {
-      const result = await pool.query(INSERT_ETAPE_CAMPAGNE, [
+      const result = await ecrire(INSERT_ETAPE_CAMPAGNE, [
         ...base,
         campagne.utmSource,
         campagne.utmMedium,
@@ -269,7 +284,7 @@ export async function enregistrerEtape(
       // l'etape, sans la campagne, plutot que de la perdre.
       if ((error as { code?: string } | null)?.code !== "42703") throw error;
       logger.warn({ etape: event.etape }, "[Tunnel] utm columns missing — event stored without campaign");
-      const result = await pool.query(INSERT_ETAPE, base);
+      const result = await ecrire(INSERT_ETAPE, base);
       return (result.rowCount ?? 0) > 0;
     }
   } catch (error) {
