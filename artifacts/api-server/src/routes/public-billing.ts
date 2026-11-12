@@ -540,6 +540,7 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
     cookieConsentement ?? req.body?.consentement,
     visiteurId,
     req.body?.source,
+    req.body,
   );
   if (!attribution) {
     res.status(204).end();
@@ -553,6 +554,7 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
+    campagne: attribution.campagne,
     plan:   typeof req.body?.plan   === "string" ? req.body.plan   : null,
     cleIdempotence: `${etape}:${visiteurId}:${jour}`,
   });
@@ -964,6 +966,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
         req.body?.visiteurId,
         req.body?.source,
+        req.body,
       ),
     };
 
@@ -1030,6 +1033,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
           etape: "checkout_started",
           visiteurId: attribution.visiteurId,
           source: attribution.source,
+          campagne: attribution.campagne,
           plan,
           cleIdempotence: session.id ? `checkout_started:${session.id}` : null,
         });
@@ -1301,6 +1305,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
       req.body?.visiteurId,
       req.body?.source,
+      req.body,
     ),
   };
 
@@ -1482,6 +1487,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           etape: "checkout_started",
           visiteurId: _funnelAttribution.visiteurId,
           source: _funnelAttribution.source,
+          campagne: _funnelAttribution.campagne,
           plan: planKey,
           cleIdempotence: `checkout_started:${pi.id}`,
         });
@@ -1527,6 +1533,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           etape: "checkout_started",
           visiteurId: _setupFunnelAttribution.visiteurId,
           source: _setupFunnelAttribution.source,
+          campagne: _setupFunnelAttribution.campagne,
           plan: planKey,
           cleIdempotence: `checkout_started:${si.id}`,
         });

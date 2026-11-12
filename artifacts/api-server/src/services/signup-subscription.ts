@@ -23,7 +23,7 @@ import type Stripe from "stripe";
 import { logger } from "../lib/logger.js";
 import { FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { createStripeClient, getStripeKey } from "./stripe-factory.js";
-import { metadataAttributionFunnel } from "./funnel-events.js";
+import { lireAttributionFunnel, metadataDepuisAttribution } from "./funnel-events.js";
 import {
   subscriptionAttemptKey,
   claimSubscriptionCreation,
@@ -331,11 +331,7 @@ export async function ensureSignupSubscriptions(args: {
             orgId:          orgRef,
             ...(args.sellerCode ? { seller_id: args.sellerCode, seller_attribution: "ref_link" } : {}),
             ...(preRegToken ? { pre_register_token: preRegToken } : {}),
-            ...metadataAttributionFunnel(
-              intentMeta["fp_analytics_consent"],
-              intentMeta["fp_visitor_id"],
-              intentMeta["fp_source"],
-            ),
+            ...metadataDepuisAttribution(lireAttributionFunnel(intentMeta)),
           },
         },
       });

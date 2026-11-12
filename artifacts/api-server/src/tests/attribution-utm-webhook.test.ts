@@ -266,6 +266,14 @@ describe("webhook Stripe : la campagne UTM atteint les etapes payantes", () => {
   it("une campagne sans consentement dans les metadonnees n'est jamais ecrite", async () => {
     await deliver(subscriptionEvent("evt_noconsent", "trialing", { ...META_FUNNEL, fp_analytics_consent: "refused" }));
     await settle();
-    expect(funnelInserts).toHaveLength(0);
+    // Reconciliation Flowpoint / Test-Replit : le jalon serveur (anonyme) reste compte, comme
+    // sur Test-Replit, mais sans visiteur, sans source et SANS campagne UTM.
+    for (const row of funnelInserts) {
+      expect(row.sql).not.toContain("utm_");
+      expect(row.params).toHaveLength(6);
+      expect(row.params[1]).toBeNull(); // visiteur_id
+      expect(row.params[4]).toBeNull(); // source
+    }
+    expect(JSON.stringify(funnelInserts)).not.toMatch(/instagram|reel_oct_2026|social/);
   });
 });

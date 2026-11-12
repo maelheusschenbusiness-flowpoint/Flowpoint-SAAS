@@ -1559,6 +1559,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           etape: "checkout_completed",
           visiteurId: sessionAttribution.visiteurId,
           source: sessionAttribution.source,
+          campagne: sessionAttribution.campagne,
           orgId,
           plan: typeof meta["plan"] === "string" ? meta["plan"] : null,
           cleIdempotence: typeof obj["id"] === "string" ? `checkout_completed:${String(obj["id"])}` : null,
@@ -1960,6 +1961,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           etape: "checkout_completed",
           visiteurId: funnelAttribution.visiteurId,
           source: funnelAttribution.source,
+          campagne: funnelAttribution.campagne,
           orgId,
           plan: typeof piMeta["plan"] === "string" ? piMeta["plan"] : null,
           cleIdempotence: `checkout_completed:${intentId}`,
@@ -2294,6 +2296,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             etape: _etape,
             visiteurId: _attribution?.visiteurId ?? null,
             source: _attribution?.source ?? null,
+            campagne: _attribution?.campagne,
             orgId,
             cleIdempotence: _sub ? `${_etape}:${_sub}` : null,
           });
