@@ -58,8 +58,8 @@
       "noOrg": 67
     },
     "routes/ai-workspace-launch.ts": {
-      "total": 4,
-      "noOrg": 2
+      "total": 5,
+      "noOrg": 3
     },
     "routes/ai.ts": {
       "total": 50,

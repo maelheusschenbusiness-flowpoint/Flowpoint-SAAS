@@ -13,6 +13,7 @@ import { parseWorkspaceLaunchOutput } from "../services/workspace-launch-output.
 import { hasAddonEntitlementForOrg } from "../services/addon-entitlement.js";
 import { disableAWLWeeklyReportWorkflow, hasActiveAWLWeeklyReportWorkflow, upsertAWLWeeklyReportWorkflow } from "../services/awl-weekly-report.js";
 import { isValidSchedule } from "../services/workflow-schedule-cron.js";
+import { listWorkspaceLaunches } from "../services/awl-history.js";
 
 const router = Router();
 
@@ -497,6 +498,21 @@ RÈGLES IMPORTANTES :
   } catch (err) {
     logger.error({ err }, "[AWL] Error");
     res.status(500).json({ ok: false, error: "Configuration IA échouée" });
+  }
+});
+
+router.get("/ai-workspace-launch", requireAddon("aiWorkspaceLaunch", "AI Workspace Launch"), async (req: Request, res: Response) => {
+  const orgId = req.orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ ok: false, error: "Organization context required" });
+    return;
+  }
+  try {
+    const launches = await listWorkspaceLaunches((sql, params) => pool.query(sql, params), orgId);
+    res.json({ ok: true, launches });
+  } catch (err) {
+    logger.error({ err, orgId }, "[AWL] history load failed");
+    res.status(503).json({ ok: false, code: "HISTORY_UNAVAILABLE", error: "Workspace launch history could not be loaded." });
   }
 });
 

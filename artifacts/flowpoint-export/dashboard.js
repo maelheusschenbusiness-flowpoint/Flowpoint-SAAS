@@ -67498,6 +67498,26 @@ function openAIWorkspaceLaunch() {
   const lastSessionId = fpTenantRead('fp:ai-workspace-launch:last-session');
   const loadLastButton = document.getElementById('awl-load-last');
   if (lastSessionId && loadLastButton) loadLastButton.style.display = 'inline-flex';
+  else if (loadLastButton) {
+    // Rien dans ce navigateur : la derniere strategie est peut-etre en base (autre appareil, cache vide).
+    fpAwlLatestSessionId().then(id => {
+      const btn = document.getElementById('awl-load-last');
+      if (id && btn) { fpTenantWrite('fp:ai-workspace-launch:last-session', id); btn.style.display = 'inline-flex'; }
+    }).catch(() => {});
+  }
+}
+
+/** Identifiant de la derniere session de l'organisation, lu en base ; '' si aucune. */
+async function fpAwlLatestSessionId() {
+  const tok = _fpCurrentSessionToken();
+  const response = await fetch('/api/ai-workspace-launch', _fpSessionFetchOptions({
+    method: 'GET',
+    headers: tok ? { 'Authorization': 'Bearer ' + tok } : {},
+  }));
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok || !Array.isArray(result.launches)) return '';
+  const latest = result.launches[0];
+  return latest && typeof latest.sessionId === 'string' ? latest.sessionId : '';
 }
 
 function closeAIWorkspaceLaunch() {
@@ -67506,7 +67526,8 @@ function closeAIWorkspaceLaunch() {
 }
 
 async function loadAIWorkspaceLast() {
-  const sessionId = fpTenantRead('fp:ai-workspace-launch:last-session');
+  let sessionId = fpTenantRead('fp:ai-workspace-launch:last-session');
+  if (!sessionId) { try { sessionId = await fpAwlLatestSessionId(); } catch (_) { sessionId = ''; } }
   if (!sessionId) return;
   const button = document.getElementById('awl-load-last');
   if (button) { button.disabled = true; button.textContent = 'Chargement…'; }
