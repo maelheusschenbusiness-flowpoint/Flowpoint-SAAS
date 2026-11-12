@@ -47,3 +47,10 @@ Inchangés : l'ordonnanceur d'audits (déjà en production), l'outbox de jalons 
 2. Contrat des agrégats d'attribution avec AI Lab : identique à Flowpoint (route et clé inchangées) ; à vérifier côté acquisition avant bascule.
 3. Variables d'environnement de production à poser **consciemment** : aucune des deux ci-dessus tant qu'on ne veut pas activer la bêta.
 4. Certification connectée (Stripe TEST, navigateur, e-mails réels) non exécutée ici.
+
+## Complément du 12 novembre 2026 (reprise sur l'audit des add-ons)
+- Les corrections de la PR « audit des 9 add-ons et du tunnel » sont fusionnées dans cette branche (conflits limités à `pricing-funnel.js` et son test, le même `tarifs_vus` ayant été fait deux fois ; version la plus complète conservée, qui mémorise aussi la source de première touche).
+- **Simulation de bout en bout (390 px, vrai serveur, base jetable) : 32/32 sur ce build** ; 30/32 sur Test-Replit seul (les 2 écarts sont l'attribution UTM, propre à cette branche).
+- Les tableaux de bord de conversion utilisent la couverture « consentis » / « tous » alignée sur ce que le code écrit réellement ; l'attribution UTM n'est comptée que pour les visiteurs consentants.
+- Audit du diff contre Test-Replit : aucun défaut dans le code de production (limiteur de webhook limité aux deux chemins en POST, garde d'identifiant non canonique, UTM validée par motif et sous consentement, planificateurs derrière interrupteur, migrations de colonnes avec `lock_timeout`, clés de lecture d'agrégats restreintes à une route).
+- Limite connue : les agrégats d'attribution exportés vers AI Lab ne masquent pas les petits effectifs ; ils ne contiennent ni identifiant visiteur, ni e-mail, ni organisation.
