@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
+import cron from "node-cron";
 import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
@@ -12,6 +13,14 @@ import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
 import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { buildExecutiveReportFacts } from "../services/executive-report-facts.js";
+import {
+  createAgencyCustomerPortal,
+  createConsolidatedAgencyReport,
+  isAgencyReportDeliveryReady,
+  getAgencyPublicBaseUrl,
+  isAgencyReportSchedulerEnabled,
+  parseAgencyMultiSiteSnapshot,
+} from "../services/agency-reporting.js";
 import { getGA4Overview } from "../services/ga4-service.js";
 import { getTopPages } from "../services/gsc-service.js";
 
@@ -117,6 +126,228 @@ router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agenc
     res.status(500).json({ error: "Impossible de générer le pack agence complet." });
   } finally {
     client.release();
+  }
+});
+
+router.post("/reports/agency-packs/consolidate", requireAddon("agencyPacks", "Agency Reporting Packs"), reportRateLimit, canWrite, async (req, res) => {
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim().slice(0, 160) : "";
+  const auditIds: string[] = Array.isArray(req.body?.auditIds)
+    ? [...new Set<string>((req.body.auditIds as unknown[]).filter((id): id is string => typeof id === "string").map(id => id.trim()).filter(Boolean))]
+    : [];
+  if (clientName.length < 2 || auditIds.length < 2 || auditIds.length > 20) {
+    res.status(400).json({ error: "A client name and 2–20 selected site audits are required.", code: "INVALID_CONSOLIDATION" });
+    return;
+  }
+  try {
+    const report = await createConsolidatedAgencyReport(
+      org(req), clientName, auditIds,
+      String((req as any).orgContext?.userId || (req as any).orgContext?.email || "system"),
+    );
+    import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
+    res.status(201).json(report);
+  } catch (error) {
+    if (error instanceof Error && error.message === "AGENCY_PUBLIC_URL_REQUIRED") {
+      res.status(503).json({ error: "Configure PUBLIC_URL or PUBLIC_BASE_URL before creating an agency report portal.", code: "AGENCY_PUBLIC_URL_REQUIRED" });
+      return;
+    }
+    if (error instanceof Error && error.message === "AGENCY_PUBLIC_URL_INVALID") {
+      res.status(503).json({ error: "PUBLIC_URL or PUBLIC_BASE_URL must be a valid HTTP(S) base URL.", code: "AGENCY_PUBLIC_URL_INVALID" });
+      return;
+    }
+    if (error instanceof Error && error.message === "AGENCY_AUDIT_NOT_FOUND") {
+      res.status(404).json({ error: "One or more selected audits do not belong to this organization.", code: "AUDIT_NOT_FOUND" });
+      return;
+    }
+    if (error instanceof Error && error.message === "AGENCY_AUDIT_NOT_COMPLETE") {
+      res.status(422).json({ error: "All selected site audits must be complete.", code: "AUDIT_INCOMPLETE" });
+      return;
+    }
+    if (error instanceof Error && error.message === "REPORT_QUOTA_EXCEEDED") {
+      res.status(402).json({ error: "Monthly report quota exceeded.", code: "QUOTA_EXCEEDED", resource: "reports" });
+      return;
+    }
+    logger.error({ err: error, orgId: org(req) }, "[reports] agency multi-site consolidation failed");
+    res.status(503).json({ error: "Could not consolidate the selected site reports." });
+  }
+});
+
+router.get("/reports/agency-packs/schedules", requireAddon("agencyPacks", "Agency Reporting Packs"), async (req, res) => {
+  try {
+    const result = await db(req)(
+      `SELECT id, client_name, recipient_email, audit_ids, cron_expression, timezone, enabled,
+              last_run_at, last_status, last_error, created_at
+         FROM agency_report_schedules WHERE org_id=$1 ORDER BY created_at DESC`,
+      [org(req)],
+    );
+    const deliveryEnabled = isAgencyReportDeliveryReady();
+    res.json({
+      schedulerEnabled: deliveryEnabled,
+      schedules: result.rows.map(row => ({
+        ...row,
+        configuredEnabled: row.enabled,
+        enabled: deliveryEnabled && !!row.enabled,
+      })),
+    });
+  } catch (error) {
+    logger.warn({ err: error, orgId: org(req) }, "[reports] agency schedule list failed");
+    res.status(503).json({ error: "Scheduled reports are unavailable." });
+  }
+});
+
+router.post("/reports/agency-packs/schedules", requireAddon("agencyPacks", "Agency Reporting Packs"), canWrite, async (req, res) => {
+  if (!isAgencyReportSchedulerEnabled()) {
+    res.status(503).json({ error: "Scheduled report delivery is disabled by this server.", code: "AGENCY_SCHEDULER_DISABLED" });
+    return;
+  }
+  try { getAgencyPublicBaseUrl(); }
+  catch (error) {
+    const code = error instanceof Error ? error.message : "AGENCY_PUBLIC_URL_REQUIRED";
+    res.status(503).json({
+      error: code === "AGENCY_PUBLIC_URL_INVALID"
+        ? "PUBLIC_URL or PUBLIC_BASE_URL must be a valid HTTP(S) base URL."
+        : "Configure PUBLIC_URL or PUBLIC_BASE_URL before creating a scheduled delivery.",
+      code,
+    });
+    return;
+  }
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim().slice(0, 160) : "";
+  const recipientEmail = typeof req.body?.recipientEmail === "string" ? req.body.recipientEmail.trim().slice(0, 254) : "";
+  const cronExpression = typeof req.body?.cron === "string" ? req.body.cron.trim().slice(0, 100) : "";
+  const timezone = typeof req.body?.timezone === "string" ? req.body.timezone.trim().slice(0, 80) : "UTC";
+  const auditIds: string[] = Array.isArray(req.body?.auditIds)
+    ? [...new Set<string>((req.body.auditIds as unknown[]).filter((id): id is string => typeof id === "string").map(id => id.trim()).filter(Boolean))]
+    : [];
+  if (clientName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail) ||
+      auditIds.length < 2 || auditIds.length > 20 || !cron.validate(cronExpression)) {
+    res.status(400).json({ error: "Provide a client, valid email, valid cron expression, and 2–20 selected audits.", code: "INVALID_SCHEDULE" });
+    return;
+  }
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone });
+    const owned = await db(req)(
+      `SELECT id, status FROM audits WHERE org_id=$1 AND id=ANY($2::text[])`,
+      [org(req), auditIds],
+    );
+    if (owned.rows.length !== auditIds.length) {
+      res.status(404).json({ error: "One or more selected audits do not belong to this organization.", code: "AUDIT_NOT_FOUND" });
+      return;
+    }
+    if (owned.rows.some(row => row.status !== "completed")) {
+      res.status(422).json({ error: "All selected site audits must be complete.", code: "AUDIT_INCOMPLETE" });
+      return;
+    }
+    const id = `agency_schedule_${randomBytes(12).toString("hex")}`;
+    const result = await db(req)(
+      `INSERT INTO agency_report_schedules
+        (id, org_id, client_name, recipient_email, audit_ids, cron_expression, timezone, enabled)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,true)
+       RETURNING id, client_name, recipient_email, audit_ids, cron_expression, timezone, enabled, created_at`,
+      [id, org(req), clientName, recipientEmail, JSON.stringify(auditIds), cronExpression, timezone],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    logger.warn({ err: error, orgId: org(req) }, "[reports] agency schedule creation failed");
+    res.status(400).json({ error: "Invalid schedule timezone or schedule could not be saved." });
+  }
+});
+
+router.patch("/reports/agency-packs/schedules/:id", requireAddon("agencyPacks", "Agency Reporting Packs"), canWrite, async (req, res) => {
+  if (typeof req.body?.enabled !== "boolean") {
+    res.status(400).json({ error: "enabled must be a boolean." });
+    return;
+  }
+  if (req.body.enabled && !isAgencyReportSchedulerEnabled()) {
+    res.status(503).json({ error: "Scheduled report delivery is disabled by this server.", code: "AGENCY_SCHEDULER_DISABLED" });
+    return;
+  }
+  if (req.body.enabled) {
+    try { getAgencyPublicBaseUrl(); }
+    catch (error) {
+      const code = error instanceof Error ? error.message : "AGENCY_PUBLIC_URL_REQUIRED";
+      res.status(503).json({
+        error: code === "AGENCY_PUBLIC_URL_INVALID"
+          ? "PUBLIC_URL or PUBLIC_BASE_URL must be a valid HTTP(S) base URL."
+          : "Configure PUBLIC_URL or PUBLIC_BASE_URL before enabling scheduled delivery.",
+        code,
+      });
+      return;
+    }
+  }
+  try {
+    const result = await db(req)(
+      `UPDATE agency_report_schedules SET enabled=$1, updated_at=NOW()
+        WHERE id=$2 AND org_id=$3
+        RETURNING id, enabled`,
+      [req.body.enabled, req.params.id, org(req)],
+    );
+    if (!result.rows[0]) { res.status(404).json({ error: "Schedule not found." }); return; }
+    res.json(result.rows[0]);
+  } catch {
+    res.status(503).json({ error: "Could not update this schedule." });
+  }
+});
+
+router.post("/reports/agency-packs/portals", requireAddon("agencyPacks", "Agency Reporting Packs"), canWrite, async (req, res) => {
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim().slice(0, 160) : "";
+  const reportIds: string[] = Array.isArray(req.body?.reportIds)
+    ? [...new Set<string>((req.body.reportIds as unknown[]).filter((id): id is string => typeof id === "string").map(id => id.trim()).filter(Boolean))]
+    : [];
+  if (clientName.length < 2 || !reportIds.length || reportIds.length > 100) {
+    res.status(400).json({ error: "A client name and 1–100 reports are required." });
+    return;
+  }
+  let baseUrl: string;
+  try { baseUrl = getAgencyPublicBaseUrl(); }
+  catch (error) {
+    const code = error instanceof Error ? error.message : "AGENCY_PUBLIC_URL_REQUIRED";
+    res.status(503).json({
+      error: code === "AGENCY_PUBLIC_URL_INVALID"
+        ? "PUBLIC_URL or PUBLIC_BASE_URL must be a valid HTTP(S) base URL."
+        : "Configure PUBLIC_URL or PUBLIC_BASE_URL before creating a customer portal.",
+      code,
+    });
+    return;
+  }
+  try {
+    const portal = await createAgencyCustomerPortal(
+      org(req), clientName, reportIds,
+      String((req as any).orgContext?.userId || (req as any).orgContext?.email || ""),
+      { query: (sql: string, values?: unknown[]) => db(req)(sql, values) as any } as any,
+    );
+    res.status(201).json({ id: portal.id, expiresAt: portal.expiresAt, url: `${baseUrl}/api/agency-portal/${encodeURIComponent(portal.token)}` });
+  } catch (error) {
+    if (error instanceof Error && error.message === "AGENCY_REPORT_NOT_FOUND") {
+      res.status(404).json({ error: "One or more reports do not belong to this organization.", code: "REPORT_NOT_FOUND" });
+      return;
+    }
+    res.status(503).json({ error: "Could not create the customer portal." });
+  }
+});
+
+router.get("/reports/agency-packs/portals", requireAddon("agencyPacks", "Agency Reporting Packs"), async (req, res) => {
+  try {
+    const result = await db(req)(
+      `SELECT id, client_name, report_ids, expires_at, revoked_at, created_at
+         FROM agency_customer_portals WHERE org_id=$1 ORDER BY created_at DESC`,
+      [org(req)],
+    );
+    res.json(result.rows);
+  } catch {
+    res.status(503).json({ error: "Customer portals are unavailable." });
+  }
+});
+
+router.delete("/reports/agency-packs/portals/:id", requireAddon("agencyPacks", "Agency Reporting Packs"), canWrite, async (req, res) => {
+  try {
+    const result = await db(req)(
+      `UPDATE agency_customer_portals SET revoked_at=NOW()
+        WHERE id=$1 AND org_id=$2 AND revoked_at IS NULL RETURNING id`,
+      [req.params.id, org(req)],
+    );
+    if (!result.rows[0]) { res.status(404).json({ error: "Active customer portal not found." }); return; }
+    res.json({ ok: true, revoked: true });
+  } catch {
+    res.status(503).json({ error: "Could not revoke this customer portal." });
   }
 });
 
@@ -486,24 +717,38 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
   const rr = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, orgId]);
   const report = rr.rows[0];
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
+  const agencySites = report.type === "REPORT"
+    ? parseAgencyMultiSiteSnapshot(report.generation_metadata_json)
+    : null;
+  if (report.type === "REPORT" && !agencySites) {
+    res.status(409).json({
+      error: "This consolidated multi-site report has no valid measured site snapshot.",
+      code: "PDF_NOT_READY",
+    });
+    return;
+  }
 
   let audit: Record<string, unknown> | undefined;
-  if (report.audit_id) {
+  if (!agencySites && report.audit_id) {
     const ar = await db(req)(`SELECT * FROM audits WHERE id=$1 AND org_id=$2`, [report.audit_id, orgId]);
     audit = ar.rows[0];
   }
 
   let meetingNotes: Array<{ title: string; date: string; notes: string; site?: string }> = [];
-  try { meetingNotes = JSON.parse((report.meeting_notes_json as string) || "[]"); } catch {}
+  if (!agencySites) {
+    try { meetingNotes = JSON.parse((report.meeting_notes_json as string) || "[]"); } catch {}
+  }
 
   let monitors: Array<{ name: string; url?: string; status?: string; uptime?: number | null }> = [];
   let missions: Array<{ title: string; status?: string; priority?: string; dueDate?: string | null }> = [];
-  try {
-    const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 20`, [orgId]);
-    monitors = mr.rows as typeof monitors;
-    const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [orgId]);
-    missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
-  } catch {}
+  if (!agencySites) {
+    try {
+      const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 20`, [orgId]);
+      monitors = mr.rows as typeof monitors;
+      const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [orgId]);
+      missions = misr.rows.map((r: Record<string, unknown>) => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
+    } catch {}
+  }
 
   // White-label branding — canonical source is user_prefs.settings.wlBranding,
   // which is exactly what the Settings → White Label UI writes via PATCH /api/me/prefs.
@@ -528,7 +773,19 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
 
   // Cumulative usage accounting — PDF export counted at download time
   import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "pdf_export")).catch(() => {});
-  await streamReportPdf(res, { ...(report as unknown as Parameters<typeof streamReportPdf>[1]), whiteLabel: !!report.white_label }, audit as Parameters<typeof streamReportPdf>[2], meetingNotes, monitors, missions, wlBranding);
+  await streamReportPdf(
+    res,
+    {
+      ...(report as unknown as Parameters<typeof streamReportPdf>[1]),
+      whiteLabel: !!report.white_label,
+      ...(agencySites ? { agencySites } : {}),
+    },
+    audit as Parameters<typeof streamReportPdf>[2],
+    meetingNotes,
+    monitors,
+    missions,
+    wlBranding,
+  );
 });
 
 // ── POST /reports/:id/share ────────────────────────────────────────────────────

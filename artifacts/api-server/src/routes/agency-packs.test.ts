@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   orgDbMock, poolConnectMock, streamReportPdfMock, aiChatMock, loadOrgAIPrefsMock,
   resolveAIModelMock, checkAIQuotaMock, checkQuotaMock, recordCompletedUsageDeferredMock,
+  canWriteMock,
   getGA4OverviewMock, getTopPagesMock,
 } = vi.hoisted(() => ({
   orgDbMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   checkAIQuotaMock: vi.fn(),
   checkQuotaMock: vi.fn(),
   recordCompletedUsageDeferredMock: vi.fn(),
+  canWriteMock: vi.fn((_req: any, _res: any, next: any) => next()),
   getGA4OverviewMock: vi.fn(),
   getTopPagesMock: vi.fn(),
 }));
@@ -34,7 +36,7 @@ vi.mock("../middlewares/rateLimiter.js", () => ({
   reportRateLimit: (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../middlewares/requireRole.js", () => ({
-  canWrite: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : next(),
+  canWrite: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : canWriteMock(req, res, next),
   canAdmin: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : next(),
 }));
 vi.mock("../services/pdf.js", () => ({ streamReportPdf: streamReportPdfMock }));
@@ -67,7 +69,11 @@ vi.mock("../lib/logger.js", () => ({
 
 import reportsRouter from "./reports.js";
 
-function makeApp(role = "owner", orgId = "org-a") {
+/** `makeApp("org-b")` : autre organisation ; `makeApp("viewer")` : autre rôle. */
+function makeApp(roleOrOrg = "owner", orgIdArg?: string) {
+  const isRole = ["owner", "admin", "member", "viewer"].includes(roleOrOrg);
+  const role = isRole ? roleOrOrg : "owner";
+  const orgId = orgIdArg ?? (isRole ? "org-a" : roleOrOrg);
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -81,6 +87,10 @@ function makeApp(role = "owner", orgId = "org-a") {
 describe("Agency Reporting Packs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    vi.stubEnv("AGENCY_REPORT_SCHEDULER_ENABLED", "true");
+    vi.stubEnv("PUBLIC_URL", "https://agency.example.test");
+    canWriteMock.mockImplementation((_req: any, _res: any, next: any) => next());
     checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
     getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [] });
     getTopPagesMock.mockResolvedValue([]);
@@ -176,6 +186,179 @@ describe("Agency Reporting Packs", () => {
     expect(inserts).toHaveLength(3);
     expect(inserts.every((row) => row.auditId === "audit-a1")).toBe(true);
     expect(client.release).toHaveBeenCalled();
+  });
+
+  it("validates and persists a recurring schedule only for org-owned completed sites", async () => {
+    orgDbMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT id, status FROM audits")) {
+        return { rows: [{ id: "audit-a1", status: "completed" }, { id: "audit-a2", status: "completed" }] };
+      }
+      if (sql.includes("INSERT INTO agency_report_schedules")) {
+        return { rows: [{ id: "schedule-a", org_id: "org-a", enabled: true }] };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "Europe/Paris",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ id: "schedule-a", enabled: true });
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE org_id=$1 AND id=ANY"),
+      ["org-a", ["audit-a1", "audit-a2"]],
+    );
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO agency_report_schedules"),
+      expect.arrayContaining(["org-a", "Client A", "client@example.test"]),
+    );
+  });
+
+  it("rejects schedule mutation when the caller lacks write permission", async () => {
+    canWriteMock.mockImplementation((_req: any, res: any) => res.status(403).json({ error: "Forbidden" }));
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "Europe/Paris",
+      });
+
+    expect(response.status).toBe(403);
+    expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a schedule that references audits not owned by this organization", async () => {
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1", status: "completed" }] });
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "foreign-audit"], cron: "0 9 * * 1", timezone: "UTC",
+      });
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe("AUDIT_NOT_FOUND");
+    expect(orgDbMock).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO agency_report_schedules"), expect.anything());
+  });
+
+  it("refuses schedule creation with a clear disabled code before database writes", async () => {
+    vi.stubEnv("AGENCY_REPORT_SCHEDULER_ENABLED", "false");
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "UTC",
+      });
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("AGENCY_SCHEDULER_DISABLED");
+    expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("requires a configured public URL before accepting a schedule or creating a portal", async () => {
+    vi.stubEnv("PUBLIC_URL", "");
+    vi.stubEnv("PUBLIC_BASE_URL", "");
+
+    const schedule = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "UTC",
+      });
+    expect(schedule.status).toBe(503);
+    expect(schedule.body.code).toBe("AGENCY_PUBLIC_URL_REQUIRED");
+    expect(orgDbMock).not.toHaveBeenCalled();
+
+    const portal = await request(makeApp())
+      .post("/api/reports/agency-packs/portals")
+      .send({ clientName: "Client A", reportIds: ["r-a"] });
+    expect(portal.status).toBe(503);
+    expect(portal.body.code).toBe("AGENCY_PUBLIC_URL_REQUIRED");
+    expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("does not start report quota work for consolidation without a public URL", async () => {
+    vi.stubEnv("PUBLIC_URL", "");
+    vi.stubEnv("PUBLIC_BASE_URL", "");
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/consolidate")
+      .send({ clientName: "Client A", auditIds: ["audit-a1", "audit-a2"] });
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("AGENCY_PUBLIC_URL_REQUIRED");
+    expect(poolConnectMock).not.toHaveBeenCalled();
+    expect(checkQuotaMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a consolidated report whose saved site snapshot is invalid", async () => {
+    const report = {
+      id: "report-multi", org_id: "org-a", name: "Client — Rapport multi-sites",
+      type: "REPORT", template_key: "executive", pdf_ready: false,
+      generation_metadata_json: JSON.stringify({
+        source: "agency_multi_site",
+        sites: [{ url: "https://only-one.example", score: 90 }],
+      }),
+    };
+    orgDbMock.mockResolvedValue({ rows: [report] });
+
+    const response = await request(makeApp()).get("/api/reports/report-multi/download");
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("PDF_NOT_READY");
+    expect(streamReportPdfMock).not.toHaveBeenCalled();
+  });
+
+  it("downloads a valid consolidated snapshot as a multi-site PDF, not a single-audit report", async () => {
+    const sites = [
+      { url: "https://a.example", auditDate: "2026-11-01T10:00:00.000Z", score: 91, speed: 84, issues: 3 },
+      { url: "https://b.example", auditDate: "2026-11-02T10:00:00.000Z", score: 72, speed: 68, issues: 9 },
+    ];
+    const report = {
+      id: "report-multi", org_id: "org-a", name: "Client — Rapport multi-sites",
+      type: "REPORT", template_key: "executive", pdf_ready: false, audit_id: "audit-first",
+      generation_metadata_json: JSON.stringify({ source: "agency_multi_site", sites }),
+      meeting_notes_json: "[]",
+    };
+    orgDbMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM reports WHERE id=$1 AND org_id=$2")) return { rows: [report] };
+      return { rows: [] };
+    });
+    streamReportPdfMock.mockImplementation((res: any) => res.end());
+
+    const response = await request(makeApp()).get("/api/reports/report-multi/download");
+
+    expect(response.status).toBe(200);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("FROM reports WHERE id=$1 AND org_id=$2"),
+      ["report-multi", "org-a"],
+    );
+    expect(orgDbMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("FROM audits WHERE id=$1 AND org_id=$2"),
+      expect.anything(),
+    );
+    expect(streamReportPdfMock.mock.calls[0]?.[1]).toMatchObject({ agencySites: sites });
+    expect(streamReportPdfMock.mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  it("does not allow downloading a report owned by another organization", async () => {
+    orgDbMock.mockResolvedValue({ rows: [] });
+
+    const response = await request(makeApp("org-b")).get("/api/reports/report-from-org-a/download");
+
+    expect(response.status).toBe(404);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1 AND org_id=$2"),
+      ["report-from-org-a", "org-b"],
+    );
+    expect(streamReportPdfMock).not.toHaveBeenCalled();
   });
 
   it("rejects the complete pack without partial inserts when fewer than three report slots remain", async () => {
