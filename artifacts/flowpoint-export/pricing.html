@@ -305,6 +305,9 @@
       #fp-db-banner { font-size: 11px !important; padding: 6px 12px !important; flex-wrap: wrap; gap: 4px !important; }
       #fp-db-banner a { font-size: 11px !important; }
       #fp-db-banner span:first-of-type { display: none; }
+      /* Cibles tactiles : 44 px minimum (iOS/Android), sans changer le dessin desktop. */
+      .fp-nav-cta, .fp-card-more-btn, .fp-addon-btn { min-height: 44px; }
+      .fp-addon-qty-btn { min-width: 44px; min-height: 44px; }
     }
     @media (max-width: 400px) {
       .fp-nav-logo svg { display: none; }
@@ -2231,6 +2234,19 @@
     }
     grid.addEventListener('scroll', upd, { passive: true });
     window.addEventListener('resize', upd);
+    /* Mobile : les plans defilent horizontalement et Standard remplissait l'ecran,
+       la carte mise en avant (Pro) restait hors champ. On la centre au chargement,
+       sans animation et sans faire defiler la page verticalement. */
+    (function centerFeatured() {
+      if (!window.matchMedia || !window.matchMedia('(max-width: 600px)').matches) return;
+      var f = grid.querySelector('.fp-card.featured');
+      if (!f) return;
+      var g = grid.getBoundingClientRect(), r = f.getBoundingClientRect();
+      var prev = grid.style.scrollBehavior;
+      grid.style.scrollBehavior = 'auto';
+      grid.scrollLeft += (r.left - g.left) - (g.width - r.width) / 2;
+      grid.style.scrollBehavior = prev;
+    })();
     upd();
     window.scrollPlans = function (dir) {
       grid.scrollBy({ left: dir * 320, behavior: 'smooth' });
