@@ -27,6 +27,7 @@ import type { OrgSettings } from "../services/org-settings.js";
 
 /** Structured error code surfaced to the client on a 503. */
 export const BILLING_DATA_UNAVAILABLE_CODE = "BILLING_DATA_UNAVAILABLE" as const;
+export type BillingDataDependency = "organizations/billing" | "org_settings" | "org_addons";
 
 /**
  * Raised when authoritative billing/entitlement data cannot be loaded because
@@ -36,8 +37,11 @@ export const BILLING_DATA_UNAVAILABLE_CODE = "BILLING_DATA_UNAVAILABLE" as const
 export class BillingDataUnavailableError extends Error {
   readonly code = BILLING_DATA_UNAVAILABLE_CODE;
   readonly retryable = true;
-  constructor(message = "Billing/entitlement data is temporarily unavailable", options?: { cause?: unknown }) {
-    super(message, options);
+  constructor(
+    readonly dependency: BillingDataDependency | "unknown" = "unknown",
+    options?: { cause?: unknown },
+  ) {
+    super("Billing/entitlement data is temporarily unavailable", options);
     this.name = "BillingDataUnavailableError";
   }
 }
@@ -92,13 +96,13 @@ export async function loadMeEntitlement(
 
   if (billingSettled.status === "rejected") {
     throw new BillingDataUnavailableError(
-      "organizations/billing lookup failed",
+      "organizations/billing",
       { cause: billingSettled.reason },
     );
   }
   if (dbSettled.status === "rejected") {
     throw new BillingDataUnavailableError(
-      "org_settings lookup failed",
+      "org_settings",
       { cause: dbSettled.reason },
     );
   }
@@ -110,7 +114,7 @@ export async function loadMeEntitlement(
     addonRows = await deps.loadAddons(orgId);
   } catch (err) {
     throw new BillingDataUnavailableError(
-      "org_addons lookup failed",
+      "org_addons",
       { cause: err },
     );
   }

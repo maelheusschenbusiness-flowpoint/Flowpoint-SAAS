@@ -323,18 +323,34 @@ describe("ensureStripeCustomer — v4", async () => {
 
     it("A9 — throws when no Stripe key is configured", async () => {
       const orgId = "a9@test.com";
-      const savedLive = process.env["STRIPE_LIVE_API_KEY"];
-      const savedTest = process.env["STRIPE_SECRET_KEY"];
+      const saved = {
+        live: process.env["STRIPE_LIVE_API_KEY"],
+        secret: process.env["STRIPE_SECRET_KEY"],
+        testMode: process.env["STRIPE_TEST_MODE"],
+        testKey: process.env["STRIPE_TEST_KEY"],
+        testSecret: process.env["STRIPE_TEST_SECRET_KEY"],
+      };
       delete process.env["STRIPE_LIVE_API_KEY"];
       delete process.env["STRIPE_SECRET_KEY"];
+      delete process.env["STRIPE_TEST_MODE"];
+      delete process.env["STRIPE_TEST_KEY"];
+      delete process.env["STRIPE_TEST_SECRET_KEY"];
 
       try {
         await expect(ensureStripeCustomer(orgId, null, undefined)).rejects.toThrow(
           "No Stripe key configured",
         );
       } finally {
-        if (savedLive) process.env["STRIPE_LIVE_API_KEY"] = savedLive;
-        if (savedTest) process.env["STRIPE_SECRET_KEY"] = savedTest;
+        if (saved.live === undefined) delete process.env["STRIPE_LIVE_API_KEY"];
+        else process.env["STRIPE_LIVE_API_KEY"] = saved.live;
+        if (saved.secret === undefined) delete process.env["STRIPE_SECRET_KEY"];
+        else process.env["STRIPE_SECRET_KEY"] = saved.secret;
+        if (saved.testMode === undefined) delete process.env["STRIPE_TEST_MODE"];
+        else process.env["STRIPE_TEST_MODE"] = saved.testMode;
+        if (saved.testKey === undefined) delete process.env["STRIPE_TEST_KEY"];
+        else process.env["STRIPE_TEST_KEY"] = saved.testKey;
+        if (saved.testSecret === undefined) delete process.env["STRIPE_TEST_SECRET_KEY"];
+        else process.env["STRIPE_TEST_SECRET_KEY"] = saved.testSecret;
       }
     });
 

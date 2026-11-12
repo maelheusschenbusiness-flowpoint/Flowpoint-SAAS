@@ -3,7 +3,9 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   createPost, generateAiPost, publishPost, getPostsDashboard, deletePost, getScheduledPosts,
 } from "../services/gbp-posting-service.js";
+import { GbpPublishError, GBP_PUBLISH_ERRORS } from "../services/gbp-publish-errors.js";
 import { requireAddon, requireFeature } from "../middlewares/planGate.js";
+import { canAdmin, canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -50,7 +52,7 @@ router.get("/gbp-posts/queue", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT q.*, p.content, p.post_type, p.location_name
-       FROM gbp_post_queue q JOIN gbp_posts p ON p.id=q.post_id
+       FROM gbp_post_queue q JOIN gbp_posts p ON p.id=q.post_id AND p.org_id=q.org_id
        WHERE q.org_id=$1 ORDER BY q.scheduled_for ASC LIMIT 20`,
       [org(req)]
     );
@@ -58,77 +60,168 @@ router.get("/gbp-posts/queue", async (req, res) => {
   } catch { res.json({ queue: [], count: 0 }); }
 });
 
-router.post("/gbp-posts", async (req, res) => {
+router.post("/gbp-posts", canWrite, async (req, res) => {
   const {
     locationId, locationName, postType, title, content, ctaType, ctaUrl,
-    mediaUrls, scheduledAt, seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
+    mediaUrls, scheduledAt, seoKeywords, eventTitle, eventStart, eventEnd, offerCode, offerTerms, manualApproval,
+    generationOptions,
   } = req.body as {
     locationId?: string; locationName?: string; postType?: string; title?: string; content?: string;
     ctaType?: string; ctaUrl?: string; mediaUrls?: string[]; scheduledAt?: string;
-    seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
+    seoKeywords?: string[]; eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string; offerTerms?: string;
+    manualApproval?: boolean;
+    generationOptions?: import("../services/gbp-posting-service.js").PostGenerationOptions;
   };
-  // locationId is optional for drafts — use 'default' as fallback so brouillon saves always work
-  const effectiveLocationId = locationId || 'default';
   if (!content) { res.status(400).json({ error: "content requis" }); return; }
+  if (content.length > 1500) { res.status(400).json({ error: "content trop long (1500 caractères maximum)" }); return; }
+  if (postType && !["standard", "event", "offer", "product"].includes(postType)) {
+    res.status(400).json({ error: "Format de post non pris en charge." }); return;
+  }
+  if (scheduledAt && postType === "product") {
+    res.status(422).json({ error: "L’API Google connectée ne prend pas en charge les posts Produit. Enregistrez ce format comme brouillon." }); return;
+  }
+  if (scheduledAt && manualApproval !== true) {
+    res.status(400).json({ error: "Confirmez la validation manuelle du contenu avant de le programmer." }); return;
+  }
+  if (scheduledAt && postType === "event" && (!eventTitle?.trim() || !eventStart || !eventEnd)) {
+    res.status(400).json({ error: "Le titre, l’heure de début et l’heure de fin sont requis pour programmer un événement." }); return;
+  }
+  if (postType === "event" && (eventStart || eventEnd) &&
+      (!eventTitle?.trim() || !eventStart || !eventEnd || !Number.isFinite(Date.parse(eventStart)) ||
+       !Number.isFinite(Date.parse(eventEnd)) || Date.parse(eventEnd) <= Date.parse(eventStart))) {
+    res.status(400).json({ error: "Un titre et une plage de dates valide sont requis pour un événement." }); return;
+  }
+  if (ctaType && !["CALL", "LEARN_MORE", "ORDER", "BOOK", "SIGN_UP", "SHOP", "GET_OFFER", "NONE"].includes(ctaType)) {
+    res.status(400).json({ error: "Type de bouton d’action non pris en charge." }); return;
+  }
+  if (mediaUrls !== undefined && (!Array.isArray(mediaUrls) || mediaUrls.length > 10 ||
+      mediaUrls.some(url => typeof url !== "string" || !/^https:\/\//i.test(url)))) {
+    res.status(400).json({ error: "Ajoutez au maximum 10 URL d’image publiques en HTTPS." }); return;
+  }
+  if (ctaUrl) {
+    try { if (new URL(ctaUrl).protocol !== "https:") throw new Error("invalid scheme"); }
+    catch { res.status(400).json({ error: "Le lien du bouton doit être une URL HTTPS valide." }); return; }
+  }
+  if (scheduledAt && (!locationId || !Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) {
+    res.status(400).json({ error: "Un établissement connecté et une date future valide sont requis pour planifier." }); return;
+  }
   try {
     type PostType = import("../services/gbp-posting-service.js").PostType;
     type CtaType  = import("../services/gbp-posting-service.js").CtaType;
     const post = await createPost(org(req), {
-      locationId: effectiveLocationId, locationName, postType: postType as PostType, title, content,
+      locationId, locationName, postType: postType as PostType, title, content,
       ctaType: ctaType as CtaType, ctaUrl, mediaUrls, scheduledAt,
-      seoKeywords, eventTitle, eventStart, eventEnd, offerCode,
+      seoKeywords, eventTitle, eventStart, eventEnd, offerCode, offerTerms,
+      generationOptions: {
+        ...generationOptions,
+        eventStartLocal: generationOptions?.eventStartLocal || eventStart,
+        eventEndLocal: generationOptions?.eventEndLocal || eventEnd,
+      },
+      approvedAt: scheduledAt && manualApproval === true ? new Date().toISOString() : undefined,
     });
     res.status(201).json({ ok: true, post });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
 // AI post generation requires the aiGbpPosting add-on
-router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), async (req, res) => {
-  const { locationId, locationName, postType, industry, keywords, tone, objective } = req.body as {
+router.post("/gbp-posts/ai-generate", requireAddon("aiGbpPosting", "AI GBP Posting"), canWrite, async (req, res) => {
+  const { locationId, locationName, postType, industry, keywords, tone, objective, language, maxCharacters } = req.body as {
     locationId?: string; locationName?: string; postType?: string; industry?: string;
-    keywords?: string[]; tone?: string; objective?: string;
+    keywords?: string[]; tone?: string; objective?: string; language?: string; maxCharacters?: number;
   };
   if (!locationId) { res.status(400).json({ error: "locationId requis" }); return; }
   try {
     type PostType = import("../services/gbp-posting-service.js").PostType;
     const generated = await generateAiPost(org(req), {
-      locationId, locationName, postType: postType as PostType, industry, keywords, tone, objective,
+      locationId, locationName, postType: postType as PostType, industry, keywords, tone, objective, language, maxCharacters,
     });
     res.json({ ok: true, ...generated });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    const overLimit = message === "AI_GENERATION_OVER_LIMIT";
+    res.status(overLimit ? 422 : 500).json({
+      error: overLimit ? message : safeErrMsg(err),
+    });
+  }
 });
 
-router.post("/gbp-posts/:id/publish", async (req, res) => {
+router.post("/gbp-posts/:id/publish", canWrite, async (req, res) => {
   try {
-    const post = await publishPost(org(req), req.params.id);
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const post = await publishPost(org(req), postId);
     res.json({ ok: true, post });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    // Ressource d'une autre organisation, inexistante ou déjà publiée : même réponse (pas d'oracle d'existence). [#370]
+    if (message === "GBP_POST_NOT_FOUND_OR_ALREADY_PUBLISHED") {
+      res.status(404).json({ ok: false, error: "Post introuvable", code: message }); return;
+    }
+    // Réponse explicite et exploitable par l'UI : { error: message FR, code }. Jamais de faux succès.
+    const code = err instanceof GbpPublishError ? err.code : message;
+    if (code in GBP_PUBLISH_ERRORS) {
+      const status =
+        code === "GOOGLE_NOT_CONNECTED" || code === "GOOGLE_AUTH_FAILED" ? 409
+        : code === "GBP_API_UNAVAILABLE" || code === "GBP_API_RATE_LIMITED" ? 503
+        : code === "GBP_API_FORBIDDEN" || code === "GBP_API_REJECTED" || code === "GBP_PUBLISH_FAILED" ? 502
+        : 422;
+      res.status(status).json({ ok: false, error: GBP_PUBLISH_ERRORS[code], code });
+      return;
+    }
+    res.status(500).json({ ok: false, error: safeErrMsg(err), code: "GBP_PUBLISH_FAILED" });
+  }
 });
 
-router.patch("/gbp-posts/:id", async (req, res) => {
-  const { content, title, scheduledAt, status, seoKeywords } = req.body as {
+router.patch("/gbp-posts/:id", canWrite, async (req, res) => {
+  const { content, title, scheduledAt, status, seoKeywords, manualApproval } = req.body as {
     content?: string; title?: string; scheduledAt?: string; status?: string; seoKeywords?: string[];
+    manualApproval?: boolean;
   };
+  if (content !== undefined && (typeof content !== "string" || !content.trim() || content.length > 1500)) {
+    res.status(400).json({ error: "Content must contain between 1 and 1500 characters." }); return;
+  }
+  if (scheduledAt !== undefined && (!Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now() || manualApproval !== true || status === "draft")) {
+    res.status(400).json({ error: "A future date and fresh manual approval are required to schedule." }); return;
+  }
   const updates: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
   if (content)     { params.push(content);     updates.push(`content=$${params.length}`); }
   if (title)       { params.push(title);       updates.push(`title=$${params.length}`); }
-  if (scheduledAt) { params.push(scheduledAt); updates.push(`scheduled_at=$${params.length}`); }
-  if (status)      { params.push(status);      updates.push(`status=$${params.length}`); }
+  // Le statut n'est jamais posé par le client : « published »/« failed »/« publishing » ne
+  // résultent que de l'appel réel à Google (publishPost). Seul le retour en brouillon est permis.
+  if (status !== undefined && status !== "draft") {
+    res.status(400).json({ error: "Status cannot be changed by the client; only draft is accepted.", code: "GBP_STATUS_NOT_CLIENT_SETTABLE" }); return;
+  }
+  // Toute modification invalide l'ancienne validation : sans programmation
+  // explicitement approuvée, le post redevient un brouillon non publiable par le cron.
+  if (scheduledAt) {
+    params.push(scheduledAt);
+    updates.push(`scheduled_at=$${params.length}`, "status='scheduled'", "approved_at=now()");
+  } else {
+    updates.push("status='draft'", "scheduled_at=NULL", "approved_at=NULL");
+  }
+  updates.push("last_error_code=NULL", "last_error_message=NULL");
   if (seoKeywords) { params.push(seoKeywords); updates.push(`seo_keywords=$${params.length}`); }
   params.push(req.params.id, org(req));
   try {
-    await db(req)(
-      `UPDATE gbp_posts SET ${updates.join(",")} WHERE id=$${params.length - 1} AND org_id=$${params.length}`,
+    const r = await db(req)(
+      `UPDATE gbp_posts SET ${updates.join(",")}
+        WHERE id=$${params.length - 1} AND org_id=$${params.length}
+          AND status IN ('draft','scheduled','failed')
+           ${scheduledAt ? `AND location_id IS NOT NULL AND post_type <> 'product'
+             AND (post_type <> 'event' OR (event_title IS NOT NULL AND event_start IS NOT NULL AND event_end > event_start))` : ""}
+         RETURNING id, status, scheduled_at`,
       params
     );
-    res.json({ ok: true });
+    if (!r.rows.length) { res.status(404).json({ error: "Post introuvable" }); return; }
+    res.json({ ok: true, post: r.rows[0] });
   } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
-router.delete("/gbp-posts/:id", async (req, res) => {
+router.delete("/gbp-posts/:id", canAdmin, async (req, res) => {
   try {
-    await deletePost(org(req), req.params.id);
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const deleted = await deletePost(org(req), postId);
+    if (deleted === false) { res.status(404).json({ error: "Post introuvable" }); return; }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });

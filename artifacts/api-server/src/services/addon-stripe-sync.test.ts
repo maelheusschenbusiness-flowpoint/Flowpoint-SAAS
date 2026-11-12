@@ -9,7 +9,7 @@
  * ── Coverage matrix ──────────────────────────────────────────────────────────
  *  C-1   New purchase → dedicated add-on subscription created (not plan sub)
  *  C-2   New purchase → plan subscription is NEVER modified (no item added)
- *  C-3   billing_cycle_anchor = "now" passed at subscription creation
+ *  C-3   No explicit billing anchor; Stripe anchors the new subscription at creation
  *  C-4   Independent cycle: metadata.addonSub="true" + orgId tag present
  *  C-5   quantity applied correctly (qty > 1)
  *  C-6   Quantity increase → subscriptionItems.update on ADDON sub, not plan
@@ -31,6 +31,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "false";
+});
 
 // ─── Shared state captured by mocks ──────────────────────────────────────────
 
@@ -57,15 +61,17 @@ const calls: {
 
 // State controlling what mock Stripe returns
 let mockPlanSubItems: Array<{ id: string; price: { id: string }; quantity: number }> = [];
-let mockAddonSub: null | {
+type MockAddonSub = {
   id: string;
   metadata: Record<string, string>;
   status: string;
   items: { data: Array<{ id: string; price: { id: string }; quantity: number }> };
-} = null;
-let mockAddonSubAfterDel: { items: { data: Array<unknown> } } | null = null;
+};
+let mockAddonSub: MockAddonSub | null = null;
+let mockAdditionalAddonSubs: MockAddonSub[] = [];
 let mockStripeListThrows = false;
 let mockStripeCreateThrows = false;
+let mockStripeCreateStatusCode: number | null = null;
 let mockBillingCtx: {
   subscriptionStatus: string;
   stripeCustomerId: string | null;
@@ -80,7 +86,8 @@ let mockBillingCtx: {
 
 // ─── Mock: stripe-factory ─────────────────────────────────────────────────────
 vi.mock("../services/stripe-factory.js", () => ({
-  getStripeKey: vi.fn(() => "sk_test_fake"),
+  getStripeKey: vi.fn(() => "sk_live_fake"),
+  isStripeTestMode: vi.fn(() => false),
   createStripeClient: vi.fn(() => mockStripeClient()),
 }));
 
@@ -88,12 +95,17 @@ function mockStripeClient() {
   return {
     subscriptions: {
       create: vi.fn(async (params: Record<string, unknown>) => {
-        if (mockStripeCreateThrows) throw new Error("card_declined");
+        if (mockStripeCreateThrows) {
+          const error = new Error("simulated Stripe create failure") as Error & { statusCode?: number };
+          if (mockStripeCreateStatusCode !== null) error.statusCode = mockStripeCreateStatusCode;
+          throw error;
+        }
         calls.subscriptionsCreate.push(params);
         // The first item IS the add-on item — return it in the new sub
         const items = (params["items"] as Array<{ price: string; quantity: number }>) ?? [];
         return {
           id: "sub_ADDON_NEW",
+          status: "active",
           metadata: params["metadata"],
           items: {
             data: items.map((it, i) => ({
@@ -115,17 +127,31 @@ function mockStripeClient() {
           };
         }
         if (id === "sub_ADDON_EXISTING") {
+          const existing = mockAddonSub?.id === id
+            ? mockAddonSub
+            : mockAdditionalAddonSubs.find(subscription => subscription.id === id);
           return {
             id: "sub_ADDON_EXISTING",
             metadata: { addonSub: "true", orgId: "org-test-uuid" },
-            items: { data: mockAddonSubAfterDel?.items.data ?? [] },
+            status: existing?.status ?? "active",
+            items: { data: existing?.items.data ?? [] },
+          };
+        }
+        const additional = mockAdditionalAddonSubs.find(subscription => subscription.id === id);
+        if (additional) {
+          return {
+            id,
+            metadata: { addonSub: "true", orgId: "org-test-uuid" },
+            status: additional.status,
+            items: { data: additional.items.data },
           };
         }
         if (id === "sub_ADDON_NEW") {
           return {
             id: "sub_ADDON_NEW",
             metadata: { addonSub: "true", orgId: "org-test-uuid" },
-            items: { data: mockAddonSubAfterDel?.items.data ?? [] },
+            status: "active",
+            items: { data: [] },
           };
         }
         return { id, metadata: {}, items: { data: [] } };
@@ -149,6 +175,7 @@ function mockStripeClient() {
           },
         ];
         if (mockAddonSub) data.push(mockAddonSub);
+        data.push(...mockAdditionalAddonSubs);
         return { data };
       }),
 
@@ -239,9 +266,10 @@ beforeEach(() => {
   resetCalls();
   mockPlanSubItems = [];
   mockAddonSub = null;
-  mockAddonSubAfterDel = null;
+  mockAdditionalAddonSubs = [];
   mockStripeListThrows = false;
   mockStripeCreateThrows = false;
+  mockStripeCreateStatusCode = null;
   mockBillingCtx = {
     subscriptionStatus: "active",
     stripeCustomerId: "cus_TEST",
@@ -293,12 +321,13 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     expect(planSubUpdates).toHaveLength(0);
   });
 
-  // ── C-3: billing_cycle_anchor = "now" at creation ────────────────────
-  it("C-3  billing_cycle_anchor is 'now' at subscription creation", async () => {
+  // ── C-3: Stripe's default creation-time anchor ───────────────────────
+  it("C-3  omits billing_cycle_anchor so Stripe anchors the new subscription at creation", async () => {
     await sync("activate", 1);
 
     expect(calls.subscriptionsCreate).toHaveLength(1);
-    expect(calls.subscriptionsCreate[0]!["billing_cycle_anchor"]).toBe("now");
+    expect(calls.subscriptionsCreate[0]!).not.toHaveProperty("billing_cycle_anchor");
+    expect(calls.subscriptionsCreate[0]!["payment_behavior"]).toBe("error_if_incomplete");
   });
 
   // ── C-4: metadata tags addonSub + orgId ──────────────────────────────
@@ -383,8 +412,11 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
 
     // Item is on the addon sub only
     mockAddonSub = makeAddonSub(priceId, 2, "si_addon_to_del");
-    // After deletion, simulate 0 items remaining
-    mockAddonSubAfterDel = { items: { data: [] } };
+    mockAddonSub.items.data.push({
+      id: "si_other_addon",
+      price: { id: "price_other_addon" },
+      quantity: 1,
+    });
 
     const result = await sync("deactivate");
 
@@ -397,19 +429,38 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     expect(planDeletes).toHaveLength(0);
   });
 
+  it("deactivation removes a retired add-on from every dedicated subscription", async () => {
+    const priceId = (await import("../lib/plans.js")).ADDON_PRICE_IDS["monitorsPack10"]!;
+    mockAddonSub = makeAddonSub(priceId, 1, "si_addon_first");
+    mockAdditionalAddonSubs = [{
+      ...makeAddonSub(priceId, 1, "si_addon_second"),
+      id: "sub_ADDON_SECOND",
+      status: "trialing",
+    }];
+
+    const result = await sync("deactivate", 1, "org-test-uuid", "monitorsPack10");
+
+    expect(result.synced).toBe(true);
+    expect(calls.subscriptionItemsDel).toHaveLength(0);
+    expect(calls.subscriptionsCancel.map(call => call.id).sort()).toEqual([
+      "sub_ADDON_EXISTING",
+      "sub_ADDON_SECOND",
+    ]);
+  });
+
   // ── C-10: Deactivation cancels addon sub when empty ──────────────────
   it("C-10 addon sub is cancelled when its last item is removed", async () => {
     const { ADDON_PRICE_IDS } = await import("../lib/plans.js");
     const priceId = ADDON_PRICE_IDS["monitorsPack10"]!;
 
     mockAddonSub = makeAddonSub(priceId, 1, "si_last_item");
-    mockAddonSubAfterDel = { items: { data: [] } }; // empty after del
 
     await sync("deactivate");
 
     // The addon subscription must be cancelled
     expect(calls.subscriptionsCancel).toHaveLength(1);
     expect(calls.subscriptionsCancel[0]!.id).toBe("sub_ADDON_EXISTING");
+    expect(calls.subscriptionItemsDel).toHaveLength(0);
   });
 
   // ── C-11: Deactivation does NOT cancel addon sub when other items remain
@@ -418,12 +469,7 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     const priceId = ADDON_PRICE_IDS["monitorsPack10"]!;
 
     mockAddonSub = makeAddonSub(priceId, 1, "si_monitors");
-    // Simulate another item still present after deletion
-    mockAddonSubAfterDel = {
-      items: {
-        data: [{ id: "si_other_item", price: { id: "price_other" }, quantity: 1 }],
-      },
-    };
+    mockAddonSub.items.data.push({ id: "si_other_item", price: { id: "price_other" }, quantity: 1 });
 
     await sync("deactivate");
 
@@ -571,6 +617,15 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     // Must NOT throw — caller gets a structured failure
     expect(result.synced).toBe(false);
     expect(result.reason).toBe("stripe_error");
+  });
+
+  it("maps an initial-payment failure to payment_required and does not report a synced entitlement", async () => {
+    mockStripeCreateThrows = true;
+    mockStripeCreateStatusCode = 402;
+
+    const result = await sync("activate", 1);
+
+    expect(result).toEqual({ synced: false, reason: "payment_required" });
   });
 
   // ── C-21: Double billing guard — item already on addon sub at same qty

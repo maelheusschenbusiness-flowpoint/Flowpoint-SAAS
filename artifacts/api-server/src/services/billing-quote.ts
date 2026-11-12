@@ -1,12 +1,14 @@
 import {
   ADDON_DEFINITIONS,
-  ADDON_PRICE_IDS,
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
-  PLAN_PRICE_IDS,
   COMING_SOON_ADDONS,
   REMOVED_ADDONS,
+  RETIRED_ADDONS,
   isPlanAllowedAddon,
+  getAddonPurchaseStatus,
+  getAddonPriceId,
+  getPlanPriceId,
 } from "../lib/plans.js";
 
 /** Free-trial length granted to first-time subscribers. Single source of truth. */
@@ -134,7 +136,7 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
   const lines: QuoteLine[] = [];
 
   if (planDefinition) {
-    const priceId = PLAN_PRICE_IDS[plan];
+    const priceId = getPlanPriceId(plan);
     if (!priceId) throw new Error("MISSING_PRICE_ID");
     const unitAmountMinor = Math.round(planDefinition.priceEur * 100);
     lines.push({
@@ -159,15 +161,20 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     // Order matters: COMING_SOON/REMOVED fire before definition checks so that
     // unknown coming-soon keys still get a descriptive error code.
     if (REMOVED_ADDONS.has(key))      throw new Error("ADDON_REMOVED");
+    if (RETIRED_ADDONS.has(key))     throw new Error("ADDON_RETIRED");
     if (COMING_SOON_ADDONS.has(key))  throw new Error("ADDON_COMING_SOON");
     const definition = ADDON_DEFINITIONS[key];
-    const priceId = ADDON_PRICE_IDS[key];
-    if (!definition || !priceId) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
+    if (!definition) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
+    const includedInPlan = included.has(key);
     const quantity = typeof rawQuantity === "number" ? rawQuantity : 1;
     if (!Number.isInteger(quantity) || quantity < 1) throw new Error("INVALID_ADDON_QUANTITY");
+    if (!includedInPlan && getAddonPurchaseStatus(key) === "not_sold_separately") {
+      throw new Error("ADDON_NOT_SOLD_SEPARATELY");
+    }
+    const priceId = getAddonPriceId(key);
+    if (!priceId && !includedInPlan) throw new Error("MISSING_PRICE_ID");
     // Included addons are always compatible with the plan (they're free).
     // Only block addons that are neither included nor purchasable on this tier.
-    const includedInPlan = included.has(key);
     const gatingPlan = plan || (selection.inclusionPlan ?? "").trim().toLowerCase();
     if (gatingPlan && !includedInPlan && !isPlanAllowedAddon(gatingPlan, key)) {
       throw new Error("ADDON_NOT_ALLOWED_FOR_PLAN");
@@ -188,7 +195,7 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
       key,
       kind: "addon",
       name: definition.name,
-      priceId,
+      priceId: priceId ?? "",
       quantity,
       unitAmountMinor,
       amountMinor: includedInPlan ? 0 : unitAmountMinor * quantity,

@@ -3,11 +3,11 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import {
   createHeatmap, getHeatmaps, getHeatmapDetail,
-  getMapsDashboard, generateAiLocalRecommendations,
+  getMapsDashboard, generateAiLocalRecommendations, startHeatmapScan,
 } from "../services/local-maps-service.js";
 import { pool } from "@workspace/db";
-import { isDataForSEOConfigured, checkAndIncrementQuota, getGoogleMapsResults } from "../services/dataforseo-service.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { isDataForSEOConfigured, verifierEtConsommerQuota, rembourserQuota, suivreAppelsPayants, getGoogleMapsResults } from "../services/dataforseo-service.js";
+import { requireAddon, requireQuota } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -36,17 +36,48 @@ router.get("/local-maps/heatmaps/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/local-maps/heatmaps", canWrite, async (req, res) => {
-  const { locationId, name, keyword, centerLat, centerLng, radiusKm, gridSize } = req.body as {
-    locationId?: string; name?: string; keyword?: string;
+// Plafond de heatmaps du plan (2 / 10 / 50) : compte les heatmaps de l'organisation.
+// Les heatmaps existantes restent consultables et re-scannables ; seule la CREATION est limitee.
+router.post("/local-maps/heatmaps", canWrite, requireQuota("heatmaps", async (orgId) => {
+  const r = await pool.query(`SELECT COUNT(*)::int AS n FROM local_heatmaps WHERE org_id=$1`, [orgId]);
+  return Number(r.rows[0]?.n ?? 0);
+}), async (req, res) => {
+  const { locationId, name, keyword, businessName, centerLat, centerLng, radiusKm, gridSize } = req.body as {
+    locationId?: string; name?: string; keyword?: string; businessName?: string;
     centerLat?: number; centerLng?: number; radiusKm?: number; gridSize?: number;
   };
-  if (!name || !keyword || centerLat === undefined || centerLng === undefined) {
-    res.status(400).json({ error: "name, keyword, centerLat, centerLng requis" }); return;
+  const radius = radiusKm ?? 5;
+  const grid = gridSize ?? 7;
+  if (!name?.trim() || name.length > 120 || !keyword?.trim() || keyword.length > 180 ||
+      !businessName?.trim() || businessName.length > 120 ||
+      !Number.isFinite(centerLat) || centerLat! < -90 || centerLat! > 90 ||
+      !Number.isFinite(centerLng) || centerLng! < -180 || centerLng! > 180 ||
+      ![2, 5, 10, 20].includes(radius) || ![5, 7, 9].includes(grid)) {
+    res.status(400).json({ error: "Nom, établissement, mot-clé, coordonnées, rayon ou grille invalide." }); return;
   }
   try {
-    const heatmap = await createHeatmap(org(req), { locationId, name, keyword, centerLat, centerLng, radiusKm, gridSize });
-    res.status(201).json({ ok: true, heatmap });
+    const orgId = org(req);
+    const heatmap = await createHeatmap(orgId, {
+      locationId, name: name.trim(), keyword: keyword.trim(), businessName: businessName.trim(),
+      centerLat: centerLat!, centerLng: centerLng!, radiusKm: radius, gridSize: grid,
+    });
+    const scanStarted = await startHeatmapScan(orgId, heatmap.id);
+    res.status(202).json({ ok: true, scanStarted, status: scanStarted ? "running" : "pending", heatmap });
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+});
+
+router.post("/local-maps/heatmaps/:id/scan", canWrite, async (req, res) => {
+  const orgId = org(req);
+  try {
+    const heatmapId = String(req.params.id);
+    const heatmap = await getHeatmapDetail(orgId, heatmapId);
+    if (!heatmap) { res.status(404).json({ error: "Heatmap introuvable." }); return; }
+    const started = await startHeatmapScan(orgId, heatmapId);
+    if (!started) {
+      res.status(409).json({ error: "Cette heatmap est déjà en cours d’analyse ou ne peut pas être relancée." });
+      return;
+    }
+    res.status(202).json({ ok: true, status: "running" });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
@@ -83,13 +114,22 @@ router.post("/local-maps/competitors/discover", canWrite, async (req, res) => {
   if (!await isDataForSEOConfigured(orgId)) {
     res.json({ ok: false, configured: false, competitors: [], message: "DataForSEO n’est pas configuré pour cette organisation." }); return;
   }
-  if (!await checkAndIncrementQuota(orgId, 1)) {
+  // Fail-closed : quota non verifiable => aucun appel payant, 503 explicite.
+  const verdict = await verifierEtConsommerQuota(orgId, 1);
+  if (!verdict.autorise) {
+    if (verdict.motif === "indisponible") {
+      res.status(503).json({ error: "Vérification du quota indisponible. Réessayez dans un instant.", code: "QUOTA_CHECK_UNAVAILABLE" }); return;
+    }
     res.status(429).json({ error: "Le quota DataForSEO du jour est atteint.", code: "DATAFORSEO_QUOTA_EXCEEDED" }); return;
   }
   try {
     const normalizedKeyword = keyword.trim();
     const normalizedLocation = location.trim();
-    const lookup = await getGoogleMapsResults(normalizedKeyword, normalizedLocation, orgId);
+    // Un echec du fournisseur n'est pas facture : l'unite reservee est rendue.
+    const { resultat: lookup, appelsReussis } = await suivreAppelsPayants(
+      () => getGoogleMapsResults(normalizedKeyword, normalizedLocation, orgId),
+    );
+    if (appelsReussis === 0) await rembourserQuota(orgId, 1);
     if (lookup.error) {
       res.status(502).json({ ok: false, configured: true, competitors: [], error: "La recherche locale est indisponible. Réessayez dans un instant." });
       return;
@@ -157,8 +197,8 @@ router.get("/local-maps/visibility-scores", async (req, res) => {
 
 router.post("/local-maps/ai-recommendations", canWrite, async (req, res) => {
   try {
-    const summary = await generateAiLocalRecommendations(org(req));
-    res.json({ ok: true, summary });
+    const result = await generateAiLocalRecommendations(org(req));
+    res.json({ ok: true, status: result.status, message: result.message, summary: result.recommendations, recommendations: result.recommendations });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 

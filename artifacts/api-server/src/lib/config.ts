@@ -3,7 +3,7 @@
  * Single source of truth for plan limits, feature flags, quotas, rate limits, AI limits.
  * Import this anywhere instead of scattering constants across services.
  */
-import { PLAN_AI_CREDITS } from "./plans.js";
+import { PLAN_AI_CREDITS, PLAN_DEFINITIONS, canonicalPlanId } from "./plans.js";
 
 // ── Plan tiers ────────────────────────────────────────────────────────────────
 export type PlanTier = 'standard' | 'pro' | 'ultra' | 'agency';
@@ -41,12 +41,38 @@ export interface CoreQuotas {
   crmIntegrations: number;
 }
 
-// NOTE: audits/monitors/reports/exports/teamMembers must stay in sync with PLAN_DEFINITIONS.
+/**
+ * Quotas qui n'existent PAS dans PLAN_DEFINITIONS (annonces dans
+ * FLOWPOINT_AI_CONTEXT.md §2). Les cinq quotas communs (audits, monitors,
+ * reports, exports, teamMembers) sont DERIVES de PLAN_DEFINITIONS ci-dessous :
+ * une seule source, plus de copie a tenir a jour a la main.
+ */
+type ExtraQuotas = Omit<CoreQuotas, 'audits' | 'monitors' | 'reports' | 'exports' | 'teamMembers'>;
+const EXTRA_QUOTAS: Record<'standard' | 'pro' | 'ultra', ExtraQuotas> = {
+  standard: { keywords:50,   competitors:10,  heatmaps:2,   automations:3,   missions:20,  gbpPosts:10,  crmIntegrations:1 },
+  pro:      { keywords:500,  competitors:30,  heatmaps:10,  automations:20,  missions:200, gbpPosts:100, crmIntegrations:3 },
+  ultra:    { keywords:5000, competitors:100, heatmaps:50,  automations:100, missions:999, gbpPosts:999, crmIntegrations:10 },
+};
+
+function buildCoreQuotas(tier: PlanTier): CoreQuotas {
+  // "agency" est un alias d'Ultra (voir PLAN_ALIASES dans plans.ts).
+  const canonical = canonicalPlanId(tier) as 'standard' | 'pro' | 'ultra';
+  const def = PLAN_DEFINITIONS[canonical]!;
+  return {
+    audits:      def.limits.audits,
+    monitors:    def.limits.monitors,
+    reports:     def.limits.reports,
+    exports:     def.limits.exports,
+    teamMembers: def.limits.teamMembers,
+    ...EXTRA_QUOTAS[canonical],
+  };
+}
+
 export const CORE_QUOTAS: Record<PlanTier, CoreQuotas> = {
-  standard: { audits:30,    monitors:10,  reports:30,   exports:30,   teamMembers:1,  keywords:50,   competitors:10,  heatmaps:2,   automations:3,  missions:20,  gbpPosts:10,  crmIntegrations:1 },
-  pro:      { audits:300,   monitors:50,  reports:300,  exports:300,  teamMembers:5,  keywords:500,  competitors:30,  heatmaps:10,  automations:20, missions:200, gbpPosts:100, crmIntegrations:3 },
-  ultra:    { audits:1000,  monitors:300, reports:1000, exports:1000, teamMembers:10, keywords:5000, competitors:100, heatmaps:50,  automations:100,missions:999, gbpPosts:999, crmIntegrations:10 },
-  agency:   { audits:1000,  monitors:300, reports:1000, exports:1000, teamMembers:10, keywords:5000, competitors:100, heatmaps:50,  automations:100,missions:999, gbpPosts:999, crmIntegrations:10 },
+  standard: buildCoreQuotas('standard'),
+  pro:      buildCoreQuotas('pro'),
+  ultra:    buildCoreQuotas('ultra'),
+  agency:   buildCoreQuotas('agency'),
 };
 
 // ── AI limits ─────────────────────────────────────────────────────────────────
@@ -126,7 +152,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
   },
   pro: {
     // prioritySupport is intentionally disabled: the feature has no commercial implementation.
-    sso:true, saml:false, whiteLabel:true, customDomain:false,
+    sso:false, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:false, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:false,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
@@ -135,7 +161,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:true, multiLocation:false, prioritySupport:false,
   },
   ultra: {
-    sso:true, saml:true, whiteLabel:true, customDomain:true,
+    sso:false, saml:false, whiteLabel:true, customDomain:true,
     localDominationMaps:true, geoGridSize9x9:true, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,
@@ -144,7 +170,7 @@ export const FEATURE_FLAGS: Record<PlanTier, FeatureFlags> = {
     cro:true, multiLocation:true, prioritySupport:false,
   },
   agency: {
-    sso:true, saml:true, whiteLabel:true, customDomain:true,
+    sso:false, saml:false, whiteLabel:true, customDomain:false,
     localDominationMaps:true, geoGridSize9x9:true, competitorIntelAI:true,
     marketIntelligence:true, reviewIntelAI:true, gbpPosting:true,
     crmIntegration:true, rbacCustomRoles:true, advancedReports:true,

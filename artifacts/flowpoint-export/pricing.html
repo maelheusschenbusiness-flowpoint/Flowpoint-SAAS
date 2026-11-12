@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="/fp-locale.js?v=20261025"></script>
   <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
 
   <title>Tarifs FlowPoint — SEO, monitoring &amp; IA pour votre croissance</title>
@@ -218,10 +219,14 @@
     .fp-addon-qty { display: flex; align-items: center; gap: 4px; }
     .fp-addon-qty-btn { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; justify-content: center; transition: border-color 0.1s; }
     .fp-addon-qty-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .fp-addon-qty-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .fp-addon-qty-btn:disabled:hover { border-color: var(--border); color: var(--text-muted); }
     .fp-addon-qty-input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; font-size: 13px; background: var(--surface); color: var(--text); }
     .fp-addon-btn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 600; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 7px; padding: 7px 10px; cursor: pointer; white-space: nowrap; text-align: center; transition: all 0.15s; }
     .fp-addon-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
     .fp-addon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .fp-addon-catalog-loading { margin: 0 0 14px; color: var(--muted, #64748b); font-size: 13px; }
+    .fp-addon-catalog-loading[hidden] { display: none; }
 
     .fp-show-more-wrap { text-align: center; margin-top: 22px; }
     .fp-show-more-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-size: 13px; font-weight: 500; padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
@@ -366,7 +371,6 @@
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">API Access</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Analytics concurrents</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Multi-workspace</span></li>
-        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">SSO SAML</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Onboarding dédié</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Facturation client</span></li>
       </ul>
@@ -400,9 +404,7 @@
         <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rétention 90 jours</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Analytics concurrents</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Multi-workspace</span></li>
-        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">SSO SAML</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Onboarding dédié</span></li>
-        <li class="fp-feat-extra"><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">SLA garanti 99.9%</span></li>
       </ul>
       <div class="fp-card-more-wrap">
         <button class="fp-card-more-btn" onclick="toggleCardFeats('pro', this)">Voir plus ▾</button>
@@ -420,18 +422,15 @@
       <div class="fp-card-desc">Pour les grandes agences et entreprises.</div>
       <div class="fp-card-trial">✓ 14 jours gratuits · puis 149€/mois</div>
       <ul class="fp-card-features" id="feats-ultra">
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1000 audits SEO</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1 000 audits SEO</strong> / mois</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 monitors</strong> uptime (vérif. 30 s)</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1000 rapports PDF</strong> / mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1 000 rapports PDF</strong> / mois</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>10 utilisateurs</strong></span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Multi-workspace</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">IA Stratégiste complet</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">White-label portail</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SSO SAML</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>∞ crédits IA</strong> (Inclus) / mois</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">API REST + Webhooks avancés</span></li>
-        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Custom domain</span></li>
-        <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">SLA 99.9% garanti</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support dédié &lt; 1h</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rétention 365 jours</span></li>
         <li class="fp-feat-extra"><span class="fp-feat-check">✓</span><span class="fp-feat-text">Onboarding dédié</span></li>
@@ -453,14 +452,20 @@
     <button class="fp-scroll-btn" id="fp-plans-prev" onclick="scrollPlans(-1)" aria-label="Précédent" disabled>‹</button>
     <button class="fp-scroll-btn" id="fp-plans-next" onclick="scrollPlans(1)" aria-label="Suivant">›</button>
   </div>
+  <p class="fp-section-sub fp-plans-flow-hint" id="fp-plans-flow-hint" style="margin:18px auto 0">
+    Cliquez sur un plan pour continuer directement. Besoin d'add-ons ou de crédits IA ?
+    <a href="#fp-addons" style="color:inherit;text-decoration:underline;font-weight:600">Ajoutez-les d'abord au panier</a>
+    , puis choisissez votre plan et cliquez sur « Panier ».
+  </p>
 </section>
 
 <!-- ── Add-ons ── -->
-<section class="fp-addons-section">
+<section class="fp-addons-section" id="fp-addons">
   <h2 class="fp-section-title">Personnalisez avec des add-ons</h2>
   <p class="fp-section-sub">Activez uniquement ce dont vous avez besoin — facturé immédiatement par Stripe, annulable à tout moment.</p>
 
-  <div class="fp-addons-grid" id="fp-addons-grid">
+  <p id="fp-addon-catalog-loading" class="fp-addon-catalog-loading" role="status" aria-live="polite" aria-atomic="true">Chargement des add-ons…</p>
+  <div class="fp-addons-grid" id="fp-addons-grid" data-catalog-state="loading" aria-busy="true" style="display:none">
 
     <!-- ── 8 add-ons toujours visibles ── -->
 
@@ -642,16 +647,16 @@
 
     <div class="fp-addon-card fp-addon-hidden">
       <div class="fp-addon-top"><span class="fp-addon-icon">📦</span><div class="fp-addon-name">Agency Reporting Packs</div></div>
-      <div class="fp-addon-desc">Le bundle reporting ultime pour les agences : templates multi-clients, rapports automatisés et distribution planifiée en marque blanche.</div>
+      <div class="fp-addon-desc">Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné. Aucun envoi planifié, portail client ou regroupement multi-sites.</div>
       <div class="fp-addon-bottom">
-        <div class="fp-addon-price">49€<span> / mois</span></div>
+        <div class="fp-addon-price">12€<span> / mois</span></div>
         <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
       </div>
     </div>
 
     <div class="fp-addon-card fp-addon-hidden">
       <div class="fp-addon-top"><span class="fp-addon-icon">📊</span><div class="fp-addon-name">AI Executive Reporting</div></div>
-      <div class="fp-addon-desc">Chaque semaine, l'IA génère une synthèse C-level prête à partager : performances SEO, alertes critiques, opportunités prioritaires.</div>
+      <div class="fp-addon-desc">Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports. Aucun email, Slack ou planning hebdomadaire.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">24€<span> / mois</span></div>
         <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
@@ -757,16 +762,16 @@
 
     <div class="fp-addon-card fp-addon-hidden">
       <div class="fp-addon-top"><span class="fp-addon-icon">🌐</span><div class="fp-addon-name">Custom Domain</div></div>
-      <div class="fp-addon-desc">Hébergez votre portail FlowPoint sur votre propre domaine (analyse.votreagence.com). Renforce la crédibilité client avec une image 100% professionnelle.</div>
+      <div class="fp-addon-desc">La vérification DNS/TLS ne confirme pas le routage vers FlowPoint ni l’activation du portail. Le domaine personnalisé reste indisponible.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">9€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'customDomain',false)">Activer →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
       </div>
     </div>
 
     <div class="fp-addon-card fp-addon-hidden">
       <div class="fp-addon-top"><span class="fp-addon-icon">🔒</span><div class="fp-addon-name">SSO Enterprise</div></div>
-      <div class="fp-addon-desc">SAML 2.0 / OIDC pour toute votre organisation. Connectez FlowPoint à Okta, Azure AD ou Google Workspace et gérez les accès depuis un point central.</div>
+      <div class="fp-addon-desc">Aucun fournisseur SSO n’établit actuellement de connexion. Les flux SAML et OIDC ne sont pas encore disponibles.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
         <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
@@ -775,19 +780,19 @@
 
     <div class="fp-addon-card fp-addon-hidden">
       <div class="fp-addon-top"><span class="fp-addon-icon">🚀</span><div class="fp-addon-name">AI Workspace Launch</div></div>
-      <div class="fp-addon-desc">Démarrez en 48h avec un workspace FlowPoint configuré sur mesure : données importées, dashboards créés et équipe formée par nos experts IA.</div>
+      <div class="fp-addon-desc">Assistant IA dans FlowPoint pour générer une stratégie et des missions à partir du profil du workspace. Les rapports planifiés exigent aussi AI Workflows; ils sont enregistrés sans email ou Slack.</div>
       <div class="fp-addon-bottom">
-        <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiWorkspaceLaunch',false)">Activer →</button></div>
+        <div class="fp-addon-price">15€<span> / mois</span></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn fp-addon-btn-soon" disabled title="Bientôt disponible" style="opacity:0.6;cursor:not-allowed;background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3)">🚧 Bientôt disponible</button></div>
       </div>
     </div>
 
   </div>
 
   <div class="fp-show-more-wrap">
-    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()">
+    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()" aria-expanded="false" aria-controls="fp-addons-grid" hidden>
       <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
-      <span id="fp-addon-label">Voir tous les add-ons (24 de plus)</span>
+      <span id="fp-addon-label">Chargement du catalogue…</span>
     </button>
   </div>
 </section>
@@ -811,9 +816,9 @@
         <div class="fp-credit-note">✓ Disponibles immédiatement</div>
         <div class="fp-addon-actions">
           <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',-1)">−</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Réduire la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack50k',-1)">−</button>
             <input id="qty-aiCreditsPack50k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',1)">+</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Augmenter la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack50k',1)">+</button>
           </div>
           <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack50k',true)">Acheter →</button>
         </div>
@@ -832,9 +837,9 @@
         <div class="fp-credit-note">✓ Disponibles immédiatement</div>
         <div class="fp-addon-actions">
           <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',-1)">−</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Réduire la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack200k',-1)">−</button>
             <input id="qty-aiCreditsPack200k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',1)">+</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Augmenter la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack200k',1)">+</button>
           </div>
           <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack200k',true)">Acheter →</button>
         </div>
@@ -853,9 +858,9 @@
         <div class="fp-credit-note">✓ Disponibles immédiatement</div>
         <div class="fp-addon-actions">
           <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',-1)">−</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Réduire la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack500k',-1)">−</button>
             <input id="qty-aiCreditsPack500k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',1)">+</button>
+            <button type="button" class="fp-addon-qty-btn" aria-label="Augmenter la quantité de crédits IA" aria-disabled="true" disabled onclick="changeQty('aiCreditsPack500k',1)">+</button>
           </div>
           <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack500k',true)">Acheter →</button>
         </div>
@@ -887,7 +892,7 @@
       <tbody>
 
         <tr class="fp-group-row"><td colspan="4">SEO &amp; Analyse</td></tr>
-        <tr><td>Audits SEO / mois</td><td>30</td><td class="fp-featured-col">300</td><td>1000</td></tr>
+        <tr><td>Audits SEO / mois</td><td>30</td><td class="fp-featured-col">300</td><td>1 000</td></tr>
         <tr><td>Audit technique complet</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Core Web Vitals</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Analyse de contenu</td><td>Basique</td><td class="fp-featured-col">Avancée</td><td>Complète</td></tr>
@@ -919,8 +924,8 @@
         <tr class="fp-cmp-hidden"><td>AI Automation Workflows</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
 
         <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Rapports</td></tr>
-        <tr class="fp-cmp-hidden"><td>Rapports / mois</td><td>30 PDF</td><td class="fp-featured-col">300 PDF</td><td>1000 PDF</td></tr>
-        <tr class="fp-cmp-hidden"><td>Exports PDF / CSV</td><td>30</td><td class="fp-featured-col">300</td><td>1000</td></tr>
+        <tr class="fp-cmp-hidden"><td>Rapports / mois</td><td>30 PDF</td><td class="fp-featured-col">300 PDF</td><td>1 000 PDF</td></tr>
+        <tr class="fp-cmp-hidden"><td>Exports PDF / CSV</td><td>30</td><td class="fp-featured-col">300</td><td>1 000</td></tr>
         <tr class="fp-cmp-hidden"><td>Partage de rapports</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr class="fp-cmp-hidden"><td>White-Label Exports</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr class="fp-cmp-hidden"><td>Historique des données</td><td>30 jours</td><td class="fp-featured-col">90 jours <span style="font-size:11px;color:var(--blue)">(+ext.)</span></td><td>365 jours <span style="font-size:11px;color:var(--blue)">(+ext.)</span></td></tr>
@@ -941,9 +946,9 @@
         <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Sécurité</td></tr>
         <tr class="fp-cmp-hidden"><td>HTTPS / TLS</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr class="fp-cmp-hidden"><td>2FA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr class="fp-cmp-hidden"><td>SSO Enterprise (SAML / OIDC)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span> Inclus</td></tr>
+        <tr class="fp-cmp-hidden"><td>SSO Enterprise (SAML / OIDC)</td><td>Bientôt disponible</td><td class="fp-featured-col">Bientôt disponible</td><td>Bientôt disponible</td></tr>
         <tr class="fp-cmp-hidden"><td>Audit logs</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr class="fp-cmp-hidden"><td>Domaine personnalisé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
+        <tr class="fp-cmp-hidden"><td>Domaine personnalisé</td><td>Bientôt disponible</td><td class="fp-featured-col">Bientôt disponible</td><td>Bientôt disponible</td></tr>
 
         <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Support</td></tr>
         <tr class="fp-cmp-hidden"><td>Support par email</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
@@ -1063,15 +1068,15 @@
 
   // Canonical fallback — must stay identical to backend PLAN_DEFINITIONS
   var FALLBACK_DEFS = {
-    standard: { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000, features:['30 audits/mois','10 monitors','30 rapports PDF/mois','30 exports/mois','1 membre d\'\u00e9quipe','100 000 crédits IA/mois','Local SEO basique','Export CSV','White-label rapports','Support email 48h'], locked:['API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'] },
-    pro:      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000, features:['300 audits/mois','50 monitors','300 rapports PDF/mois','300 exports/mois','5 membres d\'\u00e9quipe','500 000 crédits IA/mois','Local SEO avancé','White-label rapports','API Access','Analytics concurrents','Support prioritaire 4h'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'] },
-    ultra:    { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000, features:['1000 audits/mois','300 monitors','1000 rapports PDF/mois','1000 exports/mois','10 membres d\'\u00e9quipe','∞ crédits IA/mois','Multi-workspace','SSO SAML','White-label portail','Custom domain','SLA 99.9% garanti','Support dédié <1h','Onboarding dédié','Agency Lab complet','Facturation client'], locked:[] }
+    standard: { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000, features:['30 audits/mois','10 monitors','30 rapports PDF/mois','30 exports/mois','1 membre d\'\u00e9quipe','100 000 crédits IA/mois','Local SEO basique','Export CSV','White-label rapports','Support email 48h'], locked:['API Access','Analytics concurrents','Multi-workspace','Onboarding dédié','Agency Lab'] },
+    pro:      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000, features:['300 audits/mois','50 monitors','300 rapports PDF/mois','300 exports/mois','5 membres d\'\u00e9quipe','500 000 crédits IA/mois','Local SEO avancé','White-label rapports','API Access','Analytics concurrents','Support prioritaire 4h'], locked:['Multi-workspace (5 max)','Onboarding dédié'] },
+    ultra:    { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000, features:['1 000 audits/mois','300 monitors','1 000 rapports PDF/mois','1 000 exports/mois','10 membres d\'\u00e9quipe','∞ crédits IA/mois','Multi-workspace','White-label portail','Support dédié <1h','Onboarding dédié','Agency Lab complet','Facturation client'], locked:[] }
   };
 
   function _fmtNum(n) {
     if (n >= 1000000) return (n/1000000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' M';
-    if (n >= 1000) return Math.round(n/1000).toLocaleString('fr-FR').replace(/,/g,' ')+' k';
-    return n.toLocaleString('fr-FR');
+    if (n >= 1000) return Math.round(n/1000).toLocaleString(window.fpResolveLocale()).replace(/,/g,' ')+' k';
+    return n.toLocaleString(window.fpResolveLocale());
   }
 
   function applyDefs(defs) {
@@ -1085,10 +1090,15 @@
         var priceWrap = card.querySelector('.fp-card-price');
         if (priceWrap) {
           var priceSpan = priceWrap.querySelector('span');
-          if (priceSpan) priceSpan.textContent = d.priceEur + '€';
+          if (priceSpan) priceSpan.textContent = new Intl.NumberFormat(
+            window.fpResolveLocale ? window.fpResolveLocale() : 'fr-FR',
+            { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }
+          ).format(d.priceEur);
         }
         var trial = card.querySelector('.fp-card-trial');
-        if (trial) trial.textContent = '✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois';
+        if (trial) trial.textContent = window.fpPublicText
+          ? window.fpPublicText('✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois', '✓ 14 days free · then €' + d.priceEur + '/month')
+          : '✓ 14 jours gratuits · puis ' + d.priceEur + '€/mois';
       }
 
       // ── Update feature list ──
@@ -1109,6 +1119,7 @@
           });
         }
         featList.innerHTML = html;
+        if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(featList);
       }
     });
 
@@ -1150,6 +1161,7 @@
           cells[3].textContent = _fmtNum(defs.ultra.aiCredits);
         }
       });
+      if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(cmpWrap);
     }
   }
 
@@ -1228,7 +1240,304 @@
 
   function _fpEur(minor) {
     var v = (Number(minor) || 0) / 100;
+    if (typeof window.fpResolveLocale === 'function') {
+      return new Intl.NumberFormat(window.fpResolveLocale(), {
+        style: 'currency', currency: 'EUR', maximumFractionDigits: 2
+      }).format(v);
+    }
     return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '\u20AC';
+  }
+
+  function _fpAddonKeyForButton(btn) {
+    if (!btn) return "";
+    if (btn.dataset && btn.dataset.addonKey) return btn.dataset.addonKey;
+    var match = (btn.getAttribute("onclick") || "").match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+    return match ? match[1] : "";
+  }
+  function _fpAddonButtons() {
+    return document.querySelectorAll("button.fp-addon-btn[data-addon-key],button.fp-addon-btn[onclick*=\"addToCart\"]");
+  }
+  function _fpFindAddonButton(key) {
+    var buttons = _fpAddonButtons();
+    for (var i = 0; i < buttons.length; i++) {
+      if (_fpAddonKeyForButton(buttons[i]) === key) return buttons[i];
+    }
+    return null;
+  }
+  function _fpEscapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
+    });
+  }
+  /* addon-pricing-policy:start */
+  function _fpPricingAddonState(addon, plan, includedKeys) {
+    if (!addon) return "catalog_unavailable";
+    var normalizedPlan = String(plan || "").toLowerCase();
+    var includedByPlan = addon.includedByPlan || {};
+    if (normalizedPlan && (
+      includedByPlan[normalizedPlan] === true ||
+      (Array.isArray(includedKeys) && includedKeys.indexOf(addon.key) !== -1)
+    )) return "included";
+
+    var availability = String(addon.availability || addon.status || "").toLowerCase();
+    if (availability === "coming_soon" || availability === "validation_required") return "coming_soon";
+    if (addon.purchaseStatus === "not_sold_separately") return "not_sold_separately";
+    if (addon.purchaseStatus === "price_unavailable") return "price_unavailable";
+    if (!["available", "beta", "live"].includes(availability)) return "catalog_unavailable";
+    if (!Array.isArray(addon.allowedPlans) || addon.allowedPlans.length === 0) return "catalog_unavailable";
+    if (!normalizedPlan) return "purchasable";
+    return addon.allowedPlans.some(function (allowedPlan) {
+      return String(allowedPlan).toLowerCase() === normalizedPlan;
+    }) ? "purchasable" : "plan_unavailable";
+  }
+
+  function _fpPricingText(french, english) {
+    return window.fpPublicText ? window.fpPublicText(french, english) : french;
+  }
+
+  function _fpPricingIncludedPlanNames(addon) {
+    var includedByPlan = addon && addon.includedByPlan || {};
+    var names = ["standard", "pro", "ultra"].filter(function (plan) {
+      return includedByPlan[plan] === true;
+    });
+    var labels = { standard: "Standard", pro: "Pro", ultra: "Ultra" };
+    var french = names.map(function (plan) { return labels[plan]; });
+    var english = names.map(function (plan) { return labels[plan]; });
+    return {
+      french: french.length > 1
+        ? french.slice(0, -1).join(", ") + " et " + french[french.length - 1]
+        : french.join(""),
+      english: english.length > 1
+        ? english.slice(0, -1).join(", ") + " and " + english[english.length - 1]
+        : english.join("")
+    };
+  }
+
+  function _fpPricingNotSoldIncludedLabel(addon) {
+    var plans = _fpPricingIncludedPlanNames(addon);
+    if (!plans.french) return _fpPricingText("Non vendu séparément", "Not sold separately");
+    return _fpPricingText(
+      "Inclus dans " + plans.french,
+      "Included in " + plans.english
+    );
+  }
+
+  function _fpIncludedAddonBadgeText(planLabel, definition) {
+    var parts = [_fpPricingText("✓ Inclus dans " + planLabel, "✓ Included in " + planLabel)];
+    if (definition && definition.beta) parts.push(_fpPricingText("🧪 Bêta", "🧪 Beta"));
+    if (definition && definition.comingSoon) {
+      parts.push(_fpPricingText("🚧 Bientôt disponible", "🚧 Coming soon"));
+    }
+    return parts.join(" · ");
+  }
+
+  function _fpPricingAddonStateLabel(state) {
+    var labels = {
+      active: ["✓ Actif", "✓ Active"],
+      included: ["✓ Inclus", "✓ Included"],
+      coming_soon: ["🚧 Bientôt disponible", "🚧 Coming soon"],
+      not_sold_separately: ["Non vendu séparément", "Not sold separately"],
+      plan_unavailable: ["Non disponible avec ce forfait", "Not available on this plan"],
+      price_unavailable: ["Prix indisponible dans ce mode", "No price available in this mode"],
+      catalog_unavailable: ["Indisponible", "Unavailable"]
+    };
+    var label = labels[state] || labels.catalog_unavailable;
+    return _fpPricingText(label[0], label[1]);
+  }
+
+  function _fpPricingAddonDisabledDescription(state, addon) {
+    if (state === "not_sold_separately") {
+      var plans = _fpPricingIncludedPlanNames(addon);
+      return plans.french
+        ? _fpPricingText(
+            "Inclus dans " + plans.french + " — cet add-on n'est pas vendu séparément.",
+            "Included in " + plans.english + " — this add-on is not sold separately."
+          )
+        : _fpPricingText("Cet add-on n'est pas vendu séparément.", "This add-on is not sold separately.");
+    }
+    var descriptions = {
+      active: ["Cet add-on est déjà actif sur votre compte.", "This add-on is already active on your account."],
+      included: ["Cet add-on est inclus dans votre forfait.", "This add-on is included in your plan."],
+      coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
+      plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
+      price_unavailable: ["Aucun prix Stripe achetable n'est configuré pour cet add-on dans ce mode.", "No purchasable Stripe price is configured for this add-on in this mode."],
+      catalog_unavailable: ["Aucun prix achetable n'est configuré pour cet add-on.", "No purchasable price is configured for this add-on."]
+    };
+    var description = descriptions[state] || descriptions.catalog_unavailable;
+    return _fpPricingText(description[0], description[1]);
+  }
+
+  function _fpPricingCartRejection(state) {
+    var messages = {
+      active: ["Cet add-on est déjà actif sur votre compte.", "This add-on is already active on your account."],
+      included: ["Cet add-on est déjà inclus dans votre forfait.", "This add-on is already included in your plan."],
+      coming_soon: ["Cet add-on n'est pas encore disponible.", "This add-on is not available yet."],
+      not_sold_separately: ["Cet add-on n'est pas vendu séparément.", "This add-on is not sold separately."],
+      plan_unavailable: ["Cet add-on n'est pas disponible avec le forfait sélectionné.", "This add-on is not available on the selected plan."],
+      price_unavailable: ["Cet add-on ne peut pas être acheté dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."],
+      catalog_unavailable: ["Cet add-on n'est pas achetable dans le mode de facturation actif.", "This add-on cannot be purchased in the active billing mode."]
+    };
+    var message = messages[state] || messages.catalog_unavailable;
+    return _fpPricingText(message[0], message[1]);
+  }
+
+  function _fpPricingQuantityLabel(addonName, direction) {
+    var name = String(addonName || "add-on");
+    return direction < 0
+      ? _fpPricingText("Réduire la quantité de " + name, "Decrease quantity of " + name)
+      : _fpPricingText("Augmenter la quantité de " + name, "Increase quantity of " + name);
+  }
+
+  function _fpSetAddonQuantityControls(card, addonName, state, isActive, addon) {
+    if (!card || typeof card.querySelectorAll !== "function") return;
+    var disabled = state !== "purchasable" || isActive;
+    var reason = _fpPricingAddonDisabledDescription(isActive ? "active" : state, addon);
+    Array.prototype.forEach.call(card.querySelectorAll(".fp-addon-qty-btn"), function (step, index) {
+      step.disabled = disabled;
+      step.setAttribute("aria-disabled", disabled ? "true" : "false");
+      step.setAttribute("aria-label", _fpPricingQuantityLabel(addonName, index === 0 ? -1 : 1));
+      if (disabled) step.title = reason;
+      else step.removeAttribute("title");
+    });
+  }
+
+  function _fpSetPricingCatalogState(state) {
+    var loading = document.getElementById("fp-addon-catalog-loading");
+    var grid = document.getElementById("fp-addons-grid");
+    var isLoading = state === "loading";
+    var isReady = state === "ready";
+    if (loading) {
+      loading.hidden = !isLoading;
+      if (isLoading) loading.textContent = _fpPricingText("Chargement des add-ons…", "Loading add-ons…");
+    }
+    if (grid) {
+      grid.dataset.catalogState = state;
+      grid.setAttribute("aria-busy", isLoading ? "true" : "false");
+      grid.hidden = !isReady;
+      grid.style.display = isReady ? "" : "none";
+    }
+  }
+  /* addon-pricing-policy:end */
+
+  function _fpRenderAddonCards(cat) {
+    var grid = document.getElementById("fp-addons-grid");
+    if (!grid) throw new Error("Conteneur des add-ons introuvable");
+    var retiredAddonKeys = Array.isArray(cat.retiredAddonKeys) ? cat.retiredAddonKeys : [];
+    var retiredCartItemsRemoved = false;
+    if (_cart && _cart.addons) {
+      retiredAddonKeys.forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(_cart.addons, key)) {
+          delete _cart.addons[key];
+          retiredCartItemsRemoved = true;
+        }
+      });
+    }
+    if (retiredCartItemsRemoved) {
+      try {
+        var persistedCart = JSON.parse(localStorage.getItem("fp_cart") || "null");
+        if (persistedCart && persistedCart.addons) {
+          retiredAddonKeys.forEach(function (key) { delete persistedCart.addons[key]; });
+          localStorage.setItem("fp_cart", JSON.stringify(persistedCart));
+        }
+      } catch (_cartCleanupError) {}
+      updateCartBadge();
+    }
+
+    var featuredKeys = [
+      "gbpPerformanceLeads", "localPresenceOptimizer", "localLandingOpportunities",
+      "conversionOpportunityEngine", "seoChangeImpact", "agencyPortfolioPriorities",
+      "technicalSeoFixVerification", "organicCampaignTracker"
+    ];
+    var icons = {
+      monitorsPack10: "📡", monitorsPack50: "📡", globalMonitoring: "🌍",
+      slaMonitoring: "🛡️", advancedSeoLab: "🔬", keywordDomination: "🚀",
+      backlinkIntelligence: "🔗", aiContentStrategist: "📉",
+      gbpPerformanceLeads: "📊", localPresenceOptimizer: "📍",
+      localLandingOpportunities: "🗺️", conversionOpportunityEngine: "🎯",
+      seoChangeImpact: "↕️", agencyPortfolioPriorities: "🗂️",
+      technicalSeoFixVerification: "🛠️", organicCampaignTracker: "📈",
+      aiGbpPosting: "🤖", aiCro: "📈", behavioralAI: "🧠",
+      revenueLeak: "💸", whiteLabel: "🎨", agencyPacks: "📦",
+      aiExecutiveReport: "📊", aiForecasting: "🔮", marketIntelligence: "🌐",
+      extraSeats: "👥", retention90d: "🗄️", retention365d: "🗄️",
+      crmIntegration: "🏢", customDomain: "🌐", ssoEnterprise: "🔑",
+      aiWorkspaceLaunch: "🤖", auditsPack200: "🔎", auditsPack1000: "🔎",
+      pdfPack200: "📄", exportsPack1000: "📦"
+    };
+    var monthly = cat.addons.filter(function (addon) { return !addon.oneTime; });
+    monthly.sort(function (a, b) {
+      var ai = featuredKeys.indexOf(a.key);
+      var bi = featuredKeys.indexOf(b.key);
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      return cat.addons.indexOf(a) - cat.addons.indexOf(b);
+    });
+    var html = monthly.map(function (addon, index) {
+      var key = _fpEscapeHtml(addon.key);
+      var name = _fpEscapeHtml(addon.name);
+      var description = _fpEscapeHtml(addon.description);
+      var icon = icons[addon.key] || "✦";
+      var quantity = !!addon.quantity;
+      var soon = addon.availability === "coming_soon";
+      var notSoldSeparately = addon.purchaseStatus === "not_sold_separately";
+      var priceLabel = notSoldSeparately
+        ? _fpPricingNotSoldIncludedLabel(addon)
+        : _fpEur(addon.priceMinor);
+      var unit = notSoldSeparately ? "" : (quantity ? " / pack / mois" : " / mois");
+      var decreaseLabel = _fpEscapeHtml(_fpPricingQuantityLabel(addon.name, -1));
+      var increaseLabel = _fpEscapeHtml(_fpPricingQuantityLabel(addon.name, 1));
+      var savedQuantity = quantity && _cart && _cart.addons
+        ? (_cart.addons[addon.key] === true ? 1 : Number(_cart.addons[addon.key]))
+        : 1;
+      var qtyValue = Math.max(1, Math.min(20, Math.floor(savedQuantity || 1)));
+      var actions = quantity
+        ? '<div class="fp-addon-qty">' +
+            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="-1" data-addon-key="' + key + '" aria-label="' + decreaseLabel + '" aria-disabled="true" disabled>−</button>' +
+            '<input id="qty-' + key + '" class="fp-addon-qty-input" type="number" value="' + qtyValue + '" min="1" max="20" readonly aria-label="Quantité de ' + name + '">' +
+            '<button type="button" class="fp-addon-qty-btn" data-addon-quantity-step="1" data-addon-key="' + key + '" aria-label="' + increaseLabel + '" aria-disabled="true" disabled>+</button>' +
+          '</div>'
+        : "";
+      var button = soon
+        ? '<button type="button" class="fp-addon-btn fp-addon-btn-soon" data-addon-key="' + key + '" disabled>🚧 Bientôt disponible</button>'
+        : '<button type="button" class="fp-addon-btn" data-addon-key="' + key + '" data-addon-action="add" data-addon-quantity="' + (quantity ? "true" : "false") + '">Activer →</button>';
+      return '<div class="fp-addon-card' + (index >= 8 ? ' fp-addon-hidden' : '') + '" data-addon-card-key="' + key + '">' +
+        '<div class="fp-addon-top"><span class="fp-addon-icon">' + icon + '</span><div class="fp-addon-name">' + name + '</div></div>' +
+        '<div class="fp-addon-desc">' + description + '</div>' +
+        '<div class="fp-addon-bottom"><div class="fp-addon-price">' + priceLabel + '<span>' + unit + '</span></div>' +
+        '<div class="fp-addon-actions">' + actions + button + '</div></div></div>';
+    }).join("");
+
+    grid.innerHTML = html;
+    if (window.fpTranslatePublicSubtree) window.fpTranslatePublicSubtree(grid);
+    ADDON_DEFAULT_BOTTOM = {};
+
+    var label = document.getElementById("fp-addon-label");
+    var toggle = document.getElementById("fp-addon-toggle");
+    var hiddenCount = Math.max(0, monthly.length - 8);
+    if (label) label.textContent = hiddenCount
+      ? (window.fpPublicText ? window.fpPublicText("Voir tous les add-ons (" + hiddenCount + " de plus)", "View all add-ons (" + hiddenCount + " more)") : "Voir tous les add-ons (" + hiddenCount + " de plus)")
+      : (window.fpPublicText ? window.fpPublicText("Tous les add-ons", "All add-ons") : "Tous les add-ons");
+    if (toggle) {
+      toggle.hidden = hiddenCount === 0;
+      toggle.dataset.hiddenCount = String(hiddenCount);
+      toggle.setAttribute("aria-expanded", "false");
+      toggle.setAttribute("aria-controls", "fp-addons-grid");
+    }
+
+    if (!grid.dataset.catalogClickBound) {
+      grid.dataset.catalogClickBound = "true";
+      grid.addEventListener("click", function (event) {
+        var target = event.target;
+        var step = target && target.closest ? target.closest("[data-addon-quantity-step]") : null;
+        if (step && typeof window.changeQty === "function") {
+          window.changeQty(step.dataset.addonKey, Number(step.dataset.addonQuantityStep));
+          return;
+        }
+        var button = target && target.closest ? target.closest('button[data-addon-action="add"]') : null;
+        if (button && typeof window.addToCart === "function") {
+          window.addToCart(button, button.dataset.addonKey, button.dataset.addonQuantity === "true");
+        }
+      });
+    }
   }
 
   /* Overwrites every static SEO price with the canonical one and memorises the
@@ -1236,23 +1545,28 @@
   function _fpBuildAddonBottoms(cat) {
     var byKey = {};
     cat.addons.forEach(function (a) { byKey[a.key] = a; });
-    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    var btns = _fpAddonButtons();
     Array.prototype.forEach.call(btns, function (btn) {
-      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
-      if (!m) return;
-      var key = m[1];
+      var key = _fpAddonKeyForButton(btn);
+      if (!key) return;
       var def = byKey[key];
       var bottom = btn.closest('.fp-addon-bottom');
       if (!def || !bottom) return;
       var priceEl = bottom.querySelector('.fp-addon-price');
-      // Keep the unit wording already in the markup ("/ pack / mois", "/ mois"…);
-      // only the amount is authoritative and comes from the catalogue.
+      var notSoldSeparately = def.purchaseStatus === "not_sold_separately";
+      var priceLabel = notSoldSeparately
+        ? _fpPricingNotSoldIncludedLabel(def)
+        : _fpEur(def.priceMinor);
+      // Keep catalogue pricing for separate offers, but never show a numeric
+      // standalone price for bundled-only offers.
       var unitSpan = priceEl ? priceEl.querySelector('span') : null;
-      var unit = unitSpan ? unitSpan.outerHTML : (def.oneTime ? '' : '<span> / mois</span>');
-      if (priceEl) priceEl.innerHTML = _fpEur(def.priceMinor) + unit;
+      var unit = notSoldSeparately
+        ? ''
+        : (unitSpan ? unitSpan.outerHTML : (def.oneTime ? '' : '<span> / mois</span>'));
+      if (priceEl) priceEl.innerHTML = priceLabel + unit;
       var actions = bottom.querySelector('.fp-addon-actions');
       ADDON_DEFAULT_BOTTOM[key] =
-        '<div class="fp-addon-price">' + _fpEur(def.priceMinor) + unit + '</div>' +
+        '<div class="fp-addon-price">' + priceLabel + unit + '</div>' +
         '<div class="fp-addon-actions">' + (actions ? actions.innerHTML : '') + '</div>';
     });
   }
@@ -1269,11 +1583,10 @@
     cat.addons.forEach(function (a) { stateMap[a.key] = a; });
     window._FP_ADDON_CATALOG_STATES = stateMap;
 
-    var btns = document.querySelectorAll('button.fp-addon-btn[onclick*="addToCart"]');
+    var btns = _fpAddonButtons();
     Array.prototype.forEach.call(btns, function (btn) {
-      var m = (btn.getAttribute('onclick') || '').match(/addToCart\(this,'([A-Za-z0-9]+)'/);
-      if (!m) return;
-      var key = m[1];
+      var key = _fpAddonKeyForButton(btn);
+      if (!key) return;
       var def = stateMap[key];
       if (!def) return;
       var card = btn.closest('.fp-addon-card');
@@ -1353,12 +1666,9 @@
       var bottom = btn.closest('.fp-addon-bottom');
       if (!bottom) return;
       if (isIncluded && planLabel) {
-        // Build combined badge: Inclus Plan [· 🧪 Bêta] [· 🚧 Bientôt disponible]
         var def = states[key] || {};
-        var parts = ['\u2713 Inclus ' + planLabel];
-        if (def.beta) parts.push('\uD83E\uDDEA B\u00eata');
-        if (def.comingSoon) parts.push('\uD83D\uDEA7 Bient\u00f4t disponible');
-        bottom.innerHTML = '<div class="fp-addon-price-incl">' + parts.join(' \u00b7 ') + '</div>';
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' +
+          _fpIncludedAddonBadgeText(planLabel, def) + '</div>';
       } else if (!isIncluded && bottom.querySelector('.fp-addon-price-incl')) {
         bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
         // Re-inject comingSoon/beta state badges that were cleared by the above reset
@@ -1366,6 +1676,28 @@
       }
     });
   }
+  var _fpLegacyUpdateIncludedAddons = updateIncludedAddons;
+  updateIncludedAddons = function (plan) {
+    _fpLegacyUpdateIncludedAddons(plan);
+    var included = PLAN_INCLUDED[plan] || [];
+    var planLabel = plan === 'standard' ? 'Standard' : plan === 'pro' ? 'Pro' : plan === 'ultra' ? 'Ultra' : '';
+    var states = window._FP_ADDON_CATALOG_STATES || {};
+    Object.keys(ADDON_DEFAULT_BOTTOM).forEach(function (key) {
+      var btn = _fpFindAddonButton(key);
+      if (!btn) return;
+      var bottom = btn.closest('.fp-addon-bottom');
+      if (!bottom) return;
+      if (included.indexOf(key) !== -1 && planLabel) {
+        var def = states[key] || {};
+        bottom.innerHTML = '<div class="fp-addon-price-incl">' +
+          _fpIncludedAddonBadgeText(planLabel, def) + '</div>';
+      } else if (bottom.querySelector('.fp-addon-price-incl')) {
+        bottom.innerHTML = ADDON_DEFAULT_BOTTOM[key];
+        _fpReapplyStateBadge(key, bottom);
+      }
+    });
+    _fpSyncAddonCartState();
+  };
   function setIncludedAddonsFromServer(plan, addons) {
     if (!plan || !addons) return;
     var keys = Array.isArray(addons)
@@ -1381,19 +1713,114 @@
   function updateWhiteLabel(plan) { updateIncludedAddons(plan); }
   updateIncludedAddons('');
 
+  function _fpCurrentPricingPlan() {
+    var plan = (_cart && _cart.plan) || (window._fpBillingState && window._fpBillingState.plan) || "";
+    if (!plan) {
+      var selected = document.querySelector(".fp-card.cart-selected, .fp-card.selected");
+      if (selected && selected.id) plan = selected.id.replace("card-", "");
+    }
+    return String(plan || "").toLowerCase();
+  }
+
+  function _fpSyncAddonCartState(ignoreActive) {
+    var cartAddons = (_cart && _cart.addons) || {};
+    var active = ignoreActive ? {} : ((window._fpBillingState && window._fpBillingState.addons) || {});
+    var plan = _fpCurrentPricingPlan();
+    var includedKeys = PLAN_INCLUDED[plan] || [];
+    var catalogStates = window._FP_ADDON_CATALOG_STATES || {};
+    Array.prototype.forEach.call(_fpAddonButtons(), function (btn) {
+      var key = _fpAddonKeyForButton(btn);
+      if (!key) return;
+      var def = catalogStates[key];
+      var state = FP_CATALOG
+        ? _fpPricingAddonState(def, plan, includedKeys)
+        : "catalog_unavailable";
+      var isActive = !!active[key];
+      var card = btn.closest(".fp-addon-card, .fp-credit-card");
+      var nameElement = card && card.querySelector(".fp-addon-name, .fp-credit-name");
+      var addonName = nameElement ? nameElement.textContent.trim() : ((def && def.name) || key);
+      _fpSetAddonQuantityControls(card, addonName, state, isActive, def);
+
+      btn.removeAttribute("title");
+      btn.removeAttribute("aria-label");
+      if (isActive) {
+        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
+        btn.textContent = _fpPricingAddonStateLabel("active");
+        btn.setAttribute("aria-label", _fpPricingAddonDisabledDescription("active"));
+        btn.title = _fpPricingAddonDisabledDescription("active");
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.borderColor = 'rgba(16,185,129,0.3)';
+        btn.style.color = '#34d399';
+      } else if (state !== "purchasable") {
+        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
+        btn.textContent = _fpPricingAddonStateLabel(state);
+        btn.setAttribute("aria-label", _fpPricingAddonDisabledDescription(state, def));
+        btn.title = _fpPricingAddonDisabledDescription(state, def);
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      } else if (cartAddons[key]) {
+        btn.disabled = false;
+        btn.setAttribute("aria-disabled", "false");
+        btn.textContent = _fpPricingText("✓ Dans le panier", "✓ In cart");
+        btn.style.background = 'rgba(16,185,129,0.15)';
+        btn.style.borderColor = 'rgba(16,185,129,0.35)';
+        btn.style.color = '#34d399';
+      } else {
+        btn.disabled = false;
+        btn.setAttribute("aria-disabled", "false");
+        btn.textContent = key.indexOf("aiCreditsPack") === 0
+          ? _fpPricingText("Acheter →", "Buy →")
+          : _fpPricingText("Activer →", "Activate →");
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }
+    });
+  }
+
   /* Canonical catalogue — sole source of add-on prices and plan inclusions. */
+  _fpSetPricingCatalogState("loading");
+  _fpSyncAddonCartState();
   fetch('/api/plans/catalog')
-    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (r) {
+      if (!r.ok) throw new Error("Catalogue add-ons indisponible (HTTP " + r.status + ")");
+      return r.json();
+    })
     .then(function (cat) {
-      if (!cat || !Array.isArray(cat.addons)) return;
+      if (!cat || !Array.isArray(cat.addons) || !cat.addons.length) {
+        throw new Error("Réponse du catalogue add-ons invalide");
+      }
       FP_CATALOG = cat;
+      _fpRenderAddonCards(cat);
       _fpBuildAddonBottoms(cat);
       _fpApplyCatalogInclusions(cat);
       var sel = document.querySelector('.fp-card.selected');
       var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
       updateIncludedAddons(selId);
+      _fpSyncAddonCartState();
+      _fpSetPricingCatalogState("ready");
     })
-    .catch(function () {});
+    .catch(function (error) {
+      var grid = document.getElementById("fp-addons-grid");
+      _fpSetPricingCatalogState("error");
+      _fpSyncAddonCartState();
+      var message = document.createElement("p");
+      message.className = "fp-addon-catalog-error";
+      message.setAttribute("role", "alert");
+      message.textContent = _fpPricingText(
+        "Impossible de charger les add-ons. Actualisez la page pour réessayer.",
+        "Unable to load add-ons. Refresh the page to try again."
+      );
+      if (grid && grid.parentNode) {
+        var previous = grid.parentNode.querySelector(".fp-addon-catalog-error");
+        if (previous) previous.remove();
+        grid.parentNode.insertBefore(message, grid.nextSibling);
+      }
+      if (window.console && console.error) console.error("[pricing] Catalogue add-ons indisponible", error);
+    });
 
   /* ── Restore cart from localStorage when redirected from dashboard ──────────
      Sets _cart data silently (plan + addons); visual state of the current plan
@@ -1551,7 +1978,28 @@
     if (card) card.classList.add('cart-selected');
     updateCartBadge();
     updateWhiteLabel(_cart.plan);
-    showToast('Plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' sélectionné — cliquez sur Panier pour continuer');
+    var planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+
+    /* A-01 — le bouton du plan mène directement au parcours d'inscription /
+       paiement, plan conservé dans fp_cart. On NE navigue PAS (le panier
+       reste, le visiteur continue via « Panier ») quand :
+         - le panier contient déjà des add-ons : le visiteur est en train de
+           composer un panier et doit pouvoir le finaliser lui-même ;
+         - l'abonné actif/trialing ou le flux « depuis le dashboard »
+           (changement de plan = appel /api/billing/upgrade, jamais déclenché
+           sans clic explicite sur Panier). */
+    var addonCount = Object.keys(_cart.addons || {}).length;
+    var isSubscriber = bs && (bs.status === 'active' || bs.status === 'trialing');
+    var fromDash = new URLSearchParams(window.location.search).get('from') === 'dashboard';
+    if (addonCount === 0 && !isSubscriber && !fromDash && typeof window.goToCheckout === 'function') {
+      showToast(_fpPricingText('Plan ' + planName + ' sélectionné — redirection…', 'Plan ' + planName + ' selected — redirecting…'));
+      window.goToCheckout();
+      return;
+    }
+    showToast(_fpPricingText(
+      'Plan ' + planName + ' sélectionné — ajoutez des add-ons ou cliquez sur Panier pour continuer',
+      'Plan ' + planName + ' selected — add add-ons or click Cart to continue'
+    ));
   };
 
   /* ── Quantity helpers ──
@@ -1563,6 +2011,19 @@
   window.changeQty = function (addonId, delta) {
     var input = document.getElementById('qty-' + addonId);
     if (!input) return;
+    var currentPlan = _fpCurrentPricingPlan();
+    var eligibility = FP_CATALOG
+      ? _fpPricingAddonState(
+          (window._FP_ADDON_CATALOG_STATES || {})[addonId],
+          currentPlan,
+          PLAN_INCLUDED[currentPlan] || []
+        )
+      : "catalog_unavailable";
+    if (eligibility !== "purchasable" ||
+        (window._fpBillingState && window._fpBillingState.addons && window._fpBillingState.addons[addonId])) {
+      _fpSyncAddonCartState();
+      return;
+    }
     var min = parseInt(input.min) || 1;
     var max = parseInt(input.max) || 99;
     var wasPresent = _cart.addons[addonId] !== undefined;
@@ -1588,6 +2049,7 @@
       }
     }
     updateCartBadge();
+    _fpSyncAddonCartState();
   };
 
   /* ── Add addon to cart ── */
@@ -1595,7 +2057,20 @@
     /* Backend-authoritative guard: block if add-on already active */
     var bs = window._fpBillingState;
     if (bs && bs.addons && bs.addons[addonId]) {
-      showToast('Cet add-on est déjà actif sur votre compte', true);
+      showToast(_fpPricingCartRejection("active"), true);
+      return;
+    }
+    var currentPlan = _fpCurrentPricingPlan();
+    var eligibility = FP_CATALOG
+      ? _fpPricingAddonState(
+          (window._FP_ADDON_CATALOG_STATES || {})[addonId],
+          currentPlan,
+          PLAN_INCLUDED[currentPlan] || []
+        )
+      : "catalog_unavailable";
+    if (eligibility !== "purchasable") {
+      showToast(_fpPricingCartRejection(eligibility), true);
+      _fpSyncAddonCartState();
       return;
     }
 
@@ -1616,14 +2091,46 @@
     btn.style.color = '#34d399';
     updateCartBadge();
     var _isCredits = addonId.indexOf('aiCreditsPack') === 0;
-    showToast(_isCredits ? 'Crédits IA ajoutés au panier ✓' : 'Add-on ajouté au panier ✓');
+    showToast(_isCredits
+      ? _fpPricingText("Crédits IA ajoutés au panier ✓", "AI credits added to cart ✓")
+      : _fpPricingText("Add-on ajouté au panier ✓", "Add-on added to cart ✓"));
   };
 
   /* ── Go to checkout ── */
   window.goToCheckout = function () {
+    if (!FP_CATALOG) {
+      showToast(_fpPricingText(
+        "Le catalogue des add-ons est indisponible. Actualisez la page avant de continuer.",
+        "The add-on catalog is unavailable. Refresh the page before continuing."
+      ), true);
+      return;
+    }
+    var currentPlan = _fpCurrentPricingPlan();
+    var includedKeys = PLAN_INCLUDED[currentPlan] || [];
+    var unavailableInCart = null;
+    Object.keys(_cart.addons || {}).some(function (key) {
+      var state = _fpPricingAddonState(
+        (window._FP_ADDON_CATALOG_STATES || {})[key],
+        currentPlan,
+        includedKeys
+      );
+      if (state !== "purchasable" && state !== "included") {
+        unavailableInCart = { key: key, state: state };
+        return true;
+      }
+      return false;
+    });
+    if (unavailableInCart) {
+      showToast(_fpPricingCartRejection(unavailableInCart.state), true);
+      _fpSyncAddonCartState();
+      return;
+    }
     var count = (_cart.plan ? 1 : 0) + Object.keys(_cart.addons).length;
     if (count === 0) {
-      showToast('Sélectionnez d\'abord un plan, un add-on ou des crédits IA', true);
+      showToast(_fpPricingText(
+        "Sélectionnez d'abord un plan, un add-on ou des crédits IA",
+        "Select a plan, add-on, or AI credits first."
+      ), true);
       return;
     }
     _cart._v = 1; _cart._updatedAt = Date.now();
@@ -1675,11 +2182,21 @@
   window.toggleAddons = function () {
     var hidden   = document.querySelectorAll('.fp-addon-hidden');
     var icon     = document.getElementById('fp-addon-icon');
+    var toggle   = document.getElementById('fp-addon-toggle');
     var label    = document.getElementById('fp-addon-label');
-    var expanded = icon && icon.classList.contains('open');
-    hidden.forEach(function (el) { expanded ? el.classList.remove('visible') : el.classList.add('visible'); });
-    if (icon)  icon.classList.toggle('open', !expanded);
-    if (label) label.textContent = expanded ? 'Voir tous les add-ons (24 de plus)' : 'Voir moins';
+    var expanded = toggle
+      ? toggle.getAttribute('aria-expanded') === 'true'
+      : !!(icon && icon.classList.contains('open'));
+    var nextExpanded = !expanded;
+    hidden.forEach(function (el) { nextExpanded ? el.classList.add('visible') : el.classList.remove('visible'); });
+    if (icon) icon.classList.toggle('open', nextExpanded);
+    if (toggle) toggle.setAttribute('aria-expanded', String(nextExpanded));
+    var hiddenCount = toggle
+      ? Math.max(0, Number(toggle.dataset.hiddenCount) || 0)
+      : Math.max(0, document.querySelectorAll('#fp-addons-grid .fp-addon-card').length - 8);
+    if (label) label.textContent = nextExpanded
+      ? _fpPricingText("Voir moins", "See less")
+      : _fpPricingText("Voir tous les add-ons (" + hiddenCount + " de plus)", "View all add-ons (" + hiddenCount + " more)");
   };
 
   /* ── Expand/collapse comparison table ── */
@@ -1753,7 +2270,7 @@
       status:     raw.status || raw.subscriptionStatus || null,
       addons:     raw.addons || {},
       nextDate:   raw.nextDate || raw.currentPeriodEnd
-                    ? (raw.nextDate || new Date(raw.currentPeriodEnd).toLocaleDateString('fr-FR')) : null,
+                    ? (raw.nextDate || window.fpFormatDate(raw.currentPeriodEnd)) : null,
       trialEndsAt: raw.trialEndsAt || null,
     };
   }
@@ -1777,7 +2294,7 @@
       banner.innerHTML = '<span style="font-size:16px">📊</span>'
         + '<span>Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName + '</strong>'
         + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
-        + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '')
+        + (data.trialEndsAt ? ' · <span style="color:var(--blue)">' + window.fpPublicText('Essai jusqu\'au ', 'Trial ends ') + window.fpFormatDate(data.trialEndsAt) + '</span>' : '')
         + '</span>'
         + (_isFromDashboard ? '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>' : '');
       navEl.insertAdjacentElement('afterend', banner);
@@ -1790,7 +2307,7 @@
         if (span) {
           span.innerHTML = 'Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName2 + '</strong>'
             + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
-            + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '');
+            + (data.trialEndsAt ? ' · <span style="color:var(--blue)">' + window.fpPublicText('Essai jusqu\'au ', 'Trial ends ') + window.fpFormatDate(data.trialEndsAt) + '</span>' : '');
         }
       }
     }
@@ -1881,6 +2398,7 @@
 
     /* Show 'Inclus dans [Plan]' badge for all plan-included add-ons */
     setIncludedAddonsFromServer(data.plan || '', data.addons || {});
+    _fpSyncAddonCartState();
   }
 
   /* Reverse applyBillingState's DOM mutations back to the anonymous baseline.
@@ -1930,6 +2448,7 @@
     });
     /* Clear plan-inclusion badges rendered from the cached state */
     updateIncludedAddons('');
+    _fpSyncAddonCartState(true);
   }
 
   /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ──
@@ -2336,6 +2855,6 @@
   }
 })();
 </script>
-<script src="/funnel-tracking.js" defer></script>
+<script src="/pricing-funnel.js" defer></script>
 </body>
 </html>

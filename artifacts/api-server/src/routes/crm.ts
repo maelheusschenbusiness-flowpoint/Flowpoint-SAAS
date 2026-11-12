@@ -1,10 +1,10 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import {
-  CRM_PROVIDERS, getCrmStatus, connectCrm, disconnectCrm, syncCrm,
+  CRM_PROVIDERS, getCrmStatus, disconnectCrm, syncCrm,
   getSyncLogs, getFieldMappings, upsertFieldMapping, getCrmLimit, type CrmProvider,
 } from "../services/crm-service.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -23,7 +23,12 @@ type OrgReq = Request & {
   orgId?: string;
 };
 const org  = (req: Request): string => (req as OrgReq).orgId ?? "default";
-const plan = (req: Request): string => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
+/**
+ * Plan de l'organisation LU EN BASE (resolvePlanFromDB, meme source que planGate/keywords.ts).
+ * Avant : repli sur Pro via `req.me` -- `req.me` n'est renseigne par aucun middleware, donc TOUTE
+ * organisation (Standard comprise) etait traitee comme Pro. Plan illisible => "standard" (le moins permissif).
+ */
+const plan = async (req: Request): Promise<string> => (await resolvePlanFromDB(req)) ?? "standard";
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 router.get("/crm/providers", (_req, res) => {
@@ -33,27 +38,24 @@ router.get("/crm/providers", (_req, res) => {
 router.get("/crm/status", async (req, res) => {
   try {
     const data = await getCrmStatus(org(req));
-    res.json({ ...data, limit: getCrmLimit(plan(req)), plan: plan(req) });
+    const orgPlan = await plan(req);
+    res.json({ ...data, limit: getCrmLimit(orgPlan), plan: orgPlan });
   } catch {
-    res.json({ connections: [], connected: false, limit: getCrmLimit(plan(req)), plan: plan(req) });
+    res.status(503).json({
+      error: "Impossible de charger l’état des intégrations CRM.",
+      code: "CRM_STATUS_UNAVAILABLE",
+    });
   }
 });
 
 router.post("/crm/connect/:provider", async (req, res) => {
   const provider = req.params.provider as CrmProvider;
   if (!CRM_PROVIDERS.find(p => p.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
-  const { accessToken, refreshToken, expiresIn, portalId, scope, metadata } = req.body as {
-    accessToken?: string; refreshToken?: string; expiresIn?: number;
-    portalId?: string; scope?: string; metadata?: Record<string, unknown>;
-  };
-  if (!accessToken) { res.status(400).json({ error: "accessToken requis" }); return; }
-  try {
-    const intg = await connectCrm(org(req), plan(req), provider, { accessToken, refreshToken, expiresIn, portalId, scope, metadata });
-    res.status(201).json({ ok: true, integration: intg });
-  } catch (err) {
-    const msg = safeErrMsg(err);
-    res.status(msg.includes("Limite") ? 429 : 500).json({ error: msg });
-  }
+  res.status(501).json({
+    ok: false,
+    code: "CRM_OAUTH_UNAVAILABLE",
+    error: "La connexion OAuth CRM n’est pas encore disponible. Aucun jeton n’a été enregistré.",
+  });
 });
 
 router.post("/crm/disconnect/:provider", async (req, res) => {
@@ -66,10 +68,18 @@ router.post("/crm/disconnect/:provider", async (req, res) => {
 router.post("/crm/sync", async (req, res) => {
   const { provider, entityType = "contacts" } = req.body as { provider?: string; entityType?: string };
   if (!provider) { res.status(400).json({ error: "provider requis" }); return; }
+  if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
   try {
     const result = await syncCrm(org(req), provider as CrmProvider, entityType);
     res.json(result);
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === "CRM_SYNC_UNAVAILABLE") {
+      res.status(501).json({ ok: false, code, error: safeErrMsg(err) });
+      return;
+    }
+    res.status(500).json({ error: safeErrMsg(err) });
+  }
 });
 
 router.get("/crm/logs", async (req, res) => {
@@ -78,14 +88,20 @@ router.get("/crm/logs", async (req, res) => {
     const logs = await getSyncLogs(org(req), limit);
     res.json({ logs, count: logs.length });
   } catch {
-    res.json({ logs: [], count: 0 });
+    res.status(503).json({ error: "Impossible de charger l’historique CRM.", code: "CRM_LOGS_UNAVAILABLE" });
   }
 });
 
 router.post("/crm/test", async (req, res) => {
   const { provider } = req.body as { provider?: string };
   if (!provider) { res.status(400).json({ error: "provider requis" }); return; }
-  res.json({ ok: true, provider, message: `Test de connexion ${provider} réussi`, latency_ms: 100 });
+  if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
+  res.status(501).json({
+    ok: false,
+    provider,
+    code: "CRM_TEST_UNAVAILABLE",
+    error: "Le test réel de connexion à ce fournisseur n’est pas encore implémenté.",
+  });
 });
 
 router.get("/crm/field-mappings/:crmId", async (req, res) => {
@@ -109,23 +125,11 @@ router.post("/crm/field-mappings/:crmId", async (req, res) => {
 });
 
 router.post("/crm/webhook/:provider", async (req, res) => {
-  const { provider } = req.params;
-  try {
-    const intgRes = await db(req)(
-      `SELECT id FROM crm_integrations WHERE org_id=$1 AND provider=$2 LIMIT 1`,
-      [org(req), provider]
-    );
-    if (intgRes.rows[0]) {
-      const id = `cw_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-      await db(req)(
-        `INSERT INTO crm_webhooks (id,crm_integration_id,provider,event_type,payload) VALUES ($1,$2,$3,$4,$5)`,
-        [id, intgRes.rows[0].id, provider, req.body?.eventType || "unknown", JSON.stringify(req.body || {})]
-      );
-    }
-    res.json({ ok: true });
-  } catch {
-    res.json({ ok: true });
-  }
+  res.status(501).json({
+    ok: false,
+    code: "CRM_WEBHOOK_UNAVAILABLE",
+    error: "Les webhooks CRM ne sont pas configurés.",
+  });
 });
 
 router.get("/crm/leads", async (req, res) => {
@@ -144,7 +148,7 @@ router.get("/crm/leads", async (req, res) => {
     );
     res.json({ leads: rows.rows, total: rows.rows.length });
   } catch {
-    res.json({ leads: [], total: 0 });
+    res.status(503).json({ error: "Impossible de charger les leads CRM.", code: "CRM_LEADS_UNAVAILABLE" });
   }
 });
 

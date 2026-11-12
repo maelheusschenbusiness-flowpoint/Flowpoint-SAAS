@@ -10,6 +10,8 @@ const persistOrgData = vi.fn().mockResolvedValue(undefined);
 const broadcastPlanUpdate = vi.fn();
 const retrieve = vi.fn();
 let ctx: Record<string, unknown> = {};
+let ledgerCredits = 0;
+const poolQuery = vi.fn(async () => ({ rows: [{ credits: String(ledgerCredits) }] }));
 
 vi.mock("../services/stripe-factory.js", async (orig) => ({
   ...(await orig<object>()),
@@ -28,6 +30,7 @@ vi.mock("../services/org-data.js", () => ({
   findOrgByStripeCustomer: vi.fn(),
 }));
 vi.mock("../services/store.js", () => ({ store: { broadcastPlanUpdate: (...a: unknown[]) => broadcastPlanUpdate(...a) } }));
+vi.mock("@workspace/db", async (orig) => ({ ...(await orig<object>()), pool: { query: (...a: unknown[]) => poolQuery(...(a as [])) } }));
 vi.mock("../services/mailer.js", () => ({ mailer: {} }));
 vi.mock("../services/sessions.js", () => ({ getSession: vi.fn(), invalidateAllSessions: vi.fn() }));
 
@@ -53,7 +56,7 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
   });
   afterAll(async () => { await new Promise<void>(r => server.close(() => r())); });
   beforeEach(() => {
-    persistOrgData.mockClear(); broadcastPlanUpdate.mockClear(); retrieve.mockReset();
+    persistOrgData.mockClear(); broadcastPlanUpdate.mockClear(); retrieve.mockReset(); ledgerCredits = 0;
     ctx = { stripeCustomerId: "cus_a", stripeSubscriptionId: "sub_main", subscriptionStatus: "active", plan: "standard", addons: {} };
   });
   const call = async (session: Record<string, unknown>, org = "org-a") => {
@@ -66,8 +69,15 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
   it("add-on seul (/billing/addon-checkout) : aucun plan ni souscription écrits", async () => {
     const r = await call({ ...paid, mode: "subscription", subscription: sub("sub_addon", "addon"),
       metadata: { addonKey: "whiteLabel", addonName: "White label", orgId: "org-a", quantity: "1" } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(202);
     expect(r.body.plan).toBeUndefined();
+    expect(persistOrgData).not.toHaveBeenCalled();
+    ctx = { ...ctx, addons: { whiteLabel: true } };
+    const done = await call({ ...paid, mode: "subscription", subscription: sub("sub_addon", "addon"),
+      metadata: { addonKey: "whiteLabel", orgId: "org-a", quantity: "1" } });
+    expect(done.status).toBe(200);
+    expect(done.body.checkoutType).toBe("addon_only");
+    expect(done.body.plan).toBeUndefined();
     expect(persistOrgData).not.toHaveBeenCalled();
     expect(broadcastPlanUpdate).not.toHaveBeenCalled();
   });
@@ -75,7 +85,12 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
   it("panier add-on seul (flowpoint_checkout_type=addon_only, selected_plan vide) : aucun plan écrit", async () => {
     const r = await call({ ...paid, mode: "subscription", subscription: sub("sub_addon", "addon"),
       metadata: { flowpoint_checkout_type: "addon_only", selected_plan: "", immediate_addons: "whiteLabel" } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(202);
+    ctx = { ...ctx, addons: { whiteLabel: true } };
+    const done = await call({ ...paid, mode: "subscription", subscription: sub("sub_addon", "addon"),
+      metadata: { flowpoint_checkout_type: "addon_only", selected_plan: "", immediate_addons: "whiteLabel" } });
+    expect(done.status).toBe(200);
+    expect(done.body.checkoutType).toBe("addon_only");
     expect(r.body.checkoutType).toBe("addon_only");
     expect(persistOrgData).not.toHaveBeenCalled();
   });
@@ -83,20 +98,29 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
   it("crédits IA seuls : aucune écriture", async () => {
     const r = await call({ ...paid, mode: "payment", subscription: null,
       metadata: { type: "ai_credits", pack: "aiCreditsPack50k", credits: "50000", orgId: "org-a" } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(202);
+    ledgerCredits = 50000;
+    const done = await call({ ...paid, mode: "payment", subscription: null,
+      metadata: { type: "ai_credits", pack: "aiCreditsPack50k", credits: "50000", orgId: "org-a" } });
+    expect(done.status).toBe(200);
+    expect(done.body.plan).toBeUndefined();
     expect(persistOrgData).not.toHaveBeenCalled();
   });
 
   it("pack de crédits via addon-checkout (mode payment, sans type) : aucune écriture", async () => {
     const r = await call({ ...paid, mode: "payment", subscription: null,
       metadata: { addonKey: "aiCreditsPack50k", orgId: "org-a", quantity: "1" } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(202);
+    ledgerCredits = 50000;
+    const done = await call({ ...paid, mode: "payment", subscription: null,
+      metadata: { addonKey: "aiCreditsPack50k", orgId: "org-a", quantity: "1" } });
+    expect(done.status).toBe(200);
     expect(persistOrgData).not.toHaveBeenCalled();
   });
 
   it("mode payment sans abonnement ni metadata de type : aucune écriture", async () => {
     const r = await call({ ...paid, mode: "payment", subscription: null, metadata: { orgId: "org-a" } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(422);
     expect(persistOrgData).not.toHaveBeenCalled();
   });
 
@@ -108,15 +132,21 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
 
   it("amount_total 0, paiement non requis, add-on seul : aucune écriture", async () => {
     const r = await call({ ...paid, payment_status: "no_payment_required", amount_total: 0, mode: "subscription",
-      subscription: sub("sub_addon", "addon"), metadata: { flowpoint_checkout_type: "addon_only" } });
-    expect(r.status).toBe(200);
+      subscription: sub("sub_addon", "addon"), metadata: { flowpoint_checkout_type: "addon_only", immediate_addons: "whiteLabel" } });
+    expect(r.status).toBe(202);
     expect(persistOrgData).not.toHaveBeenCalled();
   });
 
   it("metadata.plan=pro posé sur un add-on : aucun plan écrit", async () => {
     const r = await call({ ...paid, mode: "subscription", subscription: sub("sub_addon", "addon"),
       metadata: { addonKey: "whiteLabel", plan: "pro", orgId: "org-a" } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(202);
+    ctx = { ...ctx, addons: { whiteLabel: true } };
+    const done = await call({ ...paid, mode: "subscription", subscription: sub("sub_addon", "addon"),
+      metadata: { addonKey: "whiteLabel", plan: "pro", orgId: "org-a" } });
+    expect(done.status).toBe(200);
+    expect(done.body.plan).toBeUndefined();
+    expect(broadcastPlanUpdate).not.toHaveBeenCalled();
     expect(planWrites()).toHaveLength(0);
   });
 
@@ -166,7 +196,7 @@ describe("GET /billing/verify — aucune écriture de plan hors achat de plan", 
     expect(persistOrgData).toHaveBeenCalledWith("org-a", expect.objectContaining({ plan: "ultra", stripeSubscriptionId: "sub_new" }));
   });
   it("panier plan Standard + add-on (première souscription) : plan écrit", async () => {
-    ctx = { stripeCustomerId: "cus_a", stripeSubscriptionId: null, subscriptionStatus: null, plan: "standard", addons: {} };
+    ctx = { stripeCustomerId: "cus_a", stripeSubscriptionId: null, subscriptionStatus: null, plan: "standard", addons: { whiteLabel: true } };
     const r = await call({ ...paid, mode: "subscription", subscription: sub("sub_cart", "standard", "trialing"),
       metadata: { flowpoint_checkout_type: "subscription_with_immediate_addons", selected_plan: "standard", immediate_addons: "whiteLabel" } });
     expect(r.status).toBe(200);

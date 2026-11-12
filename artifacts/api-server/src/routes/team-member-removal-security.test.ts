@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import express, { type NextFunction, type Request, type Response } from "express";
 import request from "supertest";
 
@@ -13,7 +14,6 @@ const INVITATION_LEGACY_USER_ID = MEMBER_EMAIL;
 const OWNER_EMAIL = "owner@example.test";
 const OWNER_UUID = "22222222-2222-4222-8222-222222222222";
 const OWNER_LEGACY_MEMBER_ID = "member-owner-legacy";
-const ORIGINAL_API_SECRET_KEY = process.env["API_SECRET_KEY"];
 
 type Session = { userId: string; orgId: string; email: string; role: string; userUuid?: string };
 const sessions = new Map<string, Session>();
@@ -30,6 +30,11 @@ vi.mock("../lib/logger.js", () => ({
 
 vi.mock("../middlewares/requireRole.js", () => ({
   canAdmin: (_req: Request, _res: Response, next: NextFunction) => next(),
+  // team.ts importe aussi ownerOnly depuis la PR #133 (politique RBAC V1 :
+  // l'administration des membres est réservée au owner). Comme canAdmin,
+  // il est neutralisé ici : ces tests portent sur le handler, pas sur le
+  // contrôle de rôle — celui-ci est couvert par tests/rbac-policy-v1.test.ts.
+  ownerOnly: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
 vi.mock("../services/sessions.js", () => ({
@@ -134,10 +139,14 @@ function protectedApp() {
 }
 
 describe("DELETE /team/:id — member access revocation", () => {
+  // `requireAuth` desactive l'authentification quand `API_SECRET_KEY` est absent
+  // et qu'on n'est pas en production : un jeton revoque passait alors la garde,
+  // et le test mesurait ce contournement de developpement au lieu de la
+  // revocation. Il doit s'executer dans la configuration ou l'authentification
+  // est ACTIVE — c'est la seule ou « revoquer » veut dire quelque chose.
+  const PREVIOUS_SECRET = process.env["API_SECRET_KEY"];
   beforeEach(() => {
-    // requireAuth must reject a token removed from the session store. Without
-    // the service secret, development/test mode intentionally fails open.
-    process.env["API_SECRET_KEY"] = "member-removal-test-secret";
+    process.env["API_SECRET_KEY"] = "test-only-service-secret-0123456789";
     sessions.clear();
     canonicalMemberships.clear();
     teamMemberStatus.clear();
@@ -149,8 +158,20 @@ describe("DELETE /team/:id — member access revocation", () => {
   });
 
   afterEach(() => {
-    if (ORIGINAL_API_SECRET_KEY === undefined) delete process.env["API_SECRET_KEY"];
-    else process.env["API_SECRET_KEY"] = ORIGINAL_API_SECRET_KEY;
+    if (PREVIOUS_SECRET === undefined) delete process.env["API_SECRET_KEY"];
+    else process.env["API_SECRET_KEY"] = PREVIOUS_SECRET;
+  });
+
+  it("sans API_SECRET_KEY, le contournement exige ALLOW_UNAUTHENTICATED_DEV (C-15)", () => {
+    // Ce test existe pour que personne ne retire la ligne ci-dessus en croyant
+    // qu'elle ne sert a rien. Avant C-15, l'absence d'API_SECRET_KEY hors
+    // production desactivait l'authentification pour tout jeton ; le
+    // contournement exige desormais une intention declaree (devAuthBypassAllowed)
+    // et reste ferme en production (503 si la cle manque).
+    const src = readFileSync(new URL("../middlewares/requireAuth.ts", import.meta.url), "utf8");
+    expect(src).toContain("devAuthBypassAllowed()");
+    expect(src).not.toContain("Auth is disabled in development.");
+    expect(src).toContain('res.status(503).json({ error: "Authentication unavailable: server is not configured" })');
   });
 
   it("revokes the removed member's existing org-A token while preserving their org-B token", async () => {

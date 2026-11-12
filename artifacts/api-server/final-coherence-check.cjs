@@ -227,7 +227,6 @@ async function checkAICredits() {
     const pi = await stripe.paymentIntents.create({
       amount:p.amount, currency:'eur', customer:cus,
       payment_method:'pm_card_visa', confirm:true,
-      return_url:'https://app.flowpoint.pro/checkout-return',
       metadata:{ orgId:org.id, type:'ai_credits', pack:p.key, credits:String(p.credits), amountEurCents:String(p.amount), cert:'fc2026' },
     });
     const piObj = await stripe.paymentIntents.retrieve(pi.id);

@@ -8,10 +8,12 @@
 
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { getQuota } from "../lib/config.js";
 import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
   dfsRequest,
+  rembourserQuota,
 } from "./dataforseo-service.js";
 import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 import { aiChat } from "./ai-provider.js";
@@ -22,9 +24,13 @@ export interface KeywordStats {
   totalVolume: number; visibilityScore: number;
 }
 
+/**
+ * Plafond de mots-cles suivis du plan. Source unique : CORE_QUOTAS (lib/config.ts).
+ * Avant, une table locale divergeait (agency 9999 au lieu de 5000 comme Ultra ;
+ * plan inconnu 500 au lieu du plus restrictif).
+ */
 export function getKeywordLimit(plan: string): number {
-  const limits: Record<string, number> = { standard: 50, pro: 500, ultra: 5000, agency: 9999 };
-  return limits[plan.toLowerCase()] ?? 500;
+  return getQuota(plan, "keywords");
 }
 
 export async function trackKeyword(
@@ -136,6 +142,7 @@ export async function syncOrgRankings(orgId: string): Promise<{ configured: bool
       try {
         results = await batchSERP(tasks, orgId);
       } catch (e) {
+        await rembourserQuota(orgId, batch.length);
         logger.warn({ e, orgId, batch: i }, "[keyword-engine] SERP batch request failed");
         continue;
       }
@@ -174,15 +181,15 @@ export async function syncOrgRankings(orgId: string): Promise<{ configured: bool
                ELSE 'stable' END,
              last_sync_at = NOW(),
              updated_at   = NOW()
-           WHERE id = $2`,
-          [position, kw.id]
+           WHERE id = $2 AND org_id = $3`,
+          [position, kw.id, orgId]
         ).catch(e => logger.debug({ e }, "[keyword-engine] update position failed"));
 
         // Append to history
         await client.query(
           `INSERT INTO keyword_history (org_id, keyword_id, position, search_volume, recorded_at)
            SELECT $1, $2, $3,
-                  COALESCE((SELECT search_volume FROM tracked_keywords WHERE id=$2 LIMIT 1), 0),
+                   COALESCE((SELECT search_volume FROM tracked_keywords WHERE id=$2 AND org_id=$1 LIMIT 1), 0),
                   NOW()
            ON CONFLICT DO NOTHING`,
           [orgId, kw.id, position]

@@ -6,7 +6,8 @@ import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
 import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
-import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
+import { normalizeSubscriptionStatus, resolveAccessMode, statusGrantsAccess } from "../lib/subscription-state.js";
+import { getAccessConfig } from "../lib/access-config.js";
 import { logger } from "../lib/logger.js";
 import { displayablePublicKey, isApiKeyPrincipal, redactApiKeys, stripApiKeyFields } from "../lib/api-keys.js";
 import {
@@ -15,6 +16,7 @@ import {
   BILLING_DATA_UNAVAILABLE_CODE,
 } from "./me-entitlement.js";
 import { isUUIDFormat } from "../lib/validate-org-id.js";
+import { resolveDashboardLanguage } from "../lib/default-language.js";
 import {
   computeUserStreak,
   getActivityTimezone,
@@ -191,6 +193,20 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       const _isQaOrg = orgId === _QA_ORG_UUID && billingData?.isInternalQa === true;
       const normStatus = _isQaOrg ? "trialing" as const : _normStatusBase;
 
+      // ── Acces aux fonctionnalites payantes — meme regle que le middleware ──
+      const _currentPeriodEnd = billingData?.currentPeriodEnd ?? null;
+      // Decision UNIQUE resolveAccessMode — identique a billing-context.ts.
+      const _access = _isQaOrg
+        ? { mode: "full" as const, reason: "trialing" as const, graceEndsAt: null as string | null }
+        : resolveAccessMode({
+            status: normStatus,
+            currentPeriodEnd: _currentPeriodEnd,
+            cancelAtPeriodEnd: billingData?.cancelAtPeriodEnd === true,
+            pastDueSince: billingData?.pastDueSince ?? null,
+          }, new Date(), getAccessConfig());
+      const _hasPaidAccess    = _access.mode === "full";
+      const _inPaidGrace      = _hasPaidAccess && !statusGrantsAccess(normStatus);
+
       // Read addons from org_addons table (single source of truth — Correction 8).
       // FAIL-CLOSED: these rows were loaded by loadMeEntitlement, which turns an
       // org_addons load failure into a 503 rather than a suppressed empty array —
@@ -254,14 +270,6 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         role:                   req.orgContext?.role ?? "member",
         org_name:               (dbData?.orgName ?? "").slice(0, 30),
       }, "[P0-ISOLATION][ME]");
-      // ── P1 RETENTION90D SUPPRESSION — fix Ultra double-count ─────────────────
-      // On Ultra, retention90d is superseded by retention365d.  If both are active
-      // (legacy Pro provisioning survived upgrade), remove retention90d from the
-      // merged addons so /api/me does not report 11 active addons for an Ultra org.
-      if (plan === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
-        delete _mergedAddons["retention90d"];
-        logger.info({ orgId, plan }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
-      }
       res.json({
         orgId:               orgId,
         firstName,
@@ -277,8 +285,26 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         trialEndsAt:         rawTrialEndsAt,
         stripeCustomerId:    rawStripeCustomerId,
         canStartTrial:       _canStartTrial,
-        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing" || normStatus === "past_due",
-        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing" && normStatus !== "past_due",
+        // Source unique : grantsPaidAccess() — plus de liste de statuts en dur.
+        // `past_due` n'ouvre plus l'acces par principe : il l'ouvre seulement
+        // tant que la periode deja payee court (politique produit).
+        hasPremiumAccess:    _hasPaidAccess,
+        hasPaidAccess:       _hasPaidAccess,
+        inPaidGracePeriod:   _inPaidGrace,
+        // Lecture seule (annulation echue / past_due hors grace) : l'UI affiche
+        // la banniere et grise les actions ; l'API refuse les ecritures (402
+        // SUBSCRIPTION_READ_ONLY).
+        accessMode:          _access.mode,
+        accessReason:        _access.reason,
+        readOnly:            _access.mode === "read_only",
+        graceEndsAt:         _access.graceEndsAt ?? null,
+        currentPeriodEnd:    _currentPeriodEnd,
+        // Annulation programmee : permet d'afficher « se termine le … » et de
+        // distinguer un abonnement actif qui se renouvelle d'un actif qui
+        // s'arrete. Absent jusqu'ici, donc invisible du dashboard.
+        cancelAtPeriodEnd:   billingData?.cancelAtPeriodEnd === true,
+        cancelAt:            billingData?.cancelAt ?? null,
+        mustCompleteBilling: !(_hasPaidAccess && statusGrantsAccess(normStatus)),
         onboardingCompletedAt: await (async () => {
           try {
             const _obr = await orgDb(req)(`SELECT settings->>'onboardingCompletedAt' AS cat FROM user_prefs WHERE org_id=$1`, [orgId]);
@@ -335,7 +361,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         publicApiKey:       _publicApiKey,
         createdAt:          dbData?.createdAt ?? new Date().toISOString(),
         timezone:  settingsTimezone ?? dbData?.timezone  ?? null,
-        language:  dbData?.language  ?? settingsLanguage ?? null,
+        language:  resolveDashboardLanguage(settingsLanguage, dbData?.language),
         currency:  dbData?.currency  ?? null,
         dateFormat: dbData?.dateFormat ?? null,
         timeFormat: dbData?.timeFormat ?? null,
@@ -361,7 +387,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
     // return an explicit, retryable, non-cacheable 503 so the client retries
     // instead of treating the org as having no plan.
     if (err instanceof BillingDataUnavailableError) {
-      logger.warn({ orgId }, "[me] GET /api/me — billing/entitlement data unavailable, returning 503");
+      logger.warn(
+        { orgId, dependency: err.dependency },
+        "[me] GET /api/me — billing/entitlement data unavailable, returning 503",
+      );
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       res.setHeader("Retry-After", "5");
       res.status(503).json({
@@ -372,7 +401,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       return;
     }
     // Unexpected non-billing error — also fail closed rather than fabricating a plan.
-    logger.error({ err, orgId }, "[me] GET /api/me — unexpected error, returning 503");
+    logger.error(
+      { orgId, dependency: "unexpected" },
+      "[me] GET /api/me — unexpected error, returning 503",
+    );
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Retry-After", "5");
     res.status(503).json({
@@ -387,7 +419,10 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   // genuinely has no billing/settings row yet (brand-new account). This is a
   // legitimate absence, NOT a failure — but we still must not fabricate a paid or
   // fake entitlement. Treat it as retryable-unavailable so provisioning can catch up.
-  logger.warn({ orgId }, "[me] GET /api/me — no billing/entitlement row for org, returning 503");
+  logger.warn(
+    { orgId, dependency: "no_authoritative_row" },
+    "[me] GET /api/me — no billing/entitlement row for org, returning 503",
+  );
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("Retry-After", "5");
   res.status(503).json({
@@ -620,6 +655,24 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
     statusPageUrl?: string; // convenience top-level alias — merged into settings.statusPageUrl
   };
+  // C-04 : cette route est ouverte a tout role (la garde d'ecriture par defaut la
+  // laisse passer pour l'etat d'interface : serie, epingles, checklist). Les
+  // reglages d'ORGANISATION (`settings`, `statusPageUrl`) restent reserves aux
+  // roles qui ecrivent : un viewer (ou une cle publique fp_pub_) ne les modifie pas.
+  const _prefsRole = String(req.orgContext?.role ?? "");
+  const _prefsWritesOrgSettings =
+    (rawSettings && typeof rawSettings === "object" && Object.keys(rawSettings).length > 0) ||
+    typeof statusPageUrl === "string";
+  // Un role absent est deja refuse (401) par writeRoleGuard : ici seul « viewer » est a exclure.
+  if (_prefsWritesOrgSettings && _prefsRole === "viewer") {
+    res.status(403).json({
+      error: "Forbidden: write access requires owner, admin or member role",
+      code: "WRITE_ROLE_REQUIRED",
+      yourRole: _prefsRole || null,
+    });
+    return;
+  }
+
   // ── statusPageUrl validation helper ──────────────────────────────────────────
   // Returns the trimmed URL if it is a valid absolute http/https URL, "" if the
   // intent is to clear the field, or null if the value is invalid and must be
@@ -893,51 +946,25 @@ router.get("/settings/api-keys", canAdmin, async (req: Request, res: Response): 
 router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
-  const tables = [
-    // Core SEO & audit data
-    "audits", "audit_schedules", "reports", "report_exports",
-    // Monitoring
-    "monitors", "monitor_checks", "monitor_incidents",
-    "alert_rules", "alert_events",
-    // Keywords, calendar, team
-    "tracked_keywords", "calendar_events",
-    "team_messages", "team_files",
-    // Automations & workflows
-    "automation_integrations", "automation_workflows", "automation_runs",
-    "automation_logs", "workflow_runs", "incoming_webhooks",
-    // AI & missions
-    "missions", "mission_history", "mission_ai_logs",
-    "ai_usage_logs", "ai_monthly_usage",
-    // Analytics & SEO tools
-    "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
-    "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
-    "behavior_events", "behavior_sessions",
-    "traffic_sources", "traffic_losses",
-    "cro_scores", "cro_experiments", "revenue_leaks",
-    // Competitors & Local SEO
-    "competitors", "competitor_analysis", "competitor_map_results",
-    "gbp_profiles", "local_pack_history",
-    // Notifications, activity, misc
-    "notifications",
-    "org_checklist",
-    "overview_insights_cache", "overview_insights_rl",
-    "activity_log", "share_tokens", "growth_objectives",
-  ];
+  // La liste etait ecrite a la main : mesure du 17/10/2026, elle couvrait 38
+  // des 114 tables portant org_id. Un client qui demandait la purge de ses
+  // donnees en conservait donc 76 tables. La liste est desormais DECOUVERTE
+  // dans information_schema, moins les tables du compte lui-meme — identite,
+  // droits et facturation, nommees dans TABLES_COMPTE_A_PRESERVER.
+  const { decouvrirTablesOrganisation, TABLES_COMPTE_A_PRESERVER } =
+    await import("../services/account-deletion.js");
   const { pool: pgPool } = await import("@workspace/db");
   const client = await pgPool.connect();
   let deleted = 0;
   try {
-    const existCheck = await client.query<{ tablename: string }>(
-      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
-      [tables]
-    );
-    const existing = new Set(existCheck.rows.map(r => r.tablename));
+    const cibles = await decouvrirTablesOrganisation(client, { exclure: TABLES_COMPTE_A_PRESERVER });
     await client.query("BEGIN");
     try {
-      for (const t of tables.filter(t => existing.has(t))) {
+      for (const { table, colonne } of cibles) {
         const r = await client.query(
-          // ai_usage_logs.org_id is UUID; explicit cast handles all column types safely
-          `DELETE FROM ${t} WHERE org_id::text = $1`,
+          // org_id est `text` dans la plupart des tables et `uuid` dans huit
+          // d'entre elles : le cast couvre les deux.
+          `DELETE FROM ${table} WHERE ${colonne}::text = $1`,
           [orgId]
         );
         deleted += r.rowCount ?? 0;

@@ -20,10 +20,14 @@ import { Router, type Request, type Response } from "express";
 import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool, withOrgDb }                     from "@workspace/db";
-import { canAdmin }                             from "../middlewares/requireRole.js";
+// Politique V1 validee : l'administration des membres est reservee au
+// PROPRIETAIRE. `canAdmin` (owner + admin) reste employe pour les autres
+// ressources d'equipe, ou un Manager a bien le droit d'agir.
+import { canAdmin, ownerOnly }                   from "../middlewares/requireRole.js";
 import { createSession, SESSION_TTL_MS, updateSessionsRole } from "../services/sessions.js";
 import { resolveSeatEntitlement, SeatEntitlementUnavailableError } from "../services/seat-entitlement.js";
 import { store }                                from "../services/store.js";
+import { sessionCookieSameSite } from "../lib/session-cookie.js";
 import {
   computeUserStreak,
   getActivityTimezone,
@@ -443,7 +447,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
       email,
       role:      inv.role,
       userUuid:  acceptedUserUuid,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 
@@ -459,6 +463,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
           const settings = await loadOrgSettings(invOrgId).catch(() => null);
           await mailer.sendInvitationAccepted({
             to:          inviterEmail,
+            orgId:       invOrgId,
             memberEmail: email,
             memberName:  email.split("@")[0],
             orgName:     settings?.orgName ?? invOrgId,
@@ -478,7 +483,7 @@ publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Resp
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure:   _isProd,
-      sameSite: _isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge:   SESSION_TTL_MS,
       path:     "/",
     });
@@ -636,7 +641,7 @@ router.get("/team", async (req: Request, res: Response) => {
 
 // ── POST /team/invite ─────────────────────────────────────────────────────────
 
-router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
+router.post("/team/invite", ownerOnly, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
@@ -767,7 +772,7 @@ router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
   let emailId: string | undefined;
   try {
     const { mailer } = await import("../services/mailer.js");
-    const result = await mailer.sendTeamInvitation({ to: email, inviterName, orgName, role: memberRole, inviteUrl });
+    const result = await mailer.sendTeamInvitation({ to: email, orgId: org, inviterName, orgName, role: memberRole, inviteUrl });
     emailOk = result.ok;
     emailId = result.ok ? result.id : undefined;
   } catch (mailerErr) {
@@ -797,7 +802,7 @@ router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
 
 // ── PATCH /team/:id — change member role ──────────────────────────────────────
 
-router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
+router.patch("/team/:id", ownerOnly, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
@@ -928,7 +933,7 @@ router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
 
 // ── DELETE /team/:id — soft-remove member ─────────────────────────────────────
 
-router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
+router.delete("/team/:id", ownerOnly, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
@@ -1055,7 +1060,7 @@ router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
 // ── POST /team/invitations/:id/resend ─────────────────────────────────────────
 // NOTE: registered before DELETE /team/invitations/:id to prevent ambiguous matching
 
-router.post("/team/invitations/:id/resend", canAdmin, async (req: Request, res: Response) => {
+router.post("/team/invitations/:id/resend", ownerOnly, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
@@ -1125,7 +1130,7 @@ router.post("/team/invitations/:id/resend", canAdmin, async (req: Request, res: 
     const inviterName = settings?.firstName ?? "Un collègue";
     const orgName     = settings?.orgName   ?? "FlowPoint";
     const inviteUrl   = buildInviteUrl(rawToken, email);
-    const result = await mailer.sendTeamInvitation({ to: email, inviterName, orgName, role: inv.role as string, inviteUrl });
+    const result = await mailer.sendTeamInvitation({ to: email, orgId: org, inviterName, orgName, role: inv.role as string, inviteUrl });
     emailOk = result.ok;
   } catch (mailerErr) {
     logger.warn({ err: (mailerErr as Error).message }, "[team/resend] mailer threw");
@@ -1141,7 +1146,7 @@ router.post("/team/invitations/:id/resend", canAdmin, async (req: Request, res: 
 
 // ── DELETE /team/invitations/:id — revoke invitation ─────────────────────────
 
-router.delete("/team/invitations/:id", canAdmin, async (req: Request, res: Response) => {
+router.delete("/team/invitations/:id", ownerOnly, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
@@ -1316,7 +1321,7 @@ router.post("/organizations/:id/switch", async (req: Request, res: Response) => 
       email:     callerEmail,
       role,
       userUuid:  canonicalUserId,
-      ipAddress: ((req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? req.ip ?? undefined,
+      ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
 

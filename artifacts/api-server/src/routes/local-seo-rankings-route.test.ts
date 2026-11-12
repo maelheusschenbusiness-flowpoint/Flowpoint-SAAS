@@ -36,6 +36,9 @@ vi.mock("../services/dataforseo-service.js", () => ({
   getQuotaUsage: (...args: unknown[]) => mocks.getQuotaUsage(...args),
   getLocalPackRank: (...args: unknown[]) => mocks.getLocalPackRank(...args),
   checkAndIncrementQuota: vi.fn(async () => true),
+  verifierEtConsommerQuota: vi.fn(async () => ({ autorise: true, utilise: 1, limite: 1000 })),
+  rembourserQuota: vi.fn(async () => undefined),
+  suivreAppelsPayants: async (fn: () => Promise<unknown>) => ({ resultat: await fn(), appelsReussis: 1 }),
   getKeywordSuggestions: vi.fn(),
   getSERP: vi.fn(),
   getCompetitors: vi.fn(),
@@ -49,6 +52,7 @@ vi.mock("../services/dataforseo-service.js", () => ({
   refreshSEOCache: vi.fn(),
 }));
 
+import { getAIVisibility } from "../services/dataforseo-service.js";
 import seoRouter from "./seo.js";
 
 const ORG_ID = "org-local-seo-route";
@@ -239,4 +243,23 @@ describe("Local SEO ranking route — durable history and quota", () => {
     expect(res.body.history).toBeUndefined();
     expect(res.body.usage).toBeUndefined();
   });
+
+      it("reports AI visibility as unavailable instead of returning fake zero metrics", async () => {
+        vi.mocked(getAIVisibility).mockResolvedValue({
+          available: false,
+          code: "AI_VISIBILITY_UNAVAILABLE",
+          error: "No source configured",
+        });
+        const res = await request(makeApp()).get("/api/seo/ai-mentions?keyword=seo");
+        expect(res.status).toBe(503);
+        expect(res.body).toMatchObject({ available: false, code: "AI_VISIBILITY_UNAVAILABLE" });
+        expect(res.body).not.toHaveProperty("score");
+        expect(res.body).not.toHaveProperty("mentions");
+      });
+
+      it("requires a domain for backlink analysis instead of querying a placeholder domain", async () => {
+        const res = await request(makeApp()).get("/api/seo/backlinks");
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe("INVALID_DOMAIN");
+      });
 });

@@ -16,7 +16,7 @@
 
 import { readFileSync } from "fs";
 import { pool } from "@workspace/db";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 
 const RUN = Date.now();
 const results: Array<{ id: string; pass: boolean }> = [];
@@ -49,7 +49,8 @@ check("T3  monitors.ts — try/finally with _notifClient.release() present", has
 // ── T4: integration check — notification row persisted after direct pool write ─
 
 // Simulate what the fixed code does: await a pool.connect() then INSERT
-const orgId  = `nr_${RUN}`;
+// organizations.id est un UUID : un identifiant texte plantait avec 22P02.
+const orgId  = randomUUID();
 const notifId = `notif_test_${randomBytes(6).toString("hex")}`;
 
 const client = await pool.connect();

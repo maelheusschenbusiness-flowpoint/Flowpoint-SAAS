@@ -1,3 +1,5 @@
+import { getStripeKey, isStripeTestMode } from "../services/stripe-factory.js";
+import { isRenderDomainProvisioningConfigured } from "../services/custom-domain-service.js";
 export interface PlanLimits {
   audits: number;
   monitors: number;
@@ -52,7 +54,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
     locked: [
       "IA Insights", "API Access",
       "Analytics concurrents", "Multi-workspace",
-      "SSO SAML", "Onboarding dédié", "Facturation client",
+      "Onboarding dédié", "Facturation client",
     ],
   },
   pro: {
@@ -79,8 +81,7 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
       "API Access", "Support prioritaire 4h", "Analytics concurrents",
     ],
     locked: [
-      "Multi-workspace", "SSO SAML",
-      "Onboarding dédié", "SLA garanti 99.9%",
+      "Multi-workspace", "Onboarding dédié",
     ],
   },
   ultra: {
@@ -104,26 +105,55 @@ export const PLAN_DEFINITIONS: Record<string, PlanDefinition> = {
       "1 000 audits/mois", "300 monitors", "1 000 rapports PDF/mois",
       "1 000 exports/mois", "10 membres d'équipe", "∞ crédits IA/mois",
       "Multi-workspace", "IA Stratégiste complet", "White-label portail",
-      "SSO SAML", "API illimitée", "Custom domain",
-      "SLA 99.9% garanti", "Support dédié < 1h", "Rétention 365 jours",
+      "API illimitée", "Support dédié < 1h", "Rétention 365 jours",
       "Onboarding dédié", "Agency Lab complet", "Facturation client",
     ],
     locked: [],
   },
 };
 
+/**
+ * Alias internes de plan. "agency" est un alias d'Ultra (jamais affiche au
+ * client, jamais vendable) : il doit recevoir EXACTEMENT les memes limites,
+ * credits IA et add-ons inclus qu'Ultra. Sans cela, une organisation 'agency'
+ * retombait silencieusement sur les limites Standard (`PLAN_LIMITS[plan] ||
+ * PLAN_LIMITS.standard`) et n'avait aucun add-on inclus.
+ */
+export const PLAN_ALIASES: Readonly<Record<string, string>> = { agency: "ultra" };
+
+/** Identifiant de plan canonique (resout les alias, met en minuscules). */
+export function canonicalPlanId(plan: string | null | undefined): string {
+  const p = String(plan ?? "").trim().toLowerCase();
+  return PLAN_ALIASES[p] ?? p;
+}
+
+/**
+ * Ajoute les alias de plan a une table derivee. Les cles d'alias sont NON
+ * ENUMERABLES : les lectures directes (`MAP["agency"]`) fonctionnent, mais les
+ * catalogues publics qui iterent (Object.keys/entries) ne listent jamais
+ * "agency".
+ */
+function withPlanAliases<T>(map: Record<string, T>): Record<string, T> {
+  for (const [alias, target] of Object.entries(PLAN_ALIASES)) {
+    if (target in map && !(alias in map)) {
+      Object.defineProperty(map, alias, { value: map[target], enumerable: false, configurable: true });
+    }
+  }
+  return map;
+}
+
 /* ── Derived exports — NEVER hardcode these values elsewhere ── */
-export const PLAN_LIMITS: Record<string, PlanLimits> = Object.fromEntries(
+export const PLAN_LIMITS: Record<string, PlanLimits> = withPlanAliases(Object.fromEntries(
   Object.entries(PLAN_DEFINITIONS).map(([k, v]) => [k, v.limits])
-);
+));
 
-export const PLAN_AI_CREDITS: Record<string, number> = Object.fromEntries(
+export const PLAN_AI_CREDITS: Record<string, number> = withPlanAliases(Object.fromEntries(
   Object.entries(PLAN_DEFINITIONS).map(([k, v]) => [k, v.aiCredits])
-);
+));
 
-export const PLAN_AI_TOKENS: Record<string, number> = Object.fromEntries(
+export const PLAN_AI_TOKENS: Record<string, number> = withPlanAliases(Object.fromEntries(
   Object.entries(PLAN_DEFINITIONS).map(([k, v]) => [k, v.aiTokens])
-);
+));
 
 // ── Plan price IDs (live Stripe — confirmed 23/06/2026) ───────────────────────
 // Abonnement Standard 29€/mois | Abonnement Pro 79€/mois | Abonnement Ultra 149€/mois
@@ -146,41 +176,159 @@ export const PLAN_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
 );
 
 // ── Add-on price IDs — test-mode overrides (Stripe CLI / test dashboard) ─────
-// Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to override any addon price in test mode.
-// These are resolved at call-time in getAddonPriceId() below.
+// Set STRIPE_TEST_PRICE_ID_ADDON_<KEY> to configure an add-on price in test mode.
+// Verified catalog IDs below take precedence for the four replacement offers
+// whose Render TEST variables were found to contain incorrect values.
+/**
+ * Variables d'environnement TEST de chaque add-on. Registre explicite : un
+ * add-on achetable sans entree ici ne peut pas etre vendu en mode TEST, et
+ * aucun prix LIVE ne sert jamais de repli. Le premier nom renseigne l'emporte.
+ */
+export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
+  monitorsPack10: ["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10", "STRIPE_TEST_PRICE_ID_10MONITORS"],
+  monitorsPack50: ["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50", "STRIPE_TEST_PRICE_ID_50MONITORS"],
+  conversionOpportunityEngine: ["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"],
+  seoChangeImpact: ["STRIPE_TEST_PRICE_ID_ADDON_SEO_CHANGE_IMPACT"],
+  agencyPortfolioPriorities: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"],
+  technicalSeoFixVerification: ["STRIPE_TEST_PRICE_ID_ADDON_TECHNICAL_SEO_FIX_VERIFICATION"],
+  organicCampaignTracker: ["STRIPE_TEST_PRICE_ID_ADDON_ORGANIC_CAMPAIGN_TRACKER"],
+  localPresenceOptimizer: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"],
+  advancedSeoLab: ["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"],
+  keywordDomination: ["STRIPE_TEST_PRICE_ID_ADDON_KDE"],
+  backlinkIntelligence: ["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"],
+  behavioralAI: ["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"],
+  aiForecasting: ["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"],
+  enterprisePermissions: ["STRIPE_TEST_PRICE_ID_ADDON_ENT"],
+  advancedWebhooks: ["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"],
+  retention365d: ["STRIPE_TEST_PRICE_ID_ADDON_RET365"],
+  whiteLabel: ["STRIPE_TEST_PRICE_ID_ADDON_WL"],
+  customDomain: ["STRIPE_TEST_PRICE_ID_ADDON_CD"],
+  extraSeats: ["STRIPE_TEST_PRICE_ID_ADDON_SEATS"],
+  gbpSlots10: ["STRIPE_TEST_PRICE_ID_ADDON_GBP10"],
+  gbpPerformanceLeads: ["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"],
+  localLandingOpportunities: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"],
+  aiCreditsPack50k: ["STRIPE_TEST_PRICE_AI_50K"],
+  aiCreditsPack200k: ["STRIPE_TEST_PRICE_AI_200K"],
+  aiCreditsPack500k: ["STRIPE_TEST_PRICE_AI_500K"],
+  retention90d: ["STRIPE_TEST_PRICE_ID_ADDON_RET90"],
+  auditsPack200: ["STRIPE_TEST_PRICE_ID_ADDON_AUDITS200"],
+  auditsPack1000: ["STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000"],
+  pdfPack200: ["STRIPE_TEST_PRICE_ID_ADDON_PDF200"],
+  exportsPack1000: ["STRIPE_TEST_PRICE_ID_ADDON_EXPORTS1000"],
+  aiCro: ["STRIPE_TEST_PRICE_ID_ADDON_AI_CRO"],
+  revenueLeak: ["STRIPE_TEST_PRICE_ID_ADDON_REVENUE_LEAK"],
+  marketIntelligence: ["STRIPE_TEST_PRICE_ID_ADDON_MARKET_INTELLIGENCE"],
+  aiExecutiveReport: ["STRIPE_TEST_PRICE_ID_ADDON_AI_EXECUTIVE_REPORT"],
+  globalMonitoring: ["STRIPE_TEST_PRICE_ID_ADDON_GLOBAL_MONITORING"],
+  slaMonitoring: ["STRIPE_TEST_PRICE_ID_ADDON_SLA_MONITORING"],
+  aiContentStrategist: ["STRIPE_TEST_PRICE_ID_ADDON_AI_CONTENT_STRATEGIST"],
+  aiGbpPosting: ["STRIPE_TEST_PRICE_ID_ADDON_AI_GBP_POSTING"],
+  agencyPacks: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"],
+  crmIntegration: ["STRIPE_TEST_PRICE_ID_ADDON_CRM"],
+  ssoEnterprise: ["STRIPE_TEST_PRICE_ID_ADDON_SSO"],
+  aiWorkspaceLaunch: ["STRIPE_TEST_PRICE_ID_ADDON_AI_WORKSPACE_LAUNCH"],
+};
+
+/** Read-only Stripe TEST catalog verification; never used with LIVE keys. */
+export const VERIFIED_TEST_ADDON_PRICE_IDS: Readonly<Record<string, string>> = {
+  localLandingOpportunities: "price_1UUTPc9eqtbj6iPBKZ9Zlbay",
+  conversionOpportunityEngine: "price_1UUTPc9eqtbj6iPBcsDZykLW",
+  seoChangeImpact: "price_1UUTPd9eqtbj6iPB18duKFQq",
+  organicCampaignTracker: "price_1UUTPd9eqtbj6iPB6fNR5kLx",
+};
+
+/** Corrects a known stale Render TEST value without making an unconfigured offer sellable. */
+export const VERIFIED_TEST_ADDON_PRICE_CORRECTIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  localPresenceOptimizer: {
+    "price_1UUTPc9eqtbj6iPB5PEFUk5": "price_1UUTPc9eqtbj6iPBb5PEFUk5",
+  },
+};
+
 export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
-  Object.entries({
-    // Keys follow existing Replit secret naming conventions for backward compat.
-    monitorsPack10:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"]  // set via Replit secret
-                       ?? process.env["STRIPE_TEST_PRICE_ID_10MONITORS"]        ?? "",
-    monitorsPack50:       process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS50"]
-                       ?? process.env["STRIPE_TEST_PRICE_ID_50MONITORS"]        ?? "",
-    advancedSeoLab:       process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"]       ?? "",
-    keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
-    backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
-    behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
-    aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
-    enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
-    advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
-    retention365d:        process.env["STRIPE_TEST_PRICE_ID_ADDON_RET365"]      ?? "",
-    whiteLabel:           process.env["STRIPE_TEST_PRICE_ID_ADDON_WL"]          ?? "",
-    customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
-    extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
-    gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
-    aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
-    aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
-    aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
-  }).filter(([, v]) => v !== "")
+  Object.entries(ADDON_TEST_PRICE_ENV_VARS)
+    .map(([key, names]) => {
+      const configured = names.map((name) => process.env[name] ?? "").find((value) => value !== "") ?? "";
+      const corrected = VERIFIED_TEST_ADDON_PRICE_CORRECTIONS[key]?.[configured] ?? configured;
+      return [key, VERIFIED_TEST_ADDON_PRICE_IDS[key] ?? corrected] as const;
+    })
+    .filter(([, value]) => value !== "")
 );
 
 /**
  * Returns the correct Stripe price ID for an add-on, respecting test-mode overrides.
- * In test mode (sk_test_ key active) → prefer ADDON_PRICE_IDS_TEST[key].
- * In live mode or when no test override exists → fall back to ADDON_PRICE_IDS[key].
+ * In test mode, missing TEST price IDs fail closed; LIVE IDs are never a fallback.
  */
+/**
+ * Identifiant de prix Stripe du PLAN, conscient du mode.
+ *
+ * Symetrique de getAddonPriceId() pour les add-ons. Il manquait : tous les
+ * appelants lisaient PLAN_PRICE_IDS directement, c'est-a-dire les prix LIVE.
+ * En mode test, Stripe refusait donc la creation d'abonnement :
+ *   No such price: 'price_1StW0A9…'; a similar object exists in live mode,
+ *   but a test mode key was used to make this request.  (resource_missing)
+ * PLAN_PRICE_IDS_TEST existait mais n'etait utilise que par la resolution
+ * inverse getPlanForPriceId(). Consequence : le parcours payant etait
+ * impossible a certifier en mode test.
+ *
+ * Le mode est resolu par getStripeKey(), le selecteur canonique, sauf si
+ * l'appelant fournit explicitement la cle qu'il utilise pour son appel Stripe.
+ */
+export function getPlanPriceId(plan: string, stripeKey?: string): string | undefined {
+  const key = String(plan ?? "").toLowerCase();
+  const activeKey = stripeKey ?? getStripeKey() ?? "";
+  const testModeRequested = isStripeTestMode();
+  if (testModeRequested) {
+    if (!activeKey.startsWith("sk_test_")) return undefined;
+    return PLAN_PRICE_IDS_TEST[key] || undefined;
+  }
+  if (activeKey.startsWith("sk_test_")) {
+    return PLAN_PRICE_IDS_TEST[key] || undefined;
+  }
+  return PLAN_PRICE_IDS[key] || undefined;
+}
+
+/**
+ * Les plans sans identifiant de prix TEST configuré.
+ *
+ * Un prix LIVE ne doit jamais servir de repli en mode TEST. En l'absence de prix
+ * TEST, getPlanPriceId() renvoie undefined et les parcours payants échouent
+ * explicitement avant de créer une session ou un abonnement.
+ *
+ * Cette fonction rend les variables manquantes visibles pour le diagnostic.
+ */
+export interface PlanAuPrixLive {
+  plan: string;
+  priceIdLive: string;
+  variableAttendue: string;
+}
+
+export function plansRepliantSurPrixLive(stripeKey?: string): PlanAuPrixLive[] {
+  const activeKey = stripeKey ?? getStripeKey();
+  if (!activeKey.startsWith("sk_test_")) return [];   // hors mode test : rien a dire
+  const manquants: PlanAuPrixLive[] = [];
+  for (const plan of Object.keys(PLAN_PRICE_IDS)) {
+    const prixLive = PLAN_PRICE_IDS[plan];
+    if (!prixLive) continue;
+    if (PLAN_PRICE_IDS_TEST[plan]) continue;          // un prix de test est pose
+    manquants.push({
+      plan,
+      priceIdLive: prixLive,
+      variableAttendue: `STRIPE_TEST_PRICE_ID_${plan.toUpperCase()}`,
+    });
+  }
+  return manquants;
+}
+
 export function getAddonPriceId(key: string, stripeKey?: string): string | undefined {
-  const isTestMode = stripeKey ? stripeKey.startsWith("sk_test_") : false;
-  if (isTestMode && ADDON_PRICE_IDS_TEST[key]) return ADDON_PRICE_IDS_TEST[key];
+  const activeKey = stripeKey ?? getStripeKey() ?? "";
+  const testModeRequested = isStripeTestMode();
+  if (testModeRequested) {
+    if (!activeKey.startsWith("sk_test_")) return undefined;
+    return ADDON_PRICE_IDS_TEST[key] || undefined;
+  }
+  if (activeKey.startsWith("sk_test_")) {
+    return ADDON_PRICE_IDS_TEST[key] || undefined;
+  }
   return ADDON_PRICE_IDS[key] || undefined;
 }
 
@@ -200,9 +348,18 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
 
   // ── Local SEO ─────────────────────────────────────────────────────────────
   gbpSlots10:           process.env["STRIPE_PRICE_ID_10GBPLOCATIONS"]           ?? "price_1TYouI9eqtbj6iPBAykG6DyI",
+  // Intentionally unassigned in LIVE during the Test-Replit rollout.
+  gbpPerformanceLeads:  "",
   aiGbpPosting:         process.env["STRIPE_PRICE_ID_AI_GBP_POSTING"]           ?? "price_1TYovC9eqtbj6iPBw0C7qgjS",
   reviewIntelligence:   process.env["STRIPE_PRICE_ID_REVIEW_INTELLIGENCE"]      ?? "price_1TYow19eqtbj6iPB1HLzhN1U",
   localDominationMaps:  process.env["STRIPE_PRICE_ID_LOCAL_DOMINATION_MAPS"]    ?? "price_1TYowh9eqtbj6iPBqI7YxqYu",
+  localPresenceOptimizer: process.env["STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER"] ?? "",
+  localLandingOpportunities: "",
+  conversionOpportunityEngine: "",
+  seoChangeImpact: "",
+  agencyPortfolioPriorities: "",
+  technicalSeoFixVerification: "",
+  organicCampaignTracker: "",
 
   // ── Conversion / AI ────────────────────────────────────────────────────────
   aiCro:                process.env["STRIPE_PRICE_ID_AI_CRO_STRATEGIST"]        ?? "price_1TYpDs9eqtbj6iPBGyjqL3mu",
@@ -278,23 +435,31 @@ export type AddonAvailability = "beta" | "coming_soon" | "available";
 export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   monitorsPack10:       { name: "+10 Monitors",             category: "Monitoring",   description: "+10 monitors actifs", priceEur: 9, oneTime: false, quantity: true },
   monitorsPack50:       { name: "+50 Monitors",             category: "Monitoring",   description: "+50 monitors actifs", priceEur: 19, oneTime: false, quantity: true },
-  globalMonitoring:     { name: "Global Monitoring",        category: "Monitoring",   description: "Monitoring géographique multi-régions", priceEur: 49, oneTime: false, quantity: false },
-  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Suivi SLA et rapports de disponibilité", priceEur: 19, oneTime: false, quantity: false },
+  globalMonitoring:     { name: "Global Monitoring",        category: "Monitoring",   description: "Synthèse des régions de contrôle Better Stack configurées", priceEur: 15, oneTime: false, quantity: false },
+  slaMonitoring:        { name: "SLA Monitoring Avancé",    category: "Monitoring",   description: "Statistiques de disponibilité Better Stack par moniteur et période; aucune règle d’alerte SLA ni export dédié.", priceEur: 19, oneTime: false, quantity: false },
   advancedSeoLab:       { name: "Advanced SEO Lab",         category: "SEO",          description: "Audit SEO avancé et recommandations IA", priceEur: 29, oneTime: false, quantity: false },
   keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
-  aiContentStrategist:  { name: "AI Content Strategist",    category: "SEO",          description: "Stratégie de contenu assistée par IA", priceEur: 34, oneTime: false, quantity: false },
+  aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
+  seoChangeImpact:      { name: "SEO Change Impact",          category: "SEO",          description: "Comparez les variations réellement mesurées entre audits SEO terminés.", priceEur: 15, oneTime: false, quantity: false },
+  agencyPortfolioPriorities: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
+  technicalSeoFixVerification: { name: "Technical SEO Fix Verification", category: "SEO", description: "Comparez le nombre de problèmes signalés entre deux audits de la même URL.", priceEur: 19, oneTime: false, quantity: false },
+  organicCampaignTracker: { name: "Organic Campaign Tracker", category: "SEO", description: "Suivez les objectifs de clics et de position à partir des données GSC mesurées.", priceEur: 12, oneTime: false, quantity: false },
   gbpSlots10:           { name: "+10 Emplacements GBP",     category: "Local SEO",    description: "+10 fiches Google Business Profile", priceEur: 19, oneTime: false, quantity: true },
-  aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 29, oneTime: false, quantity: false },
-  reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 19, oneTime: false, quantity: false },
-  localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 24, oneTime: false, quantity: false },
-  aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO et A/B tests IA", priceEur: 34, oneTime: false, quantity: false },
+  gbpPerformanceLeads:  { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
+  localLandingOpportunities: { name: "Local Landing Opportunities", category: "Local SEO", description: "Repérez les recherches locales réelles qui justifient une page de service ou de zone.", priceEur: 15, oneTime: false, quantity: false },
+  aiGbpPosting:         { name: "AI GBP Posting",           category: "Local SEO",    description: "Publication GBP assistée par IA", priceEur: 12, oneTime: false, quantity: false },
+  reviewIntelligence:   { name: "Review Intelligence",      category: "Local SEO",    description: "Analyse des avis et réponses IA", priceEur: 9, oneTime: false, quantity: false },
+  localDominationMaps:  { name: "Local Domination Maps",    category: "Local SEO",    description: "Cartographie de visibilité locale", priceEur: 15, oneTime: false, quantity: false },
+  localPresenceOptimizer: { name: "Local Presence Optimizer", category: "Local SEO", description: "Priorisation des informations manquantes sur vos fiches GBP", priceEur: 9, oneTime: false, quantity: false },
+  aiCro:                { name: "AI CRO Strategist",        category: "Conversion",   description: "Recommandations CRO fondées sur les événements observés", priceEur: 34, oneTime: false, quantity: false },
+  conversionOpportunityEngine: { name: "Conversion Opportunity Engine", category: "Conversion", description: "Repérez les pages à optimiser à partir des sessions et conversions GA4 mesurées.", priceEur: 12, oneTime: false, quantity: false },
   behavioralAI:         { name: "Behavioral AI",            category: "Conversion",   description: "Analyse comportementale et insights IA", priceEur: 44, oneTime: false, quantity: false },
-  revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Détection des pertes de revenus", priceEur: 29, oneTime: false, quantity: false },
-  abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Expérimentation A/B assistée par IA", priceEur: 24, oneTime: false, quantity: false },
+  revenueLeak:          { name: "Revenue Leak AI",          category: "Conversion",   description: "Opportunités de conversion observées; pertes financières uniquement si mesurées", priceEur: 29, oneTime: false, quantity: false },
+  abTestingAI:          { name: "AB Testing IA",            category: "Conversion",   description: "Variantes servies et résultats statistiques fondés sur des expositions réelles", priceEur: 24, oneTime: false, quantity: false },
   whiteLabel:           { name: "White-Label Exports",      category: "Reporting",    description: "Exports PDF à votre marque", priceEur: 17, oneTime: false, quantity: false },
-  agencyPacks:          { name: "Agency Reporting Packs",   category: "Reporting",    description: "Templates de rapports multi-clients", priceEur: 49, oneTime: false, quantity: false },
-  aiExecutiveReport:    { name: "AI Executive Reporting",   category: "Reporting",    description: "Résumés exécutifs IA", priceEur: 24, oneTime: false, quantity: false },
+  agencyPacks:          { name: "Agency Reporting Packs",   category: "Reporting",    description: "Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.", priceEur: 12, oneTime: false, quantity: false },
+  aiExecutiveReport:    { name: "AI Executive Reporting",   category: "Reporting",    description: "Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.", priceEur: 24, oneTime: false, quantity: false },
   aiForecasting:        { name: "AI Forecasting Engine",    category: "IA",           description: "Prévisions SEO, trafic et conversion", priceEur: 39, oneTime: false, quantity: false },
   marketIntelligence:   { name: "AI Market Intelligence",   category: "IA",           description: "Veille concurrentielle IA", priceEur: 49, oneTime: false, quantity: false },
   aiWorkflows:          { name: "AI Automation Workflows",  category: "IA",           description: "Workflows IA multi-étapes", priceEur: 34, oneTime: false, quantity: false },
@@ -305,9 +470,9 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   advancedWebhooks:     { name: "Webhooks Avancés",          category: "API",          description: "Webhooks configurables", priceEur: 14, oneTime: false, quantity: false },
   zapierIntegration:    { name: "Zapier / Make",             category: "API",          description: "Intégration Zapier et Make", priceEur: 19, oneTime: false, quantity: false },
   crmIntegration:       { name: "Intégration CRM",           category: "API",          description: "Synchronisation CRM", priceEur: 29, oneTime: false, quantity: false },
-  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Domaine personnalisé pour le portail", priceEur: 9, oneTime: false, quantity: false },
-  ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "SSO SAML et OIDC", priceEur: 49, oneTime: false, quantity: false },
-  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Configuration d'espace de travail par IA", priceEur: 49, oneTime: false, quantity: false },
+  customDomain:         { name: "Custom Domain",             category: "Enterprise",   description: "Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.", priceEur: 9, oneTime: false, quantity: false },
+  ssoEnterprise:        { name: "SSO Enterprise",            category: "Enterprise",   description: "Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.", priceEur: 49, oneTime: false, quantity: false },
+  aiWorkspaceLaunch:    { name: "AI Workspace Launch",       category: "Enterprise",   description: "Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.", priceEur: 15, oneTime: false, quantity: false },
   prioritySupport:      { name: "Support Prioritaire",       category: "Support",      description: "Canal prioritaire", priceEur: 29, oneTime: false, quantity: false },
   auditsPack200:        { name: "Pack audits +200",          category: "SEO",          description: "+200 audits mensuels", priceEur: 12, oneTime: false, quantity: true },
   auditsPack1000:       { name: "Pack audits +1 000",        category: "SEO",          description: "+1 000 audits mensuels", priceEur: 39, oneTime: false, quantity: true },
@@ -318,10 +483,20 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   aiCreditsPack500k:    { name: "+500 000 crédits IA",       category: "IA",           description: "Pack de crédits IA", priceEur: 19, oneTime: true, quantity: true },
 };
 
+/** Development-only catalogue labels; billing quotes continue using canonical prices. */
+export const DEVELOPMENT_ADDON_DISPLAY_PRICES: Readonly<Record<string, number>> = {};
+
+export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NODE_ENV"]): number | undefined {
+  const canonicalPrice = ADDON_DEFINITIONS[addonKey]?.priceEur;
+  if (canonicalPrice === undefined) return undefined;
+  if (nodeEnv === "production") return canonicalPrice;
+  return DEVELOPMENT_ADDON_DISPLAY_PRICES[addonKey] ?? canonicalPrice;
+}
+
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
-  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist",
-  "aiGbpPosting","reviewIntelligence","localDominationMaps",
+  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoChangeImpact","conversionOpportunityEngine","agencyPortfolioPriorities","technicalSeoFixVerification","organicCampaignTracker",
+  "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads","localPresenceOptimizer","localLandingOpportunities",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
   "marketIntelligence","aiWorkflows",
@@ -336,6 +511,33 @@ export const FLAG_ADDONS = new Set([
 export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
 
 /**
+ * Retired products cannot be newly purchased, but remain recognized by the
+ * entitlement and Stripe reconciliation paths for customers who already own
+ * them. A replacement always receives a different commercial key.
+ */
+export const RETIRED_ADDONS = new Set<string>([
+  "gbpSlots10",
+  "reviewIntelligence",
+  "localDominationMaps",
+  "abTestingAI",
+  "aiWorkflows",
+  "enterprisePermissions",
+  "advancedWebhooks",
+  "zapierIntegration",
+  // Historical capacity packs remain recognized for existing subscriptions
+  // and quota grants, but are no longer offered for new purchases.
+  "auditsPack200",
+  "auditsPack1000",
+  "pdfPack200",
+  "exportsPack1000",
+]);
+
+// These retired keys remain plan entitlements and are still enforced by
+// backend capability gates. They are intentionally absent from the public
+// sellable-add-on list; do not remove their plan inclusion without migrating
+// those consumers and validating the plan contract.
+
+/**
  * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
  * available for purchase.  Activation is blocked at every layer:
  *   1. API  — POST /api/addons/:key/activate returns 503
@@ -345,13 +547,24 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  * When an add-on ships, remove it from this set and add a Stripe price.
  */
 export const COMING_SOON_ADDONS = new Set<string>([
-  // ── No requireAddon gate in any route ─────────────────────────────────────
-  // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
-  // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
+  // Test mode only opens this after a dedicated test price is configured below.
+  "gbpPerformanceLeads",
+  "localLandingOpportunities",
+  "conversionOpportunityEngine",
+  "seoChangeImpact",
+  "agencyPortfolioPriorities",
+  "technicalSeoFixVerification",
+  "organicCampaignTracker",
+  // The Better Stack SLA endpoint exists and enforces requireAddon; the add-on
+  // remains unavailable for purchase pending real QA certification.
   "slaMonitoring",
-  // globalMonitoring: no routes exist.
+  // /betterstack/global-overview summarizes configured Better Stack monitor
+  // regions only; it does not perform independent regional checks.
   "globalMonitoring",
-  // aiContentStrategist / abTestingAI: no routes exist.
+  // aiContentStrategist: SEO Content Decay Radar route exists for test/simulation,
+  // but the add-on remains unavailable for purchase until validated.
+  // abTestingAI stays non-purchasable until the experiment delivery and
+  // commercial model have been validated.
   // backlinkIntelligence: moved to BETA_ADDONS — route /seo/backlinks exists with
   // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
   // health fallback). Included in Pro & Ultra plans.
@@ -360,49 +573,68 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "agencyPacks",
   "aiExecutiveReport",
   "aiWorkflows",
+  // Keep modules unavailable until their real data/integration paths are
+  // validated. Existing plan entitlements and historical billing records stay.
+  "behavioralAI",
+  "aiCro",
+  "revenueLeak",
+  "aiForecasting",
+  "marketIntelligence",
 
   // ── Routes exist but not commercially released ─────────────────────────────
-  // crmIntegration: crm.ts routes are complete but addon not yet sold.
-  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
+  // CRM OAuth, provider health checks, synchronization, and signed webhooks are
+  // not implemented yet. Keep unavailable for purchase until those paths exist.
   "crmIntegration",
 
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
 
-  // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
-  // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
-  // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
-  // Not commercially released.
+  // aiWorkspaceLaunch: POST + GET routes enforce requireAddon; AI output is
+  // validated and the route refuses to persist generic fallback content.
+  // Still not commercially released pending functional certification.
   "aiWorkspaceLaunch",
 
-  // customDomain: route exists but feature is not commercially available yet for
-  // Standard/Pro. Included in Ultra but still "coming soon" functionally.
-  // getAddonStatus returns "included" first for Ultra users so this is safe.
+  // Custom Domain is test-beta only when the Render test target is configured.
+  // Otherwise it remains unavailable everywhere.
   "customDomain",
 ]);
 
+/** Local SEO add-ons remain visible at proposed prices but cannot be sold before approval. */
+export const VALIDATION_REQUIRED_ADDONS = new Set<string>([
+  "aiGbpPosting",
+  "reviewIntelligence",
+  "localDominationMaps",
+  "localPresenceOptimizer",
+]);
+
+// A dedicated TEST price can open an add-on for isolated QA without changing
+// its LIVE availability or any historical entitlement.
+const TEST_PURCHASABLE_ADDONS = [
+  "gbpPerformanceLeads",
+  "localPresenceOptimizer",
+  "localLandingOpportunities",
+  "conversionOpportunityEngine",
+  "seoChangeImpact",
+  "agencyPortfolioPriorities",
+  "technicalSeoFixVerification",
+  "organicCampaignTracker",
+  "agencyPacks",
+] as const;
+
+const activeStripeKey = typeof getStripeKey === "function" ? getStripeKey() : "";
+if (typeof activeStripeKey === "string" && activeStripeKey.startsWith("sk_test_")) {
+  for (const addonKey of TEST_PURCHASABLE_ADDONS) {
+    if (!ADDON_PRICE_IDS_TEST[addonKey]) continue;
+    COMING_SOON_ADDONS.delete(addonKey);
+    VALIDATION_REQUIRED_ADDONS.delete(addonKey);
+  }
+}
+
 /**
- * Audit fonctionnel (2026-08-24) — critère BETA :
- * "route réelle, activable, mais partielle ou dépendante d'une intégration externe."
- *
- *   behavioralAI      → behavioral.ts:377 gate réelle. Mais dépend du snippet JS
- *                        installé côté client (intégration externe). Sans snippet,
- *                        les insights sont vides. → BETA
- *
- *   aiForecasting     → forecast.ts:11 gate réelle. Memory documente "fabricated
- *                        past curves" pour les pages forecast. Couverture données
- *                        limitée. → BETA
- *
- *   marketIntelligence → market-intelligence.ts:12 gate réelle. Task PROPOSÉE
- *                        "Remplacer données concurrentes hardcodées par vraies DFS"
- *                        non terminée. Données partiellement mockées. → BETA
- *
- *   revenueLeak       → revenue-leak.ts:15 gate réelle. Dépend de behavioral data
- *                        (snippet onsite requis). Sans snippet = détection vide. → BETA
- *
- *   aiCro             → cro.ts:17 gate réelle. Dépend de behavioral data (snippet).
- *                        Recommandations génériques sans données visiteurs. → BETA
+ * Audit fonctionnel — seuls les modules réellement disponibles restent en beta.
+ * Features requiring unvalidated telemetry, mocked market data, or forecast
+ * curves stay in COMING_SOON_ADDONS until their real data path is certified.
  *
  *   reviewIntelligence → review-intelligence.ts:23 gate réelle. Analyse DFS/GBP
  *                        reviews — intégration DFS partielle. → BETA
@@ -419,13 +651,8 @@ export const BETA_ADDONS = new Set<string>([
   // "🧪 Beta — Inclus dans votre plan" and cannot be re-purchased.
   // BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS is a valid non-empty set by design.
   //
-  // Dépendance snippet onsite
-  "behavioralAI",
-  "revenueLeak",
-  "aiCro",
-  // Couverture données partielle / DFS non complète
-  "aiForecasting",
-  "marketIntelligence",
+  // Partial third-party coverage remains explicitly beta; unavailable offers
+  // are listed in COMING_SOON_ADDONS instead.
   "reviewIntelligence",
   // Dépendance OAuth externe
   "aiGbpPosting",
@@ -435,11 +662,27 @@ export const BETA_ADDONS = new Set<string>([
   "backlinkIntelligence",
 ]);
 
+/**
+ * Custom Domain can leave the global roadmap gate only on a Stripe TEST
+ * instance with the explicit, complete Render service configuration. The
+ * separate domain routes use this same predicate before any mutation.
+ */
+export function isCustomDomainTestBetaEnabled(): boolean {
+  const stripeKey = getStripeKey() ?? "";
+  return stripeKey.startsWith("sk_test_") && isRenderDomainProvisioningConfigured();
+}
+
+if (isCustomDomainTestBetaEnabled()) {
+  COMING_SOON_ADDONS.delete("customDomain");
+  BETA_ADDONS.add("customDomain");
+}
+
 /** Product lifecycle independent of an organisation's current entitlements. */
 export function getAddonAvailability(addonKey: string): AddonAvailability {
   // COMING_SOON is authoritative even if a key is accidentally classified
   // elsewhere while catalogue metadata is being updated.
   if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (VALIDATION_REQUIRED_ADDONS.has(addonKey)) return "coming_soon";
   if (BETA_ADDONS.has(addonKey)) return "beta";
   return "available";
 }
@@ -454,6 +697,11 @@ export function getAddonStatus(
   options: { included?: boolean; active?: boolean | number } = {},
 ): AddonStatus {
   const availability = getAddonAvailability(addonKey);
+  if (VALIDATION_REQUIRED_ADDONS.has(addonKey)) {
+    if (options.included) return "included";
+    if (options.active === true || (typeof options.active === "number" && options.active > 0)) return "active";
+    return "coming_soon";
+  }
   if (availability === "coming_soon") return "coming_soon";
   if (options.included) return "included";
   if (options.active === true || (typeof options.active === "number" && options.active > 0)) return "active";
@@ -515,9 +763,11 @@ export function computeQtyAddonExtras(addons: Record<string, boolean | number>):
  *
  * Standard plan: white-label is included (unlocked for Standard and above).
  * Pro plan: white-label is a listed feature; customDomain is NOT (ultra only).
- * Ultra plan: adds customDomain + retention365d + advanced AI add-ons.
+ * Ultra includes all six Pro add-ons plus four Ultra-only additions:
+ * customDomain, behavioralAI, aiForecasting, and retention365d.
+ * keywordDomination remains purchasable on Pro/Ultra but is not bundled.
  */
-export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
+export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = withPlanAliases<ReadonlySet<string>>({
   standard: new Set<string>(["whiteLabel"]),
   pro: new Set<string>([
     "whiteLabel",
@@ -532,20 +782,20 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
   ]),
   ultra: new Set<string>([
     "whiteLabel",
-    "customDomain",
     "advancedWebhooks",
+    "retention90d",
     "advancedSeoLab",
     // BETA + included: status=beta, commercial mode=included. Renders as "🧪 Bêta — Inclus".
     "backlinkIntelligence",
+    "enterprisePermissions",
+    "customDomain",
     // behavioralAI: BETA + included in Ultra → shows as "🧪 Beta — Inclus dans votre plan"
     "behavioralAI",
     // aiForecasting: BETA + included in Ultra → same "🧪 Beta — Inclus" rendering
     "aiForecasting",
-    "enterprisePermissions",
     "retention365d",
-    "keywordDomination",
   ]),
-};
+});
 
 /**
  * PLAN_ALLOWED_ADDONS — which add-ons can be PURCHASED (paid) per plan tier.
@@ -562,8 +812,6 @@ const _STANDARD_PURCHASABLE = new Set<string>([
   "monitorsPack10", "monitorsPack50",
   "gbpSlots10",
   "extraSeats",
-  "auditsPack200", "auditsPack1000",
-  "pdfPack200", "exportsPack1000",
   "aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k",
   "retention90d",
   // NOTE: "prioritySupport" removed — feature not implemented
@@ -574,15 +822,14 @@ const _PRO_EXCLUSIVE = new Set<string>([
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
   //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
   "keywordDomination",
-  "aiGbpPosting", "reviewIntelligence", "localDominationMaps",
-  "aiCro", "behavioralAI", "revenueLeak",
+  "aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer",
   "zapierIntegration",
-  "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([
-  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON — not purchasable.
+  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON in LIVE.
+  // A dedicated agencyPacks TEST price may open it for isolated QA only.
   "retention365d",
 ]);
 
@@ -593,8 +840,42 @@ export const PLAN_ALLOWED_ADDONS: Record<string, ReadonlySet<string>> = {
   agency:   new Set<string>([..._STANDARD_PURCHASABLE, ..._PRO_EXCLUSIVE, ..._ULTRA_EXCLUSIVE]),
 };
 
+/**
+ * The six protected bundled add-ons keep their existing plan-purchase matrix.
+ * Every other sellable add-on (available or beta) can be purchased on Standard,
+ * Pro, and Ultra. Plan tier controls bundling, not purchase eligibility.
+ * Roadmap/validation-required and removed entries retain their lifecycle gates.
+ */
+export const PROTECTED_ADDON_KEYS = new Set<string>([
+  "whiteLabel",
+  "advancedWebhooks",
+  "retention90d",
+  "advancedSeoLab",
+  "backlinkIntelligence",
+  "enterprisePermissions",
+]);
+
+/** Entitled only through its Ultra bundle; never sold as a standalone add-on. */
+export const PLAN_INCLUDED_ONLY_ADDONS = new Set<string>(["customDomain"]);
+
+const SELLABLE_ADDON_AVAILABILITIES = new Set<AddonAvailability>(["available", "beta"]);
+const SELLABLE_ADDONS_ANY_PLAN = Object.keys(ADDON_DEFINITIONS).filter(key =>
+  !PROTECTED_ADDON_KEYS.has(key) &&
+  !PLAN_INCLUDED_ONLY_ADDONS.has(key) &&
+  !REMOVED_ADDONS.has(key) &&
+  !RETIRED_ADDONS.has(key) &&
+  SELLABLE_ADDON_AVAILABILITIES.has(getAddonAvailability(key))
+);
+
+for (const plan of ["standard", "pro", "ultra"] as const) {
+  for (const addonKey of SELLABLE_ADDONS_ANY_PLAN) {
+    (PLAN_ALLOWED_ADDONS[plan] as Set<string>).add(addonKey);
+  }
+}
+
 /** Returns true when a plan is allowed to purchase the given add-on key. */
 export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
+  if (RETIRED_ADDONS.has(addonKey)) return false;
   const planNorm = plan.toLowerCase();
   const allowed = PLAN_ALLOWED_ADDONS[planNorm];
   if (!allowed) {
@@ -602,6 +883,63 @@ export function isPlanAllowedAddon(plan: string, addonKey: string): boolean {
     return _STANDARD_PURCHASABLE.has(addonKey);
   }
   return allowed.has(addonKey);
+}
+
+/**
+ * Purchase eligibility for the public catalogue, including the active Stripe
+ * mode. An offer is purchasable only when it has an active-mode price, the
+ * plan matrix allows it, and that plan does not already include the feature.
+ */
+export function getAddonPurchasablePlans(addonKey: string): string[] {
+  const stripeKey = getStripeKey() ?? "";
+  const availability = getAddonAvailability(addonKey);
+  if (!["available", "beta"].includes(availability)) return [];
+  if (REMOVED_ADDONS.has(addonKey) || RETIRED_ADDONS.has(addonKey)) return [];
+  if (!getAddonPriceId(addonKey, stripeKey)) return [];
+  return getAddonSeparateSalePlans(addonKey);
+}
+
+/** Tiers where the add-on is permitted as a separate purchase, before Stripe readiness. */
+export function getAddonSeparateSalePlans(addonKey: string): string[] {
+  if (PLAN_INCLUDED_ONLY_ADDONS.has(addonKey)) return [];
+  return (["standard", "pro", "ultra"] as const).filter((plan) =>
+    isPlanAllowedAddon(plan, addonKey) &&
+    !(PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
+  );
+}
+
+export type AddonPurchaseStatus =
+  | "purchasable"
+  | "price_unavailable"
+  | "not_sold_separately"
+  | "included"
+  | "coming_soon"
+  | "validation_required"
+  | "retired"
+  | "removed"
+  | "unknown";
+
+/**
+ * Separates the offer's lifecycle/contract from whether this Stripe mode can
+ * actually sell it. Included entitlements stay visible even when their module
+ * is not yet operational or the offer is retired from separate purchase.
+ */
+export function getAddonPurchaseStatus(addonKey: string): AddonPurchaseStatus {
+  if (!ADDON_DEFINITIONS[addonKey]) return "unknown";
+  if (REMOVED_ADDONS.has(addonKey)) return "removed";
+  if (RETIRED_ADDONS.has(addonKey)) return "retired";
+  if (VALIDATION_REQUIRED_ADDONS.has(addonKey)) return "validation_required";
+  if (COMING_SOON_ADDONS.has(addonKey)) return "coming_soon";
+  if (getAddonPurchasablePlans(addonKey).length > 0) return "purchasable";
+
+  if (getAddonSeparateSalePlans(addonKey).length === 0) {
+    const includedOnEveryPlan = Object.keys(PLAN_DEFINITIONS).every((plan) =>
+      (PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey),
+    );
+    return includedOnEveryPlan ? "included" : "not_sold_separately";
+  }
+
+  return "price_unavailable";
 }
 
 export function getPlanForPriceId(priceId: string): string | null {
@@ -617,8 +955,15 @@ export function getPlanForPriceId(priceId: string): string | null {
 }
 
 export function getAddonForPriceId(priceId: string): string | null {
-  for (const [addon, id] of Object.entries(ADDON_PRICE_IDS)) {
-    if (id && id === priceId) return addon;
+  // This is a reverse lookup for verified Stripe events, not a price selector.
+  // Checkout still uses getAddonPriceId(), which enforces the active mode.
+  // Accept both catalogs here so signed TEST subscription events can activate
+  // the same entitlement without ever making a LIVE price usable in TEST checkout.
+  const matches = new Set<string>();
+  for (const priceMap of [ADDON_PRICE_IDS, ADDON_PRICE_IDS_TEST]) {
+    for (const [addon, id] of Object.entries(priceMap)) {
+      if (id && id === priceId) matches.add(addon);
+    }
   }
-  return null;
+  return matches.size === 1 ? [...matches][0] : null;
 }

@@ -1,6 +1,8 @@
+import { newId } from "../lib/ids.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import crypto from "crypto";
+import { validatePublicHttpsWebhook, postWebhookPinned } from "./webhook-url-safety.js";
 
 export const SUPPORTED_EVENTS = [
   "audit.completed", "audit.failed", "monitor.down", "monitor.up",
@@ -36,6 +38,13 @@ export async function createIntegration(
     maxRetries?: number;
   }
 ): Promise<Record<string, unknown>> {
+  // Défense en profondeur : ne jamais enregistrer une destination non publique,
+  // quel que soit l'appelant (toutes les routes ne valident pas).
+  if (data.endpointUrl || data.webhookUrl) {
+    const safe = await validatePublicHttpsWebhook(data.endpointUrl || data.webhookUrl);
+    if (!safe.ok) throw new Error(safe.error);
+    data = { ...data, endpointUrl: safe.url, webhookUrl: undefined };
+  }
   const limit = getIntegrationLimit(plan);
   const client = await pool.connect();
   try {
@@ -47,7 +56,7 @@ export async function createIntegration(
     const current = Number((countRes.rows[0] as Record<string, unknown>)["cnt"] ?? 0);
     if (current >= limit) throw new Error(`Limite du plan atteinte (${current}/${limit})`);
 
-    const id = `intg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = newId("intg");
     const endpointUrl = data.endpointUrl || data.webhookUrl || "";
     const platform = data.platform || "custom";
     const events = data.events ?? [];
@@ -106,7 +115,7 @@ export async function dispatchEvent(
 
     for (const intg of subscribed) {
       const startedAt = Date.now();
-      const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      const runId = newId("run");
       try {
         const delivery = await _deliverWebhook(intg, event, payload);
         const ok = delivery.ok;
@@ -168,6 +177,8 @@ async function _deliverWebhook(
   if (!endpointUrl) return { ok: false, error: "URL de destination absente" };
 
   const platform = (intg["platform"] as string | undefined) || "custom";
+  const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+  if (!safeTarget.ok) return { ok: false, error: safeTarget.error };
   const secretKey = intg["secret_key"] as string | undefined;
   const timeoutMs = Number(intg["timeout_ms"] ?? 10000);
 
@@ -189,15 +200,10 @@ async function _deliverWebhook(
   const customHeaders = parseJson<Record<string, string>>(intg["headers"] as string, {});
   Object.assign(headers, customHeaders);
 
-  const response = await fetch(endpointUrl, {
-    method: "POST",
-    headers,
-    body,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-
-  logger.info({ platform, event, status: response.status, url: endpointUrl }, "[integrations] webhook delivered");
-  return { ok: response.ok, statusCode: response.status, error: response.ok ? undefined : `HTTP ${response.status}` };
+  // DNS épinglé + revalidation à chaque envoi + aucune redirection suivie.
+  const delivery = await postWebhookPinned(safeTarget.url, { headers, body, timeoutMs });
+  logger.info({ platform, event, status: delivery.statusCode }, "[integrations] webhook delivered");
+  return delivery;
 }
 
 // ── buildPlatformPayload ───────────────────────────────────────────────────────
@@ -303,6 +309,8 @@ export async function testIntegration(
       if (!endpointUrl) throw new Error("No endpoint URL configured");
 
       const platform = (intg["platform"] as string | undefined) || "custom";
+      const safeTarget = await validatePublicHttpsWebhook(endpointUrl);
+      if (!safeTarget.ok) throw new Error(safeTarget.error);
       const body = buildPlatformPayload(platform, "test.ping", {
         message: "FlowPoint webhook test — connexion réussie !",
         integration: intg["name"],
@@ -321,14 +329,10 @@ export async function testIntegration(
           .digest("hex")}`;
       }
 
-      const response = await fetch(endpointUrl, {
-        method: "POST",
-        headers,
-        body,
-        signal: AbortSignal.timeout(10000),
-      });
-      ok = response.ok;
-      httpStatus = response.status;
+      const delivery = await postWebhookPinned(safeTarget.url, { headers, body, timeoutMs: 10000 });
+      ok = delivery.ok;
+      httpStatus = delivery.statusCode;
+      if (!ok && delivery.error && httpStatus === undefined) throw new Error(delivery.error);
     } catch (err) {
       deliveryError = err instanceof Error ? err.message : "Request failed";
     }
@@ -345,7 +349,7 @@ export async function testIntegration(
        WHERE id=$3`,
       [ok ? 1 : 0, ok ? 0 : 1, id]
     );
-    const runId = `run_test_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+    const runId = newId("run_test");
     await client.query(
       `INSERT INTO automation_runs
          (id, org_id, integration_id, event_type, payload, status, attempt, duration_ms, http_status, triggered_at, created_at)
@@ -514,7 +518,7 @@ async function writeAutomationLog(
   client: { query: (sql: string, values?: unknown[]) => Promise<unknown> },
   entry: { orgId: string; integrationId?: string; runId?: string; level: string; message: string; metadata?: Record<string, unknown> }
 ): Promise<void> {
-  const id = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const id = newId("alog");
   await client.query(
     `INSERT INTO automation_logs (id, run_id, org_id, integration_id, level, message, metadata, created_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,

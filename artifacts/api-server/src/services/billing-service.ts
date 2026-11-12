@@ -4,16 +4,20 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability } from "../lib/plans.js";
+import { ensureUsageEventsTable, getMonthlyUsageCounts } from "./usage-events.js";
+import { createStripeClient, getStripeKey, isStripeTestMode } from "./stripe-factory.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, RETIRED_ADDONS, computeQtyAddonExtras, getAddonAvailability, getAddonPriceId, getAddonPurchaseStatus, getAddonPurchasablePlans, getPlanPriceId, isCustomDomainTestBetaEnabled } from "../lib/plans.js";
 
-/* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
+/* ── Presentation-only fields not in PLAN_DEFINITIONS ──
+   `addons` below is a legacy plan-card highlight list, not an entitlement map.
+   PLAN_INCLUDED_ADDONS is the sole source for contractual plan inclusions. */
 const _PLAN_PRESENTATION: Record<string, {
   color: string; popular: boolean; annualPrice: number;
   addons: string[]; highlighted: string[];
 }> = {
   standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
   pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
-  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois","SLA 99.9%"] },
+  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois"] },
 };
 
 // ── Plan configuration (public) — derived from plans.ts PLAN_DEFINITIONS ─────
@@ -60,37 +64,37 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   keywordDomination:     { icon: "🎯", unit: "domination mots-clés" },
   backlinkIntelligence:  { icon: "🔗", unit: "backlinks IA"         },
   aiContentStrategist:   { icon: "✍️",  unit: "IA contenu"           },
+  seoChangeImpact:       { icon: "↕️", unit: "impact SEO mesuré"     },
+  technicalSeoFixVerification: { icon: "🛠️", unit: "vérification corrective" },
+  organicCampaignTracker: { icon: "🎯", unit: "suivi de campagne"    },
   // ── Local SEO ──────────────────────────────────────────────────────────────
-  gbpSlots10:            { icon: "📍", unit: "+10 fiches GBP"       },
+  gbpPerformanceLeads:   { icon: "📊", unit: "performance GBP"      },
   aiGbpPosting:          { icon: "📱", unit: "publication IA GBP"   },
-  reviewIntelligence:    { icon: "⭐", unit: "IA avis clients"       },
-  localDominationMaps:   { icon: "🗺️", unit: "cartes locales"        },
+  localPresenceOptimizer: { icon: "📍", unit: "optimisation fiches GBP" },
+  localLandingOpportunities: { icon: "📍", unit: "opportunités locales" },
   // ── Conversion / IA ────────────────────────────────────────────────────────
   aiCro:                 { icon: "🚀", unit: "CRO IA"               },
+  conversionOpportunityEngine: { icon: "📈", unit: "opportunités conversion" },
   behavioralAI:          { icon: "🧠", unit: "comportemental IA"    },
   revenueLeak:           { icon: "💰", unit: "fuites revenus IA"    },
-  abTestingAI:           { icon: "🧪", unit: "A/B tests IA"         },
   // ── Reporting ──────────────────────────────────────────────────────────────
   whiteLabel:            { icon: "🏷️", unit: "portail complet"       },
   agencyPacks:           { icon: "🏢", unit: "packs agence"          },
   aiExecutiveReport:     { icon: "📋", unit: "rapport exécutif IA"  },
+  agencyPortfolioPriorities: { icon: "🗂️", unit: "priorités portfolio" },
   aiForecasting:         { icon: "📈", unit: "prévisions IA"         },
   // ── Intelligence ───────────────────────────────────────────────────────────
   marketIntelligence:    { icon: "🌐", unit: "intelligence marché"   },
-  aiWorkflows:           { icon: "⚙️", unit: "workflows IA"          },
   // ── Équipe ─────────────────────────────────────────────────────────────────
   extraSeats:            { icon: "👥", unit: "+5 sièges"             },
-  enterprisePermissions: { icon: "🔐", unit: "permissions avancées" },
   // ── Rétention de données ───────────────────────────────────────────────────
   retention90d:          { icon: "🗄️", unit: "90 jours"             },
   retention365d:         { icon: "🏛️", unit: "365 jours"             },
-  // ── Intégrations ───────────────────────────────────────────────────────────
-  advancedWebhooks:      { icon: "🔔", unit: "webhooks avancés"      },
-  zapierIntegration:     { icon: "⚡", unit: "Zapier + Make"         },
+  // ── Integrations ───────────────────────────────────────────────────────────
   crmIntegration:        { icon: "🤝", unit: "CRM intégré"           },
   // ── Enterprise ─────────────────────────────────────────────────────────────
   customDomain:          { icon: "🌐", unit: "domaine personnalisé"  },
-  ssoEnterprise:         { icon: "🔑", unit: "SSO SAML/OIDC"        },
+  ssoEnterprise:         { icon: "🔑", unit: "SSO Enterprise — à venir" },
   aiWorkspaceLaunch:     { icon: "🎯", unit: "lancement IA"          },
   // ── Packs audits / exports ─────────────────────────────────────────────────
   auditsPack200:         { icon: "🔍", unit: "+200 audits"           },
@@ -104,7 +108,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
-  if (REMOVED_ADDONS.has(id)) return [];
+  if (REMOVED_ADDONS.has(id) || RETIRED_ADDONS.has(id)) return [];
   const def = ADDON_DEFINITIONS[id];
   if (!def) {
     logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key — omitted");
@@ -119,18 +123,15 @@ export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, p
     desc:     def.description,
     oneTime:  def.oneTime,
     quantity: def.quantity,
-    priceId:  ADDON_PRICE_IDS[id] ?? "",
+    priceId:  getAddonPriceId(id) ?? "",
     // Public billing has no organisation entitlement context. Its status is
     // therefore the canonical product lifecycle; GET /api/addons refines this
     // to "included" or "active" for an authenticated organisation.
     availability: getAddonAvailability(id),
     status:       getAddonAvailability(id),
-    // allowedPlans: derived from PLAN_ALLOWED_ADDONS (canonical per-plan purchasability matrix).
-    // coming_soon add-ons are not purchasable on any plan.
-    allowedPlans: getAddonAvailability(id) === "coming_soon"
-      ? []
-      : (["standard", "pro", "ultra"] as const)
-          .filter(p => PLAN_ALLOWED_ADDONS[p]?.has(id)),
+    // Same mode-aware purchase eligibility as GET /api/plans/catalog.
+    allowedPlans: getAddonPurchasablePlans(id),
+    purchaseStatus: getAddonPurchaseStatus(id),
   }];
 });
 
@@ -182,11 +183,10 @@ export async function getUsageSummary(orgId = "default") {
 
   // Bug-5 fix: resolve nextBillingDate from Stripe when subscription exists
   let nextBillingDate: string | null = null;
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   if (stripeKey && billingCtx.stripeSubscriptionId) {
     try {
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const stripe = await createStripeClient(stripeKey);
       const sub = await stripe.subscriptions.retrieve(billingCtx.stripeSubscriptionId) as unknown as {
         status: string;
         trial_end: number | null;
@@ -255,6 +255,20 @@ export async function getUsageSummary(orgId = "default") {
   }
 }
 
+/**
+ * Consommation mensuelle = max(lignes vivantes du mois, evenements usage_events du mois).
+ * Intention documentee dans usage-events.ts : « supprimer un rapport/audit ne doit
+ * PAS effacer son historique de consommation ». C'est deja la regle de l'AFFICHAGE
+ * (GET /billing/usage) ; l'application du quota l'ignorait et comptait les seules
+ * lignes vivantes (supprimer puis recreer contournait le plafond). Si les evenements
+ * sont illisibles, on retombe sur le compte des lignes vivantes (jamais moins strict
+ * qu'avant) — getMonthlyUsageCounts journalise l'echec.
+ */
+async function cumulativeMonthlyUsage(orgId: string, kind: string, live: number): Promise<number> {
+  const events = await getMonthlyUsageCounts(orgId);
+  return Math.max(live, events[kind] ?? 0);
+}
+
 // ── Quota enforcement ─────────────────────────────────────────────────────────
 /**
  * P0-6 FIX: checkQuota now loads plan and live usage from the database using
@@ -267,8 +281,20 @@ export async function getUsageSummary(orgId = "default") {
  */
 export async function checkQuota(
   resource: "audits" | "monitors" | "reports" | "exports" | "seats",
-  orgId: string
-): Promise<{ allowed: boolean; used: number; limit: number; plan: string }> {
+  orgId: string,
+  options: { failClosed?: boolean } = {},
+): Promise<{ allowed: boolean; used: number; limit: number; plan: string; available?: boolean }> {
+  // Politique d'échec du comptage, par ressource :
+  //  - exports : FAIL-CLOSED par défaut. Compter dépend de la table paresseuse
+  //    `usage_events` ; une erreur silencieuse (ex. colonne erronée, B-01) avait
+  //    rendu le quota inopérant. On refuse (available:false) avec message clair
+  //    plutôt que d'offrir des exports illimités.
+  //  - audits / reports / monitors / seats : comptés sur des tables vivantes du
+  //    schéma migré, et les appelants n'interprètent que `allowed` (un refus
+  //    afficherait « limite atteinte » à tort) : fail-open conservé, mais l'échec
+  //    est journalisé au niveau ERROR, jamais avalé. Les appelants qui veulent
+  //    le refus passent { failClosed: true } explicitement.
+  const failClosed = options.failClosed ?? resource === "exports";
 
   // Safety net: if orgId is unresolved, fall back to standard limits (most restrictive)
   const resolvedOrgId = orgId && orgId !== "default" ? orgId : null;
@@ -295,7 +321,8 @@ export async function checkQuota(
       }
       qtyExtras = computeQtyAddonExtras(addonMap);
     } catch (err) {
-      logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed — using standard limits");
+      logger.error({ err, orgId: resolvedOrgId, resource, failClosed }, "[Billing] checkQuota: DB load failed — using standard limits");
+      if (failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
     }
   }
   const extraMonitors = qtyExtras["monitors"]    ?? 0;
@@ -321,7 +348,8 @@ export async function checkQuota(
               `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
-            usedCount = Number(r.rows[0]?.n ?? 0);
+            // Consommation CUMULEE (usage-events.ts) : supprimer un audit ne libere pas le quota.
+            usedCount = await cumulativeMonthlyUsage(resolvedOrgId, "audit_created", Number(r.rows[0]?.n ?? 0));
             limit = limits.audits + extraAudits;
             break;
           }
@@ -339,7 +367,8 @@ export async function checkQuota(
               `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
               [resolvedOrgId]
             );
-            usedCount = Number(r.rows[0]?.n ?? 0);
+            // Consommation CUMULEE (usage-events.ts) : supprimer un rapport ne libere pas le quota.
+            usedCount = await cumulativeMonthlyUsage(resolvedOrgId, "report_created", Number(r.rows[0]?.n ?? 0));
             limit = limits.reports + extraReports;
             break;
           }
@@ -353,13 +382,15 @@ export async function checkQuota(
             break;
           }
           case "exports": {
-            // Count all export events this month from usage_events
+            // La table est créée paresseusement : la garantir avant de compter.
+            await ensureUsageEventsTable();
+            // Count all export events this month from usage_events.kind
             // (CSV client-side, PDF, Health-Score all report via POST /billing/usage-events)
             const r = await client.query(
               `SELECT COUNT(*)::int AS n FROM usage_events
                 WHERE org_id=$1
-                  AND event_type IN ('export','pdf_export','health_export')
-                  AND created_at > date_trunc('month', now())`,
+                  AND kind IN ('export','pdf_export','health_export')
+                  AND created_at >= date_trunc('month', now())`,
               [resolvedOrgId]
             );
             usedCount = Number(r.rows[0]?.n ?? 0);
@@ -371,11 +402,13 @@ export async function checkQuota(
         client.release();
       }
     } catch (err) {
-      logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed — allowing");
+      logger.error({ err, orgId: resolvedOrgId, resource, failClosed }, `[Billing] checkQuota: usage count failed — ${failClosed ? "DENYING (fail-closed)" : "allowing (fail-open)"}`);
+      if (failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
       return { allowed: true, used: 0, limit: limits[resource as keyof typeof limits] as number || 0, plan };
     }
   } else {
     // No orgId — use standard limits with zero usage (most conservative: allow but log)
+    if (failClosed) return { allowed: false, used: 0, limit: 0, plan, available: false };
     limit = limits[resource as keyof typeof limits] as number || 0;
     logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId — returning standard limit, usage=0");
   }
@@ -467,10 +500,10 @@ export async function getSubscriptionAnalytics(orgId = "default") {
 
 // ── Trial management ──────────────────────────────────────────────────────────
 export async function startTrial(plan: string = "pro", days: number = 14, orgId = "default") {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
-      throw new Error("STRIPE_LIVE_API_KEY is required in production — cannot activate trial");
+    if (process.env["NODE_ENV"] === "production" || isStripeTestMode()) {
+      throw new Error("Stripe key for the selected mode is required — cannot activate trial");
     }
     const trialEnd = new Date(Date.now() + days * 86400000).toISOString();
     store.broadcastPlanUpdate(plan, orgId);
@@ -479,11 +512,13 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
-    const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
+    const planPriceId = getPlanPriceId(plan, stripeKey);
     if (!planPriceId) {
+      if (isStripeTestMode()) {
+        throw new Error(`No test-mode Stripe price configured for plan: ${plan}`);
+      }
       const trialEnd = new Date(Date.now() + days * 86400000).toISOString();
       store.broadcastPlanUpdate(plan, orgId);
       return { ok: true, trialEndsAt: trialEnd, plan, noPrice: true };
@@ -534,9 +569,9 @@ export async function validateCoupon(code: string): Promise<{
   duration?: string;
   mock?: boolean;
 }> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   if (!stripeKey) {
-    if (process.env["NODE_ENV"] === "production") {
+    if (process.env["NODE_ENV"] === "production" || isStripeTestMode()) {
       return { valid: false, error: "Payment service not configured" };
     }
     if (code === "FLOWPOINT20") return { valid: true, discount: 20, type: "percent", name: "Demo coupon (dev)", mock: true };
@@ -544,8 +579,7 @@ export async function validateCoupon(code: string): Promise<{
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const coupon = await stripe.coupons.retrieve(code);
 
     if (!coupon.valid) return { valid: false, error: "Code expiré ou invalide" };
@@ -581,19 +615,30 @@ export async function getInvoices(limit: number = 20, stripeCustomerId?: string)
   mock?: boolean;
   error?: string;
 }> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getStripeKey();
   const customerId = stripeCustomerId ?? null;
   if (!stripeKey || !customerId) {
     return { invoices: [], mock: !stripeKey };
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const invoices = await stripe.invoices.list({ customer: customerId, limit });
 
     return {
-      invoices: invoices.data.map(inv => ({
+      invoices: invoices.data.map((inv: {
+        id: string;
+        number: string | null;
+        amount_paid: number | null;
+        amount_due: number;
+        currency: string;
+        status: string | null;
+        created: number;
+        invoice_pdf: string | null;
+        hosted_invoice_url: string | null;
+        period_start: number | null;
+        period_end: number | null;
+      }) => ({
         id: inv.id,
         number: inv.number,
         amount: (inv.amount_paid || inv.amount_due) / 100,
@@ -625,7 +670,7 @@ export const PLAN_FEATURES: Record<string, string[]> = {
   ],
   ultra: [
     "audits:1000", "monitors:300", "reports:1000", "exports:1000", "team:10",
-    "ai-strategist", "white-label-portal", "sso-enterprise", "custom-domain", "sla-999",
+    "ai-strategist", "white-label-portal",
     "retention:365", "multi-workspace", "agency-lab", "client-billing", "dedicated-onboarding",
     "forecasting", "revenue-leak", "automation", "market-intelligence",
   ],
@@ -633,6 +678,12 @@ export const PLAN_FEATURES: Record<string, string[]> = {
 
 export function hasFeature(feature: string, plan?: string): boolean {
   const p = (plan || "standard").toLowerCase();
+  const normalizedFeature = feature.toLowerCase();
+  if (normalizedFeature === "custom-domain") {
+    return p === "ultra" && isCustomDomainTestBetaEnabled();
+  }
+  const notOperational = new Set(["sso", "saml", "sso-enterprise", "sla-999"]);
+  if (notOperational.has(normalizedFeature)) return false;
   const features = PLAN_FEATURES[p] || PLAN_FEATURES.standard;
   if (p === "ultra") return true;
   return features.some(f => f === feature || f.startsWith(feature + ":"));

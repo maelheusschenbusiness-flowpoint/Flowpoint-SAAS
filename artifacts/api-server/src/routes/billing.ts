@@ -1,12 +1,16 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { sessionCookieSameSite } from "../lib/session-cookie.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, PLAN_PRICE_IDS_TEST, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, VALIDATION_REQUIRED_ADDONS, getAddonPriceId, getPlanPriceId, getPlanForPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
-import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeCheckoutModeLog, getStripeKey, getPublishableKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
+import {
+  classifyStripeRetrieveError, isWellFormedCheckoutSessionId, resolveVerifiedPlan, sessionBelongsToOrg,
+} from "../services/billing-verify-guards.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
 import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
 import {
@@ -115,7 +119,11 @@ function parseAddons(raw: unknown, res: Response): AddonsMap | null {
   const result: AddonsMap = {};
   for (const [key, val] of Object.entries(obj)) {
     if (!KNOWN_ADDON_KEYS.has(key)) {
-      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      res.status(400).json({ error: `Unknown add-on: "${key}"` });
+      return null;
+    }
+    if (VALIDATION_REQUIRED_ADDONS.has(key) && (val === true || (typeof val === "number" && val > 0))) {
+      res.status(503).json({ error: "Cet add-on attend encore une validation avant sa mise en vente.", code: "ADDON_VALIDATION_REQUIRED", addonKey: key });
       return null;
     }
     if (typeof val === "boolean") { result[key] = val; continue; }
@@ -284,6 +292,10 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
 router.get("/billing/verify", async (req: Request, res: Response) => {
   const sessionId = String(req.query["session_id"] || "");
   if (!sessionId) { res.status(400).json({ error: "session_id required" }); return; }
+  if (!isWellFormedCheckoutSessionId(sessionId)) {
+    res.status(400).json({ error: "session_id invalide", code: "INVALID_SESSION_ID" });
+    return;
+  }
 
   const stripeKey = getStripeKey();
 
@@ -300,7 +312,27 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+    let session: Awaited<ReturnType<typeof stripe.checkout.sessions.retrieve>>;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+    } catch (retrieveErr) {
+      const failure = classifyStripeRetrieveError(retrieveErr);
+      // Cause journalisee sans donnee personnelle : type + code Stripe, jamais le message ni le session_id.
+      logger.warn({ stripeType: failure.stripeType, stripeCode: failure.stripeCode, httpStatus: failure.status, orgId: req.orgId ?? "default" },
+        "[Billing] verify: Stripe checkout session retrieve failed");
+      res.status(failure.status).json({ error: failure.error, code: failure.code });
+      return;
+    }
+
+    // ── Propriete de la session : AVANT toute lecture d'etat, ecriture ou broadcast ──
+    const orgIdVerify = req.orgId ?? "default";
+    const billingCtx = await loadBillingContext(orgIdVerify);
+    if (!sessionBelongsToOrg(session as never, orgIdVerify, billingCtx.stripeCustomerId)) {
+      logger.warn({ orgId: orgIdVerify, httpStatus: 403 },
+        "[Billing] Checkout verification rejected — session does not belong to the authenticated organization");
+      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation.", code: "SESSION_NOT_OWNED" });
+      return;
+    }
 
     if (session.payment_status !== "paid" && session.status !== "complete") {
       res.status(402).json({ error: "Payment not completed", status: session.status });
@@ -308,100 +340,145 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }
 
     // ── Detect checkout type from metadata ─────────────────────────────────────
-    // AI credits-only sessions must not be treated as plan subscriptions;
-    // the caller (checkout-return.html) uses checkoutType to show the right UI.
+    // Hosted add-on/credit checkouts must never fall through to the legacy
+    // default-plan path below. Their entitlement is written by the webhook.
     const sessionMeta = (session.metadata ?? {}) as Record<string, string>;
     const checkoutType: string = sessionMeta["flowpoint_checkout_type"] ?? sessionMeta["type"] ?? "subscription";
-    const isAiCredits = checkoutType === "ai_credits_only" || checkoutType === "ai_credits";
+    const sessionAddonKey = String(sessionMeta["addonKey"] ?? "").trim();
+    const sessionPackKey = String(sessionMeta["pack"] ?? "").trim();
+    const immediateAddonKeys = String(sessionMeta["immediate_addons"] ?? "")
+      .split(",")
+      .map(key => key.trim())
+      .filter(Boolean);
+    const aiCreditPacks = String(sessionMeta["ai_credits"] ?? "")
+      .split(",")
+      .map(key => key.trim())
+      .filter(key => AI_CREDIT_PACK_KEYS.has(key));
+    const isAiCreditsOnly =
+      checkoutType === "ai_credits_only" ||
+      checkoutType === "ai_credits" ||
+      sessionMeta["type"] === "ai_credits" ||
+      AI_CREDIT_PACK_KEYS.has(sessionAddonKey) ||
+      AI_CREDIT_PACK_KEYS.has(sessionPackKey);
+    const hasAiCreditPurchase = isAiCreditsOnly || aiCreditPacks.length > 0;
+    const isAddonCheckout = !isAiCreditsOnly &&
+      (checkoutType === "addon_only" || Boolean(sessionAddonKey));
 
-    // Credits field: parse from ai_credits metadata or credits field
-    let creditsGranted = 0;
-    if (isAiCredits) {
-      const rawCredits = sessionMeta["credits"] ?? "0";
-      creditsGranted = parseInt(rawCredits, 10) || 0;
-      if (!creditsGranted) {
-        // Try resolving from ai_credits pack key list
-        const AI_CREDITS_FROM_PACK: Record<string, number> = {
-          aiCreditsPack50k: 50000, aiCreditsPack200k: 200000, aiCreditsPack500k: 500000,
-        };
-        const packKey = (sessionMeta["ai_credits"] ?? "").split(",").find(k => k.startsWith("aiCreditsPack"));
-        if (packKey) creditsGranted = AI_CREDITS_FROM_PACK[packKey] ?? 0;
-        if (!creditsGranted) {
-          const packName = sessionMeta["pack"] ?? "";
-          creditsGranted = AI_CREDITS_FROM_PACK[packName] ?? 0;
-        }
+    const requestedAddonKeys = Array.from(new Set([
+      ...(sessionAddonKey && !isAiCreditsOnly ? [sessionAddonKey] : []),
+      ...immediateAddonKeys,
+    ]));
+    if (requestedAddonKeys.some(key => !KNOWN_ADDON_KEYS.has(key))) {
+      res.status(422).json({ error: "Add-on inconnu dans la session de paiement." });
+      return;
+    }
+
+    // AI credit packs can be combined with a plan or add-ons in public Checkout.
+    // Do not acknowledge any part of such a purchase until its session/org-scoped
+    // purchase ledger row exists.
+    let verifiedAiCredits = 0;
+    if (hasAiCreditPurchase) {
+      if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+        res.status(session.status === "complete" ? 202 : 402).json({
+          ok: false,
+          pending: session.status === "complete",
+          status: session.status === "complete" ? "processing" : session.status,
+          checkoutType,
+        });
+        return;
+      }
+      const { pool: verifyPool } = await import("@workspace/db");
+      const purchase = await verifyPool.query<{ credits: number | string }>(
+        `SELECT COALESCE(SUM(credits), 0)::text AS credits
+           FROM ai_credit_purchases
+          WHERE stripe_session_id = $1 AND org_id::text = $2
+        `,
+        [sessionId, orgIdVerify],
+      );
+      verifiedAiCredits = Number(purchase.rows[0]?.credits ?? 0);
+      if (verifiedAiCredits <= 0) {
+        res.status(202).json({ ok: false, pending: true, status: "processing", checkoutType });
+        return;
+      }
+      logger.info({ checkoutType, credits: verifiedAiCredits, sessionId, orgId: orgIdVerify }, "[Billing] AI credits session verified from purchase ledger");
+    }
+
+    // Credit-only sessions have no subscription state to persist.
+    if (isAiCreditsOnly) {
+      res.json({ ok: true, checkoutType, credits: verifiedAiCredits });
+      return;
+    }
+
+    // Direct add-on checkouts and hosted add-on-only carts are activated by
+    // Stripe's webhook. Never infer a plan or show success while that write is
+    // still pending.
+    if (isAddonCheckout || immediateAddonKeys.length > 0) {
+      const addonKeys = requestedAddonKeys;
+      if (!addonKeys.length) {
+        res.status(422).json({ error: "Add-ons inconnus dans la session de paiement." });
+        return;
+      }
+      if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+        res.status(session.status === "complete" ? 202 : 402).json({
+          ok: false,
+          pending: session.status === "complete",
+          status: session.status === "complete" ? "processing" : session.status,
+          checkoutType: isAddonCheckout ? "addon_only" : checkoutType,
+        });
+        return;
+      }
+      const requestedQuantity = Math.max(1, parseInt(sessionMeta["quantity"] ?? "1", 10) || 1);
+      const missingAddons = addonKeys.filter(key => {
+        const value = billingCtx.addons[key];
+        if (value !== true && !(typeof value === "number" && value > 0)) return true;
+        return key === sessionAddonKey && QTY_ADDONS.has(key) &&
+          typeof value === "number" && value < requestedQuantity;
+      });
+      if (missingAddons.length) {
+        res.status(202).json({
+          ok: false,
+          pending: true,
+          status: "processing",
+          checkoutType: isAddonCheckout ? "addon_only" : checkoutType,
+        });
+        return;
+      }
+      if (isAddonCheckout) {
+        res.json({
+          ok: true,
+          checkoutType: "addon_only",
+          addonKeys,
+          ...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {}),
+        });
+        return;
       }
     }
 
-    const orgIdVerify = req.orgId ?? "default";
-
-    // Bind the Stripe Checkout session to this authenticated organization
-    // before reporting or persisting anything (same rule as Test-Replit).
-    const ownerCtx = await loadBillingContext(orgIdVerify);
-    const sessionOrgId = String(sessionMeta["orgId"] ?? "").trim();
-    const sessionCustomerId = typeof session.customer === "string"
-      ? session.customer
-      : session.customer && typeof session.customer === "object" && "id" in session.customer
-        ? String(session.customer.id)
-        : "";
-    const metadataOrgMatches = !!sessionOrgId && sessionOrgId === orgIdVerify;
-    const customerMatches = !!sessionCustomerId &&
-      !!ownerCtx.stripeCustomerId &&
-      sessionCustomerId === ownerCtx.stripeCustomerId;
-    if ((sessionOrgId && !metadataOrgMatches) ||
-        (sessionCustomerId && ownerCtx.stripeCustomerId && !customerMatches) ||
-        (!metadataOrgMatches && !customerMatches)) {
-      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify },
-        "[Billing] Checkout verification rejected — session does not match authenticated organization");
-      res.status(403).json({ error: "Cette session de paiement ne correspond pas à votre organisation." });
-      return;
-    }
-
-    // For AI credits: no plan update needed; webhook already credited the org.
-    // Return early with credits info so checkout-return.html can show proper confirmation.
-    if (isAiCredits) {
-      logger.info({ checkoutType, creditsGranted, sessionId, orgId: orgIdVerify }, "[Billing] AI credits session verified");
-      res.json({ ok: true, checkoutType, credits: creditsGranted });
-      return;
-    }
-
+    // Pas de plan par defaut : metadonnees absentes ou invalides => aucune ecriture, aucun broadcast.
     // Only a subscription-mode plan checkout may change the organization's plan.
-    // Add-on and credit purchases are applied by the webhook; never infer a plan.
-    const sessionAddonKey = String(sessionMeta["addonKey"] ?? "").trim();
-    const isNonPlanCheckout =
-      checkoutType === "addon_only" ||
-      !!sessionAddonKey ||
-      AI_CREDIT_PACK_KEYS.has(String(sessionMeta["pack"] ?? "").trim()) ||
-      session.mode !== "subscription";
-    if (isNonPlanCheckout) {
-      logger.info({ checkoutType, sessionId, orgId: orgIdVerify }, "[Billing] Non-plan checkout verified — plan unchanged");
-      res.json({ ok: true, checkoutType: checkoutType === "subscription" ? "addon_only" : checkoutType, planChanged: false });
-      return;
-    }
-
-    const verifiedSub = typeof session.subscription === "object" && session.subscription
-      ? session.subscription as { id?: string; status?: string; metadata?: Record<string, string> | null;
-          items?: { data?: Array<{ price?: { id?: string } | null }> } }
+    // The plan comes from the subscription's Stripe price; metadata is a fallback.
+    const verifiedSub = session.mode === "subscription" && typeof session.subscription === "object" && session.subscription
+      ? session.subscription as { id?: string; status?: string; items?: { data?: Array<{ price?: { id?: string } | null }> } }
       : null;
-    const VALID_PLANS = ["standard", "pro", "ultra"];
     let planFromSub: string | null = null;
     for (const item of verifiedSub?.items?.data ?? []) {
       const found = item?.price?.id ? getPlanForPriceId(item.price.id) : null;
       if (found) { planFromSub = found; break; }
     }
-    const metaPlan = String(sessionMeta["selected_plan"] || sessionMeta["plan"] || "").trim().toLowerCase();
-    const planMeta = planFromSub ?? (VALID_PLANS.includes(metaPlan) ? metaPlan : "");
-    if (!verifiedSub?.id || !VALID_PLANS.includes(planMeta) ||
-        !["active", "trialing"].includes(String(verifiedSub.status ?? ""))) {
-      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify }, "[Billing] verify: no valid plan subscription in session — nothing persisted");
-      res.status(422).json({ ok: false, error: "Aucun abonnement valide dans cette session de paiement.", code: "PLAN_UNRESOLVED", checkoutType });
+    const planMeta = verifiedSub?.id && ["active", "trialing"].includes(String(verifiedSub.status ?? ""))
+      ? (planFromSub ?? resolveVerifiedPlan(sessionMeta))
+      : null;
+    if (planMeta && billingCtx.stripeSubscriptionId && billingCtx.stripeSubscriptionId !== verifiedSub?.id &&
+        ["active", "trialing", "past_due"].includes(String(billingCtx.subscriptionStatus ?? ""))) {
+      logger.warn({ checkoutType, orgId: orgIdVerify, httpStatus: 409 },
+        "[Billing] verify: session subscription is not the organization's current subscription — nothing persisted");
+      res.status(409).json({ ok: false, error: "Cette session ne correspond pas à l'abonnement actuel.", code: "SUBSCRIPTION_MISMATCH", checkoutType });
       return;
     }
-    const currentCtx = await loadBillingContext(orgIdVerify);
-    if (currentCtx.stripeSubscriptionId && currentCtx.stripeSubscriptionId !== verifiedSub.id &&
-        ["active", "trialing", "past_due"].includes(String(currentCtx.subscriptionStatus ?? ""))) {
-      logger.warn({ checkoutType, sessionId, orgId: orgIdVerify }, "[Billing] verify: session subscription is not the organization's current subscription — nothing persisted");
-      res.status(409).json({ ok: false, error: "Cette session ne correspond pas à l'abonnement actuel.", code: "SUBSCRIPTION_MISMATCH", checkoutType });
+    if (!planMeta) {
+      logger.warn({ checkoutType, orgId: orgIdVerify, httpStatus: 422 },
+        "[Billing] verify: plan absent or invalid in session metadata — nothing persisted");
+      res.status(422).json({ ok: false, error: "Plan introuvable dans la session de paiement.", code: "PLAN_UNRESOLVED", checkoutType });
       return;
     }
     store.broadcastPlanUpdate(planMeta, orgIdVerify);
@@ -416,8 +493,6 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     for (const key of QTY_ADDONS) {
       if (addonsMeta[key] !== undefined) activatedAddons[key] = Number(addonsMeta[key] || 0);
     }
-
-    const billingCtx = await loadBillingContext(orgIdVerify);
 
     // Persist billing state to organizations (new source of truth) + mirror to org_settings
     const subscription = typeof session.subscription === "object" && session.subscription
@@ -435,7 +510,12 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }).catch(err => logger.error({ err }, "[Billing] Failed to persist billing state after checkout verify"));
     logger.info({ plan: planMeta, sessionId, orgId: orgIdVerify }, "[Billing] Checkout verified — plan activated");
 
-    res.json({ ok: true, plan: planMeta, checkoutType });
+    res.json({
+      ok: true,
+      plan: planMeta,
+      checkoutType,
+      ...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {}),
+    });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to verify checkout session");
     res.status(500).json({ error: "Failed to verify checkout session" });
@@ -738,8 +818,8 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
       const _cancelAt = subPeriodEnd(sub);
       if (email) {
         mailer.sendSubscriptionCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan,
-          cancelDate: _cancelAt ? new Date(_cancelAt * 1000).toLocaleDateString("fr-FR") : null,
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan,
+          cancelDate: _cancelAt ? new Date(_cancelAt * 1000).toISOString() : null,
         }).catch(() => {});
       }
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: _cancelAt });
@@ -748,7 +828,7 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
       await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       if (email) {
         mailer.sendSubscriptionCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
       res.json({ ok: true, cancelAtPeriodEnd: false });
@@ -795,7 +875,7 @@ router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response
     const email = billingCtx.email ?? req.orgContext?.email;
     if (email) {
       mailer.sendSubscriptionReactivated({
-        to: email, name: email.split("@")[0], plan: billingCtx.plan,
+        to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan,
       }).catch(() => {});
     }
 
@@ -861,8 +941,8 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
       await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
       if (email) {
         mailer.sendTrialCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan,
-          cancelDate: new Date(sub.trial_end! * 1000).toLocaleDateString("fr-FR"),
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan,
+          cancelDate: new Date(sub.trial_end! * 1000).toISOString(),
         }).catch(() => {});
       }
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.trial_end });
@@ -871,7 +951,7 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
       await persistOrgData(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       if (email) {
         mailer.sendTrialCanceled({
-          to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
+          to: email, orgId, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
         }).catch(() => {});
       }
       // Revoke ALL active sessions for this user so that any open browser/device
@@ -897,7 +977,7 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
         // If session is already invalid (e.g. duplicate request), continue — idempotent
       }
       const _isProd = process.env["NODE_ENV"] === "production" || !!process.env["RENDER"];
-      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: _isProd ? "none" : "lax", path: "/" });
+      res.clearCookie("fp_token", { httpOnly: true, secure: _isProd, sameSite: sessionCookieSameSite(), path: "/" });
       logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately — session revoked");
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
@@ -1210,7 +1290,14 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     if (pid) addonPriceToKey[pid] = key;
   }
   const targetIncluded = PLAN_INCLUDED_ADDONS[targetPlan] ?? new Set<string>();
-  const planPriceIdSet  = new Set(Object.values(PLAN_PRICE_IDS).filter(Boolean));
+  // A subscription can contain either LIVE or TEST plan prices. The target
+  // price is mode-aware via getPlanPriceId(); classification must be too, or a
+  // TEST upgrade treats the existing plan item as an add-on and appends a
+  // second recurring plan price instead of replacing it.
+  const planPriceIdSet = new Set([
+    ...Object.values(PLAN_PRICE_IDS),
+    ...Object.values(PLAN_PRICE_IDS_TEST),
+  ].filter(Boolean));
 
   type SubItem = { id: string; price: { id: string }; quantity?: number; current_period_end?: number | null };
 
@@ -1275,7 +1362,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         // State C: subscription truly ended. Try server-side reactivation first
         // (customer has a reusable PM → no Checkout required). Fall through to
         // Checkout only when Checkout is genuinely necessary.
-        const priceId = PLAN_PRICE_IDS[targetPlan];
+        const priceId = getPlanPriceId(targetPlan);
         if (!priceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
@@ -1420,10 +1507,12 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           });
           return;
         }
-        const priceId    = PLAN_PRICE_IDS[targetPlan];
+        const priceId    = getPlanPriceId(targetPlan);
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
 
-        const planItem = sub.items.data.find((item: SubItem) => planPriceIdSet.has(item.price.id));
+        const planItems = sub.items.data.filter((item: SubItem) => planPriceIdSet.has(item.price.id));
+        const planItem = planItems[0];
+        const duplicatePlanItems = planItems.slice(1);
 
         // Add-on items now included in the new plan (to be removed from billing)
         const removedIncludedItems = sub.items.data
@@ -1453,7 +1542,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           // item now would downgrade the user's access immediately. A schedule
           // preserves the remaining trial days and changes the price only when
           // the trial ends (or at the next paid renewal).
-          const currentPriceId = planItem?.price?.id ?? PLAN_PRICE_IDS[currentPlan];
+          const currentPriceId = planItem?.price?.id ?? getPlanPriceId(currentPlan);
 
           const currentAddonPrices = sub.items.data
             .filter((item: SubItem) => !planPriceIdSet.has(item.price.id))
@@ -1652,7 +1741,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         const prorationBehavior = isUpgrade && !isTrialing ? "create_prorations" : "none";
         await stripe.subscriptions.update(sub.id, {
           items: [
-            { id: planItem?.id, price: priceId },
+            { id: planItem?.id, price: priceId, quantity: 1 },
+            ...duplicatePlanItems.map((item: SubItem) => ({ id: item.id, deleted: true as const })),
             ...keptAddonItems.map((item: SubItem) => ({ id: item.id })),
           ],
           proration_behavior: prorationBehavior,
@@ -1761,7 +1851,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       // stripeCustomerId exists but no active/trialing Stripe sub found.
       // CAS 2: try server-side reactivation if customer has a reusable PM.
       {
-        const _reactPriceId = PLAN_PRICE_IDS[targetPlan];
+        const _reactPriceId = getPlanPriceId(targetPlan);
         if (!_reactPriceId) {
           res.status(400).json({ error: `Unknown plan: ${plan}` });
           return;
@@ -1896,7 +1986,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     // NEVER redirect to the public signup flow.
     // The webhook is the only source of truth for plan activation.
     {
-      const _nsPriceId = PLAN_PRICE_IDS[targetPlan];
+      const _nsPriceId = getPlanPriceId(targetPlan);
       if (!_nsPriceId) {
         res.status(400).json({ error: `Plan inconnu : ${plan}` });
         return;
@@ -2208,7 +2298,9 @@ router.post("/billing/checkout/annual", ownerOnly, async (req: Request, res: Res
     const stripe = await createStripeClient(stripeKey);
 
     const annualPriceEnvKey = `STRIPE_PRICE_${plan.toUpperCase()}_ANNUAL`;
-    const annualPriceId = process.env[annualPriceEnvKey] || PLAN_PRICE_IDS[plan.toLowerCase()];
+    const annualPriceId = stripeKey.startsWith("sk_test_")
+      ? process.env[`STRIPE_TEST_PRICE_${plan.toUpperCase()}_ANNUAL`] || undefined
+      : process.env[annualPriceEnvKey] || getPlanPriceId(plan, stripeKey);
 
     if (!annualPriceId) {
       res.status(400).json({ error: `No annual price configured for plan: ${plan}` });
@@ -2453,7 +2545,9 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
     return;
   }
 
-  const priceId = process.env[packInfo.envVar] || ADDON_PRICE_IDS[packInfo.addonKey];
+  const priceId = stripeKey.startsWith("sk_test_")
+    ? getAddonPriceId(packInfo.addonKey, stripeKey)
+    : process.env[packInfo.envVar] || getAddonPriceId(packInfo.addonKey, stripeKey);
   if (!priceId) {
     if (process.env["NODE_ENV"] !== "production") {
       logger.warn(`[Billing] No Stripe price for ${pack} — mock checkout (dev only)`);
@@ -2473,9 +2567,9 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
       mode: "payment",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      // checkout-return.html handles ai_credits type via billing/verify checkoutType field
-      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${publicUrl}/dashboard.html#billing`,
+      // The return page restores the existing browser session before verification.
+      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}&kind=ai_credits`,
+      cancel_url:  `${publicUrl}/checkout-return.html?cancelled=1&kind=ai_credits`,
       metadata: {
         type:           "ai_credits",
         pack,
@@ -2517,7 +2611,10 @@ router.post("/billing/ai-credits-intent", billingCheckoutRateLimit, ownerOnly, a
 
   const orgId = req.orgId ?? "default";
   const stripeKey = getStripeKey();
-  const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
+  // Selecteur unique, aligne sur le mode de stripeKey : une cle du mauvais
+  // mode est ignoree (rend ""), ce qui declenche le 503 explicite ci-dessous
+  // plutot qu'un echec silencieux dans Stripe.js.
+  const publishableKey = getPublishableKey(stripeKey);
 
   if (!stripeKey || !publishableKey) {
     logger.error({ orgId, pack }, "[Billing] Stripe keys missing — AI credits in-app payment unavailable");
@@ -2562,8 +2659,7 @@ router.post("/billing/ai-credits-intent", billingCheckoutRateLimit, ownerOnly, a
 
 // ── GET /billing/config ──────────────────────────────────────────────────────
 router.get("/billing/config", (_req: Request, res: Response) => {
-  const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
-  res.json({ publishableKey });
+  res.json({ publishableKey: getPublishableKey() });
 });
 
 // ── GET /billing/events (SSE) ─────────────────────────────────────────────────
@@ -2605,8 +2701,8 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
 
-  const addonPriceId = ADDON_PRICE_IDS[addonKey];
   const stripeKeyForAddonCheck = getStripeKey();
+  const addonPriceId = getAddonPriceId(addonKey, stripeKeyForAddonCheck);
 
   if (stripeKeyForAddonCheck && billingCtx.stripeCustomerId) {
     try {
@@ -2651,7 +2747,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
   const stripeKey = getStripeKey();
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
-  const priceId = ADDON_PRICE_IDS[addonKey];
+  const priceId = getAddonPriceId(addonKey, stripeKey);
   if (!priceId) {
     res.status(422).json({ error: `Aucun prix Stripe configuré pour l'add-on "${addonName || addonKey}". Contactez le support.` });
     return;
@@ -2692,13 +2788,34 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
     }
 
     const isAiCreditPack = AI_CREDIT_PACK_KEYS.has(addonKey);
+    const aiCreditDetails: Record<string, { credits: number; amountEurCents: number }> = {
+      aiCreditsPack50k: { credits: 50000, amountEurCents: 400 },
+      aiCreditsPack200k: { credits: 200000, amountEurCents: 900 },
+      aiCreditsPack500k: { credits: 500000, amountEurCents: 1900 },
+    };
+    const aiCreditPurchase = aiCreditDetails[addonKey];
+    const checkoutKind = isAiCreditPack ? "ai_credits" : "addon";
     const session = await stripe.checkout.sessions.create({
       mode: isAiCreditPack ? "payment" : "subscription",
       ...(addonCustomerId ? { customer: addonCustomerId } : {}),
       line_items: [{ price: priceId, quantity: checkoutQty }],
-      success_url: `${publicUrl}/billing?addon_success=${encodeURIComponent(addonKey)}`,
-      cancel_url:  `${publicUrl}/billing?addon_cancel=1`,
-      metadata: { addonKey, addonName, orgId, quantity: String(checkoutQty) },
+      success_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}&kind=${checkoutKind}`,
+      cancel_url:  `${publicUrl}/checkout-return.html?cancelled=1&kind=${checkoutKind}`,
+      metadata: isAiCreditPack
+        ? {
+            type: "ai_credits",
+            pack: addonKey,
+            credits: String(aiCreditPurchase?.credits ?? 0),
+            amountEurCents: String(aiCreditPurchase?.amountEurCents ?? 0),
+            orgId,
+          }
+        : {
+            flowpoint_checkout_type: "addon_only",
+            addonKey,
+            addonName,
+            orgId,
+            quantity: String(checkoutQty),
+          },
     });
 
     const sessionId: string = typeof session.id === "string" ? session.id : String(session.id ?? "");
@@ -2732,6 +2849,11 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
     const billingCtx = await loadBillingContext(orgId);
     const email      = billingCtx.email ?? "";
     const name       = billingCtx.firstName ?? email.split("@")[0] ?? "utilisateur";
+    const emailLocale = email
+      ? await import("../services/email-localization.js")
+          .then(({ resolveEmailLocale }) => resolveEmailLocale(email, { orgId }))
+          .catch(() => undefined)
+      : undefined;
 
     const { deleteAccount } = await import("../services/account-deletion.js");
     const report = await deleteAccount({
@@ -2743,7 +2865,10 @@ router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req:
 
     // Confirmation email — only after the transaction has committed.
     if (email) {
-      mailer.sendAccountDeleted({ to: email, name }).catch((mailErr: unknown) => {
+      const emailLocaleContext = emailLocale
+        ? { resolvedLocale: emailLocale, lookupByEmail: false }
+        : { language: "en", lookupByEmail: false };
+      mailer.sendAccountDeleted({ to: email, name, ...emailLocaleContext }).catch((mailErr: unknown) => {
         logger.warn({ mailErr, orgId }, "[Billing/DeleteAccount] Confirmation email failed (non-fatal)");
       });
     }

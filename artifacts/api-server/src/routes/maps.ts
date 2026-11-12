@@ -6,6 +6,7 @@ import {
   getDistanceMatrix,
   getHeatmapData,
   analyzeCompetitors,
+  resolveMapsSearchKeyword,
   getPlaceDetails,
   fetchPlacePhoto,
 } from "../services/maps-service.js";
@@ -101,12 +102,28 @@ router.get("/maps/heatmap", async (req: Request, res: Response) => {
 router.get("/maps/competitors", async (req: Request, res: Response) => {
   const lat = parseFloat(req.query["lat"] as string);
   const lng = parseFloat(req.query["lng"] as string);
-  const keyword = (req.query["keyword"] as string) || "";
+  let keyword = resolveMapsSearchKeyword(req.query["keyword"], "");
   const radius = Math.min(100000, parseInt(req.query["radius"] as string) || 5000);
   if (isNaN(lat) || isNaN(lng)) {
     res.status(400).json({ error: "lat and lng required" }); return;
   }
   try {
+    if (!keyword) {
+      const orgId = req.orgContext?.orgId;
+      if (!orgId || orgId === "default") {
+        res.status(401).json({ error: "An authenticated organization is required to infer its activity." });
+        return;
+      }
+      const profile = await req.orgDb(
+        "SELECT industry FROM org_settings WHERE org_id = $1 LIMIT 1",
+        [orgId],
+      );
+      keyword = resolveMapsSearchKeyword("", profile.rows[0]?.["industry"]);
+      if (!keyword) {
+        res.status(400).json({ error: "Add your organization activity in settings or provide a search keyword." });
+        return;
+      }
+    }
     const competitors = await analyzeCompetitors(lat, lng, keyword, radius);
     res.json({ competitors, count: competitors.length, center: { lat, lng } });
   } catch (e: unknown) {

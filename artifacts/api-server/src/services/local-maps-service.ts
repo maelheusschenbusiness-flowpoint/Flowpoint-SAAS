@@ -1,10 +1,55 @@
+import { newId } from "../lib/ids.js";
+import { resolveOrgLanguage } from "../lib/request-language.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import {
+  getGoogleMapsResultsAtCoordinate,
+  isDataForSEOConfigured,
+  rembourserQuota,
+  suivreAppelsPayants,
+  verifierEtConsommerQuota,
+} from "./dataforseo-service.js";
+import {
+  buildLocalGeoGrid,
+  findBusinessRank,
+  summarizeMeasuredCells,
+  type MeasuredHeatmapCell,
+} from "./local-heatmap-grid.js";
 
 export interface Heatmap {
   id: string; org_id: string; name: string; keyword: string;
   location_id: string | null; center_lat: number; center_lng: number;
   radius_km: number; grid_size: number; status: string; created_at: string;
+  business_name?: string; cells_data?: MeasuredHeatmapCell[]; summary?: ReturnType<typeof summarizeMeasuredCells>;
+  dominance_score?: number | null; generated_at?: string | null; scan_error?: string | null;
+}
+
+type HeatmapResults = {
+  businessName?: string;
+  cells?: MeasuredHeatmapCell[];
+  summary?: ReturnType<typeof summarizeMeasuredCells>;
+  generatedAt?: string;
+  error?: string;
+};
+
+function exposeHeatmap(row: Record<string, unknown>): Heatmap {
+  let stored: HeatmapResults = {};
+  try {
+    const raw = row.results;
+    stored = (typeof raw === "string" ? JSON.parse(raw) : raw) as HeatmapResults;
+    if (!stored || Array.isArray(stored) || typeof stored !== "object") stored = {};
+  } catch { stored = {}; }
+  const cells = Array.isArray(stored.cells) ? stored.cells : [];
+  const summary = stored.summary ?? summarizeMeasuredCells(cells);
+  return {
+    ...row,
+    business_name: stored.businessName ?? "",
+    cells_data: cells,
+    summary,
+    dominance_score: summary.dominanceScore,
+    generated_at: stored.generatedAt ?? null,
+    scan_error: stored.error ?? null,
+  } as Heatmap;
 }
 
 export interface BusinessPoint {
@@ -14,11 +59,107 @@ export interface BusinessPoint {
   longitude: number | null;
 }
 
+export interface LocalCompetitorSummary {
+  resultCount: number;
+  uniqueCompetitors: number;
+  searchContexts: number;
+  top3Results: number;
+  averageRating: number | null;
+  averageReviews: number | null;
+  bestCompetitorName: string | null;
+  bestCompetitorRank: number | null;
+}
+
+const EMPTY_COMPETITOR_SUMMARY: LocalCompetitorSummary = {
+  resultCount: 0,
+  uniqueCompetitors: 0,
+  searchContexts: 0,
+  top3Results: 0,
+  averageRating: null,
+  averageReviews: null,
+  bestCompetitorName: null,
+  bestCompetitorRank: null,
+};
+
+export function summarizeLocalMaps(
+  heatmaps: Heatmap[],
+  competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
+) {
+  const completedScans = heatmaps.filter(h => h.status === "completed").length;
+  const allCells = heatmaps.flatMap(h => h.cells_data ?? []);
+  const scanSummary = summarizeMeasuredCells(allCells);
+  const scanInsight = scanSummary.measuredPoints
+    ? `${scanSummary.measuredPoints}/${scanSummary.totalPoints} point(s) mesuré(s) ; ${scanSummary.notFoundPoints} point(s) sans établissement correspondant dans le top 20${scanSummary.averageRank == null ? "" : ` ; rang moyen observé #${scanSummary.averageRank}`}.`
+    : "Les positions et la couverture de votre établissement ne sont pas mesurées dans les données disponibles.";
+  return {
+    summary: {
+      totalHeatmaps: heatmaps.length,
+      completedScans,
+      avgRank: scanSummary.averageRank,
+      top3GridPoints: scanSummary.top3Points,
+      coverageScore: scanSummary.coverageScore,
+      competitorsAnalyzed: competitors.resultCount,
+      uniqueCompetitors: competitors.uniqueCompetitors,
+      searchContexts: competitors.searchContexts,
+      top3CompetitorResults: competitors.top3Results,
+      averageCompetitorRating: competitors.averageRating,
+      averageCompetitorReviews: competitors.averageReviews,
+      bestCompetitorName: competitors.bestCompetitorName,
+      bestCompetitorRank: competitors.bestCompetitorRank,
+      localVisibilityScore: scanSummary.dominanceScore,
+    },
+    insights: [
+      heatmaps.length
+        ? `${heatmaps.length} carte(s) configurée(s), dont ${completedScans} analyse(s) marquée(s) terminée(s). ${scanInsight}`
+        : "Aucune carte de suivi locale n’est enregistrée.",
+      ...(competitors.resultCount
+        ? [`${competitors.uniqueCompetitors} établissement(s) concurrent(s) distinct(s) relevé(s) sur ${competitors.searchContexts} recherche(s), avec ${competitors.top3Results} résultat(s) dans le top 3${competitors.averageRating == null ? "" : ` et une note moyenne de ${competitors.averageRating}/5`}${competitors.averageReviews == null ? "" : ` (${competitors.averageReviews} avis par établissement en moyenne)`}.`]
+        : []),
+    ],
+  };
+}
+
+export function buildLocalMapsRecommendations(
+  heatmaps: Heatmap[],
+  competitors: LocalCompetitorSummary = EMPTY_COMPETITOR_SUMMARY,
+) {
+  const items: Array<{ title: string; description: string; impact: string; effort: string; priority: string }> = [];
+  if (!heatmaps.length) {
+    items.push({
+      title: "Configurer une carte de suivi",
+      description: "Enregistrez un mot-clé et une zone pour organiser le suivi. Cette configuration ne constitue pas une mesure de classement.",
+      impact: "À mesurer", effort: "À estimer", priority: "medium",
+    });
+  } else {
+    const pending = heatmaps.filter(map => map.status !== "completed").length;
+    if (pending) items.push({
+      title: "Vérifier les cartes en attente",
+      description: `${pending} carte(s) n’ont pas de statut d’analyse terminé. Aucun classement ne peut être déduit de ces enregistrements.`,
+      impact: "Non mesuré", effort: "À estimer", priority: "medium",
+    });
+  }
+  if (competitors.resultCount) {
+    items.push({
+      title: "Comparer les concurrents les mieux classés",
+      description: `${competitors.uniqueCompetitors} établissement(s) distinct(s) sur ${competitors.searchContexts} recherche(s). ${competitors.top3Results} résultat(s) sont dans le top 3${competitors.bestCompetitorName && competitors.bestCompetitorRank != null ? `; meilleur rang observé : ${competitors.bestCompetitorName} (#${competitors.bestCompetitorRank})` : ""}.`,
+      impact: "À mesurer", effort: "À estimer", priority: "low",
+    });
+  } else if (heatmaps.length) {
+    items.push({
+      title: "Aucun résultat concurrent enregistré",
+      description: "Aucun résultat concurrent n’est enregistré. Lancez une découverte locale pour comparer les établissements collectés ; aucun classement de votre établissement n’est déduit de ces données.",
+      impact: "Non mesuré", effort: "À estimer", priority: "low",
+    });
+  }
+  return items;
+}
+
 export interface MapsDashboard {
   heatmaps: Heatmap[];
   businessPoint: BusinessPoint | null;
   summary: {
     totalHeatmaps: number;
+    completedScans: number;
     avgRank: number | null;
     top3GridPoints: number | null;
     coverageScore: number | null;
@@ -26,7 +167,7 @@ export interface MapsDashboard {
     localVisibilityScore: number | null;
   };
   insights: string[];
-  recommendations: Array<{ title: string; description: string; impact: string; effort: string }>;
+  recommendations: Array<{ title: string; description: string; impact: string; effort: string; priority?: string }>;
 }
 
 // ── Server-side geocoding (Google, with explicit Nominatim opt-in fallback) ───
@@ -36,13 +177,13 @@ export interface MapsDashboard {
 //
 // Nominatim is deliberately not an implicit error-swallowing fallback. Enable
 // it only when the operator explicitly sets ALLOW_NOMINATIM_FALLBACK=true.
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodeAddress(address: string, language = "en"): Promise<{ lat: number; lng: number } | null> {
   const googleKey = process.env["GOOGLE_MAPS_API_KEY"] ?? "";
   const allowNominatimFallback = process.env["ALLOW_NOMINATIM_FALLBACK"] === "true";
 
   if (googleKey) {
     try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}&language=fr`;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}&language=${encodeURIComponent(language)}`;
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 6000);
       const r = await fetch(url, { signal: ctrl.signal });
@@ -74,7 +215,7 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
 
   // Explicit fallback: Nominatim / OSM (no API key required).
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=fr`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=${encodeURIComponent(language)}`;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 6000);
     const r = await fetch(url, {
@@ -114,7 +255,7 @@ async function getBusinessPoint(orgId: string): Promise<BusinessPoint | null> {
     // If we have an address but no coords → geocode and persist
     const geoQuery = [address, city].filter(Boolean).join(", ");
     if (geoQuery && (lat == null || lng == null || isNaN(lat) || isNaN(lng))) {
-      const coords = await geocodeAddress(geoQuery);
+      const coords = await geocodeAddress(geoQuery, await resolveOrgLanguage(orgId));
       if (coords) {
         lat = coords.lat;
         lng = coords.lng;
@@ -141,78 +282,288 @@ async function getBusinessPoint(orgId: string): Promise<BusinessPoint | null> {
 }
 
 export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
-  const [heatmaps, businessPoint] = await Promise.all([
+  const [heatmaps, businessPoint, competitors] = await Promise.all([
     getHeatmaps(orgId),
     getBusinessPoint(orgId),
+    getCompetitorSummary(orgId),
   ]);
 
-  type HeatmapExt = Heatmap & { dominance_score?: unknown };
-  const dominanceScores = heatmaps.map(h => Number((h as HeatmapExt).dominance_score ?? 0)).filter(n => n > 0);
-  const avgRank = dominanceScores.length > 0
-    ? Math.round((dominanceScores.reduce((s, n) => s + n, 0) / dominanceScores.length) * 10) / 10
-    : null;
-  const coverageScore = heatmaps.length > 0
-    ? Math.min(100, Math.round((heatmaps.filter(h => Number((h as HeatmapExt).dominance_score ?? 0) >= 50).length / heatmaps.length) * 100))
-    : null;
+  const measured = summarizeLocalMaps(heatmaps, competitors);
 
   return {
     heatmaps,
     businessPoint,
-    summary: {
-      totalHeatmaps: heatmaps.length,
-      avgRank,
-      top3GridPoints: null,
-      coverageScore,
-      competitorsAnalyzed: null,
-      localVisibilityScore: null,
-    },
-    insights: [],
-    recommendations: [],
+    summary: measured.summary,
+    insights: measured.insights,
+    recommendations: buildLocalMapsRecommendations(heatmaps, competitors),
+  };
+}
+
+async function getCompetitorSummary(orgId: string): Promise<LocalCompetitorSummary> {
+  const result = await pool.query(
+    `SELECT
+       COUNT(*)::int AS result_count,
+       COUNT(DISTINCT place_id)::int AS unique_competitors,
+       COUNT(DISTINCT (keyword, location))::int AS search_contexts,
+       COUNT(*) FILTER (WHERE rank BETWEEN 1 AND 3)::int AS top3_results,
+       ROUND(AVG(rating)::numeric, 1)::float8 AS average_rating,
+       ROUND(AVG(review_count)::numeric, 0)::int AS average_reviews,
+       (SELECT name FROM competitor_map_results
+        WHERE org_id=$1
+        ORDER BY rank ASC NULLS LAST, review_count DESC, fetched_at DESC
+        LIMIT 1) AS best_competitor_name,
+       (SELECT rank FROM competitor_map_results
+        WHERE org_id=$1
+        ORDER BY rank ASC NULLS LAST, review_count DESC, fetched_at DESC
+        LIMIT 1) AS best_competitor_rank
+     FROM competitor_map_results
+     WHERE org_id=$1`,
+    [orgId],
+  );
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  return {
+    resultCount: Number(row?.["result_count"] ?? 0),
+    uniqueCompetitors: Number(row?.["unique_competitors"] ?? 0),
+    searchContexts: Number(row?.["search_contexts"] ?? 0),
+    top3Results: Number(row?.["top3_results"] ?? 0),
+    averageRating: row?.["average_rating"] == null ? null : Number(row["average_rating"]),
+    averageReviews: row?.["average_reviews"] == null ? null : Number(row["average_reviews"]),
+    bestCompetitorName: row?.["best_competitor_name"] == null ? null : String(row["best_competitor_name"]),
+    bestCompetitorRank: row?.["best_competitor_rank"] == null ? null : Number(row["best_competitor_rank"]),
   };
 }
 
 export async function getHeatmaps(orgId: string): Promise<Heatmap[]> {
   const client = await pool.connect();
   try {
+    await client.query(
+      `UPDATE local_heatmaps
+          SET status='failed',
+              results=jsonb_set(
+                CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+                '{error}', to_jsonb('Analyse interrompue après un redémarrage du serveur.'::text), true)
+        WHERE org_id=$1 AND status='running'
+          AND (results->>'startedAt')::timestamptz < NOW() - INTERVAL '15 minutes'`,
+      [orgId],
+    );
     const res = await client.query(
       `SELECT * FROM local_heatmaps WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50`,
       [orgId]
     );
-    return res.rows;
+    return res.rows.map((row: Record<string, unknown>) => exposeHeatmap(row));
   } catch { return []; } finally { client.release(); }
 }
 
 export async function getHeatmapDetail(orgId: string, id: string): Promise<Heatmap | null> {
   const client = await pool.connect();
   try {
+    await client.query(
+      `UPDATE local_heatmaps
+          SET status='failed',
+              results=jsonb_set(
+                CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+                '{error}', to_jsonb('Analyse interrompue après un redémarrage du serveur.'::text), true)
+        WHERE id=$1 AND org_id=$2 AND status='running'
+          AND (results->>'startedAt')::timestamptz < NOW() - INTERVAL '15 minutes'`,
+      [id, orgId],
+    );
     const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2 LIMIT 1`, [id, orgId]);
-    return res.rows[0] ?? null;
+    return res.rows[0] ? exposeHeatmap(res.rows[0]) : null;
   } catch { return null; } finally { client.release(); }
 }
 
 export async function createHeatmap(orgId: string, data: {
-  name: string; keyword: string; locationId?: string;
+  name: string; keyword: string; businessName: string; locationId?: string;
   centerLat: number; centerLng: number; radiusKm?: number; gridSize?: number;
 }): Promise<Heatmap> {
   const client = await pool.connect();
   try {
-    const id = `hm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = newId("hm");
     await client.query(
       `INSERT INTO local_heatmaps
-         (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',NOW())`,
+         (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, results, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10::jsonb,NOW())`,
       [id, orgId, data.locationId ?? null, data.name, data.keyword,
-       data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7]
+       data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7,
+       JSON.stringify({ businessName: data.businessName, cells: [] })]
     );
-    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1`, [id]);
-    return res.rows[0];
+    const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1 AND org_id=$2`, [id, orgId]);
+    return exposeHeatmap(res.rows[0]);
   } finally { client.release(); }
 }
 
-export async function generateAiLocalRecommendations(_orgId: string): Promise<Array<{ title: string; description: string; priority: string }>> {
-  return [
-    { title: "Créer des citations locales", description: "Inscrivez votre entreprise sur les 10 annuaires locaux les plus importants de votre secteur.", priority: "high" },
-    { title: "Optimiser les photos Google Business", description: "Les fiches avec 10+ photos reçoivent 35% plus de clics. Ajoutez des photos récentes de qualité.", priority: "high" },
-    { title: "Répondre aux questions publiques", description: "Répondre aux questions Q&A sur votre fiche GBP améliore la confiance et le référencement local.", priority: "medium" },
-  ];
+/** Claim a pending/failed/unavailable scan once, then process it off the HTTP request path. */
+export async function startHeatmapScan(orgId: string, id: string): Promise<boolean> {
+  const claimed = await pool.query(
+    `UPDATE local_heatmaps
+        SET status='running',
+            results=jsonb_set(
+              CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+              '{startedAt}', to_jsonb(NOW()::text), true)
+      WHERE id=$1 AND org_id=$2 AND status IN ('pending','failed','unavailable')
+      RETURNING *`,
+    [id, orgId],
+  );
+  const row = claimed.rows[0] as Record<string, unknown> | undefined;
+  if (!row) return false;
+  void runHeatmapScan(orgId, row).catch(async error => {
+    const errorMessage = error instanceof Error ? error.message : "Échec de l’analyse.";
+    logger.error({ error: errorMessage, orgId, heatmapId: id }, "[local-maps] heatmap scan failed");
+    await pool.query(
+      `UPDATE local_heatmaps
+          SET status='failed',
+              results=jsonb_set(
+                CASE WHEN jsonb_typeof(results)='object' THEN results ELSE '{}'::jsonb END,
+                '{error}', to_jsonb($3::text), true)
+        WHERE id=$1 AND org_id=$2 AND status='running'`,
+      [id, orgId, errorMessage],
+    ).catch(() => {});
+  });
+  return true;
+}
+
+export async function runHeatmapScan(orgId: string, row: Record<string, unknown>): Promise<void> {
+  const id = String(row.id);
+  const businessName = String((row.results as HeatmapResults | undefined)?.businessName ?? "");
+  const keyword = String(row.keyword ?? "");
+  const gridSize = Number(row.grid_size);
+  const points = buildLocalGeoGrid(
+    Number(row.center_lat), Number(row.center_lng), Number(row.radius_km), gridSize,
+  );
+  if (!businessName.trim()) throw new Error("Le nom exact de l’établissement est requis.");
+  if (!await isDataForSEOConfigured(orgId)) {
+    // Fournisseur absent : état explicite « unavailable » (relançable une fois
+    // les identifiants configurés), jamais de données simulées.
+    await pool.query(
+      `UPDATE local_heatmaps SET status='unavailable', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
+      [id, orgId, JSON.stringify({
+        businessName, cells: [], code: "PROVIDER_NOT_CONFIGURED",
+        error: "Le fournisseur de mesures locales (DataForSEO) n’est pas configuré : aucune position n’a été mesurée.",
+      })],
+    );
+    return;
+  }
+
+  const quota = await verifierEtConsommerQuota(orgId, points.length);
+  if (!quota.autorise) {
+    if (quota.motif === "plafond") await rembourserQuota(orgId, points.length);
+    await pool.query(
+      `UPDATE local_heatmaps SET status='failed', results=$3::jsonb WHERE id=$1 AND org_id=$2`,
+      [id, orgId, JSON.stringify({ businessName, cells: [], error: quota.motif === "plafond"
+        ? "Le quota DataForSEO du jour ne permet pas cette grille."
+        : "La vérification du quota est indisponible." })],
+    );
+    return;
+  }
+
+  const cells: MeasuredHeatmapCell[] = [];
+  const { appelsReussis } = await suivreAppelsPayants(async () => {
+    let next = 0;
+    const workers = Array.from({ length: Math.min(4, points.length) }, async () => {
+      while (next < points.length) {
+        const point = points[next++]!;
+        const lookup = await getGoogleMapsResultsAtCoordinate(
+          keyword, point.latitude, point.longitude, orgId,
+        );
+        cells.push({
+          ...point,
+          status: lookup.error ? "error" : "measured",
+          rank: lookup.error ? null : findBusinessRank(lookup.results, businessName),
+        });
+      }
+    });
+    await Promise.all(workers);
+  });
+  if (appelsReussis < points.length) await rembourserQuota(orgId, points.length - appelsReussis);
+
+  cells.sort((a, b) => a.row - b.row || a.column - b.column);
+  const summary = summarizeMeasuredCells(cells);
+  const status = summary.measuredPoints === 0 ? "failed"
+    : summary.measuredPoints < summary.totalPoints ? "partial" : "completed";
+  const error = status === "partial"
+    ? `${summary.totalPoints - summary.measuredPoints} point(s) n’ont pas pu être mesurés.`
+    : status === "failed" ? "Aucun point de la grille n’a pu être mesuré." : undefined;
+  await pool.query(
+    `UPDATE local_heatmaps SET status=$3, results=$4::jsonb WHERE id=$1 AND org_id=$2`,
+    [id, orgId, status, JSON.stringify({
+      businessName, cells, summary, generatedAt: new Date().toISOString(), error,
+    })],
+  );
+}
+
+export interface GbpLocationFacts {
+  name: string;
+  rating: number | null;
+  reviews_count: number | null;
+  phone: string | null;
+  website: string | null;
+}
+
+type LocalRecommendation = { title: string; description: string; impact: string; effort: string; priority: string };
+
+/** Recommandations dérivées UNIQUEMENT des fiches Google Business enregistrées (aucun gain chiffré). */
+export function buildGbpLocalRecommendations(locations: GbpLocationFacts[]): LocalRecommendation[] {
+  const items: LocalRecommendation[] = [];
+  for (const loc of locations) {
+    const label = loc.name || "Établissement";
+    const rating = loc.rating == null ? null : Number(loc.rating);
+    const reviews = Number(loc.reviews_count ?? 0);
+    if (!loc.website?.trim()) {
+      items.push({
+        title: `Ajouter un site web à la fiche « ${label} »`,
+        description: "Aucun site web n’est renseigné sur cette fiche Google Business enregistrée.",
+        impact: "Non chiffré", effort: "Faible", priority: "medium",
+      });
+    }
+    if (!loc.phone?.trim()) {
+      items.push({
+        title: `Renseigner un téléphone sur la fiche « ${label} »`,
+        description: "Aucun numéro de téléphone n’est renseigné sur cette fiche Google Business enregistrée.",
+        impact: "Non chiffré", effort: "Faible", priority: "medium",
+      });
+    }
+    if (rating != null && reviews > 0 && rating < 4) {
+      items.push({
+        title: `Traiter les avis négatifs de « ${label} »`,
+        description: `La note enregistrée est de ${rating.toFixed(1)}/5 sur ${reviews} avis. Répondre aux avis et solliciter des retours de clients satisfaits.`,
+        impact: "Non chiffré", effort: "Moyen", priority: "high",
+      });
+    }
+    if (reviews === 0) {
+      items.push({
+        title: `Recueillir des premiers avis pour « ${label} »`,
+        description: "Aucun avis n’est enregistré pour cette fiche.",
+        impact: "Non chiffré", effort: "Moyen", priority: "medium",
+      });
+    }
+  }
+  return items;
+}
+
+export interface AiLocalRecommendationsResult {
+  status: "ok" | "empty";
+  message: string | null;
+  recommendations: LocalRecommendation[];
+}
+
+export async function generateAiLocalRecommendations(orgId: string): Promise<AiLocalRecommendationsResult> {
+  const [heatmaps, competitors, locations] = await Promise.all([
+    getHeatmaps(orgId),
+    getCompetitorSummary(orgId),
+    pool.query(
+      `SELECT name, rating, reviews_count, phone, website FROM google_locations WHERE org_id=$1 ORDER BY name LIMIT 20`,
+      [orgId],
+    ).then(r => r.rows as GbpLocationFacts[]).catch(() => [] as GbpLocationFacts[]),
+  ]);
+  const measured = (heatmaps.length > 0 || competitors.resultCount > 0)
+    ? buildLocalMapsRecommendations(heatmaps, competitors) : [];
+  const recommendations = [...buildGbpLocalRecommendations(locations), ...measured];
+  if (recommendations.length === 0) {
+    return {
+      status: "empty",
+      message: "Aucune recommandation : connectez une fiche Google Business ou lancez une analyse locale pour obtenir des constats fondés sur vos données.",
+      recommendations: [],
+    };
+  }
+  return { status: "ok", message: null, recommendations };
 }

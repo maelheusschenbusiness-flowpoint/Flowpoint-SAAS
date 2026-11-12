@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger.js";
 
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 interface SendSmsResult {
   ok: boolean;
   sid?: string;
@@ -28,14 +29,14 @@ export async function sendSms(to: string, body: string): Promise<SendSmsResult> 
 
   try {
     const params = new URLSearchParams({ To: to, From: from, Body: body });
-    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    const resp = await fetchBorne(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Authorization: `Basic ${Buffer.from(`${sid}:${authToken}`).toString("base64")}`,
       },
       body: params.toString(),
-    });
+    }, DELAIS.sms);
 
     const data = (await resp.json().catch(() => ({}))) as { sid?: string; message?: string };
     if (!resp.ok) {

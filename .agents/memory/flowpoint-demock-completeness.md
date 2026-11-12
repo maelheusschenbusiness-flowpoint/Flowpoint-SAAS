@@ -12,3 +12,7 @@ description: Where fabricated data hides after a route-centric de-mock audit, an
 **Rule 2 — "projection/forecast" pages fabricate both past and future.** Growth pages invented a fake past curve (base-12…base) and fixed future deltas (+7/+14/+17), fake sparkline histories, and hardcoded quarter labels/deadlines.
 **Why:** projections look like features, so they escape "mock data" greps; but a fabricated history curve is fake data.
 **How to apply:** canonical fix = derive slope from real `STATE.overview.auditHistory` (`_stepP` clamped [0.5,4], fallback 1.5), gate the whole page on `avgSc` truthy, label fallback estimates as "Estimation par défaut" (never "tendance mesurée" without ≥2 history points and positive slope), flat-fill sparklines with current value instead of invented progressions, compute quarter/months dynamically.
+
+**Rule 3 — a provider snapshot is not a trend or opportunity report.** Show only metrics actually returned by the provider; do not infer gained/lost links, monthly velocity, competitor comparisons, or outreach opportunities from one summary response.
+**Why:** DataForSEO's backlinks summary supplies current backlink, referring-domain, dofollow, and domain-rank metrics, not historical deltas or an opportunity feed.
+**How to apply:** expose provider availability separately from zero-valued metrics; add trend or opportunity labels only after wiring an endpoint/history source that supports them.

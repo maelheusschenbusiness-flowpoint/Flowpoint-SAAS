@@ -1,7 +1,7 @@
 # Certification Finale Billing FlowPoint — Stripe Test
 
 Date: 2026-08-15T21:53:41.156Z
-**Total: 107 | PASS: 107 | FAIL: 0**
+**Total: 107 | PASS: 106 | FAIL: 1**
 
 | Sec | Scénario | Stripe Test | Webhook | DB | Entitlement | API | RÉSULTAT |
 |-----|----------|-------------|---------|-----|-------------|-----|----------|
@@ -32,7 +32,7 @@ Date: 2026-08-15T21:53:41.156Z
 | B | B-incl: ultra→keywordDomination | N/A(bundled) | N/A | N/A | PASS | PASS | **PASS** |
 | B | B-incl: ultra→behavioralAI | N/A(bundled) | N/A | N/A | PASS | PASS | **PASS** |
 | B | B-incl: ultra→aiForecasting | N/A(bundled) | N/A | N/A | PASS | PASS | **PASS** |
-| B | B-paid: monitorsPack10 qty=2 | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(2) | FAIL(170≠70) | PASS(2) | **PASS** |
+| B | B-paid: monitorsPack10 qty=2 | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(2) | FAIL(170≠70) | PASS(2) | **FAIL** |
 | B | B-paid: monitorsPack50 qty=2 | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(2) | N/A | PASS(2) | **PASS** |
 | B | B-paid: globalMonitoring | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(1) | N/A | PASS(true) | **PASS** |
 | B | B-paid: slaMonitoring | batch1:sub_1U4pVF9eqtbj6iPBRbLzxsWZ | 200 | PASS(1) | N/A | PASS(true) | **PASS** |
@@ -114,4 +114,6 @@ Date: 2026-08-15T21:53:41.156Z
 | D | D10 Cross-tenant isolation | N/A | N/A | N/A | N/A | std=standard pro=pro | **PASS** |
 
 ## Verdict
-🟢 **BILLING CERTIFIÉ ET GELÉ** — 107/107 PASS. Aucun FAIL financier.
+**Diagnostic de l'unique FAIL historique (exécution du 15 août 2026) : erreur d'assertion du scénario, pas anomalie de facturation ni de quota.** Le lot B contient `monitorsPack10 ×2` et `monitorsPack50 ×2` sur le même forfait Pro : `50 + 20 + 100 = 170` monitors. La ligne indique bien une quantité Stripe/DB/API de `2`; le calcul attendu de `70` omettait le second pack. Le runner calcule maintenant l'attente à partir de tous les packs de monitors présents dans ce lot.
+
+Le résultat conservé reste **106/107 PASS, 1 FAIL** car cette exécution historique n'a pas été relancée. Le correctif du scénario et les tests ciblés ne constituent pas une nouvelle certification Stripe complète; le score historique n'est donc pas réécrit en 107/107.

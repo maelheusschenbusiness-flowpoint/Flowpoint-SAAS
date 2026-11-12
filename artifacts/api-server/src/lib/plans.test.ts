@@ -5,7 +5,7 @@
  *   1. Every key in any plan's included set must have a Stripe price ID.
  *   2. Every key in any plan's included set must be defined in ADDON_DEFINITIONS.
  *   3. One-time credit packs must never appear in any included set.
- *   4. Ultra carries Pro inclusions except retention90d, which is upgraded to retention365d.
+ *   4. Ultra carries all six Pro inclusions plus four Ultra-only additions.
  *   5. Pro's included set is a superset of Standard's.
  *   6. FEATURE_FLAGS must grant Pro/Ultra subscribers their bundled add-on features.
  *   7. Addon-to-feature-flag alignment for the whiteLabel→whiteLabel mapping.
@@ -14,19 +14,194 @@
  * PLAN_INCLUDED_ADDONS or this suite will fail.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   PLAN_INCLUDED_ADDONS,
   ADDON_PRICE_IDS,
+  ADDON_PRICE_IDS_TEST,
+  DEVELOPMENT_ADDON_DISPLAY_PRICES,
+  getAddonDisplayPrice,
   BETA_ADDONS,
   COMING_SOON_ADDONS,
+  VALIDATION_REQUIRED_ADDONS,
   getAddonAvailability,
   getAddonStatus,
+  PLAN_ALLOWED_ADDONS,
+  PROTECTED_ADDON_KEYS,
+  REMOVED_ADDONS,
+  RETIRED_ADDONS,
+  isPlanAllowedAddon,
+  getAddonPurchasablePlans,
+  ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS,
+  isCustomDomainTestBetaEnabled,
 } from "./plans.js";
 import { ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { FEATURE_FLAGS } from "./config.js";
+import { hasFeature } from "../services/billing-service.js";
 
 const ONE_TIME_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+const expectedReplacementAvailability = (key: string) =>
+  ADDON_PRICE_IDS_TEST[key] && getAddonPurchasablePlans(key).length > 0 ? "available" : "coming_soon";
+
+describe("V1 add-on catalogue contract", () => {
+  it("uses canonical display prices consistently across runtime modes", () => {
+    expect(DEVELOPMENT_ADDON_DISPLAY_PRICES).toEqual({});
+    expect(getAddonDisplayPrice("marketIntelligence", "development")).toBe(49);
+    expect(getAddonDisplayPrice("aiForecasting", "test")).toBe(39);
+    expect(getAddonDisplayPrice("marketIntelligence", "production")).toBe(49);
+    expect(getAddonDisplayPrice("aiCro", "production")).toBe(34);
+    expect(getAddonDisplayPrice("revenueLeak", "production")).toBe(29);
+    expect(getAddonDisplayPrice("aiForecasting", "production")).toBe(39);
+    expect(getAddonDisplayPrice("unknown", "development")).toBeUndefined();
+  });
+
+  it("keeps 36 non-retired product slots, preserving retired metadata for existing entitlements", () => {
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(48);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key => !RETIRED_ADDONS.has(key))).toHaveLength(36);
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toEqual(
+      expect.arrayContaining([
+        "monitorsPack10",
+        "monitorsPack50",
+        "gbpPerformanceLeads",
+        "localLandingOpportunities",
+        "conversionOpportunityEngine",
+        "seoChangeImpact",
+        "whiteLabel",
+        "retention90d",
+        "retention365d",
+        "extraSeats",
+      ]),
+    );
+  });
+
+  it("retires old offers without removing their legacy entitlement keys", () => {
+    const retired = [
+      "gbpSlots10",
+      "reviewIntelligence",
+      "localDominationMaps",
+      "abTestingAI",
+      "aiWorkflows",
+      "enterprisePermissions",
+      "advancedWebhooks",
+      "zapierIntegration",
+      "auditsPack200",
+      "auditsPack1000",
+      "pdfPack200",
+      "exportsPack1000",
+    ];
+    for (const key of retired) {
+      expect(RETIRED_ADDONS.has(key), `${key} remains recognized`).toBe(true);
+      expect(isPlanAllowedAddon("pro", key), `${key} cannot be purchased`).toBe(false);
+      expect(ADDON_PRICE_IDS[key], `${key} keeps its historical Stripe mapping`).toBeTruthy();
+      expect(CANONICAL_ADDON_DEFINITIONS[key], `${key} keeps its historical definition`).toBeDefined();
+    }
+    expect(CANONICAL_ADDON_DEFINITIONS.localLandingOpportunities.priceEur).toBe(15);
+    expect(ADDON_PRICE_IDS.localLandingOpportunities).toBe("");
+  });
+
+  it("preserves protected add-on prices, pack sizes, and recurring behavior", () => {
+    expect(CANONICAL_ADDON_DEFINITIONS.monitorsPack10).toMatchObject({
+      priceEur: 9,
+      quantity: true,
+      oneTime: false,
+    });
+    expect(CANONICAL_ADDON_DEFINITIONS.monitorsPack50).toMatchObject({
+      priceEur: 19,
+      quantity: true,
+      oneTime: false,
+    });
+    expect(CANONICAL_ADDON_DEFINITIONS.whiteLabel.priceEur).toBe(17);
+    expect(CANONICAL_ADDON_DEFINITIONS.gbpPerformanceLeads).toMatchObject({
+      priceEur: 15,
+      quantity: false,
+      oneTime: false,
+    });
+    expect(CANONICAL_ADDON_DEFINITIONS.retention90d.priceEur).toBe(9);
+    expect(CANONICAL_ADDON_DEFINITIONS.retention365d.priceEur).toBe(19);
+    expect(CANONICAL_ADDON_DEFINITIONS.extraSeats).toMatchObject({
+      quantity: true,
+      oneTime: false,
+    });
+    expect(PROTECTED_ADDON_KEYS).toEqual(new Set([
+      "whiteLabel", "advancedWebhooks", "retention90d",
+      "advancedSeoLab", "backlinkIntelligence", "enterprisePermissions",
+    ]));
+    expect([
+      CANONICAL_ADDON_DEFINITIONS.whiteLabel.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.advancedWebhooks.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.retention90d.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.advancedSeoLab.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.backlinkIntelligence.priceEur,
+      CANONICAL_ADDON_DEFINITIONS.enterprisePermissions.priceEur,
+    ]).toEqual([17, 14, 9, 29, 24, 19]);
+  });
+
+  it("keeps coming-soon offers closed while allowing sellable add-ons on all plans", () => {
+    const nonProtectedAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(
+      key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
+    );
+    const sellableAddons = Object.keys(CANONICAL_ADDON_DEFINITIONS).filter(key =>
+      !PROTECTED_ADDON_KEYS.has(key) &&
+      !REMOVED_ADDONS.has(key) &&
+      !RETIRED_ADDONS.has(key) &&
+      ["available", "beta"].includes(getAddonAvailability(key))
+    );
+    expect(nonProtectedAddons).toHaveLength(32);
+    expect(CANONICAL_ADDON_DEFINITIONS.agencyPortfolioPriorities.priceEur).toBe(19);
+    expect(getAddonAvailability("agencyPortfolioPriorities")).toBe(expectedReplacementAvailability("agencyPortfolioPriorities"));
+    expect(ADDON_PRICE_IDS.agencyPortfolioPriorities).toBe("");
+    expect(CANONICAL_ADDON_DEFINITIONS.technicalSeoFixVerification.priceEur).toBe(19);
+    expect(getAddonAvailability("technicalSeoFixVerification")).toBe(expectedReplacementAvailability("technicalSeoFixVerification"));
+    expect(ADDON_PRICE_IDS.technicalSeoFixVerification).toBe("");
+    expect(CANONICAL_ADDON_DEFINITIONS.organicCampaignTracker.priceEur).toBe(12);
+    expect(getAddonAvailability("organicCampaignTracker")).toBe(expectedReplacementAvailability("organicCampaignTracker"));
+    expect(ADDON_PRICE_IDS.organicCampaignTracker).toBe("");
+    expect(sellableAddons.length).toBeGreaterThan(0);
+    for (const plan of ["standard", "pro", "ultra"]) {
+      for (const key of sellableAddons) {
+        expect(PLAN_ALLOWED_ADDONS[plan]?.has(key), `${key} on ${plan}`).toBe(true);
+      }
+    }
+
+    // Snapshot the six protected purchase rules; this request must not widen them.
+    expect(["standard", "pro", "ultra"].map(plan =>
+      ["whiteLabel", "advancedWebhooks", "retention90d", "advancedSeoLab", "backlinkIntelligence", "enterprisePermissions"]
+        .map(key => isPlanAllowedAddon(plan, key))
+    )).toEqual([
+      [false, false, true, false, false, false],
+      [false, false, true, false, false, false],
+      [false, false, true, false, false, false],
+    ]);
+  });
+
+  it("does not broaden roadmap, validation-required, or removed add-ons", () => {
+    for (const key of [...COMING_SOON_ADDONS, ...REMOVED_ADDONS]) {
+      for (const plan of ["standard", "pro", "ultra"]) {
+        expect(PLAN_ALLOWED_ADDONS[plan]?.has(key), `${key} on ${plan}`).toBe(false);
+      }
+    }
+    // Validation-required Local SEO offers had existing Pro/Ultra matrix entries;
+    // their activation and checkout gates are outside this plan-access change.
+    for (const key of VALIDATION_REQUIRED_ADDONS) {
+      expect(PLAN_ALLOWED_ADDONS.standard?.has(key)).toBe(false);
+      expect(PLAN_ALLOWED_ADDONS.pro?.has(key)).toBe(true);
+      expect(PLAN_ALLOWED_ADDONS.ultra?.has(key)).toBe(true);
+    }
+  });
+
+  it("keeps the Local SEO offers priced but unavailable for purchase before approval", () => {
+    const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
+    expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(48);
+    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
+    for (const key of keys) {
+      expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
+      expect(getAddonAvailability(key)).toBe("coming_soon");
+      expect(getAddonStatus(key)).toBe("coming_soon");
+      expect(getAddonStatus(key, { included: true })).toBe("included");
+    }
+    expect(getAddonAvailability("localLandingOpportunities")).toBe(expectedReplacementAvailability("localLandingOpportunities"));
+  });
+});
 
 // Collect every addon key that appears in any plan's included set.
 const allIncludedKeys = new Set<string>();
@@ -59,17 +234,24 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(found, `One-time packs must not be in PLAN_INCLUDED_ADDONS: ${found.join(", ")}`).toHaveLength(0);
   });
 
-  it("ultra carries Pro inclusions but upgrades retention90d to retention365d", () => {
+  it("Ultra includes all six Pro add-ons and exactly four additional add-ons", () => {
     const ultraSet = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set<string>();
     const proSet   = PLAN_INCLUDED_ADDONS["pro"]   ?? new Set<string>();
     const missing: string[] = [];
     for (const key of proSet) {
-      if (key === "retention90d") continue;
       if (!ultraSet.has(key)) missing.push(key);
     }
     expect(missing, `Pro add-ons not present in Ultra: ${missing.join(", ")}`).toHaveLength(0);
-    expect(ultraSet.has("retention90d")).toBe(false);
+    expect(ultraSet.has("retention90d")).toBe(true);
     expect(ultraSet.has("retention365d")).toBe(true);
+    expect(proSet.size).toBe(6);
+    expect(ultraSet.size).toBe(10);
+    expect([...ultraSet].filter(key => !proSet.has(key)).sort()).toEqual([
+      "aiForecasting",
+      "behavioralAI",
+      "customDomain",
+      "retention365d",
+    ]);
   });
 
   it("pro's included set is a superset of standard's (cumulative model)", () => {
@@ -107,9 +289,51 @@ describe("FEATURE_FLAGS entitlement alignment with PLAN_INCLUDED_ADDONS", () => 
     expect(FEATURE_FLAGS["pro"].customDomain).toBe(false);
   });
 
-  it("FEATURE_FLAGS.ultra.customDomain is true (customDomain bundled in Ultra)", () => {
+  it("keeps customDomain as an Ultra entitlement and does not enable it for Pro", () => {
     expect(PLAN_INCLUDED_ADDONS["ultra"]?.has("customDomain")).toBe(true);
     expect(FEATURE_FLAGS["ultra"].customDomain).toBe(true);
+    expect(PLAN_INCLUDED_ADDONS["pro"]?.has("customDomain")).toBe(false);
+    expect(FEATURE_FLAGS["pro"].customDomain).toBe(false);
+  });
+
+  it("keeps SSO and SLA plan features unavailable until their flows are implemented", () => {
+    for (const tier of ["standard", "pro", "ultra", "agency"] as const) {
+      expect(FEATURE_FLAGS[tier].sso).toBe(false);
+      expect(FEATURE_FLAGS[tier].saml).toBe(false);
+    }
+    expect(hasFeature("sso-enterprise", "ultra")).toBe(false);
+    expect(hasFeature("saml", "ultra")).toBe(false);
+    expect(hasFeature("custom-domain", "ultra")).toBe(false);
+    expect(hasFeature("sla-999", "ultra")).toBe(false);
+  });
+
+  it("enables Custom Domain for Ultra only on a configured Stripe TEST target", () => {
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "sk_test_custom_domain_fixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_API_ENABLED", "true");
+    vi.stubEnv("RENDER_API_KEY", "render-test-fixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_SERVICE_ID", "srv-testfixture");
+    vi.stubEnv("CUSTOM_DOMAIN_RENDER_EXPECTED_SERVICE_NAME", "flowpoint-test");
+    try {
+      expect(hasFeature("custom-domain", "ultra")).toBe(true);
+      expect(hasFeature("custom-domain", "pro")).toBe(false);
+      expect(CANONICAL_ADDON_DEFINITIONS.customDomain.description)
+        .toBe("Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps the Custom Domain beta disabled when no Stripe TEST key is available", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("STRIPE_TEST_MODE", "true");
+    vi.stubEnv("STRIPE_TEST_KEY", "");
+    vi.stubEnv("STRIPE_TEST_SECRET_KEY", "");
+    try {
+      expect(isCustomDomainTestBetaEnabled()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("prioritySupport is neither bundled nor enabled because it is not implemented", () => {
@@ -161,7 +385,10 @@ describe("addons entitlement merge logic", () => {
     expect(liveAddons["whiteLabel"]).toBe(true);
     expect(liveAddons["customDomain"]).toBe(true);
     expect(liveAddons["retention365d"]).toBe(true);
-    expect(liveAddons["keywordDomination"]).toBe(true);
+    expect(liveAddons["retention90d"]).toBe(true);
+    expect(liveAddons["behavioralAI"]).toBe(true);
+    expect(liveAddons["aiForecasting"]).toBe(true);
+    expect(liveAddons["keywordDomination"]).toBeUndefined();
   });
 });
 
@@ -178,7 +405,17 @@ describe("canonical add-on availability", () => {
   it("reports product lifecycle independently of entitlement", () => {
     expect(getAddonAvailability("globalMonitoring")).toBe("coming_soon");
     expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
-    expect(getAddonAvailability("marketIntelligence")).toBe("beta");
+    expect(getAddonAvailability("abTestingAI")).toBe("coming_soon");
+    expect(getAddonAvailability("seoChangeImpact")).toBe(expectedReplacementAvailability("seoChangeImpact"));
+    expect(COMING_SOON_ADDONS.has("abTestingAI")).toBe(true);
+    const gbpTestPriceReady = Boolean(ADDON_PRICE_IDS_TEST.gbpPerformanceLeads) &&
+      (process.env["STRIPE_TEST_MODE"] === "true") &&
+      (process.env["STRIPE_TEST_KEY"] ?? "").startsWith("sk_test_");
+    expect(getAddonAvailability("gbpPerformanceLeads")).toBe(gbpTestPriceReady ? "available" : "coming_soon");
+    for (const key of ["behavioralAI", "aiCro", "revenueLeak", "aiForecasting", "marketIntelligence"]) {
+      expect(getAddonAvailability(key)).toBe("coming_soon");
+      expect(getAddonPurchasablePlans(key)).toEqual([]);
+    }
     expect(getAddonAvailability("monitorsPack10")).toBe("available");
   });
 
@@ -187,7 +424,7 @@ describe("canonical add-on availability", () => {
     expect(getAddonStatus("aiWorkspaceLaunch", { active: true })).toBe("coming_soon");
     expect(getAddonStatus("whiteLabel", { included: true, active: true })).toBe("included");
     expect(getAddonStatus("monitorsPack10", { active: 2 })).toBe("active");
-    expect(getAddonStatus("marketIntelligence")).toBe("beta");
+    expect(getAddonStatus("marketIntelligence")).toBe("coming_soon");
     expect(getAddonStatus("monitorsPack10")).toBe("available");
   });
 });

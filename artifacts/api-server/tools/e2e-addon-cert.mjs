@@ -3,9 +3,9 @@
  *
  * Teste les 8 familles de quotas d'add-on :
  *   1. Monitors     (monitorsPack10)   — gate RÉELLE (checkQuota → 429)
- *   2. Audits       (auditsPack200)    — comptabilité uniquement [GAP documenté]
- *   3. PDF/Reports  (pdfPack200)       — comptabilité uniquement [GAP documenté]
- *   4. Exports      (exportsPack1000)  — comptabilité uniquement [GAP documenté]
+ *   2. Audits       (auditsPack200)    — quota calculé + gate serveur
+ *   3. PDF/Reports  (pdfPack200)       — quota calculé + gate serveur
+ *   4. Exports      (exportsPack1000)  — quota calculé + gate serveur
  *   5. Seats        (extraSeats)       — gate RÉELLE (team.ts → 403)
  *   6. AI Credits   (addExtraAICredits)— gate RÉELLE (ai-engine → 403)
  *   7. Rétention    (retention90d/365d)— gate RÉELLE (/audits/history)
@@ -26,20 +26,27 @@
  */
 
 import { createRequire } from "module";
+import { randomUUID } from "node:crypto";
+import {
+  getAddonCertDatabaseConfig,
+  assertAddonCertDatabaseIsDisposable,
+} from "./addon-cert-db-guard.mjs";
 const require = createRequire(import.meta.url);
 
 const PG_PATH = "/home/runner/workspace/node_modules/.pnpm/pg@8.20.0/node_modules/pg/lib/index.js";
 const { Pool } = require(PG_PATH);
 
 // ── Config ─────────────────────────────────────────────────────────────────────
-const ORG_UUID    = "e2ec0000-c111-4001-b000-c3170000ab01";
-const USER_UUID   = "e2ec0000-c111-4001-b000-c3170000ab02";
+const ORG_UUID    = randomUUID();
+const USER_UUID   = randomUUID();
+const RUN_PREFIX  = `cert-${ORG_UUID}`;
 const TEST_EMAIL  = `addon-cert-${Date.now()}@cert.local`;
 const TEST_TOKEN  = `cert-addon-token-${Date.now()}`;
 const BASE_URL    = `http://localhost:${process.env.PORT || 8081}`;
 const MONTH       = new Date().toISOString().slice(0, 7);
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const { connectionString, expectedDatabase } = getAddonCertDatabaseConfig();
+const pool = new Pool({ connectionString });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const db    = (sql, p = []) => pool.query(sql, p);
@@ -59,6 +66,9 @@ const WARN = yellow("⚠️  WARN");
 const GAP  = yellow("📋 GAP ");
 
 let results = [];
+let databaseIsolationVerified = false;
+let testOrgSetupStarted = false;
+let fatalError = false;
 
 function log(msg)  { console.log(msg); }
 function logStep(step, status, detail) {
@@ -107,38 +117,31 @@ const STD = { monitors: 10, audits: 30, reports: 30, exports: 30, teamMembers: 1
 // SETUP
 // ════════════════════════════════════════════════════════════════════════════
 async function setup() {
+  await assertAddonCertDatabaseIsDisposable(pool, expectedDatabase);
+  databaseIsolationVerified = true;
+  testOrgSetupStarted = true;
+
   log(bold('\n══════════════════════════════════════════════════════════'));
   log(bold('  FlowPoint — Certification E2E Add-ons'));
   log(bold('  8 familles de quotas | DB + API + Enforcement'));
   log(bold('══════════════════════════════════════════════════════════'));
   log(dim(`  Org UUID  : ${ORG_UUID}`));
-  log(dim(`  Token     : ${TEST_TOKEN.slice(0, 30)}...`));
   log(dim(`  Server    : ${BASE_URL}`));
   log('');
-
-  // Clean up any previous run
-  await db(`DELETE FROM org_addons   WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM monitors     WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM org_settings WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM user_sessions WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM ai_monthly_usage WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM ai_credit_purchases WHERE org_id=$1`, [ORG_UUID]).catch(() => {});
-  await db(`DELETE FROM team_members  WHERE org_id=$1`, [ORG_UUID]).catch(() => {});
-  await db(`DELETE FROM audits        WHERE org_id=$1`, [ORG_UUID]).catch(() => {});
 
   // Create test org in organizations (needed for org_addons FK constraint)
   await db(
     `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan, stripe_customer_id, created_at, updated_at)
-     VALUES ($1,'cert-addon-org','cert-addon-org',$2,'active','standard','',NOW(),NOW())
+      VALUES ($1,$3,$3,$2,'active','standard','',NOW(),NOW())
      ON CONFLICT (id) DO UPDATE SET plan='standard', status='active', updated_at=NOW()`,
-    [ORG_UUID, USER_UUID]
+    [ORG_UUID, USER_UUID, RUN_PREFIX]
   ).catch(async (e) => {
     // Fallback: organizations schema may differ — try minimal columns
     await db(
       `INSERT INTO organizations (id, name, status, plan, created_at, updated_at)
-       VALUES ($1,'cert-addon-org','active','standard',NOW(),NOW())
+        VALUES ($1,$2,'active','standard',NOW(),NOW())
        ON CONFLICT (id) DO UPDATE SET plan='standard', updated_at=NOW()`,
-      [ORG_UUID]
+      [ORG_UUID, RUN_PREFIX]
     );
   });
 
@@ -192,7 +195,7 @@ async function certMonitors() {
       `INSERT INTO monitors (id, org_id, name, url, status, uptime, frequency, alert_email, is_critical, created_at, updated_at)
        VALUES ($1,$2,$3,$4,'up',100,'5min','',false,NOW(),NOW())
        ON CONFLICT (id) DO NOTHING`,
-      [`cert-mon-${i}`, ORG_UUID, `cert-monitor-${i}`, `https://cert-test-${i}.example.com`]
+       [`${RUN_PREFIX}-mon-${i}`, ORG_UUID, `${RUN_PREFIX}-monitor-${i}`, `https://cert-test-${i}.example.com`]
     );
   }
   const countBefore = (await dbOne(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [ORG_UUID]))?.n;
@@ -242,21 +245,8 @@ async function certMonitors() {
     logStep('/api/me retourne nouveau limite monitors', 'warn', `attendu=${expectedLimit} reçu=${meMonitorLimit}`);
   }
 
-  // ── ENFORCEMENT après activation (doit réussir) ──
-  const enforce2 = await apiCall('/api/monitors', {
-    method: 'POST',
-    body: { name: 'cert-allowed-by-addon', url: 'https://httpbin.org/get', frequency: '5min' },
-  });
-  if (enforce2.status === 201 || enforce2.status === 200) {
-    logStep('Enforcement après activation → monitor créé (nouveau quota)', 'pass',
-      `id=${enforce2.data?.monitor?.id || enforce2.data?.id}`);
-    // Clean up the created monitor
-    if (enforce2.data?.monitor?.id) await db(`DELETE FROM monitors WHERE id=$1`, [enforce2.data.monitor.id]);
-    if (enforce2.data?.id) await db(`DELETE FROM monitors WHERE id=$1`, [enforce2.data.id]);
-  } else {
-    logStep('Enforcement après activation → monitor créé', 'fail',
-      `status=${enforce2.status} — ${enforce2.data?.error}`);
-  }
+  logStep('Quota monitors affiché après activation', limitAfter === expectedLimit ? 'pass' : 'fail',
+    `monitorsLimit=${limitAfter}; aucun monitor externe créé par le certificat`);
 
   // ── DÉSACTIVATION ──
   await removeAddon(ADDON);
@@ -273,7 +263,7 @@ async function certMonitors() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CERT-2: AUDITS — auditsPack200 (+200) — COMPTABILITÉ UNIQUEMENT
+// CERT-2: AUDITS — auditsPack200 (+200)
 // ════════════════════════════════════════════════════════════════════════════
 async function certAudits() {
   log(bold(`\n━━ CERT-2: Audits (auditsPack200) ━━━━━━━━━━━━━━━━━━━━━━━`));
@@ -298,8 +288,8 @@ async function certAudits() {
     `attendu ${expected}, reçu ${udAfter.data?.auditsLimit}`);
 
   // Document enforcement gap
-  logStep('Enforcement POST /api/audits (gate réelle)', 'gap',
-    'Aucun gate quota sur POST /api/audits — comptabilité uniquement (audits.ts:60-104)');
+  logStep('Gate POST /api/audits', 'warn',
+    'Le handler appelle maintenant checkQuota; ce certificat ne lance pas d’audit PSI pour tester le chemin autorisé.');
 
   await removeAddon(ADDON);
   const udR = await apiCall('/api/billing/usage-details');
@@ -308,7 +298,7 @@ async function certAudits() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CERT-3: PDF/REPORTS — pdfPack200 (+200) — COMPTABILITÉ UNIQUEMENT
+// CERT-3: PDF/REPORTS — pdfPack200 (+200)
 // ════════════════════════════════════════════════════════════════════════════
 async function certPDF() {
   log(bold(`\n━━ CERT-3: PDF / Reports (pdfPack200) ━━━━━━━━━━━━━━━━━━━`));
@@ -329,8 +319,8 @@ async function certPDF() {
   logStep('API reportsLimit après activation', udAfter.data?.reportsLimit === expected ? 'pass' : 'fail',
     `attendu ${expected}, reçu ${udAfter.data?.reportsLimit}`);
 
-  logStep('Enforcement POST /api/reports (gate réelle)', 'gap',
-    'Aucun gate quota sur exports PDF — recordUsageEvent() uniquement (reports.ts:197-207)');
+  logStep('Gate POST /api/reports', 'warn',
+    'Les handlers de création vérifient checkQuota; chemin autorisé non exécuté dans ce certificat.');
 
   await removeAddon(ADDON);
   const udR = await apiCall('/api/billing/usage-details');
@@ -339,7 +329,7 @@ async function certPDF() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CERT-4: EXPORTS — exportsPack1000 (+1000) — COMPTABILITÉ UNIQUEMENT
+// CERT-4: EXPORTS — exportsPack1000 (+1000)
 // ════════════════════════════════════════════════════════════════════════════
 async function certExports() {
   log(bold(`\n━━ CERT-4: Exports (exportsPack1000) ━━━━━━━━━━━━━━━━━━━━`));
@@ -360,8 +350,8 @@ async function certExports() {
   logStep('API exportsLimit après activation', udAfter.data?.exportsLimit === expected ? 'pass' : 'fail',
     `attendu ${expected}, reçu ${udAfter.data?.exportsLimit}`);
 
-  logStep('Enforcement exports CSV (gate réelle)', 'gap',
-    'Aucun gate quota sur exports CSV — usage_events uniquement (usage-events.ts:11-18)');
+  logStep('Gate exports', 'warn',
+    'La route data-export vérifie le quota en fail-closed; le parcours export réel reste à tester par route mockée.');
 
   await removeAddon(ADDON);
   const udR = await apiCall('/api/billing/usage-details');
@@ -406,7 +396,7 @@ async function certSeats() {
       `INSERT INTO team_members (id, org_id, email, role, status, created_at)
        VALUES ($1,$2,$3,'member','active',NOW())
        ON CONFLICT DO NOTHING`,
-      [`cert-member-1`, ORG_UUID, 'cert-member-1@test.local']
+      [`${RUN_PREFIX}-member-1`, ORG_UUID, `${RUN_PREFIX}@test.local`]
     ).catch(() => {});
   });
 
@@ -418,7 +408,7 @@ async function certSeats() {
   // POST /api/team/invite (exercises reserveSeat → checkQuota("seats"))
   const enforce1 = await apiCall('/api/team/invite', {
     method: 'POST',
-    body: { email: 'cert-invite-test@test.local', role: 'member' },
+    body: { email: `${RUN_PREFIX}-invite@test.local`, role: 'member' },
   });
   // With 1 team_member + owner = 2 used, limit=1 → should be blocked (403 or similar)
   if (enforce1.status === 403 || enforce1.status === 429 || enforce1.status === 402 ||
@@ -439,19 +429,8 @@ async function certSeats() {
   const udAfter = await apiCall('/api/billing/usage-details');
   const expectedTeam = STD.teamMembers + PACK_GRANT;
   log(cyan(`  APRÈS: teamMembersLimit=${udAfter.data?.teamMembersLimit} (attendu ${expectedTeam})`));
-  logStep('API teamMembersLimit après activation', udAfter.data?.teamMembersLimit === expectedTeam ? 'pass' : 'fail',
-    `attendu ${expectedTeam}, reçu ${udAfter.data?.teamMembersLimit}`);
-
-  // ── ENFORCEMENT après activation ──
-  const enforce2 = await apiCall('/api/team/invite', {
-    method: 'POST',
-    body: { email: 'cert-invite-allowed@test.local', role: 'member' },
-  });
-  // With limit now 6, used=2 → should pass (or fail for another reason like email validation)
-  const seatOk = enforce2.status !== 403 && enforce2.status !== 429 &&
-    !String(enforce2.data?.error || '').match(/siège|seat|limit/i);
-  logStep('Enforcement après activation → invitation non bloquée par quota sièges', seatOk ? 'pass' : 'warn',
-    `status=${enforce2.status} — ${String(enforce2.data?.error || 'ok').slice(0,60)}`);
+  logStep('Quota sièges affiché après activation', udAfter.data?.teamMembersLimit === expectedTeam ? 'pass' : 'fail',
+    `teamMembersLimit=${udAfter.data?.teamMembersLimit}; aucun email d’invitation envoyé`);
 
   // ── DÉSACTIVATION ──
   await removeAddon(ADDON);
@@ -488,19 +467,11 @@ async function certAICredits() {
   logStep('DB ai_monthly_usage at 100% of plan limit', Number(usageRow?.credits_used) === creditLimit ? 'pass' : 'fail',
     `credits_used=${usageRow?.credits_used}`);
 
-  // Verify AI endpoint blocked (should return 429 or 402)
-  const aiBlock = await apiCall('/api/ai/chat', {
-    method: 'POST',
-    body: { message: 'test cert quota', conversationId: 'cert-conv-1' },
-  });
-  if (aiBlock.status === 429 || aiBlock.status === 402 ||
-      String(aiBlock.data?.error || aiBlock.data?.code || '').match(/credit|quota|insuffisant/i)) {
-    logStep('AI endpoint bloqué à 100% du quota (crédits épuisés)', 'pass',
-      `status=${aiBlock.status} — ${String(aiBlock.data?.error || aiBlock.data?.code || '').slice(0,60)}`);
-  } else {
-    logStep('AI endpoint bloqué à 100% du quota', 'warn',
-      `status=${aiBlock.status} — réponse inattendue: ${JSON.stringify(aiBlock.data).slice(0,80)}`);
-  }
+  // Read-only usage endpoint: this certification never invokes an AI provider.
+  const aiUsageBefore = await apiCall('/api/ai-credits/usage');
+  logStep('AI usage reflects exhausted credits (provider not called)',
+    aiUsageBefore.status === 200 && aiUsageBefore.data?.remaining === 0 ? 'pass' : 'fail',
+    `status=${aiUsageBefore.status}, remaining=${aiUsageBefore.data?.remaining}`);
 
   // ── ACTIVATION : add extra credits ──
   // Insert ai_credit_purchases row (simulates Stripe webhook for AI credit pack)
@@ -535,16 +506,10 @@ async function certAICredits() {
   logStep(`Crédits extra en DB → totalAvailable=${totalAvailable.toLocaleString()}, remaining=${remaining.toLocaleString()}`,
     remaining > 0 ? 'pass' : 'fail');
 
-  // Verify AI endpoint now allowed
-  const aiAllow = await apiCall('/api/ai/chat', {
-    method: 'POST',
-    body: { message: 'test cert quota with extra credits', conversationId: 'cert-conv-2' },
-  });
-  // Should NOT return a credits-exhausted error (may return other errors like SSE/streaming)
-  const stillCreditBlocked = (aiAllow.status === 429 || aiAllow.status === 402) &&
-    String(aiAllow.data?.error || aiAllow.data?.code || '').match(/credit|quota|insuffisant/i);
-  logStep('AI endpoint non bloqué avec crédits extra', !stillCreditBlocked ? 'pass' : 'fail',
-    `status=${aiAllow.status} — ${String(aiAllow.data?.error || 'ok').slice(0,60)}`);
+  const aiUsageAfter = await apiCall('/api/ai-credits/usage');
+  logStep('AI usage reflects extra credits (provider not called)',
+    aiUsageAfter.status === 200 && aiUsageAfter.data?.remaining === EXTRA_CREDITS ? 'pass' : 'fail',
+    `status=${aiUsageAfter.status}, remaining=${aiUsageAfter.data?.remaining}`);
 
   // ── CLEANUP ──
   await db(`DELETE FROM ai_monthly_usage WHERE org_id=$1`, [ORG_UUID]);
@@ -563,7 +528,7 @@ async function certRetention() {
   // Standard plan: can query up to 90 days by default
 
   // Insert audit rows at various dates
-  const testUrl = 'https://retention-test.cert.local';
+  const testUrl = `https://${RUN_PREFIX}.invalid`;
   const dates = [15, 45, 100, 200, 400]; // days ago
   for (const d of dates) {
     const date = new Date(Date.now() - d * 24 * 3600 * 1000).toISOString();
@@ -571,7 +536,7 @@ async function certRetention() {
       `INSERT INTO audits (id, org_id, url, score, status, date, created_at)
        VALUES ($1,$2,$3,75,'completed',$4,$4)
        ON CONFLICT (id) DO NOTHING`,
-      [`cert-audit-${d}d`, ORG_UUID, testUrl, date]
+       [`${RUN_PREFIX}-audit-${d}d`, ORG_UUID, testUrl, date]
     ).catch(() => {});
   }
   log(cyan(`  Audits insérés à : ${dates.join('j, ')}j ago`));
@@ -647,47 +612,11 @@ async function certStorage() {
 // ════════════════════════════════════════════════════════════════════════════
 async function certStripeFailClosed() {
   log(bold(`\n━━ CERT-9: Stripe Fail-Closed (no false grants) ━━━━━━━━━`));
-  const ADDON = 'monitorsPack10';
-
-  // Ensure org has NO Stripe subscription (standard plan, stripe_customer_id='')
-  await db(`UPDATE org_settings SET stripe_customer_id='' WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM org_addons WHERE org_id=$1 AND addon_key=$2`, [ORG_UUID, ADDON]);
-
-  // Read before state from DB
-  const beforeRow = await getAddonRow(ADDON);
-  log(cyan(`  AVANT: org_addons.${ADDON} = ${beforeRow ? JSON.stringify({active: beforeRow.active}) : 'null'}`));
-  logStep(`org_addons absent/inactif avant l'appel API`, !beforeRow || !beforeRow.active ? 'pass' : 'fail');
-
-  // Call the real API route — should fail because no Stripe subscription
-  const result = await apiCall(`/api/addons/${ADDON}/activate`, {
-    method: 'POST',
-    body: { quantity: 1 },
-  });
-  log(cyan(`  API /api/addons/${ADDON}/activate → status=${result.status}`));
-  log(cyan(`  Response: ${JSON.stringify(result.data).slice(0,120)}`));
-
-  const expectedFailCodes = [402, 503, 422, 403];
-  if (expectedFailCodes.includes(result.status)) {
-    logStep('API retourne erreur (pas de subscription Stripe)', 'pass',
-      `status=${result.status} — ${result.data?.error?.slice(0,80)}`);
-  } else if (result.status === 200 && result.data?.ok) {
-    logStep('API retourne succès SANS Stripe — FAUX SUCCÈS', 'fail',
-      `status=${result.status} — add-on accordé sans facturation`);
-  } else {
-    logStep('API retourne erreur (pas de subscription Stripe)', 'warn',
-      `status=${result.status} — ${JSON.stringify(result.data).slice(0,80)}`);
-  }
-
-  // Verify DB NOT modified
-  const afterRow = await getAddonRow(ADDON);
-  const notModified = !afterRow || !afterRow.active;
-  log(cyan(`  APRÈS: org_addons.${ADDON} = ${afterRow ? JSON.stringify({active: afterRow.active}) : 'null'}`));
-  if (notModified) {
-    logStep('org_addons NON modifié après échec Stripe — Fail-closed confirmé', 'pass');
-  } else {
-    logStep('org_addons a été modifié malgré l\'échec Stripe — FAUX SUCCÈS', 'fail',
-      `active=${afterRow?.active} — VIOLATION CRITIQUE`);
-  }
+  logStep(
+    'Stripe fail-closed',
+    'warn',
+    'Non exécuté ici : les tests de route utilisent un client Stripe simulé; ce certificat n’appelle pas Stripe.'
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -695,16 +624,24 @@ async function certStripeFailClosed() {
 // ════════════════════════════════════════════════════════════════════════════
 async function cleanup() {
   log(bold('\n━━ NETTOYAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
-  await db(`DELETE FROM org_addons       WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM monitors         WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM user_sessions    WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM org_settings     WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM organizations    WHERE id=$1`,     [ORG_UUID]).catch(() => {});
-  await db(`DELETE FROM ai_monthly_usage WHERE org_id=$1`, [ORG_UUID]);
-  await db(`DELETE FROM ai_credit_purchases WHERE org_id=$1`, [ORG_UUID]).catch(() => {});
-  await db(`DELETE FROM team_members     WHERE org_id=$1`, [ORG_UUID]).catch(() => {});
-  await db(`DELETE FROM audits           WHERE org_id=$1`, [ORG_UUID]).catch(() => {});
-  log(green('  ✅ Données de test supprimées'));
+  const removals = [
+    [`DELETE FROM org_addons WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM monitors WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM user_sessions WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM org_settings WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM ai_monthly_usage WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM ai_credit_purchases WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM team_members WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM audits WHERE org_id=$1`, [ORG_UUID]],
+    [`DELETE FROM organizations WHERE id=$1`, [ORG_UUID]],
+  ];
+  let failures = 0;
+  for (const [sql, params] of removals) {
+    try { await db(sql, params); } catch { failures++; }
+  }
+  log(failures === 0
+    ? green('  ✅ Données de test supprimées')
+    : yellow(`  ⚠️ Nettoyage incomplet : ${failures} suppression(s) échouée(s)`));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -723,7 +660,7 @@ function printSummary() {
   log(green(`  ✅ PASS : ${passed.length}`));
   log(red(  `  ❌ FAIL : ${failed.length}`));
   log(yellow(`  ⚠️  WARN : ${warned.length}`));
-  log(yellow(`  📋 GAP  : ${gaps.length} (enforcement non implémenté)`));
+  log(yellow(`  📋 GAP  : ${gaps.length} (parcours non commercialisé ou non couvert)`));
 
   if (failed.length > 0) {
     log(bold(red('\n  ÉCHECS CRITIQUES :')));
@@ -731,16 +668,15 @@ function printSummary() {
   }
 
   if (gaps.length > 0) {
-    log(bold(yellow('\n  GAPS D\'ENFORCEMENT (quotas comptés mais non bloquants) :')));
+    log(bold(yellow('\n  PARCOURS NON COUVERTS OU NON COMMERCIALISÉS :')));
     gaps.forEach(g => log(yellow(`    📋 ${g.step}`)));
-    log(dim('\n  → Ces familles ont des limites affichées dans l\'UI mais'));
-    log(dim('    aucun gate serveur ne bloque leur dépassement réel.'));
-    log(dim('    Action recommandée : implémenter checkQuota("audits")'));
-    log(dim('    et checkQuota("reports") en amont des POST correspondants.'));
+  log(dim('\n  → Les limites affichées et les gates serveur doivent être certifiés'));
+  log(dim('    séparément; un parcours non exécuté n’est pas déclaré validé.'));
   }
 
   log(bold('\n══════════════════════════════════════════════════════════'));
-  log(bold(failed.length === 0 ? green('  RÉSULTAT : CERTIFIÉ ✅') : red('  RÉSULTAT : CERTIFICATION INCOMPLÈTE ❌')));
+  const complete = !fatalError && failed.length === 0 && warned.length === 0 && gaps.length === 0;
+  log(bold(complete ? green('  RÉSULTAT : CERTIFIÉ ✅') : red('  RÉSULTAT : CERTIFICATION INCOMPLÈTE ❌')));
   log(bold('══════════════════════════════════════════════════════════\n'));
 }
 
@@ -760,11 +696,18 @@ async function main() {
     await certStorage();
     await certStripeFailClosed();
   } catch (err) {
+    fatalError = true;
     log(red(`\n  ERREUR FATALE: ${err.message}`));
-    console.error(err);
   } finally {
-    await cleanup();
+    if (databaseIsolationVerified && testOrgSetupStarted) {
+      await cleanup();
+    } else {
+      log(yellow("  Nettoyage ignoré : la base jetable n'a pas été vérifiée."));
+    }
     printSummary();
+    if (fatalError || results.some(r => r.status === 'fail' || r.status === 'warn' || r.status === 'gap')) {
+      process.exitCode = 1;
+    }
     await pool.end();
   }
 }

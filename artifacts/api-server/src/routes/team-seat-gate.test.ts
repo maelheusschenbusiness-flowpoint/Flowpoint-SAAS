@@ -25,6 +25,11 @@ vi.mock("../lib/logger.js", () => ({
 // ─── requireRole (canAdmin) mock — pass through ───────────────────────────────
 vi.mock("../middlewares/requireRole.js", () => ({
   canAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+  // team.ts importe aussi ownerOnly depuis la PR #133 (politique RBAC V1 :
+  // l'administration des membres est réservée au owner). Comme canAdmin,
+  // il est neutralisé ici : ces tests portent sur le handler, pas sur le
+  // contrôle de rôle — celui-ci est couvert par tests/rbac-policy-v1.test.ts.
+  ownerOnly: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 // ─── sessions mock (imported at module load) ──────────────────────────────────

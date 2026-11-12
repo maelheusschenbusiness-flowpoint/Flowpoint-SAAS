@@ -13,12 +13,12 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
-import { pool, withOrgDb } from "@workspace/db";
+import { pool, withOrgDb, getRlsEnforcementStatus } from "@workspace/db";
 import { markCommissionPaid } from "../services/seller-financial-ledger.js";
-import { agregerAttribution, estSchemaUtmAbsent, validerPlageAttribution } from "../services/funnel-events.js";
-import { logger } from "../lib/logger.js";
+import { INSERT_QA_TEST_SESSION_SQL } from "../services/qa-test-session.js";
+import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 
 const router = Router();
 
@@ -41,8 +41,27 @@ function requireAdminKey(req: Request, res: Response): boolean {
     return false;
   }
   const provided = req.headers["x-admin-key"];
-  if (typeof provided !== "string" || provided !== key) {
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
     res.status(403).json({ ok: false, error: "Invalid or missing x-admin-key header" });
+    return false;
+  }
+  return true;
+}
+
+/** Dedicated non-production credential for the fixed QA session endpoint. */
+function requireQaTestSessionKey(req: Request, res: Response): boolean {
+  if (process.env["NODE_ENV"] !== "test") {
+    res.status(404).json({ ok: false, error: "Not found" });
+    return false;
+  }
+  const key = process.env["QA_TEST_SESSION_KEY"];
+  if (!key || key.length < ADMIN_KEY_MIN_LEN || key === process.env["ADMIN_KEY"]) {
+    res.status(503).json({ ok: false, error: "QA_TEST_SESSION_KEY must be at least 32 characters and different from ADMIN_KEY." });
+    return false;
+  }
+  const provided = req.headers["x-admin-key"];
+  if (typeof provided !== "string" || !keysEqual(provided, key)) {
+    res.status(403).json({ ok: false, error: "Invalid QA session key." });
     return false;
   }
   return true;
@@ -258,61 +277,6 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
-  }
-});
-
-// ── GET /api/admin/acquisition/attribution ────────────────────────────────────
-// Agregats anonymes du tunnel par jour UTC x etape x source x campagne UTM.
-// Contrat fige (importe tel quel par AI Lab) : aucune autre cle dans les lignes,
-// jamais de visiteur_id, org_ref ni e-mail. `visiteurs` = visiteurs distincts.
-// Lecture : visiteurs = landing_vue, inscriptions = signup_form_completed,
-// essais = trial_activated, abonnements payants = subscription_activated.
-// Clé restreinte ATTRIBUTION_EXPORT_KEY (en-tête x-attribution-key) : lecture de CES agrégats
-// anonymes seulement, pour AI Lab, sans lui confier ADMIN_KEY. Même modèle que SELLER_ADMIN_KEY :
-// sans l'en-tête dédié, ou avec x-admin-key, c'est le contrôle admin complet, inchangé.
-const ATTRIBUTION_EXPORT_KEY_MIN_LEN = 32;
-function requireAttributionAdminKey(req: Request, res: Response): boolean {
-  const provided = req.headers["x-attribution-key"];
-  if (provided === undefined || req.headers["x-admin-key"] !== undefined) return requireAdminKey(req, res);
-  const key = process.env["ATTRIBUTION_EXPORT_KEY"];
-  if (!key || key.length < ATTRIBUTION_EXPORT_KEY_MIN_LEN) {
-    res.status(503).json({ ok: false, error: `ATTRIBUTION_EXPORT_KEY is not configured on this server (minimum ${ATTRIBUTION_EXPORT_KEY_MIN_LEN} chars)` });
-    return false;
-  }
-  if (key === process.env["ADMIN_KEY"]) {
-    res.status(503).json({ ok: false, error: "ATTRIBUTION_EXPORT_KEY must differ from ADMIN_KEY" });
-    return false;
-  }
-  if (typeof provided !== "string" || !keysEqual(provided, key)) {
-    res.status(403).json({ ok: false, error: "Invalid x-attribution-key header" });
-    return false;
-  }
-  return true;
-}
-
-router.get("/admin/acquisition/attribution", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAttributionAdminKey(req, res)) return;
-  const plage = validerPlageAttribution(req.query["from"], req.query["to"]);
-  if (!plage.ok) {
-    res.status(400).json({ ok: false, error: plage.erreur });
-    return;
-  }
-  try {
-    const lignes = await agregerAttribution(plage.du, plage.au);
-    res.json({ genereLe: new Date().toISOString(), du: plage.du, au: plage.au, lignes });
-  } catch (err) {
-    // Cause journalisee (code SQL + message), jamais la cle ni de ligne de donnees.
-    const code = (err as { code?: string } | null)?.code ?? null;
-    logger.error({ code, message: safeErrMsg(err) }, "[attribution] aggregate query failed");
-    if (estSchemaUtmAbsent(err)) {
-      res.status(503).json({
-        ok: false,
-        code: "schema_utm_absent",
-        error: "funnel_events utm columns missing (migration 020 not applied)",
-      });
-      return;
-    }
-    res.status(500).json({ ok: false, code: "erreur_interne", error: safeErrMsg(err) });
   }
 });
 
@@ -615,6 +579,10 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
         app_user_bypassrls: appUser?.rolbypassrls ?? null,
         rls_enabled_tables: tableR.rows[0].rls_tables,
         total_policies:     rlsR.rows[0].policy_count,
+        // C-08 : etat REEL de l'isolation par la base (mode, role de connexion
+        // superuser/BYPASSRLS, motifs). `isolationGuaranteed:false` = seuls les
+        // filtres org_id manuels isolent les organisations. Aucun secret.
+        enforcement: getRlsEnforcementStatus(),
       },
     });
   } catch (err) {
@@ -623,43 +591,69 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
 });
 
 // ── POST /api/admin/test-session ──────────────────────────────────────────────
-// Creates a short-lived (1h) test session for org "default" (admin role).
-// Returns the token so automated tests can authenticate against production.
-// Token is revoked automatically when it expires.
+// Test-only session for the existing internal QA organization. This endpoint
+// never provisions organizations, users, memberships, roles, or entitlements.
 router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
-  if (!requireAdminKey(req, res)) return;
+  if (!requireQaTestSessionKey(req, res)) return;
 
-  const { orgId = "default", ttlMinutes = 60, role: rawRole = "admin" } = req.body as { orgId?: string; ttlMinutes?: number; role?: string };
-  const VALID_ROLES = ["owner", "admin", "member", "viewer"];
-  const role = VALID_ROLES.includes(rawRole) ? rawRole : "admin";
+  const { orgId = "10000000-0000-4000-8000-000000000002", ttlMinutes = 60 } =
+    req.body as { orgId?: string; ttlMinutes?: number };
+  const QA_USER_UUID = "10000000-0000-4000-8000-000000000001";
+  const QA_ORG_UUID = "10000000-0000-4000-8000-000000000002";
+  if (orgId !== QA_ORG_UUID) {
+    res.status(403).json({ ok: false, error: "Only the existing internal QA organization is allowed." });
+    return;
+  }
+  if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 60) {
+    res.status(400).json({ ok: false, error: "ttlMinutes must be an integer between 1 and 60." });
+    return;
+  }
 
   const client = await pool.connect();
   try {
-    // Test convenience: when the orgId is a UUID, ensure a matching organizations
-    // row exists — AI usage tables (ai_usage_logs / ai_monthly_usage) have an FK
-    // to organizations(id), so a session on a non-existent org could never track usage.
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
-      await client.query(
-        `INSERT INTO organizations (id, name, slug, owner_user_id, status, plan)
-         VALUES ($1::uuid, 'Test Org', 'test-org-' || left($1::text, 8), 'test-admin', 'active', 'pro')
-         ON CONFLICT (id) DO NOTHING`,
-        [orgId]
-      );
-    }
-    const token = `fp_prodtest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
-    await client.query(
-      `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
-       VALUES ($1, 'test-admin', $2, 'test@flowpoint.pro', $4, $3, NOW())
-       ON CONFLICT DO NOTHING`,
-      [token, orgId, expiresAt, role]
+    const existingQaOrg = await client.query(
+      `SELECT id FROM organizations
+        WHERE id = $1::uuid AND is_internal_qa = true AND status = 'active'
+        LIMIT 1`,
+      [QA_ORG_UUID],
     );
+    if (!existingQaOrg.rows.length) {
+      res.status(404).json({ ok: false, error: "The authorized QA organization does not exist." });
+      return;
+    }
+
+    const membership = await client.query(
+      `SELECT role FROM organization_members
+        WHERE organization_id::text = $1 AND user_id = $2::uuid AND status = 'active'
+        LIMIT 1`,
+      [QA_ORG_UUID, QA_USER_UUID],
+    );
+    const role = membership.rows[0]?.role;
+    if (!role || !["owner", "admin", "member", "viewer"].includes(role)) {
+      res.status(403).json({ ok: false, error: "The internal QA user has no active membership." });
+      return;
+    }
+
+    const token = `fp_qa_${randomBytes(32).toString("hex")}`;
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+    const inserted = await client.query<{ token: string }>(
+      INSERT_QA_TEST_SESSION_SQL,
+      [token, QA_USER_UUID, QA_ORG_UUID, role, expiresAt, QA_USER_UUID],
+    );
+    if (inserted.rowCount !== 1 || inserted.rows[0]?.token !== token) {
+      res.status(503).json({
+        ok: false,
+        error: "The QA session was not persisted.",
+        code: "QA_SESSION_NOT_PERSISTED",
+      });
+      return;
+    }
     res.json({
       ok: true,
       token,
-      orgId,
+      orgId: QA_ORG_UUID,
       expiresAt: expiresAt.toISOString(),
-      note: "Short-lived test token — expires in " + ttlMinutes + " min. Do not store in code.",
+      note: "Short-lived Test-only QA token. It is never logged.",
     });
   } catch (err) {
     console.error("[Admin] test-session failed:", err);
@@ -727,7 +721,7 @@ router.post("/admin/provision-qa-account", async (req: Request, res: Response): 
   if (!requireAdminKey(req, res)) return;
 
   // ── 1. Rate limit (5 / hour / IP) ────────────────────────────────────────
-  const callerIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+  const callerIp = req.ip
     ?? req.socket?.remoteAddress
     ?? "unknown";
   const rl = checkQaRateLimit(callerIp);
@@ -858,7 +852,10 @@ router.post("/admin/ai-usage-seed", async (req: Request, res: Response): Promise
 
   const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
   const resetAt = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString();
-  const id = `amu_${orgId}_${month}`;
+  // Id non déterministe : un id dérivé de (org_id, month) fait collisionner
+  // deux écritures concurrentes sur la clé primaire, que l'arbitre
+  // ON CONFLICT (org_id, month) ne couvre pas. Voir monthlyUsageRowId().
+  const id = `amu_${orgId}_${month}_${Math.random().toString(36).slice(2, 8)}`;
 
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
     res.status(400).json({ ok: false, error: "orgId must be a UUID (ai_monthly_usage.org_id is UUID with FK to organizations)" });
@@ -1559,10 +1556,7 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
   }
 
   // Mandatory structured audit log — every call, including dry-runs.
-  const callerIp =
-    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
-    req.socket.remoteAddress ||
-    "unknown";
+  const callerIp = req.ip || req.socket.remoteAddress || "unknown";
   const callId = `purge_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   console.warn(JSON.stringify({
     event: "ADMIN_PURGE_CALLED",
@@ -1829,60 +1823,17 @@ router.post("/admin/purge-all-clients", async (req: Request, res: Response): Pro
       // Verified against information_schema + Supabase REST API.
       // Absent tables (psi_cache, tracked_keywords_history, etc.) are excluded;
       // .catch() swallows errors for any that were provisioned after this list was built.
-      for (const tbl of [
-        // Core audits / performance
-        "audits","audit_schedules","audit_trail","pagespeed_history","pagespeed_results",
-        // Monitors
-        "monitors","monitor_checks","monitor_incidents","monitor_logs",
-        // Alerts & keywords
-        "alert_rules","alert_events","ranking_alerts",
-        "tracked_keywords","keyword_clusters","keyword_history","keyword_opportunities",
-        // Missions
-        "missions","mission_history","mission_ai_logs",
-        "ai_generated_missions","ai_setup_logs","ai_recommendations",
-        "mission_impact_scores","mission_priorities","mission_templates",
-        // Reports
-        "reports","report_exports","report_templates",
-        // Calendar
-        "calendar_events",
-        // Team
-        "team_members","team_messages","team_files","team_channels",
-        // Automation
-        "automation_integrations","automation_workflows","automation_runs",
-        "automation_logs","automation_templates","workflow_runs","incoming_webhooks",
-        // Google / OAuth
-        "google_tokens","google_oauth_states","google_accounts",
-        "google_locations","google_reviews","google_product_connections",
-        // GitHub
-        "github_connections",
-        // Competitors
-        "competitors","competitor_map_results","competitor_movements","competitor_rankings",
-        // Funnels / growth
-        "funnels","funnel_steps","growth_objectives","seo_forecasts","share_tokens",
-        // Org config & billing
-        "org_addons","org_checklist","org_secrets","org_auth_config",
-        "subscriptions","org_member_permissions","sso_providers",
-        // Checkout & overview cache
-        "checkout_post_tokens","overview_insights_cache","overview_insights_rl",
-        // AI
-        "ai_usage_logs","ai_monthly_usage","ai_credit_purchases",
-        "ai_chat_history","ai_action_logs","ai_action_proposals",
-        "ai_autopilot_grants","ai_usage_pending_writes","ai_workspace_profiles",
-        "ai_market_reports","ai_review_replies",
-        // Activity / notifications
-        "activity_logs","notifications","user_prefs","user_activity_days",
-        "login_audits","permission_logs","access_audits",
-        // Onboarding
-        "onboarding_sessions",
-        // Other business data
-        "local_pack_history","local_heatmaps","industry_signals",
-        "connectors","dataforseo_quota","reviews","roles",
-        "market_opportunities","market_trends","usage_events",
-        "gbp_locations","gbp_posts",
-        // Legacy org settings
-        "org_settings",
-      ] as const) {
-        await safeDeleteUUIDSP(tbl, "org_id", orgIdsToDelete);
+      // La liste etait ecrite a la main. Mesure du 17/10/2026 : elle couvrait
+      // 91 des 114 tables portant org_id — 23 oubliees, dont les lignes
+      // restaient en base apres la suppression de l'organisation. Une liste
+      // litterale se perime a la table suivante ; c'est la cause structurelle
+      // des lignes orphelines mesurees en production. Les tables sont
+      // desormais decouvertes dans information_schema, comme le fait deja le
+      // chemin de suppression declenche par le client.
+      const { decouvrirTablesOrganisation } = await import("../services/account-deletion.js");
+      for (const { table, colonne } of await decouvrirTablesOrganisation(client)) {
+        if (table === "organizations" || table === "organization_members") continue; // traitees plus bas
+        await safeDeleteUUIDSP(table, colonne, orgIdsToDelete);
       }
 
       // organization_members uses `organization_id` (not `org_id`) — handle separately.
@@ -2141,10 +2092,9 @@ router.post("/admin/adopt-canonical-stripe-customer", async (req: Request, res: 
     const previousCustomerId = orgRow.rows[0].stripe_customer_id ?? null;
 
     // 2 — Verify customer exists in Stripe (read-only probe)
-    const stripeKey = process.env.STRIPE_LIVE_API_KEY ?? process.env.STRIPE_SECRET_KEY ?? "";
+    const stripeKey = getStripeKey();
     if (!stripeKey) { res.status(500).json({ ok: false, error: "No Stripe key configured" }); return; }
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const customer = await stripe.customers.retrieve(canonicalCustomerId).catch((e: Error) => ({ _err: e.message }));
     if ("_err" in customer) {
       res.status(400).json({ ok: false, error: `Stripe retrieve failed: ${customer._err}` });
@@ -2657,15 +2607,17 @@ router.post("/admin/delete-qa-org", async (req: Request, res: Response): Promise
     const ownerUserId = ownerRes.rows[0]?.owner_user_id ?? null;
 
     // Delete all data associated with this org
-    const tables = ["monitors","audits","reports","org_addons","org_settings","notifications",
-      "team_members","team_invitations","usage_events","org_checklist","billing_events",
-      "calendar_events","alert_rules","alert_events"];
+    // Cette liste comptait quatorze tables sur les 114 portant org_id : mesure
+    // du 17/10/2026, cent tables etaient oubliees a chaque suppression d'une
+    // organisation de recette. Decouverte dynamique, comme ailleurs.
+    const { decouvrirTablesOrganisation } = await import("../services/account-deletion.js");
     let totalDeleted = 0;
-    for (const t of tables) {
+    for (const { table, colonne } of await decouvrirTablesOrganisation(pool)) {
+      if (table === "organizations") continue; // supprimee en dernier, plus bas
       try {
-        const r = await pool.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId]);
+        const r = await pool.query(`DELETE FROM ${table} WHERE ${colonne}::text = $1`, [orgId]);
         totalDeleted += r.rowCount ?? 0;
-      } catch { /* table may not exist — skip */ }
+      } catch { /* contrainte ou table absente — ignoree */ }
     }
     // Delete organization + owner user (if QA user)
     await pool.query(`DELETE FROM organizations WHERE id=$1::uuid`, [orgId]);

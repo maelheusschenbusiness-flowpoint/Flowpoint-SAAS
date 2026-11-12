@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { optionsSslPostgres } from "./ssl-supabase.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   pgTable, text, integer, boolean, timestamp, real, bigint, jsonb,
@@ -6,12 +7,48 @@ import {
 
 // ── Connection ────────────────────────────────────────────────────────────────
 
+// La racine Supabase n'est pas dans le magasin public : sans elle, la connexion
+// au pooler echoue en `SELF_SIGNED_CERT_IN_CHAIN`. Voir ssl-supabase.ts — la
+// verification reste ACTIVE, la racine est ajoutee au magasin, pas substituee.
+const sslPostgres = optionsSslPostgres();
+
+/**
+ * Taille du pool — DEFAUT MESURE LE 18/10/2026.
+ *
+ * Le pool etait a `max: 20`. Le pooler Supabase en mode session limite a 15
+ * clients, et le deploiement du commit 311c545f a echoue dessus :
+ *
+ *   code: "XX000"
+ *   message: "(EMAXCONNSESSION) max clients reached in session mode
+ *             - max clients are limited to pool_size: 15"
+ *   Fatal startup error — process will exit
+ *
+ * Pendant un deploiement sans coupure, deux instances coexistent : a 20
+ * chacune, le plafond est franchi et le demarrage echoue. Ce n'est pas une
+ * malchance, c'est arithmetique.
+ *
+ * 6 par instance laisse 12 pour deux instances, et 3 de marge pour `migrate`,
+ * les taches planifiees ou une connexion manuelle. Le trafic reel le permet
+ * tres largement : 118 589 requetes sur 30 jours, soit 0,046 requete par
+ * seconde en moyenne.
+ *
+ * `PG_POOL_MAX` permet de suivre un pooler reconfigure sans toucher au code.
+ */
+const TAILLE_POOL = (() => {
+  const brut = Number.parseInt(process.env["PG_POOL_MAX"] ?? "", 10);
+  return Number.isFinite(brut) && brut >= 1 ? brut : 6;
+})();
+
 export const pool = new Pool({
   connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
-  max: 20,
+  ...(sslPostgres === undefined ? {} : { ssl: sslPostgres }),
+  max: TAILLE_POOL,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
+
+/** Expose la valeur retenue, pour les tests de non-regression. */
+export const TAILLE_POOL_RETENUE = TAILLE_POOL;
 
 // Guard against unhandled 'error' events on idle pool clients.
 // When a connection is dropped by the server (ECONNABORTED, ECONNRESET, etc.)
@@ -325,6 +362,7 @@ export const croRecommendationsTable = pgTable("cro_recommendations", {
   source:          text("source").default("rules"),
   metadata:        jsonb("metadata").default({}),
   createdAt:       timestamp("created_at").defaultNow(),
+  updatedAt:       timestamp("updated_at").defaultNow(),
 });
 
 export const croScoresTable = pgTable("cro_scores", {
@@ -518,6 +556,20 @@ export const missionsSchemaRef = {
 // (migrations, async PSI updates) that are not tenant-scoped reads.
 
 import type { PoolClient } from "pg";
+import {
+  inspectRlsFacts, recordRlsFacts, recordRuntimeSetRoleFailure, reportRlsEnforcement,
+  resolveRlsEnforcementPolicy, getRlsEnforcementStatus,
+} from "./rls-enforcement.js";
+
+// C-08 : mesure, classement et etat observable de l'isolation RLS reelle.
+export {
+  classifyRlsEnforcement, inspectRlsFacts, resolveRlsEnforcementPolicy,
+  getRlsEnforcementStatus, reportRlsEnforcement, resetRlsEnforcementState, RlsEnforcementError,
+} from "./rls-enforcement.js";
+export type {
+  RlsEnforcementFacts, RlsEnforcementMode, RlsEnforcementClassification,
+  RlsEnforcementPolicy, RlsEnforcementStatus,
+} from "./rls-enforcement.js";
 
 // Populated once at server startup by probeAppUserRole().
 // When true, withOrgDb() never attempts SET LOCAL ROLE — it only sets the GUC.
@@ -541,32 +593,33 @@ export async function probeAppUserRole(): Promise<void> {
   // Without this listener Node.js would crash with "Unhandled 'error' event".
   client.on("error", () => { /* absorbed — pool.on('error') covers idle clients */ });
   try {
-    // First check if the role even exists.
-    const { rows } = await client.query<{ exists: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'app_user') AS exists`
-    );
-    if (!rows[0]?.exists) {
-      _appUserRoleUnavailable = true;
+    // C-08 : on MESURE l'etat reel (role de connexion superuser/BYPASSRLS ? proprietaire
+    // de tables sans FORCE ? SET ROLE possible ?) au lieu d'affirmer que le mode
+    // GUC-only est « correct et sur ». La mesure ne modifie rien.
+    const facts = await inspectRlsFacts(client);
+    recordRlsFacts(facts);
+    _appUserRoleUnavailable = facts.setRoleUsable !== true;
+    if (facts.appUserRoleExists === false) {
       console.warn("[withOrgDb] app_user role absent — GUC-only RLS mode. Run initRlsSetup() first.");
-      return;
+    } else if (facts.setRoleUsable === false) {
+      console.warn(
+        "[withOrgDb] app_user role present but SET ROLE failed — GUC-only RLS mode.",
+        "To enable full RLS: GRANT app_user TO <db-connection-user>;",
+      );
     }
-
-    // Role exists — verify the current connection user can actually SET ROLE.
-    await client.query("SET ROLE app_user");
-    await client.query("RESET ROLE");
-    // Role is present and usable — _appUserRoleUnavailable stays false.
-    console.info("[withOrgDb] app_user role present and usable — full RLS enforcement active");
   } catch {
+    // La mesure elle-meme a echoue : etat inconnu, traite comme « non garanti ».
     _appUserRoleUnavailable = true;
-    // Role exists but membership is not granted to the connection user (managed DB).
-    // GUC-only mode is correct and safe: RLS policies evaluate app.current_org_id.
-    console.warn(
-      "[withOrgDb] app_user role present but SET ROLE failed — GUC-only RLS mode (correct for managed DBs).",
-      "To enable full RLS: GRANT app_user TO <db-connection-user>;",
-    );
+    recordRlsFacts({
+      appUserRoleExists: null, setRoleUsable: false, appUserBypassesRls: null,
+      connectionRole: null, connectionIsSuperuser: null, connectionBypassesRls: null, ownedUnforcedRlsTables: null,
+    });
   } finally {
     client.release();
   }
+  // Politique `strict` : leve (le demarrage echoue). Sinon, journalise en ERREUR
+  // quand l'isolation par la base n'est pas garantie (voir rls-enforcement.ts).
+  reportRlsEnforcement(getRlsEnforcementStatus());
 }
 
 export async function withOrgDbClient<T>(
@@ -592,7 +645,15 @@ export async function withOrgDbClient<T>(
       try {
         await client.query("SET LOCAL ROLE app_user");
       } catch (roleErr) {
+        recordRuntimeSetRoleFailure();
+        if (resolveRlsEnforcementPolicy() === "strict") {
+          // RLS_ENFORCEMENT=strict : jamais de degradation silencieuse, et le drapeau
+          // `_appUserRoleUnavailable` n'est PAS pose : chaque requete retente le SET ROLE.
+          console.error("[SECURITY][RLS] SET LOCAL ROLE app_user failed and RLS_ENFORCEMENT=strict — refusing to serve this query without database-level isolation.");
+          throw roleErr;
+        }
         _appUserRoleUnavailable = true;
+        console.error("[SECURITY][RLS] SET LOCAL ROLE app_user failed at runtime — database-level tenant isolation is not guaranteed (see GET /api/admin/db-check).");
         console.warn(
           "[withOrgDb] SET LOCAL ROLE app_user failed — recovering transaction, GUC-only RLS mode.",
           "Fix: GRANT app_user TO <db-connection-user>;",

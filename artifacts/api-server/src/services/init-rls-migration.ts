@@ -42,8 +42,17 @@ import { logger } from "../lib/logger.js";
 
 const LOG = "[rls-migration]";
 
-/** GUC set by withOrgDb() inside every authenticated transaction. */
-const GUC = `current_setting('app.current_org_id', true)`;
+/**
+ * GUC set by withOrgDb() inside every authenticated transaction.
+ *
+ * Encapsule dans un `SELECT` a dessein : PostgreSQL evalue alors l'expression
+ * UNE fois par requete (InitPlan) au lieu d'une fois par ligne. C'est la forme
+ * que Supabase recommande sous l'alerte « Auth RLS Initialization Plan », qui
+ * visait ici users, subscriptions et usage. La semantique est identique — meme
+ * valeur, meme comparaison — donc le comportement de securite ne change pas :
+ * seul le nombre d'evaluations change.
+ */
+const GUC = `(SELECT current_setting('app.current_org_id', true))`;
 
 /**
  * Tables that must carry an org_id column for tenant isolation.
@@ -113,6 +122,9 @@ const NEEDS_ORG_ID_SET = new Set(NEEDS_ORG_ID);
 const BACKEND_ONLY_TABLES: readonly string[] = [
   "pending_signups",
   "checkout_post_tokens",
+  // Verrou de creation d'abonnement : ecrit par finalize-checkout via pool
+  // (superuser), jamais par une session client.
+  "checkout_subscription_claims",
   // schema_migrations is infrastructure — never accessible to anon/authenticated.
   // ENABLE RLS with no public policies = implicit deny-all for client roles.
   // init-data-tables.ts also enables RLS inline so it activates on first boot.

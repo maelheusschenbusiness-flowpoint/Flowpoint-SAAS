@@ -218,18 +218,22 @@ export async function *aiStream(opts: AIProviderChatOptions & {
 
       logger.info({ provider: primaryProviderId, model: primaryModel, task, streaming: true, attempt }, "[AI] Stream request (strict provider — user selected)");
 
+      let gen: AsyncGenerator<AIProviderStreamChunk, AIProviderResult, unknown> | undefined;
+      let streamCompleted = false;
+      let emittedChunk = false;
       try {
         // Drive the generator manually so we can capture the generator return value
         // (AIProviderResult) via IteratorResult.done===true. Using `for await...of`
         // discards the return value, which caused a spurious second provider.chat()
         // call after every stream — the root cause of Gemini truncation.
-        const gen = provider.stream({ ...chatOpts, model: primaryModel });
+        gen = provider.stream({ ...chatOpts, model: primaryModel });
         let finalResult: AIProviderResult | undefined;
         let accumulatedText = "";
 
         while (true) {
           const step = await gen.next();
           if (step.done) {
+            streamCompleted = true;
             // Generator return value is the AIProviderResult
             if (step.value && typeof step.value === "object" && "text" in step.value) {
               finalResult = step.value as AIProviderResult;
@@ -239,6 +243,7 @@ export async function *aiStream(opts: AIProviderChatOptions & {
           const chunk = step.value;
           if (chunk && typeof chunk === "object" && "content" in chunk) {
             accumulatedText += (chunk as AIProviderStreamChunk).content;
+            emittedChunk = true;
             yield chunk as AIProviderStreamChunk;
           }
         }
@@ -260,11 +265,19 @@ export async function *aiStream(opts: AIProviderChatOptions & {
         return finalResult;
       } catch (err) {
         lastStreamStrictErr = err;
-        if (attempt < STREAM_STRICT_MAX_RETRIES) {
+        if (attempt < STREAM_STRICT_MAX_RETRIES && !emittedChunk) {
           logger.warn({ err, provider: primaryProviderId, model: primaryModel, attempt }, "[AI] Stream failed — retrying once (strict provider)");
-          // Can't retry a generator mid-stream — only retry on initial failure before any yield
-          // (this catch fires if the stream itself throws, which happens before any chunk is yielded
-          //  only on auth/connection errors; mid-stream errors are non-retryable).
+        } else if (emittedChunk) {
+          logger.warn({ provider: primaryProviderId, model: primaryModel }, "[AI] Stream failed after output began — not retrying to avoid duplicate text");
+          break;
+        }
+      } finally {
+        if (gen && !streamCompleted) {
+          try {
+            await gen.return(undefined as unknown as AIProviderResult);
+          } catch {
+            // Preserve the original provider or consumer error.
+          }
         }
       }
     }
@@ -283,50 +296,69 @@ export async function *aiStream(opts: AIProviderChatOptions & {
     const providerId = chain[i];
     const model = i === 0 ? primaryModel : (PROVIDER_CAPABILITIES[providerId]?.defaultModel ?? "gpt-5-mini");
     const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId} (route interne)` : undefined;
+    let emittedChunk = false;
 
     try {
       const provider = getProvider(providerId);
       logger.info({ provider: providerId, model, task, streaming: true, attempt: i + 1 }, "[AI] Stream request (internal route)");
 
       // Manual iteration to capture generator return value (same fix as strict path above)
-      const gen = provider.stream({ ...chatOpts, model });
+      let gen: AsyncGenerator<AIProviderStreamChunk, AIProviderResult, unknown> | undefined;
+      let streamCompleted = false;
       let finalResult: AIProviderResult | undefined;
       let accumulatedText = "";
 
-      while (true) {
-        const step = await gen.next();
-        if (step.done) {
-          if (step.value && typeof step.value === "object" && "text" in step.value) {
-            finalResult = step.value as AIProviderResult;
+      try {
+        gen = provider.stream({ ...chatOpts, model });
+        while (true) {
+          const step = await gen.next();
+          if (step.done) {
+            streamCompleted = true;
+            if (step.value && typeof step.value === "object" && "text" in step.value) {
+              finalResult = step.value as AIProviderResult;
+            }
+            break;
           }
-          break;
+          const chunk = step.value;
+          if (chunk && typeof chunk === "object" && "content" in chunk) {
+            accumulatedText += (chunk as AIProviderStreamChunk).content;
+            emittedChunk = true;
+            yield chunk as AIProviderStreamChunk;
+          }
         }
-        const chunk = step.value;
-        if (chunk && typeof chunk === "object" && "content" in chunk) {
-          accumulatedText += (chunk as AIProviderStreamChunk).content;
-          yield chunk as AIProviderStreamChunk;
+
+        if (!finalResult) {
+          logger.warn({ provider: providerId, model }, "[AI] Stream returned no finalResult — building from accumulated text (no second call)");
+          finalResult = {
+            text: accumulatedText,
+            usage: { promptTokens: 0, completionTokens: Math.ceil(accumulatedText.length / 4), totalTokens: Math.ceil(accumulatedText.length / 4) },
+            model,
+            provider: providerId,
+            latencyMs: 0,
+          } as AIProviderResult;
+        }
+
+        if (i > 0) {
+          logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Stream fallback used (internal route)");
+        }
+        logger.info({ provider: providerId, model, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
+        yield { _aiMeta: { provider: providerId, model, switchReason } } as AIStreamMetaChunk;
+        return finalResult;
+      } finally {
+        if (gen && !streamCompleted) {
+          try {
+            await gen.return(undefined as unknown as AIProviderResult);
+          } catch {
+            // Preserve the original provider or consumer error.
+          }
         }
       }
-
-      if (!finalResult) {
-        logger.warn({ provider: providerId, model }, "[AI] Stream returned no finalResult — building from accumulated text (no second call)");
-        finalResult = {
-          text: accumulatedText,
-          usage: { promptTokens: 0, completionTokens: Math.ceil(accumulatedText.length / 4), totalTokens: Math.ceil(accumulatedText.length / 4) },
-          model,
-          provider: providerId,
-          latencyMs: 0,
-        } as AIProviderResult;
-      }
-
-      if (i > 0) {
-        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Stream fallback used (internal route)");
-      }
-      logger.info({ provider: providerId, model, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
-      yield { _aiMeta: { provider: providerId, model, switchReason } } as AIStreamMetaChunk;
-      return finalResult;
     } catch (err) {
       lastErr = err;
+      if (emittedChunk) {
+        logger.warn({ provider: providerId, model }, "[AI] Stream failed after output began — not falling back to avoid duplicate text");
+        break;
+      }
       logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Stream failed — trying next provider (internal route)");
     }
   }

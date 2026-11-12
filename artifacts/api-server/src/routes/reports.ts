@@ -5,6 +5,13 @@ import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { logger } from "../lib/logger.js";
+import { requireAddon } from "../middlewares/planGate.js";
+import { pool } from "@workspace/db";
+import { aiChat } from "../services/ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
+import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { buildExecutiveReportFacts } from "../services/executive-report-facts.js";
 
 const router = Router();
 
@@ -16,6 +23,101 @@ const REPORT_TEMPLATES = {
   local:      { label: "Local SEO" },
   ai:         { label: "Rapport IA Lab" },
 } as const;
+
+router.get("/reports/agency-packs", requireAddon("agencyPacks", "Agency Reporting Packs"), async (req, res) => {
+  try {
+    const audits = await db(req)(
+      `SELECT id, url, score, status, created_at
+         FROM audits
+        WHERE org_id=$1
+        ORDER BY created_at DESC
+        LIMIT 100`,
+      [org(req)],
+    );
+    res.json({
+      packs: [
+        { id: "executive-monthly", name: "Executive mensuel", templateKey: "executive", description: "Synthèse exécutive mensuelle." },
+        { id: "seo-growth", name: "SEO & croissance", templateKey: "seo", description: "Suivi des performances SEO." },
+        { id: "local-presence", name: "Présence locale", templateKey: "local", description: "Rapport de visibilité locale." },
+      ],
+      audits: audits.rows,
+    });
+  } catch (err) {
+    logger.warn({ err, orgId: org(req) }, "[reports] agency pack audit list unavailable");
+    res.status(503).json({ error: "Impossible de charger les audits de cette organisation.", packs: [], audits: [] });
+  }
+});
+
+// Build one client-ready bundle atomically from three specialized report types.
+router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agency Reporting Packs"), reportRateLimit, canWrite, async (req: Request, res: Response) => {
+  const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim().slice(0, 160) : "";
+  if (clientName.length < 2) { res.status(400).json({ error: "clientName required" }); return; }
+  const { auditId, dateStart, dateEnd } = req.body as { auditId?: string; dateStart?: string; dateEnd?: string };
+  const templates = [
+    { key: "executive", label: "Executive mensuel" },
+    { key: "seo", label: "SEO & croissance" },
+    { key: "local", label: "Présence locale" },
+  ];
+  const orgId = org(req);
+  const selectedAuditId = typeof auditId === "string" ? auditId.trim().slice(0, 200) : "";
+  if (!selectedAuditId) {
+    res.status(400).json({ error: "Un audit doit être sélectionné pour générer le pack agence.", code: "AUDIT_REQUIRED" });
+    return;
+  }
+  try {
+    const ownedAudit = await db(req)(
+      `SELECT id FROM audits WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      [selectedAuditId, orgId],
+    );
+    if (!ownedAudit.rows.length) {
+      res.status(404).json({ error: "Audit introuvable pour cette organisation.", code: "AUDIT_NOT_FOUND" });
+      return;
+    }
+  } catch (err) {
+    logger.warn({ err, orgId }, "[reports] agency pack audit validation failed");
+    res.status(503).json({ error: "Impossible de vérifier l’audit sélectionné." });
+    return;
+  }
+  const { pool: reportPool } = await import("@workspace/db");
+  const client = await reportPool.connect();
+  let txActive = false;
+  try {
+    await client.query("BEGIN");
+    txActive = true;
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [orgId + ":reports"]);
+    const { checkQuota } = await import("../services/billing-service.js");
+    const quota = await checkQuota("reports", orgId);
+    if (!quota.allowed || Number(quota.limit) - Number(quota.used) < templates.length) {
+      await client.query("ROLLBACK");
+      txActive = false;
+      res.status(402).json({ error: "Le pack complet nécessite trois rapports disponibles.", code: "QUOTA_EXCEEDED", resource: "reports", used: quota.used, limit: quota.limit, required: templates.length });
+      return;
+    }
+    const ids: string[] = [];
+    for (const template of templates) {
+      const id = "r_" + randomBytes(12).toString("hex");
+      await client.query(
+        "INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by) VALUES ($1,$2,$3,'PDF',$4,$5,0,false,$6,false,true,'[]',$7,$8,$9)",
+        [id, orgId, clientName + " — " + template.label, template.key, new Date().toISOString(), selectedAuditId, typeof dateStart === "string" ? dateStart.slice(0, 40) : "", typeof dateEnd === "string" ? dateEnd.slice(0, 40) : "", (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
+      );
+      ids.push(id);
+    }
+    const verified = await client.query("SELECT id, name, template_key FROM reports WHERE org_id=$1 AND id=ANY($2::text[])", [orgId, ids]);
+    if (verified.rows.length !== templates.length) throw new Error("Agency pack verification failed: expected 3 reports, found " + verified.rows.length);
+    await client.query("COMMIT");
+    txActive = false;
+    for (let i = 0; i < ids.length; i++) import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "report_created")).catch(() => {});
+    store.logActivity({ type: "report", label: "Pack agence créé pour " + clientName + " (3 rapports)", targetId: ids[0], targetType: "report", metadata: { pack: "agency_bundle", reportIds: ids, clientName }, orgId, userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
+    res.status(201).json({ clientName, expected: templates.length, verifiedCount: verified.rows.length, reports: verified.rows });
+  } catch (err) {
+    if (txActive) await client.query("ROLLBACK").catch(() => {});
+    logger.error({ err, orgId }, "[reports] agency pack generation failed");
+    res.status(500).json({ error: "Impossible de générer le pack agence complet." });
+  } finally {
+    client.release();
+  }
+});
+
 
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
@@ -51,8 +153,97 @@ router.get("/reports", async (req, res) => {
       [org(req)]
     );
     res.json(r.rows);
-  } catch {
-    res.json([]);
+  } catch (err) {
+    logger.warn({ err, orgId: org(req) }, "[reports] report list unavailable");
+    res.status(503).json({
+      error: "Impossible de charger les rapports de cette organisation.",
+      code: "REPORTS_UNAVAILABLE",
+    });
+  }
+});
+
+router.post("/reports/ai-executive-summary", reportRateLimit, canWrite, requireAddon("aiExecutiveReport", "AI Executive Reporting"), async (req, res) => {
+  const orgId = org(req);
+  const userId = String((req as any).orgContext?.userId ?? (req as any).orgContext?.email ?? "anonymous");
+  const requestId = `exec_${randomBytes(12).toString("hex")}`;
+  try {
+    const reportQuota = await (await import("../services/billing-service.js")).checkQuota("reports", orgId);
+    if (!reportQuota.allowed) {
+      res.status(402).json({ error: "Limite de rapports atteinte", code: "QUOTA_EXCEEDED", used: reportQuota.used, limit: reportQuota.limit });
+      return;
+    }
+    const aiQuota = await checkAIQuota({ feature: "strategist", orgId });
+    if (!aiQuota.allowed) {
+      const prefs = await loadOrgAIPrefs(orgId);
+      res.status(402).json(buildQuotaGuidance(aiQuota, prefs));
+      return;
+    }
+    const [audits, monitors, priorReports] = await Promise.all([
+      db(req)(`SELECT url, score, status, created_at FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 8`, [orgId]),
+      db(req)(`SELECT name, url, status, uptime, response_time FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 12`, [orgId]),
+      db(req)(`SELECT name, template_key, date FROM reports WHERE org_id=$1 ORDER BY date DESC LIMIT 5`, [orgId]),
+    ]);
+    const facts = buildExecutiveReportFacts(audits.rows, monitors.rows);
+    if (!facts.measured.auditsIncluded && !facts.measured.monitorsIncluded && !priorReports.rows.length) {
+      res.status(422).json({ error: "Ajoutez des audits ou des monitors mesurés avant de générer une synthèse.", code: "NO_REAL_DATA" });
+      return;
+    }
+
+    const prefs = await loadOrgAIPrefs(orgId);
+    const aiCfg = resolveAIModel(prefs, "strategist");
+    const prompt = `Rédige une synthèse exécutive concise à partir exclusivement de ces données JSON. Les rapports antérieurs sont des références, pas des mesures. N'invente aucune donnée ni évolution; évite tout chiffre dans le texte narratif. Si les données sont insuffisantes, dis-le. Retourne uniquement le JSON {"headline":string,"summary":string,"priorities":string[]} avec au plus 3 priorités.\n\nDonnées mesurées: ${JSON.stringify(facts)}\nRapports antérieurs: ${JSON.stringify(priorReports.rows)}`;
+    const startedAt = Date.now();
+    const generated = await aiChat({
+      provider: aiCfg.provider, model: aiCfg.model,
+      systemPrompt: "Tu synthétises des faits pour des décideurs. N'ajoute aucune mesure, cause ou résultat absent des données. Réponds uniquement en JSON valide.",
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: Math.min(aiCfg.maxTokens, 900), json: true,
+    });
+    recordCompletedUsageDeferred({
+      feature: "strategist", orgId, userId, model: aiCfg.model as AIModel, provider: aiCfg.provider,
+      tokensIn: generated.usage?.promptTokens ?? 0, tokensOut: generated.usage?.completionTokens ?? 0,
+      latencyMs: Date.now() - startedAt, success: true, requestId,
+    });
+    let summary: { headline?: string; summary?: string; priorities?: unknown[] };
+    try { summary = JSON.parse(generated.text || "{}"); }
+    catch { throw new Error("AI_EXECUTIVE_INVALID_JSON"); }
+    if (typeof summary.headline !== "string" || typeof summary.summary !== "string" ||
+        !Array.isArray(summary.priorities) || !summary.priorities.every(item => typeof item === "string")) {
+      throw new Error("AI_EXECUTIVE_INVALID_SHAPE");
+    }
+    const reportId = `r_${randomBytes(12).toString("hex")}`;
+    const reportName = `Synthèse exécutive IA — ${new Date().toLocaleDateString("fr-BE")}`;
+    const note = `${summary.headline.trim()}\n\n${summary.summary.trim()}\n\nPriorités:\n${summary.priorities.slice(0, 3).map(item => `• ${String(item).trim()}`).join("\n")}\n\nMesures vérifiées:\n${JSON.stringify(facts.measured)}`.slice(0, 2000);
+    const client = await pool.connect();
+    let txActive = false;
+    try {
+      await client.query("BEGIN");
+      txActive = true;
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${orgId}:reports`]);
+      const freshQuota = await (await import("../services/billing-service.js")).checkQuota("reports", orgId);
+      if (!freshQuota.allowed) {
+        await client.query("ROLLBACK"); txActive = false;
+        res.status(402).json({ error: "Limite de rapports atteinte", code: "QUOTA_EXCEEDED", used: freshQuota.used, limit: freshQuota.limit });
+        return;
+      }
+      await client.query(
+        `INSERT INTO reports (id, org_id, name, type, template_key, date, pages, shared, audit_id, white_label, pdf_ready, meeting_notes_json, date_start, date_end, created_by)
+         VALUES ($1,$2,$3,'PDF','executive',$4,0,false,'',false,true,$5,'','',$6)`,
+        [reportId, orgId, reportName, new Date().toISOString(),
+          JSON.stringify([{ title: summary.headline.trim().slice(0, 200), date: new Date().toISOString(), notes: note }]),
+          (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
+      );
+      await client.query("COMMIT"); txActive = false;
+    } catch (err) {
+      if (txActive) await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally { client.release(); }
+    store.logActivity({ type: "report", label: `Synthèse exécutive générée : ${reportName}`, targetId: reportId, targetType: "report", orgId, userId }).catch(() => {});
+    import("../services/usage-events.js").then(m => m.recordUsageEvent(orgId, "report_created")).catch(() => {});
+    res.status(201).json({ ok: true, reportId, name: reportName, templateKey: "executive", summary, measured: facts.measured });
+  } catch (err) {
+    logger.error({ err, orgId, requestId }, "[reports] AI executive summary failed");
+    res.status(502).json({ error: "La synthèse exécutive n’a pas pu être générée à partir des données actuelles.", code: "AI_EXECUTIVE_FAILED" });
   }
 });
 
@@ -104,21 +295,32 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
   // check. pg_advisory_xact_lock is transaction-level — auto-released at commit.
   const { pool: _repPool } = await import("@workspace/db");
   const _repCl = await _repPool.connect();
+  let txActive = false;
   try {
     await _repCl.query("BEGIN");
+    txActive = true;
     await _repCl.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${_qOrgId}:reports`]);
 
-    const { checkQuota } = await import("../services/billing-service.js");
-    const _quota = await checkQuota("reports", _qOrgId);
-    if (!_quota.allowed) {
+    const [{ checkQuota }, { resolveQuotaGate }] = await Promise.all([
+      import("../services/billing-service.js"),
+      import("../services/quota-gate.js"),
+    ]);
+    const gate = await resolveQuotaGate((resource, tenantId) => checkQuota(resource, tenantId, { failClosed: true }), "reports", _qOrgId);
+    if (gate.status !== "allowed") {
       await _repCl.query("ROLLBACK");
-      res.status(402).json({
-        error: `Limite mensuelle de rapports PDF atteinte (${_quota.used}/${_quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
-        code: "QUOTA_EXCEEDED",
-        resource: "reports",
-        used: _quota.used,
-        limit: _quota.limit,
-      });
+      txActive = false;
+      if (gate.status === "exceeded") {
+        res.status(402).json({
+          error: `Limite mensuelle de rapports PDF atteinte (${gate.quota.used}/${gate.quota.limit}). Upgradez votre plan ou achetez un pack de rapports.`,
+          code: "QUOTA_EXCEEDED",
+          resource: "reports",
+          used: gate.quota.used,
+          limit: gate.quota.limit,
+        });
+      } else {
+        logger.error({ err: gate.error, orgId: _qOrgId }, "[reports] quota service unavailable — denying PDF report");
+        res.status(503).json({ error: "Impossible de vérifier le quota de rapports.", code: "QUOTA_CHECK_UNAVAILABLE" });
+      }
       return;
     }
 
@@ -132,16 +334,25 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
        (req as any).orgContext?.userId || (req as any).orgContext?.email || null]
     );
     await _repCl.query("COMMIT");
+    txActive = false;
   } catch (_repErr) {
-    await _repCl.query("ROLLBACK").catch(() => {});
-    logger.warn({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed — allowing report");
+    if (txActive) await _repCl.query("ROLLBACK").catch(() => {});
+    logger.error({ err: _repErr, orgId: _qOrgId }, "[reports] quota/lock/insert failed — denying report");
+    res.status(503).json({ error: "Impossible de vérifier le quota ou d'enregistrer le rapport.", code: "REPORT_CREATION_UNAVAILABLE" });
+    return;
   } finally {
     _repCl.release();
   }
 
   try {
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [id, org(req)]);
-    const report = r.rows[0] ?? { id, name };
+    const report = r.rows[0];
+    if (!report) {
+      // Jamais de 201 avec un id absent de la base : le rapport doit etre relu apres COMMIT.
+      logger.error({ orgId: org(req), reportId: id }, "[reports] report not found after commit");
+      res.status(500).json({ error: "Le rapport n'a pas pu être vérifié après sa création.", code: "REPORT_NOT_PERSISTED" });
+      return;
+    }
     store.logActivity({ type: "report", label: `Rapport généré : ${reportName}`, targetId: id, targetType: "report", metadata: { name: reportName, format, templateKey: resolvedTemplate }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     // Cumulative usage accounting — never decremented on deletion
     import("../services/usage-events.js").then(m => m.recordUsageEvent(org(req), "report_created")).catch(() => {});
@@ -155,6 +366,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         const { mailer } = await import("../services/mailer.js");
         mailer.sendReportGenerated({
           to: _orgData.email,
+          orgId: org(req),
           name: _orgData.firstName || "Utilisateur",
           reportName,
           // Deep link to the report detail page so the button works without navigating
@@ -164,8 +376,9 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
         }).catch(() => {});
       }
     }
-  } catch {
-    res.status(500).json({ error: "Failed to create report" });
+  } catch (err) {
+    logger.error({ err, orgId: org(req), reportId: id }, "[reports] post-creation read failed");
+    if (!res.headersSent) res.status(500).json({ error: "Le rapport n'a pas pu être vérifié après sa création.", code: "REPORT_NOT_PERSISTED" });
   }
 });
 
@@ -193,15 +406,28 @@ router.post("/reports/approve", canWrite, async (req, res) => {
   const { reportId } = req.body as { reportId?: string };
   if (!reportId) { res.status(400).json({ error: "reportId required" }); return; }
   try {
-    await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2`, [reportId, org(req)]);
+    const upd = await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2 RETURNING id`, [reportId, org(req)]);
+    if (!upd.rows.length) { res.status(404).json({ error: "Report not found", code: "REPORT_NOT_FOUND" }); return; }
     res.json({ ok: true, report: { id: reportId } });
-  } catch { res.json({ ok: true }); }
+  } catch (err) {
+    logger.error({ err, orgId: org(req), reportId }, "[reports] approve failed");
+    res.status(500).json({ ok: false, error: "Impossible d'approuver le rapport.", code: "REPORT_APPROVE_FAILED" });
+  }
 });
 
 // ── POST /reports/send-invoice ────────────────────────────────────────────────
+// Aucun envoi de facture par e-mail n'est implemente (pas de rendu de facture ni de modele
+// transactionnel dedie) : la route repondait `sent:true` sans rien envoyer. Etat honnete 501.
+// Les factures se telechargent depuis le portail de facturation.
 router.post("/reports/send-invoice", canAdmin, async (req, res) => {
   const { invoiceId } = req.body as { invoiceId?: string };
-  res.json({ ok: true, invoiceId: invoiceId ?? null, sent: true });
+  res.status(501).json({
+    ok: false,
+    sent: false,
+    code: "not_implemented",
+    error: "L'envoi des factures par e-mail n'est pas encore disponible. Téléchargez la facture depuis le portail de facturation.",
+    invoiceId: invoiceId ?? null,
+  });
 });
 
 // ── GET /reports/:id/download ─────────────────────────────────────────────────
@@ -305,8 +531,9 @@ router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) 
 
     store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name }, orgId: org(req), userId: (req as any).orgContext?.userId || (req as any).orgContext?.email, userName: (req as any).orgContext?.name || (req as any).orgContext?.email }).catch(err => console.warn("[logActivity]", err?.message));
     res.status(201).json({ token, expiresAt, path: `/report/${token}` });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to share report" });
+  } catch (err) {
+    logger.error({ err, orgId: org(req), reportId: req.params.id }, "[reports] share link creation failed");
+    res.status(500).json({ ok: false, error: "Failed to share report", code: "SHARE_CREATE_FAILED" });
   }
 });
 

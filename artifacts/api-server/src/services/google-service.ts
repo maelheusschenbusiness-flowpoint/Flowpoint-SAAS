@@ -10,6 +10,10 @@
 import { pool } from "@workspace/db";
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
 import { logger } from "../lib/logger.js";
+import { getOrgAddons } from "./addons-service.js";
+import { selectGbpLocations } from "./gbp-location-quota.js";
+import { GBP_PERFORMANCE_METRICS } from "./gbp-performance-addon.js";
+import { resolveJwtSecret } from "../lib/security-config.js";
 
 const GOOGLE_AUTH_BASE  = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token";
@@ -38,13 +42,14 @@ export const GOOGLE_INTEGRATION_SCOPE_SET = new Set<string>(GOOGLE_INTEGRATION_S
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
-const ENC_KEY = createHash("sha256")
-  .update(process.env["JWT_SECRET"] ?? "dev-key-please-change")
-  .digest();
+// C-15 : cle derivee paresseusement, sans repli code en dur hors tests.
+function encKey(): Buffer {
+  return createHash("sha256").update(resolveJwtSecret()).digest();
+}
 
 export function encryptToken(token: string): string {
   const iv     = randomBytes(16);
-  const cipher = createCipheriv("aes-256-gcm", ENC_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", encKey(), iv);
   const enc    = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
   const tag    = cipher.getAuthTag();
   return [iv.toString("hex"), enc.toString("hex"), tag.toString("hex")].join(":");
@@ -55,7 +60,7 @@ export function decryptToken(encrypted: string): string {
   const iv       = Buffer.from(ivHex, "hex");
   const encBuf   = Buffer.from(encHex, "hex");
   const tag      = Buffer.from(tagHex, "hex");
-  const decipher = createDecipheriv("aes-256-gcm", ENC_KEY, iv);
+  const decipher = createDecipheriv("aes-256-gcm", encKey(), iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(encBuf), decipher.final()]).toString("utf8");
 }
@@ -297,31 +302,62 @@ export async function getPerformance(
   if (!token) return { metricValues: [] };
   const start = new Date(opts.startTime);
   const end   = new Date(opts.endTime);
-  const url = [
-    `https://businessprofileperformance.googleapis.com/v1/${locationName}:getDailyMetricsTimeSeries`,
-    `?dailyMetric=ALL`,
-    `&dailyRange.startDate.year=${start.getFullYear()}`,
-    `&dailyRange.startDate.month=${start.getMonth() + 1}`,
-    `&dailyRange.startDate.day=${start.getDate()}`,
-    `&dailyRange.endDate.year=${end.getFullYear()}`,
-    `&dailyRange.endDate.month=${end.getMonth() + 1}`,
-    `&dailyRange.endDate.day=${end.getDate()}`,
-  ].join("");
+  const locationId = locationName.match(/(?:^|\/)locations\/([^/]+)$/)?.[1]
+    ?? (/^[^/]+$/.test(locationName) ? locationName : "");
+  if (!locationId || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    throw new Error("Invalid Google Business Profile performance request");
+  }
+  const params = new URLSearchParams();
+  for (const metric of GBP_PERFORMANCE_METRICS) params.append("dailyMetrics", metric);
+  for (const [prefix, date] of [["start_date", start], ["end_date", end]] as const) {
+    params.set(`dailyRange.${prefix}.year`, String(date.getUTCFullYear()));
+    params.set(`dailyRange.${prefix}.month`, String(date.getUTCMonth() + 1));
+    params.set(`dailyRange.${prefix}.day`, String(date.getUTCDate()));
+  }
+  const url = `https://businessprofileperformance.googleapis.com/v1/locations/${encodeURIComponent(locationId)}:fetchMultiDailyMetricsTimeSeries?${params}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(12_000),
   });
-  if (!res.ok) return { metricValues: [] };
-  return res.json();
+  if (!res.ok) {
+    throw new Error(`Google Business Profile Performance API returned HTTP ${res.status}`);
+  }
+  const data = await res.json() as {
+    multiDailyMetricTimeSeries?: Array<{
+      dailyMetricTimeSeries?: Array<{ dailyMetric?: string; timeSeries?: unknown }>;
+    }>;
+  };
+  return (data.multiDailyMetricTimeSeries ?? []).flatMap((group) => group.dailyMetricTimeSeries ?? []);
 }
 
 export async function publishGBPPost(
   orgId: string,
   locationName: string,
-  post: { summary: string; callToAction?: { actionType: string; url: string } }
-): Promise<{ ok: boolean; error?: string }> {
+  post: {
+    summary: string;
+    topicType?: "STANDARD" | "EVENT" | "OFFER";
+    languageCode?: string;
+    callToAction?: { actionType: string; url?: string };
+    media?: Array<{ mediaFormat: "PHOTO"; sourceUrl: string }>;
+    event?: { title: string; schedule: {
+      startDate: { year: number; month: number; day: number };
+      startTime: { hours: number; minutes: number };
+      endDate: { year: number; month: number; day: number };
+      endTime: { hours: number; minutes: number };
+    }};
+    offer?: { couponCode?: string; redeemOnlineUrl?: string; termsConditions?: string };
+  }
+): Promise<{ ok: boolean; error?: string; postName?: string; code?: string }> {
+  let token: string;
   try {
-    const token = await getValidToken(orgId);
+    token = await getValidToken(orgId);
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    // Jamais connecté / jeton expiré sans refresh : action utilisateur requise (reconnecter Google).
+    if (/not connected|no refresh token/i.test(msg)) return { ok: false, error: msg, code: "GOOGLE_NOT_CONNECTED" };
+    return { ok: false, error: msg, code: "GOOGLE_AUTH_FAILED" };
+  }
+  try {
     const res = await fetch(
       `https://mybusiness.googleapis.com/v4/${locationName}/localPosts`,
       {
@@ -331,10 +367,21 @@ export async function publishGBPPost(
         signal:  AbortSignal.timeout(12_000),
       }
     );
-    if (!res.ok) return { ok: false, error: `GBP API ${res.status}` };
-    return { ok: true };
+    if (!res.ok) {
+      const code = res.status === 401 ? "GOOGLE_AUTH_FAILED"
+        : res.status === 403 ? "GBP_API_FORBIDDEN"
+        : res.status === 429 ? "GBP_API_RATE_LIMITED"
+        : res.status >= 500 ? "GBP_API_UNAVAILABLE"
+        : "GBP_API_REJECTED";
+      return { ok: false, error: `GBP API ${res.status}`, code };
+    }
+    const body = await res.json() as { name?: string };
+    // Succès réel = Google a renvoyé l'identifiant de la ressource créée.
+    if (!body.name) return { ok: false, error: "GBP API: réponse sans identifiant de post", code: "GBP_API_REJECTED" };
+    return { ok: true, postName: body.name };
   } catch (e: any) {
-    return { ok: false, error: e.message };
+    // Réseau / délai dépassé / réponse illisible.
+    return { ok: false, error: e.message, code: "GBP_API_UNAVAILABLE" };
   }
 }
 
@@ -379,55 +426,60 @@ export async function syncAll(orgId: string): Promise<{ accounts: number; locati
     const accounts = await getAccounts(orgId);
     if (!accounts.length) return { accounts: 0, locations: 0, reviews: 0 };
 
-    let totalLocations = 0;
+    const accountBatches: Array<{ accountId: string; locations: Array<Record<string, unknown>> }> = [];
+    for (const acc of accounts.slice(0, 3)) {
+      const accountId = (acc as Record<string, string>)["name"]?.split("/")[1] ?? "";
+      if (!accountId) continue;
+      const locations = await getLocations(orgId, accountId) as Array<Record<string, unknown>>;
+      accountBatches.push({ accountId, locations });
+    }
+    const orgAddons = await getOrgAddons(orgId);
+    const selectedLocations = selectGbpLocations(accountBatches, orgAddons);
     let totalReviews   = 0;
     const client = await pool.connect();
     try {
-      for (const acc of accounts.slice(0, 3)) {
-        const accId = (acc as Record<string, string>)["name"]?.split("/")[1] ?? "";
-        if (!accId) continue;
-        const locs = await getLocations(orgId, accId);
-        totalLocations += locs.length;
+      for (const { accountId, location: loc } of selectedLocations) {
+        const rawLocationName = String(loc["name"] ?? "");
+        const locName = rawLocationName.startsWith("accounts/")
+          ? rawLocationName
+          : `accounts/${accountId}/${rawLocationName.startsWith("locations/") ? rawLocationName : `locations/${rawLocationName}`}`;
+        const storedLocation = { ...loc, name: locName };
+        const reviews = await getLocationReviews(orgId, locName);
+        totalReviews += reviews.length;
 
-        for (const loc of locs.slice(0, 10)) {
-          const locName = (loc as Record<string, string>)["name"] ?? "";
-          const reviews = await getLocationReviews(orgId, locName);
-          totalReviews += reviews.length;
+        // Upsert location into google_locations
+        await client.query(
+          `INSERT INTO google_locations (id, org_id, name, raw_data, last_sync_at)
+           VALUES ($1,$2,$3,$4,NOW())
+           ON CONFLICT (id) DO UPDATE SET raw_data=$4, last_sync_at=NOW()`,
+          [`${orgId}_${locName}`, orgId, String(loc["title"] ?? locName), JSON.stringify(storedLocation)]
+        ).catch(() => {});
 
-          // Upsert location into google_locations
+        // Upsert reviews
+        for (const rev of (reviews as Array<Record<string, unknown>>).slice(0, 20)) {
           await client.query(
-            `INSERT INTO google_locations (id, org_id, name, raw_data, last_sync_at)
-             VALUES ($1,$2,$3,$4,NOW())
-             ON CONFLICT (id) DO UPDATE SET raw_data=$4, last_sync_at=NOW()`,
-            [`${orgId}_${locName}`, orgId, (loc as Record<string, string>)["title"] ?? locName, JSON.stringify(loc)]
+            `INSERT INTO google_reviews
+               (id, org_id, location_id, review_id, reviewer_name, rating, comment, create_time)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+             ON CONFLICT (review_id, org_id) DO UPDATE SET rating=$6, comment=$7`,
+            [
+              `${orgId}_${rev["reviewId"]}`,
+              orgId,
+              locName,
+              rev["reviewId"] ?? "",
+              (rev["reviewer"] as Record<string, string>)?.["displayName"] ?? "",
+              parseInt(String((rev["starRating"] ?? "ZERO")).replace(/\D+/, "")) || 0,
+              (rev["comment"] as string) ?? "",
+              rev["createTime"] ?? new Date().toISOString(),
+            ]
           ).catch(() => {});
-
-          // Upsert reviews
-          for (const rev of (reviews as Array<Record<string, unknown>>).slice(0, 20)) {
-            await client.query(
-              `INSERT INTO google_reviews
-                 (id, org_id, location_id, review_id, reviewer_name, rating, comment, create_time)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-               ON CONFLICT (review_id, org_id) DO UPDATE SET rating=$6, comment=$7`,
-              [
-                `${orgId}_${rev["reviewId"]}`,
-                orgId,
-                locName,
-                rev["reviewId"] ?? "",
-                (rev["reviewer"] as Record<string, string>)?.["displayName"] ?? "",
-                parseInt(String((rev["starRating"] ?? "ZERO")).replace(/\D+/, "")) || 0,
-                (rev["comment"] as string) ?? "",
-                rev["createTime"] ?? new Date().toISOString(),
-              ]
-            ).catch(() => {});
-          }
         }
       }
     } finally {
       client.release();
     }
 
-    return { accounts: accounts.length, locations: totalLocations, reviews: totalReviews };
+    return { accounts: accounts.length, locations: selectedLocations.length, reviews: totalReviews };
   } catch (e) {
     logger.warn({ e, orgId }, "[google] syncAll failed");
     return { accounts: 0, locations: 0, reviews: 0 };

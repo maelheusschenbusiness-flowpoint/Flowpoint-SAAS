@@ -11,7 +11,11 @@
 #      isolee et jetable — pas une base partagee ;
 #   3. verifie les types, puis construit la version de production ;
 #   4. execute la suite complete, sans parallelisme de fichiers ;
-#   5. refuse tout test ignore qui ne figure pas sur une liste blanche versionnee.
+#   5. refuse tout test ignore qui ne figure pas sur une liste blanche versionnee ;
+#   6. refuse tout fichier de test ORPHELIN (hors include vitest ET hors
+#      exclusions documentees dans artifacts/api-server/vitest.exclusions.mjs) ;
+#   7. execute les scripts de certification autonomes (tsx / node) sur la meme base ;
+#   8. audite les dependances de production (informatif, non bloquant, voir l'etape).
 #
 # Ce workflow ne deploie rien et ne touche a aucune base distante.
 
@@ -79,6 +83,13 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Aucun test orphelin
+        # Rapide (aucune dependance, aucune base) : echoue en quelques secondes si
+        # un fichier de test ne tourne ni sous vitest ni dans les exclusions
+        # documentees. Avant ce controle, 22 fichiers ne tournaient jamais sans
+        # que personne ne le voie (docs/TESTS-ORPHELINS.md).
+        run: node scripts/verifier-tests-orphelins.mjs
+
       - name: Installer les dependances
         run: pnpm install --frozen-lockfile
 
@@ -139,10 +150,27 @@ jobs:
         # pourrait relacher sans y penser.
         run: pnpm exec vitest run --no-file-parallelism --reporter=dot --reporter=json --outputFile=resultats-ci.json --testTimeout=60000
 
+      - name: Scripts de certification
+        # Tests autonomes (hors vitest) qui demarrent leur propre serveur en
+        # processus sur la base isolee de cette execution. Liste et raisons :
+        # artifacts/api-server/vitest.exclusions.mjs.
+        working-directory: artifacts/api-server
+        run: pnpm run test:certification
+
       - name: Aucun test ignore involontairement
         working-directory: artifacts/api-server
         if: always()
         run: node ../../scripts/verifier-tests-ignores.mjs resultats-ci.json
+
+      - name: Audit des dependances de production (informatif)
+        # NON BLOQUANT pour l'instant : l'audit du 08/11/2026 remonte 2 failles
+        # `high` (zod < 4.6.6, body-parser < 2.4.0 via express) et 2 `moderate`
+        # dans l'arbre de production. Les rendre bloquantes avant de les corriger
+        # mettrait toute la CI au rouge pour une cause etrangere a la PR. Le
+        # resultat reste visible dans le journal ; passer `continue-on-error` a
+        # false une fois l'arbre propre pour bloquer les `high`/`critical`.
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level=high
 
       - name: Conserver le rapport en cas d'echec
         if: failure()

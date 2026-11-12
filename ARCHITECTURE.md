@@ -484,9 +484,40 @@ organizations.subscription_status (raw DB) → billing-context.ts
   "trialing"  + subscriptionId → "trialing"    (hasPremiumAccess = true)
   "trialing"  + NO subscriptionId → "pending_billing"
   "canceled"  → "canceled"
-  "past_due"  → "past_due"     (hasPremiumAccess = true)
+  "past_due"  → "past_due"     (acces complet pendant la grace PAST_DUE_GRACE_DAYS depuis past_due_since, puis lecture seule — resolveAccessMode())
   null/vide   → "pending_billing"
 ```
+
+### Mode d'acces : annulation et past_due (regle validee par le proprietaire)
+
+**Un SEUL endroit de decision** : `resolveAccessMode(state, now, config)` dans `lib/subscription-state.ts`
+(fonction pure ; horloge et configuration injectees). Elle est appelee par `loadBillingContext()`
+(`services/billing-context.ts`) et par `/me`, puis appliquee par `middlewares/requirePaidAccess.ts` (global,
+monte sur `/api`) et `enforcePaidAccess()` (gardes `planGate`). Aucune autre logique n'existe.
+
+| Mode | Quand | Effet |
+|------|-------|-------|
+| `full` | `active`, `trialing`, `active`+`cancel_at_period_end` (jusqu'a la fin), `canceled` avant `current_period_end`, `past_due` dans la grace | acces complet |
+| `read_only` | `canceled` apres `current_period_end` (ou sans date), `past_due` hors grace, `unpaid`, `paused`, `cancel_at_period_end` dont la fin est depassee | GET/HEAD/OPTIONS autorises ; toute ecriture / action premium / consommation de credits / generation : **402 `SUBSCRIPTION_READ_ONLY`** (`readOnly`, `accessMode`, `accessReason`, `graceEndsAt`, `billingUrl`, `recovery`). En-tete `X-FP-Access-Mode: read_only` sur les lectures. Aucune donnee supprimee. |
+| `blocked` | `pending_billing`, `incomplete`, `incomplete_expired`, `expired`, `none`, statut inconnu (aucun abonnement paye) | 402 `SUBSCRIPTION_REQUIRED` (inchange) |
+
+Ecritures qui restent possibles en lecture seule (`READ_ONLY_WRITE_ALLOWED`) : facturation (`/billing`, portail,
+reactivation, `/stripe`, `/webhooks`), `/plans`, `/public`, authentification/sessions, profil et preferences
+(`/me`, sauf `/me/addons`, `/me/settings`, `/me/dataforseo`), securite du compte, onboarding, invitations,
+`DELETE /settings/data` (droit d'effacement). Les exports de ses propres donnees (GET) restent ouverts.
+
+**past_due** : la grace se mesure depuis `organizations.past_due_since`, posee UNE fois (COALESCE) par
+`invoice.payment_failed` / `customer.subscription.*` `past_due` (dans `persistOrgData`), jamais repoussee par les
+relances, remise a NULL au retour `active`/`trialing` (`invoice.payment_succeeded` > 0, reactivation). On
+n'utilise PAS `current_period_end` : au renouvellement Stripe avance deja la periode quand la facture est creee,
+elle est donc future alors que la periode n'est pas payee. `unpaid` et `paused` = lecture seule immediate.
+Organisations deja `past_due` sans horodatage : le demarrage (`initDataTables`) pose `past_due_since = NOW()`
+(grace de N jours depuis le deploiement, jamais de bascule brutale) ; sans colonne, le code retombe sur l'ancre
+`PAST_DUE_RULE_ACTIVATED_AT` (defaut : demarrage du processus).
+
+**Variables d'environnement** : `PAST_DUE_GRACE_DAYS` (entier 0..30, defaut 3 ; invalide → 3 + log `warn`),
+`PAST_DUE_RULE_ACTIVATED_AT` (optionnelle, ISO). Colonne : migration `migrations/028_organizations_past_due_since.sql`
+(idempotente) ; `initDataTables` l'ajoute aussi au demarrage de l'API.
 
 ### Trial
 
@@ -939,8 +970,8 @@ Les routes suivantes ont un renderer dans `dashboard.js` mais peu/pas de donnée
 | `signin.html` | Page sign-in (lien Google OAuth) |
 | `login.html` | Formulaire saisie email → magic link |
 | `login-verify.html` + `login-verify.js` | Consommation token magic link → création session |
-| `pricing.html` + `pricing.js` | Catalogue plans, sélection, cart → checkout |
-| `checkout.html` + `checkout.js` | Étapes checkout Stripe |
+| `pricing.html` + `pricing-funnel.js` (+ `pricing.js` historique, non chargé, lu par `tests/certification/lot_c.mjs`) | Catalogue plans, sélection (le bouton d'un plan mène directement à l'inscription/paiement), cart → checkout ; `pricing-funnel.js` émet `cta_clique` (consentement requis) |
+| `checkout.html` | Étapes checkout Stripe (le `checkout.js` orphelin a été supprimé) |
 | `checkout-payment.html` | UI paiement |
 | `checkout-return.html` | Retour Stripe → vérification session → redirect |
 | `success.html` | Confirmation post-checkout |
@@ -1223,3 +1254,11 @@ POST /api/ai/chat (SSE)
 | 6 | Agents IA visuellement distincts | Les agents SEO/Local/Concurrents sont le même endpoint avec prompts différents, pas de vraie spécialisation |
 | 7 | dashboard.js + fp-backend.js loadent Maps | Double injection Google Maps JS — guard de déduplication ajouté (`maps-double-injection.md`) |
 | 8 | `confirmationLevel: "preview"` sur create_mission | Le modèle demande confirmation avant d'appeler l'outil, au lieu de l'appeler et laisser le système gérer la confirmation |
+
+
+## Essai et souscription (A-09)
+
+La souscription d'essai est creee par le webhook `setup_intent.succeeded` / `payment_intent.succeeded` ET par
+`finalize-checkout`, via le code commun `services/signup-subscription.ts` (cle d'idempotence partagee, jamais de doublon).
+L'organisation n'est `trialing` qu'avec une souscription connue, sinon `pending_billing`. Detail, chronologies et
+rattrapage : `docs/ESSAI-SANS-NAVIGATEUR-A09.md`.

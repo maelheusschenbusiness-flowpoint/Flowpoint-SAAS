@@ -1,6 +1,10 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
-import { getStripeKey } from "./services/stripe-factory.js";
+import { enforceSecurityConfig } from "./lib/security-config.js";
+import { getPublishableKey, getStripeKey, getStripeKeyPairMode } from "./services/stripe-factory.js";
+import { plansRepliantSurPrixLive } from "./lib/plans.js";
+import { verifierCibleBase, lireCible, decrireCibleSurement } from "./services/garde-cible-base.js";
+import { attestResolvedPool } from "./services/db-startup-attestation.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -9,13 +13,22 @@ import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
+import { ensureCheckoutPostTokensSchema } from "./services/init-checkout-post-tokens.js";
+import { ensureBsOwnershipSchema } from "./services/init-bs-ownership.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
+import { reportSchemaGateStatus } from "./services/schema-gate-status.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
+import { ensureGbpPerformanceSettingsSchema } from "./services/init-gbp-performance-settings.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
+import { startGBPPostScheduler } from "./services/gbp-posting-service.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
+import { fetchBorne, DELAIS } from "./lib/fetch-borne.js";
 const PORT = env.PORT;
+
+// C-15 : garde-fous de configuration de securite, avant toute ouverture de port.
+enforceSecurityConfig(logger);
 
 // ── Schema health check ────────────────────────────────────────────────────────
 //
@@ -59,6 +72,40 @@ async function main() {
     }
   }
 
+  // ── 0 bis. La base visee est-elle bien celle de ce service ? ──────────────
+  //
+  // Ce serveur modifie le schema a chaque demarrage (initDataTables,
+  // initRlsSetup, runRlsMigrationIfNeeded, initPhase1Users, reconcileSchema).
+  // Un DATABASE_URL copie d'un service a l'autre suffirait donc a reecrire le
+  // schema d'une base qui n'est pas la sienne. La garde arrive avant toute
+  // ecriture, et avant meme la premiere connexion.
+  {
+    const isRenderTest =
+      process.env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() === "flowpoint-test" ||
+      process.env["RENDER_GIT_BRANCH"] === "Test-Replit";
+    try {
+      if (isRenderTest) {
+        const attestation = await attestResolvedPool(pool);
+        process.stdout.write(`${JSON.stringify(attestation)}\n`);
+        if (attestation.status !== "PASS") {
+          process.exit(1);
+        }
+      } else {
+        const { verifiee, cible } = verifierCibleBase();
+        if (verifiee && cible) {
+          logger.info(`[Base] cible declaree confirmee : ${decrireCibleSurement(cible)}`);
+        } else {
+          logger.warn(
+            "[Base] DB_HOTE_ATTENDU non posee — cible non attestee."
+          );
+        }
+      }
+    } catch (err) {
+      logger.fatal("[Base] FATAL : la cible de base ne correspond pas a la declaration.");
+      process.exit(1);
+    }
+  }
+
   // ── 0. Stripe configuration safety guard ──────────────────────────────────
   //
   // Refuse to start if NODE_ENV=production is active with test-mode Stripe
@@ -73,9 +120,10 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────────
   {
     const activeKey  = getStripeKey();
-    const pubKey     = process.env["STRIPE_PUBLISHABLE_KEY"] ?? "";
-    const isTestKey  = activeKey.startsWith("sk_test_");
-    const isTestPub  = pubKey.startsWith("pk_test_");
+    const keyPair    = getStripeKeyPairMode(activeKey);
+    const pubKey     = getPublishableKey(activeKey);
+    const isTestKey  = keyPair.secretMode === "TEST";
+    const isTestPub  = keyPair.publishableMode === "TEST";
     const isProd     = env.NODE_ENV === "production";
 
     if (isProd && isTestKey) {
@@ -88,28 +136,51 @@ async function main() {
     }
     if (isProd && isTestPub) {
       logger.fatal(
-        "[Stripe] FATAL: NODE_ENV=production but STRIPE_PUBLISHABLE_KEY " +
-        "starts with pk_test_. Set STRIPE_PUBLISHABLE_KEY to a pk_live_ " +
-        "value before deploying. Server will not start."
+        "[Stripe] FATAL: NODE_ENV=production but the resolved publishable key " +
+        "is in TEST mode. Set STRIPE_PUBLISHABLE_KEY or PUBLIC_STRIPE_API_KEY " +
+        "to a pk_live_ value before deploying. Server will not start."
       );
       process.exit(1);
     }
 
     // Safe startup log — mode only, never the key value
-    const stripeMode   = isTestKey ? "TEST" : "LIVE";
-    const webhookSec   = process.env["STRIPE_WEBHOOK_SECRET"]
-                      || process.env["STRIPE_WEBHOOK_SECRET_RENDER"]
-                      || "";
+    const stripeMode   = keyPair.secretMode;
+    // Le journal applique la meme isolation que le routeur : une seule cle
+    // de signature est choisie selon le mode de la cle Stripe active.
+    const isLiveKey    = activeKey.startsWith("sk_live_");
+    const webhookSec   = isTestKey
+      ? process.env["STRIPE_TEST_WEBHOOK_SECRET"]
+      : isLiveKey
+        ? (process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"])
+        : "";
     const webhookMode  = webhookSec
-      ? (isTestKey ? "TEST (test-endpoint secret active)" : "LIVE")
+      ? (isTestKey ? "TEST" : "LIVE")
       : "NOT CONFIGURED";
     const pubDisplay   = pubKey
-      ? pubKey.slice(0, 7) + "…"   // e.g. "pk_live"  —  prefix only
-      : "not set";
+      ? `${keyPair.publishableMode} (${pubKey.slice(0, 7)}…)`
+      : keyPair.publishableMode;
 
     logger.info(
       `[Stripe] mode: ${stripeMode} | webhook: ${webhookMode} | publishable: ${pubDisplay}`
     );
+
+    // En mode test, un plan sans STRIPE_TEST_PRICE_ID_* retombe sur son prix
+    // LIVE. Stripe refuse alors la session Checkout (« No such price … exists
+    // in live mode »). Mesure du 18/10/2026 sur flowpoint-test : `pro` et
+    // `ultra` etaient dans ce cas, et seul `standard` fonctionnait. Rien ne le
+    // signalait avant l'echec cote Stripe.
+    const replis = plansRepliantSurPrixLive(activeKey);
+    if (replis.length > 0) {
+      logger.error(
+        {
+          plans:               replis.map((r) => r.plan),
+          variablesAttendues:  replis.map((r) => r.variableAttendue),
+        },
+        "[Stripe] MODE TEST : " + replis.length + " plan(s) retombent sur un prix LIVE. " +
+        "Stripe refusera leur session Checkout. Posez : " +
+        replis.map((r) => r.variableAttendue).join(", ")
+      );
+    }
   }
 
   // 1. Verify the DB is reachable before any init that assumes a connection.
@@ -118,13 +189,6 @@ async function main() {
     logger.info("Database connection OK");
   });
 
-  // 1b. Migration 020 (colonnes UTM du tunnel) : appliquee ici, car le service Render
-  // n'a pas d'etape Pre-Deploy. Non fatale : sans elle, l'attribution repond 503 explicite.
-  await import("./services/funnel-events.js")
-    .then(({ assurerColonnesUtm }) => assurerColonnesUtm())
-    .then((r) => logger.info({ etat: r.etat, colonnes: "colonnes" in r ? r.colonnes : [] }, "[startup] funnel_events utm columns"))
-    .catch((err) => logger.error({ code: getErrorCode(err), message: getSafeErrorMessage(err) }, "[startup] funnel_events utm columns NOT ensured"));
-
   // 2. Check if Pre-Deploy already ran all migrations (fast path for Render).
   const migrated = await schemaAlreadyMigrated();
 
@@ -132,8 +196,23 @@ async function main() {
     // ── Fast path: Pre-Deploy has already run. ─────────────────────────────
     // Only probe the app_user role (cheap: 2 queries) so withOrgDb() knows
     // whether to use SET ROLE or GUC-only mode.
-    logger.info("[startup] Schema already migrated — skipping full init (Pre-Deploy completed)");
+    // Ce chemin est choisi sur un seul signal : la table `audits` existe. Cela
+    // ne dit RIEN de l'execution de migrate.mjs — l'ancien message affirmait
+    // « Pre-Deploy completed », ce qui est faux sur un service sans Pre-Deploy
+    // configure (cas constate en production le 13/10/2026).
+    logger.info("[startup] table `audits` presente — init complet non rejoue (voir [schema-gate] pour l'etat reel de la porte)");
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
+    // initDataTables is intentionally skipped on this fast path. Keep this
+    // small add-on schema repair on every startup so a stale migration marker
+    // cannot leave GBP settings unavailable.
+    await runCriticalStartupStep("GBP performance settings schema", async () => {
+      const client = await pool.connect();
+      try {
+        await ensureGbpPerformanceSettingsSchema(client);
+      } finally {
+        client.release();
+      }
+    });
     // Always run phase1-users on fast-path: adds first_name/last_name/status columns.
     // NEVER fatal — a warning is enough; the inline self-heal in finalize-checkout is the real gate.
     try { await initPhase1Users(); } catch (_p1Err) {
@@ -244,39 +323,22 @@ async function main() {
         await client.query(
           `DELETE FROM magic_link_tokens WHERE expires_at < NOW() - INTERVAL '1 day' OR used = true`
         ).catch(() => {});
-        // checkout_post_tokens: single-use token created by webhook after org creation.
-        // SECURITY: token_hash = SHA256(stripe_session_id) — raw session ID never stored in plaintext.
-        // Expiry: 15 minutes (spec requirement). Row is DELETED on consumption (not merely flagged).
-        // Migration: if old schema (stripe_session_id PK, no token_hash column) exists, drop + recreate.
-        await client.query(`
-          DO $$ BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM information_schema.columns
-              WHERE table_name = 'checkout_post_tokens' AND column_name = 'token_hash'
-            ) THEN
-              DROP TABLE IF EXISTS checkout_post_tokens;
-            END IF;
-          END $$
-        `);
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS checkout_post_tokens (
-            token_hash         TEXT        PRIMARY KEY,           -- SHA256(stripe_session_id)
-            stripe_session_id  TEXT        UNIQUE NOT NULL,       -- kept for Stripe event idempotency
-            stripe_event_id    TEXT,
-            org_id             TEXT        NOT NULL,
-            email              TEXT        NOT NULL,
-            pre_register_token TEXT,
-            created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            expires_at         TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '15 minutes'
-          )
-        `);
-        await client.query(`CREATE INDEX IF NOT EXISTS cpt_org_idx     ON checkout_post_tokens(org_id)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS cpt_expires_idx ON checkout_post_tokens(expires_at)`);
-        // SECURITY: RLS enabled with no public policies → deny-all for anon/authenticated.
-        // Backend pool.query() uses BYPASSRLS superuser and is unaffected.
-        // token_hash (SHA256 of Stripe session ID) must never be accessible via PostgREST.
-        await client.query(`ALTER TABLE checkout_post_tokens ENABLE ROW LEVEL SECURITY`);
-        await client.query(`ALTER TABLE checkout_post_tokens FORCE ROW LEVEL SECURITY`);
+        // checkout_post_tokens : schema ET policies d'isolation poses ensemble.
+        // Voir services/init-checkout-post-tokens.ts — la table portait org_id
+        // sans aucune policy tant qu'une passe RLS ulterieure n'etait pas
+        // passee, et l'ordre de ces deux etapes asynchrones n'etait pas garanti.
+        await ensureCheckoutPostTokensSchema(client);
+        // Appartenance des moniteurs BetterStack. Volontairement best-effort
+        // et independante de la migration V1 : si la table manque, le service
+        // BetterStack refuse tout (voir monitorsDeLOrganisation) et le
+        // monitoring natif n'est pas affecte. Le journal dit laquelle des deux
+        // situations est en cours, pour que la presence soit verifiable.
+        try {
+          await ensureBsOwnershipSchema(client);
+          logger.info("[startup] bs_monitor_ownership ensured");
+        } catch (err: unknown) {
+          logger.error({ err }, "[startup] bs_monitor_ownership ABSENTE — BetterStack refusera toute operation client");
+        }
         logger.info("[startup] new-signup-schema ensured (pending_signups, checkout_post_tokens, postal_code, vat)");
       } finally { client.release(); }
     }).catch((err: unknown) => {
@@ -348,10 +410,12 @@ async function main() {
     // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
     logger.info("[startup] Core tables absent — running full init sequence");
 
+    // `initRlsSetup` reste ici : il cree le role app_user, lui accorde les
+    // droits et pose les DEFAULT PRIVILEGES, qui couvriront les tables creees
+    // ensuite. C'est le durcissement RLS lui-meme qui doit attendre.
     await runCriticalStartupStep("init-rls-setup", initRlsSetup);
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
-    await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
-    // init-data-tables MUST run first: creates organizations, users, org_settings
+    // init-data-tables MUST run first: creates organizations, org_settings
     // and all core tables that init-missions/automation/monitors depend on.
     await runCriticalStartupStep("init-data-tables", initDataTables);
     await runCriticalStartupStep("init-missions",   initMissionsTables);
@@ -370,7 +434,35 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] init-agent-tables step failed (non-fatal)");
       });
+
   }
+
+  // ── Durcissement RLS : EN DERNIER, ET POUR LES DEUX CHEMINS ───────────────
+  //
+  // DEFAUT MESURE LE 18/10/2026, en construisant la base de test depuis zero,
+  // puis en deux temps.
+  //
+  // D'abord : dans le chemin complet, cette etape passait AVANT
+  // `init-data-tables`, `init-missions`, `init-automation`, `init-monitors` et
+  // `init-agent-tables`. Sur une base neuve ces tables n'existent pas encore :
+  // elles n'obtenaient ni RLS ni policy, et la sentinelle de la migration
+  // etait posee ensuite comme si tout etait en ordre. Mesure : 106 tables,
+  // 97 a `org_id`, 36 d'entre elles SANS RLS — les tables missions, monitors,
+  // automation, team et audits. `/api/healthz/ready` repondait 503 en les
+  // listant, et il avait raison.
+  //
+  // Ensuite, et c'est ce qui rendait la premiere correction inoperante : des
+  // que `audits` existe, le demarrage prend le chemin RAPIDE, qui ne contenait
+  // AUCUNE etape de durcissement. Corriger l'ordre du chemin complet ne
+  // suffisait donc pas — il ne sera plus jamais rejoue sur cette base, et les
+  // 36 tables seraient restees sans RLS indefiniment. C'est aussi pourquoi la
+  // production, qui prend toujours le chemin rapide, ne s'est jamais reparee
+  // d'elle-meme.
+  //
+  // L'etape est donc hors du `if/else` : elle clot les deux chemins. Elle est
+  // idempotente et gardee par une sentinelle — sur une base deja saine, c'est
+  // un no-op de quelques millisecondes.
+  await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
 
   // ── Optional: Resend email config check (non-blocking, log only) ─────────────
   (async () => {
@@ -385,9 +477,9 @@ async function main() {
     const domain    = fromAddr.split("@")[1] ?? "";
     logger.info(`[Resend] Configured from="${resendFrom}" domain="${domain}" — verify SPF/DKIM in Resend dashboard if emails fail`);
     try {
-      const resp = await fetch("https://api.resend.com/domains", {
+      const resp = await fetchBorne("https://api.resend.com/domains", {
         headers: { Authorization: `Bearer ${resendKey}` },
-      });
+      }, DELAIS.courriel);
       if (!resp.ok) {
         logger.warn({ status: resp.status }, "[Resend] Could not list domains — check RESEND_API_KEY");
         return;
@@ -408,9 +500,17 @@ async function main() {
   })();
 
   // ── All critical steps succeeded — safe to open port and start crons ────────
+  // ── Sonde d'observabilite du schema — ne refuse jamais le demarrage ────────
+  // migrate.mjs peut refuser une base : il tourne avant la mise en ligne. Ici,
+  // un refus ferait tomber un service en production ; on se contente donc de
+  // dire ce qui est, et de le dire fort.
+  await reportSchemaGateStatus(pool);
+
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
+    // Do not publish real GBP content from development/test servers.
+    if (env.NODE_ENV === "production") startGBPPostScheduler();
 
     // Durable recovery of AI usage writes that failed after provider consumption
     // (idempotent replays — survives restarts, unlike in-process timers).

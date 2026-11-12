@@ -35,6 +35,10 @@ const ULTRA_BILLING: OrgBillingData = {
   trialEndsAt: null,
   trialConsumedAt: "2024-01-01T00:00:00.000Z",
   trialStartedAt: "2024-01-01T00:00:00.000Z",
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+  cancelAt: null,
+  pastDueSince: null,
   addons: {},
   pendingPlan: null,
   pendingPlanDate: null,
@@ -55,21 +59,31 @@ function deps(over: Partial<MeEntitlementDeps> = {}): MeEntitlementDeps {
 
 describe("loadMeEntitlement — fail-closed on unavailable data", () => {
   it("throws BillingDataUnavailableError when organizations/billing lookup rejects", async () => {
-    await expect(
-      loadMeEntitlement(ORG, deps({ loadOrgData: async () => { throw new Error("db down"); } })),
-    ).rejects.toBeInstanceOf(BillingDataUnavailableError);
+    const err = await loadMeEntitlement(
+      ORG,
+      deps({ loadOrgData: async () => { throw new Error("db down"); } }),
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(BillingDataUnavailableError);
+    expect(err.dependency).toBe("organizations/billing");
+    expect(err.message).not.toContain("db down");
   });
 
   it("throws BillingDataUnavailableError when org_settings lookup rejects", async () => {
-    await expect(
-      loadMeEntitlement(ORG, deps({ loadOrgSettings: async () => { throw new Error("db down"); } })),
-    ).rejects.toBeInstanceOf(BillingDataUnavailableError);
+    const err = await loadMeEntitlement(
+      ORG,
+      deps({ loadOrgSettings: async () => { throw new Error("db down"); } }),
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(BillingDataUnavailableError);
+    expect(err.dependency).toBe("org_settings");
   });
 
   it("throws BillingDataUnavailableError when org_addons lookup rejects (fails closed, no empty fallback)", async () => {
-    await expect(
-      loadMeEntitlement(ORG, deps({ loadAddons: async () => { throw new Error("db down"); } })),
-    ).rejects.toBeInstanceOf(BillingDataUnavailableError);
+    const err = await loadMeEntitlement(
+      ORG,
+      deps({ loadAddons: async () => { throw new Error("db down"); } }),
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(BillingDataUnavailableError);
+    expect(err.dependency).toBe("org_addons");
   });
 
   it("the raised error carries a structured, retryable code", async () => {

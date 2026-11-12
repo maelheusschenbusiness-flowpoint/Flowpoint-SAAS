@@ -5,7 +5,7 @@
  * Banc repris de stripe-webhook-delivery.test.ts : signature Stripe reelle
  * (HMAC de test local), base simulee. Aucun appel Stripe, aucun secret reel.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import Stripe from "stripe";
 
 let funnelInserts: Array<{ sql: string; params: unknown[] }>;
@@ -208,6 +208,15 @@ beforeEach(() => {
   delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
   delete process.env["STRIPE_TEST_WEBHOOK_SECRET"];
   process.env["NODE_ENV"] = "production";
+  // Banc en mode LIVE (cle sk_live_ de fixture) : la CI exporte STRIPE_TEST_MODE=true.
+  delete process.env["STRIPE_TEST_MODE"];
+});
+
+const ENV_AVANT = { STRIPE_TEST_MODE: process.env["STRIPE_TEST_MODE"], NODE_ENV: process.env["NODE_ENV"] };
+afterAll(() => {
+  for (const [k, v] of Object.entries(ENV_AVANT)) {
+    if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
 });
 
 describe("checkout.session.completed — achats hors plan", () => {

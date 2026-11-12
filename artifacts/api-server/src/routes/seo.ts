@@ -1,15 +1,20 @@
 import { Router } from "express";
 import { canWrite } from "../middlewares/requireRole.js";
+import { requireAddon } from "../middlewares/planGate.js";
 import { pool } from "@workspace/db";
 import {
   isDataForSEOConfigured,
-  checkAndIncrementQuota,
+  verifierEtConsommerQuota,
+  rembourserQuota,
+  suivreAppelsPayants,
   getQuotaUsage,
   getQuotaUsageFromDB,
   getKeywordSuggestions,
   getSERP,
   getCompetitors,
   getBacklinks,
+  getBacklinkHistory,
+  getBacklinkDetails,
   getDomainMetrics,
   getKeywordDifficulty,
   getLocalPackRank,
@@ -19,10 +24,28 @@ import {
   generateSEOMissions,
 } from "../services/dataforseo-service.js";
 import { checkLLMVisibility } from "../services/llm-visibility.js";
+import { getTopKeywords } from "../services/gsc-service.js";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
+const backlinkRequestUntil = new Map<string, number>();
+const backlinkCooldown = (kind: string) => (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => {
+  const orgId = String((req as unknown as Record<string, unknown>)["orgId"] ?? "default");
+  const now = Date.now();
+  const key = `${orgId}:${kind}`;
+  const until = backlinkRequestUntil.get(key) ?? 0;
+  if (until > now) {
+    res.setHeader("Retry-After", String(Math.ceil((until - now) / 1000)));
+    res.status(429).json({ error: "Veuillez patienter avant de relancer cet appel DataForSEO.", code: "BACKLINK_COOLDOWN" });
+    return;
+  }
+  if (backlinkRequestUntil.size > 5000) {
+    for (const [entry, expiry] of backlinkRequestUntil) if (expiry <= now) backlinkRequestUntil.delete(entry);
+  }
+  backlinkRequestUntil.set(key, now + 30_000);
+  next();
+};
 
 // ── Helper — persisted Local SEO ranking usage ───────────────────────────────
 // `used` is derived from the persisted ranking-history rows for the current day
@@ -117,22 +140,50 @@ async function releaseRankingSearch(orgId: string, id: string): Promise<void> {
 
 // ── Helper — quota check middleware factory ───────────────────────────────────
 
+/**
+ * Reserve une unite de quota DataForSEO avant de laisser passer la requete.
+ *
+ * Trois reponses possibles :
+ *   - 429 : le plafond du jour est atteint pour cette organisation.
+ *   - 503 : PostgreSQL est injoignable, donc le quota n'est pas verifiable.
+ *           Politique fail-closed : aucun appel payant n'est autorise, et le
+ *           corps ne dit rien de l'etat interne de l'infrastructure.
+ *   - le traitement normal.
+ *
+ * Si le traitement n'a declenche AUCUN appel payant abouti — organisation sans
+ * identifiants DataForSEO, ou erreur du fournisseur — l'unite reservee est
+ * rendue : DataForSEO ne facture pas ces appels, le client ne doit pas les payer
+ * sur son quota.
+ */
 function withQuota(handler: (req: import("express").Request, res: import("express").Response) => Promise<void>) {
   return async (req: import("express").Request, res: import("express").Response): Promise<void> => {
     const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
     const plan  = ((req as unknown as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
 
-    if (!checkAndIncrementQuota(orgId, plan)) {
-      const { used, limit } = getQuotaUsage(orgId, plan);
+    // `checkAndIncrementQuota` est async : sans `await`, l'expression testee
+    // etait une Promise, toujours vraie, donc `!promise` toujours faux. La
+    // branche 429 ne se declenchait JAMAIS, et le plafond de 1000 requetes
+    // DataForSEO par jour et par organisation n'etait applique sur aucun des
+    // onze endpoints enveloppes par withQuota.
+    const verdict = await verifierEtConsommerQuota(orgId, plan);
+    if (!verdict.autorise) {
+      if (verdict.motif === "indisponible") {
+        res.status(503).json({
+          error: "Vérification du quota indisponible. Réessayez dans un instant.",
+          code: "QUOTA_CHECK_UNAVAILABLE",
+        });
+        return;
+      }
       res.status(429).json({
         error: "Quota API DataForSEO dépassé pour aujourd'hui",
-        used, limit, plan,
+        used: verdict.utilise, limit: verdict.limite, plan,
         upgradeUrl: "/billing",
       });
       return;
     }
 
-    await handler(req, res);
+    const { appelsReussis } = await suivreAppelsPayants(async () => { await handler(req, res); });
+    if (appelsReussis === 0) await rembourserQuota(orgId, 1);
   };
 }
 
@@ -191,26 +242,29 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 // ── GET /api/seo/backlinks ────────────────────────────────────────────────────
 // Requires backlinkIntelligence add-on (Pro/Ultra include it; Standard requires purchase).
 
+const backlinkAddonGate = requireAddon("backlinkIntelligence", "Backlink Intelligence");
+
 router.get("/seo/backlinks", withQuota(async (req, res) => {
-  const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain = "exemple.fr" } = req.query as Record<string,string>;
-  try {
-    // Feature gate: backlinkIntelligence add-on required
-    const { loadBillingContext } = await import("../services/billing-context.js");
-    const bCtx = await loadBillingContext(orgId).catch(() => null);
-    if (!bCtx?.addons?.["backlinkIntelligence"]) {
-      res.status(403).json({
-        error: "L'add-on Backlink Intelligence est requis pour accéder à cette fonctionnalité.",
-        code: "ADDON_REQUIRED", addonKey: "backlinkIntelligence",
-      });
-      return;
-    }
-    const data = await getBacklinks(domain, orgId);
-    res.json({ domain, ...data });
-  } catch (e) {
-    res.status(500).json({ error: "Backlinks fetch failed", detail: String(e) });
-  }
-}));
+      const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+      const { domain } = req.query as Record<string, string | undefined>;
+      if (!domain || !domain.trim() || domain.length > 253) {
+        res.status(400).json({ error: "domain required", code: "INVALID_DOMAIN" });
+        return;
+      }
+      const target = domain.trim();
+      try {
+        const { loadBillingContext } = await import("../services/billing-context.js");
+        const bCtx = await loadBillingContext(orgId).catch(() => null);
+        if (!bCtx?.addons?.["backlinkIntelligence"]) {
+          res.status(403).json({ error: "L'add-on Backlink Intelligence est requis pour accéder à cette fonctionnalité.", code: "ADDON_REQUIRED", addonKey: "backlinkIntelligence" });
+          return;
+        }
+        const data = await getBacklinks(target, orgId);
+        res.json({ domain: target, ...data });
+      } catch {
+        res.status(503).json({ domain: target, available: false, code: "BACKLINK_DATA_UNAVAILABLE", reason: "provider_error" });
+      }
+    }));
 
 // ── GET /api/seo/domain-metrics ───────────────────────────────────────────────
 
@@ -268,14 +322,18 @@ router.get("/seo/maps", withQuota(async (req, res) => {
 // ── GET /api/seo/ai-mentions ──────────────────────────────────────────────────
 
 router.get("/seo/ai-mentions", withQuota(async (req, res) => {
-  const { keyword = "seo local" } = req.query as Record<string,string>;
-  try {
-    const data = await getAIVisibility(keyword);
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: "AI mentions fetch failed", detail: String(e) });
-  }
-}));
+      const { keyword = "seo local" } = req.query as Record<string, string>;
+      try {
+        const data = await getAIVisibility(keyword);
+        if ("available" in data && data.available === false) {
+          res.status(503).json(data);
+          return;
+        }
+        res.json(data);
+      } catch {
+        res.status(503).json({ available: false, code: "AI_VISIBILITY_UNAVAILABLE", error: "Le service de visibilité IA est indisponible." });
+      }
+    }));
 
 // ── POST /api/seo/content-optimization ───────────────────────────────────────
 
@@ -302,86 +360,152 @@ router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) =>
     }).catch(() => {});
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: "Content optimization failed", detail: String(e) });
+    const code = e instanceof Error && "code" in e ? String((e as Error & { code: string }).code) : "DATAFORSEO_PROVIDER_ERROR";
+    const unavailable = code === "DATAFORSEO_NOT_CONFIGURED";
+    res.status(unavailable ? 503 : 502).json({ ok: false, code, error: unavailable ? "DataForSEO n'est pas configuré pour cette organisation." : "DataForSEO n'a pas pu analyser cette page." });
   }
 }));
 
 // ── POST /api/seo/generate-missions ──────────────────────────────────────────
 
-router.post("/seo/generate-missions", canWrite, async (req, res) => {
-  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  const { domain } = req.body as { domain?: string };
-  if (!domain) { res.status(400).json({ error: "domain required" }); return; }
-  try {
-    await generateSEOMissions(orgId, domain, []);
-    res.json({ ok: true, message: `Missions SEO générées pour ${domain}` });
-  } catch (e) {
-    res.status(500).json({ error: "Mission generation failed" });
-  }
-});
+router.post("/seo/generate-missions", canWrite, requireAddon("advancedSeoLab", "Advanced SEO Lab"), withQuota(async (req, res) => {
+      const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
+      const { domain } = req.body as { domain?: string };
+      if (!domain || typeof domain !== "string" || domain.length > 253) { res.status(400).json({ ok: false, code: "INVALID_DOMAIN", error: "domain required" }); return; }
+      try {
+        const rows = await getTopKeywords(orgId, 20, 28);
+        const keywords = rows.map(row => String((row as { keyword?: unknown })?.keyword ?? "").trim()).filter(Boolean).slice(0, 20);
+        if (!keywords.length) { res.status(422).json({ ok: false, code: "SEO_KEYWORDS_UNAVAILABLE", error: "Aucun mot-clé Google Search Console récent n'est disponible pour générer des missions." }); return; }
+        const missions = await generateSEOMissions(orgId, domain, keywords);
+        res.json({ ok: true, domain, missions });
+      } catch (e) {
+        const code = e instanceof Error && "code" in e ? String((e as Error & { code: string }).code) : "DATAFORSEO_PROVIDER_ERROR";
+        const unavailable = code === "DATAFORSEO_NOT_CONFIGURED";
+        res.status(unavailable ? 503 : 502).json({ ok: false, code, error: unavailable ? "DataForSEO n'est pas configuré pour cette organisation." : "DataForSEO n'a pas pu générer les missions." });
+      }
+    }));
 
 // ── GET /api/seo/llm-visibility ───────────────────────────────────────────────
 
-// ── GET /local-seo/status ────────────────────────────────────────────────────────
-router.get("/local-seo/status", async (req, res) => {
+// ── GET /local-seo  (alias: /local-seo/status) ───────────────────────────────────
+// Agregat reel pour le dashboard (Local SEO + Growth) : note moyenne, nombre d'avis, zones.
+// Jamais de valeur inventee : `state` dit explicitement pourquoi une donnee est absente.
+//   not_connected  -> aucun compte Google Business Profile connecte (avgRating/reviewCount/zones = null/[])
+//   no_data        -> GBP connecte mais aucune note/avis synchronise
+//   ok             -> au moins une donnee reelle
+type LocalSeoDb = (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+export type LocalSeoZone = {
+  id: string; name: string; keyword: string | null; vis: number; dominated: boolean;
+  averageRank: number | null; measuredPoints: number; totalPoints: number;
+  prev: null; trend: null; kw: null; reviews: null; comp: null;
+};
+
+export async function buildLocalSeoSummary(db: LocalSeoDb, orgId: string) {
+  let failures = 0; // requetes en erreur : une base indisponible ne doit jamais passer pour « non connecte »
+  const locRow = await db(
+    `SELECT address, city, latitude, longitude FROM organizations WHERE id=$1`, [orgId]
+  ).catch(() => { return { rows: [] as Record<string, unknown>[] }; });
+  const loc = locRow.rows[0];
+  const hasLocation = !!(loc?.latitude || loc?.address);
+  const gbpRow = await db(
+    `SELECT COUNT(*) AS cnt FROM google_tokens WHERE org_id=$1`, [orgId]
+  ).catch(() => { failures++; return { rows: [{ cnt: 0 }] as Record<string, unknown>[] }; });
+  const hasGBP = Number(gbpRow.rows[0]?.cnt ?? 0) > 0;
+
+  let avgRating: number | null = null;
+  let reviewCount: number | null = null;
+  let gbpCount: number | null = null;
+  if (hasGBP) {
+    const agg = await db(
+      `SELECT COUNT(*)::int AS locations,
+              COALESCE(SUM(reviews_count), 0)::int AS review_count,
+              SUM(rating * reviews_count) FILTER (WHERE rating IS NOT NULL AND reviews_count > 0) AS weighted,
+              SUM(reviews_count) FILTER (WHERE rating IS NOT NULL AND reviews_count > 0) AS weight,
+              AVG(rating) FILTER (WHERE rating IS NOT NULL) AS plain_avg
+         FROM google_locations WHERE org_id=$1`, [orgId]
+    ).catch(() => { failures++; return { rows: [] as Record<string, unknown>[] }; });
+    const a = agg.rows[0];
+    const locations = Number(a?.locations ?? 0);
+    if (locations > 0) {
+      gbpCount = locations;
+      const weight = Number(a?.weight ?? 0);
+      if (weight > 0) avgRating = Math.round((Number(a?.weighted) / weight) * 10) / 10;
+      else if (a?.plain_avg != null) avgRating = Math.round(Number(a.plain_avg) * 10) / 10;
+      reviewCount = Number(a?.review_count ?? 0);
+    } else {
+      const rv = await db(
+        `SELECT COUNT(*)::int AS cnt, AVG(rating) AS avg FROM google_reviews WHERE org_id=$1 AND rating IS NOT NULL`, [orgId]
+      ).catch(() => { failures++; return { rows: [] as Record<string, unknown>[] }; });
+      const cnt = Number(rv.rows[0]?.cnt ?? 0);
+      if (cnt > 0) { reviewCount = cnt; avgRating = Math.round(Number(rv.rows[0]?.avg) * 10) / 10; }
+    }
+  }
+
+  // Zones = scans de carte de chaleur reellement mesures (local_heatmaps).
+  const zones: LocalSeoZone[] = [];
+  const hm = await db(
+    `SELECT id, name, keyword, results FROM local_heatmaps
+      WHERE org_id=$1 AND status='completed' ORDER BY created_at DESC LIMIT 20`, [orgId]
+  ).catch(() => { failures++; return { rows: [] as Record<string, unknown>[] }; });
+  for (const row of hm.rows) {
+    let results: unknown = row["results"];
+    if (typeof results === "string") { try { results = JSON.parse(results); } catch { results = null; } }
+    const summary = (results && typeof results === "object" ? (results as Record<string, unknown>)["summary"] : null) as
+      { dominanceScore?: number | null; averageRank?: number | null; measuredPoints?: number; totalPoints?: number } | null;
+    if (!summary || typeof summary.dominanceScore !== "number" || !(Number(summary.measuredPoints) > 0)) continue;
+    zones.push({
+      id: String(row["id"]), name: String(row["name"] || row["keyword"] || "Zone"), keyword: row["keyword"] ? String(row["keyword"]) : null,
+      vis: summary.dominanceScore, dominated: summary.dominanceScore >= 70,
+      averageRank: typeof summary.averageRank === "number" ? summary.averageRank : null,
+      measuredPoints: Number(summary.measuredPoints), totalPoints: Number(summary.totalPoints ?? 0),
+      prev: null, trend: null, kw: null, reviews: null, comp: null,
+    });
+  }
+
+  const hasData = avgRating !== null || reviewCount !== null || zones.length > 0;
+  if (failures > 0 && !hasData) throw new Error("local-seo summary unavailable");
+  const state: "not_connected" | "no_data" | "ok" = hasData ? "ok" : hasGBP ? "no_data" : "not_connected";
+  return {
+    ok: true,
+    configured: hasLocation || hasGBP,
+    hasLocation,
+    hasGBP,
+    gbpConnected: hasGBP,
+    source: hasGBP ? "gbp" : hasLocation ? "manual" : "none",
+    state,
+    avgRating, reviewCount, gbpCount, zones,
+  };
+}
+
+const localSeoSummaryHandler = async (req: import("express").Request, res: import("express").Response) => {
   const orgId = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
-    // Check if GBP/GMB data or location is configured
-    const db = (req as unknown as Record<string, unknown>)["orgDb"] as ((sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) | undefined;
-    if (!db) { res.json({ configured: false, source: "none" }); return; }
-    const locRow = await db(
-      `SELECT address, city, latitude, longitude FROM organizations WHERE id=$1`, [orgId]
-    ).catch(() => ({ rows: [] }));
-    const loc = locRow.rows[0] as Record<string, unknown> | undefined;
-    const hasLocation = !!(loc?.latitude || loc?.address);
-    // Check GBP tokens
-    const gbpRow = await db(
-      `SELECT COUNT(*) AS cnt FROM google_tokens WHERE org_id=$1`, [orgId]
-    ).catch(() => ({ rows: [{ cnt: 0 }] }));
-    const hasGBP = Number((gbpRow.rows[0] as Record<string, unknown>)?.cnt ?? 0) > 0;
-    res.json({
-      ok: true,
-      configured: hasLocation || hasGBP,
-      hasLocation,
-      hasGBP,
-      source: hasGBP ? "gbp" : hasLocation ? "manual" : "none",
-    });
-  } catch { res.json({ ok: false, configured: false, source: "error" }); }
-});
+    const db = (req as unknown as Record<string, unknown>)["orgDb"] as LocalSeoDb | undefined;
+    if (!db) { res.json({ ok: false, configured: false, source: "none", state: "not_connected", avgRating: null, reviewCount: null, zones: [] }); return; }
+    res.json(await buildLocalSeoSummary(db, orgId));
+  } catch {
+    // Etat explicite : l'interface affiche « indisponible », jamais un 0 trompeur.
+    res.status(503).json({ ok: false, configured: false, source: "error", state: "unavailable", avgRating: null, reviewCount: null, zones: [] });
+  }
+};
+router.get("/local-seo", localSeoSummaryHandler);
+router.get("/local-seo/status", localSeoSummaryHandler);
 
 // ── GET /local-seo/citations ──────────────────────────────────────────────────
-// Returns citation health data — structured from DataForSEO backlinks or fallback
+// DataForSEO backlinks are not local business citations and cannot prove NAP
+// consistency. Until a citation provider is connected, return an explicit
+// unavailable state instead of inventing citation records or health scores.
 router.get("/local-seo/citations", async (req, res) => {
   const domain = req.query.domain as string | undefined;
-  const orgId  = (req as unknown as Record<string, unknown>)["orgId"] as string ?? "default";
-  try {
-    if (domain && await isDataForSEOConfigured(orgId)) {
-      const allowed = await checkAndIncrementQuota(orgId, "citations", 1).catch(() => false);
-      if (allowed) {
-        const bl = await getBacklinks(domain, orgId);
-        res.json({
-          domain,
-          totalCitations: bl?.total ?? 0,
-          activeCitations: bl?.dofollow ?? 0,
-          napConsistency: 85,
-          citations: (bl?.items ?? []).slice(0, 20).map((item: Record<string, unknown>) => ({
-            source: item["domain_from"] ?? "unknown",
-            status: "active",
-            hasPhone: true,
-            hasAddress: true,
-            hasWebsite: true,
-          })),
-        });
-        return;
-      }
-    }
-    res.json({
-      domain: domain ?? "",
-      totalCitations: 0, activeCitations: 0, napConsistency: 0, citations: [],
-    });
-  } catch {
-    res.json({ domain: domain ?? "", totalCitations: 0, activeCitations: 0, napConsistency: 0, citations: [] });
-  }
+  res.json({
+    domain: domain ?? "",
+    available: false,
+    reason: "citation_provider_required",
+    totalCitations: null,
+    activeCitations: null,
+    napConsistency: null,
+    citations: [],
+  });
 });
 
 // ── POST /local-seo/rankings ──────────────────────────────────────────────────

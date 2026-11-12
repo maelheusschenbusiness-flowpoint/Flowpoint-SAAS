@@ -34,7 +34,15 @@ export interface OverviewMetrics {
   revenueLeaks: number;
   revenueLeakAmount: number;
   avgLatency: number;
-  uptime: number;
+  /**
+   * Disponibilite moyenne des monitors, ou `null` quand il n'y en a aucun.
+   *
+   * Elle valait 100 sans aucun monitor : un workspace qui ne surveille rien
+   * s'affichait « 100 % de disponibilite ». Le fichier s'interdit pourtant ce
+   * genre de chiffre ailleurs — `seoScoreDelta` est explicitement « null when no
+   * prior-period data — never fabricated ». Meme regle ici.
+   */
+  uptime: number | null;
   competitors: number;
   trendsUp: number;
   trendsDown: number;
@@ -50,7 +58,7 @@ export interface OverviewMetrics {
   gscClicks30d: number | null;
   /** Daily GSC clicks — null when GSC not connected */
   gscClicksHistory: Array<{ date: string; clicks: number }> | null;
-  /** Revenue opportunity in € from revenue_leaks — null when no leaks detected */
+  /** Measured EUR revenue opportunity; null when no verified attribution exists. */
   revenueOpportunity: number | null;
   /** Audits score<50 + monitors down + unresolved alert events */
   criticalIssues: number;
@@ -70,10 +78,10 @@ export interface OverviewMetrics {
   /** Local Pack position history — null when no data persisted yet */
   localPackHistory: Array<{ date: string; value: number }> | null;
   /**
-   * True once at least one revenue_leaks analysis has been run for this org.
-   * When false: no analysis run yet → display "Collecte en cours".
-   * When true + revenueOpportunity === null: analysis done, 0 € detected.
-   * When true + revenueOpportunity > 0: real opportunity detected.
+   * True when the org has behavioral events in the current 30-day window.
+   * When false: no recent behavioral data is available.
+   * When true + revenueOpportunity === null: no measured EUR amount is attributed.
+   * When true + revenueOpportunity > 0: a measured EUR opportunity is available.
    */
   revenueOpportunityAnalyzed: boolean;
 }
@@ -82,7 +90,16 @@ export interface OverviewMetrics {
 const _cache = new Map<string, { data: OverviewMetrics; expiresAt: number }>();
 
 export async function getOverviewMetrics(orgId = "default", range = 30, rangeLabel = "30d"): Promise<OverviewMetrics> {
-  const cacheKey = `${orgId}:${rangeLabel}`;
+  // La cle suit `range`, et non `rangeLabel`, pour la raison que le commentaire
+  // ci-dessus enonce depuis toujours. `rangeLabel` n'entre nulle part ailleurs :
+  // la charge utile porte `range`, et toutes les requetes s'en servent.
+  //
+  // Le piege etait dans la valeur par defaut : `rangeLabel = "30d"`. Un appelant
+  // ecrivant `getOverviewMetrics(org, 7)` rangeait sept jours de donnees sous la
+  // cle `org:30d`, servies ensuite pendant 60 s a toute demande de trente jours.
+  // Un seul appelant existe aujourd'hui et passe les deux, donc rien n'est casse
+  // en production — mais le defaut attendait le deuxieme appelant.
+  const cacheKey = `${orgId}:${range}`;
   const cached = _cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -149,7 +166,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
         [orgId]
       ),
       pool.query(
-        `SELECT COUNT(*) as count, COALESCE(SUM(estimated_monthly_loss), 0) as total
+        `SELECT COUNT(*) as count,
+                COALESCE(SUM(estimated_monthly_loss) FILTER (
+                  WHERE metadata->>'financialClassification'='measured'
+                    AND metadata->>'currency'='EUR'
+                ), 0) as total
          FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId]
       ),
@@ -158,7 +179,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
          WHERE org_id=$1 AND provider IN ('ga4','google_analytics','matomo') AND status='active' LIMIT 1`,
         [orgId]
       ),
-      pool.query(`SELECT COUNT(*) as count FROM gbp_posts WHERE org_id=$1`, [orgId]),
+      pool.query(`SELECT COUNT(*) as count FROM gbp_posts WHERE org_id=$1 AND status='published' AND google_post_id IS NOT NULL`, [orgId]),
       pool.query(`SELECT COUNT(*) as count FROM competitors WHERE org_id=$1`, [orgId]),
       pool.query(`SELECT plan, addons FROM org_settings WHERE org_id=$1 LIMIT 1`, [orgId]),
       getGA4Overview(orgId, rangeAgo, today),
@@ -187,9 +208,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
          ORDER BY recorded_date DESC LIMIT 90`,
         [orgId]
       ).catch(() => ({ rows: [] as Array<{ date: string; value: string }> })),
-      // Revenue opportunity analyzed = any row exists in revenue_leaks (regardless of status)
+      // Revenue observations depend on recent behavioral events, not legacy estimated-loss rows.
       pool.query(
-        `SELECT 1 FROM revenue_leaks WHERE org_id=$1 LIMIT 1`,
+        `SELECT 1 FROM behavior_events
+          WHERE org_id=$1 AND created_at >= now() - interval '30 days'
+          LIMIT 1`,
         [orgId]
       ).catch(() => ({ rows: [] })),
     ]);
@@ -293,8 +316,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       : 0;
     const uptime = monitorRows.length > 0
       ? Math.round((monitorRows.reduce((s: number, r: { avg_uptime: string }) => s + Number(r.avg_uptime ?? 100), 0) / monitorRows.length) * 10) / 10
-      : 100;
-    const monitorUptime = monitorRows.length > 0 ? uptime : null;
+      : null;
+    // `monitorUptime` disait deja la verite ; `uptime` la contredisait dans le
+    // meme objet. Les deux portent desormais la meme valeur, et l'ecart ne peut
+    // plus reapparaitre.
+    const monitorUptime = uptime;
 
     const missionsCompleted = Number(missionRows.find((r: { status: string }) => r.status === "done")?.count ?? 0);
     const missionsTodo      = Number(missionRows.find((r: { status: string }) => r.status === "todo")?.count ?? 0);
@@ -320,7 +346,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       ? Math.min(100, Math.round(20 + competitorCount * 15)) : null;
     const seoTrendDelta: number | null = prevScore > 0 && seoScore > 0 ? seoScore - prevScore : null;
 
-    // ── Revenue opportunity: real € from revenue_leaks ───────────────────────────
+    // ── Revenue opportunity: only verified EUR attribution from revenue_leaks ──
     const leakAmount         = Math.round(Number(leakRow?.total ?? 0));
     const revenueOpportunity = leakAmount > 0 ? leakAmount : null;
 
