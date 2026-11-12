@@ -21,4 +21,14 @@ describe("buildKeywordDominationReport", () => {
       { keyword: "", current_position: "bad", prev_position: null, position_change: null, search_volume: null, difficulty: null, url: null, intent: null },
     ])).toEqual({ summary: { tracked: 0, top3: 0, strikingDistance: 0, atRisk: 0 }, opportunities: [], atRisk: [] });
   });
+
+  it("signale les scores calculés sans difficulté mesurée (hypothèse neutre explicite)", () => {
+    const report = buildKeywordDominationReport([
+      { keyword: "avec", current_position: 8, position_change: 0, search_volume: 1000, difficulty: 30 },
+      { keyword: "sans", current_position: 8, position_change: 0, search_volume: 1000, difficulty: null },
+    ] as never);
+    const by = Object.fromEntries(report.opportunities.map(o => [o.keyword, o]));
+    expect(by["avec"]!.difficultyKnown).toBe(true);
+    expect(by["sans"]!.difficultyKnown).toBe(false);
+  });
 });
