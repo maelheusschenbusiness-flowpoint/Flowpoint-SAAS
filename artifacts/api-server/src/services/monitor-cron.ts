@@ -1,3 +1,4 @@
+import { betaSchedulerEnabled } from "../lib/beta-activation.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { mailer } from "./mailer.js";
@@ -401,8 +402,13 @@ export function startMonitorCron(): void {
 
   // Scheduled AI workflows are dynamically reconciled and atomically claimed
   // through workflow_runs, so multiple Render instances can share this poller.
-  void runScheduledWorkflowsTickSafe();
-  setInterval(() => void runScheduledWorkflowsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
+  // Bêta : en production seulement si WORKFLOW_SCHEDULER_ENABLED=true (voir lib/beta-activation).
+  if (betaSchedulerEnabled("WORKFLOW_SCHEDULER_ENABLED")) {
+    void runScheduledWorkflowsTickSafe();
+    setInterval(() => void runScheduledWorkflowsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
+  } else {
+    logger.info("[monitor-cron] workflow scheduler OFF (WORKFLOW_SCHEDULER_ENABLED!=true)");
+  }
 }
 
 async function runScheduledAuditsTickSafe(): Promise<void> {

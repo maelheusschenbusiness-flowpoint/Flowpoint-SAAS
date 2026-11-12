@@ -187,7 +187,7 @@ async function assurerTable(): Promise<void> {
         utm_campaign    TEXT,
         created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
       )`);
-    // Bases creees avant l'attribution UTM (migration 020) : colonnes ajoutees, idempotent.
+    // Bases creees avant l'attribution UTM (migration 030 (colonnes UTM)) : colonnes ajoutees, idempotent.
     for (const c of ["utm_source", "utm_medium", "utm_campaign"]) {
       await client.query(`ALTER TABLE funnel_events ADD COLUMN IF NOT EXISTS ${c} TEXT`);
     }
@@ -280,7 +280,7 @@ export async function enregistrerEtape(
       ]);
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
-      // Migration 020 pas encore appliquee (colonne absente, 42703) : on garde
+      // Migration 030 pas encore appliquee (colonne absente, 42703) : on garde
       // l'etape, sans la campagne, plutot que de la perdre.
       if ((error as { code?: string } | null)?.code !== "42703") throw error;
       logger.warn({ etape: event.etape }, "[Tunnel] utm columns missing — event stored without campaign");
@@ -293,9 +293,9 @@ export async function enregistrerEtape(
   }
 }
 
-// ── Schema UTM (migration 020) ──────────────────────────────────────────────
+// ── Schema UTM (migration 030 (colonnes UTM)) ──────────────────────────────────────────────
 
-/** Colonnes de campagne exigees par l'attribution (migration 020_funnel_events_utm.sql). */
+/** Colonnes de campagne exigees par l'attribution (migration 030_funnel_events_utm.sql). */
 export const COLONNES_UTM = ["utm_source", "utm_medium", "utm_campaign"] as const;
 
 export type EtatColonnesUtm =
@@ -304,7 +304,7 @@ export type EtatColonnesUtm =
   | { etat: "ajoutees"; colonnes: string[] };
 
 /**
- * Applique la migration 020 au demarrage, quel que soit le chemin (Pre-Deploy ou non) :
+ * Applique la migration 030 (colonnes UTM) au demarrage, quel que soit le chemin (Pre-Deploy ou non) :
  * le service Render n'execute pas `migrate.mjs` (aucune etape Pre-Deploy constatee le
  * 29/10), si bien que 020 n'etait appliquee nulle part. Additive et idempotente : les
  * colonnes deja presentes ne sont pas retouchees (aucun verrou pris dans ce cas), et
@@ -343,7 +343,7 @@ export async function assurerColonnesUtm(): Promise<EtatColonnesUtm> {
   }
 }
 
-/** Colonne absente (42703) : le schema n'a pas la migration 020. */
+/** Colonne absente (42703) : le schema n'a pas la migration 030 (colonnes UTM). */
 export function estSchemaUtmAbsent(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === "42703";
 }

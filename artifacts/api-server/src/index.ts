@@ -22,6 +22,7 @@ import { initAgentTables } from "./services/init-agent-tables.js";
 import { ensureGbpPerformanceSettingsSchema } from "./services/init-gbp-performance-settings.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { startGBPPostScheduler } from "./services/gbp-posting-service.js";
+import { betaSchedulerEnabled } from "./lib/beta-activation.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
 import { fetchBorne, DELAIS } from "./lib/fetch-borne.js";
@@ -189,7 +190,7 @@ async function main() {
     logger.info("Database connection OK");
   });
 
-  // 1b. Migration 020 (colonnes UTM du tunnel) : appliquee ici, car le service Render
+  // 1b. Migration 030 (colonnes UTM du tunnel) : appliquee ici, car le service Render
   // n'a pas d'etape Pre-Deploy. Non fatale : sans elle, l'attribution repond 503 explicite.
   await import("./services/funnel-events.js")
     .then(({ assurerColonnesUtm }) => assurerColonnesUtm())
@@ -517,7 +518,11 @@ async function main() {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
     // Do not publish real GBP content from development/test servers.
-    if (env.NODE_ENV === "production") startGBPPostScheduler();
+    // Bêta : publication planifiee GBP — en production seulement si GBP_POST_SCHEDULER_ENABLED=true.
+    if (env.NODE_ENV === "production") {
+      if (betaSchedulerEnabled("GBP_POST_SCHEDULER_ENABLED")) startGBPPostScheduler();
+      else logger.info("[startup] GBP post scheduler OFF (GBP_POST_SCHEDULER_ENABLED!=true)");
+    }
 
     // Durable recovery of AI usage writes that failed after provider consumption
     // (idempotent replays — survives restarts, unlike in-process timers).
