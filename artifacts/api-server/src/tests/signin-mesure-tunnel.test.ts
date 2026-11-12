@@ -35,12 +35,16 @@ function blocsEnLigne(): string[] {
   return [...PAGE.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
 }
 
-function executerMesure(cookie: string) {
+function executerMesure(
+  cookie: string,
+  search = "?fp_vid=123e4567-e89b-42d3-a456-426614174000&fp_src=smartlead&plan=pro",
+) {
   const debut = PAGE.indexOf("var FP_TRACKING_SOURCES =");
   const fin = PAGE.indexOf("/* ── Step 1: form submit", debut);
   const script = PAGE.slice(debut, fin);
   const stockage = new Map<string, string>();
   const requetes: Array<{ url: string; options: { body: string } }> = [];
+  let urlApresNettoyage = "";
   const contexte: Record<string, unknown> = {
     URL,
     URLSearchParams,
@@ -59,19 +63,19 @@ function executerMesure(cookie: string) {
     window: {
       crypto: { randomUUID: () => "11111111-1111-4111-8111-111111111111" },
       location: {
-        search: "?fp_vid=123e4567-e89b-42d3-a456-426614174000&fp_src=smartlead&plan=pro",
+        search,
         pathname: "/signin.html",
         hash: "",
       },
       history: {
         state: null,
-        replaceState: () => undefined,
+        replaceState: (_state: unknown, _title: string, url: string) => { urlApresNettoyage = url; },
       },
     },
   };
 
   new Script(`${script}\nglobalThis.__visitorId = fpVid();\nglobalThis.__source = fpSource();`).runInNewContext(contexte);
-  return { contexte, stockage, requetes };
+  return { contexte, stockage, requetes, urlApresNettoyage };
 }
 
 function executerAttributionCheckout(cookie: string, visitorId: string, source: string) {
@@ -152,6 +156,20 @@ describe("la mesure est posee et exploitable", () => {
     expect(sansConsentement.contexte.__visitorId).toBe("");
     expect(sansConsentement.stockage.has("fp_vid")).toBe(false);
     expect(sansConsentement.requetes).toHaveLength(0);
+  });
+
+  it("accepte fp_source emis par le site marketing et nettoie son parametre", () => {
+    const resultat = executerMesure(
+      "fp_analytics_consent=accepted",
+      "?fp_vid=123e4567-e89b-42d3-a456-426614174000&fp_source=smartlead&plan=pro",
+    );
+    expect(resultat.contexte.__visitorId).toBe("123e4567-e89b-42d3-a456-426614174000");
+    expect(resultat.contexte.__source).toBe("smartlead");
+    expect(JSON.parse(resultat.requetes[0]!.options.body)).toMatchObject({
+      visiteurId: "123e4567-e89b-42d3-a456-426614174000",
+      source: "smartlead",
+    });
+    expect(resultat.urlApresNettoyage).toBe("/signin.html?plan=pro");
   });
 
   it("ignore les identifiants et sources reçus qui ne respectent pas les formats attendus", () => {
