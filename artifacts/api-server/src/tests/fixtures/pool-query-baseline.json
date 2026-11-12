@@ -34,8 +34,8 @@
       "noOrg": 8
     },
     "lib/conversion-outbox.ts": {
-      "total": 9,
-      "noOrg": 8
+      "total": 11,
+      "noOrg": 10
     },
     "middlewares/customDomainHost.ts": {
       "total": 4,

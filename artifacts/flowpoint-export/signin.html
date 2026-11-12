@@ -508,6 +508,30 @@
 
   var FP_PLANS = ['standard', 'pro', 'ultra'];
 
+  /* Lien direct depuis le site vitrine : signin.html?plan=pro.
+     Le paramètre n'est qu'une PRÉFÉRENCE d'affichage : liste blanche stricte,
+     jamais un prix ni un quota. Le serveur re-résout le plan et son prix au
+     paiement (getPlanPriceId) et refuse tout identifiant inconnu. Le choix reste
+     modifiable (écran de plan, puis checkout). Le retour du callback Google
+     (google_signup=1) a son propre traitement plus bas : on ne s'y mêle pas. */
+  (function () {
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      if (qs.get('google_signup') === '1') return;
+      var wanted = String(qs.get('plan') || '').toLowerCase();
+      if (FP_PLANS.indexOf(wanted) === -1) return;
+      var c = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      c = c && typeof c === 'object' ? c : {};
+      c.plan = wanted;
+      c.addons = c.addons && typeof c.addons === 'object' ? c.addons : {};
+      c._v = 1; c._updatedAt = Date.now();
+      localStorage.setItem('fp_cart', JSON.stringify(c));
+      qs.delete('plan');
+      var rest = qs.toString();
+      history.replaceState({}, '', '/signin.html' + (rest ? '?' + rest : ''));
+    } catch (e) {}
+  })();
+
   /* A-04 — le plan déjà choisi sur pricing.html (fp_cart, frais < 1h).
      Retourne '' si aucun plan valide : l'écran de choix reste alors affiché. */
   function fpCartPlan() {
