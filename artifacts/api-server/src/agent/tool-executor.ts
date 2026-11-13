@@ -25,7 +25,7 @@ import { WORKSPACE_TOOL_BY_NAME, WORKSPACE_ARG_SCHEMAS } from "./workspace-tools
 import { fetchUrlContent } from "../services/url-fetcher.js";
 import { crawlSite } from "../services/site-crawler.js";
 import { analyzePSI } from "../services/pagespeed-service.js";
-import { filterDestinations, validateNavAction } from "./destination-registry.js";
+import { validateNavAction } from "./destination-registry.js";
 import { createNavigationProposal, type ActionProposal } from "./proposals.js";
 import type { Permission } from "./permissions.js";
 
