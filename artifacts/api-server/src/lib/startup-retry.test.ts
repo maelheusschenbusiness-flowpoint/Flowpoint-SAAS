@@ -199,6 +199,96 @@ describe("pool error handler", () => {
   });
 });
 
+// ── Invalid options ────────────────────────────────────────────────────────────
+
+describe("invalid options", () => {
+  it("attempts=0 — rejects with TypeError naming attempts and label, operation never called", async () => {
+    const op = vi.fn(async () => "never");
+
+    await expect(
+      withStartupRetry("schema check", op, { ...NO_DELAY, attempts: 0 }),
+    ).rejects.toThrow(TypeError);
+    await expect(
+      withStartupRetry("schema check", op, { ...NO_DELAY, attempts: 0 }),
+    ).rejects.toThrow(/attempts/);
+    await expect(
+      withStartupRetry("schema check", op, { ...NO_DELAY, attempts: 0 }),
+    ).rejects.toThrow(/schema check/);
+
+    expect(op).not.toHaveBeenCalled();
+  });
+
+  it("attempts=-1 — rejects with TypeError, operation never called", async () => {
+    const op = vi.fn(async () => "never");
+
+    await expect(
+      withStartupRetry("migrations", op, { ...NO_DELAY, attempts: -1 }),
+    ).rejects.toThrow(TypeError);
+    await expect(
+      withStartupRetry("migrations", op, { ...NO_DELAY, attempts: -1 }),
+    ).rejects.toThrow(/attempts/);
+    await expect(
+      withStartupRetry("migrations", op, { ...NO_DELAY, attempts: -1 }),
+    ).rejects.toThrow(/migrations/);
+
+    expect(op).not.toHaveBeenCalled();
+  });
+
+  it("attempts=1.5 (not an integer) — rejects with TypeError, operation never called", async () => {
+    const op = vi.fn(async () => "never");
+
+    await expect(
+      withStartupRetry("rls policies", op, { ...NO_DELAY, attempts: 1.5 }),
+    ).rejects.toThrow(TypeError);
+    await expect(
+      withStartupRetry("rls policies", op, { ...NO_DELAY, attempts: 1.5 }),
+    ).rejects.toThrow(/attempts/);
+    await expect(
+      withStartupRetry("rls policies", op, { ...NO_DELAY, attempts: 1.5 }),
+    ).rejects.toThrow(/rls policies/);
+
+    expect(op).not.toHaveBeenCalled();
+  });
+
+  it("baseDelayMs=NaN — rejects with TypeError naming baseDelayMs, operation never called", async () => {
+    const op = vi.fn(async () => "never");
+
+    await expect(
+      withStartupRetry("test", op, { baseDelayMs: Number.NaN, maxDelayMs: 0 }),
+    ).rejects.toThrow(TypeError);
+    await expect(
+      withStartupRetry("test", op, { baseDelayMs: Number.NaN, maxDelayMs: 0 }),
+    ).rejects.toThrow(/baseDelayMs/);
+
+    expect(op).not.toHaveBeenCalled();
+  });
+
+  it("maxDelayMs=-1 — rejects with TypeError naming maxDelayMs, operation never called", async () => {
+    const op = vi.fn(async () => "never");
+
+    await expect(
+      withStartupRetry("test", op, { baseDelayMs: 0, maxDelayMs: -1 }),
+    ).rejects.toThrow(TypeError);
+    await expect(
+      withStartupRetry("test", op, { baseDelayMs: 0, maxDelayMs: -1 }),
+    ).rejects.toThrow(/maxDelayMs/);
+
+    expect(op).not.toHaveBeenCalled();
+  });
+
+  it("attempts=1 is valid — transient error propagates without a second attempt", async () => {
+    const op = vi.fn(async () => {
+      throw transientError("ECONNRESET");
+    });
+
+    await expect(
+      withStartupRetry("test", op, { ...NO_DELAY, attempts: 1 }),
+    ).rejects.toMatchObject({ code: "ECONNRESET" });
+
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+});
+
 // ── First-attempt success ──────────────────────────────────────────────────────
 
 describe("first-attempt success", () => {

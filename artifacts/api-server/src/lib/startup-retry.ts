@@ -54,6 +54,11 @@ export function getSafeErrorMessage(err: unknown): string {
  *   decides whether to abort startup or continue.
  *
  * Default: 4 attempts, 500 ms base delay, 4 000 ms max delay.
+ *
+ * Rejects with a TypeError — without ever calling `operation` — when a provided
+ * option is out of contract: `attempts` must be an integer >= 1, `baseDelayMs`
+ * and `maxDelayMs` must be finite numbers >= 0. This keeps a misconfigured
+ * startup step readable instead of rejecting with `undefined`.
  */
 export async function withStartupRetry<T>(
   label: string,
@@ -64,6 +69,23 @@ export async function withStartupRetry<T>(
     maxDelayMs?: number;
   },
 ): Promise<T> {
+  if (
+    options?.attempts !== undefined &&
+    (!Number.isInteger(options.attempts) || options.attempts < 1)
+  ) {
+    throw new TypeError(
+      `[startup] ${label}: attempts must be an integer >= 1, received ${String(options.attempts)}`,
+    );
+  }
+  for (const name of ["baseDelayMs", "maxDelayMs"] as const) {
+    const value = options?.[name];
+    if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+      throw new TypeError(
+        `[startup] ${label}: ${name} must be a finite number >= 0, received ${String(value)}`,
+      );
+    }
+  }
+
   const attempts    = options?.attempts    ?? 4;
   const baseDelayMs = options?.baseDelayMs ?? 500;
   const maxDelayMs  = options?.maxDelayMs  ?? 4_000;
