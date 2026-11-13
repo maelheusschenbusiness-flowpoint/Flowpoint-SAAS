@@ -98,7 +98,24 @@ const sourceFiles = [
   })),
 ];
 
+// Parcours d'un fichier source entier : l'ordre prefixe de ses noeuds est calcule une seule fois
+// et reutilise. Le meme parcours etait recalcule a chaque appel (dashboard.js fait ~5 Mo) ; l'ordre
+// et l'ensemble des noeuds visites sont identiques. Les sous-arbres restent parcourus a la demande.
+const preordres = new WeakMap<ts.Node, ts.Node[]>();
+function preordre(node: ts.Node): ts.Node[] {
+  const out: ts.Node[] = [];
+  const visiter = (n: ts.Node) => { out.push(n); ts.forEachChild(n, visiter); };
+  visiter(node);
+  return out;
+}
+
 function walk(node: ts.Node, visit: (node: ts.Node) => void) {
+  if (ts.isSourceFile(node)) {
+    let liste = preordres.get(node);
+    if (!liste) { liste = preordre(node); preordres.set(node, liste); }
+    for (const n of liste) visit(n);
+    return;
+  }
   visit(node);
   ts.forEachChild(node, (child) => walk(child, visit));
 }
