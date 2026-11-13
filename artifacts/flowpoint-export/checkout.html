@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
+  <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -9,38 +10,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
-  <title>Récapitulatif — FlowPoint</title>
-  <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
+  <title>Summary — FlowPoint</title>
+  <script src="/fp-locale.js?v=20261030"></script>
+  <script src="/funnel-theme.js?v=20261110" defer></script>
+  <script src="/funnel-offer.js?v=20261110"></script>
+  <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      --bg:        #0b1120;
-      --bg2:       #111827;
-      --surface:   #1e293b;
-      --border:    #2d3f55;
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#3b82f6;
-      --text:      #f1f5f9;
-      --text-soft: #94a3b8;
-      --text-muted:#64748b;
-      --green:     #34d399;
-      --green-bg:  rgba(52,211,153,0.08);
-      --green-brd: rgba(52,211,153,0.2);
-      --radius:    16px;
-      --shadow:    0 8px 40px rgba(0,0,0,.5);
-    }
-    html[data-theme="light"] {
-      --bg:        #f8faff;
-      --bg2:       #ffffff;
-      --surface:   #f1f5f9;
-      --border:    rgba(0,0,0,.09);
-      --text:      #0f172a;
-      --text-soft: #475569;
-      --text-muted:#94a3b8;
-      --shadow:    0 4px 24px rgba(0,0,0,.1);
-    }
+    /* Tokens: /funnel-theme.css. Page-only aliases below. */
+    :root { --radius: 16px; --green-brd: var(--green-border); --amber: #fbbf24; --amber-bg: rgba(234,179,8,.08); --amber-border: rgba(234,179,8,.25); }
+    html[data-theme="light"] { --amber: #92400e; --amber-bg: rgba(217,119,6,.08); --amber-border: rgba(217,119,6,.3); }
     html[data-theme="dark"] .fp-card { background: rgba(8,14,30,0.94); border-color: rgba(255,255,255,0.07); }
 
     html, body {
@@ -116,7 +96,7 @@
     .fp-badge-trial { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-brd); }
     .fp-badge-now   { background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); }
     .fp-badge-incl  { background: rgba(100,116,139,0.1); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.2); }
-    .fp-badge-one   { background: rgba(245,158,11,0.08); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
+    .fp-badge-one   { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
 
     /* ── CTA card ── */
     .fp-cta-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; box-shadow: var(--shadow); }
@@ -138,7 +118,7 @@
     /* ── Alert ── */
     .fp-alert { display: none; border-radius: 10px; padding: 13px 16px; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
     .fp-alert.show { display: block; }
-    .fp-alert-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
+    .fp-alert-error { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); }
 
     /* ── Spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -152,7 +132,7 @@
     .fp-empty .fp-btn-primary { max-width: 260px; margin: 0 auto; }
 
     /* ── Plan selector (no plan mode) ── */
-    .fp-plan-req-banner { background: rgba(234,179,8,.07); border: 1px solid rgba(234,179,8,.2); border-radius: 12px; padding: 13px 16px; font-size: 13px; color: #fbbf24; display: flex; gap: 9px; align-items: flex-start; margin-bottom: 16px; }
+    .fp-plan-req-banner { background: var(--amber-bg); border: 1px solid var(--amber-border); border-radius: 12px; padding: 13px 16px; font-size: 13px; color: var(--amber); display: flex; gap: 9px; align-items: flex-start; margin-bottom: 16px; }
     .fp-plan-req-banner::before { content: '⚠'; flex-shrink: 0; font-size: 14px; }
     .fp-plan-picker { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
     .fp-plan-pick-card { background: var(--bg2); border: 1.5px solid var(--border); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: border-color .15s, box-shadow .15s; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; }
@@ -166,6 +146,9 @@
     .fp-plan-pick-desc { font-size: 12px; color: var(--text-muted); }
     .fp-plan-pick-right { text-align: right; flex-shrink: 0; }
     .fp-plan-pick-price { font-size: 18px; font-weight: 800; color: var(--blue-light); }
+    .fp-plan-pick-right .fp-trial-offer, .fp-plan-price-wrap .fp-trial-offer { align-items: flex-end; }
+    .fp-plan-pick-reassure { margin: -4px 0 16px; }
+    @media (max-width: 480px) { .fp-plan-price-wrap .fp-trial-offer { align-items: flex-start; } }
     .fp-plan-pick-unit  { font-size: 11px; color: var(--text-muted); }
     .fp-plan-pick-btn { margin-top: 8px; font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 3px 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer; }
     .fp-plan-pick-card:hover .fp-plan-pick-btn,
@@ -179,6 +162,7 @@
       .fp-plan-price-wrap { flex-basis: 100%; text-align: left; margin-top: 4px; }
     }
   </style>
+<script src="/utm-capture.js" defer></script>
 </head>
 <body>
 
@@ -192,17 +176,17 @@
 <div class="fp-steps">
   <div class="fp-step done">
     <div class="fp-step-num">✓</div>
-    <span>Tarifs</span>
+    <span>Plans</span>
   </div>
   <div class="fp-step-sep"></div>
   <div class="fp-step active">
     <div class="fp-step-num">2</div>
-    <span>Récapitulatif</span>
+    <span>Summary</span>
   </div>
   <div class="fp-step-sep"></div>
   <div class="fp-step">
     <div class="fp-step-num">3</div>
-    <span>Paiement</span>
+    <span>Payment</span>
   </div>
 </div>
 
@@ -214,17 +198,18 @@
   <!-- Empty state -->
   <div id="fp-empty" class="fp-empty" style="display:none">
     <div class="fp-empty-icon">🛒</div>
-    <h2>Panier vide</h2>
-    <p>Sélectionnez un plan, un add-on ou des crédits IA depuis la page tarifs pour commencer.</p>
-    <a href="/pricing.html" class="fp-btn fp-btn-primary">Voir les tarifs →</a>
+    <h2>Your cart is empty</h2>
+    <p>Pick a plan, an add-on or AI credits on the pricing page to get started.</p>
+    <a href="/pricing.html" class="fp-btn fp-btn-primary">See plans →</a>
   </div>
 
   <!-- Plan required banner + picker -->
   <div id="fp-plan-required" style="display:none">
     <div class="fp-plan-req-banner">
-      Choisissez un abonnement FlowPoint pour activer votre espace. Un plan est requis.
+      Choose a FlowPoint plan to activate your workspace. A plan is required.
     </div>
     <div class="fp-plan-picker" id="fp-plan-cards"></div>
+    <p class="fp-trial-reassure fp-plan-pick-reassure" id="fp-plan-reassure"></p>
   </div>
 
   <!-- Summary card (filled by JS) -->
@@ -236,13 +221,14 @@
     <ul class="fp-info-list" id="fp-info-list"></ul>
     <div id="fp-alert-error2" class="fp-alert fp-alert-error" role="alert"></div>
     <button class="fp-btn fp-btn-primary" id="fp-pay-btn" onclick="startPayment()">
-      <span id="fp-btn-text">Continuer vers le paiement sécurisé →</span>
+      <span id="fp-btn-text">Continue to secure payment →</span>
       <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
     </button>
-    <a href="/pricing.html" class="fp-btn fp-btn-ghost">← Modifier mon panier</a>
+    <p class="fp-trial-reassure" id="fp-cta-reassure" style="margin:-2px 0 12px"></p>
+    <a href="/pricing.html" class="fp-btn fp-btn-ghost">← Edit my cart</a>
     <p class="fp-lock-note">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      Paiement sécurisé Stripe · Chiffrement TLS
+      Secure payment by Stripe · TLS encryption
     </p>
   </div>
 
@@ -267,10 +253,8 @@
 
   /* ── Helpers ── */
   function el(id) { return document.getElementById(id); }
-  function eur(minor) {
-    var v = (Number(minor) || 0) / 100;
-    return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€';
-  }
+  /* Rendu partagé avec signin.html : funnel-offer.js. */
+  function eur(minor) { return window.FPOffer.eur(minor); }
   function escHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -350,7 +334,7 @@
     if (!btn || btn.disabled) return;
     saveCart();
     btn.disabled = true;
-    el('fp-btn-text').textContent = 'Redirection…';
+    el('fp-btn-text').textContent = 'Redirecting…';
     el('fp-spinner').style.display = 'inline-block';
     window.location.href = '/checkout-payment.html';
   };
@@ -368,26 +352,45 @@
     refreshQuote();
   };
 
-  /* ── Rendu : sélecteur de plan (depuis le catalogue serveur) ── */
+  /* ── Offre d'essai : dérivée du devis serveur uniquement (jamais codée en dur) ── */
+  function trialDaysOf(q) { return window.FPOffer.trialDaysOf(q); }
+  function offerHtml(priceMinor, trialDays) { return window.FPOffer.offerHtml(priceMinor, trialDays); }
+  function ctaLabel(q) {
+    var days = trialDaysOf(q);
+    if (cart && cart.plan && days > 0) return 'Start my ' + days + '-day free trial →';
+    return 'Continue to secure payment →';
+  }
+  function ctaReassure(q) {
+    var due = Number(q && q.amountDueTodayMinor) || 0;
+    if (cart && cart.plan && trialDaysOf(q) > 0 && due === 0) return '€0 today · Card required · Cancel anytime';
+    if (cart && cart.plan && trialDaysOf(q) > 0) return eur(due) + ' today (add-ons) · Card required · Cancel anytime';
+    return eur(due) + ' due today · Cancel anytime';
+  }
+
+  /* ── Rendu : sélecteur de plan (catalogue serveur + essai du devis serveur) ── */
   function renderPlanPicker() {
+    var days = trialDaysOf(quote);
     var html = '';
     catalog.plans.forEach(function (p) {
-      var featured = p.badge === 'Recommandé';
+      var featured = /^recommand/i.test(String(p.badge || ''));
       html += '<div class="fp-plan-pick-card' + (featured ? ' featured' : '') + '" id="ppc-' + escHtml(p.id) + '"' +
         ' onclick="selectPlanFromCard(\'' + escHtml(p.id) + '\')">' +
-        (featured ? '<div class="fp-plan-pick-badge">Le plus populaire</div>' : '') +
+        (featured ? '<div class="fp-plan-pick-badge">Most popular</div>' : '') +
         '<div class="fp-plan-pick-left">' +
-          '<div class="fp-plan-pick-name">Plan ' + escHtml(p.name) + '</div>' +
+          '<div class="fp-plan-pick-name">' + escHtml(p.name) + ' plan</div>' +
           '<div class="fp-plan-pick-desc">' + escHtml(p.tagline) + '</div>' +
-          '<button class="fp-plan-pick-btn">Choisir ce plan</button>' +
+          '<button type="button" class="fp-plan-pick-btn">' + (days > 0 ? 'Start free trial' : 'Choose this plan') + '</button>' +
         '</div>' +
-        '<div class="fp-plan-pick-right">' +
-          '<div class="fp-plan-pick-price">' + eur(p.priceMinor) + '</div>' +
-          '<div class="fp-plan-pick-unit">/mois</div>' +
-        '</div>' +
+        '<div class="fp-plan-pick-right">' + offerHtml(p.priceMinor, days) + '</div>' +
       '</div>';
     });
     el('fp-plan-cards').innerHTML = html;
+    // Le plan est gratuit aujourd'hui ; des add-ons mensuels du panier, eux, sont factures maintenant.
+    var dueAddons = Number(quote && quote.amountDueTodayMinor) || 0;
+    el('fp-plan-reassure').textContent = days > 0
+      ? (dueAddons > 0 ? '€0 today for the plan · ' + eur(dueAddons) + ' today for add-ons · Card required · Cancel anytime'
+                       : '€0 today · Card required · Cancel anytime')
+      : 'Card required · Cancel anytime';
   }
 
   /* ── Rendu : récapitulatif, exclusivement depuis le devis serveur ── */
@@ -400,64 +403,66 @@
     var includedLn = addonLines.filter(function (l) { return l.includedInPlan; });
     var oneTimeLn  = addonLines.filter(function (l) { return !l.includedInPlan && l.interval === 'one_time'; });
 
-    var onTrial = !!(q.trialEligible && q.trialDays > 0);
+    var days = trialDaysOf(q);
+    var onTrial = days > 0;
     var html = '';
 
     if (planLine) {
       html += '<div class="fp-plan-block">' +
         '<div class="fp-plan-icon">' +
-          '<svg width="20" height="20" viewBox="0 0 48 48" fill="none"><polygon points="25 4 5 28 23 28 22 44 42 20 24 20 25 4" fill="#3b82f6"/></svg>' +
+          '<svg width="20" height="20" viewBox="0 0 48 48" fill="none" aria-hidden="true"><polygon points="25 4 5 28 23 28 22 44 42 20 24 20 25 4" fill="#3b82f6"/></svg>' +
         '</div>' +
         '<div class="fp-plan-info">' +
-          '<div class="fp-plan-name">Plan ' + escHtml(planLine.name) +
-            (onTrial ? '<span class="fp-badge fp-badge-trial" style="margin-left:8px">' + q.trialDays + 'j offerts</span>' : '') +
+          '<div class="fp-plan-name">' + escHtml(planLine.name) + ' plan' +
+            (onTrial ? '<span class="fp-badge fp-badge-trial" style="margin-left:8px">Free trial</span>' : '') +
           '</div>' +
           (onTrial
-            ? '<div class="fp-plan-sub">Débité après la période d\'essai · annulable avant</div>'
-            : '<div class="fp-plan-sub">Mensuel · sans engagement</div>') +
+            ? '<div class="fp-plan-sub">Then ' + eur(planLine.amountMinor) + '/month after your ' + days + '-day trial. Cancel anytime before to avoid being charged.</div>'
+            : '<div class="fp-plan-sub">Monthly · no commitment · cancel anytime</div>') +
         '</div>' +
         '<div class="fp-plan-price-wrap">' +
-          '<div class="fp-plan-price">' + eur(planLine.amountMinor) + '</div>' +
-          '<div class="fp-plan-price-sub">/mois</div>' +
+          (onTrial
+            ? offerHtml(planLine.amountMinor, days)
+            : '<div class="fp-plan-price">' + eur(planLine.amountMinor) + '</div><div class="fp-plan-price-sub">/month</div>') +
         '</div>' +
       '</div>';
     }
 
     if (monthlyNow.length) {
-      html += '<div class="fp-group-label">Add-ons actifs dès aujourd\'hui</div><div class="fp-addon-list">';
+      html += '<div class="fp-group-label">Add-ons active from today</div><div class="fp-addon-list">';
       monthlyNow.forEach(function (l) {
         html += '<div class="fp-addon-row">' +
           '<div class="fp-addon-row-left"><div class="fp-addon-name">' + escHtml(l.name) +
             (l.quantity > 1 ? ' <span style="color:var(--text-muted);font-size:11px">×' + l.quantity + '</span>' : '') +
-            ' <span class="fp-badge fp-badge-now">Facturé maintenant</span></div>' +
-          '<div style="font-size:11px;color:var(--green);margin-top:2px">Activé immédiatement</div></div>' +
+            ' <span class="fp-badge fp-badge-now">Billed today</span></div>' +
+          '<div style="font-size:11px;color:var(--green);margin-top:2px">Activated immediately</div></div>' +
           '<div class="fp-addon-right"><span class="fp-addon-price">' + eur(l.amountMinor) +
-            '<span style="font-size:10px;font-weight:400;color:var(--text-muted)">/mois</span></span></div>' +
+            '<span style="font-size:10px;font-weight:400;color:var(--text-muted)">/month</span></span></div>' +
         '</div>';
       });
       html += '</div>';
     }
 
     if (includedLn.length) {
-      html += '<div class="fp-group-label">Inclus dans le plan</div><div class="fp-addon-list">';
+      html += '<div class="fp-group-label">Included in the plan</div><div class="fp-addon-list">';
       includedLn.forEach(function (l) {
         html += '<div class="fp-addon-row">' +
           '<div class="fp-addon-row-left"><div class="fp-addon-name">' + escHtml(l.name) +
-            ' <span class="fp-badge fp-badge-incl">Inclus</span></div></div>' +
-          '<div class="fp-addon-right"><span class="fp-addon-price muted">0€</span></div>' +
+            ' <span class="fp-badge fp-badge-incl">Included</span></div></div>' +
+          '<div class="fp-addon-right"><span class="fp-addon-price muted">€0</span></div>' +
         '</div>';
       });
       html += '</div>';
     }
 
     if (oneTimeLn.length) {
-      html += '<div class="fp-group-label">Crédits IA — achat unique</div><div class="fp-addon-list">';
+      html += '<div class="fp-group-label">AI credits — one-time purchase</div><div class="fp-addon-list">';
       oneTimeLn.forEach(function (l) {
         html += '<div class="fp-addon-row">' +
           '<div class="fp-addon-row-left"><div class="fp-addon-name">' + escHtml(l.name) +
             (l.quantity > 1 ? ' <span style="color:var(--text-muted);font-size:11px">×' + l.quantity + '</span>' : '') +
-            ' <span class="fp-badge fp-badge-one">Achat unique</span></div>' +
-          '<div style="font-size:11px;color:var(--green);margin-top:2px">Crédits disponibles immédiatement</div></div>' +
+            ' <span class="fp-badge fp-badge-one">One-time</span></div>' +
+          '<div style="font-size:11px;color:var(--green);margin-top:2px">Credits available immediately</div></div>' +
           '<div class="fp-addon-right"><span class="fp-addon-price">' + eur(l.amountMinor) + '</span></div>' +
         '</div>';
       });
@@ -466,14 +471,14 @@
 
     html += '<div class="fp-divider"></div><div class="fp-totals">';
     html += '<div class="fp-total-row">' +
-      '<span class="fp-total-label">Dû aujourd\'hui</span>' +
+      '<span class="fp-total-label">Due today</span>' +
       '<span class="fp-total-amount">' + eur(q.amountDueTodayMinor) + '</span></div>';
 
     if (q.recurringAmountMinor > 0) {
       html += '<div class="fp-total-row">' +
-        '<span class="fp-total-label">' + (onTrial ? 'Mensuel après ' + q.trialDays + ' jours' : 'Mensuel') + '</span>' +
+        '<span class="fp-total-label">' + (onTrial ? 'Monthly after ' + days + ' days' : 'Monthly') + '</span>' +
         '<span class="fp-total-amount secondary">' + eur(q.recurringAmountMinor) +
-          '<span class="fp-total-unit">/mois</span></span></div>';
+          '<span class="fp-total-unit">/month</span></span></div>';
     }
     html += '</div>';
 
@@ -481,10 +486,13 @@
 
     /* ── Encadré d'information ── */
     var items = [];
-    if (planLine && onTrial) items.push(q.trialDays + ' jours d\'essai gratuit · aucun débit si annulation avant.');
-    if (monthlyNow.length)   items.push('Add-ons facturés aujourd\'hui · actifs immédiatement · renouvelés chaque mois.');
-    if (oneTimeLn.length)    items.push('Crédits IA débités maintenant · achat non récurrent.');
-    items.push('Paiement 100% sécurisé via Stripe · annulable à tout moment.');
+    if (planLine && onTrial) {
+      items.push(days + '-day free trial · €0 charged today for the plan.');
+      items.push('Card required · then ' + eur(planLine.amountMinor) + '/month after your trial unless you cancel before it ends.');
+    }
+    if (monthlyNow.length)   items.push('Add-ons billed today · active immediately · renewed every month.');
+    if (oneTimeLn.length)    items.push('AI credits charged now · one-time purchase.');
+    items.push('Cancel anytime · payments secured by Stripe.');
     el('fp-info-list').innerHTML = items.map(function (t) { return '<li>' + escHtml(t) + '</li>'; }).join('');
   }
 
@@ -501,8 +509,14 @@
       })
     });
     var data;
-    try { data = await resp.json(); } catch (e) { throw new Error('Réponse serveur illisible (' + resp.status + ').'); }
-    if (!resp.ok || !data.quote) throw new Error(data.error || 'Devis indisponible (' + resp.status + ').');
+    try { data = await resp.json(); } catch (e) { throw new Error('Unreadable server response (' + resp.status + ').'); }
+    if (!resp.ok || !data.quote) {
+      var errorMessage = data.error || 'Price summary unavailable (' + resp.status + ').';
+      if (data.code === 'ADDON_NOT_SOLD_SEPARATELY') {
+        errorMessage = 'This add-on is not sold separately.';
+      }
+      throw new Error(errorMessage);
+    }
     return data.quote;
   }
 
@@ -514,11 +528,10 @@
       el('fp-summary-card').style.display = 'block';
       el('fp-cta-card').style.display = 'block';
       el('fp-pay-btn').disabled = false;
-      el('fp-btn-text').textContent = cart.plan
-        ? 'Continuer vers le paiement sécurisé →'
-        : 'Continuer vers le paiement →';
+      el('fp-btn-text').textContent = ctaLabel(quote);
+      el('fp-cta-reassure').textContent = ctaReassure(quote);
     } catch (err) {
-      showError(err.message || 'Impossible de calculer le montant. Réessayez.');
+      showError(err.message || 'We could not calculate the amount. Please try again.');
       el('fp-pay-btn').disabled = true;
     }
   }
@@ -549,7 +562,7 @@
       if (!cr.ok) throw new Error('catalog ' + cr.status);
       catalog = await cr.json();
     } catch (e) {
-      showError('Catalogue indisponible. Rechargez la page dans un instant.');
+      showError('Plans are unavailable right now. Reload the page in a moment.');
       return;
     }
     var planIds  = catalog.plans.map(function (p) { return p.id; });
@@ -615,11 +628,11 @@
       }
 
       /* Add-ons mensuels sans plan → sélection d'un plan obligatoire */
-      renderPlanPicker();
       await refreshQuote();
+      renderPlanPicker();
       el('fp-plan-required').style.display = 'block';
       el('fp-pay-btn').disabled = true;
-      el('fp-btn-text').textContent = 'Sélectionnez d\'abord un plan';
+      el('fp-btn-text').textContent = 'Choose a plan first';
       return;
     }
 
@@ -628,11 +641,10 @@
 
   main().catch(function (err) {
     console.error('[FlowPoint Checkout]', err);
-    showError('Erreur de chargement. Rechargez la page ou revenez aux tarifs.');
+    showError('Something went wrong while loading. Reload the page or go back to plans.');
   });
 
 })();
 </script>
-<script src="/funnel-tracking.js" defer></script>
 </body>
 </html>

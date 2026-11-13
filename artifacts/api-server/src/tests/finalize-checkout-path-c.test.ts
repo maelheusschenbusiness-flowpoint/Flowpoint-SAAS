@@ -79,7 +79,7 @@ describe("FC-C3 — checkout-return.html 401 message is not 'Session expirée'",
   it("401 handler mentions 'email' (guide user to check email)", () => {
     const idx401 = crSrc.indexOf("res.status === 401");
     const block = crSrc.slice(idx401, idx401 + 600);
-    expect(block.toLowerCase()).toMatch(/email|connexion|se connecter/i);
+    expect(block.toLowerCase()).toMatch(/email|sign in|connexion|se connecter/i);
   });
 });
 
@@ -95,11 +95,11 @@ describe("FC-C4 — Path C only fires for payment|setup, not checkout_session", 
   });
 });
 
-// ── FC-C5: preRegisterToken used by _fcPrt later ─────────────────────────────
-describe("FC-C5 — preRegisterToken flows into _fcPrt for activateNewSignup", () => {
-  it("_fcPrt reads preRegisterToken (which Path C may have updated)", () => {
-    // _fcPrt = preRegisterToken || intentMeta["pre_register_token"] || ""
-    expect(src).toMatch(/_fcPrt\s*=\s*preRegisterToken\s*\|\|/);
+// ── FC-C5: preRegisterToken used by _fcPreRegisterToken later ────────────────
+describe("FC-C5 — preRegisterToken flows into activation", () => {
+  it("_fcPreRegisterToken reads preRegisterToken (which Path C may have updated)", () => {
+    // _fcPreRegisterToken = preRegisterToken || intentMeta["pre_register_token"] || ""
+    expect(src).toMatch(/_fcPreRegisterToken\s*=\s*preRegisterToken\s*\|\|/);
   });
 });
 

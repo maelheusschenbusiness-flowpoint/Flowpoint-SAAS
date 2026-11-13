@@ -22,6 +22,28 @@ window.__fpPageLoadTs = Date.now();
 (function () {
   'use strict';
 
+  function _fpBackendLocale() {
+    var language = window.STATE && window.STATE.settings && window.STATE.settings.language;
+    if (!language) {
+      try { language = localStorage.getItem('fp:language') || 'en'; } catch (_) { language = 'en'; }
+    }
+    if (typeof window.fpResolveLocale === 'function') return window.fpResolveLocale(language);
+    return ({ en:'en-US', fr:'fr-FR', es:'es-ES', de:'de-DE', it:'it-IT', pt:'pt-PT', nl:'nl-NL', pl:'pl-PL', sv:'sv-SE', ro:'ro-RO', cs:'cs-CZ', 'pt-br':'pt-BR' })[String(language).toLowerCase()] || 'en-US';
+  }
+
+  function _fpBackendText(french, english) {
+    var language = window.STATE && window.STATE.settings && window.STATE.settings.language;
+    if (!language) {
+      try { language = localStorage.getItem('fp:language') || 'en'; } catch (_) { language = 'en'; }
+    }
+    if (String(language).toLowerCase().split(/[-_]/)[0] === 'fr') return french;
+    if (typeof window.fpT === 'function') {
+      var translated = window.fpT(french);
+      if (translated && translated !== french) return translated;
+    }
+    return english || french;
+  }
+
   // ─── UTILITAIRES PARTAGÉS ────────────────────────────────────────────────────
 
   // Dashboard sessions are isolated per browser tab. Never fall back to
@@ -31,6 +53,44 @@ window.__fpPageLoadTs = Date.now();
     try {
       return sessionStorage.getItem('fp_session_token') || '';
     } catch (_) { return ''; }
+  }
+
+  function _classifySessionRestore(status, hasToken) {
+    if (status === 200 && hasToken) return 'restored';
+    if (status === 401 || status === 403) return 'invalid';
+    return 'temporary';
+  }
+
+  function _showSessionRestoreRetryNotice() {
+    var noticeId = 'fp-session-restore-retry';
+    var notice = document.getElementById(noticeId);
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = noticeId;
+      notice.setAttribute('role', 'status');
+      notice.style.cssText = 'position:fixed;z-index:100000;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 32px));padding:14px 16px;border:1px solid rgba(245,158,11,.55);border-radius:10px;background:#1f2937;color:#f9fafb;font:14px/1.5 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35);text-align:center';
+      document.body.appendChild(notice);
+    }
+    notice.replaceChildren();
+    var noticeText = document.createElement('span');
+    noticeText.textContent = _fpBackendText(
+      'La vérification de votre session est temporairement indisponible. Votre session est conservée.',
+      'Session verification is temporarily unavailable. Your session has been preserved.',
+    );
+    notice.appendChild(noticeText);
+    var retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.textContent = _fpBackendText('Réessayer', 'Retry');
+    retryButton.style.cssText = 'display:block;margin:9px auto 0;padding:6px 13px;border:1px solid #fbbf24;border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
+    retryButton.addEventListener('click', function() { window.location.reload(); });
+    notice.appendChild(retryButton);
+  }
+
+  function _temporarySessionRestoreError(status) {
+    var error = new Error('Session verification is temporarily unavailable');
+    error.status = status >= 500 ? status : 503;
+    error.code = 'SESSION_RESTORE_TEMPORARY';
+    return error;
   }
 
   // Bootstrap the per-tab token before any integration preload starts.
@@ -76,6 +136,8 @@ window.__fpPageLoadTs = Date.now();
     _resetTenantCaches();
     var restore = (async function () {
       var _existingToken = _sessionToken();
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function() { controller.abort(); }, 10000);
       try {
         var _headers = { 'Content-Type': 'application/json' };
         if (_existingToken) _headers['Authorization'] = 'Bearer ' + _existingToken;
@@ -83,23 +145,27 @@ window.__fpPageLoadTs = Date.now();
           method: 'POST',
           credentials: 'include',
           headers: _headers,
+          signal: controller.signal,
         });
-        if (response.ok) {
-          var data = await response.json().catch(function () { return null; });
-          if (data && data.token && restoreGeneration === _fpSessionGeneration) {
+        var data = response.ok ? await response.json().catch(function () { return null; }) : null;
+        var disposition = _classifySessionRestore(
+          response.status,
+          typeof data?.token === 'string' && data.token.length > 0,
+        );
+        if (disposition === 'restored' && restoreGeneration === _fpSessionGeneration) {
             sessionStorage.setItem('fp_session_token', data.token);
             if (!sessionStorage.getItem('fp_tab_uid')) {
               sessionStorage.setItem('fp_tab_uid', Math.random().toString(36).slice(2));
             }
             return true;
-          }
         }
-        // Only an explicit 401 proves the stored bearer and cookie are both gone.
-        if (response.status === 401 && _existingToken) {
+        // Only explicit authentication rejection proves the session is invalid.
+        if (disposition === 'invalid' && _existingToken && restoreGeneration === _fpSessionGeneration) {
           try { sessionStorage.removeItem('fp_session_token'); } catch(_) {}
           try { sessionStorage.removeItem('fp_tab_uid'); } catch(_) {}
         }
-      } catch (_) { /* /api/me performs the final auth decision after a network failure */ }
+      } catch (_) { /* /api/me performs the final auth decision after a transient failure */ }
+      finally { clearTimeout(timeoutId); }
       return false;
     })();
     // Clear dedup slot when this restore finishes (success or error).
@@ -325,15 +391,24 @@ window.__fpPageLoadTs = Date.now();
           var _existingTok = _sessionToken();
           var _srHeaders = { 'Content-Type': 'application/json' };
           if (_existingTok) _srHeaders['Authorization'] = 'Bearer ' + _existingTok;
+          var _restoreController = new AbortController();
+          var _restoreTimeout = setTimeout(function() { _restoreController.abort(); }, 10000);
           return fetch('/api/auth/session-restore', {
             method: 'POST', credentials: 'include',
             headers: _srHeaders, body: '{}',
+            signal: _restoreController.signal,
           }).then(function(sr) {
             if (sr.ok) {
               return sr.json().then(function(srData) {
-                if (srData && srData.token) {
-                  try { sessionStorage.setItem('fp_session_token', srData.token); } catch(_) {}
+                var _restoreKind = _classifySessionRestore(
+                  sr.status,
+                  typeof srData?.token === 'string' && srData.token.length > 0,
+                );
+                if (_restoreKind !== 'restored') {
+                  _showSessionRestoreRetryNotice();
+                  throw _temporarySessionRestoreError(sr.status);
                 }
+                try { sessionStorage.setItem('fp_session_token', srData.token); } catch(_) {}
                 // Retry original request once with fresh token
                 var _rHdrs = Object.assign({'Content-Type':'application/json'}, _authHeaders(), (opts && opts.headers) || {});
                 return fetch(_path, Object.assign({}, opts || {}, { credentials: 'include', headers: _rHdrs }))
@@ -379,6 +454,10 @@ window.__fpPageLoadTs = Date.now();
                   });
               });
             }
+            if (_classifySessionRestore(sr.status, false) === 'temporary') {
+              _showSessionRestoreRetryNotice();
+              throw _temporarySessionRestoreError(sr.status);
+            }
             // session-restore response was non-OK. Apply the same structural rule.
             var _isCrit2 = path === '/api/me' || path.startsWith('/api/auth/');
             if (!_isCrit2) {
@@ -401,28 +480,16 @@ window.__fpPageLoadTs = Date.now();
             }
             return null;
           }).catch(function(e) {
+            if (e && e.code === 'SESSION_RESTORE_TEMPORARY') throw e;
             // Network error during session-restore. Apply the same structural rule.
             var _isCrit3 = path === '/api/me' || path.startsWith('/api/auth/');
             if (!_isCrit3) {
               console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on secondary endpoint', path, '— throwing (no global logout).');
               var _err3 = new Error('Unauthorized'); _err3.status = 401; throw _err3;
             }
-            console.warn('[FP-BACKEND-AUTH]', new Date().toISOString(), 'session-restore network error on session-critical endpoint — redirecting to login.');
-            if (!window.__fpRedirecting) {
-              var _pageAge3 = Date.now() - (window.__fpPageLoadTs || Date.now());
-              if (_pageAge3 < 8000 && !window.__fpBootstrapRedirectScheduled) {
-                window.__fpBootstrapRedirectScheduled = true;
-                setTimeout(function() {
-                  if (!window.__fpRedirecting && !(window.STATE && window.STATE.me && window.STATE.me.email)) {
-                    window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
-                  }
-                }, 8000 - _pageAge3 + 500);
-                return null;
-              }
-              window.__fpRedirecting = true; _clearAuth(); window.location.replace('/login.html');
-            }
-            return null;
-          });
+            _showSessionRestoreRetryNotice();
+            throw _temporarySessionRestoreError(503);
+          }).finally(function() { clearTimeout(_restoreTimeout); });
         }
         if (!(opts && opts.backgroundPoll)) { _fp401BackgroundCount = 0; }
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
@@ -547,6 +614,17 @@ window.__fpPageLoadTs = Date.now();
 
     create: async function (mission) {
       try {
+        if (mission && (mission.sourceType === 'template' || mission.source_type === 'template')) {
+          var templateSteps = Array.isArray(mission.steps)
+            ? mission.steps.map(function (step) { return typeof step === 'string' ? step : (step && step.text) || ''; })
+            : [];
+          return normalizeDoc(await apiAction('POST', '/api/missions/from-template', {
+            templateTitle: mission.title,
+            category: mission.category,
+            impact: mission.impact,
+            steps: templateSteps
+          }));
+        }
         return normalizeDoc(await apiAction('POST', '/api/missions', mission));
       } catch (e) {
         console.warn('[FP] mission create error:', e.message);
@@ -823,7 +901,7 @@ window.__fpPageLoadTs = Date.now();
       } catch (e) {
         console.warn('[FP] monitor ping error:', e.message);
         if (typeof window.showToast === 'function') {
-          window.showToast('error', 'Ping échoué : ' + e.message);
+          window.showToast('error', window.fpT('Ping échoué : ') + e.message);
         }
         return null;
       }
@@ -958,7 +1036,7 @@ window.__fpPageLoadTs = Date.now();
         }
       } catch (_) { /* non-fatal */ }
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Plan mis à jour : ' + (data.plan || data.subscriptionStatus || ''));
+        window.showToast('success', window.fpT('Plan mis à jour : ') + (data.plan || data.subscriptionStatus || ''));
       }
     });
 
@@ -1034,9 +1112,9 @@ window.__fpPageLoadTs = Date.now();
       });
       var normalizedMessage = {
         id: serverId,
-        from: msgData.from || 'Équipe',
+        from: msgData.from || _fpBackendText('Équipe', 'Team'),
         text: msgData.text || '',
-        time: msgData.createdAt ? new Date(msgData.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'À l\'instant',
+        time: msgData.createdAt ? new Date(msgData.createdAt).toLocaleTimeString(_fpBackendLocale(), {hour:'2-digit', minute:'2-digit'}) : _fpBackendText('À l\'instant', 'Just now'),
         createdAt: msgData.createdAt || null,
         senderId: msgData.senderId || null,
         attachmentUrl: msgData.attachmentUrl || null,
@@ -1110,7 +1188,7 @@ window.__fpPageLoadTs = Date.now();
         }
       }
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Audit terminé : ' + ((data.audit && data.audit.url) || '') + ' — ' + ((data.audit && data.audit.score) || '') + '/100');
+        window.showToast('success', window.fpT('Audit terminé : ') + ((data.audit && data.audit.url) || '') + ' — ' + ((data.audit && data.audit.score) || '') + '/100');
       }
       if (window.STATE && window.STATE.route === 'audits' && typeof window.render === 'function') window.render();
     });
@@ -1120,7 +1198,7 @@ window.__fpPageLoadTs = Date.now();
       var data = e.detail;
       if (!data) return;
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Rapport PDF prêt : ' + (data.name || ''));
+        window.showToast('success', window.fpT('Rapport PDF prêt : ') + (data.name || ''));
       }
       if (window.STATE && window.STATE.route === 'reports' && typeof window.render === 'function') window.render();
     });
@@ -1134,7 +1212,7 @@ window.__fpPageLoadTs = Date.now();
         if (c) c.lastSync = data.lastSync;
       }
       if (typeof window.showToast === 'function') {
-        window.showToast('success', 'Connecteur ' + (data.provider || '') + ' synchronisé');
+        window.showToast('success', window.fpT('Connecteur ') + (data.provider || '') + window.fpT(' synchronisé'));
       }
     });
   }
@@ -1195,12 +1273,14 @@ window.__fpPageLoadTs = Date.now();
         window.STATE.me.addons[key] = !isCurrentlyActive;
       }
       if (typeof window.showToast === 'function') {
-        window.showToast(isCurrentlyActive ? 'info' : 'success', isCurrentlyActive ? 'Add-on désactivé' : 'Add-on activé ✓');
+        window.showToast(isCurrentlyActive ? 'info' : 'success', isCurrentlyActive
+          ? _fpBackendText('Add-on désactivé', 'Add-on disabled')
+          : _fpBackendText('Add-on activé ✓', 'Add-on enabled ✓'));
       }
       if (typeof window.render === 'function') window.render();
     } catch (e) {
       console.warn('[FP] addon toggle error:', e.message);
-      if (typeof window.showToast === 'function') window.showToast('error', 'Erreur : ' + e.message);
+      if (typeof window.showToast === 'function') window.showToast('error', window.fpT('Erreur : ') + e.message);
     }
   };
 
@@ -1226,7 +1306,7 @@ window.__fpPageLoadTs = Date.now();
         return data;
       } catch (e) {
         console.warn('[FP] addon activate error:', e.message);
-        if (typeof window.showToast === 'function') window.showToast('error', 'Erreur activation');
+        if (typeof window.showToast === 'function') window.showToast('error', _fpBackendText('Erreur activation', 'Activation failed'));
         return null;
       }
     },
@@ -1234,17 +1314,16 @@ window.__fpPageLoadTs = Date.now();
       try {
         await apiAction('POST', '/api/addons/' + key + '/deactivate', {});
         if (window.STATE && window.STATE.me && window.STATE.me.addons) window.STATE.me.addons[key] = false;
-        if (typeof window.showToast === 'function') window.showToast('info', 'Add-on désactivé');
+        if (typeof window.showToast === 'function') window.showToast('info', _fpBackendText('Add-on désactivé', 'Add-on disabled'));
         if (typeof window.render === 'function') window.render();
       } catch (e) { console.warn('[FP] addon deactivate error:', e.message); }
     },
     buyAICredits: async function (pack) {
-      try {
-        var data = await apiAction('POST', '/api/addons/ai-credits/buy', { pack: pack });
-        if (typeof window.showToast === 'function') window.showToast('success', '+' + (data.creditsAdded || 0).toLocaleString('fr-FR') + ' AI Credits ajoutés');
-        window.FP_AI_CREDITS_API.load();
-        return data;
-      } catch (e) { console.warn('[FP] buy credits error:', e.message); return null; }
+      // Aucun credit n'est ajoute cote client ni sans paiement : on ouvre le parcours de paiement
+      // existant (les credits sont inscrits par le webhook Stripe apres paiement reussi).
+      if (typeof window._fpBuyAICredits === 'function') return window._fpBuyAICredits(pack);
+      if (typeof window.showToast === 'function') window.showToast('info', _fpBackendText('Achat de crédits IA : passez par la page de paiement', 'AI credits are purchased through the payment page'));
+      return null;
     },
   };
 
@@ -1382,7 +1461,7 @@ window.__fpPageLoadTs = Date.now();
         var data = await apiAction('POST', '/api/automation/workflows/' + id + '/run', {});
         if (data && data.success && typeof window.showToast === 'function') {
           var secs = Math.round((data.durationMs || 200) / 1000) || 1;
-          window.showToast('success', 'Workflow exécuté en ' + secs + 's ✓');
+          window.showToast('success', window.fpT('Workflow exécuté en ') + secs + 's ✓');
         } else if (data && !data.success && typeof window.showToast === 'function') {
           window.showToast('error', 'Workflow inactif ou introuvable — activez-le avant de lancer');
         }
@@ -1480,7 +1559,7 @@ window.__fpPageLoadTs = Date.now();
     sync: async function () {
       try {
         var data = await apiAction('POST', '/api/google/sync', {});
-        if (typeof window.showToast === 'function') window.showToast('success', 'Sync GBP lancé — ' + (data.locationsCount || 0) + ' établissement(s)');
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Sync GBP lancé — ') + (data.locationsCount || 0) + window.fpT(' établissement(s)'));
         await window.FP_GBP_API.load();
         if (typeof window.render === 'function') window.render();
         return data;
@@ -1517,7 +1596,7 @@ window.__fpPageLoadTs = Date.now();
         if (data && data.ok) {
           if (typeof window.showToast === 'function') window.showToast('success', 'Post GBP publié ✓');
         } else {
-          if (typeof window.showToast === 'function') window.showToast('error', 'Erreur publication : ' + (data && data.error || 'inconnue'));
+          if (typeof window.showToast === 'function') window.showToast('error', window.fpT('Erreur publication : ') + (data && data.error || window.fpT('inconnue')));
         }
         return data;
       } catch (e) { console.warn('[FP] GBP post error:', e.message); return null; }
@@ -1538,7 +1617,7 @@ window.__fpPageLoadTs = Date.now();
           await window.FP_GBP_API.load();
           if (typeof window.render === 'function') window.render();
         } else {
-          if (typeof window.showToast === 'function') window.showToast('error', 'Erreur réponse : ' + (data && data.error || 'inconnue'));
+          if (typeof window.showToast === 'function') window.showToast('error', window.fpT('Erreur réponse : ') + (data && data.error || window.fpT('inconnue')));
         }
         return data;
       } catch (e) { console.warn('[FP] GBP reply error:', e.message); return null; }
@@ -1553,8 +1632,12 @@ window.__fpPageLoadTs = Date.now();
         } catch (e) { console.warn('[FP] GBP disconnect error:', e.message); }
       };
       if (typeof window.fpDarkConfirm === 'function') {
-        window.fpDarkConfirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.', _doGbpDisconnect, 'Déconnecter GBP');
-      } else if (confirm('Déconnecter Google Business Profile ? Vos données locales seront supprimées.')) {
+        window.fpDarkConfirm(
+          window.fpT('Déconnecter Google Business Profile ? Vos données locales seront supprimées.'),
+          _doGbpDisconnect,
+          window.fpT('Déconnecter GBP'),
+        );
+      } else if (confirm(window.fpT('Déconnecter Google Business Profile ? Vos données locales seront supprimées.'))) {
         await _doGbpDisconnect();
       }
     },
@@ -1619,12 +1702,12 @@ window.__fpPageLoadTs = Date.now();
     },
     getKeywords: async function (keyword, location, language) {
       try {
-        return await apiFetch('/api/seo/keywords?keyword=' + encodeURIComponent(keyword || 'seo') + '&location=' + encodeURIComponent(location || 'France') + '&language=' + (language || 'fr'));
+        return await apiFetch('/api/seo/keywords?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'France') + '&language=' + (language || 'fr'));
       } catch (e) { console.warn('[FP] DFS keywords:', e.message); return null; }
     },
     getSERP: async function (keyword, location) {
       try {
-        return await apiFetch('/api/seo/serp?keyword=' + encodeURIComponent(keyword || 'seo') + '&location=' + encodeURIComponent(location || 'France'));
+        return await apiFetch('/api/seo/serp?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'France'));
       } catch (e) { console.warn('[FP] DFS serp:', e.message); return null; }
     },
     getCompetitors: async function (domain) {
@@ -1644,12 +1727,12 @@ window.__fpPageLoadTs = Date.now();
     },
     getLocalRank: async function (keyword, location) {
       try {
-        return await apiFetch('/api/seo/local-rank?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'Paris'));
+        return await apiFetch('/api/seo/local-rank?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || ''));
       } catch (e) { console.warn('[FP] DFS local rank:', e.message); return null; }
     },
     getMaps: async function (keyword, location) {
       try {
-        return await apiFetch('/api/seo/maps?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'Paris'));
+        return await apiFetch('/api/seo/maps?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || ''));
       } catch (e) { console.warn('[FP] DFS maps:', e.message); return null; }
     },
     getAIMentions: async function (keyword) {
@@ -1660,14 +1743,14 @@ window.__fpPageLoadTs = Date.now();
     analyzeContent: async function (url) {
       try {
         var data = await apiAction('POST', '/api/seo/content-optimization', { url: url });
-        if (typeof window.showToast === 'function') window.showToast('success', 'Analyse contenu terminée — score : ' + (data.score || 0) + '/100');
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Analyse contenu terminée — score : ') + (data.score || 0) + '/100');
         return data;
       } catch (e) { console.warn('[FP] DFS content opt:', e.message); return null; }
     },
     generateMissions: async function (domain) {
       try {
         var data = await apiAction('POST', '/api/seo/generate-missions', { domain: domain });
-        if (typeof window.showToast === 'function') window.showToast('success', 'Missions SEO générées pour ' + domain);
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Missions SEO générées pour ') + domain);
         return data;
       } catch (e) { console.warn('[FP] DFS missions:', e.message); return null; }
     },
@@ -1727,7 +1810,7 @@ window.__fpPageLoadTs = Date.now();
       var data = e.detail;
       if (!data || !window.STATE || !window.STATE.me) return;
       if (data.addonKey) (window.STATE.me.addons = window.STATE.me.addons || {})[data.addonKey] = true;
-      if (typeof window.showToast === 'function') window.showToast('success', 'Add-on activé : ' + (data.addonKey || ''));
+      if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Add-on activé : ') + (data.addonKey || ''));
       if (typeof window.render === 'function') window.render();
     });
     document.addEventListener('fp:addon:deactivated', function (e) {
@@ -1750,7 +1833,7 @@ window.__fpPageLoadTs = Date.now();
       var data = e.detail;
       if (!data) return;
       var secs = Math.round((data.durationMs || 200) / 1000) || 1;
-      if (typeof window.showToast === 'function') window.showToast('success', 'Workflow terminé en ' + secs + 's');
+      if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Workflow terminé en ') + secs + 's');
     });
   }
 
@@ -1837,7 +1920,7 @@ window.__fpPageLoadTs = Date.now();
               var countEl = document.getElementById('fp-live-count');
               if (countEl) countEl.textContent = window.FP_DATA.ga4.realtime.activeUsers;
               var lastEl = document.getElementById('fp-live-last-update');
-              if (lastEl) lastEl.textContent = 'Dernière MAJ : ' + new Date().toLocaleTimeString('fr-FR');
+              if (lastEl) lastEl.textContent = _fpBackendText('Dernière MAJ :', 'Last updated:') + ' ' + new Date().toLocaleTimeString(_fpBackendLocale());
             }
           } catch (e) {}
         }
@@ -1946,7 +2029,7 @@ window.__fpPageLoadTs = Date.now();
         window.FP_DATA.ga4 = window.FP_DATA.ga4 || {};
         window.FP_DATA.ga4.propertyId   = fullId;
         window.FP_DATA.ga4.propertyName = name;
-        if (typeof window.showToast === 'function') window.showToast('success', 'Propriété GA4 configurée : ' + name);
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Propriété GA4 configurée : ') + name);
         this._loadAll();
         this._startRealtimePoller();
         if (typeof window.render === 'function') window.render();
@@ -2059,7 +2142,8 @@ window.__fpPageLoadTs = Date.now();
         self._tryInit('fp-gmap'); self._tryInit('fp-competitors-map');
       };
       var s = document.createElement('script');
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places,visualization&callback=__fpGMapsReady&loading=async';
+      // Langue de la carte = langue de l'interface (anglais par defaut), jamais celle du navigateur.
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places,visualization&callback=__fpGMapsReady&loading=async&language=' + (function(){try{var l=(typeof STATE!=='undefined'&&STATE.settings&&STATE.settings.language)||localStorage.getItem('fp:language')||'en';return encodeURIComponent(String(l).split(/[-_]/)[0].toLowerCase()||'en');}catch(e){return 'en';}})();
       s.async = true;
       s.onerror = function () {
         self._loading = false;
@@ -2604,7 +2688,7 @@ window.__fpPageLoadTs = Date.now();
           this._loadCompetitorMarkers('fp-gmap', geo.lat, geo.lng, inst.radius, kw);
           this._loadHeatmapLayer('fp-gmap', geo.lat, geo.lng, inst.radius, kw);
         }
-        if (typeof window.showToast === 'function') window.showToast('success', 'Carte centrée sur ' + geo.formatted_address);
+        if (typeof window.showToast === 'function') window.showToast('success', window.fpT('Carte centrée sur ') + geo.formatted_address);
       } catch (e) { if (typeof window.showToast === 'function') window.showToast('error', 'Erreur de géocodage'); }
     },
 

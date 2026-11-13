@@ -1,12 +1,24 @@
 import type { Response } from "express";
 import PDFDocument from "pdfkit";
+import type { AgencySiteSnapshot } from "./agency-reporting.js";
 
-interface ReportRow { id: string; name: string; type: string; template_key?: string | null; date: string; auditId?: string | null; whiteLabel?: boolean | null; dateStart?: string | null; dateEnd?: string | null; }
+interface ReportRow { id: string; name: string; type: string; template_key?: string | null; date: string; auditId?: string | null; whiteLabel?: boolean | null; dateStart?: string | null; dateEnd?: string | null; agencySites?: AgencySiteSnapshot[]; }
 export interface WlBranding { agencyName?: string; primaryColor?: string; secondaryColor?: string; footerMsg?: string; logoUrl?: string; hideFlowpointBranding?: boolean; }
 interface AuditRow  { url: string; score: number; status: string; speed?: number | null; issues?: number | null; }
 interface MeetingNote { title: string; date: string; notes: string; site?: string; }
 interface MonitorRow { name: string; url?: string; status?: string; uptime?: number | null; }
 interface MissionRow { title: string; status?: string; priority?: string; dueDate?: string | null; }
+
+export function readMeasuredMetric(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function formatMeasuredMetric(value: unknown, suffix = ""): string {
+  const number = readMeasuredMetric(value);
+  return number === null ? "—" : `${number}${suffix}`;
+}
 
 // ── Logo fetch (http→buffer, SSRF-hardened) ──────────────────────────────────
 // The logo URL is user-controlled config, so this fetch must never reach
@@ -65,7 +77,12 @@ export async function streamReportPdf(
 ): Promise<void> {
   // Pre-fetch logo before streaming starts (avoids piping mid-stream issues)
   const logoBuffer = branding?.logoUrl ? await fetchLogoBuffer(branding.logoUrl) : null;
-  const reportTemplate = ({
+  const agencySites = Array.isArray(report.agencySites) ? report.agencySites : [];
+  const hasAgencySites = agencySites.length >= 2;
+  const reportTemplate = hasAgencySites ? {
+    label: "Rapport multi-sites",
+    intro: "Comparaison des mesures réelles des sites sélectionnés pour ce client.",
+  } : ({
     seo:        { label: "Rapport SEO", intro: "Synthèse des mesures SEO, de disponibilité et des actions prioritaires." },
     executive:  { label: "Rapport Exécutif", intro: "Synthèse de direction fondée uniquement sur les mesures actuellement disponibles." },
     monitoring: { label: "Monitoring SLA", intro: "État de disponibilité et suivi des services monitorés." },
@@ -193,16 +210,97 @@ export async function streamReportPdf(
     doc.moveDown(1.1);
 
     // ── KPI summary cards ─────────────────────────────────────────────────────
-    if (audit) {
+    if (hasAgencySites) {
+      const average = (key: "score" | "speed"): number | null => {
+        const values = agencySites
+          .map(site => readMeasuredMetric(site[key]))
+          .filter((value): value is number => value !== null);
+        return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+      };
+      const issueValues = agencySites
+        .map(site => readMeasuredMetric(site.issues))
+        .filter((value): value is number => value !== null);
+      const issueTotal = issueValues.length ? issueValues.reduce((sum, value) => sum + value, 0) : null;
+      const cardW = (CONTENT_W - 12) / 3;
+      const cardH = 56;
+      const startY = doc.y;
+      const averageScore = average("score");
+      const averageSpeed = average("speed");
+
+      kpiCard("Moyenne SEO des sites", averageScore === null ? "—" : `${averageScore.toFixed(1)}/100`,
+        averageScore === null ? GRAY : averageScore >= 70 ? GREEN : averageScore >= 50 ? AMBER : RED,
+        MARGIN, startY, cardW, cardH);
+      kpiCard("Moyenne performance", averageSpeed === null ? "—" : `${averageSpeed.toFixed(1)}/100`,
+        averageSpeed === null ? GRAY : averageSpeed >= 70 ? GREEN : AMBER,
+        MARGIN + cardW + 6, startY, cardW, cardH);
+      kpiCard("Problèmes mesurés", issueTotal === null ? "—" : String(issueTotal),
+        issueTotal === null ? GRAY : issueTotal === 0 ? GREEN : RED,
+        MARGIN + (cardW + 6) * 2, startY, cardW, cardH);
+      doc.y = startY + cardH + 9;
+      doc.fillColor(GRAY).fontSize(7.5).font("Helvetica")
+        .text("Les moyennes excluent les mesures indisponibles; le total additionne les problèmes renseignés.", MARGIN, doc.y, { width: CONTENT_W });
+      doc.moveDown(0.8);
+
+      sectionHeading(`Résultats par site (${agencySites.length})`);
+      const widths = [180, 68, 80, 92, 85];
+      const headers = ["Site", "Date audit", "Score SEO", "Performance", "Problèmes"];
+      const tableX = MARGIN;
+      const rowH = 28;
+      const drawTableHeader = (y: number) => {
+        doc.rect(tableX, y - 2, CONTENT_W, 18).fill(BRAND_L);
+        doc.fontSize(7.5).font("Helvetica-Bold").fillColor(DARK);
+        let x = tableX;
+        headers.forEach((header, index) => {
+          doc.text(header, x + 4, y, { width: widths[index]! - 8, lineBreak: false });
+          x += widths[index]!;
+        });
+      };
+      let y = doc.y;
+      drawTableHeader(y);
+      y += 19;
+      agencySites.forEach((site, rowIndex) => {
+        if (y > PAGE_H - FOOTER_H - rowH - 8) {
+          doc.addPage();
+          y = HEADER_H + 20;
+          drawTableHeader(y);
+          y += 19;
+        }
+        if (rowIndex % 2 === 1) doc.rect(tableX, y - 2, CONTENT_W, rowH).fill("#f9fafb");
+        const parsedDate = site.auditDate ? new Date(site.auditDate) : null;
+        const dateText = parsedDate && Number.isFinite(parsedDate.getTime())
+          ? parsedDate.toLocaleDateString("fr-FR") : "—";
+        const cells = [
+          site.url,
+          dateText,
+          formatMeasuredMetric(site.score, "/100"),
+          formatMeasuredMetric(site.speed, "/100"),
+          formatMeasuredMetric(site.issues),
+        ];
+        let x = tableX;
+        doc.font("Helvetica").fontSize(7.5);
+        cells.forEach((cell, index) => {
+          doc.fillColor(index === 0 ? DARK : GRAY)
+            .text(cell, x + 4, y, { width: widths[index]! - 8, height: rowH - 3, ellipsis: true });
+          x += widths[index]!;
+        });
+        y += rowH;
+      });
+      doc.y = y;
+      doc.moveDown(0.8);
+    } else if (audit) {
       const cardW  = (CONTENT_W - 12) / 3;
       const cardH  = 56;
       const startY = doc.y;
-      const scoreColor = audit.score >= 70 ? GREEN : audit.score >= 50 ? AMBER : RED;
+      const score = readMeasuredMetric(audit.score);
+      const speed = readMeasuredMetric(audit.speed);
+      const issues = readMeasuredMetric(audit.issues);
+      const scoreColor = score === null ? GRAY : score >= 70 ? GREEN : score >= 50 ? AMBER : RED;
+      const speedColor = speed === null ? GRAY : speed >= 70 ? GREEN : AMBER;
 
-      kpiCard("Score SEO Global", `${audit.score}/100`, scoreColor, MARGIN, startY, cardW, cardH);
-      kpiCard("Vitesse Desktop", `${audit.speed ?? 0}/100`, audit.speed != null && audit.speed >= 70 ? GREEN : AMBER,
+      kpiCard("Score SEO Global", formatMeasuredMetric(score, "/100"), scoreColor, MARGIN, startY, cardW, cardH);
+      kpiCard("Vitesse Desktop", formatMeasuredMetric(speed, "/100"), speedColor,
         MARGIN + cardW + 6, startY, cardW, cardH);
-      kpiCard("Problèmes détectés", String(audit.issues ?? 0), (audit.issues ?? 0) === 0 ? GREEN : RED,
+      kpiCard("Problèmes détectés", formatMeasuredMetric(issues), issues === null ? GRAY : issues === 0 ? GREEN : RED,
         MARGIN + (cardW + 6) * 2, startY, cardW, cardH);
 
       doc.y = startY + cardH + 12;
@@ -211,6 +309,9 @@ export async function streamReportPdf(
       doc.moveDown(1.2);
     }
 
+    // Consolidated agency reports contain only their selected site snapshot;
+    // unrelated workspace monitors, missions, and notes must not leak into them.
+    if (!hasAgencySites) {
     // ── Monitors section ──────────────────────────────────────────────────────
     sectionHeading(reportTemplate.label === "Monitoring SLA" ? "Disponibilité et SLA (Monitors)" : "Disponibilité des sites (Monitors)");
 
@@ -290,26 +391,27 @@ export async function streamReportPdf(
       }
       doc.moveDown(0.5);
     }
+    }
 
     // Recommendations derived from the audited data only — never fabricated claims (#437).
     const recs: Array<{ priority: string; title: string; desc: string }> = [];
     if (audit) {
-      const speedScore = Number(audit.speed ?? 0);
-      const globalScore = Number(audit.score ?? 0);
-      const issueCount = Number(audit.issues ?? 0);
-      if (speedScore > 0 && speedScore < 70) {
+      const speedScore = readMeasuredMetric(audit.speed);
+      const globalScore = readMeasuredMetric(audit.score);
+      const issueCount = readMeasuredMetric(audit.issues);
+      if (speedScore !== null && speedScore < 70) {
         recs.push({ priority: speedScore < 50 ? "CRITIQUE" : "HAUTE", title: "Améliorer la performance de chargement",
           desc: `Le score performance mesuré est de ${speedScore}/100 sur ${audit.url}. Compresser les images, activer le lazy loading et réduire le JavaScript bloquant amélioreront les Core Web Vitals.` });
       }
-      if (globalScore > 0 && globalScore < 70) {
+      if (globalScore !== null && globalScore < 70) {
         recs.push({ priority: globalScore < 50 ? "CRITIQUE" : "HAUTE", title: "Corriger les fondamentaux SEO",
           desc: `Le score SEO global mesuré est de ${globalScore}/100. Prioriser les corrections listées dans l'audit pour repasser au-dessus de 70/100.` });
       }
-      if (issueCount > 0) {
+      if (issueCount !== null && issueCount > 0) {
         recs.push({ priority: issueCount > 5 ? "HAUTE" : "MOYENNE", title: `Traiter les ${issueCount} problème${issueCount > 1 ? "s" : ""} détecté${issueCount > 1 ? "s" : ""}`,
           desc: `L'audit a détecté ${issueCount} problème${issueCount > 1 ? "s" : ""} critique${issueCount > 1 ? "s" : ""} (mobile + desktop). Le détail est disponible dans la page Audits du tableau de bord.` });
       }
-      if (recs.length === 0 && globalScore >= 70) {
+      if (recs.length === 0 && globalScore !== null && globalScore >= 70) {
         recs.push({ priority: "MOYENNE", title: "Maintenir la trajectoire",
           desc: `Score SEO mesuré : ${globalScore}/100. Poursuivre le suivi planifié pour détecter toute régression (Core Web Vitals, indexation, contenu).` });
       }

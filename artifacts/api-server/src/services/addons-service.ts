@@ -201,15 +201,6 @@ export async function provisionPlanAddons(
   }
 }
 
-export async function addExtraAICredits(pack: "50k" | "200k" | "500k", orgId = "default"): Promise<number> {
-  const packMap = { "50k": 50000, "200k": 200000, "500k": 500000 };
-  const credits = packMap[pack];
-  // NOTE: extra credits are recorded in ai_credit_purchases (Stripe webhook handles that).
-  // ai_monthly_usage no longer stores credits_extra — limit comes exclusively from plans.ts.
-  store.broadcast({ type: "ai:credits_added", credits, pack }, orgId);
-  return credits;
-}
-
 export function getQuotaLimits(plan: string, addons: Record<string, boolean | number>): {
   audits: number; monitors: number; reports: number; exports: number; seats: number; retention: number;
 } {

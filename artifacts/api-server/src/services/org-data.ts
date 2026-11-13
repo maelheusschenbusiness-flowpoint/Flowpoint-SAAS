@@ -26,6 +26,13 @@ import { logger } from "../lib/logger.js";
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const ORG_BILLING_SELECT = `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
+                trial_ends_at, trial_consumed_at, trial_started_at, current_period_end,
+                cancel_at_period_end, cancel_at, past_due_since,
+                addons, pending_plan, pending_plan_date,
+                owner_email, owner_first_name, name, is_internal_qa
+         FROM organizations WHERE id = $1 LIMIT 1`;
+
 export interface OrgBillingData {
   /** Plan : 'standard' | 'pro' | 'ultra' */
   plan: string;
@@ -41,6 +48,18 @@ export interface OrgBillingData {
   trialConsumedAt: string | null;
   /** ISO timestamp quand le trial a démarré */
   trialStartedAt: string | null;
+  /** ISO timestamp de fin de la periode de facturation deja payee */
+  currentPeriodEnd: string | null;
+  /** true quand l'abonnement est programme pour s'arreter en fin de periode */
+  cancelAtPeriodEnd: boolean;
+  /** ISO timestamp de l'arret programme (Stripe: cancel_at) */
+  cancelAt: string | null;
+  /**
+   * ISO du PREMIER invoice.payment_failed de l'episode past_due en cours
+   * (organizations.past_due_since). NULL = pas past_due, ou past_due anterieur
+   * a la regle de grace (voir resolveAccessMode).
+   */
+  pastDueSince: string | null;
   /** Add-ons actifs (JSONB) */
   addons: Record<string, unknown>;
   /** Plan différé (scheduled downgrade) */
@@ -68,6 +87,9 @@ export type PersistOrgFields = {
   stripeSubscriptionId?: string | null;
   trialEndsAt?: string | null;
   trialConsumedAt?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  cancelAt?: string | null;
   trialStartedAt?: string | null;
   addons?: Record<string, unknown>;
   pendingPlan?: string | null;
@@ -99,6 +121,10 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         trial_ends_at: string | null;
         trial_consumed_at: string | null;
         trial_started_at: string | null;
+        current_period_end: string | null;
+        cancel_at_period_end: boolean | null;
+        cancel_at: string | null;
+        past_due_since: string | null;
         addons: Record<string, unknown> | null;
         pending_plan: string | null;
         pending_plan_date: string | null;
@@ -106,14 +132,13 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         owner_first_name: string | null;
         name: string | null;
         is_internal_qa: boolean;
-      }>(
-        `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
-                trial_ends_at, trial_consumed_at, trial_started_at,
-                addons, pending_plan, pending_plan_date,
-                owner_email, owner_first_name, name, is_internal_qa
-         FROM organizations WHERE id = $1 LIMIT 1`,
-        [orgId],
-      );
+      }>(ORG_BILLING_SELECT, [orgId]).catch((err: unknown) => {
+        // Colonne past_due_since absente (base jamais passee par initDataTables) :
+        // relecture sans elle — valeur NULL, la regle conservatrice s'applique.
+        if ((err as { code?: string })?.code !== "42703") throw err;
+        logger.error({ orgId }, "[OrgData] organizations.past_due_since ABSENTE — lecture sans elle (redemarrer l'API ou appliquer migrations/028)");
+        return client.query(ORG_BILLING_SELECT.replace("past_due_since,", "NULL::timestamptz AS past_due_since,"), [orgId]) as never;
+      });
 
       if (r.rows.length > 0) {
         const row = r.rows[0];
@@ -176,6 +201,12 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
           trialStartedAt:       row.trial_started_at
                                   ? new Date(row.trial_started_at).toISOString()
                                   : _legacyTrialStartedAt,
+          currentPeriodEnd:     row.current_period_end
+                                  ? new Date(row.current_period_end).toISOString()
+                                  : null,
+          cancelAtPeriodEnd:    row.cancel_at_period_end === true,
+          cancelAt:             row.cancel_at ? new Date(row.cancel_at).toISOString() : null,
+          pastDueSince:         row.past_due_since ? new Date(row.past_due_since).toISOString() : null,
           addons:               (row.addons && typeof row.addons === "object") ? row.addons as Record<string, unknown> : {},
           pendingPlan:          row.pending_plan ?? null,
           pendingPlanDate:      row.pending_plan_date ?? null,
@@ -207,6 +238,10 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
       trialEndsAt:          legacy.trialEndsAt ?? null,
       trialConsumedAt:      legacy.trialConsumedAt ?? null,
       trialStartedAt:       null,
+      currentPeriodEnd:     null,
+      cancelAtPeriodEnd:    false,
+      cancelAt:             null,
+      pastDueSince:         null,
       addons:               (typeof legacy.addons === "object" && legacy.addons !== null) ? legacy.addons as Record<string, unknown> : {},
       pendingPlan:          legacy.pendingPlan ?? null,
       pendingPlanDate:      legacy.pendingPlanDate ?? null,
@@ -251,11 +286,19 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
 
   if (fields.plan !== undefined)                { sets.push(`plan = $${n++}`);                   vals.push(fields.plan ? fields.plan.toLowerCase() : "standard"); }
   if (fields.subscriptionStatus !== undefined)   { sets.push(`subscription_status = $${n++}`);    vals.push(fields.subscriptionStatus); }
+  // Debut de l'episode past_due : pose UNE SEULE FOIS (COALESCE → une relance
+  // suivante ne repousse jamais la grace), remis a NULL au retour a
+  // active/trialing (paiement reussi ou abonnement retabli).
+  if (fields.subscriptionStatus === "past_due")  { sets.push(`past_due_since = COALESCE(past_due_since, NOW())`); }
+  if (fields.subscriptionStatus === "active" || fields.subscriptionStatus === "trialing") { sets.push(`past_due_since = NULL`); }
   if (fields.stripeCustomerId !== undefined)      { sets.push(`stripe_customer_id = $${n++}`);     vals.push(fields.stripeCustomerId || null); }
   if (fields.stripeSubscriptionId !== undefined)  { sets.push(`stripe_subscription_id = $${n++}`); vals.push(fields.stripeSubscriptionId || null); }
   if (fields.trialEndsAt !== undefined)           { sets.push(`trial_ends_at = $${n++}`);          vals.push(fields.trialEndsAt); }
   if (fields.trialConsumedAt !== undefined)       { sets.push(`trial_consumed_at = $${n++}`);      vals.push(fields.trialConsumedAt); }
   if (fields.trialStartedAt !== undefined)        { sets.push(`trial_started_at = $${n++}`);       vals.push(fields.trialStartedAt); }
+  if (fields.currentPeriodEnd !== undefined)      { sets.push(`current_period_end = $${n++}`);     vals.push(fields.currentPeriodEnd); }
+  if (fields.cancelAtPeriodEnd !== undefined)     { sets.push(`cancel_at_period_end = $${n++}`);   vals.push(fields.cancelAtPeriodEnd); }
+  if (fields.cancelAt !== undefined)              { sets.push(`cancel_at = $${n++}`);              vals.push(fields.cancelAt); }
   if (fields.pendingPlan !== undefined)           { sets.push(`pending_plan = $${n++}`);            vals.push(fields.pendingPlan); }
   if (fields.pendingPlanDate !== undefined)       { sets.push(`pending_plan_date = $${n++}`);      vals.push(fields.pendingPlanDate); }
   if (fields.ownerEmail !== undefined)            { sets.push(`owner_email = $${n++}`);            vals.push(fields.ownerEmail); }
@@ -274,10 +317,22 @@ export async function persistOrgData(orgId: string, fields: PersistOrgFields): P
         // function is called from billing/webhook paths, and a plain UPDATE avoids
         // spurious failures caused by NOT NULL defaults on the INSERT path (e.g.
         // RLS deny-all on a fresh INSERT attempt with only the id column filled).
-        const updateRes = await client.query(
-          `UPDATE organizations SET ${sets.join(", ")} WHERE id = $1::uuid`,
-          [orgId, ...vals],
-        );
+        let updateRes;
+        try {
+          updateRes = await client.query(
+            `UPDATE organizations SET ${sets.join(", ")} WHERE id = $1::uuid`,
+            [orgId, ...vals],
+          );
+        } catch (colErr) {
+          // past_due_since absente (base jamais migree) : ne pas perdre le reste
+          // de l'ecriture de facturation — on la rejoue sans cette colonne.
+          if ((colErr as { code?: string })?.code !== "42703" || !sets.some(x => x.startsWith("past_due_since"))) throw colErr;
+          logger.error({ orgId }, "[OrgData] organizations.past_due_since ABSENTE — ecriture rejouee sans elle (redemarrer l'API ou appliquer migrations/028)");
+          updateRes = await client.query(
+            `UPDATE organizations SET ${sets.filter(x => !x.startsWith("past_due_since")).join(", ")} WHERE id = $1::uuid`,
+            [orgId, ...vals],
+          );
+        }
         if ((updateRes.rowCount ?? 0) === 0) {
           // Org row doesn't exist yet (rare: new-account webhook race).
           // Fall back to INSERT ON CONFLICT to create it safely.

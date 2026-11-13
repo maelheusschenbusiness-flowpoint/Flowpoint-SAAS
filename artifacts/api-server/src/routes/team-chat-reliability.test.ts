@@ -233,6 +233,7 @@ describe("team chat bidirectional reliability (task #628)", () => {
           text: "uuid echo",
           self: true,
           read: true,
+          time: "",
         }],
       },
     };
@@ -258,6 +259,8 @@ describe("team chat bidirectional reliability (task #628)", () => {
       setTimeout: (fn: () => void) => { fn(); return 0; },
       Date,
       console,
+      _fpBackendLocale: () => "en-US",
+      _fpBackendText: (_french: string, english: string) => english,
       _fpNormChannel: (channel: unknown) => String(channel ?? "general").replace(/^#+/, "").toLowerCase(),
     };
 
@@ -273,6 +276,12 @@ describe("team chat bidirectional reliability (task #628)", () => {
       self: true,
       read: true,
     });
+    expect(state.channelMessages.general[0].time).toBe(
+      new Date("2026-08-21T20:00:00.000Z").toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
     expect(refreshBadge).not.toHaveBeenCalled();
     expect(playSound).not.toHaveBeenCalled();
     expect(render).toHaveBeenCalledOnce();

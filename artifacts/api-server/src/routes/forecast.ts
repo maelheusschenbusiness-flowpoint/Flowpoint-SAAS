@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getForecastData, generateForecasts } from "../services/forecasting-service.js";
 import { requireAddon } from "../middlewares/planGate.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
@@ -30,7 +31,7 @@ router.get("/forecast", withCache(60), async (req: Request, res: Response) => {
   }
 });
 
-router.post("/forecast/generate", async (req: Request, res: Response) => {
+router.post("/forecast/generate", canWrite, async (req: Request, res: Response) => {
   const orgId = (req as Request & { orgContext?: { orgId?: string } }).orgContext?.orgId;
   if (!orgId || orgId === "default") {
     res.status(401).json({ error: "Authentication required" });
@@ -44,7 +45,7 @@ router.post("/forecast/generate", async (req: Request, res: Response) => {
   try {
     const data = await generateForecasts(orgId, siteUrl);
     if (!data.available) {
-      res.status(422).json({ ok: false, ...data });
+      res.status(422).json({ ok: false, error: data.reason || "Insufficient forecast history", ...data });
       return;
     }
     res.json({ ok: true, ...data });

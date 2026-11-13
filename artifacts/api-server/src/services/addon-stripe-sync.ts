@@ -14,8 +14,8 @@
  *   for existing customers without requiring a manual migration.
  *
  * Add-on subscription creation:
- *   - billing_cycle_anchor: "now"  → fresh 30-day cycle from activation date
- *   - payment_behavior: "default_incomplete" → requires payment before active
+ *   - omit billing_cycle_anchor → Stripe anchors the new cycle at creation time
+ *   - payment_behavior: "error_if_incomplete" → no add-on is granted unless initial payment succeeds
  *   - metadata: { addonSub: "true", orgId: "<uuid>" }
  *   - proration_behavior: "none" on item changes (cycle already anchored fresh)
  *
@@ -28,7 +28,7 @@
  *   new billing cycle and prorations.
  */
 
-import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
+import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getAddonPriceId, getPlanForPriceId } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
@@ -89,7 +89,8 @@ async function findPlanSubscription(
 /**
  * Find or create the org's dedicated add-on subscription.
  * The subscription is tagged with metadata.addonSub="true" and metadata.orgId=orgId.
- * It uses billing_cycle_anchor:"now" for an independent monthly cycle.
+ * With no explicit billing_cycle_anchor, Stripe starts its independent cycle
+ * at subscription creation time. The API no longer accepts "now" here.
  */
 async function findOrCreateAddonSubscription(
   stripe: Awaited<ReturnType<typeof createStripeClient>>,
@@ -97,7 +98,7 @@ async function findOrCreateAddonSubscription(
   orgId: string,
   firstPriceId: string,
   firstQty: number,
-): Promise<{ id: string; items: { data: StripeSubItem[] } }> {
+): Promise<{ id: string; status: string; items: { data: StripeSubItem[] } }> {
   // Search for an existing add-on sub for this org
   const existing = await stripe.subscriptions.list({
     customer: stripeCustomerId,
@@ -106,28 +107,27 @@ async function findOrCreateAddonSubscription(
     expand: ["data.items.data.price"],
   });
 
-  type StripeSub = { id: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
+  type StripeSub = { id: string; status: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
   const addonSub = (existing.data as StripeSub[]).find(
     s => s.metadata?.["addonSub"] === "true" && s.metadata?.["orgId"] === orgId,
   );
-  if (addonSub) return addonSub as { id: string; items: { data: StripeSubItem[] } };
+  if (addonSub) return addonSub as { id: string; status: string; items: { data: StripeSubItem[] } };
 
-  // Create a fresh add-on subscription with a billing cycle starting today.
-  // billing_cycle_anchor:"now" is what gives each add-on its independent monthly
-  // cycle decoupled from the plan subscription's renewal date.
+  // Create a fresh add-on subscription. Leaving billing_cycle_anchor unset makes
+  // Stripe anchor the independent cycle at creation time; "now" is rejected by
+  // current Stripe API versions because the field accepts a future timestamp.
   const created = await stripe.subscriptions.create({
     customer: stripeCustomerId,
     items: [{ price: firstPriceId, quantity: firstQty }],
     metadata: { addonSub: "true", orgId },
-    billing_cycle_anchor: "now",
-    payment_behavior: "default_incomplete",
+    payment_behavior: "error_if_incomplete",
     expand: ["items.data.price"],
   } as Parameters<typeof stripe.subscriptions.create>[0]);
   logger.info(
     { orgId, subId: created.id, stripeCustomerId, firstPriceId, firstQty },
     "[AddonSync] Created dedicated add-on subscription",
   );
-  return created as unknown as { id: string; items: { data: StripeSubItem[] } };
+  return created as unknown as { id: string; status: string; items: { data: StripeSubItem[] } };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export async function syncAddonWithStripe(
   if (!stripeKey) return { synced: false, reason: "no_stripe_key" };
   if (ONE_TIME_ADDONS.has(addonKey)) return { synced: false, reason: "one_time_addon" };
 
-  const priceId = ADDON_PRICE_IDS[addonKey];
+  const priceId = getAddonPriceId(addonKey, stripeKey);
   if (!priceId) return { synced: false, reason: "no_price_id" };
 
   try {
@@ -173,7 +173,7 @@ export async function syncAddonWithStripe(
         limit: 10,
         expand: ["data.items.data.price"],
       });
-      type StripeSub = { id: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
+      type StripeSub = { id: string; status?: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
       const isFlowPointPlanSub = (s: StripeSub) => {
         if (s.metadata?.["addonSub"]) return false;
         const items = s.items?.data ?? [];
@@ -217,25 +217,42 @@ export async function syncAddonWithStripe(
     // Check the dedicated add-on subscription
     let itemOnAddonSub: StripeSubItem | undefined;
     let addonSubId: string | null = null;
+    let addonSubStatus: string | null = null;
+    const addonSubItems: Array<{ subscriptionId: string; item: StripeSubItem }> = [];
     {
       const existingAddonSubs = await stripe.subscriptions.list({
         customer: ctx.stripeCustomerId,
-        status: "active",
-        limit: 10,
+        status: "all",
+        limit: 100,
         expand: ["data.items.data.price"],
       });
-      type StripeSub = { id: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
-      const addonSub = (existingAddonSubs.data as StripeSub[]).find(
-        s => s.metadata?.["addonSub"] === "true" && s.metadata?.["orgId"] === orgId,
+      type StripeSub = { id: string; status?: string; metadata?: Record<string, string>; items?: { data?: StripeSubItem[] } };
+      const addonSubs = (existingAddonSubs.data as StripeSub[]).filter(
+        s =>
+          s.metadata?.["addonSub"] === "true" &&
+          s.metadata?.["orgId"] === orgId &&
+          (s.status === "active" || s.status === "trialing" || s.status === "past_due" ||
+            s.status === "incomplete" || s.status === "unpaid"),
       );
+      const addonSub = addonSubs[0];
       if (addonSub) {
         addonSubId = addonSub.id;
+        addonSubStatus = addonSub.status ?? null;
         itemOnAddonSub = (addonSub.items?.data ?? []).find(it => it.price?.id === priceId);
+      }
+      for (const sub of addonSubs) {
+        for (const item of sub.items?.data ?? []) {
+          if (item.price?.id === priceId) addonSubItems.push({ subscriptionId: sub.id, item });
+        }
       }
     }
 
     // ── ACTIVATE ──────────────────────────────────────────────────────────────
     if (action === "activate") {
+      if (addonSubId && addonSubStatus && addonSubStatus !== "active" && addonSubStatus !== "trialing") {
+        return { synced: false, reason: "payment_required" };
+      }
+
       // Case 1: item is on the plan sub (legacy) — update quantity in place
       if (itemOnPlanSub && planSubId) {
         const existingQty = (itemOnPlanSub as { quantity?: number }).quantity ?? 1;
@@ -273,6 +290,9 @@ export async function syncAddonWithStripe(
       const addonSub = await findOrCreateAddonSubscription(
         stripe, ctx.stripeCustomerId, orgId, priceId, qty,
       );
+      if (addonSub.status !== "active" && addonSub.status !== "trialing") {
+        return { synced: false, reason: "payment_required" };
+      }
 
       // If the subscription was freshly created, the first item is already there
       const itemAlreadyAdded = (addonSub.items.data ?? []).some(it => it.price?.id === priceId);
@@ -292,38 +312,63 @@ export async function syncAddonWithStripe(
     // ── DEACTIVATE ────────────────────────────────────────────────────────────
 
     // Remove from whichever subscription holds the item
-    const targetItem = itemOnPlanSub ?? itemOnAddonSub;
-    const targetSubId = itemOnPlanSub ? planSubId : addonSubId;
-
-    if (!targetItem || !targetSubId) {
+    const targets = [
+      ...(itemOnPlanSub && planSubId ? [{ subscriptionId: planSubId, item: itemOnPlanSub, addonSub: false }] : []),
+      ...addonSubItems.map(({ subscriptionId, item }) => ({ subscriptionId, item, addonSub: true })),
+    ];
+    if (targets.length === 0) {
       return { synced: true, reason: "not_on_subscription" };
     }
 
-    await stripe.subscriptionItems.del(targetItem.id, { proration_behavior: "create_prorations" });
-    logger.info({ orgId, addonKey, priceId, subId: targetSubId },
-      "[AddonSync] Addon item removed from subscription");
+    for (const target of targets.filter(target => !target.addonSub)) {
+      await stripe.subscriptionItems.del(target.item.id, { proration_behavior: "create_prorations" });
+      logger.info({ orgId, addonKey, priceId, subId: target.subscriptionId },
+        "[AddonSync] Addon item removed from subscription");
+    }
 
-    // If this was the add-on subscription and it's now empty, cancel it immediately
-    if (itemOnAddonSub && addonSubId) {
-      try {
-        const refreshed = await stripe.subscriptions.retrieve(addonSubId, {
-          expand: ["items.data.price"],
-        });
-        if (refreshed.items.data.length === 0) {
-          await stripe.subscriptions.cancel(addonSubId);
-          logger.info({ orgId, subId: addonSubId },
-            "[AddonSync] Add-on subscription cancelled (no remaining items)");
-        }
-      } catch (e) {
-        // Non-critical: log and continue (subscription may already be gone)
-        logger.warn({ err: e, orgId, addonSubId },
-          "[AddonSync] Could not check/cancel empty add-on subscription");
+    // Stripe refuses to delete a subscription's last item. Cancel the whole
+    // dedicated subscription directly when all of its items are being removed;
+    // otherwise remove only the matching add-on items and preserve the rest.
+    const addonTargetsBySubscription = new Map<string, typeof targets>();
+    for (const target of targets.filter(target => target.addonSub)) {
+      const group = addonTargetsBySubscription.get(target.subscriptionId) ?? [];
+      group.push(target);
+      addonTargetsBySubscription.set(target.subscriptionId, group);
+    }
+    for (const [subscriptionId, subscriptionTargets] of addonTargetsBySubscription) {
+      const refreshed = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["items.data.price"],
+      });
+      if (refreshed.status === "canceled") continue;
+      const currentItems = refreshed.items.data as StripeSubItem[];
+      const targetIds = new Set(subscriptionTargets.map(target => target.item.id));
+      const matchingTargets = subscriptionTargets.filter(target =>
+        currentItems.some(item => item.id === target.item.id),
+      );
+      if (currentItems.length === 0 || (
+        matchingTargets.length > 0 &&
+        currentItems.every(item => targetIds.has(item.id))
+      )) {
+        await stripe.subscriptions.cancel(subscriptionId);
+        logger.info({ orgId, subId: subscriptionId },
+          "[AddonSync] Add-on subscription cancelled (all items removed)");
+        continue;
+      }
+      for (const target of matchingTargets) {
+        await stripe.subscriptionItems.del(target.item.id, { proration_behavior: "create_prorations" });
+        logger.info({ orgId, addonKey, priceId, subId: subscriptionId },
+          "[AddonSync] Add-on item removed; other subscription items retained");
       }
     }
 
     return { synced: true, reason: "item_removed" };
   } catch (err) {
     const errMsg = String((err as { message?: string })?.message ?? err ?? "");
+    const stripeStatus = (err as { statusCode?: number })?.statusCode;
+    if (stripeStatus === 402) {
+      logger.warn({ orgId, addonKey, action }, "[AddonSync] Add-on payment was not confirmed");
+      return { synced: false, reason: "payment_required" };
+    }
     const isNoSuch = /No such subscription|resource_missing|does not exist/i.test(errMsg);
     if (isNoSuch) {
       logger.warn({ orgId, addonKey, action, errMsg },

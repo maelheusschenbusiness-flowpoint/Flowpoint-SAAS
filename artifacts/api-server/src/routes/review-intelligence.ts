@@ -3,7 +3,7 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { pool } from "@workspace/db";
 import {
-  analyzeReview, generateReply, getReputationDashboard, syncReviewsFromGBP,
+  analyzeReview, generateReply, generateReplyForReview, getReputationDashboard, syncReviewsFromGBP,
 } from "../services/review-intel-service.js";
 import { requireAddonOrFeature } from "../middlewares/planGate.js";
 
@@ -12,6 +12,7 @@ const router = Router();
 type OrgReq = Request & {
   orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
   orgId?: string;
+  userId?: string;
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
@@ -78,28 +79,37 @@ router.post("/review-intelligence/reply", canWrite, async (req, res) => {
   const { content, tone = "professional", language = "fr" } = req.body as {
     content?: string; tone?: string; language?: string;
   };
+  if (typeof content !== "string" || content.trim().length < 5) {
+    res.status(400).json({ ok: false, code: "REVIEW_TEXT_REQUIRED" });
+    return;
+  }
   try {
-    const reply = await generateReply(org(req), content ?? "generic", tone, language);
-    res.json({ ok: true, reply });
-  } catch { res.json({ ok: true, reply: "Merci pour votre avis, nous prenons note de vos commentaires." }); }
+    const reply = await generateReply(org(req), content, tone, language, (req as OrgReq).userId);
+    res.json({ ok: true, reply, status: "draft" });
+  } catch (err) {
+    const code = (err as { message?: string })?.message;
+    res.status(code === "AI_QUOTA_EXCEEDED" ? 402 : 502).json({ ok: false, code: code || "REPLY_GENERATION_FAILED" });
+  }
 });
 
 router.post("/review-intelligence/reply/:reviewId", canWrite, async (req, res) => {
   const { tone = "professional", language = "fr" } = req.body as { tone?: string; language?: string };
   try {
-    const reply = await generateReply(org(req), String(req.params.reviewId), tone, language);
-    res.json({ ok: true, reply });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+    const reply = await generateReplyForReview(org(req), String(req.params.reviewId), tone, language, (req as OrgReq).userId);
+    res.json({ ok: true, reply, status: "draft" });
+  } catch (err) {
+    const code = (err as { message?: string })?.message;
+    const status = code === "REVIEW_NOT_FOUND" ? 404 : code === "AI_QUOTA_EXCEEDED" ? 402 : 502;
+    res.status(status).json({ ok: false, code: code || "REPLY_GENERATION_FAILED", error: safeErrMsg(err) });
+  }
 });
 
 router.post("/review-intelligence/reply/:reviewId/publish", canWrite, async (req, res) => {
-  try {
-    await db(req)(
-      `UPDATE review_analysis SET reply_status='published', replied_at=now() WHERE id=$1 AND org_id=$2`,
-      [req.params.reviewId, org(req)]
-    );
-    res.json({ ok: true, message: "Réponse publiée" });
-  } catch { res.status(500).json({ error: "Failed to publish reply" }); }
+  res.status(409).json({
+    ok: false,
+    code: "GBP_PUBLISH_NOT_AVAILABLE",
+    error: "La réponse est un brouillon. La publication directe sur Google Business Profile n’est pas disponible.",
+  });
 });
 
 router.get("/review-intelligence/alerts", async (req, res) => {

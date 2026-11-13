@@ -10,7 +10,7 @@
  * A valid pre-registration token is the identity of THIS checkout; the session is used
  * only when there is no valid token. The existing-subscriber guard is unchanged.
  *
- *  A  no session + valid token          → signup path, new Customer
+ *  A  no session + valid token          → signup path, no pre-payment Customer
  *  B  old session + valid token         → token wins, old org / Customer never used
  *  C  session, no token                 → authenticated path unchanged
  *  D  invalid/expired token + session   → falls back to the session (existing rule)
@@ -26,6 +26,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setStripeForTesting } from "../services/stripe-factory.js";
 import { logger } from "../lib/logger.js";
+
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_ci_test_standard";
+});
 
 vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
@@ -48,20 +52,38 @@ vi.mock("../services/sessions.js", () => ({
 }));
 const ensureStripeCustomer = vi.fn(async (orgId: string) => (orgId === OLD_ORG ? OLD_CUSTOMER : null));
 vi.mock("../services/ensure-stripe-customer.js", () => ({ ensureStripeCustomer: (o: string) => ensureStripeCustomer(o) }));
+vi.mock("../services/pending-signup-stripe-customer.js", () => ({
+  ensurePendingSignupStripeCustomer: vi.fn(async (
+    _stripe: unknown,
+    _token: string,
+    _paymentMethodId: string | null,
+    customerIdHint: string | null,
+  ) => ({ customerId: customerIdHint ?? "cus_NEW_SIGNUP", hasSubscriptionHistory: false })),
+}));
 vi.mock("../services/seller-attribution.js", () => ({
   resolveSellerIdFromToken: vi.fn(async (t: string) => (t === TOKEN_S1 ? "seller-1" : t === TOKEN_S2 ? "seller-2" : null)),
   validateSellerCode: vi.fn(async () => null),
 }));
 vi.mock("../middlewares/rateLimiter.js", () => ({
-  createIpRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   createRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   // public-billing now imports a per-IP limiter instead of an org-keyed one.
   publicCheckoutRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
+  // Ajoute le 18/10/2026 : public-billing importe desormais aussi ce limiteur,
+  // pour la telemetrie du tunnel. Ce mock enumere ses exports, il faut donc
+  // l'y declarer sinon le module ne se charge plus.
+  funnelEventRateLimit: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const PENDING: Record<string, { email: string; stripe_customer_id: string | null }> = {};
 const sessionLookups: string[] = [];
 function answer(sql: string, values: unknown[] = []) {
+  // Verrou anti-double-facturation (checkout_subscription_claims) : le stub
+  // accorde la propriete, comme le ferait un INSERT reel qui a insere.
+  if (/checkout_subscription_claims/.test(sql)) {
+    return /^\s*INSERT/i.test(sql)
+      ? { rows: [{ subscription_id: null, inserted: true }], rowCount: 1 }
+      : { rows: [], rowCount: 0 };
+  }
   if (/FROM user_sessions/.test(sql)) {
     sessionLookups.push(String(values[0]));
     return { rows: values[0] === "tok-old" ? [{ org_id: OLD_ORG }] : [], rowCount: values[0] === "tok-old" ? 1 : 0 };
@@ -75,6 +97,8 @@ function answer(sql: string, values: unknown[] = []) {
     const row = PENDING[String(values[1])]; if (row) row.stripe_customer_id = String(values[0]);
     return { rows: [], rowCount: 1 };
   }
+  if (/^\s*INSERT INTO users/i.test(sql)) return { rows: [{ id: "user-new-signup" }], rowCount: 1 };
+  if (/^\s*INSERT INTO organizations/i.test(sql)) return { rows: [{ id: String(values[0]) }], rowCount: 1 };
   if (/FROM sellers/.test(sql)) return { rows: [{ seller_code: values[0] === "seller-1" ? "SELLER-S1" : "SELLER-S2" }], rowCount: 1 };
   return { rows: [], rowCount: 0 };
 }
@@ -106,7 +130,7 @@ function makeApp(cookieToken?: string) {
 function makeFakeStripe(opts: { subsByCustomer?: Record<string, any[]>; intentCustomer?: string; intentMeta?: Record<string, string> } = {}) {
   const f = {
     customersCreated: [] as any[], customersListed: [] as any[], setupCreated: [] as any[], piCreated: [] as any[],
-    subsListedFor: [] as string[], subsCreated: [] as any[],
+    checkoutSessionsCreated: [] as any[], subsListedFor: [] as string[], subsCreated: [] as any[],
     customers: {
       list: vi.fn(async (p: any) => { f.customersListed.push(p); return { data: [] }; }),
       create: vi.fn(async (p: any) => { f.customersCreated.push(p); return { id: "cus_NEW_SIGNUP", ...p }; }),
@@ -120,6 +144,14 @@ function makeFakeStripe(opts: { subsByCustomer?: Record<string, any[]>; intentCu
     paymentIntents: {
       create: vi.fn(async (p: any) => { f.piCreated.push(p); return { id: "pi_fake", client_secret: "pi_fake_secret", ...p }; }),
       retrieve: vi.fn(async (id: string) => ({ id, status: "succeeded", payment_method: "pm_fake", customer: opts.intentCustomer ?? OLD_CUSTOMER, metadata: opts.intentMeta ?? {} })),
+    },
+    checkout: {
+      sessions: {
+        create: vi.fn(async (p: any) => {
+          f.checkoutSessionsCreated.push(p);
+          return { id: "cs_fake", url: "https://checkout.stripe.com/cs_test_fake", client_secret: null };
+        }),
+      },
     },
     subscriptions: {
       list: vi.fn(async (p: any) => { f.subsListedFor.push(p.customer); return { data: opts.subsByCustomer?.[p.customer] ?? [] }; }),
@@ -138,7 +170,7 @@ const PREV_ENV = process.env["NODE_ENV"];
 let fake: ReturnType<typeof makeFakeStripe>;
 beforeEach(() => {
   process.env["NODE_ENV"] = "test";
-  process.env["STRIPE_SECRET_KEY"] ||= "sk_live_dummy_for_tests";
+  process.env["STRIPE_TEST_KEY"] ||= "sk_test_dummy_for_tests";
   for (const k of Object.keys(PENDING)) delete PENDING[k];
   PENDING[TOKEN_S1] = { email: NEW_EMAIL, stripe_customer_id: null };
   PENDING[TOKEN_S2] = { email: "other.signup@exemple.fr", stripe_customer_id: null };
@@ -153,20 +185,23 @@ afterEach(() => {
 });
 
 describe("payment-intent: which identity pays", () => {
-  it("A — no session + valid token: signup path, new Customer for the signup email", async () => {
+  it("A — no session + valid token: creates an intent without creating a Stripe Customer", async () => {
     const r = await request(makeApp()).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     expect(r.status).toBe(200);
-    expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL]);
-    expect(intentCustomers(fake)).toEqual(["cus_NEW_SIGNUP"]);
-    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBe("cus_NEW_SIGNUP");
+    expect(fake.customersListed.map((lookup) => lookup.email)).toEqual([NEW_EMAIL]); // read-only trial-history lookup
+    expect(fake.customersCreated).toEqual([]);
+    expect(intentCustomers(fake)).toEqual([undefined]);
+    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBeNull();
   });
 
-  it("B — old session + valid token of a new signup: the token wins, the old org is never used", async () => {
+  it("B — old session + valid token: history lookup uses the token email, never the old Customer", async () => {
     const r = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     expect(r.status).toBe(200);
-    expect(intentCustomers(fake)).toEqual(["cus_NEW_SIGNUP"]);
+    expect(intentCustomers(fake)).toEqual([undefined]);
     expect(intentCustomers(fake)).not.toContain(OLD_CUSTOMER);
-    expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL]);
+    expect(fake.customersCreated).toEqual([]);
+    expect(fake.customersListed.map((lookup) => lookup.email)).toEqual([NEW_EMAIL]);
+    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBeNull();
     expect(ensureStripeCustomer).not.toHaveBeenCalled();
     expect(loadBillingContext).not.toHaveBeenCalledWith(OLD_ORG); // quote/trial not taken from the old account
     const meta = [...fake.setupCreated, ...fake.piCreated][0].metadata;
@@ -198,25 +233,68 @@ describe("payment-intent: which identity pays", () => {
     expect(intentCustomers(fake)).toEqual([]);
   });
 
-  it("E — a different seller code changes nothing in Customer resolution", async () => {
+  it("E — repeated signup intents create no Customers before confirmation", async () => {
     const r1 = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
     const r2 = await request(makeApp("tok-old")).post("/api/public/payment-intent").send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S2 });
     expect([r1.status, r2.status]).toEqual([200, 200]);
-    expect(fake.customersListed.map((l) => l.email)).toEqual([NEW_EMAIL, "other.signup@exemple.fr"]);
-    expect(fake.customersCreated.map((c) => c.email)).toEqual([NEW_EMAIL, "other.signup@exemple.fr"]);
+    // One read-only lookup per signup checks trial history. Neither intent
+    // receives a Customer, and no Customer is created before confirmation.
+    expect(fake.customersListed.map((lookup) => lookup.email)).toEqual([
+      NEW_EMAIL,
+      "other.signup@exemple.fr",
+    ]);
+    expect(fake.customersCreated).toEqual([]);
     expect(intentCustomers(fake)).not.toContain(OLD_CUSTOMER);
   });
 });
 
+describe("hosted Stripe Checkout: independent session contract", () => {
+  it("uses a Checkout Session with the quoted trial and no pre-confirmation Customer", async () => {
+    const response = await request(makeApp()).post("/api/public/checkout-session")
+      .send({ plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.sessionId).toBe("cs_fake");
+    expect(response.body.url).toMatch(/^https:\/\/checkout\.stripe\.com\//);
+    expect(response.body.quote.trialEligible).toBe(true);
+    expect(response.body.quote.trialDays).toBe(14);
+
+    const [sessionParams] = fake.checkoutSessionsCreated;
+    expect(sessionParams.mode).toBe("subscription");
+    expect(sessionParams.subscription_data.trial_period_days).toBe(response.body.quote.trialDays);
+    expect(sessionParams.customer).toBeUndefined();
+    expect(sessionParams.customer_email).toBe(NEW_EMAIL);
+    expect(fake.customersCreated).toEqual([]);
+    expect(fake.setupCreated).toEqual([]);
+    expect(fake.piCreated).toEqual([]);
+    expect(PENDING[TOKEN_S1]!.stripe_customer_id).toBeNull();
+  });
+});
+
 describe("finalize-checkout: the signup token is received and wins", () => {
-  it("F — old session + valid token: authenticates with the token, the session is not even looked up", async () => {
-    fake = makeFakeStripe({ intentCustomer: "cus_NEW_SIGNUP", intentMeta: { pre_register_token: TOKEN_S1 } });
+  it("F — SetupIntent success creates one 14-day subscription trial before signup activation", async () => {
+    fake = makeFakeStripe({
+      intentCustomer: "cus_NEW_SIGNUP",
+      intentMeta: {
+        pre_register_token: TOKEN_S1,
+        plan: "standard",
+        trial_days_remaining: "14",
+      },
+    });
     setStripeForTesting(fake as any);
-    await request(makeApp("tok-old")).post("/api/public/finalize-checkout")
+    const response = await request(makeApp("tok-old")).post("/api/public/finalize-checkout")
       .send({ intentId: "seti_fake", intentType: "setup", plan: "standard", addons: {}, preRegisterToken: TOKEN_S1 });
+    expect(response.status, JSON.stringify({
+      body: response.body,
+      errors: vi.mocked(logger.error).mock.calls.slice(-4),
+    })).toBe(200);
     expect(sessionLookups).toEqual([]);
     expect(vi.mocked(logger.info).mock.calls.some((c) => String(c[1]).includes("Authenticated via preRegisterToken"))).toBe(true);
     expect(fake.subsListedFor).not.toContain(OLD_CUSTOMER);
+    expect(fake.subsCreated).toHaveLength(1);
+    const trialEnd = Number(fake.subsCreated[0].trial_end);
+    expect(trialEnd).toBeGreaterThan(Math.floor(Date.now() / 1000) + 13 * 86400);
+    expect(trialEnd).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 14 * 86400 + 60);
   });
 });
 

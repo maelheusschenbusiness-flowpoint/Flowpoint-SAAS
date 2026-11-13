@@ -6421,7 +6421,7 @@ function renderReports() {
                 <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} rapports</span>
                 <div style="display:flex;gap:6px;margin-left:auto">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Generer</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/reports/send-invoice',{invoiceId:this.closest('tr')?.[Symbol.iterator]?.[0]||''}).then(r=>showToast('success','Facture envoyée par email')).catch(()=>showToast('info','Fonctionnalité disponible dans votre espace client'))">Envoyer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/reports/send-invoice',{invoiceId:this.closest('tr')?.[Symbol.iterator]?.[0]||''}).then(r=>r&&r.sent===true?showToast('success','Facture envoyée par email'):showToast('info','Envoi par e-mail indisponible : téléchargez la facture depuis le portail de facturation')).catch(()=>showToast('info','Envoi par e-mail indisponible : téléchargez la facture depuis le portail de facturation'))">Envoyer</button>
                 </div>
               </div>
             </div>`;

@@ -1,10 +1,11 @@
 import { Router, type Request, type Response } from "express";
-import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuotaLimits, ADDON_DEFINITIONS } from "../services/addons-service.js";
+import { activateAddon, deactivateAddon, getOrgAddons, getQuotaLimits, ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, VALIDATION_REQUIRED_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, getAddonAvailability, getAddonStatus, getAddonDisplayPrice, getAddonPriceId, getAddonPurchasablePlans } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
+import { getStripeKey } from "../services/stripe-factory.js";
 
 const router = Router();
 
@@ -23,23 +24,19 @@ router.get("/addons", async (req: Request, res: Response) => {
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
-    // P1 — retention90d is superseded by retention365d on Ultra.
-    // A Pro→Ultra upgrade leaves retention90d active in org_addons (provisionPlanAddons
-    // only adds keys, never deactivates old-tier ones). Remove it here so it is not
-    // counted as an extra paid add-on when the higher-tier superseder is present.
-    if (plan === "ultra" && liveAddons["retention365d"] && liveAddons["retention90d"]) {
-      liveAddons["retention90d"] = false;
-      logger.info({ orgId, plan }, "[P1][addons] retention90d suppressed (superseded by retention365d on Ultra)");
-    }
     const quotas = getQuotaLimits(plan, liveAddons);
-    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
+    const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS)
+      .filter(([key]) => !REMOVED_ADDONS.has(key))
+      .filter(([key]) => !RETIRED_ADDONS.has(key) || Boolean(liveAddons[key]))
+      .map(([key, definition]) => {
       const active = liveAddons[key] ?? false;
       const includedInPlan = planIncluded.has(key);
       return [key, {
         ...definition,
+        priceEur: getAddonDisplayPrice(key),
         active,
         includedInPlan,
-        allowedForPlan: isPlanAllowedAddon(plan, key),
+        allowedForPlan: getAddonPurchasablePlans(key).includes(plan.toLowerCase()),
         availability: getAddonAvailability(key),
         status: getAddonStatus(key, { included: includedInPlan, active }),
       }];
@@ -65,18 +62,18 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // ── Removed-from-catalogue gate ────────────────────────────────────────────
   // "prioritySupport" was removed from the commercial catalogue (feature not
   // implemented). Block any activation attempt regardless of plan.
-  if (REMOVED_ADDONS.has(key)) {
+  if (REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key)) {
     logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — removed from catalogue");
-    res.status(410).json({ error: "Cet add-on n'est plus disponible.", code: "ADDON_REMOVED" }); return;
+    res.status(410).json({ error: "Cet add-on n'est plus disponible à l'achat.", code: "ADDON_RETIRED" }); return;
   }
   // ── Coming-soon gate ───────────────────────────────────────────────────────
   // Add-ons in COMING_SOON_ADDONS are visible on the pricing/UI as roadmap items
   // but are NOT yet available for purchase.  Block activation at every layer.
-  if (COMING_SOON_ADDONS.has(key)) {
+  if (COMING_SOON_ADDONS.has(key) || VALIDATION_REQUIRED_ADDONS.has(key)) {
     logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — add-on not yet available (COMING_SOON)");
     res.status(503).json({
       error: "Cet add-on n'est pas encore disponible. Il sera lancé prochainement.",
-      code: "ADDON_COMING_SOON",
+      code: VALIDATION_REQUIRED_ADDONS.has(key) ? "ADDON_VALIDATION_REQUIRED" : "ADDON_COMING_SOON",
       addonKey: key,
     }); return;
   }
@@ -103,6 +100,25 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
     });
     return;
   }
+  // Reject one-time packs and missing mode-specific prices before creating a
+  // Stripe customer or attempting a subscription mutation.
+  if (CANONICAL_ADDON_DEFINITIONS[key]?.oneTime) {
+    res.status(422).json({
+      error: "Cet add-on s'achète en paiement unique — utilisez le checkout dédié",
+      code: "ADDON_CHECKOUT_REQUIRED",
+      addonKey: key,
+    });
+    return;
+  }
+  if (!getAddonPriceId(key)) {
+    logger.warn({ orgId, addonKey: key }, "[Addons] activation blocked — no price in the active Stripe mode");
+    res.status(422).json({
+      error: "Aucun prix Stripe configuré pour cet add-on dans ce mode — contactez le support",
+      code: "ADDON_PRICE_UNAVAILABLE",
+      addonKey: key,
+    });
+    return;
+  }
   // ── Ensure Stripe customer exists before any subscription mutation ────────
   // syncAddonWithStripe relies on loadBillingContext to find the customer.
   // If the org has no customer row in DB (e.g. new org, never subscribed),
@@ -110,7 +126,7 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   // silent no_live_subscription failure that looks like a Stripe error.
   try {
     const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
-    await ensureStripeCustomer(orgId);
+    await ensureStripeCustomer(orgId, undefined, getStripeKey());
   } catch (_ensureErr) {
     logger.warn({ orgId, addonKey: key, err: String(_ensureErr) },
       "[Addons] ensureStripeCustomer failed — proceeding; syncAddonWithStripe will block if no sub");
@@ -130,6 +146,7 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
       stripe_error:         { code: 502, msg: "La facturation Stripe de l'add-on a échoué — activation annulée" },
       no_live_subscription: { code: 402, msg: "Un abonnement actif est requis pour activer cet add-on — passez par la page Tarifs" },
       no_subscription_id:   { code: 402, msg: "Aucun abonnement Stripe trouvé — passez par la page Tarifs pour activer cet add-on" },
+      payment_required:     { code: 402, msg: "Le paiement de cet add-on n'a pas été confirmé — aucun accès n'a été accordé" },
       no_stripe_key:        { code: 503, msg: "Service de facturation indisponible — activation annulée" },
       no_price_id:          { code: 422, msg: "Aucun prix Stripe configuré pour cet add-on — contactez le support" },
       one_time_addon:       { code: 422, msg: "Cet add-on s'achète en paiement unique — utilisez le checkout dédié" },
@@ -220,8 +237,23 @@ router.post("/addons/ai-credits/buy", async (req: Request, res: Response) => {
   if (!pack || !["50k", "200k", "500k"].includes(pack)) {
     res.status(400).json({ error: "Pack must be 50k, 200k or 500k" }); return;
   }
-  const credits = await addExtraAICredits(pack as "50k" | "200k" | "500k");
-  res.json({ ok: true, creditsAdded: credits, pack });
+  // AUCUN credit sans paiement reussi. Les credits sont inscrits UNIQUEMENT par le webhook Stripe
+  // (checkout.session.completed / payment_intent.succeeded, metadata.type=ai_credits) dans
+  // ai_credit_purchases, de facon idempotente sur l'identifiant du paiement. Cette route historique
+  // repondait `ok:true, creditsAdded` sans rien payer ni crediter : elle renvoie desormais un etat
+  // explicite et pointe vers le flux de paiement existant.
+  res.status(402).json({
+    ok: false,
+    code: "PAYMENT_REQUIRED",
+    error: "Les crédits IA s'achètent par paiement : aucun crédit n'est ajouté sans paiement réussi.",
+    pack,
+    creditsAdded: 0,
+    checkout: {
+      inApp: "/api/billing/ai-credits-intent",
+      hosted: "/api/billing/checkout-ai-credits",
+      pack: `ai_credits_${pack}`,
+    },
+  });
 });
 
 export default router;

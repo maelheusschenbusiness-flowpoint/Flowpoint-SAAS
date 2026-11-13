@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
 const GH_BASE = "https://api.github.com";
 
 export interface GitHubConnection {
@@ -27,7 +28,7 @@ export function getGitHubAuthUrl(state: string): string {
 }
 
 export async function exchangeCodeForToken(code: string): Promise<string> {
-  const res = await fetch("https://github.com/login/oauth/access_token", {
+  const res = await fetchBorne("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -35,7 +36,7 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
       client_secret: process.env["GITHUB_CLIENT_SECRET"],
       code,
     }),
-  });
+  }, DELAIS.identite);
   const data = await res.json() as Record<string, unknown>;
   if (data["error"]) throw new Error(String(data["error_description"] ?? data["error"]));
   return String(data["access_token"]);

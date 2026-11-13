@@ -1,0 +1,175 @@
+{
+  "_note": "Cliquet : les comptes ne peuvent que baisser. Regenerer : node scripts/audit-langues.mjs --update-baseline",
+  "serveur": {
+    "artifacts/api-server/src/routes/ab-testing.ts": {
+      "compte": 15,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/addons.ts": {
+      "compte": 8,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/ai-credits.ts": {
+      "compte": 6,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/ai-workspace-launch.ts": {
+      "compte": 6,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/ai.ts": {
+      "compte": 4,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/alert-rules.ts": {
+      "compte": 9,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/audits.ts": {
+      "compte": 5,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/auth.ts": {
+      "compte": 35,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/automation.ts": {
+      "compte": 6,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/behavioral.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/betterstack.ts": {
+      "compte": 2,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/billing.ts": {
+      "compte": 43,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/client-mode.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/competitors.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/connectors.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/crm.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/cro.ts": {
+      "compte": 2,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/gbp-performance.ts": {
+      "compte": 3,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/gbp-posts.ts": {
+      "compte": 6,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/integrations.ts": {
+      "compte": 3,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/keywords.ts": {
+      "compte": 4,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/local-landing-opportunities.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/local-maps.ts": {
+      "compte": 7,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/local-presence-optimizer.ts": {
+      "compte": 2,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/location.ts": {
+      "compte": 8,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/me.ts": {
+      "compte": 4,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/missions.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/monitors.ts": {
+      "compte": 5,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/org-data-export.ts": {
+      "compte": 5,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/pagespeed.ts": {
+      "compte": 8,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/public-billing.ts": {
+      "compte": 38,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/reports.ts": {
+      "compte": 13,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/revenue-leak.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/review-intelligence.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/security.ts": {
+      "compte": 6,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/seo-change-impact.ts": {
+      "compte": 1,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/seo.ts": {
+      "compte": 11,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/sso.ts": {
+      "compte": 8,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/team-files.ts": {
+      "compte": 2,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/team.ts": {
+      "compte": 25,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    },
+    "artifacts/api-server/src/routes/technical-seo-fix-verification.ts": {
+      "compte": 4,
+      "raison": "heritage : messages d'erreur en francais, a traduire"
+    }
+  },
+  "pages": {
+    "pricing.html": {
+      "compte": 44,
+      "raison": "heritage : texte francais sans entree PUBLIC_ENGLISH, a ajouter"
+    }
+  }
+}

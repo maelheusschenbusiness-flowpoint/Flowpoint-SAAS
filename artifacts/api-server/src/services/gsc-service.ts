@@ -5,8 +5,9 @@
  * in gsc_keyword_data.  All read functions query that table — never fake data.
  */
 
+import { stableId } from "../lib/stable-id.js";
 import { pool } from "@workspace/db";
-import { getValidToken } from "./google-service.js";
+import { getGscValidToken } from "./gsc-oauth-service.js";
 import { logger } from "../lib/logger.js";
 
 const GSC_BASE = "https://searchconsole.googleapis.com/webmasters/v3/sites";
@@ -74,7 +75,7 @@ export async function verifySiteOwnership(orgId: string, siteUrl: string): Promi
   if (discovered.rows.length > 0) return true;
 
   // 2. Live check against Google's own site list for this org's token
-  const token = await getValidToken(orgId).catch(() => null);
+  const token = await getGscValidToken(orgId).catch(() => null);
   if (!token) return false;
   try {
     const res = await fetch(`${GSC_BASE}`, {
@@ -125,7 +126,7 @@ export async function getVerifiedActiveSite(orgId: string): Promise<string | nul
 
 export async function setActiveSite(orgId: string, siteUrl: string, displayName?: string): Promise<void> {
   const client = await pool.connect();
-  const id = `gsc_${orgId}_${Buffer.from(siteUrl).toString("base64url").slice(0, 40)}`;
+  const id = stableId("gsc", orgId, siteUrl);
   try {
     await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId]);
     await client.query(
@@ -141,7 +142,7 @@ export async function setActiveSite(orgId: string, siteUrl: string, displayName?
 // ── Discover sites from Google (called after OAuth) ───────────────────────────
 
 export async function discoverAndStoreSites(orgId: string): Promise<number> {
-  const token = await getValidToken(orgId).catch(() => null);
+  const token = await getGscValidToken(orgId).catch(() => null);
   if (!token) return 0;
   try {
     const res = await fetch(`${GSC_BASE}`, {
@@ -154,7 +155,7 @@ export async function discoverAndStoreSites(orgId: string): Promise<number> {
     const client = await pool.connect();
     try {
       for (const site of sites) {
-        const siteId = `gsc_${orgId}_${Buffer.from(site.siteUrl).toString("base64url").slice(0, 40)}`;
+        const siteId = stableId("gsc", orgId, site.siteUrl);
         await client.query(
           `INSERT INTO gsc_sites (id, org_id, site_url, permission_level, is_active, created_at)
            VALUES ($1, $2, $3, $4, false, NOW())
@@ -182,7 +183,7 @@ export async function syncGSCData(orgId: string): Promise<number> {
   const siteUrl = await getVerifiedActiveSite(orgId);
   if (!siteUrl) return 0;
 
-  const token = await getValidToken(orgId).catch(() => null);
+  const token = await getGscValidToken(orgId).catch(() => null);
   if (!token) return 0;
 
   const endDate   = new Date().toISOString().slice(0, 10);
@@ -394,7 +395,7 @@ export async function querySearchAnalytics(
   const siteUrl = siteUrlOverride ?? (await getActiveSite(orgId));
   if (!siteUrl) return [];
 
-  const token = await getValidToken(orgId).catch(() => null);
+  const token = await getGscValidToken(orgId).catch(() => null);
   if (!token) return [];
 
   try {
@@ -432,7 +433,7 @@ export async function getIndexingStatus(orgId: string, siteUrl?: string, inspect
   if (!resolvedSiteUrl) return { inspected: false, reason: "no_site_selected" };
   if (!inspectionUrl?.trim()) return { inspected: false, reason: "bulk_index_coverage_not_supported" };
 
-  const token = await getValidToken(orgId).catch(() => null);
+  const token = await getGscValidToken(orgId).catch(() => null);
   if (!token) return { inspected: false, reason: "not_connected" };
 
   const res = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
@@ -470,7 +471,7 @@ export async function getSitemaps(orgId: string, siteUrlOverride?: string): Prom
   const siteUrl = siteUrlOverride ?? (await getActiveSite(orgId));
   if (!siteUrl) return [];
 
-  const token = await getValidToken(orgId).catch(() => null);
+  const token = await getGscValidToken(orgId).catch(() => null);
   if (!token) return [];
 
   try {

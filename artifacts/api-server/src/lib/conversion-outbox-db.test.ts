@@ -19,6 +19,7 @@ vi.mock("./logger.js", () => ({
 import { pool } from "@workspace/db";
 import { randomUUID } from "node:crypto";
 import { processConversionOutboxOnce, queueConversionEvent } from "./conversion-outbox.js";
+import { logger } from "./logger.js";
 
 const SECRET = "conversion-test-secret-at-least-32-characters";
 const FP_LID = "TestLeadFp_0000000003C";
@@ -108,15 +109,71 @@ describe("un jalon n'est perdu ni par un service endormi, ni par un redemarrage"
     expect(delai.rows[0]!.minutes).toBe(2);
   });
 
-  it("un refus definitif (400) est clos, sans nouvel essai", async (ctx) => {
+  it("un refus definitif (422) est clos, sans nouvel essai", async (ctx) => {
     if (!dbOk) return ctx.skip();
-    reponse = 400;
+    reponse = 422;
     const j = jalon();
     expect(await queueConversionEvent(j)).toBe("rejected");
     expect(await ligne(j.eventId)).toMatchObject({ status: "rejected", fp_lid: null });
     await echeance(j.eventId);
     await processConversionOutboxOnce();
     expect(appels).toHaveLength(1);
+  });
+
+  it("un 400 est reessaye sur une fenetre bornee, se livre si le prospect devient connu", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    reponse = 400;
+    const j = jalon();
+    expect(await queueConversionEvent(j)).toBe("queued");
+    expect(await ligne(j.eventId)).toMatchObject({ status: "pending", fp_lid: FP_LID, attempts: 1, last_status: "rejected:400" });
+    reponse = 202; // le prospect a ete synchronise cote acquisition
+    await echeance(j.eventId);
+    await processConversionOutboxOnce();
+    expect(await ligne(j.eventId)).toMatchObject({ status: "delivered", fp_lid: null, attempts: 2 });
+  });
+
+  it("un 400 persistant est abandonne apres 5 essais, sans rejeu infini et sans fp_lid conserve", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    reponse = 400;
+    const j = jalon();
+    await queueConversionEvent(j);
+    for (let i = 0; i < 6; i++) { await echeance(j.eventId); await processConversionOutboxOnce(); }
+    expect(await ligne(j.eventId)).toMatchObject({
+      status: "rejected", fp_lid: null, attempts: 5, last_status: "rejected:400:exhausted",
+    });
+    expect(appels).toHaveLength(5);
+  });
+
+  it("un jalon abandonne ne repart jamais, ne se duplique pas et ne laisse aucune donnee personnelle dans le journal", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    vi.clearAllMocks();
+    reponse = 400;
+    const j = jalon();
+    await queueConversionEvent(j);
+    for (let i = 0; i < 6; i++) { await echeance(j.eventId); await processConversionOutboxOnce(); }
+    expect(appels).toHaveLength(5);
+    // Re-inscrire le meme jalon : doublon, aucun nouvel envoi, une seule ligne.
+    expect(await queueConversionEvent(j)).toBe("duplicate");
+    for (let i = 0; i < 3; i++) { await echeance(j.eventId); await processConversionOutboxOnce(); }
+    expect(appels).toHaveLength(5);
+    const n = await pool.query(`SELECT count(*)::int n FROM conversion_event_outbox WHERE event_id = $1`, [j.eventId]);
+    expect(n.rows[0].n).toBe(1);
+    // Aucun fp_lid ni secret dans AUCUN appel du logger (l'identifiant d'evenement
+    // est un condensat opaque, journalise par conception).
+    const journal = JSON.stringify([
+      ...(logger.warn as ReturnType<typeof vi.fn>).mock.calls,
+      ...(logger.info as ReturnType<typeof vi.fn>).mock.calls,
+      ...(logger.error as ReturnType<typeof vi.fn>).mock.calls,
+    ]);
+    expect(journal).not.toContain(FP_LID);
+    expect(journal).not.toContain(SECRET);
+    expect(journal).not.toMatch(/fp_lid|fpLid/i);
+    expect(journal).toContain("conversion_event_abandoned");
+    // Un seul abandon journalise, avec des champs bornes.
+    const abandons = (logger.warn as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c) => (c[0] as { event?: string })?.event === "conversion_event_abandoned");
+    expect(abandons).toHaveLength(1);
+    expect(Object.keys(abandons[0]![0] as object).sort()).toEqual(["attempts", "event", "source", "stage"]);
   });
 
   it("un meme jalon inscrit deux fois n'existe et ne part qu'une fois", async (ctx) => {

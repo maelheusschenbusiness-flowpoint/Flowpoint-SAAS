@@ -30,10 +30,17 @@ type Pending = { token: string; email: string; fp_lid: string | null; seller_id:
 let pending: Pending[];
 let orgs: Map<string, { id: string; owner_email: string; fp_lid: string | null; subscription_status: string }>;
 let preRegInserts: unknown[][];
+let preRegUpdates: unknown[][];
+let queryLog: string[];
 
 function answer(sql: string, v: unknown[] = []) {
   const s = sql.replace(/\s+/g, " ").trim();
+  queryLog.push(s);
   if (/^(BEGIN|COMMIT|ROLLBACK)/i.test(s)) return { rows: [], rowCount: 0 };
+  if (/SELECT token, fp_lid FROM pending_signups/i.test(s)) {
+    const row = pending.find(p => p.email === String(v[0]).toLowerCase() && !p.consumed);
+    return { rows: row ? [{ token: row.token, fp_lid: row.fp_lid }] : [], rowCount: row ? 1 : 0 };
+  }
   if (/DELETE FROM pending_signups WHERE lower\(email\)/i.test(s)) {
     const gone = pending.filter(p => p.email === String(v[0]).toLowerCase() && !p.consumed);
     pending = pending.filter(p => !gone.includes(p));
@@ -41,9 +48,15 @@ function answer(sql: string, v: unknown[] = []) {
   }
   if (/^INSERT INTO pending_signups/i.test(s)) {
     preRegInserts.push(v);
-    pending.push({ token: String(v[0]), email: String(v[1]), seller_id: (v[11] as string) ?? null,
+    pending.push({ token: String(v[0]), email: String(v[1]).toLowerCase(), seller_id: (v[11] as string) ?? null,
                    fp_lid: (v[12] as string) ?? null, consumed: false });
-    return { rows: [], rowCount: 1 };
+    return { rows: [{ created_at: new Date("2026-01-01T00:00:00.000Z"), fp_lid: (v[12] as string) ?? null }], rowCount: 1 };
+  }
+  if (/^UPDATE pending_signups SET first_name/i.test(s)) {
+    preRegUpdates.push(v);
+    const row = pending.find(p => p.token === v[11]);
+    if (row) row.fp_lid = row.fp_lid ?? (v[10] as string | null);
+    return { rows: row ? [{ created_at: new Date("2026-01-01T00:00:00.000Z"), fp_lid: row.fp_lid }] : [], rowCount: row ? 1 : 0 };
   }
   if (/FROM pending_signups WHERE token = \$1 AND consumed_at IS NULL/i.test(s)) {
     const row = pending.find(p => p.token === v[0] && !p.consumed);
@@ -67,7 +80,7 @@ function answer(sql: string, v: unknown[] = []) {
   if (/^INSERT INTO users/i.test(s)) return { rows: [{ id: "user-1" }], rowCount: 1 };
   if (/^INSERT INTO organizations/i.test(s)) {
     // Emulates ON CONFLICT (id) DO UPDATE ... fp_lid = COALESCE(organizations.fp_lid, EXCLUDED.fp_lid)
-    const id = String(v[0]); const incoming = (v[10] as string) ?? null;
+    const id = String(v[0]); const incoming = (v[11] as string) ?? null;
     const existing = orgs.get(id);
     const coalesced = /fp_lid\s*= COALESCE\(organizations\.fp_lid, EXCLUDED\.fp_lid\)/.test(s);
     orgs.set(id, { id, owner_email: String(v[6]), subscription_status: String(v[5]),
@@ -94,7 +107,11 @@ vi.mock("../services/org-settings.js", () => ({ loadOrgSettings: vi.fn(async () 
 vi.mock("../services/seller-attribution.js", () => ({
   validateSellerCode: vi.fn(async () => null), resolveSellerIdFromToken: vi.fn(async () => null), recordCommission: vi.fn(async () => {}),
 }));
-vi.mock("../services/stripe-factory.js", () => ({ getStripeKey: vi.fn(() => undefined), createStripeClient: vi.fn(async () => null) }));
+vi.mock("../services/stripe-factory.js", () => ({
+  getStripeKey: vi.fn(() => undefined),
+  isStripeTestMode: vi.fn(() => false),
+  createStripeClient: vi.fn(async () => null),
+}));
 vi.mock("../services/mailer.js", () => ({ mailer: new Proxy({}, { get: () => vi.fn(async () => ({ ok: true })) }) }));
 vi.mock("../services/store.js", () => ({ store: { broadcast: vi.fn(), broadcastPlanUpdate: vi.fn() } }));
 vi.mock("../services/addons-service.js", () => ({ activateAddon: vi.fn(async () => true), deactivateAddon: vi.fn(async () => true), provisionPlanAddons: vi.fn(async () => {}) }));
@@ -119,7 +136,7 @@ const signupBody = (extra: Record<string, unknown> = {}) => ({
 const read = (p: string) => readFileSync(resolve(__dirname, p), "utf8");
 
 beforeEach(() => {
-  pending = []; orgs = new Map(); preRegInserts = [];
+  pending = []; orgs = new Map(); preRegInserts = []; preRegUpdates = []; queryLog = [];
   process.env["GOOGLE_CLIENT_ID"] = "test-client";
 });
 
@@ -138,6 +155,8 @@ describe("B/C — pre-register", () => {
     expect(r.status).toBe(200);
     expect(preRegInserts).toHaveLength(1);
     expect(preRegInserts[0]![12]).toBe(VALID);
+    expect(queryLog.some(sql => /^INSERT INTO users/i.test(sql))).toBe(false);
+    expect(queryLog.some(sql => /^INSERT INTO organizations/i.test(sql))).toBe(false);
   });
   it("stores NULL for an invalid fp_lid and still accepts the signup", async () => {
     const r = await request(app()).post("/api/auth/pre-register").send(signupBody({ fp_lid: "not-a-lead-id" }));
@@ -154,28 +173,37 @@ describe("B/C — pre-register", () => {
     expect(row[11]).toBeNull();
   });
   it("a retry keeps the first attribution", async () => {
-    await request(app()).post("/api/auth/pre-register").send(signupBody({ fp_lid: VALID }));
-    await request(app()).post("/api/auth/pre-register").send(signupBody({ fp_lid: OTHER }));
-    await request(app()).post("/api/auth/pre-register").send(signupBody());
-    expect(preRegInserts.map(r => r[12])).toEqual([VALID, VALID, VALID]);
+    const first = await request(app()).post("/api/auth/pre-register").send(signupBody({ fp_lid: VALID }));
+    const second = await request(app()).post("/api/auth/pre-register").send(signupBody({ fp_lid: OTHER }));
+    const third = await request(app()).post("/api/auth/pre-register").send(signupBody());
+    expect([first.status, second.status, third.status]).toEqual([200, 200, 200]);
+    expect(second.body.preRegisterToken).toBe(first.body.preRegisterToken);
+    expect(third.body.preRegisterToken).toBe(first.body.preRegisterToken);
+    expect(preRegInserts.map(r => r[12])).toEqual([VALID]);
+    expect(preRegUpdates.map(r => r[10])).toEqual([VALID, VALID]);
   });
 });
 
 describe("D — Google login state", () => {
-  const stateOf = (loc: string) =>
-    JSON.parse(Buffer.from(new URL(loc).searchParams.get("state")!, "base64").toString("utf8"));
+  // Depuis C-07 le `state` envoye a Google est opaque : la charge utile (fp_lid,
+  // seller_code, plan) est portee par le cookie httpOnly fp_oauth_google.
+  const stateOf = (r: { headers: Record<string, unknown> }) => {
+    const raw = ([] as string[]).concat(r.headers["set-cookie"] as string[] ?? [])
+      .find((c) => c.startsWith("fp_oauth_google="))!.split(";")[0]!.slice("fp_oauth_google=".length);
+    return JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+  };
   it("carries a valid fp_lid", async () => {
     const r = await request(app()).get(`/api/auth/google/login?fp_lid=${VALID}`);
     expect(r.status).toBe(302);
-    expect(stateOf(r.headers.location).fp_lid).toBe(VALID);
+    expect(stateOf(r).fp_lid).toBe(VALID);
   });
   it("never carries an invalid one", async () => {
     const r = await request(app()).get("/api/auth/google/login?fp_lid=%3Cscript%3E");
-    expect(stateOf(r.headers.location).fp_lid).toBeNull();
+    expect(stateOf(r).fp_lid).toBeNull();
   });
   it("is unchanged otherwise (seller_code still carried)", async () => {
     const r = await request(app()).get("/api/auth/google/login?seller_code=SELLER-AB12");
-    const st = stateOf(r.headers.location);
+    const st = stateOf(r);
     expect(st.seller_code).toBe("SELLER-AB12");
     expect(st.fp_lid).toBeNull();
   });
@@ -183,7 +211,15 @@ describe("D — Google login state", () => {
 
 describe("E — activation copies fp_lid to the organization", () => {
   const activate = (token: string) =>
-    activateNewSignup({ preRegToken: token, orgId: EMAIL, customerId: "cus_x", selectedPlan: "standard", isTrial: true });
+    activateNewSignup({
+      preRegToken: token,
+      orgId: EMAIL,
+      customerId: "cus_x",
+      subscriptionId: "sub_fp_lid_test",
+      selectedPlan: "standard",
+      isTrial: true,
+      trialEndsAt: new Date("2026-11-23T00:00:00.000Z"),
+    });
 
   it("pending fp_lid → organizations.fp_lid, and the pending row is consumed", async () => {
     pending.push({ token: "t1", email: EMAIL, fp_lid: VALID, seller_id: null, consumed: false });
@@ -233,7 +269,7 @@ describe("F — funnel and finalize contracts", () => {
   });
   it("the Google callback stores the state fp_lid, the first attribution winning", () => {
     const src = read("../routes/auth.ts");
-    expect(src).toMatch(/fpLidFromState = normalizeFpLid\(stateObj\.fp_lid\)/);
+    expect(src).toMatch(/fpLidFromState: string \| null = normalizeFpLid\(oauthState\.fp_lid\)/);
     expect(src).toMatch(/RETURNING fp_lid/);
     expect(src).toMatch(/\.find\(\(v\): v is string => v !== null\) \?\? fpLidFromState/);
     expect(src).toMatch(/postal_code, seller_id, fp_lid, created_at, expires_at/);

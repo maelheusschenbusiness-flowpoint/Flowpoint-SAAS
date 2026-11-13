@@ -1,10 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_MODE"] = "true";
+  process.env["STRIPE_TEST_KEY"] = "sk_test_billing_quote_fixture";
+  process.env["STRIPE_TEST_PRICE_ID_STANDARD"] = "price_ci_test_standard";
+  process.env["STRIPE_TEST_PRICE_ID_PRO"] = "price_ci_test_pro";
+  process.env["STRIPE_TEST_PRICE_ID_ULTRA"] = "price_ci_test_ultra";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_MONITORS10"] = "price_ci_test_monitors10";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"] = "price_ci_test_kde";
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_SEOLA"] = "price_ci_test_seola";
+  process.env["STRIPE_TEST_PRICE_AI_50K"] = "price_ci_test_ai50k";
+});
 
 import {
   ADDON_DEFINITIONS,
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
   PLAN_PRICE_IDS,
+  PLAN_PRICE_IDS_TEST,
+  getPlanPriceId,
 } from "../lib/plans.js";
 import { createBillingQuote, quoteToStripeLineItems, TRIAL_DAYS } from "./billing-quote.js";
 
@@ -142,7 +156,7 @@ describe("billing quote — inclusions", () => {
       // Roadmap keys may remain in historical inclusion metadata, but the
       // commercial guard must reject them before quote construction.
       const included = [...(PLAN_INCLUDED_ADDONS[planId] ?? [])]
-        .filter(k => !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k));
+        .filter(k => !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k) && !RETIRED_ADDONS.has(k));
       if (!included.length) continue;
       const addons = Object.fromEntries(included.map(k => [k, true]));
 
@@ -171,7 +185,37 @@ describe("billing quote — inclusions", () => {
     const items = quoteToStripeLineItems(q);
 
     expect(items).toHaveLength(1); // the plan, nothing else
-    expect(items[0]!.price).toBe(PLAN_PRICE_IDS[planId]);
+    // The quote resolves the plan price for the ACTIVE Stripe mode, so the
+    // assertion has to use the same resolver. Pinning the live map instead made
+    // this test pass or fail on the environment it ran in: green in CI, red in
+    // any shell carrying the Stripe test credentials.
+    expect(items[0]!.price).toBe(getPlanPriceId(planId));
+  });
+
+  it("resolves the plan price for the active Stripe mode — in both modes", () => {
+    // Pinned explicitly rather than read from the environment: the mode is an
+    // argument here, so neither mode can go unverified in a given shell.
+    const planId = Object.keys(PLAN_DEFINITIONS)[0]!;
+
+    const previousMode = process.env["STRIPE_TEST_MODE"];
+    const previousNodeEnv = process.env["NODE_ENV"];
+    try {
+      // NODE_ENV=test is intentionally TEST-only; emulate development mode to
+      // verify the explicit LIVE-key branch without making a Stripe call.
+      process.env["NODE_ENV"] = "development";
+      process.env["STRIPE_TEST_MODE"] = "false";
+      expect(getPlanPriceId(planId, "sk_live_x")).toBe(PLAN_PRICE_IDS[planId]);
+
+      const testPrice = PLAN_PRICE_IDS_TEST[planId];
+      process.env["STRIPE_TEST_MODE"] = "true";
+      expect(getPlanPriceId(planId, "sk_test_x")).toBe(testPrice);
+      expect(testPrice).not.toBe(PLAN_PRICE_IDS[planId]);
+    } finally {
+      if (previousMode === undefined) delete process.env["STRIPE_TEST_MODE"];
+      else process.env["STRIPE_TEST_MODE"] = previousMode;
+      if (previousNodeEnv === undefined) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previousNodeEnv;
+    }
   });
 
   it("rejects an unknown plan or add-on rather than quoting a guess", () => {
@@ -184,10 +228,12 @@ describe("billing quote — inclusions", () => {
 });
 
 // ── P0 — addon lifecycle guards ───────────────────────────────────────────────
-import { COMING_SOON_ADDONS, REMOVED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
+import { COMING_SOON_ADDONS, REMOVED_ADDONS, RETIRED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
 
 describe("billing quote — addon lifecycle guards (P0)", () => {
-  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // slaMonitoring, crmIntegration, ssoEnterprise, aiWorkspaceLaunch, ...
+  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS]
+    .filter(key => !REMOVED_ADDONS.has(key) && !RETIRED_ADDONS.has(key))
+    .slice(0, 4);
 
   it("blocks every coming_soon addon on all checkout paths", () => {
     for (const key of COMING_SOON_KEYS) {
@@ -220,17 +266,38 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     ).toThrow("ADDON_REMOVED");
   });
 
-  it("blocks an addon that is not purchasable on the chosen plan", () => {
-    // ssoEnterprise and aiWorkspaceLaunch are coming_soon so skip those.
-    // Find an addon that is ONLY in ultra's allowed set, not standard.
-    const ultraOnlyKey = [...(PLAN_ALLOWED_ADDONS["ultra"] ?? [])].find(
-      k => !PLAN_ALLOWED_ADDONS["standard"]?.has(k) && !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k),
-    );
-    if (!ultraOnlyKey) return; // No ultra-only addon available — skip gracefully
+  it("allows a ready non-protected add-on purchase from Starter, Pro, and Ultra", () => {
+    for (const plan of ["standard", "pro", "ultra"]) {
+      const quote = createBillingQuote({
+        plan: "",
+        inclusionPlan: plan,
+        addons: { keywordDomination: true },
+      });
+      expect(quote.lines.find(line => line.key === "keywordDomination")).toMatchObject({
+        includedInPlan: false,
+        amountMinor: 3900,
+      });
+    }
+  });
 
-    expect(
-      () => createBillingQuote({ plan: "standard", addons: { [ultraOnlyKey]: true } }),
-    ).toThrow("ADDON_NOT_ALLOWED_FOR_PLAN");
+  it("distinguishes a bundled add-on from an add-on sold separately", () => {
+    expect(() => createBillingQuote({
+      plan: "",
+      inclusionPlan: "standard",
+      addons: { advancedSeoLab: true },
+    })).toThrow("ADDON_NOT_SOLD_SEPARATELY");
+
+    for (const plan of ["pro", "ultra"]) {
+      const quote = createBillingQuote({
+        plan: "",
+        inclusionPlan: plan,
+        addons: { advancedSeoLab: true, backlinkIntelligence: true },
+      });
+      expect(quote.lines.filter(line => line.kind === "addon")).toMatchObject([
+        { key: "advancedSeoLab", includedInPlan: true, amountMinor: 0 },
+        { key: "backlinkIntelligence", includedInPlan: true, amountMinor: 0 },
+      ]);
+    }
   });
 
   it("allowedPlans in PLAN_ALLOWED_ADDONS never includes coming_soon addons", () => {

@@ -12,7 +12,7 @@
  *   • Client Stripe canonique réutilisé — pas de doublon sur nouvelle tentative
  *   • checkout-return.html → Case B (session_id) ne déclenche pas finalize-checkout
  *
- * Test IDs: CA-1 … CA-6
+ * Test IDs: CA-1 … CA-8
  */
 
 import { describe, it, expect } from "vitest";
@@ -24,6 +24,8 @@ const DIR = import.meta.dirname ?? __dirname;
 
 const billingTs       = fs.readFileSync(path.join(DIR, "../routes/billing.ts"), "utf8");
 const publicBillingTs = fs.readFileSync(path.join(DIR, "../routes/public-billing.ts"), "utf8");
+const stripeWebhookTs = fs.readFileSync(path.join(DIR, "../routes/stripe-webhook.ts"), "utf8");
+const authTs          = fs.readFileSync(path.join(DIR, "../routes/auth.ts"), "utf8");
 const checkoutReturn  = (() => {
   // Test file: artifacts/api-server/src/tests/ → 3 levels up = artifacts/
   const p = path.join(DIR, "../../../flowpoint-export/checkout-return.html");
@@ -101,10 +103,8 @@ describe("CA-2 — finalize-checkout (checkout_session) rejette les sessions non
 
 /* ── CA-3 : finalize-checkout payment_intent — status non-succeeded → 400 ── */
 describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirmés", () => {
-  it("guard pi.status !== 'succeeded' && !== 'processing' → 400", () => {
-    expect(publicBillingTs).toMatch(
-      /pi\.status\s*!==\s*["']succeeded["']\s*&&\s*pi\.status\s*!==\s*["']processing["']/
-    );
+  it("only a succeeded PaymentIntent passes; processing is rejected with 400", () => {
+    expect(publicBillingTs).toMatch(/pi\.status\s*!==\s*["']succeeded["']/);
     expect(publicBillingTs).toMatch(/pi\.status\s*!==[\s\S]{0,200}res\.status\(400\)/);
   });
 
@@ -115,10 +115,60 @@ describe("CA-3 — finalize-checkout (payment_intent) rejette les PI non confirm
 
   it("les guards PI/SI précèdent les premiers appels DB dans finalize-checkout", () => {
     const piGuardIdx   = publicBillingTs.indexOf("pi.status !== \"succeeded\"");
-    const firstDbWrite = publicBillingTs.indexOf("await _aoPool.connect");
+    const firstDbWrite = publicBillingTs.indexOf("verifyAiCreditBeneficiary(_aoPool");
     expect(piGuardIdx).toBeGreaterThan(0);
     expect(firstDbWrite).toBeGreaterThan(0);
     expect(piGuardIdx, "guard PI doit précéder le premier accès DB").toBeLessThan(firstDbWrite);
+  });
+});
+
+describe("CA-9 — abandoned signup creates no account or Stripe Customer", () => {
+  const preRegisterStart = authTs.indexOf('router.post("/auth/pre-register"');
+  const preRegisterEnd = authTs.indexOf('router.get("/auth/checkout-complete"', preRegisterStart);
+  const preRegister = authTs.slice(preRegisterStart, preRegisterEnd);
+  const customerResolutionStart = publicBillingTs.indexOf(
+    "// ── Pre-registration: read identity and reuse only an already-anchored Customer",
+  );
+  const authenticatedResolutionStart = publicBillingTs.indexOf(
+    "// For authenticated users (cookie session, no preRegisterToken)",
+    customerResolutionStart,
+  );
+  const customerResolution = publicBillingTs.slice(customerResolutionStart, authenticatedResolutionStart);
+
+  it("pre-registration writes only a pending row, never a user, organization, or Stripe Customer", () => {
+    expect(preRegisterStart).toBeGreaterThan(-1);
+    expect(preRegisterEnd).toBeGreaterThan(preRegisterStart);
+    expect(preRegister).toMatch(/INSERT INTO pending_signups/);
+    expect(preRegister).not.toMatch(/INSERT INTO users|INSERT INTO organizations|stripe\.customers\.(create|del)\s*\(/i);
+    expect(preRegister).not.toMatch(/DELETE FROM pending_signups/i);
+    expect(preRegister).toMatch(/SELECT token, fp_lid[\s\S]*FOR UPDATE/);
+    expect(preRegister).toMatch(/UPDATE pending_signups[\s\S]*WHERE token = \$12/);
+  });
+
+  it("opening checkout performs no Customer creation, search, or mutation", () => {
+    expect(customerResolutionStart).toBeGreaterThan(-1);
+    expect(authenticatedResolutionStart).toBeGreaterThan(customerResolutionStart);
+    expect(customerResolution).not.toMatch(/stripe\.customers\.(create|list|update|del)\s*\(/i);
+    expect(publicBillingTs).toMatch(/INTERVAL '7 days'/);
+  });
+
+  // Assertion textuelle de #410 remplacee (fusion #390 x #410, validee le 09/11) :
+  // elle verifiait l'ORDRE des `case` du webhook, pas le comportement, et elle
+  // exprimait l'ancien contrat (SetupIntent sans effet) que A-09 remplace. Le
+  // comportement — un SetupIntent reussi n'aboutit a `trialing` QUE si une
+  // souscription Stripe trialing reelle existe, jamais d'acces premium sinon,
+  // rejeu, concurrence webhook/finalize, echec transitoire puis relivraison,
+  // pas de deuxieme essai — est prouve contre PostgreSQL dans
+  // src/tests/signup-410-guarantees-db.test.ts. Reste verifie ici : les deux
+  // chemins d'intent ATTENDENT la resolution du Customer et l'activation.
+  it("intent recovery awaits Customer resolution and activation (no fire-and-forget)", () => {
+    const start = stripeWebhookTs.indexOf('case "payment_intent.succeeded":');
+    const end = stripeWebhookTs.indexOf('case "customer.subscription.created":', start);
+    const intentCase = stripeWebhookTs.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(intentCase).toMatch(/await ensurePendingSignupStripeCustomer/);
+    expect(intentCase).toMatch(/await activateNewSignup/);
+    expect(intentCase).not.toMatch(/activateNewSignup\([\s\S]{0,400}\)\s*\.catch/);
   });
 });
 
@@ -295,5 +345,79 @@ describe("CA-6 — checkout-return.html Case B (session_id) utilise billing/veri
     expect(caseABlock).toContain("/api/public/finalize-checkout");
     // intentId doit être non-vide (guard côté client)
     expect(caseABlock).toMatch(/paymentIntentId|setupIntentId/);
+  });
+});
+
+/* ── CA-8 : retours Checkout — session restaurée et statut backend vérifié ── */
+describe("CA-8 — retours Checkout add-on/crédits confirmés par l’organisation", () => {
+  const verifyStart = billingTs.indexOf('router.get("/billing/verify"');
+  const verifyEnd = billingTs.indexOf("\n// ── POST /billing/portal", verifyStart);
+  const verifyBlock = billingTs.slice(verifyStart, verifyEnd > verifyStart ? verifyEnd : undefined);
+
+  it("restaure la session cookie avant de router un Checkout hébergé", () => {
+    expect(checkoutReturn).toContain("fetch('/api/auth/session-restore'");
+    expect(checkoutReturn).toContain("sessionStorage.setItem('fp_session_token', data.token)");
+    const routeStart = checkoutReturn.lastIndexOf("restoreSession().then(function(restored)");
+    const routeBlock = checkoutReturn.slice(routeStart);
+    expect(routeStart).toBeGreaterThan(0);
+    expect(routeBlock.indexOf("runBillingVerify()")).toBeLessThan(
+      routeBlock.indexOf("fetch('/api/auth/checkout-complete")
+    );
+    expect(routeBlock).toContain("checkoutKind === 'addon' || checkoutKind === 'ai_credits'");
+  });
+
+  it("ne confirme les crédits IA qu'après insertion liée à la session et à l'organisation", () => {
+    expect(verifyBlock).toContain("stripe_session_id = $1 AND org_id::text = $2");
+    expect(verifyBlock).toContain("res.status(202).json({ ok: false, pending: true");
+    expect(verifyBlock.indexOf("if (isAiCredits)")).toBeLessThan(verifyBlock.indexOf("const planMeta"));
+  });
+
+  it("ne confirme pas un add-on en attente du webhook et ne lui attribue pas un plan", () => {
+    expect(verifyBlock).toContain('checkoutType === "addon_only"');
+    expect(verifyBlock).toContain("billingCtx.addons[key]");
+    expect(verifyBlock).toContain('checkoutType: "addon_only"');
+    expect(verifyBlock).toContain("if (isAddonCheckout || immediateAddonKeys.length > 0)");
+    expect(verifyBlock.indexOf("if (isAddonCheckout)")).toBeLessThan(verifyBlock.indexOf("const planMeta"));
+  });
+
+  it("traite aussi les crédits IA des paniers combinés sans arrêter le webhook d'abonnement", () => {
+    const creditWebhookStart = stripeWebhookTs.indexOf("const aiCreditsOnlyCheckout");
+    const subscriptionStart = stripeWebhookTs.indexOf("// ── Subscription checkout", creditWebhookStart);
+    const creditWebhookBlock = stripeWebhookTs.slice(creditWebhookStart, subscriptionStart);
+    expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout || packFromField)");
+    expect(creditWebhookBlock).toContain("if (aiCreditsOnlyCheckout) break");
+    // Verification serveur : credits recalcules depuis le catalogue a partir des lignes Stripe (pas les metadata).
+    // Composition lue dans les LIGNES Stripe (price id x quantite), jamais dans les metadata.
+    expect(creditWebhookBlock).toContain("fetchSessionLineItems(");
+    expect(creditWebhookBlock).toContain("resolveAiCreditsFromLineItems({");
+    expect(creditWebhookBlock).toContain("creditsOnly: aiCreditsOnlyCheckout");
+    expect(creditWebhookBlock).not.toContain("resolveAiCreditPurchase(");
+    expect(creditWebhookBlock).toContain("recordAiCreditPurchase(");
+    expect(creditWebhookBlock).toContain("throw e");
+    expect(verifyBlock).toContain("const aiCreditPacks = String(sessionMeta[\"ai_credits\"] ?? \"\")");
+    expect(verifyBlock).toContain("...(verifiedAiCredits > 0 ? { credits: verifiedAiCredits } : {})");
+    expect(checkoutReturn).toContain("showAddonSuccess(Number(data.credits || 0))");
+  });
+
+  it("vérifie que la session Stripe appartient à l'organisation authentifiée", () => {
+    // La garde vit desormais dans services/billing-verify-guards.ts (testee en comportement
+    // par routes/billing-verify-ownership.test.ts) ; ici on verifie qu'elle precede 402/credits/plan.
+    expect(verifyBlock).toContain("sessionBelongsToOrg(session");
+    expect(verifyBlock).toContain("does not belong to the authenticated organization");
+    expect(verifyBlock.indexOf("sessionBelongsToOrg(")).toBeLessThan(verifyBlock.indexOf("payment_status !== \"paid\" && session.status"));
+  });
+
+  it("retourne les achats add-on/crédits vers l'écran dédié et gère l'annulation", () => {
+    expect(billingTs).toContain("checkout-return.html?session_id={CHECKOUT_SESSION_ID}&kind=${checkoutKind}");
+    expect(billingTs).toContain("checkout-return.html?cancelled=1&kind=${checkoutKind}");
+    expect(billingTs).toContain("&kind=ai_credits");
+    expect(publicBillingTs).toContain("returnKindQuery");
+    expect(checkoutReturn).toContain("params.get('cancelled') === '1'");
+  });
+
+  it("réessaie pendant le délai webhook sans afficher un succès prématuré", () => {
+    expect(checkoutReturn).toContain("runBillingVerify(attempt + 1)");
+    expect(checkoutReturn).toContain("function showActivationPending()");
+    expect(checkoutReturn).toContain("status === 202");
   });
 });

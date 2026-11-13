@@ -1,5 +1,7 @@
 import { Router, type Request, type Response, type NextFunction, type IRouter } from "express";
+import { getPublishableKey } from "../services/stripe-factory.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { writeRoleGuard } from "../middlewares/writeRoleGuard.js";
 import healthRouter from "./health.js";
 import eventsRouter from "./events.js";
 import shareRouter from "./share.js";
@@ -28,19 +30,27 @@ import aiCreditsRouter from "./ai-credits.js";
 import behavioralRouter, { publicBehavioralRouter } from "./behavioral.js";
 import croRouter from "./cro.js";
 import revenueleakRouter from "./revenue-leak.js";
+import abTestingRouter from "./ab-testing.js";
 import forecastRouter from "./forecast.js";
 import automationRouter from "./automation.js";
 import integrationsRouter from "./integrations.js";
-import crmRouter from "./crm.js";
+import crmRouter, { crmPublicRouter } from "./crm.js";
 import permissionsRouter from "./permissions.js";
 import marketIntelRouter from "./market-intelligence.js";
 import reviewIntelRouter from "./review-intelligence.js";
 import gbpPostsRouter from "./gbp-posts.js";
 import localMapsRouter from "./local-maps.js";
+import localPresenceOptimizerRouter from "./local-presence-optimizer.js";
+import localLandingOpportunitiesRouter from "./local-landing-opportunities.js";
+import seoChangeImpactRouter from "./seo-change-impact.js";
+import agencyPortfolioPrioritiesRouter from "./agency-portfolio-priorities.js";
+import technicalSeoFixVerificationRouter from "./technical-seo-fix-verification.js";
+import organicCampaignTrackerRouter from "./organic-campaign-tracker.js";
 import ssoRouter, { publicSsoRouter } from "./sso.js";
 import whiteLabelRouter from "./white-label.js";
 import aiWorkspaceLaunchRouter from "./ai-workspace-launch.js";
 import googleRouter, { googlePublicRouter } from "./google.js";
+import { gscOAuthPublicRouter, gscOAuthRouter } from "./google-gsc-oauth.js";
 import seoRouter from "./seo.js";
 import mapsRouter from "./maps.js";
 import ga4Router from "./ga4.js";
@@ -51,6 +61,7 @@ import gscRouter from "./gsc.js";
 import betterstackRouter from "./betterstack.js";
 import diagnosticsRouter from "./diagnostics.js";
 import adminRouter from "./admin.js";
+import adminConversionRouter from "./admin-conversion.js";
 import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
@@ -63,11 +74,14 @@ import campaignsRouter from "./campaigns.js";
 import audienceRouter from "./audience.js";
 import liveRouter from "./live.js";
 import conversionRouter from "./conversion.js";
+import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 import dataExplorerRouter from "./data-explorer.js";
 import clientModeRouter from "./client-mode.js";
 import progressionRouter from "./progression.js";
 import orgDataExportRouter from "./org-data-export.js";
 import onboardingRouter from "./onboarding.js";
+import gbpPerformanceRouter from "./gbp-performance.js";
+import { keysEqual } from "../lib/auth-token.js";
 
 const router: IRouter = Router();
 
@@ -88,16 +102,20 @@ router.use(authRouter);
 
 // Public Stripe config (publishable key, billing/config) — no API key required.
 router.get("/billing/config", (_req, res) => {
-  res.json({ publishableKey: process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "" });
+  // Selecteur unique : la cle publiable suit le mode de la cle secrete active.
+  res.json({ publishableKey: getPublishableKey() });
 });
 
 // Google OAuth callbacks — must be public; Google redirects here without our Bearer token.
 // All other /google/* management routes are protected below after requireAuth.
 router.use(googlePublicRouter);
+router.use(gscOAuthPublicRouter);
+router.use(crmPublicRouter);
 
 // Admin routes — protected by x-admin-key header (not user session).
 // Must be registered before requireAuth so ops scripts don't need a user session.
 router.use(adminRouter);
+router.use(adminConversionRouter);
 
 // Behavioral tracking endpoints — called from external client-side JS snippets;
 // must be public (no API key from browser context possible).
@@ -141,7 +159,7 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   if (req.userId === "service") {
     // Verify the credential arrived via X-Api-Key, not a forged Bearer DB session.
     const apiKeyHeader = req.headers["x-api-key"];
-    if (!serviceSecret || typeof apiKeyHeader !== "string" || apiKeyHeader !== serviceSecret) {
+    if (!serviceSecret || typeof apiKeyHeader !== "string" || !keysEqual(apiKeyHeader, serviceSecret)) {
       // userId="service" came from a Bearer session — reject as fraudulent.
       res.status(401).json({ error: "Unauthorized: invalid credentials" });
       return;
@@ -182,6 +200,12 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// C-04 — garde d'ecriture PAR DEFAUT : toute route non-GET exige au moins le role
+// `member` (owner/admin/member), sauf exceptions explicites et commentees dans
+// middlewares/writeRoleGuard.ts (analyses IA, etat d'interface, webhooks a jeton).
+// Les gardes posees route par route restent actives : celle-ci n'est qu'un plancher.
+router.use(writeRoleGuard);
+
 router.use(meRouter);
 router.use(onboardingRouter);
 router.use(orgDataExportRouter);
@@ -210,6 +234,7 @@ router.use(aiCreditsRouter);
 router.use(behavioralRouter);
 router.use(croRouter);
 router.use(revenueleakRouter);
+router.use(abTestingRouter);
 router.use(forecastRouter);
 router.use(automationRouter);
 router.use(integrationsRouter);
@@ -219,10 +244,18 @@ router.use(marketIntelRouter);
 router.use(reviewIntelRouter);
 router.use(gbpPostsRouter);
 router.use(localMapsRouter);
+router.use(localPresenceOptimizerRouter);
+router.use(localLandingOpportunitiesRouter);
+router.use(seoChangeImpactRouter);
+router.use(agencyPortfolioPrioritiesRouter);
+router.use(technicalSeoFixVerificationRouter);
+router.use(organicCampaignTrackerRouter);
 router.use(ssoRouter);
 router.use(whiteLabelRouter);
 router.use(aiWorkspaceLaunchRouter);
 router.use(googleRouter);
+router.use(gbpPerformanceRouter);
+router.use(gscOAuthRouter);
 router.use(seoRouter);
 router.use(mapsRouter);
 router.use(ga4Router);
@@ -241,6 +274,7 @@ router.use("/campaigns", campaignsRouter);
 router.use("/audience",    audienceRouter);
 router.use("/live",        liveRouter);
 router.use("/conversion",  conversionRouter);
+router.use(conversionOpportunityEngineRouter);
 router.use("/data-explorer", dataExplorerRouter);
 router.use("/client-mode", clientModeRouter);
 router.use(progressionRouter);

@@ -2,6 +2,14 @@
  * FlowPoint — In-memory sliding window rate limiter
  * Per-org isolation, per-endpoint buckets, plan-aware limits.
  * No Redis dependency — works in single-node deployments.
+ *
+ * LIMITE CONNUE (audit E-03, non traitee ici) : le store `windows` est en
+ * memoire du processus. Il n'est ni partage entre instances ni conserve apres
+ * redemarrage ; la limite effective est donc multipliee par le nombre
+ * d'instances. Valide uniquement tant que le service reste mono-instance.
+ *
+ * Adresse client (audit C-06) : toujours `req.ip` via clientIp() ; ne jamais
+ * lire X-Forwarded-For directement (valeur controlee par le client).
  */
 
 import type { Request, Response, NextFunction } from "express";
@@ -228,9 +236,9 @@ export const webhookRateLimit = createRateLimit('webhooksPerMinute');
 /** The caller's address, as the proxy reports it. One place, so every per-IP
  *  bucket keys on exactly the same string. */
 export function clientIp(req: Request): string {
-  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-    ?? req.ip
-    ?? "unknown";
+  // Express resolves this through the configured trust-proxy policy. Never
+  // take the leftmost X-Forwarded-For value directly: clients can supply it.
+  return req.ip ?? "unknown";
 }
 
 /**
@@ -285,6 +293,10 @@ export function createIpRateLimit(
  * a changed cart) while bounding what one address can drive.
  */
 export const publicCheckoutRateLimit = createIpRateLimit("public_checkout", 20, 60_000);
+
+// Telemetrie du tunnel : volume plus eleve qu'un checkout (une page vue, un
+// clic), mais borne pour qu'un appelant ne puisse pas gonfler la table.
+export const funnelEventRateLimit = createIpRateLimit("funnel_event", 60, 60_000);
 
 /**
  * Strict per-IP rate limiter for auth endpoints (login, register).
@@ -367,10 +379,7 @@ export function behavioralRateLimit(
     // For the token exchange endpoint also enforce a per-IP limit to deter
     // token harvesting from a single source.
     if (endpoint === "token") {
-      const ip =
-        (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
-        req.ip ??
-        "unknown";
+      const ip = clientIp(req);
       const ipKey = `behavioral:ip:token:${ip}`;
       const { allowed: ipOk, resetInMs: ipReset } = checkRate(
         ipKey,

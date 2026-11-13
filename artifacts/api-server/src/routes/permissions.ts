@@ -3,16 +3,30 @@ import { safeErrMsg } from "../lib/safe-error.js";
 const errStatus = (err: unknown): number => (err && typeof err === "object" && typeof (err as { statusCode?: unknown }).statusCode === "number") ? (err as { statusCode: number }).statusCode : 500;
 const errMsg = (err: unknown): string => errStatus(err) === 500 ? safeErrMsg(err) : (err instanceof Error ? err.message : String(err));
 import { requireAdmin } from "../middlewares/requireAdmin.js";
-import { getRoles, createRole, updateRole, deleteRole, assignRole, getPermissionLogs, getAccessAudits, logAccess, getPermissionsStats, ALL_RESOURCES, ALL_ACTIONS } from "../services/permissions-service.js";
+import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
+import { getRoles, createRole, updateRole, deleteRole, assignRole, getPermissionLogs, getAccessAudits, logAccess, getPermissionsStats } from "../services/permissions-service.js";
+import { ENTERPRISE_PERMISSION_ACTIONS, ENTERPRISE_PERMISSION_RESOURCES } from "../services/enterprise-permission-engine.js";
 
 const router = Router();
+// This router is mounted in the shared API router. Keep the entitlement gate
+// on its own endpoints; a router-wide gate would also block unrelated routes
+// mounted after this router (for example /client-mode/*).
+router.use(
+  ["/permissions", "/roles", "/team/permissions", "/access/logs", "/team/remove"],
+  requireAddon("enterprisePermissions", "Enterprise Permissions"),
+);
 const org  = (req: import("express").Request) => req.orgId ?? "default";
-const plan = (req: import("express").Request) => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
+/**
+ * Plan de l'organisation LU EN BASE (resolvePlanFromDB, meme source que planGate/keywords.ts).
+ * Avant : repli sur Pro via `req.me` -- `req.me` n'est renseigne par aucun middleware, donc TOUTE
+ * organisation (Standard comprise) etait traitee comme Pro. Plan illisible => "standard" (le moins permissif).
+ */
+const plan = async (req: import("express").Request): Promise<string> => (await resolvePlanFromDB(req)) ?? "standard";
 
 router.get("/permissions", requireAdmin, async (req, res) => {
   try {
-    const [roles, stats] = await Promise.all([getRoles(org(req)), getPermissionsStats(org(req))]);
-    res.json({ roles, stats, resources: ALL_RESOURCES, actions: ALL_ACTIONS, plan: plan(req) });
+    const [roles, stats, orgPlan] = await Promise.all([getRoles(org(req)), getPermissionsStats(org(req)), plan(req)]);
+    res.json({ roles, stats, resources: ENTERPRISE_PERMISSION_RESOURCES, actions: ENTERPRISE_PERMISSION_ACTIONS, plan: orgPlan, enterprisePermissionsActive: true });
   } catch (err) { res.status(errStatus(err)).json({ error: errMsg(err) }); }
 });
 
@@ -29,7 +43,7 @@ router.post("/roles/create", requireAdmin, async (req, res) => {
   };
   if (!name) { res.status(400).json({ error: "name requis" }); return; }
   try {
-    const role = await createRole(org(req), plan(req), { name, description, color, permissions, parentRoleId });
+    const role = await createRole(org(req), await plan(req), { name, description, color, permissions, parentRoleId });
     await logAccess(org(req), 'system', 'role.created', 'permissions', { roleId: role.id, name });
     res.status(201).json({ ok: true, role });
   } catch (err) {

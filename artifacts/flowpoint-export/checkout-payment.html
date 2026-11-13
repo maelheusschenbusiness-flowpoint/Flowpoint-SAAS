@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
+  <script>(function(){var t;try{t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme');}catch(e){}if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}catch(e){t='dark';}}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;})();</script>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
@@ -10,39 +11,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
   <meta name="robots" content="noindex, nofollow"/>
-  <title>Paiement — FlowPoint</title>
-  <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
-  <script src="https://js.stripe.com/v3/"></script>
+  <title>Payment — FlowPoint</title>
+  <script>
+    /* Diagnostic du chargement de Stripe.js : on enregistre la cause AVANT de choisir un message
+       (CSP, réseau/blocage). Un bloqueur n'est jamais supposé par défaut. */
+    window.__fpStripeLoad = { error: false, csp: false };
+    document.addEventListener('securitypolicyviolation', function (e) {
+      if (String(e.blockedURI || '').indexOf('stripe.com') >= 0) window.__fpStripeLoad.csp = true;
+    });
+  </script>
+  <script src="/fp-locale.js?v=20261030"></script>
+  <script src="/funnel-theme.js?v=20261110" defer></script>
+  <script src="https://js.stripe.com/v3/" onerror="window.__fpStripeLoad.error = true"></script>
+  <link rel="stylesheet" href="/funnel-theme.css?v=20261110">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      --bg:        #0b1120;
-      --bg2:       #111827;
-      --surface:   #1e293b;
-      --border:    #2d3f55;
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#3b82f6;
-      --text:      #f1f5f9;
-      --text-soft: #94a3b8;
-      --text-muted:#64748b;
-      --green:     #34d399;
-      --green-bg:  rgba(52,211,153,0.08);
-      --green-brd: rgba(52,211,153,0.2);
-      --radius:    16px;
-      --shadow:    0 8px 40px rgba(0,0,0,.5);
-    }
-    html[data-theme="light"] {
-      --bg:        #f8faff;
-      --bg2:       #ffffff;
-      --surface:   #f1f5f9;
-      --border:    rgba(0,0,0,.09);
-      --text:      #0f172a;
-      --text-soft: #475569;
-      --text-muted:#94a3b8;
-      --shadow:    0 4px 24px rgba(0,0,0,.1);
-    }
+    /* Tokens: /funnel-theme.css. Page-only aliases below. */
+    :root { --radius: 16px; --green-brd: var(--green-border); --amber: #fbbf24; --amber-bg: rgba(234,179,8,.08); --amber-border: rgba(234,179,8,.25); }
+    html[data-theme="light"] { --amber: #92400e; --amber-bg: rgba(217,119,6,.08); --amber-border: rgba(217,119,6,.3); }
     html[data-theme="dark"] .fp-card { background: rgba(8,14,30,0.94); border-color: rgba(255,255,255,0.07); }
 
     html, body {
@@ -104,8 +91,7 @@
     /* ── Alert ── */
     .fp-alert { display: none; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
     .fp-alert.show { display: block; }
-    .fp-alert-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
-    html[data-theme="light"] .fp-alert-error { color: #dc2626; }
+    .fp-alert-error { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); }
 
     /* ── Buttons ── */
     .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 15px 20px; border: none; border-radius: 11px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s; text-decoration: none; }
@@ -128,6 +114,7 @@
     .fp-secure-note { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
     .fp-trial-note { text-align: center; font-size: 12.5px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-brd); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
   </style>
+<script src="/utm-capture.js" defer></script>
 </head>
 <body>
 
@@ -139,11 +126,11 @@
 
 <!-- Steps -->
 <div class="fp-steps">
-  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Tarifs</span></div>
+  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Plans</span></div>
   <div class="fp-step-sep"></div>
-  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Récapitulatif</span></div>
+  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Summary</span></div>
   <div class="fp-step-sep"></div>
-  <div class="fp-step active"><div class="fp-step-num">3</div><span>Paiement</span></div>
+  <div class="fp-step active"><div class="fp-step-num">3</div><span>Payment</span></div>
 </div>
 
 <!-- Wrap -->
@@ -151,27 +138,27 @@
 
   <!-- Order Summary -->
   <div class="fp-card" id="fp-summary-card">
-    <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Chargement…</p></div>
+    <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Loading…</p></div>
   </div>
 
   <!-- Payment + Address -->
   <div class="fp-card" id="fp-payment-card">
 
     <!-- Payment Element -->
-    <div class="fp-card-title">Informations de paiement</div>
+    <div class="fp-card-title">Card details</div>
     <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
-    <div id="fp-payment-element" role="group" aria-label="Informations de paiement"></div>
+    <div id="fp-payment-element" role="group" aria-label="Card details"></div>
 
-    <span id="fp-pay-desc" hidden>Confirme et finalise votre abonnement FlowPoint. Paiement sécurisé par Stripe.</span>
-    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirmer et payer" aria-describedby="fp-pay-desc">
-      <span id="fp-btn-text">Chargement…</span>
+    <span id="fp-pay-desc" hidden>Confirms your FlowPoint subscription. A card is required; payments are secured by Stripe.</span>
+    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirm and start" aria-describedby="fp-pay-desc">
+      <span id="fp-btn-text">Loading…</span>
       <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
     </button>
-    <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Récapitulatif</a>
+    <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Back to summary</a>
     <p class="fp-secure-note">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      Paiement sécurisé · TLS · vos données ne transitent pas par nos serveurs
+      Secure payment · TLS · your card details never touch our servers
     </p>
   </div>
 
@@ -203,7 +190,7 @@
   var quote         = null;   /* devis serveur — seule source de montants */
   var stripe, elements;
   var _paymentReady = false;
-  var _payBtnLabel  = 'Confirmer →';
+  var _payBtnLabel  = 'Confirm →';
   var _mode         = 'setup';
   function authHeaders() {
     try {
@@ -252,17 +239,39 @@
   /* ── Helpers ── */
   function eur(minor) {
     var v = (Number(minor) || 0) / 100;
-    return (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) + '€';
+    return '€' + (v % 1 === 0 ? String(v) : v.toFixed(2));
   }
   function escHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-  function showAlert(msg) {
+  function showAlert(msg, withRetry) {
     var el = document.getElementById('fp-alert');
     el.textContent = msg;
+    if (withRetry) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.id = 'fp-retry-load';
+      b.className = 'fp-btn fp-btn-ghost';
+      b.style.marginTop = '10px';
+      b.textContent = 'Try again';
+      b.addEventListener('click', function () { window.location.reload(); });
+      el.appendChild(document.createElement('br'));
+      el.appendChild(b);
+    }
     el.classList.add('show');
+  }
+  /* Message adapté à la cause réelle de l'échec de chargement de Stripe.js. */
+  function stripeLoadMessage() {
+    var st = window.__fpStripeLoad || {};
+    if (st.csp) {
+      return ('The browser blocked the Stripe payment module (site security policy). Try again; if the problem persists, contact support.');
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return ('You appear to be offline: the Stripe payment module could not be loaded. Check your Internet connection, then try again.');
+    }
+    return ('The Stripe payment module could not be loaded (unstable network, firewall, browser extension or temporary outage). Try again; if the problem persists, try another network or temporarily disable your extensions.');
   }
   function hideAlert() { document.getElementById('fp-alert').classList.remove('show'); }
   function setLoading(on, label) {
@@ -272,6 +281,12 @@
     btn.disabled = on;
     spin.style.display = on ? 'inline-block' : 'none';
     if (label) txt.textContent = label;
+  }
+  /* Libellé du bouton final : essai (rien débité aujourd'hui) vs paiement immédiat. */
+  function submitLabel() {
+    var immediate = quote ? (Number(quote.amountDueTodayMinor) || 0) : 0;
+    if (_mode !== 'payment' && immediate === 0) return 'Start my free trial';
+    return 'Pay ' + eur(quote ? (immediate || quote.totalMinor) : 0) + ' and subscribe';
   }
   function _tryEnablePayBtn() {
     if (_paymentReady) {
@@ -283,47 +298,47 @@
   /* ── Récapitulatif rendu exclusivement depuis le devis serveur ── */
   function renderSummaryLoading() {
     document.getElementById('fp-summary-card').innerHTML =
-      '<div class="fp-card-title">Récapitulatif</div>' +
-      '<div class="fp-sum-row"><span class="fp-sum-label muted">Calcul du montant…</span></div>';
+      '<div class="fp-card-title">Summary</div>' +
+      '<div class="fp-sum-row"><span class="fp-sum-label muted">Calculating the amount…</span></div>';
   }
 
   function renderSummary(q) {
-    var html = '<div class="fp-card-title">Récapitulatif</div>';
+    var html = '<div class="fp-card-title">Summary</div>';
 
     (q.lines || []).forEach(function (line) {
       var label = escHtml(line.name) + (line.quantity > 1 ? ' ×' + line.quantity : '');
       var badge, amount;
 
       if (line.includedInPlan) {
-        badge  = '<span class="fp-sum-badge fp-badge-incl">Inclus</span>';
-        amount = '<span class="fp-sum-amount muted">0€</span>';
+        badge  = '<span class="fp-sum-badge fp-badge-incl">Included</span>';
+        amount = '<span class="fp-sum-amount muted">€0</span>';
       } else if (line.kind === 'plan') {
         badge = q.trialEligible && q.trialDays > 0
-          ? '<span class="fp-sum-badge fp-badge-trial">' + q.trialDays + 'j offerts</span>'
+          ? '<span class="fp-sum-badge fp-badge-trial">' + q.trialDays + ' days free</span>'
           : '';
-        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/mois</span>';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/month</span>';
       } else if (line.interval === 'one_time') {
-        badge  = '<span class="fp-sum-badge fp-badge-now">Maintenant</span>';
+        badge  = '<span class="fp-sum-badge fp-badge-now">Today</span>';
         amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '</span>';
       } else {
         badge = line.billedToday
-          ? '<span class="fp-sum-badge fp-badge-now">Maintenant · mensuel</span>'
-          : '<span class="fp-sum-badge fp-badge-trial">Après essai · mensuel</span>';
-        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/mois</span>';
+          ? '<span class="fp-sum-badge fp-badge-now">Today · monthly</span>'
+          : '<span class="fp-sum-badge fp-badge-trial">After trial · monthly</span>';
+        amount = '<span class="fp-sum-amount">' + eur(line.amountMinor) + '/month</span>';
       }
 
       html += '<div class="fp-sum-row"><span class="fp-sum-label">' + label + badge + '</span>' + amount + '</div>';
     });
 
     html += '<div class="fp-divider"></div>';
-    html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span>' +
+    html += '<div class="fp-total-row"><span class="fp-total-lbl">Due today</span>' +
             '<span class="fp-total-val">' + eur(q.amountDueTodayMinor) + '</span></div>';
 
     if (q.plan && q.recurringAmountMinor > 0) {
       html += '<div class="fp-total-row"><span class="fp-total-lbl">' +
-              (q.trialEligible && q.trialDays > 0 ? 'Mensuel après essai' : 'Mensuel') +
+              (q.trialEligible && q.trialDays > 0 ? 'Monthly after trial' : 'Monthly') +
               '</span><span class="fp-total-val after">' + eur(q.recurringAmountMinor) +
-              '<span class="fp-total-unit">/mois</span></span></div>';
+              '<span class="fp-total-unit">/month</span></span></div>';
     }
 
     document.getElementById('fp-summary-card').innerHTML = html;
@@ -333,14 +348,73 @@
     if (!q.plan || !q.trialEligible || !q.trialDays) return;
     var noteEl = document.getElementById('fp-trial-note');
     if (!noteEl) return;
-    var daysLabel = q.trialDays === 1 ? '1\u00a0jour' : q.trialDays + '\u00a0jours';
-    noteEl.textContent = q.amountDueTodayMinor === 0
-      ? 'Aucun débit aujourd\'hui. Premier paiement après ' + daysLabel + '.'
-      : 'Add-ons facturés aujourd\'hui. Abonnement débité après ' + daysLabel + '.';
+    var daysLabel = q.trialDays === 1 ? '1\u00a0day' : q.trialDays + '\u00a0days';
+    var planLine = (q.lines || []).filter(function (l) { return l.kind === 'plan'; })[0];
+    var after = planLine ? 'Then ' + eur(planLine.amountMinor) + '/month after your ' + q.trialDays + '-day trial. ' : 'Your subscription is charged after ' + daysLabel + '. ';
+    noteEl.textContent = (q.amountDueTodayMinor === 0
+      ? '€0 today · Card required. '
+      : 'Add-ons billed today (' + eur(q.amountDueTodayMinor) + ') · Card required. ') +
+      after + 'Cancel anytime before to avoid being charged.';
     noteEl.style.display = 'block';
   }
 
   /* ── Init Stripe : un seul appel renvoie l'intent ET le devis ── */
+  function fpFunnelAttribution() {
+    try {
+      var consented = document.cookie.split(';').some(function (cookie) {
+        return cookie.trim() === 'fp_analytics_consent=accepted';
+      });
+      if (!consented) return {};
+
+      var visitorId = localStorage.getItem('fp_vid') || '';
+      var validVisitorId =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(visitorId) ||
+        /^fp-[a-z0-9]+-[a-z0-9]+$/i.test(visitorId);
+      var source = localStorage.getItem('fp_source') || '';
+      var validSource = ['smartlead', 'google', 'direct', 'social', 'other_campaign'].indexOf(source) !== -1;
+      if (!validVisitorId) return {};
+      return {
+        visiteurId: visitorId,
+        source: validSource ? source : undefined,
+      };
+    } catch (e) { return {}; }
+  }
+
+  /* Apparence Stripe dérivée du thème courant (html[data-theme]). */
+  function stripeAppearance() {
+    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    return {
+      theme: isDark ? 'night' : 'stripe',
+      variables: {
+        colorPrimary:       '#2563eb',
+        colorBackground:    isDark ? '#111827' : '#ffffff',
+        colorText:          isDark ? '#f1f5f9' : '#0f172a',
+        colorTextSecondary: isDark ? '#94a3b8' : '#475569',
+        colorDanger:        isDark ? '#f87171' : '#b91c1c',
+        borderRadius:       '10px',
+        fontFamily:         '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Helvetica, Arial',
+        fontSizeBase:       '14px',
+      },
+      rules: {
+        '.Input': { border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.15)', padding: '12px 14px' },
+        '.Input:focus': { border: '1px solid #2563eb', boxShadow: '0 0 0 3px rgba(37,99,235,0.15)' },
+        '.Label': { marginBottom: '6px', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' },
+      }
+    };
+  }
+  /* Changement de thème (bascule manuelle ou système) : on met à jour l'Element en place. */
+  try {
+    new MutationObserver(function () {
+      if (elements && typeof elements.update === 'function') {
+        try { elements.update({ appearance: stripeAppearance() }); } catch (e) {}
+      }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  } catch (e) {}
+
+  function stripeLocaleFor() {
+    try { return window.fpResolveLanguage && window.fpResolveLanguage() === 'fr' ? 'fr' : 'en'; }
+    catch (e) { return 'en'; }
+  }
   async function initStripe() {
     renderSummaryLoading();
 
@@ -357,6 +431,7 @@
     }
 
     /* La durée d'essai n'est PAS envoyée : le serveur seul en décide. */
+    var funnelAttribution = fpFunnelAttribution();
     var resp = await fetch('/api/public/payment-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -365,28 +440,30 @@
         addons:           addons,
         preRegisterToken: preRegToken,
         billingAddress:   null,
+        visiteurId:       funnelAttribution.visiteurId,
+        source:           funnelAttribution.source,
       })
     });
 
     var data;
     try { data = await resp.json(); } catch (e) {
-      showAlert('Erreur réseau (' + resp.status + '). Vérifiez votre connexion et réessayez.');
+      showAlert('Network error (' + resp.status + '). Check your connection and try again.');
       return;
     }
     if (!resp.ok) {
-      showAlert(data.error || 'Erreur ' + resp.status + ' lors de la création du paiement.');
+      showAlert(data.error || 'Error ' + resp.status + ' while setting up your payment.');
       return;
     }
     if (!data.quote) {
-      showAlert('Devis serveur indisponible. Revenez au récapitulatif et réessayez.');
+      showAlert('Price summary unavailable. Go back to the summary and try again.');
       return;
     }
     if (!data.clientSecret) {
-      showAlert('Réponse serveur invalide. Revenez au récapitulatif et réessayez.');
+      showAlert('Invalid server response. Go back to the summary and try again.');
       return;
     }
     if (!data.publishableKey) {
-      showAlert('Configuration Stripe manquante. Contactez le support.');
+      showAlert('Payment configuration missing. Please contact support.');
       return;
     }
 
@@ -396,44 +473,26 @@
     renderTrialNote(quote);
 
     _mode = data.mode || 'setup';
-    _payBtnLabel = _mode === 'payment'
-      ? 'Payer ' + eur(quote.totalMinor) + ' →'
-      : 'Démarrer l\'essai gratuit →';
+    _payBtnLabel = submitLabel();
 
     if (typeof Stripe === 'undefined') {
-      showAlert('Stripe.js n\'a pas pu se charger. Désactivez votre bloqueur de publicités et réessayez.');
+      showAlert(stripeLoadMessage(), true);
       return;
     }
 
     try { stripe = Stripe(data.publishableKey); }
     catch (e) {
-      showAlert('[S1] Clé Stripe invalide : ' + (e.message || e));
+      showAlert('[S1] Invalid Stripe key: ' + (e.message || e));
       return;
     }
 
-    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-    var appearance = {
-      theme: isDark ? 'night' : 'stripe',
-      variables: {
-        colorPrimary:       '#2563eb',
-        colorBackground:    isDark ? '#111827' : '#ffffff',
-        colorText:          isDark ? '#f1f5f9' : '#0f172a',
-        colorTextSecondary: isDark ? '#94a3b8' : '#475569',
-        colorDanger:        '#f87171',
-        borderRadius:       '10px',
-        fontFamily:         '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-        fontSizeBase:       '14px',
-      },
-      rules: {
-        '.Input': { border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.15)', padding: '12px 14px' },
-        '.Input:focus': { border: '1px solid #2563eb', boxShadow: '0 0 0 3px rgba(37,99,235,0.15)' },
-        '.Label': { marginBottom: '6px', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' },
-      }
-    };
-
-    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance }); }
+    var appearance = stripeAppearance();
+    // Langue de Stripe = langue de l'interface FlowPoint (anglais par defaut, francais si choisi),
+    // jamais celle du navigateur.
+    var stripeLocale = stripeLocaleFor();
+    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance, locale: stripeLocale }); }
     catch (e) {
-      showAlert('[S2] stripe.elements() : ' + (e.message || e));
+      showAlert('[S2] stripe.elements(): ' + (e.message || e));
       return;
     }
 
@@ -456,7 +515,7 @@
       });
       paymentElement.mount('#fp-payment-element');
     } catch (e) {
-      showAlert('[S3] Payment Element : ' + (e.message || e));
+      showAlert('[S3] Payment Element: ' + (e.message || e));
       return;
     }
 
@@ -466,7 +525,8 @@
     });
     paymentElement.on('loaderror', function (e) {
       console.error('[FlowPoint Payment] PaymentElement loaderror', e);
-      showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
+      var le = e && e.error ? (e.error.code || e.error.type || '') : '';
+      showAlert(('The payment form could not be displayed (connection or Stripe service temporarily unavailable).' + (le ? ' [' + le + ']' : '') + ' Try again.'), true);
     });
 
     /* Filet de sécurité : activer le bouton après 8s même si 'ready' ne part pas */
@@ -482,8 +542,8 @@
     if (!allowed) return;
     return initStripe().catch(function (err) {
       console.error('[FlowPoint Payment] initStripe error', err);
-      var msg = (err && (err.message || err.toString())) || 'erreur inconnue';
-      showAlert('Erreur de chargement : ' + msg + '. Revenez au récapitulatif et réessayez.');
+      var msg = (err && (err.message || err.toString())) || 'unknown error';
+      showAlert('Loading error: ' + msg + '. Go back to the summary and try again.');
     });
   });
 
@@ -491,7 +551,7 @@
   document.getElementById('fp-pay-btn').addEventListener('click', async function () {
     if (this.disabled) return;
     hideAlert();
-    setLoading(true, 'Vérification en cours…');
+    setLoading(true, 'Verifying…');
 
     var mode      = this.getAttribute('data-mode') || 'payment';
     var returnUrl = window.location.origin + '/checkout-return.html';
@@ -510,11 +570,9 @@
         });
       }
       if (result.error) {
-        var msg = result.error.message || 'Le paiement a échoué. Vérifiez vos informations.';
+        var msg = result.error.message || 'The payment failed. Check your details and try again.';
         showAlert(msg);
-        setLoading(false, mode === 'payment'
-          ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
-          : 'Démarrer l\'essai gratuit →');
+        setLoading(false, submitLabel());
         return;
       }
 
@@ -534,19 +592,16 @@
         return;
       }
 
-      showAlert('La confirmation Stripe est incomplète. Réessayez ou contactez le support.');
-      setLoading(false, mode === 'payment'
-        ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'
-        : 'Démarrer l\'essai gratuit →');
+      showAlert('The Stripe confirmation is incomplete. Try again or contact support.');
+      setLoading(false, submitLabel());
     } catch (err) {
       console.error('[FlowPoint Payment]', err);
-      showAlert('Une erreur est survenue. Réessayez ou contactez le support.');
+      showAlert('Something went wrong. Try again or contact support.');
       setLoading(false);
     }
   });
 
 })();
 </script>
-<script src="/funnel-tracking.js" defer></script>
 </body>
 </html>

@@ -38,3 +38,17 @@ context_dump*.txt
 .env
 .env.*
 !.env.example
+
+# Tests E2E : etat de session et resultats, jamais versionnes
+e2e/.session.json
+e2e/.compte.json
+e2e/resultats.json
+test-results/
+playwright-report/
+
+# Captures ecran produites par e2e-test.mjs a la racine : jamais versionnees
+/failure.png
+/checkout-final.png
+/after-click.png
+/01-dashboard-loaded.png
+artifacts/api-server/tests/browser/certification-stripe/.out/

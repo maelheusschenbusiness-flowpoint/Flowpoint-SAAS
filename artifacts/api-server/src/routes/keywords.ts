@@ -1,9 +1,6 @@
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
-import { db, trackedKeywordsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { store } from "../services/store.js";
-import { isDemoMode } from "../services/mock-data.js";
 import {
   trackKeyword, syncOrgRankings, getRankingHistory, getKeywordStats,
   generateClusters, generateOpportunities, getAIRecommendations, getKeywordLimit,
@@ -11,28 +8,203 @@ import {
 import { logger } from "../lib/logger.js";
 import { withCache } from "../middlewares/cacheControl.js";
 import { canWrite } from "../middlewares/requireRole.js";
+import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
+import { findContentDecayOpportunities, findLowCtrOpportunities } from "../services/content-decay.js";
+import { aiChat } from "../services/ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
+import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../services/ai-engine.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { parseContentDecayStrategy } from "../services/content-decay-strategy.js";
+import { buildKeywordDominationReport } from "../services/keyword-domination.js";
 
 const router = Router();
+const contentDecayGate = requireAddon("aiContentStrategist", "SEO Content Decay Radar");
 
 type OrgReq = import("express").Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
 
 function getOrg(req: import("express").Request): string {
   return (req as OrgReq).orgId ?? "default";
 }
-function getPlan(req: import("express").Request): string {
-  return ((req as unknown as { me?: { plan?: string } }).me?.plan) ?? "Pro";
+/**
+ * Plan de l'organisation, lu en base. Avant, `req.me?.plan ?? "Pro"` : `req.me`
+ * n'est renseigne par aucun middleware, donc TOUTE organisation (Standard
+ * comprise) etait traitee comme Pro (plafond 500 au lieu de 50).
+ * Renvoie null si le plan est illisible en production (l'appelant refuse en 503).
+ */
+async function getPlan(req: import("express").Request): Promise<string | null> {
+  return resolvePlanFromDB(req);
 }
 
-const SEED: Array<typeof trackedKeywordsTable.$inferInsert> = [
-  { id:"kw1", orgId:"default", keyword:"agence seo paris",                currentPosition:3,  prevPosition:5,  searchVolume:1900, difficulty:62, tag:"Local",       intent:"commercial" },
-  { id:"kw2", orgId:"default", keyword:"audit seo gratuit",               currentPosition:7,  prevPosition:6,  searchVolume:4400, difficulty:48, tag:"Acquisition", intent:"informational" },
-  { id:"kw3", orgId:"default", keyword:"référencement naturel entreprise", currentPosition:12, prevPosition:14, searchVolume:2200, difficulty:55, tag:"Notoriété",   intent:"informational" },
-  { id:"kw4", orgId:"default", keyword:"consultant seo freelance",         currentPosition:4,  prevPosition:4,  searchVolume:880,  difficulty:43, tag:"Local",       intent:"commercial" },
-  { id:"kw5", orgId:"default", keyword:"optimisation google my business",  currentPosition:2,  prevPosition:3,  searchVolume:3600, difficulty:38, tag:"Local SEO",   intent:"transactional" },
-  { id:"kw6", orgId:"default", keyword:"backlinks de qualité",             currentPosition:18, prevPosition:15, searchVolume:1300, difficulty:71, tag:"Netlinking",  intent:"commercial" },
-  { id:"kw7", orgId:"default", keyword:"core web vitals optimisation",     currentPosition:9,  prevPosition:11, searchVolume:720,  difficulty:52, tag:"Technique",   intent:"informational" },
-  { id:"kw8", orgId:"default", keyword:"seo local restaurant paris",       currentPosition:1,  prevPosition:1,  searchVolume:590,  difficulty:29, tag:"Local",       intent:"navigational" },
-];
+type KeywordCapacity =
+  | { ok: true; limit: number; current: number; hasKeywordDomination: boolean }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+/**
+ * Capacite de suivi de mots-cles de l'organisation (plafond du plan, etendu a
+ * 10 000 par l'add-on Keyword Domination). Fail-closed : un compteur illisible
+ * refuse la creation (503) au lieu de l'autoriser sans limite.
+ */
+async function checkKeywordCapacity(req: import("express").Request, orgId: string): Promise<KeywordCapacity> {
+  const plan = await getPlan(req);
+  if (plan === null) {
+    return { ok: false, status: 503, body: { error: "Impossible de vérifier votre plan. Réessayez dans un instant.", code: "KEYWORD_QUOTA_UNAVAILABLE" } };
+  }
+  const { loadBillingContext } = await import("../services/billing-context.js");
+  const bCtx = await loadBillingContext(orgId).catch(() => null);
+  const hasKeywordDomination = !!(bCtx?.addons?.["keywordDomination"]);
+  const basePlanLimit = getKeywordLimit(plan);
+  const limit = hasKeywordDomination ? Math.max(basePlanLimit, 10000) : basePlanLimit;
+  let current: number;
+  try {
+    const countRes = await (req as OrgReq).orgDb(
+      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
+      [orgId],
+    );
+    current = Number((countRes.rows[0] as { n?: number } | undefined)?.n ?? 0);
+  } catch (err) {
+    logger.error({ err, orgId }, "[Keywords] compteur de mots-clés illisible — création refusée (fail-closed)");
+    return { ok: false, status: 503, body: { error: "Impossible de vérifier votre quota de mots-clés. Réessayez dans un instant.", code: "KEYWORD_QUOTA_UNAVAILABLE" } };
+  }
+  if (current >= limit) {
+    return {
+      ok: false, status: 429,
+      body: {
+        error: `Plan limit atteint (${current}/${limit} mots-clés). ${hasKeywordDomination ? '' : 'Activez Keyword Domination Engine pour passer à 10 000 mots-clés.'}`.trim(),
+        code: "KEYWORD_LIMIT_REACHED",
+        current, limit,
+        addonKey: hasKeywordDomination ? null : "keywordDomination",
+      },
+    };
+  }
+  return { ok: true, limit, current, hasKeywordDomination };
+}
+
+// GET /api/keywords/content-decay — real GSC page data, no AI or external API call.
+router.get("/keywords/content-decay", contentDecayGate, async (req, res) => {
+  const orgId = getOrg(req);
+  if (orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  try {
+    const now = new Date();
+    const start = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const result = await (req as OrgReq).orgDb(
+      `SELECT page, date, clicks, impressions, position
+         FROM gsc_page_data
+        WHERE org_id = $1 AND date >= $2 AND date < $3
+        ORDER BY page, date
+        LIMIT 50000`,
+      [orgId, start, now.toISOString().slice(0, 10)],
+    );
+    res.json({
+      ok: true,
+      source: "google_search_console",
+      comparison: { currentDays: 28, previousDays: 28 },
+      opportunities: findContentDecayOpportunities(result.rows, now.getTime()),
+      ctrOpportunities: findLowCtrOpportunities(result.rows, now.getTime()),
+    });
+  } catch (err) {
+    logger.error({ err, orgId }, "[keywords] content decay query failed");
+    res.status(503).json({ error: "Search Console data is temporarily unavailable." });
+  }
+});
+
+router.post("/keywords/content-decay/strategy", contentDecayGate, canWrite, async (req, res) => {
+  const orgId = getOrg(req);
+  const page = typeof req.body?.page === "string" ? req.body.page.trim() : "";
+  if (orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  if (!page || page.length > 2048) {
+    res.status(400).json({ error: "A valid page URL is required." });
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const start = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const result = await (req as OrgReq).orgDb(
+      `SELECT page, date, clicks, impressions, position
+         FROM gsc_page_data
+        WHERE org_id = $1 AND page = $2 AND date >= $3 AND date < $4
+        ORDER BY date
+        LIMIT 500`,
+      [orgId, page, start, today],
+    );
+    const opportunity = findContentDecayOpportunities(result.rows, now.getTime())
+      .find(item => item.page === page);
+    if (!opportunity) {
+      res.status(404).json({ error: "Aucune baisse mesurable n'a été trouvée pour cette page." });
+      return;
+    }
+
+    const quota = await checkAIQuota({ feature: "strategist", orgId });
+    if (!quota.allowed) {
+      res.status(402).json(buildQuotaGuidance(quota, await loadOrgAIPrefs(orgId)));
+      return;
+    }
+    const prefs = await loadOrgAIPrefs(orgId);
+    const model = resolveAIModel(prefs, "strategist");
+    const startedAt = Date.now();
+    const generated = await aiChat({
+      provider: model.provider,
+      model: model.model,
+      systemPrompt: "Tu es un consultant SEO. Utilise uniquement les métriques fournies; ne prétends pas avoir consulté le contenu de la page. Retourne uniquement un JSON valide.",
+      messages: [{
+        role: "user",
+        content: `Propose 3 actions prioritaires pour cette page à partir de ses données Google Search Console. Présente les recommandations comme des hypothèses à valider, sans garantir de résultats.\\n${JSON.stringify(opportunity)}\\nFormat: {"summary":"...","actions":[{"title":"...","reason":"...","validation":"..."}]}`,
+      }],
+      maxTokens: model.maxTokens,
+      json: true,
+    });
+    const strategy = parseContentDecayStrategy(generated.text ?? "");
+    if (!strategy) {
+      res.status(502).json({ error: "La recommandation IA reçue était incomplète. Réessayez." });
+      return;
+    }
+    recordCompletedUsageDeferred({
+      feature: "strategist",
+      orgId,
+      userId: req.userId ?? "unknown",
+      model: model.model as AIModel,
+      provider: model.provider,
+      tokensIn: generated.usage?.promptTokens ?? 0,
+      tokensOut: generated.usage?.completionTokens ?? 0,
+      latencyMs: Date.now() - startedAt,
+      success: true,
+      requestId: `content_decay_${Date.now()}`,
+    });
+    res.json({ ok: true, source: "google_search_console", page, strategy });
+  } catch (err) {
+    logger.error({ err, orgId, page }, "[keywords] content decay strategy failed");
+    res.status(503).json({ error: "Impossible de générer une recommandation à partir des données Search Console." });
+  }
+});
+
+router.get("/keywords/domination", requireAddon("keywordDomination", "Keyword Domination Engine"), async (req, res) => {
+  const orgId = getOrg(req);
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "An authenticated organization is required." });
+    return;
+  }
+  try {
+    const result = await (req as OrgReq).orgDb(
+      `SELECT keyword, current_position, prev_position, position_change, search_volume, difficulty, url, intent
+       FROM tracked_keywords
+       WHERE org_id=$1 AND active=true
+       ORDER BY search_volume DESC NULLS LAST, keyword ASC
+       LIMIT 10000`,
+      [orgId],
+    );
+    res.json(buildKeywordDominationReport(result.rows));
+  } catch (err) {
+    logger.error({ err, orgId }, "[keywords] domination report failed");
+    res.status(500).json({ error: safeErrMsg(err) });
+  }
+});
 
 // GET /api/keywords
 router.get("/keywords", withCache(60), async (req, res) => {
@@ -57,22 +229,10 @@ router.get("/keywords", withCache(60), async (req, res) => {
     else                              query += ` ORDER BY current_position ASC NULLS LAST`;
     const kwRes = await (req as OrgReq).orgDb(query, params);
     if (kwRes.rows.length === 0) {
-      if (!isDemoMode()) {
-        res.json({ keywords: [], total: 0, hasData: false, source: "empty" });
-        return;
-      }
-      // Demo/dev: seed tracked_keywords with sample data
-      const existing = await db.select().from(trackedKeywordsTable).limit(1);
-      if (existing.length === 0) {
-        await db.insert(trackedKeywordsTable).values(SEED).onConflictDoNothing();
-      } else {
-        for (const s of SEED) {
-          await db.update(trackedKeywordsTable).set({ intent: s.intent }).where(eq(trackedKeywordsTable.id, s.id!));
-        }
-      }
-      const seeded = await db.select().from(trackedKeywordsTable)
-        .orderBy(trackedKeywordsTable.currentPosition).limit(500);
-      res.json({ keywords: seeded, total: seeded.length, source: "seeded" });
+      // Aucune donnee fictive, dans aucun environnement : une organisation sans mot-cle suivi
+      // recoit une liste vide et `hasData: false`. (Avant : hors production, des mots-cles
+      // d'exemple etaient inseres puis TOUS les mots-cles de TOUTES les organisations renvoyes.)
+      res.json({ keywords: [], total: 0, hasData: false, source: "empty" });
       return;
     }
     res.json({ keywords: kwRes.rows, total: kwRes.rows.length, source: "tracked" });
@@ -81,8 +241,9 @@ router.get("/keywords", withCache(60), async (req, res) => {
 
 // GET /api/keywords/stats
 router.get("/keywords/stats", async (req, res) => {
-  const orgId = getOrg(req); const plan = getPlan(req);
+  const orgId = getOrg(req);
   try {
+    const plan = (await getPlan(req)) ?? "standard";
     const stats = await getKeywordStats(orgId);
     res.json({ ...stats, limit: getKeywordLimit(plan), plan });
   } catch { res.json({ keywords: 0, tracked: 0, top10: 0, avgPosition: null, limit: 0, plan: "starter" }); }
@@ -178,31 +339,13 @@ router.get("/keywords/:id/history", async (req, res) => {
 
 // POST /api/keywords/track
 router.post("/keywords/track", canWrite, async (req, res) => {
-  const orgId = getOrg(req); const plan = getPlan(req);
+  const orgId = getOrg(req);
   const { keyword, url, device, location, language, tag } = req.body as Record<string,string>;
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
     // keywordDomination add-on extends the limit to 10 000 (vs plan default: ultra=5000, pro=500, standard=50)
-    const { loadBillingContext } = await import("../services/billing-context.js");
-    const bCtx = await loadBillingContext(orgId).catch(() => null);
-    const hasKeywordDomination = !!(bCtx?.addons?.["keywordDomination"]);
-    const basePlanLimit = getKeywordLimit(plan);
-    const effectiveLimit = hasKeywordDomination ? Math.max(basePlanLimit, 10000) : basePlanLimit;
-    // Check current count before inserting
-    const countRes = await (req as OrgReq).orgDb(
-      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
-      [orgId]
-    ).catch(() => ({ rows: [{ n: 0 }] }));
-    const currentCount = (countRes.rows[0] as { n: number })?.n ?? 0;
-    if (currentCount >= effectiveLimit) {
-      res.status(429).json({
-        error: `Plan limit atteint (${currentCount}/${effectiveLimit} mots-clés). ${hasKeywordDomination ? '' : 'Activez Keyword Domination Engine pour passer à 10 000 mots-clés.'}`.trim(),
-        code: "KEYWORD_LIMIT_REACHED",
-        current: currentCount, limit: effectiveLimit,
-        addonKey: hasKeywordDomination ? null : "keywordDomination",
-      });
-      return;
-    }
+    const capacity = await checkKeywordCapacity(req, orgId);
+    if (!capacity.ok) { res.status(capacity.status).json(capacity.body); return; }
     const id = await trackKeyword(orgId, keyword, { targetUrl: url, device, location, tag });
     res.status(201).json({ ok: true, id, keyword, location: location ?? "France", device: device ?? "desktop" });
   } catch (err) {
@@ -249,9 +392,14 @@ router.post("/keywords/opportunities/generate", canWrite, async (req, res) => {
 // PATCH /api/keywords/alerts/:id/read
 router.patch("/keywords/alerts/:id/read", canWrite, async (req, res) => {
   try {
-    await (req as OrgReq).orgDb(`UPDATE ranking_alerts SET read = true WHERE id = $1`, [req.params.id]);
+    // Toujours borné à l'organisation (défense en profondeur, en plus de la RLS).
+    const r = await (req as OrgReq).orgDb(
+      `UPDATE ranking_alerts SET read = true WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [req.params.id, getOrg(req)],
+    );
+    if (!r.rows.length) { res.status(404).json({ error: "Alerte introuvable" }); return; }
     res.json({ ok: true });
-  } catch { res.json({ ok: true }); }
+  } catch { res.status(500).json({ error: "Update failed" }); }
 });
 
 // POST /api/keywords (legacy — inserts into tracked_keywords)
@@ -262,12 +410,15 @@ router.post("/keywords", canWrite, async (req, res) => {
   };
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
+    // Meme plafond que POST /keywords/track : cette route historique inserait sans aucune limite.
+    const capacity = await checkKeywordCapacity(req, orgId);
+    if (!capacity.ok) { res.status(capacity.status).json(capacity.body); return; }
     const id = "kw" + Date.now();
     const r = await (req as OrgReq).orgDb(
       `INSERT INTO tracked_keywords
          (id, org_id, keyword, current_position, prev_position, search_volume, difficulty,
-          tag, intent, active, device, location, language, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'desktop','France','fr',NOW(),NOW())
+          tag, intent, active, device, location, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'desktop','France',NOW(),NOW())
        ON CONFLICT (org_id, keyword, device, location) DO NOTHING
        RETURNING *`,
       [id, orgId, keyword, Number(position), Number(position), Number(volume), Number(difficulty),

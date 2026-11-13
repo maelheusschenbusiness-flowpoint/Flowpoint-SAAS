@@ -58,6 +58,7 @@ import { filterDestinations, validateNavAction, REGISTRY_VERSION } from "../agen
 import { buildNavPromptSection, NavMarkerFilter, sanitizeNavText } from "../agent/nav-agent.js";
 import { createNavigationProposal, createPendingToolProposal } from "../agent/proposals.js";
 import { resolvePlanFromDB } from "../middlewares/planGate.js";
+import { withTimeout } from "../lib/with-timeout.js";
 // ── AI Agents Phase 2 — tool calling ──────────────────────────────────────────
 import { MISSION_TOOLS, type AIToolCall, type ToolDef } from "../agent/mission-tools.js";
 // ── AI Agents Phase 3 — outils calendrier ─────────────────────────────────────
@@ -78,6 +79,7 @@ const ALL_TOOLS_MAP = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 import { aiChatWithTools, buildToolResultMessages, type ToolCallingResult } from "../services/ai-tool-calling.js";
 import { executeTool, type ExecuteContext } from "../agent/tool-executor.js";
 import { undoAction } from "../agent/undo.js";
+import { resolveRequestLanguage } from "../lib/request-language.js";
 
 const router = Router();
 // aiRateLimit is applied to every provider-backed route below, including the
@@ -1465,7 +1467,7 @@ async function runToolCallingLoop(opts: {
   requestMessage?: string;
 }): Promise<ToolLoopResult> {
   const { provider, model, ctx } = opts;
-  const language = ctx.language ?? "fr";
+  const language = ctx.language ?? "en";
   let messages = [...opts.messages] as import("../services/ai-multimodal.js").MultimodalMessage[];
   const undoTokens: Array<{ actionLogId: string; label: string }> = [];
   let toolsCalledTotal = 0;
@@ -1549,16 +1551,15 @@ async function runToolCallingLoop(opts: {
 
     let roundResult: ToolCallingResult;
     try {
-      roundResult = await Promise.race([
+      roundResult = await withTimeout(
         aiChatWithTools(
           nativeMessages
             ? { provider, model, tools: _roundTools, nativeMessages, systemPrompt: carriedSystemPrompt, maxTokens: 4096 }
             : { provider, model, tools: _roundTools, messages: messages as import("../services/ai-multimodal.js").MultimodalMessage[], maxTokens: 4096 }
         ),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("ROUND_TIMEOUT")), thisRoundTimeout)
-        ),
-      ]);
+        thisRoundTimeout,
+        new Error("ROUND_TIMEOUT"),
+      );
       // Carry system prompt for Anthropic/Gemini continuation rounds
       if (round === 0 && roundResult.systemPrompt) {
         carriedSystemPrompt = roundResult.systemPrompt;
@@ -1669,12 +1670,11 @@ async function runToolCallingLoop(opts: {
 
       if (toolDef.confirmationLevel === "none") {
         // Execute with per-tool timeout (allows long async tools like run_audit ≤ 95 s)
-        const execResult = await Promise.race([
+        const execResult = await withTimeout(
           executeTool(toolCall, ctx),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("TOOL_TIMEOUT")), TOOL_TIMEOUT_MS)
-          ),
-        ]).catch((err: Error) => {
+          TOOL_TIMEOUT_MS,
+          new Error("TOOL_TIMEOUT"),
+        ).catch((err: Error) => {
           const isTimeout = err.message === "TOOL_TIMEOUT";
           logger.warn({ toolName: toolCall.name, isTimeout, errCode: isTimeout ? AI_ERROR.TOOL_EXECUTION_TIMEOUT : AI_ERROR.TOOL_ERROR }, "[tool-loop] tool execution failed/timed out");
           return {
@@ -1789,7 +1789,7 @@ function toolLoopText(language: string, key: "action_failed" | "action_partial" 
   return texts[lang]?.[key] ?? french[key];
 }
 
-export function buildConfirmationPreview(toolName: string, args: Record<string, unknown>, language = "fr"): string {
+export function buildConfirmationPreview(toolName: string, args: Record<string, unknown>, language = "en"): string {
   const lang = language.split("-")[0].toLowerCase();
   // Human-readable fallback labels for every confirmable tool — the card must
   // NEVER surface a raw tool name like « Exécuter l'action "run_audit" ».
@@ -2242,23 +2242,12 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   // get responses in their configured language, not French.
   let _langCode = (typeof language === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(language.trim()))
     ? language.trim().toLowerCase()
-    : "fr";
+    : await resolveRequestLanguage(req);
   // Server-side org language override: authoritative when frontend sends default
+  // The frontend may send its default "fr" without a stored choice: confirm it
+  // against the stored preferences (user → org, legacy fr default ignored → en).
   if (_langCode === "fr") {
-    try {
-      const _langRow = await pool.query(
-        `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
-        [orgId]
-      );
-      const _prefs = _langRow.rows[0]?.["settings"] as Record<string, unknown> | null;
-      const _orgLang = typeof _prefs?.["language"] === "string" ? (_prefs["language"] as string).trim().toLowerCase() : null;
-      if (_orgLang && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_orgLang) && _orgLang !== "fr") {
-        _langCode = _orgLang;
-        logger.info({ orgId, clientLang: language, orgLang: _orgLang }, "[AI LANGUAGE DEBUG] org language override applied");
-      }
-    } catch (_langErr) {
-      logger.debug({ orgId, err: String(_langErr) }, "[AI LANGUAGE DEBUG] org language lookup failed (non-fatal)");
-    }
+    _langCode = await resolveRequestLanguage(req);
   }
   logger.info({ orgId, clientLanguage: language ?? "(none)", resolvedLangCode: _langCode }, "[AI LANGUAGE DEBUG]");
   const _langNames: Record<string, string> = {
@@ -2270,7 +2259,7 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     ? (_langCode === "fr"
         ? "Tu réponds en français"
         : `You MUST respond in ${_langNames[_langCode]} (language code: ${_langCode}). All your text output must be in ${_langNames[_langCode]}, not in French. Adapt expressions and idioms naturally for a ${_langNames[_langCode]}-speaking audience.`)
-    : "Tu réponds en français";
+    : `You MUST respond in the language with code ${_langCode}.`;
 
   // ── Target URL/domain detection (Phase 13 — cible explicite ≠ dashboard) ────
   // If the user's message contains an external URL or domain, it is the TARGET of
@@ -2942,22 +2931,13 @@ router.post("/ai/conversations/:id/confirm", async (req: Request, res: Response)
   const userId = req.userId ?? "anonymous";
   const convId = String(req.params["id"] ?? "");
   const { proposalId } = req.body as { proposalId?: string };
-  // Canonical language: prefer client-supplied value, then user_prefs, then fr.
+  // Canonical language: client value (a bare "fr" may be the frontend default and is
+  // re-checked), then user pref → org language → en (lib/request-language).
   // This ensures F5, logout/login, and confirm actions never revert to French
   // if the account language is set to English.
   let requestedLanguage = typeof req.body?.language === "string" && req.body.language ? req.body.language : "";
-  if (!requestedLanguage || requestedLanguage === "fr") {
-    try {
-      const { rows: _lpRows } = await pool.query(
-        `SELECT settings FROM user_prefs WHERE org_id=$1 LIMIT 1`,
-        [orgId]
-      );
-      const _lpSettings = _lpRows[0]?.["settings"] as Record<string, unknown> | null;
-      const _storedLang = _lpSettings && typeof _lpSettings["language"] === "string" ? _lpSettings["language"] : "";
-      if (_storedLang && _storedLang !== "fr") requestedLanguage = _storedLang;
-    } catch { /* non-fatal */ }
-  }
-  if (!requestedLanguage) requestedLanguage = "fr";
+  if (requestedLanguage === "fr") requestedLanguage = "";
+  if (!requestedLanguage) requestedLanguage = await resolveRequestLanguage(req);
 
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(convId)) {
     res.status(400).json({ ok: false, error: "conversationId invalide" });
@@ -3341,7 +3321,8 @@ Après ces corrections je recommande :
 2. [Action 2 spécifique aux données]
 3. [Action 3 spécifique aux données]`;
 
-  const _auditLangCode = (typeof auditLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(auditLang.trim())) ? auditLang.trim().toLowerCase() : "fr";
+  const auditLangResolved = await resolveRequestLanguage(req, { explicit: auditLang });
+  const _auditLangCode = (typeof auditLangResolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(auditLangResolved.trim())) ? auditLangResolved.trim().toLowerCase() : "en";
   const _auditLangInstruction = _auditLangCode === "fr"
     ? "Tu es un consultant SEO senior intégré à FlowPoint. Tu réponds en français."
     : `You are a senior SEO consultant integrated in FlowPoint. You MUST respond in ${({ en:"English",es:"Spanish",de:"German",it:"Italian",pt:"Portuguese",nl:"Dutch",pl:"Polish",sv:"Swedish",ro:"Romanian",cs:"Czech","pt-br":"Brazilian Portuguese" } as Record<string,string>)[_auditLangCode] || _auditLangCode}. All output must be in that language, not in French.`;
@@ -3373,12 +3354,8 @@ router.post("/ai/seo", aiRateLimit, async (req, res) => {
     context?: Record<string, unknown>;
     language?: string;
   };
-  // Resolve language: explicit body param → Accept-Language header → default fr
-  const _seoLang = (
-    (typeof reqLanguage === "string" && reqLanguage.slice(0, 2)) ||
-    (req.headers["accept-language"] as string | undefined)?.slice(0, 2) ||
-    "fr"
-  ).toLowerCase();
+  // Resolve language: explicit body param → user pref → org language → en (never Accept-Language)
+  const _seoLang = await resolveRequestLanguage(req, { explicit: reqLanguage });
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
@@ -3588,7 +3565,8 @@ router.post("/ai/conversion", aiRateLimit, async (req, res) => {
     language?: string;
     context?: Record<string, unknown>;
   };
-  const _langLine1 = (() => { const c = (typeof _convLang1 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang1.trim())) ? _convLang1.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
+  const _convLang1Resolved = await resolveRequestLanguage(req, { explicit: _convLang1 });
+  const _langLine1 = (() => { const c = (typeof _convLang1Resolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang1Resolved.trim())) ? _convLang1Resolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3641,7 +3619,8 @@ router.post("/ai/local", aiRateLimit, async (req, res) => {
     language?: string;
     context?: Record<string, unknown>;
   };
-  const _langLine2 = (() => { const c = (typeof _convLang2 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang2.trim())) ? _convLang2.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
+  const _convLang2Resolved = await resolveRequestLanguage(req, { explicit: _convLang2 });
+  const _langLine2 = (() => { const c = (typeof _convLang2Resolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang2Resolved.trim())) ? _convLang2Resolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3693,7 +3672,8 @@ router.post("/ai/competitors", aiRateLimit, async (req, res) => {
     language?: string;
     context?: Record<string, unknown>;
   };
-  const _langLine3 = (() => { const c = (typeof _convLang3 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang3.trim())) ? _convLang3.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
+  const _convLang3Resolved = await resolveRequestLanguage(req, { explicit: _convLang3 });
+  const _langLine3 = (() => { const c = (typeof _convLang3Resolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang3Resolved.trim())) ? _convLang3Resolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3744,7 +3724,8 @@ router.post("/ai/reports", aiRateLimit, async (req, res) => {
     context?: Record<string, unknown>;
     language?: string;
   };
-  const _repLangLine = (() => { const c = (typeof _repLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_repLang.trim())) ? _repLang.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`; })();
+  const _repLangResolved = await resolveRequestLanguage(req, { explicit: _repLang });
+  const _repLangLine = (() => { const c = (typeof _repLangResolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_repLangResolved.trim())) ? _repLangResolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3792,7 +3773,7 @@ router.post("/ai/reports", aiRateLimit, async (req, res) => {
   } catch { /* ignore */ }
 
   const _repLangNames2: Record<string,string> = { fr:"French", en:"English", es:"Spanish", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", sv:"Swedish", ro:"Romanian", cs:"Czech" };
-  const _repLc2 = (typeof _repLang === "string" && /^[a-zA-Z]{2,5}/.test(_repLang)) ? _repLang.trim().toLowerCase().slice(0,2) : "fr";
+  const _repLc2 = (typeof _repLangResolved === "string" && /^[a-zA-Z]{2,5}/.test(_repLangResolved)) ? _repLangResolved.trim().toLowerCase().slice(0,2) : "en";
   const _repLangName2 = _repLangNames2[_repLc2] ?? _repLc2.toUpperCase();
   const _repLangHeader = _repLc2 === "fr" ? "" : `⚠️ CRITICAL: Write the ENTIRE report in ${_repLangName2}. Not a single French word in any section or heading.\n\n`;
 
@@ -3841,7 +3822,8 @@ Write this report as a senior consultant presenting results to their client. Cit
 // ── POST /ai/summary — Executive summary ──────────────────────────────────────
 router.post("/ai/summary", aiRateLimit, async (req, res) => {
   const { context, language: _sumLang } = req.body as { context?: Record<string, unknown>; language?: string };
-  const _sumLangLine = (() => { const c = (typeof _sumLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_sumLang.trim())) ? _sumLang.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`; })();
+  const _sumLangResolved = await resolveRequestLanguage(req, { explicit: _sumLang });
+  const _sumLangLine = (() => { const c = (typeof _sumLangResolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_sumLangResolved.trim())) ? _sumLangResolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All your text output must be in ${n[c] || c}, not in French.`; })();
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -3856,7 +3838,7 @@ router.post("/ai/summary", aiRateLimit, async (req, res) => {
   const fpCtx = await buildFlowpointContext(context, orgId);
 
   const _sumLangNames: Record<string,string> = { fr:"French", en:"English", es:"Spanish", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", sv:"Swedish", ro:"Romanian", cs:"Czech" };
-  const _sumLc = (typeof _sumLang === "string" && /^[a-zA-Z]{2,5}/.test(_sumLang)) ? _sumLang.trim().toLowerCase().slice(0,2) : "fr";
+  const _sumLc = (typeof _sumLangResolved === "string" && /^[a-zA-Z]{2,5}/.test(_sumLangResolved)) ? _sumLangResolved.trim().toLowerCase().slice(0,2) : "en";
   const _sumLangName = _sumLangNames[_sumLc] ?? _sumLc.toUpperCase();
   const _sumLangHeader = _sumLc === "fr" ? "" : `⚠️ CRITICAL: Write the ENTIRE response in ${_sumLangName}. Not a single French word.\n\n`;
 
@@ -3895,7 +3877,8 @@ router.post("/ai/missions", aiRateLimit, async (req, res) => {
     context?: Record<string, unknown>;
     language?: string;
   };
-  const _misLangLine = (() => { const c = (typeof _misLang === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_misLang.trim())) ? _misLang.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français dans les champs texte." : `You MUST write all text fields (title, description, expectedGain) in ${n[c] || c}, not in French.`; })();
+  const _misLangResolved = await resolveRequestLanguage(req, { explicit: _misLang });
+  const _misLangLine = (() => { const c = (typeof _misLangResolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_misLangResolved.trim())) ? _misLangResolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français dans les champs texte." : `You MUST write all text fields (title, description, expectedGain) in ${n[c] || c}, not in French.`; })();
 
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -3911,7 +3894,7 @@ router.post("/ai/missions", aiRateLimit, async (req, res) => {
   const fpCtx = await buildFlowpointContext(context, orgId);
 
   const _misLangNames: Record<string,string> = { fr:"French", en:"English", es:"Spanish", de:"German", it:"Italian", pt:"Portuguese", nl:"Dutch", pl:"Polish", sv:"Swedish", ro:"Romanian", cs:"Czech" };
-  const _misLc = (typeof _misLang === "string" && /^[a-zA-Z]{2,5}/.test(_misLang)) ? _misLang.trim().toLowerCase().slice(0,2) : "fr";
+  const _misLc = (typeof _misLangResolved === "string" && /^[a-zA-Z]{2,5}/.test(_misLangResolved)) ? _misLangResolved.trim().toLowerCase().slice(0,2) : "en";
   const _misLangName = _misLangNames[_misLc] ?? _misLc.toUpperCase();
   const _misLangHeader = _misLc === "fr"
     ? ""
@@ -3982,7 +3965,8 @@ router.post("/ai/pagespeed-insights", aiRateLimit, async (req, res) => {
     language?: string;
     context?: Record<string, unknown>;
   };
-  const _langLine4 = (() => { const c = (typeof _convLang4 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang4.trim())) ? _convLang4.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
+  const _convLang4Resolved = await resolveRequestLanguage(req, { explicit: _convLang4 });
+  const _langLine4 = (() => { const c = (typeof _convLang4Resolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang4Resolved.trim())) ? _convLang4Resolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
@@ -4166,7 +4150,7 @@ export async function recommendationsHandler(req: Request, res: Response): Promi
   const orgId = req.orgId ?? "default";
   const requestedValue = req.query["language"] ?? req.query["lang"];
   const requestedLanguage = requestedValue == null
-    ? normalizeRecommendationLanguage(req.get("accept-language")?.split(",")[0]) ?? "fr"
+    ? normalizeRecommendationLanguage(await resolveRequestLanguage(req)) ?? "en"
     : normalizeRecommendationLanguage(requestedValue);
   if (!requestedLanguage) {
     res.status(400).json({
@@ -4486,7 +4470,8 @@ router.get("/ai/recommendations", aiRateLimit, recommendationsHandler);
 
 router.post("/ai/generate", aiRateLimit, async (req: Request, res: Response) => {
   const { prompt, type = "general", language: _convLang5 } = req.body as { prompt?: string; type?: string; language?: string };
-  const _langLine5 = (() => { const c = (typeof _convLang5 === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang5.trim())) ? _convLang5.trim().toLowerCase() : "fr"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
+  const _convLang5Resolved = await resolveRequestLanguage(req, { explicit: _convLang5 });
+  const _langLine5 = (() => { const c = (typeof _convLang5Resolved === "string" && /^[a-zA-Z]{2,5}(-[a-zA-Z]{2,4})?$/.test(_convLang5Resolved.trim())) ? _convLang5Resolved.trim().toLowerCase() : "en"; const n: Record<string,string> = { en:"English", es:"español", de:"Deutsch", it:"italiano", pt:"português", nl:"Nederlands", pl:"polski", sv:"svenska", ro:"română", cs:"čeština" }; return c === "fr" ? "Réponds en français" : `You MUST respond in ${n[c] || c}. All output must be in ${n[c] || c}, not in French.`; })();
   if (!prompt) return res.status(400).json({ error: "prompt required" });
 
   const orgId     = req.orgId  ?? "default";

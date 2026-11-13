@@ -6,6 +6,8 @@ import { canWrite } from "../middlewares/requireRole.js";
 import { requireQuota } from "../middlewares/planGate.js";
 import { fetchCompetitorDomainMetrics } from "../services/dataforseo-service.js";
 import { randomUUID } from "node:crypto";
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
+import { normalizeCompetitorUrl } from "../services/competitor-url.js";
 import {
   runFullCompetitorAnalysis,
   getCompetitorAnalysis,
@@ -98,7 +100,7 @@ router.get("/competitors/suggestions", async (req, res) => {
     // Geocode from address if lat/lng not stored
     if ((lat == null || lng == null) && locationAddress) {
       const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(locationAddress)}&key=${apiKey}`;
-      const geoData = await fetch(geoUrl).then(r => r.json()) as Record<string, unknown>;
+      const geoData = await fetchBorne(geoUrl, {}, DELAIS.cartographie).then(r => r.json()) as Record<string, unknown>;
       const results = (geoData["results"] as unknown[]) ?? [];
       if (results.length > 0) {
         const loc = ((results[0] as Record<string, unknown>)["geometry"] as Record<string, unknown>)?.["location"] as Record<string, number> | undefined;
@@ -125,7 +127,7 @@ router.get("/competitors/suggestions", async (req, res) => {
     // 3. Nearby Places search
     const searchKeyword = orgKeywords[0] ?? "business";
     const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=3000&keyword=${encodeURIComponent(searchKeyword)}&key=${apiKey}`;
-    const nearbyData = await fetch(nearbyUrl).then(r => r.json()) as Record<string, unknown>;
+    const nearbyData = await fetchBorne(nearbyUrl, {}, DELAIS.cartographie).then(r => r.json()) as Record<string, unknown>;
     const places = (nearbyData["results"] as Record<string, unknown>[]) ?? [];
 
     // 4. Score and shape
@@ -174,18 +176,6 @@ function toPublic(row: Record<string, unknown>) {
     dataFetchedAt: row["data_fetched_at"] ?? null,
     dataError:    row["data_error"] ?? null,
   };
-}
-
-function normalizeCompetitorUrl(value: string): { url: string; domain: string } | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname.includes(".")) return null;
-    return { url: `https://${parsed.hostname.toLowerCase()}`, domain: parsed.hostname.toLowerCase() };
-  } catch {
-    return null;
-  }
 }
 
 async function enrichCompetitor(
@@ -352,7 +342,12 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
   }
 
   if (body.name         !== undefined) addField("name",          body.name);
-  if (body.url          !== undefined) addField("url",           body.url);
+  if (body.url          !== undefined) {
+    // SSRF : l'URL est analysee ensuite cote serveur ; on n'enregistre que des domaines publics normalises.
+    const target = normalizeCompetitorUrl(String(body.url));
+    if (!target) { res.status(400).json({ error: "A public http(s) domain is required" }); return; }
+    addField("url", target.url);
+  }
   if (body.domainRating !== undefined) addField("domain_rating", Number(body.domainRating));
   if (body.keywords     !== undefined) addField("keywords",      Number(body.keywords));
   if (body.traffic      !== undefined) addField("traffic",       Number(body.traffic));

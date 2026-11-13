@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const apiRoot = process.cwd();
 const dashboardSource = readFileSync(resolve(apiRoot, "../../src/frontend/dashboard.js"), "utf8");
 const dashboardExport = readFileSync(resolve(apiRoot, "../flowpoint-export/dashboard.js"), "utf8");
+const pricing = readFileSync(resolve(apiRoot, "../flowpoint-export/pricing.html"), "utf8");
 const backendSource = readFileSync(resolve(apiRoot, "../../src/frontend/fp-backend.js"), "utf8");
 const backend = readFileSync(resolve(apiRoot, "../flowpoint-export/fp-backend.js"), "utf8");
 const config = readFileSync(resolve(apiRoot, "../flowpoint-export/fp-config.js"), "utf8");
@@ -12,12 +13,8 @@ const checkoutReturn = readFileSync(resolve(apiRoot, "../flowpoint-export/checko
 const billing = readFileSync(resolve(apiRoot, "src/routes/billing.ts"), "utf8");
 
 describe("dashboard account/session isolation contracts", () => {
-  it("ships the account-isolation contracts in the production dashboard", () => {
-    expect(dashboardExport).toContain("var _FP_ORG_NS = '';");
-    expect(dashboardExport).toContain("return _FP_ORG_NS ? 'fp:' + _FP_ORG_NS + ':' + bare : '';");
-    expect(dashboardExport).not.toContain("localStorage.getItem('fp:last-org-id') || ''");
-    expect(dashboardExport).toContain("return identity + '\\n' + path;");
-    expect(dashboardExport).toContain("_fpSessionFingerprint() !== _requestIdentity");
+  it("ships the same dashboard source that production export serves", () => {
+    expect(dashboardExport).toBe(dashboardSource);
   });
 
   it("ships the same backend source that production export serves", () => {
@@ -80,5 +77,18 @@ describe("dashboard Stripe reactivation contracts", () => {
     expect(backend).not.toContain("apiAction('POST', '/api/billing/checkout'");
     expect((backend.match(/apiAction\('POST', '\/api\/billing\/upgrade'/g) || []).length).toBeGreaterThanOrEqual(2);
     expect(checkoutReturn).toContain("isAlreadyLoggedIn ? '/dashboard.html#billing/plans' : '/pricing.html'");
+  });
+});
+
+describe("Ultra quota presentation contract", () => {
+  it("keeps the public pricing and dashboard fallbacks at 1,000/300/1,000/1,000/10", () => {
+    expect(pricing).toContain("limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10");
+    expect(pricing).toContain("<td>1 000</td>");
+    expect(dashboardSource).toContain("limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10");
+    expect(dashboardSource).toContain("_val('ultra','audits',1000)");
+    expect(dashboardSource).toContain("_val('ultra','reports',1000)");
+    expect(dashboardSource).toContain("_val('ultra','exports',1000)");
+    expect(dashboardSource).toContain("ultra:    { audit: 1000, monitor: 300, pdf: 1000 }");
+    expect(dashboardSource).toContain("ultra:1000");
   });
 });

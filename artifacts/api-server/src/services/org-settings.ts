@@ -63,6 +63,87 @@ export interface OrgSettings {
  *                         on a single connection inside one BEGIN/COMMIT transaction
  *                         so pg_advisory_xact_lock is held for the full duration.
  */
+/**
+ * CLE CANONIQUE DE org_settings
+ *
+ * org_settings est clee par org_id, mais deux cles coexistent pour une meme
+ * organisation : l'UUID de `organizations` et, pour les comptes crees avant
+ * l'existence de cet UUID, l'adresse e-mail. L'activation de compte ecrit
+ * d'ailleurs explicitement les deux ("we write TWICE … so the address is found
+ * regardless of which key is used"), puis les deux lignes derivent : tout
+ * upsert ulterieur par UUID (dashboard, /me, localisation) laisse la ligne
+ * e-mail figee, tandis que les chemins OAuth/SSO ecrivent par e-mail.
+ *
+ * Divergences mesurees sur une organisation reelle :
+ *   - ligne e-mail : plan standard, statut canceled, ville Paris, adresse
+ *   - ligne UUID   : plan pro,      statut active,   ville NULL, adresse NULL
+ * L'adresse saisie a l'inscription etait donc invisible du chemin principal,
+ * et le plan lu par un chemin encore clee e-mail (repli « session legacy » de
+ * planGate) etait perime.
+ *
+ * Correction de la cause : toute cle non-UUID est resolue vers l'UUID de
+ * l'organisation quand elle existe. Les lectures et les ecritures visent
+ * alors une seule ligne. AUCUNE donnee client n'est fusionnee ni supprimee :
+ * la ligne legacy reste en place, et la lecture la consulte uniquement pour
+ * completer les champs restes vides sur la ligne canonique — completion en
+ * memoire, jamais ecrite.
+ */
+const ORG_SETTINGS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Colonnes qui identifient la ligne ou tracent son cycle de vie : jamais completees. */
+const ORG_SETTINGS_IDENTITY_COLS = new Set(["org_id", "created_at", "updated_at"]);
+
+/**
+ * Resout la cle canonique (UUID de l'organisation) pour un org_id donne.
+ * Retourne l'org_id inchange quand il est deja un UUID, quand aucune
+ * organisation ne correspond (fenetre avant creation du compte), ou en cas
+ * d'erreur de lecture — la resolution ne doit jamais faire echouer un acces.
+ */
+export async function canonicalOrgSettingsKey(
+  orgId: string,
+  client: PoolClient,
+): Promise<string> {
+  if (!orgId || orgId === "default" || ORG_SETTINGS_UUID_RE.test(orgId)) return orgId;
+  try {
+    const r = await client.query(
+      `SELECT id::text AS id FROM organizations WHERE owner_email = $1 LIMIT 1`,
+      [orgId],
+    );
+    const found = r.rows[0] as { id?: string } | undefined;
+    return found?.id ?? orgId;
+  } catch (err) {
+    logger.debug({ err, orgId }, "[org-settings] resolution de cle canonique impossible — cle inchangee");
+    return orgId;
+  }
+}
+
+/**
+ * Cle legacy (e-mail) correspondant a une cle canonique UUID, quand une ligne
+ * org_settings existe sous cette cle. Sert uniquement a completer une lecture :
+ * le chemin principal lit par UUID, et l'adresse saisie a l'inscription peut
+ * n'exister que sous la cle e-mail.
+ */
+async function legacyOrgSettingsKey(
+  orgId: string,
+  client: PoolClient,
+): Promise<string | null> {
+  if (!ORG_SETTINGS_UUID_RE.test(orgId)) return null;
+  try {
+    const r = await client.query(
+      `SELECT o.owner_email::text AS email
+         FROM organizations o
+         JOIN org_settings s ON s.org_id = o.owner_email
+        WHERE o.id::text = $1 LIMIT 1`,
+      [orgId],
+    );
+    const found = r.rows[0] as { email?: string } | undefined;
+    return found?.email ?? null;
+  } catch (err) {
+    logger.debug({ err, orgId }, "[org-settings] resolution de cle legacy impossible");
+    return null;
+  }
+}
+
 export async function loadOrgSettings(
   orgId = "default",
   clientOverride?: PoolClient,
@@ -70,15 +151,58 @@ export async function loadOrgSettings(
   const ownClient = !clientOverride;
   const client: PoolClient = clientOverride ?? (await pool.connect() as unknown as PoolClient);
   try {
+    const canonicalKey = await canonicalOrgSettingsKey(orgId, client);
     const res = await client.query(
       `SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`,
-      [orgId],
+      [canonicalKey],
     );
-    if (!res.rows[0]) {
-      logger.debug({ orgId }, "[org-settings] loadOrgSettings — no row found, returning null");
+    let r = res.rows[0];
+
+    // Ligne legacy clee autrement (e-mail) : elle n'est NI fusionnee NI
+    // supprimee. Elle sert uniquement a completer, en memoire, les champs
+    // restes vides sur la ligne canonique — sinon l'adresse saisie a
+    // l'inscription resterait invisible du chemin principal.
+    // Cle de la ligne legacy : l'org_id d'origine quand il n'etait pas un UUID,
+    // sinon l'e-mail proprietaire de l'organisation (le chemin principal lit
+    // par UUID, et l'adresse d'inscription peut n'exister que sous l'e-mail).
+    const legacyKey = canonicalKey !== orgId
+      ? orgId
+      : await legacyOrgSettingsKey(orgId, client);
+
+    if (legacyKey && legacyKey !== canonicalKey) {
+      const legacy = await client.query(
+        `SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`,
+        [legacyKey],
+      );
+      const lr = legacy.rows[0];
+      if (lr) {
+        if (!r) {
+          // Pas encore de ligne canonique : on sert la ligne legacy telle quelle.
+          logger.info({ orgId, canonicalKey, legacyKey },
+            "[org-settings] aucune ligne canonique — lecture de la ligne legacy");
+          r = lr;
+        } else {
+          const completed: string[] = [];
+          for (const [col, val] of Object.entries(lr)) {
+            if (ORG_SETTINGS_IDENTITY_COLS.has(col)) continue;
+            if ((r[col] === null || r[col] === undefined) && val !== null && val !== undefined) {
+              r[col] = val;
+              completed.push(col);
+            }
+          }
+          if (completed.length > 0) {
+            // Divergence a reconcilier manuellement : aucune ecriture ici.
+            logger.warn({ orgId, canonicalKey, legacyKey, completed },
+              "[org-settings] lignes divergentes — champs completes en lecture depuis la ligne legacy (aucune fusion ecrite)");
+          }
+        }
+      }
+    }
+
+    if (!r) {
+      logger.debug({ orgId, canonicalKey }, "[org-settings] loadOrgSettings — no row found, returning null");
       return null;
     }
-    const r = res.rows[0];
     return {
       orgId: r.org_id,
       plan: r.plan ?? "standard",
@@ -149,6 +273,15 @@ export async function upsertOrgSettings(
   const ownClient = !clientOverride;
   const client: PoolClient = clientOverride ?? (await pool.connect() as unknown as PoolClient);
   try {
+    // Ecriture sur la cle CANONIQUE : sans cela, un upsert par e-mail et un
+    // upsert par UUID alimentent deux lignes qui derivent ensuite.
+    const canonicalKey = await canonicalOrgSettingsKey(orgId, client);
+    if (canonicalKey !== orgId) {
+      logger.info({ orgId, canonicalKey },
+        "[org-settings] upsert redirige vers la cle canonique de l'organisation");
+    }
+    orgId = canonicalKey;
+
     // ── Step 1: guarantee row exists ─────────────────────────────────────────
     await client.query(
       `INSERT INTO org_settings (org_id)

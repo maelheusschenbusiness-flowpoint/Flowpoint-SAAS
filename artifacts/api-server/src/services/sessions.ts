@@ -1,6 +1,7 @@
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveJwtSecret } from "../lib/security-config.js";
 
 // 7 days — long enough that Safari's tab-freeze / overnight laptop closure
 // (both clear sessionStorage) can recover via the HttpOnly cookie without
@@ -20,10 +21,12 @@ export interface SessionData {
   userUuid?: string;
 }
 
-const JWT_SECRET = process.env["JWT_SECRET"] ?? "dev-secret-change-me-in-prod-min32chars";
+// C-15 : plus de secret de repli code en dur hors tests. Resolution paresseuse
+// (au premier usage) : index.ts / lib/env.ts echouent deja au demarrage, et un
+// import ne doit pas lever dans les tests qui ne signent rien.
 
 function signToken(payload: string): string {
-  return createHmac("sha256", JWT_SECRET).update(payload).digest("hex");
+  return createHmac("sha256", resolveJwtSecret()).update(payload).digest("hex");
 }
 
 function makeToken(userId: string, orgId: string): string {
@@ -68,10 +71,10 @@ export async function createSession(opts: {
            opts.userUuid ?? null, opts.ipAddress ?? null, opts.userAgent ?? null]
         );
         if ((result.rowCount ?? 0) === 0) {
-          // ON CONFLICT DO NOTHING fired — token already exists; idempotent, still valid
-          logger.warn({ tokenPrefix: token.slice(0, 8) }, "[sessions] INSERT conflict on token — session already exists (idempotent)");
+          // This generated token must be newly inserted; do not log any part of it.
+          logger.warn({ orgId: opts.orgId }, "[sessions] INSERT conflict — generated session was not confirmed as new");
         } else {
-          logger.info({ tokenPrefix: token.slice(0, 8), orgId: opts.orgId }, "[sessions] Session row inserted successfully");
+          logger.info({ orgId: opts.orgId }, "[sessions] Session row inserted successfully");
         }
         return token;
       } finally {
@@ -115,7 +118,7 @@ export async function getSession(token: string): Promise<SessionData | null> {
         && (rawUserId === String(row.org_id ?? "") || rawUserId.includes("@"))
       ) {
         logger.warn(
-          { tokenPrefix: token.slice(0, 8), orgId: String(row.org_id ?? "").slice(0, 8) },
+          { orgId: String(row.org_id ?? "") },
           "[sessions] Refusing legacy session with user_id equal to org_id",
         );
         return null;

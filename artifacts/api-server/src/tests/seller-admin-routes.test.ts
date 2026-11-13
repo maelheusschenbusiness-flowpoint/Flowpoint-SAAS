@@ -25,15 +25,16 @@ import adminRouter, { SELLERS_LIST_SQL, SELLER_REPORT_ORGS_SQL, SELLER_REPORT_CO
 
 const ADMIN = "a".repeat(48);
 const SELLER = "s".repeat(48);
+const ORIGINAL_NODE_ENV = process.env["NODE_ENV"];
 const here = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(join(here, "../routes/admin.ts"), "utf8");
 
 /** Every route declared in admin.ts with the guard that opens its handler. */
 const ROUTES = [...SOURCE.matchAll(/router\.(get|post|put|patch|delete)\("([^"]+)"/g)].map((m) => {
   const after = SOURCE.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 400);
-  // Quatre gardes existent desormais : admin complet, vendeurs, Croissance et Attribution —
-  // chacun dans son propre en-tete, chacun n'ouvrant que ses routes.
-  const guard = /require(?:Seller|Growth|Attribution)?AdminKey/.exec(after)?.[0] ?? null;
+  // Admin complet, vendeur, Croissance, Attribution et accès de session QA en Test ont
+  // chacun leur propre garde et leur périmètre explicite.
+  const guard = /require(?:QaTestSessionKey|(?:Seller|Growth|Attribution)?AdminKey)/.exec(after)?.[0] ?? null;
   return { method: m[1] as "get" | "post" | "put" | "patch" | "delete", path: m[2], guard };
 });
 const SELLER_ROUTES = [
@@ -42,6 +43,7 @@ const SELLER_ROUTES = [
 ];
 /** La seule route ouverte par GROWTH_ADMIN_KEY, et elle est en lecture seule. */
 const GROWTH_ROUTES = ["GET /admin/growth/daily"];
+const QA_ROUTES = ["POST /admin/test-session"];
 /** La seule route ouverte par ATTRIBUTION_EXPORT_KEY (agrégats anonymes pour AI Lab), en lecture seule. */
 const ATTRIBUTION_ROUTES = ["GET /admin/acquisition/attribution"];
 const key = (r: { method: string; path: string }) => `${r.method.toUpperCase()} ${r.path}`;
@@ -77,15 +79,20 @@ function fakeDb() {
 }
 
 beforeEach(() => {
+  process.env["NODE_ENV"] = "test";
   process.env["ADMIN_KEY"] = ADMIN;
   process.env["SELLER_ADMIN_KEY"] = SELLER;
+  process.env["QA_TEST_SESSION_KEY"] = "q".repeat(48);
   q.mockReset(); c.mockReset();
   c.mockImplementation(async () => ({ query: q, release: vi.fn() }) as any);
   fakeDb();
 });
 afterEach(() => {
+  if (ORIGINAL_NODE_ENV === undefined) delete process.env["NODE_ENV"];
+  else process.env["NODE_ENV"] = ORIGINAL_NODE_ENV;
   delete process.env["ADMIN_KEY"];
   delete process.env["SELLER_ADMIN_KEY"];
+  delete process.env["QA_TEST_SESSION_KEY"];
 });
 
 const call = (method: string, path: string) => (request(app) as any)[method](`/api${path}`);
@@ -95,6 +102,9 @@ describe("route inventory", () => {
   it("every admin route opens with an admin guard", () => {
     expect(ROUTES.length).toBeGreaterThan(40);
     expect(ROUTES.filter((r) => r.guard === null).map(key)).toEqual([]);
+  });
+  it("the QA session guard is used only by the fixed Test-only session route", () => {
+    expect(ROUTES.filter((r) => r.guard === "requireQaTestSessionKey").map(key)).toEqual(QA_ROUTES);
   });
   it("the scoped guard is used by exactly the four seller routes", () => {
     expect(ROUTES.filter((r) => r.guard === "requireSellerAdminKey").map(key).sort()).toEqual([...SELLER_ROUTES].sort());

@@ -281,6 +281,7 @@ async function sectionB(subs) {
   const mA1  = me1.body?.addons ?? {};
   const lim1 = me1.body?.limits ?? {};
   const MON_BASE_PRO = 50;
+  const MONITOR_PACK_GRANTS = { monitorsPack10: 10, monitorsPack50: 50 };
 
   for (const [key, info] of batch1) {
     const dbV = db1.addons[key]; const meV = mA1[key];
@@ -288,11 +289,21 @@ async function sectionB(subs) {
     const okMe = meV !== undefined && meV !== false;
     const okQty = !info.qty || Number(dbV) === 2;
     let ent = 'N/A';
-    if (info.qty && key==='monitorsPack10') { const exp=MON_BASE_PRO+20; ent=lim1.monitors===exp?`PASS(mon=${lim1.monitors})`:`FAIL(${lim1.monitors}≠${exp})`; }
+    if (info.qty && MONITOR_PACK_GRANTS[key]) {
+      const expectedMonitors = MON_BASE_PRO + batch1.reduce(
+        (total, [batchKey, batchInfo]) =>
+          total + (MONITOR_PACK_GRANTS[batchKey] || 0) * (batchInfo.qty ? 2 : 1),
+        0,
+      );
+      ent = lim1.monitors === expectedMonitors
+        ? `PASS(mon=${lim1.monitors})`
+        : `FAIL(${lim1.monitors}≠${expectedMonitors})`;
+    }
     else if (info.qty && key==='extraSeats')   { ent=lim1.teamMembers>5?`PASS(seats=${lim1.teamMembers})`:`FAIL(${lim1.teamMembers})`; }
     else if (info.qty && key==='auditsPack200') { ent=lim1.audits>300?`PASS(aud=${lim1.audits})`:`FAIL(${lim1.audits})`; }
-    if (wh1.status===200 && okDb && okMe && okQty) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
-    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, wh1.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}`);
+    const okEnt = !ent.startsWith('FAIL');
+    if (wh1.status===200 && okDb && okMe && okQty && okEnt) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
+    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch1:${sub1Updated.id}`, wh1.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}okEnt=${okEnt}`);
   }
 
   // ── Batch 2: create second subscription (addon-only, no plan price) ─────────
@@ -318,11 +329,12 @@ async function sectionB(subs) {
     const okDb = dbV !== undefined && dbV !== false;
     const okMe = meV !== undefined && meV !== false;
     const okQty = !info.qty || Number(dbV) === 2;
+    const okEnt = !ent.startsWith('FAIL');
     let ent = 'N/A';
     if (info.qty && key==='monitorsPack50') { ent=lim2.monitors>50?`PASS(mon=${lim2.monitors})`:`FAIL(${lim2.monitors})`; }
     else if (info.qty && key==='gbpSlots10') { ent=lim2.gbpSlots>=0?`PASS(gbp=${lim2.gbpSlots})`:'N/A'; }
-    if (wh2.status===200 && okDb && okMe && okQty) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
-    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, wh2.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}`);
+    if (wh2.status===200 && okDb && okMe && okQty && okEnt) pass('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, '200', `PASS(${dbV})`, ent, `PASS(${meV})`);
+    else fail('B', `B-paid: ${key}${info.qty?' qty=2':''}`, `batch2:${addonSub.id}`, wh2.status, okDb?`${dbV}`:'FAIL', ent, okMe?`${meV}`:'FAIL', `okDb=${okDb}okMe=${okMe}okQty=${okQty}okEnt=${okEnt}`);
   }
 
   // ── Deactivate batch1: remove all 19 addon items from pro sub ───────────────
@@ -476,7 +488,6 @@ async function sectionC() {
     const pi = await stripe.paymentIntents.create({
       amount: pack.amount, currency: 'eur', customer: cus,
       payment_method: 'pm_card_visa', confirm: true,
-      return_url: 'https://app.flowpoint.pro/billing/checkout-return.html',
       metadata: { orgId: stdOrg.id, type: 'ai_credits', pack: pack.key, addonKey: pack.key, credits: String(pack.credits), amountEurCents: String(pack.amount), cert: 'cert2026' },
     });
     const piObj = await stripe.paymentIntents.retrieve(pi.id);
@@ -508,7 +519,6 @@ async function sectionC() {
     const pi = await stripe.paymentIntents.create({
       amount: 400, currency: 'eur', customer: cus,
       payment_method: 'pm_card_visa', confirm: true,
-      return_url: 'https://app.flowpoint.pro/billing/checkout-return.html',
       metadata: { orgId: stdOrg.id, addonKey: 'aiCreditsPack50k', credits: '50000', cert: 'cert2026-idem' },
     });
     const piObj = await stripe.paymentIntents.retrieve(pi.id);

@@ -4,7 +4,7 @@
  * Tests reflect the real product workflow: UI → user_prefs → streamReportPdf()
  */
 import { describe, it, expect } from "vitest";
-import type { WlBranding } from "../services/pdf.js";
+import { formatMeasuredMetric, readMeasuredMetric, type WlBranding } from "../services/pdf.js";
 
 // ── Mirrors the mapping logic in GET /reports/:id/download ────────────────────
 // Reads user_prefs.settings.wlBranding and maps it to WlBranding.
@@ -232,4 +232,15 @@ describe("ALL_REPORT_TYPES_SHARE_FIXED_PIPELINE", () => {
       expect(resolvePrimaryColor(wl)).toBe("#FF5500");
     });
   }
+});
+
+describe("measured report metrics", () => {
+  it("renders absent or invalid values as unavailable while preserving measured zero", () => {
+    expect(readMeasuredMetric(null)).toBeNull();
+    expect(readMeasuredMetric(undefined)).toBeNull();
+    expect(readMeasuredMetric("")).toBeNull();
+    expect(readMeasuredMetric("not-a-number")).toBeNull();
+    expect(formatMeasuredMetric(null, "/100")).toBe("—");
+    expect(formatMeasuredMetric("0", "/100")).toBe("0/100");
+  });
 });

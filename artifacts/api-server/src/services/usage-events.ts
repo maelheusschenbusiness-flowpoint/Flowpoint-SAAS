@@ -19,6 +19,19 @@ export const USAGE_EVENT_KINDS = new Set([
 
 let _tableReady = false;
 
+/**
+ * Crée la table `usage_events` si elle n'existe pas (création paresseuse : aucune
+ * migration ne la porte). Exportée pour que les LECTURES de quota (checkQuota
+ * « exports ») garantissent aussi son existence : sans cela, sur une base neuve
+ * la première lecture échouait (relation inexistante) alors que la table n'est
+ * créée qu'à la première écriture, soit un export bloqué à jamais en fail-closed.
+ * Ne lève jamais : un échec est journalisé et la requête suivante échouera
+ * explicitement (et sera traitée par l'appelant).
+ */
+export async function ensureUsageEventsTable(): Promise<void> {
+  await ensureTable();
+}
+
 async function ensureTable(): Promise<void> {
   if (_tableReady) return;
   const client = await pool.connect();
@@ -38,8 +51,8 @@ async function ensureTable(): Promise<void> {
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'usage_events' AND policyname = 'usage_events_org_isolation') THEN
           CREATE POLICY usage_events_org_isolation ON usage_events
-            USING (org_id = current_setting('app.org_id', true))
-            WITH CHECK (org_id = current_setting('app.org_id', true));
+            USING (org_id = current_setting('app.current_org_id', true))
+            WITH CHECK (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$`);
     _tableReady = true;
@@ -59,6 +72,15 @@ export async function recordUsageEvent(orgId: string, kind: string): Promise<voi
   } catch (err) {
     logger.warn({ err, orgId, kind }, "[UsageEvents] record failed (non-fatal)");
   }
+}
+
+/** Strict counterpart for quota-bearing operations that must not succeed unmetered. */
+export async function recordUsageEventStrict(orgId: string, kind: string): Promise<void> {
+  if (!orgId || orgId === "default" || !USAGE_EVENT_KINDS.has(kind)) {
+    throw new Error("Invalid usage event identity or kind");
+  }
+  await ensureTable();
+  await pool.query(`INSERT INTO usage_events (org_id, kind) VALUES ($1, $2)`, [orgId, kind]);
 }
 
 /** Current-month counts per kind for an org. Returns {} on failure. */

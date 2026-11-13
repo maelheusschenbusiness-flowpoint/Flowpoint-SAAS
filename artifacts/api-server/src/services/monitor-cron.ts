@@ -1,3 +1,4 @@
+import { betaSchedulerEnabled } from "../lib/beta-activation.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { mailer } from "./mailer.js";
@@ -13,16 +14,33 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
       const rules = await client.query(
         `SELECT ar.*, o.owner_email AS org_email
          FROM alert_rules ar
-         LEFT JOIN organizations o ON ar.org_id = o.id
+         LEFT JOIN organizations o ON ar.org_id::text = o.id::text
          WHERE ar.enabled = true AND ar.type = 'seo_score' AND ar.org_id = $1`,
         [orgId]
       );
       for (const rule of rules.rows) {
-        let triggered = false;
-        if (rule.operator === "lt" && score < rule.threshold) triggered = true;
-        if (rule.operator === "gt" && score > rule.threshold) triggered = true;
-        if (rule.operator === "eq" && score === rule.threshold) triggered = true;
-        if (triggered) {
+        const configuredSites = (() => {
+          try {
+            const value = typeof rule.site_urls === "string" ? JSON.parse(rule.site_urls) : rule.site_urls;
+            return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+          } catch { return []; }
+        })();
+        const normalizeSite = (value: string) => {
+          try {
+            const parsed = new URL(value);
+            return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`.toLowerCase();
+          } catch { return value.trim().replace(/\/+$/, "").toLowerCase(); }
+        };
+        const siteMatches = configuredSites.length === 0 || configuredSites.some(site =>
+          normalizeSite(site) === normalizeSite(url) ||
+          (() => {
+            try { return new URL(site).origin.toLowerCase() === new URL(url).origin.toLowerCase(); }
+            catch { return false; }
+          })()
+        );
+        const threshold = Number(rule.threshold);
+        const { evaluateCondition } = await import("./alert-events-service.js");
+        if (siteMatches && evaluateCondition(Number(score), String(rule.operator), threshold)) {
           logger.info({ url, score, rule: rule.name }, "[monitor-cron] Alert rule triggered");
           // BUG-W2-ALT-003: write real alert_event (dedupe by org+rule+day)
           try {
@@ -77,6 +95,7 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
           if (alertEmail) {
             mailer.sendSeoAlert({
               to: String(alertEmail),
+              orgId: String(rule.org_id),
               ruleName: String(rule.name),
               url,
               score,
@@ -150,6 +169,7 @@ export async function checkTrialEndingReminders(): Promise<void> {
       try {
         const result = await mailer.sendTrialEnding({
           to: row.email,
+          orgId: row.org_id,
           name: row.first_name ?? row.email.split("@")[0] ?? "there",
           daysLeft,
           plan: row.plan ?? "standard",
@@ -220,7 +240,7 @@ export async function retryLifecycleEmails(): Promise<void> {
           [row.id],
         );
         if (claim.rowCount) {
-          const result = await mailer.sendWelcome({ to: row.owner_email, name });
+          const result = await mailer.sendWelcome({ to: row.owner_email, orgId: row.id, name });
           await client.query(
             result.ok
               ? `UPDATE organizations SET welcome_email_sent_at = NOW(), welcome_email_claimed_at = NULL WHERE id = $1`
@@ -240,7 +260,7 @@ export async function retryLifecycleEmails(): Promise<void> {
         );
         if (claim.rowCount) {
           const result = await mailer.sendTrialStarted({
-            to: row.owner_email, name, plan: row.plan || "standard", trialEndsAt: new Date(row.trial_ends_at).toISOString(),
+            to: row.owner_email, orgId: row.id, name, plan: row.plan || "standard", trialEndsAt: new Date(row.trial_ends_at).toISOString(),
           });
           await client.query(
             result.ok
@@ -379,6 +399,16 @@ export function startMonitorCron(): void {
   // Scheduled audits: launch due audit_schedules rows every minute (#437).
   void runScheduledAuditsTickSafe();
   setInterval(() => void runScheduledAuditsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
+
+  // Scheduled AI workflows are dynamically reconciled and atomically claimed
+  // through workflow_runs, so multiple Render instances can share this poller.
+  // Bêta : en production seulement si WORKFLOW_SCHEDULER_ENABLED=true (voir lib/beta-activation).
+  if (betaSchedulerEnabled("WORKFLOW_SCHEDULER_ENABLED")) {
+    void runScheduledWorkflowsTickSafe();
+    setInterval(() => void runScheduledWorkflowsTickSafe(), MONITOR_HEALTH_INTERVAL_MS);
+  } else {
+    logger.info("[monitor-cron] workflow scheduler OFF (WORKFLOW_SCHEDULER_ENABLED!=true)");
+  }
 }
 
 async function runScheduledAuditsTickSafe(): Promise<void> {
@@ -393,5 +423,18 @@ async function runScheduledAuditsTickSafe(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, "[monitor-cron] runScheduledAuditsTickSafe failed (non-fatal)");
     markCronRun("audit-scheduler", "error");
+  }
+}
+
+async function runScheduledWorkflowsTickSafe(): Promise<void> {
+  const { markCronRun } = await import("../workers/cron-scheduler.js");
+  try {
+    const { runWorkflowSchedulerTick } = await import("./workflow-schedule-cron.js");
+    const { synced, recovered } = await runWorkflowSchedulerTick();
+    if (synced || recovered) logger.info({ synced, recovered }, "[monitor-cron] scheduled AI workflow tick");
+    markCronRun("workflow-scheduler", "idle");
+  } catch (err) {
+    logger.warn({ err }, "[monitor-cron] runScheduledWorkflowsTickSafe failed (non-fatal)");
+    markCronRun("workflow-scheduler", "error");
   }
 }

@@ -25,10 +25,16 @@
  * secrets de test sont des chaines locales inventees pour la duree du test.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import express from "express";
 import Stripe from "stripe";
 
+/** La CI pose STRIPE_TEST_MODE=true ; ces fixtures sont en mode LIVE : valeur d'origine restauree en fin de fichier. */
+const ORIGINAL_STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"];
+afterAll(() => {
+  if (ORIGINAL_STRIPE_TEST_MODE === undefined) delete process.env["STRIPE_TEST_MODE"];
+  else process.env["STRIPE_TEST_MODE"] = ORIGINAL_STRIPE_TEST_MODE;
+});
 const LIVE_SECRET = "whsec_local_live_fixture_only";
 const TEST_SECRET = "whsec_local_test_fixture_only";
 const LIVE_KEY    = "sk_live_local_fixture_only";
@@ -267,6 +273,9 @@ beforeEach(() => {
   process.env["STRIPE_WEBHOOK_SECRET"] = LIVE_SECRET;
   delete process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
   delete process.env["STRIPE_TEST_WEBHOOK_SECRET"];
+  // Ces fixtures sont en mode LIVE (cle sk_live_) : STRIPE_TEST_MODE, pose a « true » par la CI,
+  // est retire ici et restaure par le test qui le veut (« l'environnement de test … »).
+  delete process.env["STRIPE_TEST_MODE"];
   process.env["NODE_ENV"] = "production";
 });
 
@@ -423,11 +432,23 @@ describe("Signature et separation des environnements", () => {
     // terminaison de test, evenements livemode=false.
     activeStripeKey = TEST_KEY;
     process.env["STRIPE_TEST_WEBHOOK_SECRET"] = TEST_SECRET;
-    const res = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_test_env_sub", livemode: false },
+    // Test-Replit : le mode TEST doit etre declare explicitement (fail-closed). Sans
+    // STRIPE_TEST_MODE=true, une cle sk_test_ est refusee en 503 — plus strict que
+    // la regle d'origine de Flowpoint, conservee ici.
+    process.env["STRIPE_TEST_MODE"] = "true";
+    try {
+      const res = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_test_env_sub", livemode: false },
+        { signWith: TEST_SECRET });
+      await settle();
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual({ received: true });
+    } finally {
+      delete process.env["STRIPE_TEST_MODE"];
+    }
+    // Sans la declaration explicite du mode : refuse, aucune ecriture.
+    const refused = await deliver({ ...EVENTS["creation d'abonnement"]!, id: "evt_test_env_sub_nomode", livemode: false },
       { signWith: TEST_SECRET });
-    await settle();
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
+    expect(refused.statusCode).toBe(503);
   });
 
   it("la production traite normalement un evenement live", async () => {

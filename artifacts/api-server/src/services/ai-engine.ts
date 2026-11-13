@@ -1,4 +1,5 @@
 import { pool, withOrgDb, withOrgDbClient } from "@workspace/db";
+import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
@@ -23,18 +24,12 @@ export type AIModel =
   | "gemini-3.1-pro-preview" | "gemini-3-flash-preview" | "gemini-3.5-flash"
   | "gemini-3-pro-image-preview" | "gemini-3.1-flash-image" | "gemini-2.5-flash-image";
 
-export type AIFeature =
-  | "chat"
-  | "strategist"
-  | "report_gen"
-  | "mission_auto"
-  | "cro_analysis"
-  | "forecast"
-  | "market_intel"
-  | "behavior_analysis"
-  | "revenue_leak"
-  | "audit_summary"
-  | "overview_insights";
+/** Liste canonique (validation d'entree des routes : une valeur hors liste n'est jamais debitee). */
+export const AI_FEATURES = [
+  "chat", "strategist", "report_gen", "mission_auto", "cro_analysis", "forecast",
+  "market_intel", "behavior_analysis", "revenue_leak", "audit_summary", "overview_insights",
+] as const;
+export type AIFeature = typeof AI_FEATURES[number];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -93,6 +88,23 @@ function planCreditLimit(plan?: string | null): number {
   return PLAN_AI_CREDITS[(plan ?? "standard").toLowerCase()] ?? PLAN_AI_CREDITS.standard;
 }
 
+/** Id de ligne pour ai_monthly_usage.
+ *
+ *  L'identité métier d'une ligne est (org_id, month) — c'est la contrainte
+ *  UNIQUE qui sert d'arbitre aux upserts. L'id ne doit donc PAS être une
+ *  fonction déterministe de (org_id, month) : deux écritures concurrentes
+ *  initialisant le même mois entraient alors en collision sur la CLÉ PRIMAIRE,
+ *  index que l'arbitre `ON CONFLICT (org_id, month)` ne couvre pas. Postgres
+ *  levait 23505 (ai_monthly_usage_pkey) au lieu d'absorber le conflit : la
+ *  transaction de facturation était annulée, la consommation IA déjà servie
+ *  par le provider n'était pas comptabilisée, et consumeAICredits (fail-closed)
+ *  bloquait la requête. L'id n'est lu par aucun chemin de code ; seule sa
+ *  préfixation reste utile au diagnostic.
+ */
+function monthlyUsageRowId(orgId: string, month: string): string {
+  return `amu_${orgId}_${month}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function getOrCreateMonthlyUsage(rawOrgId = "default"): Promise<{
   creditsUsed: number;
   creditsLimit: number;
@@ -146,7 +158,7 @@ export async function getOrCreateMonthlyUsage(rawOrgId = "default"): Promise<{
          (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
        VALUES ($1,$2,$3,0,0,0,0,$4,NOW())
        ON CONFLICT (org_id, month) DO NOTHING`,
-      [`amu_${orgId}_${month}`, orgId, month, monthResetDate()]
+      [monthlyUsageRowId(orgId, month), orgId, month, monthResetDate()]
     );
     return [null, creditsExtra];
   });
@@ -184,14 +196,14 @@ export async function consumeAICredits(opts: {
   metadata?: Record<string, unknown>;
   /** Idempotency key — reuse on retry to avoid double-billing. */
   requestId?: string;
-}): Promise<{ allowed: boolean; creditsUsed: number; remaining: number }> {
+}): Promise<{ allowed: boolean; creditsUsed: number; remaining: number; reason?: "quota_exhausted" | "unavailable" }> {
   const rawOrgId    = opts.orgId ?? "default";
   // Canonicalize BEFORE any read/write — fail CLOSED when unresolvable:
   // an org whose usage cannot be tracked must not receive provider-backed work.
   const orgId = await resolveCanonicalOrgUuid(rawOrgId);
   if (!orgId) {
     logger.error({ rawOrgId, feature: opts.feature }, "[AI] consumeAICredits — org id not canonicalizable, blocking request");
-    return { allowed: false, creditsUsed: 0, remaining: 0 };
+    return { allowed: false, creditsUsed: 0, remaining: 0, reason: "unavailable" };
   }
   const aiCfg       = opts.model ? null : await (async () => {
     try {
@@ -214,10 +226,11 @@ export async function consumeAICredits(opts: {
     const totalAvailable = usage.creditsLimit + usage.creditsExtra;
     const remaining = Math.max(0, totalAvailable - usage.creditsUsed);
 
-    if (usage.creditsUsed + creditsDebited > totalAvailable * 1.05) {
+    const hardLimit = Math.floor(totalAvailable * 1.05);
+    if (usage.creditsUsed + creditsDebited > hardLimit) {
       logger.warn({ feature: opts.feature, orgId, creditsDebited }, "[AI] Credits exhausted — blocking request");
       await triggerAIAlert(orgId, "quota_100pct", usage.creditsUsed, totalAvailable);
-      return { allowed: false, creditsUsed: 0, remaining };
+      return { allowed: false, creditsUsed: 0, remaining, reason: "quota_exhausted" };
     }
 
     // ── Debit through the single atomic + idempotent write path ────────────
@@ -229,18 +242,25 @@ export async function consumeAICredits(opts: {
       requestId: opts.requestId,
       metadata: opts.metadata,
       fixedCreditCost: creditsDebited,
+      // Plafond ATOMIQUE : la verification ci-dessus est un pre-controle ; le vrai garde-fou est
+      // l'UPDATE conditionnel de recordCompletedUsage (deux debits concurrents ne depassent pas le plafond).
+      hardLimit,
     });
 
     return { allowed: true, creditsUsed: rec.creditsDebited, remaining: rec.remaining };
   } catch (err) {
+    if ((err as Error & { code?: string })?.code === "AI_CREDITS_EXHAUSTED") {
+      logger.warn({ feature: opts.feature, orgId, creditsDebited }, "[AI] Credits exhausted (atomic guard) — debit rolled back");
+      return { allowed: false, creditsUsed: 0, remaining: 0, reason: "quota_exhausted" };
+    }
     if ((err as Error & { code?: string })?.code === "ORG_NOT_CANONICAL") {
       logger.error({ orgId, feature: opts.feature }, "[AI] consumeAICredits — org not canonicalizable, blocking request");
-      return { allowed: false, creditsUsed: 0, remaining: 0 };
+      return { allowed: false, creditsUsed: 0, remaining: 0, reason: "unavailable" };
     }
     // Fail CLOSED: if the quota state cannot be read or the debit cannot be
     // persisted, provider-backed work must not proceed (billing risk).
     logger.error({ err, orgId, feature: opts.feature }, "[AI] consumeAICredits failed — blocking request (fail-closed)");
-    return { allowed: false, creditsUsed: 0, remaining: 0 };
+    return { allowed: false, creditsUsed: 0, remaining: 0, reason: "unavailable" };
   }
 }
 
@@ -326,6 +346,9 @@ export async function recordCompletedUsage(opts: {
   /** Override the computed credit cost. Use to enforce the feature base cost
    *  regardless of model multiplier (e.g. feature-priced endpoints). */
   fixedCreditCost?: number;
+  /** Plafond atomique : si defini, le cumul mensuel `credits_used + debit` ne peut pas le depasser ;
+   *  sinon la transaction est annulee (erreur AI_CREDITS_EXHAUSTED) et rien n'est enregistre. */
+  hardLimit?: number;
 }, execution?: {
   /** Reuse an already-reserved pool session (for example while holding a
    * session-level advisory lock) without acquiring another connection. */
@@ -341,7 +364,10 @@ export async function recordCompletedUsage(opts: {
     ? opts.fixedCreditCost
     : computeCreditsDebited({ feature, model, realCostEur });
   const month       = currentMonth();
-  const logId       = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  // Entropie élargie : le conflit est désormais arbitré sur la clé
+  // d'idempotence, donc une collision de cet id lèverait une erreur au lieu
+  // d'être absorbée — ce qui est correct, mais doit rester improbable.
+  const logId       = `aul_${Date.now()}_${randomUUID()}`;
   const idemKey     = opts.requestId ?? null;
   const metaJson    = opts.metadata ? JSON.stringify(opts.metadata) : null;
 
@@ -367,6 +393,10 @@ export async function recordCompletedUsage(opts: {
   // and therefore does NOT double-increment ai_monthly_usage. If either
   // statement fails, the whole transaction rolls back — the log and the
   // aggregate can never diverge.
+  // The conflict target is explicit — an untargeted ON CONFLICT DO NOTHING also
+  // swallowed a primary-key collision on the generated logId, silently dropping
+  // a legitimate usage row and its aggregate increment. Only a replayed
+  // idempotency key may be ignored; anything else must surface.
   let recorded = false;
   try {
     const recordUsage = async (client: PoolClient) => {
@@ -375,7 +405,7 @@ export async function recordCompletedUsage(opts: {
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata, idempotency_key)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-         ON CONFLICT DO NOTHING
+         ON CONFLICT (org_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
          RETURNING id`,
         [logId, orgId, userId, provider, model, feature,
          creditsDeb, creditsDeb,
@@ -390,7 +420,7 @@ export async function recordCompletedUsage(opts: {
         // Duplicate requestId — already billed once; skip the aggregate.
         return false;
       }
-      await client.query(
+      const agg = await client.query(
         `INSERT INTO ai_monthly_usage
            (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,1,$6,$7,NOW())
@@ -399,15 +429,24 @@ export async function recordCompletedUsage(opts: {
                cost_eur       = ai_monthly_usage.cost_eur       + $5,
                request_count  = ai_monthly_usage.request_count  + 1,
                tokens_used    = ai_monthly_usage.tokens_used    + $6,
-               updated_at     = NOW()`,
-        [`amu_${orgId}_${month}`, orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
+               updated_at     = NOW()
+         WHERE $8::numeric IS NULL OR ai_monthly_usage.credits_used + $4 <= $8::numeric`,
+        [monthlyUsageRowId(orgId, month), orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate(), opts.hardLimit ?? null]
       );
+      if (opts.hardLimit !== undefined && agg.rowCount === 0) {
+        // Plafond atteint entre le pre-controle et le debit (concurrence) : on annule tout.
+        const e = new Error("AI credits exhausted");
+        (e as Error & { code?: string }).code = "AI_CREDITS_EXHAUSTED";
+        throw e;
+      }
       return true;
     };
     recorded = execution
       ? await withOrgDbClient(execution.client, orgId, recordUsage)
       : await withOrgDb(orgId, recordUsage);
   } catch (err) {
+    // Refus de plafond : ce n'est pas une perte d'usage, rien n'a ete consomme.
+    if ((err as Error & { code?: string })?.code === "AI_CREDITS_EXHAUSTED") throw err;
     // Loud, explicit failure — the provider WAS consumed but FlowPoint could
     // not persist the usage. This must never pass silently at debug level.
     logger.error({ err, orgId, feature, model, requestId: idemKey },
@@ -519,7 +558,7 @@ async function ensureAiUsageOutboxTable(): Promise<void> {
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ai_usage_pending_writes') THEN
           CREATE POLICY org_isolation ON ai_usage_pending_writes
-            USING (org_id = current_setting('app.org_id', true));
+            USING (org_id = current_setting('app.current_org_id', true));
         END IF;
       END $$`);
     _outboxTableReady = true;

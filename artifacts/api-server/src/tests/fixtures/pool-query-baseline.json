@@ -1,0 +1,469 @@
+{
+  "_comment": "Inventaire revu des acces bruts pool.query/pool.connect. total = appels ; noOrg = appels dont le texte ne mentionne ni org_id ni organization_id (ou pool.connect). Ne peut que DECROITRE sans revue. Regeneration : voir pool-query-inventory.test.ts.",
+  "files": {
+    "agent/audit-tools.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "agent/calendar-tools.ts": {
+      "total": 2,
+      "noOrg": 1
+    },
+    "agent/monitor-tools.ts": {
+      "total": 2,
+      "noOrg": 0
+    },
+    "agent/permissions.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "agent/proposals.ts": {
+      "total": 2,
+      "noOrg": 0
+    },
+    "agent/recommendation-tools.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "agent/tool-executor.ts": {
+      "total": 108,
+      "noOrg": 22
+    },
+    "agent/undo.ts": {
+      "total": 25,
+      "noOrg": 8
+    },
+    "lib/conversion-outbox.ts": {
+      "total": 11,
+      "noOrg": 10
+    },
+    "middlewares/customDomainHost.ts": {
+      "total": 4,
+      "noOrg": 1
+    },
+    "middlewares/orgContext.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "middlewares/planGate.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "routes/addons.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "routes/admin.ts": {
+      "total": 106,
+      "noOrg": 67
+    },
+    "routes/ai-workspace-launch.ts": {
+      "total": 5,
+      "noOrg": 3
+    },
+    "routes/ai.ts": {
+      "total": 48,
+      "noOrg": 7
+    },
+    "routes/audit.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "routes/auth.ts": {
+      "total": 22,
+      "noOrg": 18
+    },
+    "routes/client-mode.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "routes/connectors.ts": {
+      "total": 6,
+      "noOrg": 0
+    },
+    "routes/data-explorer.ts": {
+      "total": 3,
+      "noOrg": 0
+    },
+    "routes/dataforseo-cron.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/diagnostics.ts": {
+      "total": 14,
+      "noOrg": 13
+    },
+    "routes/funnels.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "routes/ga4.ts": {
+      "total": 3,
+      "noOrg": 0
+    },
+    "routes/gbp-performance.ts": {
+      "total": 4,
+      "noOrg": 0
+    },
+    "routes/google-gsc-oauth.ts": {
+      "total": 2,
+      "noOrg": 0
+    },
+    "routes/google.ts": {
+      "total": 21,
+      "noOrg": 15
+    },
+    "routes/gsc.ts": {
+      "total": 5,
+      "noOrg": 1
+    },
+    "routes/health.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/integrations.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/local-maps.ts": {
+      "total": 8,
+      "noOrg": 6
+    },
+    "routes/location.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/me.ts": {
+      "total": 4,
+      "noOrg": 1
+    },
+    "routes/missions.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/monitors.ts": {
+      "total": 8,
+      "noOrg": 6
+    },
+    "routes/org-data-export.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/overview.ts": {
+      "total": 12,
+      "noOrg": 1
+    },
+    "routes/public-billing.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "routes/qa-fixtures.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "routes/reports.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "routes/review-intelligence.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "routes/security.ts": {
+      "total": 3,
+      "noOrg": 1
+    },
+    "routes/seo.ts": {
+      "total": 6,
+      "noOrg": 1
+    },
+    "routes/share.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "routes/team.ts": {
+      "total": 22,
+      "noOrg": 8
+    },
+    "routes/white-label.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "services/account-deletion.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/activity-streak.ts": {
+      "total": 3,
+      "noOrg": 2
+    },
+    "services/addon-entitlement.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "services/addons-service.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/agency-report-scheduler.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/agency-reporting.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/ai-credit-refunds.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/ai-credit-verification.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/ai-economy.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/ai-engine.ts": {
+      "total": 5,
+      "noOrg": 5
+    },
+    "services/ai-prefs.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/alert-events-service.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/audit-runner.ts": {
+      "total": 4,
+      "noOrg": 0
+    },
+    "services/audit-schedule-cron.ts": {
+      "total": 5,
+      "noOrg": 2
+    },
+    "services/automation-service.ts": {
+      "total": 13,
+      "noOrg": 7
+    },
+    "services/automation-triggers.ts": {
+      "total": 1,
+      "noOrg": 0
+    },
+    "services/betterstack-service.ts": {
+      "total": 7,
+      "noOrg": 4
+    },
+    "services/billing-context.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/billing-service.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/canonical-system-seeds.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/client-mode-service.ts": {
+      "total": 4,
+      "noOrg": 4
+    },
+    "services/conversion-dashboards.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/crm-service.ts": {
+      "total": 5,
+      "noOrg": 5
+    },
+    "services/crm/crm-core.ts": {
+      "total": 19,
+      "noOrg": 2
+    },
+    "services/data-explorer-service.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/dataforseo-service.ts": {
+      "total": 5,
+      "noOrg": 3
+    },
+    "services/ensure-stripe-customer.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/enterprise-permission-engine.ts": {
+      "total": 2,
+      "noOrg": 0
+    },
+    "services/forecasting-service.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/funnel-events.ts": {
+      "total": 6,
+      "noOrg": 6
+    },
+    "services/ga4-service.ts": {
+      "total": 5,
+      "noOrg": 2
+    },
+    "services/gbp-posting-service.ts": {
+      "total": 12,
+      "noOrg": 6
+    },
+    "services/github-service.ts": {
+      "total": 4,
+      "noOrg": 4
+    },
+    "services/google-service.ts": {
+      "total": 5,
+      "noOrg": 5
+    },
+    "services/gsc-oauth-service.ts": {
+      "total": 5,
+      "noOrg": 0
+    },
+    "services/gsc-service.ts": {
+      "total": 14,
+      "noOrg": 10
+    },
+    "services/init-agent-tables.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-ai-migration.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-automation.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-data-tables.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-missions.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-monitors.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-phase1-users.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/init-rls-migration.ts": {
+      "total": 3,
+      "noOrg": 2
+    },
+    "services/init-rls-setup.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/integrations-service.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/keyword-engine.ts": {
+      "total": 6,
+      "noOrg": 6
+    },
+    "services/local-maps-service.ts": {
+      "total": 11,
+      "noOrg": 4
+    },
+    "services/market-intel-service.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/mission-engine.ts": {
+      "total": 4,
+      "noOrg": 2
+    },
+    "services/monitor-cron.ts": {
+      "total": 4,
+      "noOrg": 4
+    },
+    "services/org-data.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/org-settings.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/overview-service.ts": {
+      "total": 20,
+      "noOrg": 0
+    },
+    "services/pagespeed-service.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
+    "services/pending-signup-stripe-customer.ts": {
+      "total": 1,
+      "noOrg": 1
+    },
+    "services/permissions-service.ts": {
+      "total": 8,
+      "noOrg": 8
+    },
+    "services/reactivate-subscription.ts": {
+      "total": 5,
+      "noOrg": 5
+    },
+    "services/reports-service.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/review-intel-service.ts": {
+      "total": 4,
+      "noOrg": 3
+    },
+    "services/seller-attribution.ts": {
+      "total": 3,
+      "noOrg": 2
+    },
+    "services/seller-financial-ledger.ts": {
+      "total": 6,
+      "noOrg": 2
+    },
+    "services/sessions.ts": {
+      "total": 5,
+      "noOrg": 5
+    },
+    "services/signup-subscription.ts": {
+      "total": 2,
+      "noOrg": 2
+    },
+    "services/sso-service.ts": {
+      "total": 9,
+      "noOrg": 9
+    },
+    "services/store.ts": {
+      "total": 5,
+      "noOrg": 5
+    },
+    "services/stripe-trial-history.ts": {
+      "total": 2,
+      "noOrg": 1
+    },
+    "services/usage-events.ts": {
+      "total": 4,
+      "noOrg": 1
+    },
+    "services/workflow-schedule-cron.ts": {
+      "total": 5,
+      "noOrg": 0
+    }
+  }
+}

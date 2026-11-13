@@ -1,0 +1,547 @@
+import express from "express";
+import request from "supertest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  orgDbMock, poolConnectMock, streamReportPdfMock, aiChatMock, loadOrgAIPrefsMock,
+  resolveAIModelMock, checkAIQuotaMock, checkQuotaMock, recordCompletedUsageDeferredMock,
+  canWriteMock,
+  getGA4OverviewMock, getTopPagesMock,
+} = vi.hoisted(() => ({
+  orgDbMock: vi.fn(),
+  poolConnectMock: vi.fn(),
+  streamReportPdfMock: vi.fn().mockResolvedValue(undefined),
+  aiChatMock: vi.fn(),
+  loadOrgAIPrefsMock: vi.fn(),
+  resolveAIModelMock: vi.fn(),
+  checkAIQuotaMock: vi.fn(),
+  checkQuotaMock: vi.fn(),
+  recordCompletedUsageDeferredMock: vi.fn(),
+  canWriteMock: vi.fn((_req: any, _res: any, next: any) => next()),
+  getGA4OverviewMock: vi.fn(),
+  getTopPagesMock: vi.fn(),
+}));
+
+vi.mock("@workspace/db", () => ({
+  pool: { connect: poolConnectMock, query: vi.fn() },
+  db: {},
+  eq: vi.fn(),
+  desc: vi.fn(),
+  and: vi.fn(),
+}));
+vi.mock("../middlewares/planGate.js", () => ({
+  requireAddon: () => (_req: any, _res: any, next: any) => next(),
+}));
+vi.mock("../middlewares/rateLimiter.js", () => ({
+  reportRateLimit: (_req: any, _res: any, next: any) => next(),
+}));
+vi.mock("../middlewares/requireRole.js", () => ({
+  canWrite: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : canWriteMock(req, res, next),
+  canAdmin: (req: any, res: any, next: any) => req.orgContext?.role === "viewer" ? res.status(403).json({ error: "Forbidden" }) : next(),
+}));
+vi.mock("../services/pdf.js", () => ({ streamReportPdf: streamReportPdfMock }));
+vi.mock("../services/store.js", () => ({
+  store: { logActivity: vi.fn().mockResolvedValue(undefined) },
+}));
+vi.mock("../services/billing-service.js", () => ({
+  checkQuota: checkQuotaMock,
+}));
+vi.mock("../services/ai-provider.js", () => ({ aiChat: aiChatMock }));
+vi.mock("../services/ai-prefs.js", () => ({
+  loadOrgAIPrefs: loadOrgAIPrefsMock,
+  resolveAIModel: resolveAIModelMock,
+}));
+vi.mock("../services/ai-engine.js", () => ({
+  checkAIQuota: checkAIQuotaMock,
+  recordCompletedUsageDeferred: recordCompletedUsageDeferredMock,
+}));
+vi.mock("../services/ai-quota.js", () => ({
+  buildQuotaGuidance: vi.fn(),
+}));
+vi.mock("../services/ga4-service.js", () => ({ getGA4Overview: getGA4OverviewMock }));
+vi.mock("../services/gsc-service.js", () => ({ getTopPages: getTopPagesMock }));
+vi.mock("../services/usage-events.js", () => ({
+  recordUsageEvent: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../lib/logger.js", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+import reportsRouter from "./reports.js";
+
+/** `makeApp("org-b")` : autre organisation ; `makeApp("viewer")` : autre rôle. */
+function makeApp(roleOrOrg = "owner", orgIdArg?: string) {
+  const isRole = ["owner", "admin", "member", "viewer"].includes(roleOrOrg);
+  const role = isRole ? roleOrOrg : "owner";
+  const orgId = orgIdArg ?? (isRole ? "org-a" : roleOrOrg);
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    Object.assign(req, { orgId, orgDb: orgDbMock, orgContext: { userId: "user-a", email: "owner@example.test", role } });
+    next();
+  });
+  app.use("/api", reportsRouter);
+  return app;
+}
+
+describe("Agency Reporting Packs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    vi.stubEnv("AGENCY_REPORT_SCHEDULER_ENABLED", "true");
+    vi.stubEnv("PUBLIC_URL", "https://agency.example.test");
+    canWriteMock.mockImplementation((_req: any, _res: any, next: any) => next());
+    checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [] });
+    getTopPagesMock.mockResolvedValue([]);
+  });
+
+  it("loads audits scoped to the requesting organization", async () => {
+    const audits = [{
+      id: "audit-a1",
+      url: "https://client.example",
+      score: 92,
+      status: "completed",
+      created_at: "2026-10-20T10:00:00.000Z",
+    }];
+    orgDbMock.mockResolvedValue({ rows: audits });
+
+    const response = await request(makeApp()).get("/api/reports/agency-packs");
+
+    expect(response.status).toBe(200);
+    expect(response.body.audits).toEqual(audits);
+    expect(response.body.packs).toHaveLength(3);
+    expect(response.body.packs.map((pack: { templateKey: string }) => pack.templateKey).sort())
+      .toEqual(["executive", "local", "seo"]);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE org_id=$1"),
+      ["org-a"],
+    );
+  });
+
+  it("requires a selected audit before opening a report transaction", async () => {
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/generate")
+      .send({ clientName: "Client A" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("AUDIT_REQUIRED");
+    expect(poolConnectMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable error instead of an empty report list when storage fails", async () => {
+    orgDbMock.mockRejectedValue(new Error("reports table unavailable"));
+
+    const response = await request(makeApp()).get("/api/reports");
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("REPORTS_UNAVAILABLE");
+  });
+
+  it("rejects an audit that is not owned by the requesting organization", async () => {
+    orgDbMock.mockResolvedValue({ rows: [] });
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/generate")
+      .send({ clientName: "Client A", auditId: "audit-from-another-org" });
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe("AUDIT_NOT_FOUND");
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1 AND org_id=$2"),
+      ["audit-from-another-org", "org-a"],
+    );
+  });
+
+  it("creates three reports linked to the selected audit", async () => {
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1" }] });
+    const inserts: Array<{ id: unknown; auditId: unknown }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, values: unknown[] = []) => {
+        if (sql.startsWith("INSERT INTO reports")) {
+          inserts.push({ id: values[0], auditId: values[5] });
+          return { rows: [], rowCount: 1 };
+        }
+        if (sql.startsWith("SELECT id, name, template_key FROM reports")) {
+          return {
+            rows: inserts.map((row, index) => ({
+              id: row.id,
+              name: `Client A — rapport ${index + 1}`,
+              template_key: ["executive", "seo", "local"][index],
+            })),
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      }),
+      release: vi.fn(),
+    };
+    poolConnectMock.mockResolvedValue(client as any);
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/generate")
+      .send({ clientName: "Client A", auditId: "audit-a1" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.verifiedCount).toBe(3);
+    expect(inserts).toHaveLength(3);
+    expect(inserts.every((row) => row.auditId === "audit-a1")).toBe(true);
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it("validates and persists a recurring schedule only for org-owned completed sites", async () => {
+    orgDbMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT id, status FROM audits")) {
+        return { rows: [{ id: "audit-a1", status: "completed" }, { id: "audit-a2", status: "completed" }] };
+      }
+      if (sql.includes("INSERT INTO agency_report_schedules")) {
+        return { rows: [{ id: "schedule-a", org_id: "org-a", enabled: true }] };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "Europe/Paris",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ id: "schedule-a", enabled: true });
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE org_id=$1 AND id=ANY"),
+      ["org-a", ["audit-a1", "audit-a2"]],
+    );
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO agency_report_schedules"),
+      expect.arrayContaining(["org-a", "Client A", "client@example.test"]),
+    );
+  });
+
+  it("rejects schedule mutation when the caller lacks write permission", async () => {
+    canWriteMock.mockImplementation((_req: any, res: any) => res.status(403).json({ error: "Forbidden" }));
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "Europe/Paris",
+      });
+
+    expect(response.status).toBe(403);
+    expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a schedule that references audits not owned by this organization", async () => {
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1", status: "completed" }] });
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "foreign-audit"], cron: "0 9 * * 1", timezone: "UTC",
+      });
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe("AUDIT_NOT_FOUND");
+    expect(orgDbMock).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO agency_report_schedules"), expect.anything());
+  });
+
+  it("refuses schedule creation with a clear disabled code before database writes", async () => {
+    vi.stubEnv("AGENCY_REPORT_SCHEDULER_ENABLED", "false");
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "UTC",
+      });
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("AGENCY_SCHEDULER_DISABLED");
+    expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("requires a configured public URL before accepting a schedule or creating a portal", async () => {
+    vi.stubEnv("PUBLIC_URL", "");
+    vi.stubEnv("PUBLIC_BASE_URL", "");
+
+    const schedule = await request(makeApp())
+      .post("/api/reports/agency-packs/schedules")
+      .send({
+        clientName: "Client A", recipientEmail: "client@example.test",
+        auditIds: ["audit-a1", "audit-a2"], cron: "0 9 * * 1", timezone: "UTC",
+      });
+    expect(schedule.status).toBe(503);
+    expect(schedule.body.code).toBe("AGENCY_PUBLIC_URL_REQUIRED");
+    expect(orgDbMock).not.toHaveBeenCalled();
+
+    const portal = await request(makeApp())
+      .post("/api/reports/agency-packs/portals")
+      .send({ clientName: "Client A", reportIds: ["r-a"] });
+    expect(portal.status).toBe(503);
+    expect(portal.body.code).toBe("AGENCY_PUBLIC_URL_REQUIRED");
+    expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("does not start report quota work for consolidation without a public URL", async () => {
+    vi.stubEnv("PUBLIC_URL", "");
+    vi.stubEnv("PUBLIC_BASE_URL", "");
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/consolidate")
+      .send({ clientName: "Client A", auditIds: ["audit-a1", "audit-a2"] });
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("AGENCY_PUBLIC_URL_REQUIRED");
+    expect(poolConnectMock).not.toHaveBeenCalled();
+    expect(checkQuotaMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a consolidated report whose saved site snapshot is invalid", async () => {
+    const report = {
+      id: "report-multi", org_id: "org-a", name: "Client — Rapport multi-sites",
+      type: "REPORT", template_key: "executive", pdf_ready: false,
+      generation_metadata_json: JSON.stringify({
+        source: "agency_multi_site",
+        sites: [{ url: "https://only-one.example", score: 90 }],
+      }),
+    };
+    orgDbMock.mockResolvedValue({ rows: [report] });
+
+    const response = await request(makeApp()).get("/api/reports/report-multi/download");
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("PDF_NOT_READY");
+    expect(streamReportPdfMock).not.toHaveBeenCalled();
+  });
+
+  it("downloads a valid consolidated snapshot as a multi-site PDF, not a single-audit report", async () => {
+    const sites = [
+      { url: "https://a.example", auditDate: "2026-11-01T10:00:00.000Z", score: 91, speed: 84, issues: 3 },
+      { url: "https://b.example", auditDate: "2026-11-02T10:00:00.000Z", score: 72, speed: 68, issues: 9 },
+    ];
+    const report = {
+      id: "report-multi", org_id: "org-a", name: "Client — Rapport multi-sites",
+      type: "REPORT", template_key: "executive", pdf_ready: false, audit_id: "audit-first",
+      generation_metadata_json: JSON.stringify({ source: "agency_multi_site", sites }),
+      meeting_notes_json: "[]",
+    };
+    orgDbMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM reports WHERE id=$1 AND org_id=$2")) return { rows: [report] };
+      return { rows: [] };
+    });
+    streamReportPdfMock.mockImplementation((res: any) => res.end());
+
+    const response = await request(makeApp()).get("/api/reports/report-multi/download");
+
+    expect(response.status).toBe(200);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("FROM reports WHERE id=$1 AND org_id=$2"),
+      ["report-multi", "org-a"],
+    );
+    expect(orgDbMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("FROM audits WHERE id=$1 AND org_id=$2"),
+      expect.anything(),
+    );
+    expect(streamReportPdfMock.mock.calls[0]?.[1]).toMatchObject({ agencySites: sites });
+    expect(streamReportPdfMock.mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  it("does not allow downloading a report owned by another organization", async () => {
+    orgDbMock.mockResolvedValue({ rows: [] });
+
+    const response = await request(makeApp("org-b")).get("/api/reports/report-from-org-a/download");
+
+    expect(response.status).toBe(404);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE id=$1 AND org_id=$2"),
+      ["report-from-org-a", "org-b"],
+    );
+    expect(streamReportPdfMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects the complete pack without partial inserts when fewer than three report slots remain", async () => {
+    checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 18 });
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1" }] });
+    const client = {
+      query: vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [], rowCount: 1 })),
+      release: vi.fn(),
+    };
+    poolConnectMock.mockResolvedValue(client as any);
+
+    const response = await request(makeApp())
+      .post("/api/reports/agency-packs/generate")
+      .send({ clientName: "Client A", auditId: "audit-a1" });
+
+    expect(response.status).toBe(402);
+    expect(response.body).toMatchObject({
+      code: "QUOTA_EXCEEDED",
+      resource: "reports",
+      required: 3,
+      used: 18,
+      limit: 20,
+    });
+    expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(client.query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO reports"))).toBe(false);
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it("loads the linked audit from the same organization for PDF delivery", async () => {
+    streamReportPdfMock.mockImplementation((res: any) => res.end());
+    const report = {
+      id: "report-a1",
+      org_id: "org-a",
+      name: "Client A — Executive mensuel",
+      audit_id: "audit-a1",
+      white_label: false,
+      meeting_notes_json: "[]",
+    };
+    const audit = {
+      id: "audit-a1",
+      org_id: "org-a",
+      url: "https://client.example",
+      score: 92,
+      status: "completed",
+    };
+    orgDbMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM reports WHERE id=$1 AND org_id=$2")) return { rows: [report] };
+      if (sql.includes("FROM audits WHERE id=$1 AND org_id=$2")) return { rows: [audit] };
+      return { rows: [] };
+    });
+
+    const response = await request(makeApp()).get("/api/reports/report-a1/download");
+
+    expect(response.status).toBe(200);
+    expect(orgDbMock).toHaveBeenCalledWith(
+      expect.stringContaining("FROM audits WHERE id=$1 AND org_id=$2"),
+      ["audit-a1", "org-a"],
+    );
+    expect(streamReportPdfMock.mock.calls[0]?.[2]).toEqual(audit);
+  });
+});
+
+describe("AI Executive Reporting", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadOrgAIPrefsMock.mockResolvedValue({});
+    resolveAIModelMock.mockReturnValue({ provider: "openai", model: "gpt-4o-mini", maxTokens: 900 });
+    checkAIQuotaMock.mockResolvedValue({ allowed: true });
+    checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 0 });
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [] });
+    getTopPagesMock.mockResolvedValue([]);
+    aiChatMock.mockResolvedValue({
+      text: JSON.stringify({ headline: "Priorité SEO", summary: "Corriger les pages critiques.", priorities: ["Auditer les pages lentes"] }),
+      usage: { promptTokens: 120, completionTokens: 60 },
+    });
+  });
+
+  it("persists an organization-scoped AI report and makes it visible in the Reports list", async () => {
+    getGA4OverviewMock.mockResolvedValue({ rows: [], totals: [{ metricValues: [{ value: "100" }, { value: "80" }, { value: "20" }, { value: "0.4" }, { value: "0.6" }, { value: "90" }, { value: "400" }, { value: "7" }] }] });
+    getTopPagesMock.mockResolvedValue([{ page: "https://client.example/", clicks: 30, impressions: 900, avg_position: 2.5 }]);
+    const saved: Array<Record<string, unknown>> = [];
+    orgDbMock.mockImplementation(async (sql: string, values: unknown[] = []) => {
+      if (sql.includes("FROM audits")) return { rows: [{ url: "https://client.example", score: 42, status: "completed", created_at: "2026-10-20T10:00:00.000Z" }] };
+      if (sql.includes("FROM monitors")) return { rows: [{ name: "Main site", url: "https://client.example", status: "up", uptime: 99.9, response_time: 180 }] };
+      if (sql.includes("SELECT name, template_key, date FROM reports")) return { rows: [] };
+      if (sql.includes("FROM reports WHERE id=$1 AND org_id=$2")) return { rows: saved.filter(row => row.id === values[0] && row.org_id === values[1]) };
+      if (sql.includes("SELECT * FROM reports WHERE org_id=$1")) return { rows: saved.filter(row => row.org_id === values[0]) };
+      return { rows: [] };
+    });
+    const client = {
+      query: vi.fn(async (sql: string, values: unknown[] = []) => {
+        if (sql.startsWith("INSERT INTO reports")) {
+          saved.push({
+            id: values[0], org_id: values[1], name: values[2], type: "PDF",
+            template_key: "executive", date: values[3], meeting_notes_json: values[4],
+          });
+        }
+        return { rows: [], rowCount: 1 };
+      }),
+      release: vi.fn(),
+    };
+    poolConnectMock.mockResolvedValue(client as any);
+
+    const generated = await request(makeApp()).post("/api/reports/ai-executive-summary").send({ subject: "Acquisition organique" });
+    expect(generated.status).toBe(201);
+    expect(generated.body.ok).toBe(true);
+    expect(generated.body.subject).toBe("Acquisition organique");
+    expect(aiChatMock.mock.calls[0]?.[0]?.messages?.[0]?.content).toContain("Acquisition organique");
+    expect(generated.body.measured.latestAuditScore).toBe(42);
+    expect(generated.body.measured.averageUptime).toBe(99.9);
+    expect(generated.body.measured.analytics.ga4).toMatchObject({ status: "observed", sessions: 100, users: 80, conversions: 7, pageViews: 400 });
+    expect(generated.body.measured.analytics.searchConsole).toMatchObject({ status: "observed", pagesIncluded: 1, sampledClicks: 30, sampledImpressions: 900 });
+    expect(getGA4OverviewMock).toHaveBeenCalledWith("org-a", "30daysAgo", "yesterday");
+    expect(getTopPagesMock).toHaveBeenCalledWith("org-a", 5, 28);
+    expect(orgDbMock).toHaveBeenCalledWith(expect.stringContaining("FROM audits WHERE org_id=$1"), ["org-a"]);
+    expect(orgDbMock).toHaveBeenCalledWith(expect.stringContaining("FROM monitors WHERE org_id=$1"), ["org-a"]);
+    expect(client.query).toHaveBeenCalledWith("COMMIT");
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO reports"),
+      expect.arrayContaining([generated.body.reportId, "org-a", expect.stringContaining("Synthèse exécutive IA")]),
+    );
+    expect(client.release).toHaveBeenCalled();
+    const savedNotes = JSON.parse(String(saved[0]?.meeting_notes_json));
+    expect(savedNotes[0].title).toContain("Acquisition organique");
+    expect(savedNotes[0].notes).toContain("Sujet demandé : Acquisition organique");
+
+    const listed = await request(makeApp()).get("/api/reports");
+    expect(listed.status).toBe(200);
+    expect(listed.body).toHaveLength(1);
+    expect(listed.body[0]).toMatchObject({ id: generated.body.reportId, org_id: "org-a", template_key: "executive" });
+
+    const detail = await request(makeApp()).get(`/api/reports/${generated.body.reportId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.meeting_notes_json).toContain("Acquisition organique");
+    streamReportPdfMock.mockImplementationOnce((res: any) => res.type("application/pdf").end("%PDF-1.4 executive"));
+    const download = await request(makeApp()).get(`/api/reports/${generated.body.reportId}/download`);
+    expect(download.status).toBe(200);
+    expect(download.headers["content-type"]).toContain("application/pdf");
+    expect(streamReportPdfMock.mock.calls[0]?.[3]?.[0]?.notes).toContain("Sujet demandé : Acquisition organique");
+  });
+
+  it("denies viewers before generating an executive report", async () => {
+    const response = await request(makeApp("viewer")).post("/api/reports/ai-executive-summary").send({ subject: "Acquisition organique" });
+    expect(response.status).toBe(403);
+    expect(aiChatMock).not.toHaveBeenCalled();
+    expect(poolConnectMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the report quota and rejects generation before calling AI", async () => {
+    checkQuotaMock.mockResolvedValueOnce({ allowed: false, limit: 20, used: 20 });
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({ subject: "Acquisition organique" });
+    expect(response.status).toBe(402);
+    expect(response.body.code).toBe("QUOTA_EXCEEDED");
+    expect(response.body.limit).toBe(20);
+    expect(aiChatMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid subjects before quota checks", async () => {
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({ subject: "x".repeat(121) });
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_SUBJECT");
+    expect(checkQuotaMock).not.toHaveBeenCalled();
+  });
+
+  it("does not treat prior reports as measured data", async () => {
+    orgDbMock.mockImplementation(async (sql: string) => sql.includes("SELECT name, template_key, date FROM reports")
+      ? { rows: [{ name: "Old report", template_key: "executive", date: "2026-10-20" }] }
+      : { rows: [] });
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({});
+    expect(response.status).toBe(422);
+    expect(response.body.code).toBe("NO_REAL_DATA");
+    expect(aiChatMock).not.toHaveBeenCalled();
+    expect(poolConnectMock).not.toHaveBeenCalled();
+  });
+
+  it("does not generate or persist an executive report when the organization has no measured data", async () => {
+    orgDbMock.mockResolvedValue({ rows: [] });
+
+    const response = await request(makeApp()).post("/api/reports/ai-executive-summary").send({});
+
+    expect(response.status).toBe(422);
+    expect(response.body.code).toBe("NO_REAL_DATA");
+    expect(aiChatMock).not.toHaveBeenCalled();
+    expect(poolConnectMock).not.toHaveBeenCalled();
+  });
+});

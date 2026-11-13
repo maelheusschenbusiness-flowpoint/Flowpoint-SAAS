@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from "express";
-import { randomBytes, randomUUID, createHash, createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "crypto";
+import { normalizeSignupLanguage, SIGNUP_LANGUAGE_COOKIE } from "../services/signup-language.js";
+import { fetchBorne, DELAIS } from "../lib/fetch-borne.js";
+import { randomBytes, randomUUID, createHash, createPrivateKey, sign as cryptoSign } from "crypto";
 
 /** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
 function sha256hex(s: string): string {
@@ -7,19 +9,30 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { enregistrerEtape, normaliserAttributionFunnel } from "../services/funnel-events.js";
 import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
-import { Resend } from "resend";
+import { mailer } from "../services/mailer.js";
+import {
+  hasLoginEmailTransport,
+  isLoginEmailAllowed,
+  LOGIN_REQUEST_ACCEPTED_RESPONSE,
+  loginEmailFailureCode,
+  maskEmailForAuthLog,
+} from "../services/login-request-policy.js";
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "../services/org-settings.js";
-import { getStripeKey } from "../services/stripe-factory.js";
+import { createStripeClient, getStripeKey } from "../services/stripe-factory.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
+import { startOAuthState, consumeOAuthState, safeRedirectTo, sanitizePlan } from "../services/oauth-state.js";
+import { verifyAppleIdToken } from "../services/apple-id-token.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
-import { enregistrerEtape, normaliserAttributionFunnel } from "../services/funnel-events.js";
+import { keysEqual } from "../lib/auth-token.js";
+import { sessionCookieSameSite } from "../lib/session-cookie.js";
 
 const router = Router();
 
@@ -55,6 +68,13 @@ async function storeMagicToken(token: string, email: string): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+async function deleteMagicToken(token: string): Promise<void> {
+  await pool.query(
+    "DELETE FROM magic_link_tokens WHERE token = $1",
+    [token],
+  );
 }
 
 /**
@@ -112,7 +132,7 @@ async function resolveOrCreateLegacyOrg({
     if (!resolvedUserUuid) {
       // S3-legacy path: user not yet in `users` — check then insert.
       const existingUser = await client.query<{ id: string }>(
-        `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+        `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
         [email],
       );
       if (existingUser.rows.length > 0) {
@@ -193,7 +213,7 @@ async function resolveOrCreateLegacyOrg({
     // ── Step B: look for an existing UUID org keyed by owner_email ───────────
     const existing = await client.query<{ id: string }>(
       `SELECT id FROM organizations
-        WHERE owner_email = $1 AND status != 'deleted'
+        WHERE lower(owner_email) = lower($1) AND status != 'deleted'
         LIMIT 1`,
       [email],
     );
@@ -376,32 +396,54 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
     return;
   }
   try {
+    // Resolution via loadOrgData() : `organizations` est la source de verite,
+    // avec repli sur org_settings pour les comptes legacy. Cet alias lisait
+    // auparavant org_settings SEUL, par UUID — or une organisation dont la
+    // ligne org_settings n'est encore clee QUE par e-mail (etat produit par
+    // l'activation de compte avant tout evenement d'abonnement) n'y figure
+    // pas. Le resultat etait un 401 "organization data not found" sur une
+    // session parfaitement valide : /auth/session repondait authenticated,
+    // /me repondait 200, et ce seul alias refusait. Aucun changement du
+    // systeme d'authentification : la session, le cookie, la resolution de
+    // session et le contexte organisationnel sont inchanges.
+    const { loadOrgData }     = await import("../services/org-data.js");
     const { loadOrgSettings } = await import("../services/org-settings.js");
-    const dbData = await loadOrgSettings(orgId);
-    if (dbData) {
-      const plan = dbData.plan.toLowerCase();
+    const orgData = await loadOrgData(orgId);
+    // org_settings reste consulte en complement : il porte les champs de
+    // profil et d'usage que `organizations` n'a pas (lastName, usage...).
+    const dbData = await loadOrgSettings(orgId).catch(() => null);
+    if (orgData || dbData) {
+      const planRaw = orgData?.plan ?? dbData?.plan ?? "standard";
+      const plan = planRaw.toLowerCase();
       const { PLAN_LIMITS } = await import("../lib/plans.js");
       const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
-      const firstName = dbData.firstName || (req.orgContext?.email?.split("@")[0] ?? "");
+      const firstName = orgData?.firstName || dbData?.firstName
+        || (req.orgContext?.email?.split("@")[0] ?? "");
       res.json({
-        id: dbData.orgId || orgId,
+        id: orgId,
         firstName,
-        lastName: dbData.lastName ?? "",
-        email: req.orgContext?.email ?? "",
-        plan: dbData.plan,
+        lastName: dbData?.lastName ?? "",
+        email: req.orgContext?.email ?? orgData?.email ?? "",
+        plan: planRaw,
         role: req.orgContext?.role ?? "owner",
-        org: { name: dbData.orgName, website: dbData.website ?? "" },
-        subscriptionStatus: dbData.subscriptionStatus,
-        trialEndsAt: dbData.trialEndsAt,
-        usage: dbData.usage,
-        addons: dbData.addons,
+        org: { name: orgData?.orgName ?? dbData?.orgName, website: dbData?.website ?? "" },
+        subscriptionStatus: orgData?.subscriptionStatus ?? dbData?.subscriptionStatus ?? null,
+        trialEndsAt: orgData?.trialEndsAt ?? dbData?.trialEndsAt ?? null,
+        usage: dbData?.usage,
+        addons: orgData?.addons ?? dbData?.addons,
         limits,
-        createdAt: dbData.createdAt ?? new Date().toISOString(),
+        createdAt: dbData?.createdAt ?? new Date().toISOString(),
       });
       return;
     }
-  } catch { /* fall through */ }
-  res.status(401).json({ error: "Unauthorized: organization data not found" });
+  } catch (err) {
+    // Une panne de lecture n'est pas une absence de session : la journaliser
+    // au lieu de la faire passer silencieusement pour un 401.
+    logger.error({ err, orgId }, "[Auth] /auth/me : lecture des donnees d'organisation impossible");
+    res.status(503).json({ error: "Organization data temporarily unavailable", retryable: true });
+    return;
+  }
+  res.status(404).json({ error: "Organization not found" });
 });
 
 function getPublicUrl(): string {
@@ -412,202 +454,31 @@ function getPublicUrl(): string {
   ).replace(/\/$/, "");
 }
 
-async function sendMagicEmail(email: string, link: string): Promise<void> {
-  const resendKey = process.env["RESEND_API_KEY"];
-  const smtpPass  = process.env["SMTP_PASS"];
-  const smtpHost  = process.env["SMTP_HOST"];
-
-  if (!resendKey && (!smtpPass || !smtpHost)) {
-    logger.warn("[Auth] No complete email transport (Resend, or SMTP_HOST + SMTP_PASS) — cannot send magic link");
-    throw new Error("EMAIL_TRANSPORT_MISSING");
+async function sendMagicEmail(
+  email: string,
+  link: string,
+  localeHints: { language?: unknown; country?: unknown; region?: unknown; orgId?: string | null } = {},
+): Promise<void> {
+  const localizedResult = await mailer.sendLoginLink({
+    to: email,
+    magicLinkUrl: link,
+    expiresMinutes: 15,
+    ...localeHints,
+  });
+  if (!localizedResult.ok) {
+    const message = localizedResult.error || "EMAIL_SEND_FAILED";
+    if (message === "NO_EMAIL_TRANSPORT") throw new Error("EMAIL_TRANSPORT_MISSING");
+    if (message === "TEST_MAILER_NOT_ENABLED") throw new Error(message);
+    if (message.startsWith("SMTP_SEND_FAILED:") || message.startsWith("DOMAIN_NOT_VERIFIED:")) {
+      throw new Error(message);
+    }
+    const domainFailure = /domain|not verified|sender/i.test(message);
+    throw new Error(`${domainFailure ? "DOMAIN_NOT_VERIFIED" : "EMAIL_SEND_FAILED"}: ${message}`);
   }
-
-  // Centralized transactional sender — override via RESEND_FROM or SMTP_FROM env var.
-  // Do NOT fall back to ALERT_EMAIL_FROM: that variable may hold a domain that is
-  // not verified in Resend, causing a synchronous "Invalid from field" error.
-  const fromEmail =
-    process.env["RESEND_FROM"] ||
-    process.env["SMTP_FROM"] ||
-    "FlowPoint <noreply@flowpoint.pro>";
-
   logger.info({
-    email,
-    from: fromEmail,
-    transport: resendKey ? "resend-sdk" : "smtp",
-    publicBaseUrl: process.env["PUBLIC_BASE_URL"] || "(not set)",
-  }, "[Auth] Sending magic link email");
-
-  // ── Send via available transport ────────────────────────────────────────────
-  const _emailSubject = "Votre lien de connexion FlowPoint";
-  const _emailHtml = `<!DOCTYPE html>
-<html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta name="color-scheme" content="light dark"/>
-  <meta name="supported-color-schemes" content="light dark"/>
-  <title>Connexion FlowPoint</title>
-  <style>
-    :root { color-scheme: light dark; }
-
-    /* ── Dark mode overrides ──────────────────────────────────────────── */
-    @media (prefers-color-scheme: dark) {
-      .email-body   { background-color: #0d0f1a !important; }
-      .email-card   { background-color: #13162a !important; border-color: #252a45 !important; }
-      .email-header { background-color: #1d4ed8 !important; }
-      .email-footer { background-color: #1e3a8a !important; }
-      .text-main    { color: #e8eeff !important; }
-      .text-muted   { color: #8891b8 !important; }
-      .divider      { border-color: #252a45 !important; }
-      .copy-block   { background-color: #0d0f1a !important; border-color: #252a45 !important; color: #8891b8 !important; }
-    }
-  </style>
-</head>
-<body class="email-body" style="margin:0;padding:0;background-color:#f0f2fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
-    <tr>
-      <td align="center" style="padding:40px 16px;">
-
-        <!-- Card -->
-        <table class="email-card" width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"
-               style="max-width:560px;background-color:#ffffff;border-radius:16px;border:1px solid #dde1f0;overflow:hidden;">
-
-          <!-- Header -->
-          <tr>
-            <td class="email-header" style="background-color:#2563EB;padding:32px 40px 28px;text-align:center;">
-              <!-- Wordmark -->
-              <div style="display:inline-flex;align-items:center;justify-content:center;gap:12px;">
-                <!-- Zap icon — white on translucent bg -->
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="36" height="36" style="display:inline-block;vertical-align:middle;flex-shrink:0;">
-                  <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill="rgba(255,255,255,0.18)"/>
-                  <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                  </g>
-                </svg>
-                <span style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-.03em;vertical-align:middle;">FlowPoint</span>
-              </div>
-              <div style="margin-top:10px;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:.1em;text-transform:uppercase;font-weight:500;">SEO &nbsp;·&nbsp; Monitoring &nbsp;·&nbsp; Local SEO &nbsp;·&nbsp; IA</div>
-            </td>
-          </tr>
-
-          <!-- Body -->
-          <tr>
-            <td style="padding:40px 40px 32px;">
-
-              <!-- Eyebrow -->
-              <div style="display:inline-block;background:#eff2ff;border:1px solid #c7d0ff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;color:#3d6bff;letter-spacing:.06em;text-transform:uppercase;margin-bottom:20px;">Lien de connexion</div>
-
-              <!-- Title -->
-              <h1 class="text-main" style="margin:0 0 12px;font-size:26px;font-weight:800;color:#0d0f1a;letter-spacing:-.03em;line-height:1.2;">Connecte-toi à FlowPoint</h1>
-
-              <!-- Body copy -->
-              <p class="text-muted" style="margin:0 0 32px;font-size:15px;color:#4a5280;line-height:1.65;">
-                Clique sur le bouton ci-dessous pour accéder à ton espace. Ce lien est valide <strong style="color:#0d0f1a;">15&nbsp;minutes</strong> et ne peut être utilisé qu'une seule fois.
-              </p>
-
-              <!-- CTA -->
-              <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-bottom:32px;">
-                <tr>
-                  <td style="border-radius:10px;background:linear-gradient(135deg,#3d6bff 0%,#1a3de8 100%);">
-                    <a href="${link}"
-                       style="display:inline-block;padding:15px 36px;border-radius:10px;background:linear-gradient(135deg,#3d6bff 0%,#1a3de8 100%);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:-.01em;white-space:nowrap;">
-                      Se connecter →
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Fallback link -->
-              <p class="text-muted" style="margin:0 0 8px;font-size:13px;color:#6878b0;">Bouton qui ne fonctionne pas ? Copie ce lien dans ton navigateur :</p>
-              <div class="copy-block" style="background:#f5f6fc;border:1px solid #dde1f0;border-radius:8px;padding:10px 14px;font-size:12px;color:#6878b0;word-break:break-all;line-height:1.5;font-family:'Courier New',monospace;">
-                ${link}
-              </div>
-
-              <!-- Divider -->
-              <hr class="divider" style="border:none;border-top:1px solid #eaedf5;margin:28px 0;"/>
-
-              <!-- Security note -->
-              <p class="text-muted" style="margin:0;font-size:13px;color:#8891b8;line-height:1.6;">
-                🔒 Si tu n'as pas demandé ce lien, ignore cet e-mail — ton compte est en sécurité. Ce lien expirera automatiquement.
-              </p>
-
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td class="email-footer" style="background-color:#2563EB;padding:22px 40px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:13px;color:rgba(255,255,255,0.9);line-height:1.5;">
-                <a href="https://flowpoint.pro" style="color:#ffffff;text-decoration:none;font-weight:700;">flowpoint.pro</a>
-                &nbsp;&nbsp;·&nbsp;&nbsp;
-                <a href="https://app.flowpoint.pro" style="color:rgba(255,255,255,0.85);text-decoration:none;">Dashboard</a>
-                &nbsp;&nbsp;·&nbsp;&nbsp;
-                <a href="mailto:support@flowpoint.pro" style="color:rgba(255,255,255,0.85);text-decoration:none;">Support</a>
-              </p>
-              <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.55);">
-                © ${new Date().getFullYear()} FlowPoint. Tous droits réservés.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-        <!-- /Card -->
-
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>`;
-
-  if (resendKey) {
-    // ── Resend SDK path ──────────────────────────────────────────────────────
-    const resendClient = new Resend(resendKey);
-    let result: Awaited<ReturnType<typeof resendClient.emails.send>>;
-    try {
-      result = await resendClient.emails.send({
-        from:    fromEmail,
-        to:      email,
-        subject: _emailSubject,
-        html:    _emailHtml,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email, from: fromEmail }, "[Auth] Resend SDK threw error");
-      throw new Error("EMAIL_SEND_FAILED: " + msg);
-    }
-    if (result.error) {
-      const errMsg = (result.error as { message?: string }).message || JSON.stringify(result.error);
-      logger.error({ error: result.error, email }, "[Auth] Resend API error");
-      if (
-        errMsg.toLowerCase().includes("domain") ||
-        errMsg.toLowerCase().includes("not verified") ||
-        errMsg.toLowerCase().includes("sender")
-      ) {
-        throw new Error("DOMAIN_NOT_VERIFIED: " + errMsg);
-      }
-      throw new Error("RESEND_ERROR: " + errMsg);
-    }
-    logger.info({ email, id: result.data?.id, from: fromEmail }, "[Auth] Magic link sent (Resend SDK)");
-  } else {
-    // ── SMTP path (nodemailer) — used when RESEND_API_KEY absent ────────────
-    const { createTransport } = await import("nodemailer");
-    const smtp = createTransport({
-      host:   smtpHost!,
-      port:   parseInt(process.env["SMTP_PORT"] || "465", 10),
-      secure: process.env["SMTP_SECURE"] !== "false",
-      auth:   { user: process.env["SMTP_USER"] || "resend", pass: smtpPass! },
-    });
-    try {
-      const info = await smtp.sendMail({ from: fromEmail, to: email, subject: _emailSubject, html: _emailHtml });
-      logger.info({ messageId: info.messageId, email, from: fromEmail }, "[Auth] Magic link sent (SMTP)");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email, from: fromEmail }, "[Auth] SMTP send failed");
-      throw new Error("EMAIL_SEND_FAILED: " + msg);
-    }
-  }
+    email: maskEmailForAuthLog(email),
+    id: localizedResult.id,
+  }, "[Auth] Localized magic link sent via shared mailer");
 }
 
 router.post("/auth/magic-link", authRateLimit, async (req: Request, res: Response) => {
@@ -615,11 +486,12 @@ router.post("/auth/magic-link", authRateLimit, async (req: Request, res: Respons
 });
 
 router.post("/auth/login-request", authRateLimit, async (req: Request, res: Response) => {
-  const rawEmail = (req.body as { email?: string } | undefined)?.email;
+  const loginBody = req.body as { email?: string; language?: unknown; country?: unknown; region?: unknown } | undefined;
+  const rawEmail = loginBody?.email;
 
   // ── Entry diagnostic log — always visible in Render logs ─────────────────────
   logger.info({
-    emailReceived: rawEmail ? String(rawEmail).replace(/(.{2}).+(@.+)/, "$1***$2") : "(none)",
+    emailReceived: maskEmailForAuthLog(rawEmail),
     fromEmail: process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>",
     publicBaseUrl: process.env["PUBLIC_BASE_URL"] || process.env["PUBLIC_URL"] || "(not set)",
     resendKeyPresent: !!(process.env["RESEND_API_KEY"]),
@@ -635,9 +507,25 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 
   const email = String(rawEmail).toLowerCase().trim();
 
-  if (!isEmailAllowed(email)) {
-    logger.warn({ email }, "[Auth] Login rejected — email not on allowlist");
-    res.json({ ok: true, message: "Si cette adresse est autorisée, vous recevrez un lien par email." });
+  const isProduction = isDeployedProd();
+  const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
+  const emailTransportConfigured = hasLoginEmailTransport(isProduction ? {
+    RESEND_API_KEY: process.env["RESEND_API_KEY"],
+    SMTP_HOST: process.env["SMTP_HOST"],
+    SMTP_PASS: process.env["SMTP_PASS"],
+  } : process.env);
+  if (isProduction && !emailTransportConfigured) {
+    logger.error({
+      failureCode: "EMAIL_TRANSPORT_MISSING",
+      email: maskEmailForAuthLog(email),
+    }, "[Auth] login-request: production email transport unavailable");
+    res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
+    return;
+  }
+
+  if (!isLoginEmailAllowed(email)) {
+    logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] Login rejected — email not on allowlist");
+    res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     return;
   }
 
@@ -656,54 +544,55 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     if (userRow.rows.length > 0) {
       const userStatus = userRow.rows[0].status;
       if (userStatus === "pending") {
-        logger.warn({ email }, "[Auth] login-request: user pending activation (Stripe not completed)");
-        // /signin.html can now accept this email again (pre-register no longer
-        // refuses a pending row), so sending the prospect there resumes the
-        // signup instead of bouncing them back here.
-        res.status(402).json({
-          error: "Votre inscription n'a pas été finalisée. Reprenez-la pour activer votre compte.",
-          code: "SIGNUP_PENDING",
-          redirectTo: "/signin.html",
-          resumable: true,
-        });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: user pending activation (Stripe not completed)");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       if (userStatus === "suspended") {
-        logger.warn({ email }, "[Auth] login-request: user suspended");
-        res.status(403).json({
-          error: "Votre compte a été suspendu. Contactez le support.",
-        });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: user suspended");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       if (userStatus !== "active") {
-        logger.warn({ email, status: userStatus }, "[Auth] login-request: user not active");
-        res.status(403).json({ error: "Votre compte n'est plus actif. Contactez le support." });
+        logger.warn({ email: maskEmailForAuthLog(email), status: userStatus }, "[Auth] login-request: user not active");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       // User is active in new architecture — allow magic link
     } else {
       // 2. Fallback: legacy org_settings check for accounts not yet in users table
       const { loadOrgSettings: _checkAccount } = await import("../services/org-settings.js");
-      const _existingAccount = await _checkAccount(email).catch(() => undefined);
+      const _existingAccount = await _checkAccount(email);
       if (_existingAccount === null) {
-        logger.warn({ email }, "[Auth] login-request: no account found — rejected");
-        res.status(404).json({
-          error: "Aucun compte trouvé pour cette adresse email. Créez votre compte sur /signin.html.",
-          redirectTo: "/signin.html",
-        });
+        // ENUMERATION DE COMPTES — corrigee le 18/10/2026.
+        //
+        // Cette branche repondait 404 avec « Aucun compte trouve pour cette
+        // adresse email ». Mesure faite en production pendant l'audit : un
+        // appel avec une adresse inventee le confirmait immediatement. On
+        // pouvait donc tester une liste d'adresses et savoir lesquelles sont
+        // clientes de FlowPoint.
+        //
+        // La reponse est identique a celle d'un envoi accepte : elle reste
+        // volontairement neutre pour eviter l'enumeration et ne pretend pas
+        // qu'un email a ete envoye.
+        //
+        // La limite de debit reste en place (`authRateLimit`), donc cette
+        // uniformite n'ouvre aucune porte au balayage.
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: aucun compte — reponse uniforme, aucun envoi");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
       if (_existingAccount && _existingAccount.subscriptionStatus === "pending_billing") {
-        logger.warn({ email }, "[Auth] login-request: pending_billing account (legacy) — rejected");
-        res.status(402).json({
-          error: "Votre inscription est en attente de paiement. Veuillez finaliser votre abonnement.",
-          redirectTo: "/signin.html",
-        });
+        logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: pending_billing account (legacy) — rejected");
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
         return;
       }
     }
   } catch (_accountGuardErr) {
-    logger.error({ err: _accountGuardErr, email }, "[Auth] login-request: DB unreachable during account guard — 503");
+    logger.error({
+      errorName: _accountGuardErr instanceof Error ? _accountGuardErr.name : "UnknownError",
+      email: maskEmailForAuthLog(email),
+    }, "[Auth] login-request: DB unreachable during account guard — 503");
     res.status(503).json({
       error: "Service temporairement indisponible. Veuillez réessayer dans quelques instants.",
     });
@@ -717,55 +606,64 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 
   try {
     await storeMagicToken(token, email);
-    logger.info({ email }, "[Auth] Magic token stored in PostgreSQL");
+    logger.info({ email: maskEmailForAuthLog(email) }, "[Auth] Magic token stored in PostgreSQL");
   } catch (dbErr) {
-    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-    logger.error({ err: msg, email }, "[Auth] DB error — cannot store magic token");
-    res.status(500).json({ error: "Impossible de créer le lien de connexion\u00a0: base de données indisponible." });
+    logger.error({
+      failureCode: "MAGIC_TOKEN_STORE_FAILED",
+      errorName: dbErr instanceof Error ? dbErr.name : "UnknownError",
+      email: maskEmailForAuthLog(email),
+    }, "[Auth] DB error — cannot store magic token");
+    // A token-store failure is still account-dependent; keep the public response
+    // identical to the ignored and accepted paths.
+    res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     return;
   }
 
   // ── Send via configured email transport ───────────────────────────────────────
-  const resendKey = process.env["RESEND_API_KEY"];
-  const isProduction = isDeployedProd();
-  const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
-
-  const smtpConfigured = !!(process.env["SMTP_HOST"] && process.env["SMTP_PASS"]);
-  if (resendKey || smtpConfigured) {
+  if (emailTransportConfigured) {
     try {
-      await sendMagicEmail(email, verifyPath);
-      logger.info({ email }, "[Auth] login-request: magic link sent successfully");
+      await sendMagicEmail(email, verifyPath, {
+        language: loginBody?.language,
+        country: loginBody?.country,
+        region: loginBody?.region,
+      });
+      logger.info({ email: maskEmailForAuthLog(email) }, "[Auth] login-request: email accepted by transport");
       // In dev workspace always include debugLink so Playwright tests can auth
-      if (isDevWorkspace) {
-        res.json({ ok: true, debugLink: verifyPath, message: "Lien de connexion envoyé par email." });
+      if (isDevWorkspace || process.env["TEST_MAIL_DIR"]) {
+        res.json({ ...LOGIN_REQUEST_ACCEPTED_RESPONSE, debugLink: verifyPath });
       } else {
-        res.json({ ok: true, message: "Lien de connexion envoyé par email." });
+        res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email }, "[Auth] login-request: Resend failed");
-
-      if (msg.startsWith("EMAIL_TRANSPORT_MISSING")) {
-        res.status(503).json({ error: "Service email non configuré." });
-      } else if (msg.startsWith("DOMAIN_NOT_VERIFIED")) {
-        // 503 = service unavailable (external config issue, not internal error)
-        res.status(503).json({
-          error: "Service email indisponible\u00a0: le domaine expéditeur n\u2019est pas vérifié dans Resend.",
-          hint:  "Vérifiez les enregistrements DNS (SPF, DKIM) pour le domaine configuré dans RESEND_FROM.",
-          from:  process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>",
-        });
-      } else {
-        res.status(503).json({ error: "Service email temporairement indisponible\u00a0: " + msg.substring(0, 120) });
+      try {
+        await deleteMagicToken(token);
+        logger.info(
+          { email: maskEmailForAuthLog(email) },
+          "[Auth] login-request: token removed after email delivery failure",
+        );
+      } catch (cleanupErr) {
+        logger.error({
+          failureCode: "MAGIC_TOKEN_CLEANUP_FAILED",
+          errorName: cleanupErr instanceof Error ? cleanupErr.name : "UnknownError",
+          email: maskEmailForAuthLog(email),
+        }, "[Auth] login-request: could not remove token after email delivery failure");
       }
+      logger.error({
+        failureCode: loginEmailFailureCode(err),
+        email: maskEmailForAuthLog(email),
+      }, "[Auth] login-request: email delivery failed");
+      // Keep account-dependent delivery failures indistinguishable from an
+      // ignored request; the structured logs retain the internal failure code.
+      res.json(LOGIN_REQUEST_ACCEPTED_RESPONSE);
     }
     return;
   }
 
   if (!isProduction) {
-    logger.warn({ email, debugLink: verifyPath }, "[Auth] No configured email transport — returning debugLink");
-    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
+    logger.warn({ email: maskEmailForAuthLog(email) }, "[Auth] No configured email transport — returning debugLink");
+    res.json({ ...LOGIN_REQUEST_ACCEPTED_RESPONSE, debugLink: verifyPath });
   } else {
-    logger.error("[Auth] RESEND_API_KEY not set in production");
+    logger.error("[Auth] No supported email transport configured in production");
     res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
   }
 });
@@ -807,7 +705,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   const {
     _hp,          // honeypot
     firstName, lastName, email,
-    companyName, website, country,
+    companyName, website, country, language,
     companySize, objective, city, address,
     plan: planField,
   } = req.body as Record<string, string | undefined>;
@@ -931,13 +829,17 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     return;
   }
 
-  const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = isDeployedProd();
   const isDevWorkspaceS = !!process.env["REPLIT_DEV_DOMAIN"];
+  const emailTransportConfigured = hasLoginEmailTransport(isProduction ? {
+    RESEND_API_KEY: process.env["RESEND_API_KEY"],
+    SMTP_HOST: process.env["SMTP_HOST"],
+    SMTP_PASS: process.env["SMTP_PASS"],
+  } : process.env);
 
-  if (resendKey) {
+  if (emailTransportConfigured) {
     try {
-      await sendMagicEmail(normalizedEmail, verifyPath);
+      await sendMagicEmail(normalizedEmail, verifyPath, { language, country, orgId });
       logger.info({ email: normalizedEmail, company, plan: selectedPlan }, "[Auth/Signup] Account created — magic link sent");
       const _signupMsg = _signupIsNewAccount
         ? "Compte créé. Lien envoyé par email."
@@ -951,7 +853,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
       // ── Fire-and-forget: ensure Stripe customer exists (deduplicates by orgId) ──────────
       // Uses ensureStripeCustomer which checks for an existing customer BEFORE creating,
       // preventing duplicate Stripe customers when the same email re-signs up.
-      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+      const stripeKey = getStripeKey();
       if (stripeKey) {
         const _fn = fn; const _ln = ln; const _company = company;
         const _selectedPlan = selectedPlan; const _orgId = orgId; const _email = normalizedEmail;
@@ -963,7 +865,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
               email: _email,
               firstName: `${_fn} ${_ln}`.trim(),
               orgName: _company,
-            });
+            }, stripeKey);
             logger.info({ customerId, plan: _selectedPlan, email: _email }, "[Auth/Signup] Stripe customer ensured (no duplicate)");
           } catch (stripeErr) {
             logger.warn({ err: stripeErr }, "[Auth/Signup] Stripe customer ensure failed (non-fatal)");
@@ -977,7 +879,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
        // delayed or misleading welcome messages after abandoned signups.
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg }, "[Auth/Signup] Resend failed");
+      logger.error({ err: msg }, "[Auth/Signup] Email send failed");
       // In dev mode, return the magic link directly so the flow can be tested without email
       if (!isProduction) {
         res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: envoi email échoué, lien retourné directement." });
@@ -988,7 +890,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   } else if (!isProduction) {
     res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
   } else {
-    logger.error("[Auth/Signup] RESEND_API_KEY not set in production");
+    logger.error("[Auth/Signup] No supported email transport configured in production");
     res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
   }
 });
@@ -1007,7 +909,10 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     phone, vat,
     seller_code: _rawSellerCode,
     fp_lid: _rawFpLid,
+    language: _rawLanguage,
   } = req.body as Record<string, string | undefined>;
+  // Langue de l'interface publique ; whitelist fp-locale.js, sinon 'en'.
+  const _preRegLanguage = normalizeSignupLanguage(_rawLanguage);
 
   // Honeypot — bots fill hidden fields, humans don't
   if (_hp && String(_hp).trim().length > 0) {
@@ -1018,7 +923,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   // Validate required fields
   const normalizedEmail = String(email ?? "").toLowerCase().trim();
   if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
-    res.status(400).json({ error: "Adresse email invalide ou manquante." });
+    res.status(400).json({ error: "Please enter a valid email address." });
     return;
   }
   const fn          = String(firstName   || "").trim();
@@ -1029,16 +934,15 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
   const cityVal     = String(city        || "").trim();
   const postalVal   = String(postalCode  || "").trim();
 
-  if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
-  if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
-  if (!company)    { res.status(400).json({ error: "Le nom de l'entreprise est requis." }); return; }
-  if (!countryVal) { res.status(400).json({ error: "Le pays est requis." });                return; }
-  if (!addressVal) { res.status(400).json({ error: "L'adresse est requise." });             return; }
-  if (!cityVal)    { res.status(400).json({ error: "La ville est requise." });              return; }
-  if (!postalVal)  { res.status(400).json({ error: "Le code postal est requis." });         return; }
+  if (!fn)         { res.status(400).json({ error: "First name is required." });              return; }
+  if (!ln)         { res.status(400).json({ error: "Last name is required." });                 return; }
+  // Société, pays, adresse, ville et code postal ne sont plus demandés à
+  // l'inscription : l'adresse de facturation et la TVA sont collectées plus
+  // tard par Stripe. Les champs restent acceptés et enregistrés tels quels
+  // quand un appelant les fournit encore (compatibilité).
 
   if (isDisposableEmail(normalizedEmail)) {
-    res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
+    res.status(400).json({ error: "Temporary email addresses are not accepted." });
     return;
   }
   if (!isEmailAllowed(normalizedEmail)) {
@@ -1067,16 +971,15 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     // the two pages for ever and the lead was lost. The status was already read
     // here and simply never looked at.
     //
-    // Letting a pending retry through is safe: the transaction below deletes the
-    // caller's own unconsumed pending_signups rows before inserting a fresh one,
-    // and checkout-session/payment-intent reuse the canonical Stripe Customer
-    // recorded on those rows (ONE_CUSTOMER_INVARIANT), so no second customer,
-    // org or subscription can appear. An `active` or `suspended` account is still
+    // Letting a pending retry through is safe: the transaction below reuses the
+    // caller's unconsumed pending_signups row and token, preserving any Customer
+    // anchor needed by a delayed successful-payment webhook. An `active` or
+    // `suspended` account is still
     // refused, exactly as before.
     const _existingStatus = _activeUser.rows[0]?.status ?? "";
     if (_activeUser.rows.length > 0 && _existingStatus !== "pending") {
       res.status(409).json({
-        error: "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.",
+        error: "An account already exists with this email address. Please sign in.",
         redirectTo: "/login.html",
       });
       return;
@@ -1094,14 +997,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     );
     if (_activeMember.rows.length > 0) {
       res.status(409).json({
-        error: "Cette adresse est déjà associée à une organisation FlowPoint. Veuillez vous connecter.",
+        error: "This email address is already linked to a FlowPoint organization. Please sign in.",
         redirectTo: "/login.html",
       });
       return;
     }
   } catch (_activeCheckErr) {
     logger.warn({ err: _activeCheckErr, email: normalizedEmail }, "[Auth/PreRegister] account guard failed");
-    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    res.status(503).json({ error: "Account verification is unavailable. Please try again." });
     return;
   }
 
@@ -1118,64 +1021,46 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     const ownedOrg = await pool.query(
       `SELECT id FROM organizations WHERE lower(owner_email) = $1 LIMIT 1`, [normalizedEmail]);
     if ((_dup?.orgId && _isExistingAccount) || ownedOrg.rows.length) {
-      res.status(409).json({ error: "Un compte existe déjà. Connectez-vous pour gérer votre abonnement.", redirectTo: "/login.html" });
+      res.status(409).json({ error: "An account already exists. Sign in to manage your subscription.", redirectTo: "/login.html" });
       return;
     }
     // Never erase billing identity as a side effect of public pre-registration.
   } catch (_dupErr) {
     logger.warn({ err: _dupErr }, "[Auth/PreRegister] duplicate check unavailable");
-    res.status(503).json({ error: "Vérification du compte indisponible. Réessayez." });
+    res.status(503).json({ error: "Account verification is unavailable. Please try again." });
     return;
   }
 
-  // ── Atomic cleanup + insert in a single serialized transaction ───────────────
-  // DELETE all non-consumed rows for this email (including expired ones) then
-  // INSERT the new row.  Expired rows have consumed_at IS NULL but
-  // expires_at < NOW(); they are unusable yet block the unique index.  Removing
-  // them unconditionally avoids the window where the index prevents a legitimate
-  // retry while the cleanup cron hasn't fired yet.
+  // ── Reuse or create the temporary signup row atomically ─────────────────────
+  // A retry reuses its unconsumed token rather than deleting it. A Stripe
+  // PaymentIntent can still be delivering a successful-payment webhook while
+  // the browser is being reopened; replacing the token would orphan that paid
+  // checkout. Stripe Customer IDs already anchored to the row are preserved.
   //
-  // If a concurrent request races to INSERT at the same moment, PostgreSQL
-  // returns error code 23505 (unique_violation).  We catch it and return a
-  // controlled 409 so the frontend can prompt the user to wait a moment and retry
-  // rather than showing a generic 500.
-  const preToken = generateToken();
+  // If two first-time requests race before either has a row to lock, the unique
+  // email index still arbitrates the INSERT and the loser receives a controlled
+  // 409 below.
+  let preToken = generateToken();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // DELETE all non-consumed rows for this email (expired or abandoned checkouts).
-    // RETURNING lets us collect Stripe customer IDs for async cleanup.
-    const _cleaned = await client.query<{ stripe_customer_id: string | null; fp_lid: string | null }>(
-      `DELETE FROM pending_signups
+    const _existingSignup = await client.query<{
+      token: string;
+      fp_lid: string | null;
+    }>(
+      `SELECT token, fp_lid
+       FROM pending_signups
        WHERE lower(email) = lower($1) AND consumed_at IS NULL
-       RETURNING stripe_customer_id, fp_lid`,
-      [normalizedEmail]
+       ORDER BY created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [normalizedEmail],
     );
+    const _existingToken = _existingSignup.rows[0]?.token ?? null;
+    if (_existingToken) preToken = _existingToken;
     // Conversion B: the first attribution wins — a retry never replaces it.
-    const _earlierFpLid = (_cleaned.rows as { fp_lid?: string | null }[])
-      .map(r => normalizeFpLid(r.fp_lid))
-      .find((v): v is string => v !== null) ?? null;
-    const _staleCustomerIds = (_cleaned.rows as { stripe_customer_id: string | null }[])
-      .map(r => r.stripe_customer_id)
-      .filter((id): id is string => Boolean(id));
-
-    if (_staleCustomerIds.length > 0 || _cleaned.rowCount) {
-      logger.info(
-        { email: normalizedEmail, deletedRows: _cleaned.rowCount },
-        "[Auth/PreRegister] stale pending signups deleted — user retrying or first signup after expired attempt"
-      );
-      // Non-fatal: remove any stale org_settings shell (pending_billing) left by old Render code.
-      await client.query(
-        `DELETE FROM org_settings
-         WHERE lower(org_id::text) = lower($1)
-           AND (subscription_status IS NULL
-             OR subscription_status = ''
-             OR subscription_status = 'pending_billing'
-             OR subscription_status = 'none')`,
-        [normalizedEmail]
-      ).catch((e: unknown) => logger.warn({ e }, "[Auth/PreRegister] stale org_settings cleanup failed (non-fatal)"));
-    }
+    const _earlierFpLid = normalizeFpLid(_existingSignup.rows[0]?.fp_lid);
 
     // Seller attribution (beta): validate seller_code server-side — never trust raw code from caller.
     let _preRegSellerId: string | null = null;
@@ -1192,24 +1077,43 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       }
     }
 
-    // `created_at` est relu : c'est l'horodatage que l'emission AI Lab doit porter.
-    // AI Lab exige qu'un meme `event_id` decrive un evenement immuable, horodatage
-    // compris — un `Date.now()` cote emetteur transformerait un rejeu en collision.
-    const _preRegInserted = await client.query<{ created_at: Date; fp_lid: string | null }>(
-      `INSERT INTO pending_signups
-         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
-       RETURNING created_at, fp_lid`,
-      [
-        preToken, normalizedEmail, fn, ln, company,
-        countryVal, addressVal, cityVal, postalVal,
-        String(phone || "").trim() || null,
-        String(vat   || "").trim() || null,
-        _preRegSellerId,
-        // Conversion B: opaque lead id, strictly validated; anything else is NULL.
-        _earlierFpLid ?? normalizeFpLid(_rawFpLid),
-      ]
-    );
+    const _submittedFpLid = _earlierFpLid ?? normalizeFpLid(_rawFpLid);
+    // Keep the original event time/token for idempotent funnel attribution.
+    // Do not shorten an expiry that payment-intent extended for webhook recovery.
+    const _preRegInserted = _existingToken
+      ? await client.query<{ created_at: Date; fp_lid: string | null }>(
+          `UPDATE pending_signups
+           SET first_name = $1, last_name = $2, company_name = $3,
+               country = $4, address = $5, city = $6, postal_code = $7,
+               phone = $8, vat = $9,
+               seller_id = COALESCE(seller_id, $10),
+               fp_lid = COALESCE(fp_lid, $11),
+               language = $13,
+               expires_at = GREATEST(expires_at, NOW() + INTERVAL '2 hours')
+           WHERE token = $12
+           RETURNING created_at, fp_lid`,
+          [
+            fn, ln, company, countryVal, addressVal, cityVal, postalVal,
+            String(phone || "").trim() || null,
+            String(vat || "").trim() || null,
+            _preRegSellerId, _submittedFpLid, _existingToken, _preRegLanguage,
+          ],
+        )
+      : await client.query<{ created_at: Date; fp_lid: string | null }>(
+          `INSERT INTO pending_signups
+             (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, seller_id, fp_lid, language, created_at, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),NOW() + INTERVAL '2 hours')
+           RETURNING created_at, fp_lid`,
+          [
+            preToken, normalizedEmail, fn, ln, company,
+            countryVal, addressVal, cityVal, postalVal,
+            String(phone || "").trim() || null,
+            String(vat || "").trim() || null,
+            _preRegSellerId,
+            _submittedFpLid,
+            _preRegLanguage,
+          ],
+        );
 
     await client.query("COMMIT");
 
@@ -1237,31 +1141,14 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       }
     }
 
-    // Fire-and-forget: delete any orphaned Stripe customers from abandoned checkouts.
-    if (_staleCustomerIds.length > 0) {
-      (async () => {
-        try {
-          const { createStripeClient: _csClient, getStripeKey: _getKey } = await import("../services/stripe-factory.js");
-          const _stripe = await _csClient(_getKey());
-          for (const cid of _staleCustomerIds) {
-            await _stripe.customers.del(cid).catch((e: unknown) =>
-              logger.warn({ customerId: cid, err: e }, "[Auth/PreRegister] Stale Stripe customer cleanup failed (non-fatal)")
-            );
-          }
-        } catch (e) {
-          logger.warn({ err: e }, "[Auth/PreRegister] Stale Stripe customers batch cleanup failed (non-fatal)");
-        }
-      })();
-    }
   } catch (_insertErr) {
     await client.query("ROLLBACK").catch(() => {});
-    // 23505 = unique_violation: two concurrent requests for the same email
-    // managed to both DELETE 0 existing rows and both attempt INSERT simultaneously.
-    // Safe to ask the user to wait a moment — no data loss, just a retry signal.
+    // 23505 = unique_violation: concurrent first-time requests for this email
+    // raced before either could lock an existing row. Ask the user to retry.
     if ((_insertErr as { code?: string }).code === "23505") {
       logger.warn({ email: normalizedEmail }, "[Auth/PreRegister] concurrent signup race (23505) — user asked to retry");
       res.status(409).json({
-        error: "Une inscription est déjà en cours pour cet email. Patientez quelques secondes puis réessayez.",
+        error: "A sign-up is already in progress for this email. Please wait a few seconds and try again.",
         code: "CONCURRENT_SIGNUP",
       });
       return;
@@ -1271,27 +1158,12 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
     client.release();
   }
 
-  // Create users row with status='pending' — no session, no magic link yet.
-  // Stripe webhook is the only path that activates this account.
-  try {
-    const { pool: pgPool } = await import("@workspace/db");
-    await pgPool.query(
-      `INSERT INTO users (email, first_name, last_name, auth_provider, email_verified, status)
-       VALUES ($1, $2, $3, 'magic_link', FALSE, 'pending')
-       ON CONFLICT (email) DO UPDATE
-         SET first_name = EXCLUDED.first_name,
-             last_name  = EXCLUDED.last_name
-         WHERE users.status = 'pending'`,
-      [normalizedEmail, fn, ln]
-    );
-    logger.info({ email: normalizedEmail }, "[Auth/PreRegister] users row created (status=pending)");
-  } catch (usersErr) {
-    logger.warn({ usersErr, email: normalizedEmail }, "[Auth/PreRegister] users row creation failed (non-fatal)");
-  }
-
-  logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] Pre-registration stored — awaiting plan + payment");
+  logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] temporary signup stored — no account or Stripe customer created");
+  // Mesure du tunnel : le formulaire a ete envoye ET accepte. C'est la
+  // premiere etape que le serveur puisse constater — `signup_started` ne peut
+  // venir que du navigateur. Aucune donnee personnelle n'est transmise.
   const funnelAttribution = normaliserAttributionFunnel(
-    req.cookies?.["fp_analytics_consent"],
+    (req as Request & { cookies?: Record<string, string> }).cookies?.["fp_analytics_consent"],
     req.body?.visiteurId,
     req.body?.source,
     req.body,
@@ -1305,6 +1177,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       cleIdempotence: `signup_form_completed:${preToken}`,
     });
   }
+
   res.json({ ok: true, preRegisterToken: preToken });
 });
 
@@ -1357,25 +1230,24 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
   const _ccTransport = process.env["RESEND_API_KEY"]
     ? "resend-sdk"
     : (process.env["SMTP_HOST"] ? `smtp:${process.env["SMTP_HOST"]}` : "none");
-  logger.info({ sessionId, transport: _ccTransport, step: "CC-0-start" },
+  logger.info({ transport: _ccTransport, step: "CC-0-start" },
     "[Auth/CheckoutComplete] ML-0: received checkout-complete request");
 
   try {
-    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+    const stripeKey = getStripeKey();
     if (!stripeKey) {
       res.status(503).json({ error: "Service de paiement non configuré." });
       return;
     }
 
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     const isConfirmed = session.status === "complete" &&
       (session.payment_status === "paid" || session.payment_status === "no_payment_required");
 
     if (!isConfirmed) {
-      logger.warn({ sessionId, status: session.status, paymentStatus: session.payment_status },
+      logger.warn({ status: session.status, paymentStatus: session.payment_status },
         "[Auth/CheckoutComplete] Session not yet confirmed");
       // Transient — frontend should poll briefly
       res.status(202).json({
@@ -1394,10 +1266,10 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       || meta["email"]
       || (metaOrgId.includes("@") ? metaOrgId : "");
 
-    logger.info({ sessionId, metaOrgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — checking activation status");
+    logger.info({ metaOrgId, email }, "[Auth/CheckoutComplete] Stripe session confirmed — checking activation status");
 
     if (!email) {
-      logger.error({ sessionId, meta }, "[Auth/CheckoutComplete] No email found in session — cannot send magic link");
+      logger.error({ meta }, "[Auth/CheckoutComplete] No email found in session — cannot send magic link");
       res.status(400).json({ error: "Email introuvable dans la session de paiement." });
       return;
     }
@@ -1428,7 +1300,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     if (!userCreated) {
       // Webhook not yet processed — tell the frontend to retry.
       // 402 matches the retry guard in checkout-return.html's runCheckoutComplete().
-      logger.info({ sessionId, email }, "[Auth/CheckoutComplete] User not yet created — webhook pending, returning 402");
+      logger.info({ email }, "[Auth/CheckoutComplete] User not yet created — webhook pending, returning 402");
       res.status(402).json({
         pending: true,
         message: "Activation en cours. Veuillez patienter quelques secondes.",
@@ -1453,6 +1325,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
         if (_ccMailerFwd) {
           const fwdResult = await _ccMailerFwd.sendActivationMagicLink({
             to:         email,
+            orgId:      metaOrgId || undefined,
             name:       email.split("@")[0],
             plan:       meta["plan"] || "standard",
             magicLinkUrl,
@@ -1460,19 +1333,19 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
           }).catch((e: unknown) => ({ ok: false as const, error: String(e) }));
           emailSent = !!fwdResult?.ok;
           emailId   = (fwdResult as { id?: string })?.id;
-          logger.info({ sessionId, email, emailSent, step: "CC-fwd-existing-token" },
+          logger.info({ email, emailSent, step: "CC-fwd-existing-token" },
             "[Auth/CheckoutComplete] Re-sent existing webhook token via checkout-complete");
         } else {
           // Mailer unavailable — cannot deliver the token; flag as failed so the
           // frontend shows the "Connectez-vous directement" fallback instead of
           // the misleading "Vérifiez vos emails" message.
           emailSent = false;
-          logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: mailer unavailable — cannot re-send existing token");
+          logger.error({ email }, "[Auth/CheckoutComplete] ML-FAIL: mailer unavailable — cannot re-send existing token");
         }
       } else {
         // hasToken=true but no valid token row — should not happen; treat as failed.
         emailSent = false;
-        logger.error({ sessionId, email }, "[Auth/CheckoutComplete] ML-FAIL: hasToken=true but no valid token row found — cannot send");
+        logger.error({ email }, "[Auth/CheckoutComplete] ML-FAIL: hasToken=true but no valid token row found — cannot send");
       }
     } else {
       // User exists but no token — webhook ran but email failed, or token was consumed.
@@ -1500,6 +1373,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       if (_ccMailer) {
         const mailResult = await _ccMailer.sendActivationMagicLink({
           to:          email,
+          orgId:       metaOrgId || undefined,
           name:        email.split("@")[0],
           plan:        meta["plan"] || "standard",
           magicLinkUrl,
@@ -1551,11 +1425,11 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       msg.includes("resource_missing") || msg.includes("invalid_request")
     );
     if (isStripeErr) {
-      logger.warn({ err: msg, sessionId }, "[Auth/CheckoutComplete] Invalid Stripe session");
+      logger.warn({ err: msg }, "[Auth/CheckoutComplete] Invalid Stripe session");
       res.status(400).json({ error: "Session de paiement introuvable ou invalide." });
       return;
     }
-    logger.error({ err: msg, sessionId }, "[Auth/CheckoutComplete] Error");
+    logger.error({ err: msg }, "[Auth/CheckoutComplete] Error");
     res.status(500).json({ error: "Erreur lors de la finalisation. Réessayez ou contactez le support." });
   }
 });
@@ -1563,7 +1437,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
 /** Shared handler — called by both GET and POST /auth/login-verify */
 async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res: Response): Promise<void> {
   // ── ML-6: Token consumption entry ────────────────────────────────────────
-  logger.info({ step: "ML-6", tokenPrefix: typeof tokenRaw === "string" ? tokenRaw.trim().slice(0, 8) : "(none)" }, "[ML] step-6: login-verify called — token consumption attempt");
+  logger.info({ step: "ML-6" }, "[ML] step-6: login-verify called — token consumption attempt");
   // ── S0: Token guard ───────────────────────────────────────────────────────
   if (!tokenRaw || typeof tokenRaw !== "string" || !tokenRaw.trim()) {
     res.status(400).json({ error: "Token manquant" });
@@ -1582,11 +1456,8 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
   }
 
   if (!peeked.ok) {
-    // Diagnostic: log every failure with token prefix so we can match it
-    // against the email send logs in BetterStack to understand why the token
-    // can't be found (e.g. race condition, cleanup job, RLS, duplicate send).
     logger.warn(
-      { reason: peeked.reason, tokenPrefix: token.slice(0, 8), step: "S1-fail" },
+      { reason: peeked.reason, step: "S1-fail" },
       "[ML] peekToken failed — token not usable"
     );
     switch (peeked.reason) {
@@ -1897,14 +1768,14 @@ async function handleLoginVerify(tokenRaw: string | undefined, req: Request, res
     .catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "login-verify: last_login_at update failed"));
 
   // ── ML-7: Session created ────────────────────────────────────────────────
-  logger.info({ step: "ML-7", email, orgIdPrefix: sessionOrgId?.slice(0, 8), tokenPrefix: sessionToken.slice(0, 8) }, "[ML] step-7: session created successfully");
+  logger.info({ step: "ML-7", email }, "[ML] step-7: session created successfully");
 
   // ── S11: Set cookie ───────────────────────────────────────────────────────
   const isProd = isDeployedProd();
   res.cookie("fp_token", sessionToken, {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    sameSite: sessionCookieSameSite(),
     maxAge: SESSION_TTL_MS,
     path: "/",
   });
@@ -1963,6 +1834,45 @@ router.post("/auth/login-verify", (req: Request, res: Response) => {
   return handleLoginVerify(typeof token === "string" ? token : undefined, req, res);
 });
 
+/**
+ * A-07 — un compte deja existant ne doit jamais etre traite comme une nouvelle
+ * inscription par le chemin Google (meme garde que POST /auth/pre-register :
+ * `users` actif + `organization_members` actif).
+ *
+ *  - none     : aucun compte actif (absent, ou `pending` = inscription reprise)
+ *  - member   : membre actif d'une organisation -> connexion avec SON role
+ *  - blocked  : compte existant mais inutilisable (suspendu / sans organisation)
+ */
+export type OAuthExistingAccount =
+  | { kind: "none" }
+  | { kind: "member"; orgId: string; role: string; userUuid: string }
+  | { kind: "blocked"; reason: "suspended" | "no_active_org" };
+
+export async function findExistingAccountForOAuth(email: string): Promise<OAuthExistingAccount> {
+  const normalized = email.toLowerCase().trim();
+  const u = await pool.query<{ id: string; status: string }>(
+    `SELECT id::text AS id, status FROM users WHERE lower(email) = $1 LIMIT 1`,
+    [normalized],
+  );
+  const row = u.rows[0];
+  if (!row || row.status === "pending") return { kind: "none" };
+  if (row.status !== "active") return { kind: "blocked", reason: "suspended" };
+  const m = await pool.query<{ organization_id: string; role: string }>(
+    `SELECT om.organization_id::text AS organization_id, om.role
+       FROM organization_members om
+       JOIN organizations o ON o.id::text = om.organization_id::text
+      WHERE om.user_id = $1::uuid AND om.status = 'active' AND o.status != 'deleted'
+      ORDER BY om.joined_at ASC
+      LIMIT 1`,
+    [row.id],
+  );
+  const mem = m.rows[0];
+  if (!mem || !["owner", "admin", "member", "viewer"].includes(mem.role)) {
+    return { kind: "blocked", reason: "no_active_org" };
+  }
+  return { kind: "member", orgId: mem.organization_id, role: mem.role, userUuid: row.id };
+}
+
 // ── Google OAuth Login (separate from GBP — for account authentication) ──────
 router.get("/auth/google/login", (req: Request, res: Response) => {
   const clientId = process.env["GOOGLE_CLIENT_ID"] || "";
@@ -1976,12 +1886,22 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
   logger.info({ redirectUri }, "[Auth] Google OAuth login — redirect URI");
 
   const rawPlan = String(req.query["plan"] ?? "");
-  const selectedPlan = ["standard","pro","ultra"].includes(rawPlan) ? rawPlan : null;
-  const rawRedirect = String(req.query["redirect_to"] ?? "");
-  const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : null;
+  const selectedPlan = sanitizePlan(rawPlan);
+  const redirectTo = safeRedirectTo(String(req.query["redirect_to"] ?? ""));
   const rawSellerCode = String(req.query["seller_code"] ?? "").trim().toUpperCase();
   const sellerCode = /^SELLER-[A-Z0-9]{1,20}$/.test(rawSellerCode) ? rawSellerCode : null;
   const fpLid = normalizeFpLid(req.query["fp_lid"]);
+
+  // `state` aleatoire lie a un cookie httpOnly ; plan / seller_code / fp_lid /
+  // redirect_to voyagent dans ce cookie et non plus dans l'URL du fournisseur.
+  const oauth = startOAuthState(res, "google",
+    { plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid },
+    isDeployedProd());
+  // Langue d'inscription : cookie court httpOnly limite a /api/auth (le cookie
+  // d'etat OAuth est type et filtre par oauth-state.ts). Valeur whitelistee.
+  res.cookie(SIGNUP_LANGUAGE_COOKIE, normalizeSignupLanguage(req.query["language"]), {
+    httpOnly: true, secure: isDeployedProd(), sameSite: "lax", path: "/api/auth", maxAge: 10 * 60 * 1000,
+  });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -1990,7 +1910,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo, seller_code: sellerCode, fp_lid: fpLid })).toString("base64"),
+    state: oauth.state,
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -2000,8 +1920,24 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
   const publicUrl = getPublicUrl();
 
+  // Le `state` est verifie AVANT tout echange de code : lie au cookie du
+  // navigateur, a usage unique, expire apres 10 minutes.
+  const stateCheck = consumeOAuthState(req, res, "google", req.query["state"], isDeployedProd());
+  if (!stateCheck.ok) {
+    logger.warn({ reason: stateCheck.reason }, "[Auth] Google callback rejected — invalid OAuth state");
+    res.redirect(`${publicUrl}/login.html?error=invalid_state`);
+    return;
+  }
+  const oauthState = stateCheck.record;
+  const signupLanguageFromCookie = normalizeSignupLanguage(
+    (req as unknown as { cookies?: Record<string, string> }).cookies?.[SIGNUP_LANGUAGE_COOKIE],
+  );
+  res.clearCookie(SIGNUP_LANGUAGE_COOKIE, { path: "/api/auth" });
+  // Le plan choisi reste porte vers la page d'inscription en cas d'erreur.
+  const carriedQuery: Record<string, unknown> = { ...req.query, ...(oauthState.plan ? { plan: oauthState.plan } : {}) };
+
   if (oauthError) {
-    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`, req.query));
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`, carriedQuery));
     return;
   }
   if (!code) {
@@ -2014,17 +1950,17 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const clientSecret = process.env["GOOGLE_CLIENT_SECRET"] || "";
     const redirectUri = process.env["GOOGLE_AUTH_REDIRECT_URI"] || `${publicUrl}/api/auth/google/callback`;
 
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    const tokenRes = await fetchBorne("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" }),
-    });
+    }, DELAIS.identite);
     const tokens = await tokenRes.json() as { access_token?: string; id_token?: string; error?: string };
     if (!tokens.access_token) throw new Error("No access token: " + (tokens.error || "unknown"));
 
-    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    const userRes = await fetchBorne("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { "Authorization": `Bearer ${tokens.access_token}` },
-    });
+    }, DELAIS.identite);
     // Google userinfo v3 fields available with scopes: openid email profile
     // Docs: https://developers.google.com/identity/openid-connect/openid-connect#obtaininguserprofileinformation
     const user = await userRes.json() as {
@@ -2038,49 +1974,48 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       locale?:        string;   // user locale (e.g. "fr", "en")
     };
 
-    const resolvedEmail = user.email ?? user.sub ?? "";
+    // Une adresse que Google n'a pas verifiee ne prouve pas l'identite : le
+    // callback peut donner la propriete d'une organisation existante par e-mail.
+    // L'absence d'e-mail (repli historique sur `sub`) est refusee pour la meme raison.
+    if (!user.email || (user.email_verified !== true && (user.email_verified as unknown) !== "true")) {
+      logger.warn({ hasEmail: !!user.email }, "[Auth] Google login rejected — email missing or not verified by Google");
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=email_not_verified`, carriedQuery));
+      return;
+    }
+    // A-08 : Google peut renvoyer une casse differente de celle stockee — tout le
+    // chemin Google travaille sur l'adresse normalisee.
+    const resolvedEmail = user.email.toLowerCase().trim();
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Google login rejected — email not on allowlist");
-      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, carriedQuery));
       return;
     }
 
     // SECURITY: store.me writes removed — user data must be read from DB, not global singleton.
 
-    // Apply plan & redirect from OAuth state if present
+    // Plan, redirection, seller_code et fp_lid viennent de l'etat VERIFIE (cookie lie).
     let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
-    let planFromState: string | null = null;
+    const planFromState: string | null = oauthState.plan;
     let sellerIdFromState: string | null = null;
-    let fpLidFromState: string | null = null;
-    try {
-      const rawState = String(req.query["state"] ?? "");
-      if (rawState) {
-        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as {
-          plan?: string;
-          redirect_to?: string | null;
-          seller_code?: string | null;
-          fp_lid?: string | null;
-        };
-        fpLidFromState = normalizeFpLid(stateObj.fp_lid);
-        if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
-          planFromState = stateObj.plan;
-          logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
-        }
-        if (stateObj.redirect_to && stateObj.redirect_to.startsWith("/")) {
-          redirectAfterLogin = `${publicUrl}${stateObj.redirect_to}`;
-          logger.info({ redirect: redirectAfterLogin }, "[Auth] Google login — redirect after login set from OAuth state");
-        }
-        if (stateObj.seller_code) {
-          const { validateSellerCode } = await import("../services/seller-attribution.js");
-          sellerIdFromState = (await validateSellerCode(stateObj.seller_code))?.id ?? null;
-        }
+    const fpLidFromState: string | null = normalizeFpLid(oauthState.fp_lid);
+    if (oauthState.redirect_to) {
+      redirectAfterLogin = `${publicUrl}${oauthState.redirect_to}`;
+    }
+    if (oauthState.seller_code) {
+      try {
+        const { validateSellerCode } = await import("../services/seller-attribution.js");
+        sellerIdFromState = (await validateSellerCode(oauthState.seller_code))?.id ?? null;
+      } catch (sellerErr) {
+        logger.warn({ err: sellerErr }, "[Auth] Google login — seller code validation failed (ignored)");
       }
-    } catch { /* state parse error — ignore */ }
+    }
 
     // Persist org settings (including plan) so /api/me returns correct plan after restart.
     // OAuth must also create a UUID-backed identity before issuing a session:
     // orgContext correctly rejects legacy email-as-orgId sessions.
     let googleIdentity: { orgId: string; userUuid: string };
+    // Role de session : proprietaire par defaut ; le role reel d'un membre existant (A-07).
+    let googleSessionRole = "owner";
     try {
       // ── Fast-path: check organizations table first (new auth system post-migration) ──
       // Users who signed up via magic link only exist in `organizations`/`users`, not in
@@ -2089,7 +2024,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       // selection screen — creating a duplicate Stripe customer.
       const _googleOrgQuery = await pool.query<{ id: string; subscription_status: string | null }>(
         `SELECT id, subscription_status FROM organizations
-          WHERE owner_email = $1 AND status != 'deleted'
+          WHERE lower(owner_email) = $1 AND status != 'deleted'
           LIMIT 1`,
         [resolvedEmail],
       );
@@ -2098,6 +2033,25 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         _googleOrgRow.subscription_status !== null &&
         _googleOrgRow.subscription_status !== "" &&
         _googleOrgRow.subscription_status !== "pending_billing";
+
+      const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
+      // A-07 : garde "compte existant" AVANT toute creation de signup (meme garde
+      // que pre-register : users actif + organization_members). Ne s'applique
+      // pas a un proprietaire deja active (org detenue) ni a un historique
+      // deja active dans org_settings.
+      let _preloadedGoogleOrg: Awaited<ReturnType<typeof loadOrgSettings>> | null = null;
+      let _acct: OAuthExistingAccount = { kind: "none" };
+      if (!_googleIsActivated) {
+        _preloadedGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+        const _legacyActivated = !!_preloadedGoogleOrg?.subscriptionStatus &&
+          _preloadedGoogleOrg.subscriptionStatus !== "pending_billing";
+        if (!_legacyActivated) _acct = await findExistingAccountForOAuth(resolvedEmail);
+        if (_acct.kind === "blocked") {
+          logger.warn({ reason: _acct.reason }, "[Auth] Google login — existing account cannot start a signup");
+          res.redirect(withCarriedParams(`${publicUrl}/login.html?error=${_acct.reason === "suspended" ? "access_denied" : "no_active_org"}`, carriedQuery));
+          return;
+        }
+      }
 
       if (_googleIsActivated) {
         // Existing activated org — resolve identity directly, no pending_billing redirect.
@@ -2111,10 +2065,13 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
           orgSettings: null,
           authProvider: "google",
         });
+      } else if (_acct.kind === "member") {
+        logger.info({ role: _acct.role }, "[Auth] Google login — existing member, signup flow bypassed");
+        googleIdentity = { orgId: _acct.orgId, userUuid: _acct.userUuid };
+        googleSessionRole = _acct.role;
       } else {
         // ── Legacy / new-signup path: check org_settings, then apply pending_billing gate ──
-        const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
-        const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+        const _existingGoogleOrg = _preloadedGoogleOrg;
         if (_existingGoogleOrg) {
           // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
           await upsertOrgSettings(resolvedEmail, {
@@ -2152,10 +2109,14 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
           try {
             const _gpClient = await pool.connect();
             try {
-              // Invalidate any existing non-consumed pending signup for this email
+              // UPDATE (invalider l'ancien jeton) puis INSERT dans UNE transaction,
+              // serialisee par e-mail : deux callbacks simultanes ne peuvent plus
+              // laisser l'e-mail sans jeton valide ni creer deux lignes actives.
+              await _gpClient.query("BEGIN");
+              await _gpClient.query(`SELECT pg_advisory_xact_lock(hashtext(lower($1)))`, [resolvedEmail]);
               const _gpInvalidated = await _gpClient.query<{ fp_lid: string | null }>(
                 `UPDATE pending_signups SET consumed_at = NOW()
-                 WHERE email = $1 AND consumed_at IS NULL
+                 WHERE lower(email) = lower($1) AND consumed_at IS NULL
                  RETURNING fp_lid`,
                 [resolvedEmail],
               );
@@ -2163,37 +2124,53 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               const _gpFpLid = ((_gpInvalidated?.rows ?? []) as { fp_lid?: string | null }[])
                 .map(r => normalizeFpLid(r.fp_lid))
                 .find((v): v is string => v !== null) ?? fpLidFromState;
-              // Insert a fresh pending_signups row
               googlePreRegToken = generateToken();
+              // A-10 : Google ne fournit ni pays, ni adresse, ni ville, ni code postal.
+              // Ils restent NULL (colonnes nullables) : plus de 'FR' / '—' / '00000'
+              // recopies ensuite comme une vraie adresse dans org_settings, et
+              // `locationConfigured` n'est plus faussement vrai.
               await _gpClient.query(
                 `INSERT INTO pending_signups
-                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,$7,NOW(),NOW() + INTERVAL '2 hours')
-                 ON CONFLICT (token) DO NOTHING`,
+                   (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at, language)
+                 VALUES ($1,$2,$3,$4,$5,NULL,NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours',$8)`,
                 // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid, signupLanguageFromCookie],
               );
-              logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
+              await _gpClient.query("COMMIT");
+              logger.info("[Auth] Google signup — pending_signups record created for checkout");
+            } catch (txErr) {
+              await _gpClient.query("ROLLBACK").catch(() => {});
+              googlePreRegToken = "";
+              // 23505 : un callback concurrent a insere sa ligne entre-temps — l'utilisateur
+              // peut simplement recommencer (meme erreur "retry" que les autres echecs).
+              if ((txErr as { code?: string }).code === "23505") {
+                logger.warn("[Auth] Google signup — concurrent pending_signups insert (23505), user asked to retry");
+              }
+              throw txErr;
             } finally {
               _gpClient.release();
             }
           } catch (preRegErr) {
-            logger.error({ err: preRegErr, email: resolvedEmail }, "[Auth] Google signup — pending_signups creation failed (fatal)");
-            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
+            logger.error({ err: preRegErr }, "[Auth] Google signup — pending_signups creation failed (fatal)");
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, carriedQuery));
             return;
           }
           if (!googlePreRegToken) {
-            logger.error({ email: resolvedEmail }, "[Auth] Google signup — pre_reg_token is empty after insert, aborting");
-            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, req.query));
+            logger.error("[Auth] Google signup — pre_reg_token is empty after insert, aborting");
+            res.redirect(withCarriedParams(`${publicUrl}/signin.html?error=google_signup_retry`, carriedQuery));
             return;
           }
           const planParam = encodeURIComponent(planFromState ?? googleOrgSettings.plan ?? "standard");
-          const emailParam = encodeURIComponent(resolvedEmail);
-          const firstParam = encodeURIComponent(googleFirstName);
-          const lastParam  = encodeURIComponent(googleLastName);
           const tokenParam = encodeURIComponent(googlePreRegToken);
+          // A-11 : l'adresse e-mail et le nom ne figurent plus dans l'URL (historique,
+          // Referer, journaux). signin.html ne lisait que google_signup + pre_reg_token ;
+          // le jeton lui-meme reste dans l'URL (contrat inchange) et est retire de la
+          // barre d'adresse par le front des l'arrivee (history.replaceState + sessionStorage).
+          // La reponse n'est ni mise en cache ni accompagnee d'un Referer.
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Referrer-Policy", "no-referrer");
           res.redirect(
-            `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&email=${emailParam}&first_name=${firstParam}&last_name=${lastParam}&pre_reg_token=${tokenParam}`,
+            `${publicUrl}/signin.html?google_signup=1&plan=${planParam}&pre_reg_token=${tokenParam}`,
           );
           return;
         }
@@ -2207,7 +2184,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       }
     } catch (err) {
       logger.error({ err }, "[Auth] Google login — identity provisioning failed");
-      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
+      res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, carriedQuery));
       return;
     }
 
@@ -2217,7 +2194,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Direct OAuth login = org creator → owner role.
     const sessionToken = await createSession({
       userId: googleIdentity.userUuid, orgId: googleIdentity.orgId, userUuid: googleIdentity.userUuid,
-      email: resolvedEmail, role: "owner",
+      email: resolvedEmail, role: googleSessionRole,
        ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -2239,7 +2216,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     res.redirect(redirectAfterLogin);
   } catch (err) {
     logger.error({ err }, "[Auth] Google login callback failed");
-    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, req.query));
+    res.redirect(withCarriedParams(`${publicUrl}/login.html?error=google_auth_failed`, carriedQuery));
   }
 });
 
@@ -2253,7 +2230,9 @@ router.get("/auth/github/login", (req: Request, res: Response) => {
     return;
   }
 
-  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user,user:email`;
+  // `state` aleatoire lie a un cookie httpOnly (protection CSRF / rejeu).
+  const oauth = startOAuthState(res, "github", { plan: null, redirect_to: null, seller_code: null, fp_lid: null }, isDeployedProd());
+  const url = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent("read:user,user:email")}&state=${encodeURIComponent(oauth.state)}`;
   res.redirect(url);
 });
 
@@ -2261,26 +2240,50 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
   const publicUrl = getPublicUrl();
 
+  const ghState = consumeOAuthState(req, res, "github", req.query["state"], isDeployedProd());
+  if (!ghState.ok) {
+    logger.warn({ reason: ghState.reason }, "[Auth] GitHub callback rejected — invalid OAuth state");
+    res.redirect(`${publicUrl}/login.html?error=invalid_state`);
+    return;
+  }
+
   if (oauthError || !code) {
     res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError || "missing_code")}`);
     return;
   }
 
   try {
-    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+    const tokenRes = await fetchBorne("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { "Accept": "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: process.env["GITHUB_CLIENT_ID"], client_secret: process.env["GITHUB_CLIENT_SECRET"], code }),
-    });
+    }, DELAIS.identite);
     const tokens = await tokenRes.json() as { access_token?: string; error?: string };
     if (!tokens.access_token) throw new Error("No token: " + (tokens.error || "unknown"));
 
-    const userRes = await fetch("https://api.github.com/user", {
+    const userRes = await fetchBorne("https://api.github.com/user", {
       headers: { "Authorization": `Bearer ${tokens.access_token}`, "Accept": "application/vnd.github+json" },
-    });
+    }, DELAIS.identite);
     const user = await userRes.json() as { login?: string; name?: string; email?: string };
 
-    const resolvedEmail = user.email ?? user.login ?? "";
+    // L'identite est l'adresse PRIMAIRE ET VERIFIEE par GitHub (/user/emails,
+    // scope user:email). Le champ `email` de /user est un profil public libre et
+    // le repli sur `login` fabriquait une identite qui n'est pas une adresse.
+    const emailsRes = await fetchBorne("https://api.github.com/user/emails", {
+      headers: { "Authorization": `Bearer ${tokens.access_token}`, "Accept": "application/vnd.github+json" },
+    }, DELAIS.identite);
+    const ghEmails = emailsRes.ok
+      ? await emailsRes.json() as Array<{ email?: string; primary?: boolean; verified?: boolean }>
+      : [];
+    const verifiedPrimary = Array.isArray(ghEmails)
+      ? ghEmails.find((e) => e.primary === true && e.verified === true && typeof e.email === "string")
+      : undefined;
+    if (!verifiedPrimary?.email) {
+      logger.warn({ login: user.login }, "[Auth] GitHub login rejected — no primary verified email");
+      res.redirect(`${publicUrl}/login.html?error=email_not_verified`);
+      return;
+    }
+    const resolvedEmail = verifiedPrimary.email.toLowerCase().trim();
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ login: user.login }, "[Auth] GitHub login rejected — email not on allowlist");
       res.redirect(withCarriedParams(`${publicUrl}/login.html?error=access_denied`, req.query));
@@ -2337,7 +2340,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
@@ -2395,8 +2398,6 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
   const restoreLogBase = {
     hasCookie: !!cookieToken,
     hasBearer: !!bearerToken,
-    cookiePrefix: cookieToken ? cookieToken.slice(0, 8) : null,
-    bearerPrefix: bearerToken ? bearerToken.slice(0, 8) : null,
   };
   logger.debug(restoreLogBase, "[Auth/session-restore] Attempting session lookup");
 
@@ -2437,7 +2438,7 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
       res.clearCookie("fp_token", {
         httpOnly: true,
         secure: isProd,
-        sameSite: isProd ? "none" : "lax",
+        sameSite: sessionCookieSameSite(),
         path: "/",
       });
     }
@@ -2453,7 +2454,7 @@ router.post("/auth/session-restore", async (req: Request, res: Response) => {
     res.cookie("fp_token", provided, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
@@ -2503,7 +2504,7 @@ router.post("/auth/logout", async (req: Request, res: Response) => {
   res.clearCookie("fp_token", {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    sameSite: sessionCookieSameSite(),
     path: "/",
   });
 
@@ -2520,7 +2521,10 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
   const redirectUri =
     process.env["APPLE_AUTH_REDIRECT_URI"] ||
     `${getPublicUrl()}/api/auth/apple/callback`;
-  const state = Buffer.from(JSON.stringify({ ts: Date.now() })).toString("base64url");
+  // `state` + `nonce` aleatoires, lies a un cookie httpOnly (SameSite=None en
+  // production : le callback d'Apple est un POST inter-sites).
+  const oauth = startOAuthState(res, "apple", { plan: null, redirect_to: null, seller_code: null, fp_lid: null }, isDeployedProd());
+  const state = oauth.state;
   const url = new URL("https://appleid.apple.com/auth/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
@@ -2528,6 +2532,7 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
   url.searchParams.set("response_mode", "form_post");
   url.searchParams.set("scope", "name email");
   url.searchParams.set("state", state);
+  url.searchParams.set("nonce", oauth.nonce);
   res.redirect(url.toString());
 });
 
@@ -2567,6 +2572,13 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
   // Apple only sends `user` JSON on the VERY FIRST auth for this user+app pair
   const userJson  = body["user"]     ?? "";
 
+  const appleState = consumeOAuthState(req, res, "apple", body["state"], isDeployedProd());
+  if (!appleState.ok) {
+    logger.warn({ reason: appleState.reason }, "[Auth] Apple callback rejected — invalid OAuth state");
+    res.redirect(`${publicUrl}/login.html?error=invalid_state`);
+    return;
+  }
+
   if (!code) {
     const appleError = body["error"] ?? "missing_code";
     logger.warn({ appleError }, "[Auth] Apple callback — missing code");
@@ -2581,39 +2593,29 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
   }
 
   try {
+    let appleSub: string | undefined;
     let appleEmail: string | undefined;
-    let appleSub:   string | undefined;
 
-    // ── Step 1: verify the id_token that Apple sent in the form_post body ──────
+    const fetchAppleKeys = async () => {
+      const jwksRes = await fetchBorne("https://appleid.apple.com/auth/keys", {}, DELAIS.identite);
+      if (!jwksRes.ok) throw new Error("Apple JWKS unavailable");
+      return ((await jwksRes.json()) as { keys: Array<{ kid?: string }> }).keys;
+    };
+    const verifyOpts = { clientId, expectedNonce: appleState.record.nonce, fetchKeys: fetchAppleKeys };
+
+    // ── Step 1: id_token du formulaire — signature, iss, aud, exp et nonce ────
     if (idToken) {
-      const parts = idToken.split(".");
-      if (parts.length === 3) {
-        try {
-          const headerObj  = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { kid?: string };
-          const payloadObj = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
-          // Fetch Apple's public JWKS
-          const jwksRes = await fetch("https://appleid.apple.com/auth/keys");
-          if (jwksRes.ok) {
-            const jwks = await jwksRes.json() as { keys: Array<JsonWebKey & { kid?: string }> };
-            const jwk  = jwks.keys.find((k) => k.kid === headerObj.kid);
-            if (jwk) {
-              const pubKey   = createPublicKey({ key: jwk as unknown as Parameters<typeof createPublicKey>[0] & object, format: "jwk" } as Parameters<typeof createPublicKey>[0]);
-              const sigInput = Buffer.from(`${parts[0]}.${parts[1]}`);
-              const valid    = cryptoVerify("SHA256", sigInput, pubKey, Buffer.from(parts[2], "base64url"));
-              if (valid && payloadObj["aud"] === clientId) {
-                appleEmail = typeof payloadObj["email"] === "string" ? payloadObj["email"] : undefined;
-                appleSub   = typeof payloadObj["sub"]   === "string" ? payloadObj["sub"]   : undefined;
-              }
-            }
-          }
-        } catch (verifyErr) {
-          logger.warn({ err: verifyErr }, "[Auth] Apple callback — id_token verify failed (non-fatal, will try code exchange)");
-        }
+      try {
+        const ident = await verifyAppleIdToken(idToken, verifyOpts);
+        appleSub = ident.sub;
+        appleEmail = ident.email;
+      } catch (verifyErr) {
+        logger.warn({ err: verifyErr }, "[Auth] Apple callback — id_token du formulaire refuse, tentative via echange de code");
       }
     }
 
-    // ── Step 2: exchange code for tokens if we still don't have email/sub ──────
-    if (!appleEmail && !appleSub) {
+    // ── Step 2: echange de code (meme verification complete du jeton obtenu) ──
+    if (!appleEmail) {
       const teamId     = process.env["APPLE_TEAM_ID"]     ?? "";
       const keyId      = process.env["APPLE_KEY_ID"]      ?? "";
       const rawPem     = (process.env["APPLE_PRIVATE_KEY"] ?? "").replace(/\\n/g, "\n");
@@ -2624,7 +2626,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
       }
 
       const clientSecret = buildAppleClientSecret(clientId, teamId, keyId, rawPem);
-      const tokenRes     = await fetch("https://appleid.apple.com/auth/token", {
+      const tokenRes     = await fetchBorne("https://appleid.apple.com/auth/token", {
         method:  "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body:    new URLSearchParams({
@@ -2634,36 +2636,32 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
           grant_type:    "authorization_code",
           redirect_uri:  redirectUri,
         }),
-      });
+      }, DELAIS.identite);
       const tokens = await tokenRes.json() as { id_token?: string; error?: string; error_description?: string };
       if (!tokenRes.ok || !tokens.id_token) {
         throw new Error(`Apple token exchange failed: ${tokens.error ?? "no id_token"} — ${tokens.error_description ?? ""}`);
       }
-      // Decode payload (already issued by Apple, trust it after exchange)
-      const tp = tokens.id_token.split(".");
-      if (tp.length === 3) {
-        const pl = JSON.parse(Buffer.from(tp[1], "base64url").toString("utf8")) as Record<string, unknown>;
-        appleEmail = typeof pl["email"] === "string" ? pl["email"] : undefined;
-        appleSub   = typeof pl["sub"]   === "string" ? pl["sub"]   : undefined;
-      }
+      const ident = await verifyAppleIdToken(tokens.id_token, verifyOpts);
+      appleSub = ident.sub;
+      appleEmail = ident.email;
     }
 
-    // ── Step 3: parse `user` JSON (name + email, only on first sign-in) ────────
+    // ── Step 3: le champ `user` (client) ne fournit QUE le prenom d'affichage ──
+    // Son e-mail n'est jamais utilise : il n'est pas signe.
     let appleFirstName: string | undefined;
     if (userJson) {
       try {
-        const u = JSON.parse(userJson) as { name?: { firstName?: string }; email?: string };
-        appleFirstName = u.name?.firstName;
-        if (!appleEmail) appleEmail = u.email;
+        const u = JSON.parse(userJson) as { name?: { firstName?: string } };
+        appleFirstName = typeof u.name?.firstName === "string" ? u.name.firstName.slice(0, 80) : undefined;
       } catch { /* ignore */ }
     }
 
-    if (!appleEmail && !appleSub) {
-      throw new Error("Could not determine Apple user identity — email and sub both missing");
+    if (!appleEmail || !appleSub) {
+      throw new Error("Could not determine a verified Apple identity");
     }
 
     // Apple private-relay addresses (privaterelay.appleid.com) are valid — accept them
-    const resolvedEmail = (appleEmail ?? `${appleSub}@apple-sub.local`).toLowerCase().trim();
+    const resolvedEmail = appleEmail.toLowerCase().trim();
 
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Apple login rejected — email not on allowlist");
@@ -2714,7 +2712,7 @@ router.post("/auth/apple/callback", async (req: Request, res: Response) => {
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure:   isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge:   SESSION_TTL_MS,
       path:     "/",
     });
@@ -2738,14 +2736,28 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
   }
   const adminKey = (req.headers["x-admin-key"] as string) ?? "";
   const expectedKey = process.env["ADMIN_KEY"] ?? "";
-  if (!expectedKey || adminKey !== expectedKey) {
+  if (!expectedKey || !keysEqual(adminKey, expectedKey)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const { email = "test@flowpoint.pro", orgId = "default", role = "admin" } = (req.body as { email?: string; orgId?: string; role?: string }) || {};
   try {
+    // Ces deux portes existent pour Playwright. Elles posaient `userId: email`
+    // et aucun `userUuid` : les sessions produites etaient rejetees par la
+    // resolution d'organisation, et toute requete repondait 401. Elles ne
+    // servaient donc plus a rien — mesure du 18/10/2026.
+    //
+    // On resout l'UUID depuis `users`, comme le fait la verification de lien.
+    // Sans lui, la matrice des roles n'est testable qu'en ecrivant a la main
+    // dans `user_sessions`.
+    const _devUser = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    const _devUuid = _devUser.rows[0]?.id;
     const token = await createSession({
-      userId: email, orgId, email, role,
+      userId: _devUuid ?? email, orgId, email, role,
+      ...(_devUuid ? { userUuid: _devUuid } : {}),
       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });
@@ -2753,7 +2765,7 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
     res.cookie("fp_token", token, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: sessionCookieSameSite(),
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
@@ -2774,14 +2786,28 @@ router.get("/auth/dev-login", async (req: Request, res: Response) => {
   }
   const key      = (req.query["key"] as string) ?? "";
   const expected = process.env["ADMIN_KEY"] ?? "";
-  if (!expected || key !== expected) { res.status(401).send("Unauthorized"); return; }
+  if (!expected || !keysEqual(key, expected)) { res.status(401).send("Unauthorized"); return; }
   const email    = (req.query["email"]  as string) || "test@flowpoint.pro";
   const orgId    = (req.query["orgId"]  as string) || "default";
   const role     = (req.query["role"]   as string) || "admin";
   const redirect = (req.query["redirect"] as string) || "/dashboard.html";
   try {
+    // Ces deux portes existent pour Playwright. Elles posaient `userId: email`
+    // et aucun `userUuid` : les sessions produites etaient rejetees par la
+    // resolution d'organisation, et toute requete repondait 401. Elles ne
+    // servaient donc plus a rien — mesure du 18/10/2026.
+    //
+    // On resout l'UUID depuis `users`, comme le fait la verification de lien.
+    // Sans lui, la matrice des roles n'est testable qu'en ecrivant a la main
+    // dans `user_sessions`.
+    const _devUser = await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email],
+    );
+    const _devUuid = _devUser.rows[0]?.id;
     const token = await createSession({
-      userId: email, orgId, email, role,
+      userId: _devUuid ?? email, orgId, email, role,
+      ...(_devUuid ? { userUuid: _devUuid } : {}),
       ipAddress: req.ip ?? undefined,
       userAgent: (req.headers["user-agent"] as string | undefined) ?? undefined,
     });

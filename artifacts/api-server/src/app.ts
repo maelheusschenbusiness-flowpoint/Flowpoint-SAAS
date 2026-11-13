@@ -8,11 +8,15 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes/index.js";
+import { buildAllowedOrigins, isOriginAllowed } from "./lib/cors-policy.js";
+import { csrfOrigin } from "./middlewares/csrfOrigin.js";
 import { behavioralOriginAllowlist } from "./routes/behavioral.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { requestId } from "./middlewares/requestId.js";
 import { orgContext }    from "./middlewares/orgContext.js";
+import { customDomainHost } from "./middlewares/customDomainHost.js";
+import { requirePaidAccess } from "./middlewares/requirePaidAccess.js";
 import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
 import { withCarriedParams } from "./lib/carry-params.js";
@@ -76,31 +80,9 @@ app.use(
 );
 
 // ── 4. CORS ───────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS: (string | RegExp)[] = [
-  // Local development
-  /^https?:\/\/localhost(:\d+)?$/,
-  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
-  // Replit preview
-  /\.replit\.dev$/,
-  /\.replit\.app$/,
-  // FlowPoint production domains (always allowed — safe to hardcode public origins)
-  "https://app.flowpoint.pro",
-  "https://flowpoint.pro",
-  "https://www.flowpoint.pro",
-];
-
-// Pull additional allowed origins from every env var name the Render config might use.
-// CORS_ORIGIN supports comma-separated list: "https://a.com,https://b.com"
-for (const envKey of ["PUBLIC_URL", "PUBLIC_BASE_URL", "APP_URL", "FRONTEND_URL", "CORS_ORIGIN"]) {
-  const val = process.env[envKey];
-  if (!val) continue;
-  for (const raw of val.split(",")) {
-    const origin = raw.trim();
-    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-      ALLOWED_ORIGINS.push(origin);
-    }
-  }
-}
+// Liste blanche par environnement (audit C-01) : voir lib/cors-policy.ts.
+// En production : origines FlowPoint exactes uniquement (pas de Replit/localhost).
+const ALLOWED_ORIGINS = buildAllowedOrigins();
 
 logger.info({ allowedOrigins: ALLOWED_ORIGINS.map(o => o.toString()) }, "[CORS] Allowed origins");
 
@@ -111,9 +93,7 @@ app.use(
       if (!origin) { cb(null, true); return; }
       // Behavioral tracking origins are managed by their own allowlist
       if (behavioralOriginAllowlist.has(origin)) { cb(null, true); return; }
-      const allowed = ALLOWED_ORIGINS.some(p =>
-        typeof p === "string" ? p === origin : p.test(origin)
-      );
+      const allowed = isOriginAllowed(origin, ALLOWED_ORIGINS);
       if (!allowed) {
         // Log the blocked origin so it appears in Render logs — never throw
         // (throwing here propagates as a 500 through Express error handlers).
@@ -133,9 +113,7 @@ app.use(
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.method === "OPTIONS") {
     const origin = req.headers.origin ?? "";
-    const allowed = !origin || ALLOWED_ORIGINS.some(p =>
-      typeof p === "string" ? p === origin : p.test(origin)
-    );
+    const allowed = !origin || isOriginAllowed(origin, ALLOWED_ORIGINS);
     if (!allowed) {
       logger.warn({ origin }, "[CORS] Preflight rejected — 403");
       res.status(403).json({ ok: false, error: "CORS: origin not allowed" });
@@ -148,7 +126,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // ── 5. Stripe raw body (must come before JSON parser) ────────────────────────
 // Registered on both paths: canonical /api/webhooks/stripe AND legacy
 // /api/billing/webhook (active Stripe Dashboard endpoint).
-for (const webhookPath of ["/api/webhooks/stripe", "/api/billing/webhook"]) {
+for (const webhookPath of ["/api/webhooks/stripe", "/api/billing/webhook", "/api/crm/webhook"]) {
   app.use(
     webhookPath,
     express.raw({ type: "application/json" }),
@@ -164,10 +142,13 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// ── 6b. CSRF : contrôle Origin/Referer sur les requêtes non sûres par cookie ──
+app.use(csrfOrigin(ALLOWED_ORIGINS));
+
 // ── 7. Org/User context extraction from JWT or X-Org-Id header ───────────────
 app.use(orgContext);
 
-// ── 7b. Per-request RLS-scoped DB helper (req.orgDb) ─────────────────────────
+// ── 7a. Per-request RLS-scoped DB helper (req.orgDb) ─────────────────────────
 // Must run after orgContext so req.orgId is already populated.
 app.use(dbContext);
 
@@ -196,6 +177,9 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Frame-Options", "DENY");
   next();
 });
+// Custom-domain mapping runs after API rate limiting. The proof path is under
+// /api so anonymous probes are rate-limited before this middleware can query.
+app.use(customDomainHost);
 
 // ── 9. Static file serving ────────────────────────────────────────────────────
 // express.static only intercepts actual files, so /api/* routes are never blocked.
@@ -463,6 +447,13 @@ app.get(["/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], 
 });
 
 app.use("/", staticCache, express.static(dashboardDir, { index: false }));
+
+// ── 9b. Acces aux fonctionnalites payantes ───────────────────────────────────
+// Monte avant le router : la regle s'applique a TOUTES les routes payantes,
+// y compris les appels directs a l'API. L'allowlist du middleware preserve
+// l'authentification, le compte, la facturation, la reactivation, les routes
+// publiques et les webhooks. Voir middlewares/requirePaidAccess.ts.
+app.use("/api", requirePaidAccess);
 
 // ── 10. All API routes ────────────────────────────────────────────────────────
 app.use("/api", router);
