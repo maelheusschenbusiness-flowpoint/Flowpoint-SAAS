@@ -8,6 +8,7 @@ import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { isFirstTimeTrialEligible } from "../services/trial-history.js";
 import { ensureStripeScheduleTarget } from "../services/billing-schedule.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
@@ -202,19 +203,13 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
       }
     }
 
-    // ── Trial eligibility — canonical org-level gate ──────────────────────────
-    // The canonical source is billingCtx.trialConsumedAt (organizations table,
-    // normalized from legacy org_settings by loadOrgData if needed).
-    // A new Stripe Customer must NEVER reset the trial — only the org's own
-    // trialConsumedAt determines eligibility.  hasStripeSubHistory is kept as a
-    // secondary Stripe-side guard to block edge cases where trialConsumedAt
-    // hasn't been normalized yet (e.g., first request after DB gap).
-    let hasStripeSubHistory = false;
-    if (customerId) {
-      const allSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
-      hasStripeSubHistory = allSubs.data.length > 0;
-    }
-    const grantTrial = !billingCtx.trialConsumedAt && !hasStripeSubHistory;
+    // A new customer ID must never reset an org's trial. Also check every
+    // Stripe customer tied to this account email to catch legacy/duplicate IDs.
+    const grantTrial = await isFirstTimeTrialEligible(stripe, {
+      accountHasHistory: !billingCtx.canStartTrial,
+      customerIds: customerId ? [customerId] : [],
+      email: billingCtx.email,
+    });
 
     /* Canonical quote — the single place line items, plan inclusions and trial
        length are derived. This route used to build its own Stripe items and
@@ -259,12 +254,20 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
       subscriptionData["trial_period_days"] = quote.trialDays;
       logger.info({ plan, orgId, trialDays: quote.trialDays }, "[Billing] Granting trial — confirmed first-time subscriber");
     } else {
-      logger.info({ plan, trialConsumedAt: billingCtx.trialConsumedAt, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
+      logger.info({
+        plan,
+        trialConsumedAt: billingCtx.trialConsumedAt,
+        accountCanStartTrial: billingCtx.canStartTrial,
+        orgId,
+      }, "[Billing] Skipping trial — prior subscription history or unverifiable identity");
     }
 
     logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      ...(quote.trialEligible
+        ? { payment_method_types: ["card"], payment_method_collection: "always" }
+        : {}),
       customer: customerId,
       line_items: lineItems,
       subscription_data: subscriptionData,

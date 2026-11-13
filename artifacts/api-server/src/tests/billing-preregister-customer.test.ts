@@ -10,6 +10,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  isFirstTimeTrialEligible,
+  TrialHistoryLookupError,
+  type TrialHistoryStripeClient,
+} from "../services/trial-history.js";
 
 // ── Shared mock infrastructure ───────────────────────────────────────────────
 
@@ -389,5 +394,89 @@ describe("TEST F — webhook early: PI arrives before org UUID exists", () => {
 
     expect(result.customerId).toBe(CUS_OLD);
     expect(result.wasCreated).toBe(false);
+  });
+});
+
+describe("trial eligibility against account and Stripe history", () => {
+  function makeStripeMock({
+    customerIds = [],
+    customersListError,
+    subscriptionCustomerIds = [],
+  }: {
+    customerIds?: string[];
+    customersListError?: Error;
+    subscriptionCustomerIds?: string[];
+  } = {}): TrialHistoryStripeClient {
+    return {
+      customers: {
+        list: vi.fn(async () => {
+          if (customersListError) throw customersListError;
+          return { data: customerIds.map((id) => ({ id })), has_more: false };
+        }),
+      },
+      subscriptions: {
+        list: vi.fn(async ({ customer }: { customer: string }) => ({
+          data: subscriptionCustomerIds.includes(customer)
+            ? [{ id: "sub_synthetic_canceled", status: "canceled" }]
+            : [],
+          has_more: false,
+        })),
+      },
+    } as unknown as TrialHistoryStripeClient;
+  }
+
+  it("allows a new synthetic email with no Stripe customer or subscription history", async () => {
+    await expect(isFirstTimeTrialEligible(makeStripeMock(), {
+      accountHasHistory: false,
+      email: "new-synthetic@example.test",
+    })).resolves.toBe(true);
+  });
+
+  it("blocks a customer with a canceled subscription", async () => {
+    await expect(isFirstTimeTrialEligible(makeStripeMock({
+      subscriptionCustomerIds: ["cus_returning_synthetic"],
+    }), {
+      accountHasHistory: false,
+      customerIds: ["cus_returning_synthetic"],
+    })).resolves.toBe(false);
+  });
+
+  it("blocks old subscription history found through a matching Stripe email", async () => {
+    await expect(isFirstTimeTrialEligible(makeStripeMock({
+      customerIds: ["cus_old_email_match"],
+      subscriptionCustomerIds: ["cus_old_email_match"],
+    }), {
+      accountHasHistory: false,
+      email: "returning-synthetic@example.test",
+    })).resolves.toBe(false);
+  });
+
+  it("blocks account-level history without making a Stripe request", async () => {
+    const stripe = makeStripeMock({ customersListError: new Error("should not be called") });
+
+    await expect(isFirstTimeTrialEligible(stripe, {
+      accountHasHistory: true,
+      email: "returning-synthetic@example.test",
+    })).resolves.toBe(false);
+    expect(stripe.customers.list).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when Stripe cannot verify customer history", async () => {
+    await expect(isFirstTimeTrialEligible(makeStripeMock({
+      customersListError: new Error("temporary outage"),
+    }), {
+      accountHasHistory: false,
+      email: "new-synthetic@example.test",
+    })).rejects.toBeInstanceOf(TrialHistoryLookupError);
+  });
+
+  it("denies a trial when the account identity cannot be verified", async () => {
+    const stripe = makeStripeMock();
+
+    await expect(isFirstTimeTrialEligible(stripe, {
+      accountHasHistory: false,
+    })).resolves.toBe(false);
+    expect(stripe.customers.list).not.toHaveBeenCalled();
+    expect(stripe.subscriptions.list).not.toHaveBeenCalled();
   });
 });

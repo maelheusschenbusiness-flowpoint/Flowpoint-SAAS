@@ -8,6 +8,7 @@ import { createIpRateLimit } from "../middlewares/rateLimiter.js";
 import type Stripe from "stripe";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
 import { createBillingQuote, quoteToStripeLineItems, type BillingQuote } from "../services/billing-quote.js";
+import { isFirstTimeTrialEligible, TrialHistoryLookupError } from "../services/trial-history.js";
 import { store } from "../services/store.js";
 import { normalizeFpLid } from "../lib/fp-lid.js";
 import { stableEventId } from "../lib/conversion-events.js";
@@ -368,6 +369,7 @@ router.post("/billing/quote", async (req: Request, res: Response): Promise<void>
     }
     res.json({ quote });
   } catch (error) {
+    if (sendTrialHistoryUnavailable(res, error)) return;
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
   }
@@ -450,28 +452,149 @@ function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
   return p;
 }
 
+type StoredTrialHistoryRow = {
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  trial_consumed_at: string | Date | null;
+  email: string | null;
+};
+
+function isEmailAddress(value: string | null | undefined): value is string {
+  return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()));
+}
+
+async function loadStoredTrialHistory(
+  orgId: string | null | undefined,
+  email: string | null | undefined,
+): Promise<{ accountHasHistory: boolean; customerIds: string[]; email: string | null }> {
+  try {
+    const { pool } = await import("@workspace/db");
+    const normalizedOrgId = orgId && orgId !== "default" ? orgId.trim() : "";
+    const normalizedEmail = isEmailAddress(email) ? email.trim() : "";
+    const result = await pool.query<StoredTrialHistoryRow>(
+      `SELECT stripe_customer_id, stripe_subscription_id, trial_consumed_at, owner_email AS email
+         FROM organizations
+        WHERE ($1 <> '' AND id::text = $1)
+           OR ($2 <> '' AND lower(owner_email) = lower($2))
+       UNION ALL
+       SELECT stripe_customer_id, stripe_subscription_id, trial_consumed_at, org_id AS email
+         FROM org_settings
+        WHERE ($1 <> '' AND lower(org_id::text) = lower($1))
+           OR ($2 <> '' AND lower(org_id::text) = lower($2))
+       UNION ALL
+       SELECT stripe_customer_id, NULL::text, NULL::timestamptz, email
+         FROM pending_signups
+        WHERE $2 <> '' AND lower(email) = lower($2)`,
+      [normalizedOrgId, normalizedEmail],
+    );
+    const rows = result.rows as StoredTrialHistoryRow[];
+    const customerIds = rows
+      .map((row) => row.stripe_customer_id?.trim())
+      .filter((id): id is string => Boolean(id));
+    const resolvedEmail = normalizedEmail
+      || rows.map((row) => row.email).find(isEmailAddress)
+      || null;
+
+    return {
+      accountHasHistory: rows.some((row) =>
+        Boolean(row.stripe_subscription_id?.trim() || row.trial_consumed_at),
+      ),
+      customerIds,
+      email: resolvedEmail,
+    };
+  } catch (cause) {
+    throw new TrialHistoryLookupError("Could not verify stored billing history", cause);
+  }
+}
+
+function sendTrialHistoryUnavailable(res: Response, error: unknown): boolean {
+  if (!(error instanceof TrialHistoryLookupError)) return false;
+  logger.warn({ code: error.code }, "[PublicBilling] Trial history verification unavailable");
+  res.status(503).json({
+    error: "Impossible de vérifier l’historique d’abonnement. Réessayez.",
+    code: error.code,
+    retryable: true,
+  });
+  return true;
+}
+
 /**
  * Server-authoritative trial eligibility.
  *
- * An authenticated org is checked against its billing context; a brand-new
- * signup has no subscription history and is therefore eligible. The lookup
- * fails closed (no trial) so the "due today" amount can never understate what
- * Stripe is about to take.
+ * A valid pre-registration token wins over a stale browser session. Eligibility
+ * requires no account-level marker and no subscription on any known Stripe
+ * customer or customer found for the same email. Unverifiable history blocks
+ * checkout instead of silently granting or charging against a guessed quote.
  */
 async function resolveTrialEligibility(req: Request): Promise<boolean> {
-  const authOrgId = (req as Request & { orgId?: string }).orgId;
-  if (authOrgId && authOrgId !== "default") {
-    try {
+  const rawPlan = typeof req.body?.plan === "string" ? req.body.plan.trim() : "";
+  if (!rawPlan) return false;
+
+  const preRegisterToken =
+    typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken.trim() : "";
+  let orgId: string | null = null;
+  let email: string | null = null;
+  let accountHasHistory = false;
+  let customerIds: string[] = [];
+
+  try {
+    const hasValidPreRegisterToken = preRegisterToken
+      ? await isValidPreRegisterToken(preRegisterToken)
+      : false;
+
+    if (hasValidPreRegisterToken) {
+      const { pool } = await import("@workspace/db");
+      const signup = await pool.query<{ email: string; stripe_customer_id: string | null }>(
+        `SELECT email, stripe_customer_id
+           FROM pending_signups
+          WHERE token = $1 AND expires_at > NOW() AND consumed_at IS NULL
+          LIMIT 1`,
+        [preRegisterToken],
+      );
+      const row = signup.rows[0];
+      if (!row?.email) return false;
+      orgId = row.email;
+      email = row.email;
+      if (row.stripe_customer_id) customerIds.push(row.stripe_customer_id);
+    } else {
+      const requestOrgId = (req as Request & { orgId?: string }).orgId;
+      orgId = requestOrgId && requestOrgId !== "default"
+        ? requestOrgId
+        : (await resolvePublicBillingOrgId(req)) ?? null;
+      if (!orgId || orgId === "default") return false;
+
       const { loadBillingContext } = await import("../services/billing-context.js");
-      const ctx = await loadBillingContext(authOrgId);
-      return ctx.canStartTrial === true;
-    } catch (err) {
-      logger.warn({ err, orgId: authOrgId }, "[PublicBilling] trial eligibility lookup failed — quoting without trial");
-      return false;
+      const context = await loadBillingContext(orgId);
+      email = context.email;
+      accountHasHistory = !context.canStartTrial;
+      if (context.stripeCustomerId) customerIds.push(context.stripeCustomerId);
     }
+  } catch (cause) {
+    if (cause instanceof TrialHistoryLookupError) throw cause;
+    throw new TrialHistoryLookupError("Could not resolve trial identity", cause);
   }
-  /* Anonymous / pre-registration: a new account has no subscription history. */
-  return true;
+
+  const stored = await loadStoredTrialHistory(orgId, email);
+  if (accountHasHistory || stored.accountHasHistory) return false;
+
+  const stripeKey = getStripeKey();
+  if (!stripeKey) {
+    // A local mock checkout must not make a real eligibility claim.
+    if (process.env["NODE_ENV"] !== "production") return false;
+    throw new TrialHistoryLookupError("Stripe is unavailable for trial verification");
+  }
+
+  let stripe: Stripe;
+  try {
+    stripe = await createStripeClient(stripeKey);
+  } catch (cause) {
+    throw new TrialHistoryLookupError("Could not initialize Stripe for trial verification", cause);
+  }
+  return isFirstTimeTrialEligible(stripe, {
+    accountHasHistory: false,
+    customerIds: [...customerIds, ...stored.customerIds],
+    email: stored.email ?? email,
+  });
 }
 
 /**
@@ -577,6 +700,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
     quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "checkout_session", inclusionPlan });
   } catch (error) {
+    if (sendTrialHistoryUnavailable(res, error)) return;
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
     return;
@@ -1032,6 +1156,9 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       const sessionParams = urlOrEmbedded({
         mode: "subscription",
         currency: "eur",
+        ...(quote.trialEligible
+          ? { payment_method_types: ["card"], payment_method_collection: "always" }
+          : {}),
         line_items: allLineItems,
         subscription_data: {
           /* Only grant the trial the server actually quoted. Hardcoding 14 here
@@ -1208,6 +1335,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
     const inclusionPlan = plan ? undefined : await resolveSubscriberPlan(req);
     quote = createBillingQuote({ plan, addons, trialEligible, mechanism: "payment_intent", inclusionPlan });
   } catch (error) {
+    if (sendTrialHistoryUnavailable(res, error)) return;
     const code = error instanceof Error ? error.message : "INVALID_SELECTION";
     res.status(400).json({ error: "Sélection non facturable.", code });
     return;
@@ -1552,7 +1680,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
         /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
            removes Stripe Link and redirect-based wallets from the Payment Element */
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        ...(hasPlan && trialDaysRemaining > 0
+          ? { payment_method_types: ["card"] }
+          : { automatic_payment_methods: { enabled: true, allow_redirects: "never" } }),
         metadata,
       }, {
         idempotencyKey: checkoutIdempotencyKey({
@@ -1587,7 +1717,9 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
         /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
            removes Stripe Link and redirect-based wallets (Bancontact, PayPal, Klarna)
            which cannot be saved for future off_session charges anyway */
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        ...(trialDaysRemaining > 0
+          ? { payment_method_types: ["card"] }
+          : { automatic_payment_methods: { enabled: true, allow_redirects: "never" } }),
         usage: "off_session",
         metadata,
       }, {
@@ -2427,9 +2559,25 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
 
     // Grant trial when there is no prior subscription history AND the intent carries trial days > 0.
     // When trial_days_remaining === 0 the user's trial has already expired — bill immediately.
-    const grantTrial = !hasSubscriptionHistory && intentTrialDays > 0;
+    const storedTrialHistory = await loadStoredTrialHistory(
+      _authenticatedOrgId,
+      isEmailAddress(_authenticatedOrgId) ? _authenticatedOrgId : null,
+    );
+    const firstTimeSubscriber = await isFirstTimeTrialEligible(stripe, {
+      accountHasHistory: hasSubscriptionHistory || storedTrialHistory.accountHasHistory,
+      customerIds: [customerId, ...storedTrialHistory.customerIds],
+      email: storedTrialHistory.email,
+    });
+    // This policy is fixed at 14 days; intent metadata cannot extend it.
+    const grantTrial = firstTimeSubscriber && intentTrialDays === 14;
     const trialEndUnix = grantTrial ? Math.floor(Date.now() / 1000) + intentTrialDays * 86400 : undefined;
-    logger.info({ planKey, grantTrial, intentTrialDays, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
+    logger.info({
+      planKey,
+      grantTrial,
+      intentTrialDays,
+      hasSubscriptionHistory: hasSubscriptionHistory || storedTrialHistory.accountHasHistory,
+      customerId,
+    }, "[PublicBilling] finalize: trial decision");
 
     // ── P1-5 + P0: Idempotence guard — prevent duplicate subscriptions on retry/refresh ──
     // P0 fix (2026-08-16): the previous guard filtered by `price: planPriceId` only,
@@ -3066,6 +3214,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     }
     res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId, activationEmailSent: true });
   } catch (err) {
+    if (sendTrialHistoryUnavailable(res, err)) return;
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");
     res.status(500).json({ error: "Erreur lors de la finalisation." });
   }
