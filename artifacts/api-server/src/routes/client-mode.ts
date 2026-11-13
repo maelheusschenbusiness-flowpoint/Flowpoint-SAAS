@@ -9,6 +9,7 @@ import {
 import { pool } from "@workspace/db";
 import { mailer } from "../services/mailer.js";
 import { logger } from "../lib/logger.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -48,7 +49,7 @@ router.get("/reports", async (req: Request, res: Response) => {
 
 // ── GET /audits ───────────────────────────────────────────────────────────
 router.get("/audits", async (req: Request, res: Response) => {
-  const limit = Math.min(parseInt(String(req.query.limit ?? 20), 10) || 20, 50);
+  const limit = queryInt(req.query.limit, { defaut: 20, min: 1, max: 50, horsBornes: "borner" });
   try {
     const audits = await getClientAudits(org(req), limit);
     res.json(audits);
