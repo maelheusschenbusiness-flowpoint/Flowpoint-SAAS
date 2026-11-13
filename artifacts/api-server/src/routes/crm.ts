@@ -1,12 +1,92 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import {
-  CRM_PROVIDERS, getCrmStatus, disconnectCrm, syncCrm,
+  CRM_PROVIDERS, getCrmStatus, disconnectCrm,
   getSyncLogs, getFieldMappings, upsertFieldMapping, getCrmLimit, type CrmProvider,
 } from "../services/crm-service.js";
 import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
+import { canAdmin } from "../middlewares/requireRole.js";
+import { timingSafeEqual } from "node:crypto";
+import { logger } from "../lib/logger.js";
+import { getCrmAdapter, implementedCrmProviders } from "../services/crm/registry.js";
+import {
+  CrmError, completeCrmOAuth, disconnectCrmIntegration, getValidCrmToken, consumeCrmState, crmRedirectUri, processCrmWebhook, startCrmOAuth, syncCrmContacts,
+} from "../services/crm/crm-core.js";
 
 const router = Router();
+/** Routes publiques : redirection OAuth du fournisseur et webhooks signes (aucune session). */
+export const crmPublicRouter = Router();
+
+const CRM_STATE_COOKIE = "fp_crm_oauth";
+function sameSecret(a: string, b: string): boolean {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
+const frontendUrl = (): string => (process.env["FRONTEND_URL"] ?? "https://app.flowpoint.pro").replace(/\/+$/, "");
+
+crmPublicRouter.get("/crm/oauth/:provider/callback", async (req, res) => {
+  const provider = String(req.params["provider"] ?? "");
+  const adapter = getCrmAdapter(provider);
+  const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
+  if (!adapter) { res.status(404).json({ ok: false, code: "CRM_PROVIDER_UNSUPPORTED" }); return; }
+  // Protection CSRF : l'etat doit aussi correspondre au cookie pose au demarrage dans CE navigateur.
+  // Un lien de callback fabrique par un tiers (son propre code + son propre state) est refuse.
+  const cookieState = (req.cookies as Record<string, string> | undefined)?.[CRM_STATE_COOKIE];
+  res.clearCookie(CRM_STATE_COOKIE, { path: "/api/crm/oauth" });
+  if (typeof state !== "string" || typeof cookieState !== "string" || !sameSecret(state, cookieState)) {
+    res.status(400).json({ ok: false, code: "CRM_STATE_INVALID", error: "Invalid or expired OAuth state" }); return;
+  }
+  // L'etat est consomme meme si le fournisseur renvoie une erreur : un etat ne sert qu'une fois.
+  const orgId = typeof state === "string" ? await consumeCrmState(state, provider).catch(() => null) : null;
+  if (!orgId) { res.status(400).json({ ok: false, code: "CRM_STATE_INVALID", error: "Invalid or expired OAuth state" }); return; }
+  if (error) { res.redirect(`${frontendUrl()}/dashboard?crm_error=consent_denied&crm_provider=${provider}`); return; }
+  if (typeof code !== "string" || !code || code.length > 2048) {
+    res.status(400).json({ ok: false, code: "CRM_CODE_INVALID" }); return;
+  }
+  try {
+    const orgPlan = (await resolvePlanFromDB({ orgId } as unknown as Request)) ?? "standard";
+    await completeCrmOAuth(adapter, orgId, orgPlan, code);
+    res.redirect(`${frontendUrl()}/dashboard?crm_connected=${provider}`);
+  } catch (cause) {
+    const failure = cause instanceof CrmError ? cause.code : "oauth_failed";
+    logger.warn({ event: "crm_oauth_callback_failed", provider, code: failure }, "[crm] OAuth callback failed");
+    res.redirect(`${frontendUrl()}/dashboard?crm_error=${encodeURIComponent(failure)}&crm_provider=${provider}`);
+  }
+});
+
+crmPublicRouter.post("/crm/webhook/:provider", async (req, res) => {
+  const provider = String(req.params["provider"] ?? "");
+  const adapter = getCrmAdapter(provider);
+  if (!adapter) { res.status(404).json({ ok: false, code: "CRM_PROVIDER_UNSUPPORTED" }); return; }
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (!Buffer.isBuffer(rawBody) || !adapter.isConfigured()) {
+    res.status(401).json({ ok: false, code: "CRM_WEBHOOK_UNAUTHORIZED" }); return;
+  }
+  const base = (process.env["CRM_WEBHOOK_PUBLIC_URL"] ?? crmRedirectUri(provider).replace(/\/api\/crm\/oauth\/.*$/, "")).replace(/\/+$/, "");
+  const valid = adapter.verifyWebhook({
+    rawBody, method: "POST", url: `${base}/api/crm/webhook/${provider}`, headers: req.headers,
+  });
+  if (!valid) {
+    logger.warn({ event: "crm_webhook_rejected", provider }, "[crm] webhook signature rejected");
+    res.status(401).json({ ok: false, code: "CRM_WEBHOOK_UNAUTHORIZED" }); return;
+  }
+  try {
+    const result = await processCrmWebhook(adapter, adapter.parseWebhook(rawBody));
+    // Evenement non traite (ex. CRM momentanement injoignable) : 503 pour que le fournisseur le re-livre.
+    if (result.retry > 0) { res.status(503).json({ ok: false, code: "CRM_WEBHOOK_RETRY", ...result }); return; }
+    res.json({ ok: true, ...result });
+  } catch {
+    res.status(503).json({ ok: false, code: "CRM_WEBHOOK_UNAVAILABLE" });
+  }
+});
+
+function crmFailure(res: import("express").Response, err: unknown): void {
+  if (err instanceof CrmError) { res.status(err.httpStatus).json({ ok: false, code: err.code, error: err.message }); return; }
+  const code = (err as { code?: string } | null)?.code;
+  if (typeof code === "string" && code.startsWith("CRM_")) { res.status(502).json({ ok: false, code, error: "The CRM provider rejected the request." }); return; }
+  res.status(500).json({ ok: false, code: "CRM_INTERNAL_ERROR", error: safeErrMsg(err) });
+}
 
 // /crm/providers is a discovery endpoint (no sensitive data) — ungated.
 // All write + status routes require the crmIntegration add-on.
@@ -32,7 +112,15 @@ const plan = async (req: Request): Promise<string> => (await resolvePlanFromDB(r
 const db   = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 router.get("/crm/providers", (_req, res) => {
-  res.json({ providers: CRM_PROVIDERS.map(p => ({ id: p.id, name: p.name, color: p.color, icon: p.icon, scopes: p.scopes })) });
+  const implemented = implementedCrmProviders();
+  res.json({ providers: CRM_PROVIDERS.map(p => {
+    const adapter = getCrmAdapter(p.id);
+    return {
+      id: p.id, name: p.name, color: p.color, icon: p.icon, scopes: adapter?.scopes ?? p.scopes,
+      available: implemented.includes(p.id) && Boolean(adapter?.isConfigured()),
+      implemented: implemented.includes(p.id),
+    };
+  }) });
 });
 
 router.get("/crm/status", async (req, res) => {
@@ -48,19 +136,33 @@ router.get("/crm/status", async (req, res) => {
   }
 });
 
-router.post("/crm/connect/:provider", async (req, res) => {
+router.post("/crm/connect/:provider", canAdmin, async (req, res) => {
   const provider = req.params.provider as CrmProvider;
   if (!CRM_PROVIDERS.find(p => p.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
-  res.status(501).json({
-    ok: false,
-    code: "CRM_OAUTH_UNAVAILABLE",
-    error: "La connexion OAuth CRM n’est pas encore disponible. Aucun jeton n’a été enregistré.",
-  });
+  const adapter = getCrmAdapter(provider);
+  if (!adapter) {
+    res.status(501).json({
+      ok: false,
+      code: "CRM_OAUTH_UNAVAILABLE",
+      error: "OAuth connection for this CRM is not available yet. No token was stored.",
+    });
+    return;
+  }
+  try {
+    const { url, state } = await startCrmOAuth(org(req), await plan(req), adapter);
+    res.cookie(CRM_STATE_COOKIE, state, {
+      httpOnly: true, sameSite: "lax", secure: process.env["NODE_ENV"] === "production",
+      path: "/api/crm/oauth", maxAge: 10 * 60 * 1000,
+    });
+    res.json({ ok: true, url });
+  } catch (err) { crmFailure(res, err); }
 });
 
-router.post("/crm/disconnect/:provider", async (req, res) => {
+router.post("/crm/disconnect/:provider", canAdmin, async (req, res) => {
+  const adapter = getCrmAdapter(String(req.params.provider ?? ""));
   try {
-    await disconnectCrm(org(req), req.params.provider as CrmProvider);
+    if (adapter) await disconnectCrmIntegration(adapter, org(req));
+    else await disconnectCrm(org(req), req.params.provider as CrmProvider);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -69,17 +171,15 @@ router.post("/crm/sync", async (req, res) => {
   const { provider, entityType = "contacts" } = req.body as { provider?: string; entityType?: string };
   if (!provider) { res.status(400).json({ error: "provider requis" }); return; }
   if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
-  try {
-    const result = await syncCrm(org(req), provider as CrmProvider, entityType);
-    res.json(result);
-  } catch (err) {
-    const code = (err as { code?: string } | null)?.code;
-    if (code === "CRM_SYNC_UNAVAILABLE") {
-      res.status(501).json({ ok: false, code, error: safeErrMsg(err) });
-      return;
-    }
-    res.status(500).json({ error: safeErrMsg(err) });
+  const adapter = getCrmAdapter(provider);
+  if (!adapter) {
+    res.status(501).json({ ok: false, code: "CRM_SYNC_UNAVAILABLE", error: "Synchronization for this CRM is not implemented yet." });
+    return;
   }
+  if (entityType !== "contacts") { res.status(400).json({ ok: false, code: "CRM_ENTITY_UNSUPPORTED", error: "Only contacts can be synchronized." }); return; }
+  try {
+    res.json(await syncCrmContacts(adapter, org(req)));
+  } catch (err) { crmFailure(res, err); }
 });
 
 router.get("/crm/logs", async (req, res) => {
@@ -96,12 +196,19 @@ router.post("/crm/test", async (req, res) => {
   const { provider } = req.body as { provider?: string };
   if (!provider) { res.status(400).json({ error: "provider requis" }); return; }
   if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
-  res.status(501).json({
-    ok: false,
-    provider,
-    code: "CRM_TEST_UNAVAILABLE",
-    error: "Le test réel de connexion à ce fournisseur n’est pas encore implémenté.",
-  });
+  const adapter = getCrmAdapter(provider);
+  if (!adapter) {
+    res.status(501).json({
+      ok: false, provider, code: "CRM_TEST_UNAVAILABLE",
+      error: "The live connection test for this provider is not implemented yet.",
+    });
+    return;
+  }
+  try {
+    const { accessToken } = await getValidCrmToken(adapter, org(req));
+    await adapter.fetchContacts(accessToken, null, 1);
+    res.json({ ok: true, provider });
+  } catch (err) { crmFailure(res, err); }
 });
 
 router.get("/crm/field-mappings/:crmId", async (req, res) => {
@@ -122,14 +229,6 @@ router.post("/crm/field-mappings/:crmId", async (req, res) => {
     await upsertFieldMapping(org(req), req.params.crmId, entityType, flowpointField, crmField);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
-});
-
-router.post("/crm/webhook/:provider", async (req, res) => {
-  res.status(501).json({
-    ok: false,
-    code: "CRM_WEBHOOK_UNAVAILABLE",
-    error: "Les webhooks CRM ne sont pas configurés.",
-  });
 });
 
 router.get("/crm/leads", async (req, res) => {
