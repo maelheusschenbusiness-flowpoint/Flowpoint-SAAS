@@ -58,10 +58,10 @@ export async function getCrmStatus(orgId: string): Promise<{
   const client = await pool.connect();
   try {
     const r = await client.query(
-      `SELECT id, provider, name, status, created_at, updated_at, last_sync_at, last_sync_status, synced_contacts
+      `SELECT id, provider, name, status, connected_at AS created_at, updated_at, last_sync_at, last_sync_status, synced_contacts
          FROM crm_integrations
         WHERE org_id=$1
-        ORDER BY created_at DESC`,
+        ORDER BY connected_at DESC`,
       [orgId],
     );
     const connected = r.rows.filter((i: { status: string }) => i.status === 'connected').length;
@@ -136,7 +136,7 @@ export async function upsertFieldMapping(orgId: string, crmId: string, entityTyp
   const id = `fm_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
   const client = await pool.connect();
   try {
-    await client.query(`INSERT INTO crm_field_mappings (id,crm_integration_id,entity_type,flowpoint_field,crm_field) SELECT $1,id,$2,$3,$4 FROM crm_integrations WHERE org_id=$5 AND id=$6 ON CONFLICT DO NOTHING`,
+    await client.query(`INSERT INTO crm_field_mappings (id,crm_integration_id,entity_type,flowpoint_field,crm_field,org_id) SELECT $1,id,$2,$3,$4,org_id FROM crm_integrations WHERE org_id=$5 AND id=$6 ON CONFLICT DO NOTHING`,
       [id, entityType, fpField, crmField, orgId, crmId]);
   } finally {
     client.release();

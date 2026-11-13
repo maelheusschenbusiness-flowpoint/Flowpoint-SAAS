@@ -62,7 +62,7 @@
       "noOrg": 3
     },
     "routes/ai.ts": {
-      "total": 50,
+      "total": 48,
       "noOrg": 7
     },
     "routes/audit.ts": {
@@ -280,6 +280,10 @@
     "services/crm-service.ts": {
       "total": 5,
       "noOrg": 5
+    },
+    "services/crm/crm-core.ts": {
+      "total": 19,
+      "noOrg": 2
     },
     "services/data-explorer-service.ts": {
       "total": 3,

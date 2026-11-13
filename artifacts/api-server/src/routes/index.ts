@@ -34,7 +34,7 @@ import abTestingRouter from "./ab-testing.js";
 import forecastRouter from "./forecast.js";
 import automationRouter from "./automation.js";
 import integrationsRouter from "./integrations.js";
-import crmRouter from "./crm.js";
+import crmRouter, { crmPublicRouter } from "./crm.js";
 import permissionsRouter from "./permissions.js";
 import marketIntelRouter from "./market-intelligence.js";
 import reviewIntelRouter from "./review-intelligence.js";
@@ -110,6 +110,7 @@ router.get("/billing/config", (_req, res) => {
 // All other /google/* management routes are protected below after requireAuth.
 router.use(googlePublicRouter);
 router.use(gscOAuthPublicRouter);
+router.use(crmPublicRouter);
 
 // Admin routes — protected by x-admin-key header (not user session).
 // Must be registered before requireAuth so ops scripts don't need a user session.
