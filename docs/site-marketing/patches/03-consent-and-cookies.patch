@@ -1,0 +1,320 @@
+diff -ruN a/client/index.html b/client/index.html
+--- a/client/index.html	2026-11-08 15:20:58.091323889 +0000
++++ b/client/index.html	2026-11-08 15:20:58.096397191 +0000
+@@ -19,8 +19,17 @@
+           document.documentElement.lang = language;
+           document.documentElement.dir = ["ar", "he"].includes(language.toLowerCase()) ? "rtl" : "ltr";
+           document.documentElement.dataset.language = language;
+-          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; SameSite=Lax";
+-          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; domain=" + window.location.hostname + "; SameSite=Lax";
++          // The googtrans cookie belongs to Google Translate: write it only when a
++          // translation is actually needed AND the visitor has accepted cookies.
++          var consented = false;
++          try {
++            consented = localStorage.getItem("cookie_consent") === "accepted" ||
++              /(?:^|;\s*)fp_analytics_consent=accepted(?:;|$)/.test(document.cookie);
++          } catch (e) {}
++          if (consented && language.toLowerCase() !== sourceLanguage) {
++            document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; SameSite=Lax";
++            document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; domain=" + window.location.hostname + "; SameSite=Lax";
++          }
+         } catch (e) {}
+       })();
+     </script>
+diff -ruN a/client/src/App.tsx b/client/src/App.tsx
+--- a/client/src/App.tsx	2026-11-08 15:20:58.091009739 +0000
++++ b/client/src/App.tsx	2026-11-08 15:20:58.096324592 +0000
+@@ -31,6 +31,7 @@
+ import CompetitorAnalysis from "@/pages/CompetitorAnalysis";
+ import NotFound from "@/pages/not-found";
+ import { getActiveFpLid, installFpLidPropagation } from "@/lib/fp-lid";
++import { CONSENT_CHANGE_EVENT, hasAnalyticsConsent } from "@/lib/consent";
+ 
+ function Router() {
+   return (
+@@ -69,19 +70,31 @@
+   );
+ }
+ 
++// Google Translate is a third-party service (translate.google.com receives the
++// visitor's IP address and sets its own cookies), so the script is only
++// injected once the visitor has accepted cookies. Pending owner decision:
++// either keep this rule, or let an explicit click on the language picker count
++// as the visitor's request (see docs/site-marketing/README.md, section Consentement).
+ function GoogleTranslateLoader() {
+   useEffect(() => {
+-    const sourceLanguage = getMarketingTranslationSourceLanguage(window.location.pathname);
+-    const targetLanguage = document.documentElement.lang.toLowerCase();
+-    if (sourceLanguage === targetLanguage) return;
+-    if (document.getElementById("google-translate-script")) return;
++    const loadIfAllowed = () => {
++      if (!hasAnalyticsConsent()) return;
++      const sourceLanguage = getMarketingTranslationSourceLanguage(window.location.pathname);
++      const targetLanguage = document.documentElement.lang.toLowerCase();
++      if (sourceLanguage === targetLanguage) return;
++      if (document.getElementById("google-translate-script")) return;
+ 
+-    // Google Translate rewrites server-rendered DOM, so wait until React hydrates first.
+-    const script = document.createElement("script");
+-    script.id = "google-translate-script";
+-    script.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+-    script.async = true;
+-    document.body.appendChild(script);
++      // Google Translate rewrites server-rendered DOM, so wait until React hydrates first.
++      const script = document.createElement("script");
++      script.id = "google-translate-script";
++      script.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
++      script.async = true;
++      document.body.appendChild(script);
++    };
++
++    loadIfAllowed();
++    window.addEventListener(CONSENT_CHANGE_EVENT, loadIfAllowed);
++    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, loadIfAllowed);
+   }, []);
+ 
+   return null;
+diff -ruN a/client/src/components/ApolloTracker.tsx b/client/src/components/ApolloTracker.tsx
+--- a/client/src/components/ApolloTracker.tsx	2026-11-08 15:20:58.091172302 +0000
++++ b/client/src/components/ApolloTracker.tsx	2026-11-08 15:20:58.095945863 +0000
+@@ -1,10 +1,9 @@
+ import { useEffect, useState } from "react";
+ import { useLocation } from "wouter";
++import { CONSENT_CHANGE_EVENT, hasAnalyticsConsent } from "@/lib/consent";
+ 
+ const APOLLO_BOOTSTRAP_ID = "flowpoint-apollo-tracker-bootstrap";
+ const APOLLO_TRACKER_SRC = "https://assets.apollo.io/micro/website-tracker/tracker.iife.js";
+-const CONSENT_STORAGE_KEY = "cookie_consent";
+-const CONSENT_CHANGE_EVENT = "flowpoint-cookie-consent-change";
+ 
+ declare global {
+   interface Window {
+@@ -18,10 +17,6 @@
+ o.onload=function(){window.trackingFunctions.onLoad({appId:"6a6f40562eb92000180dc1c4"})},
+ document.head.appendChild(o)}initApollo();`;
+ 
+-function hasAnalyticsConsent() {
+-  return window.localStorage.getItem(CONSENT_STORAGE_KEY) === "accepted";
+-}
+-
+ function injectApolloTracker() {
+   if (window.__flowpointApolloTrackerInitialized) return;
+ 
+diff -ruN a/client/src/components/CookieBanner.tsx b/client/src/components/CookieBanner.tsx
+--- a/client/src/components/CookieBanner.tsx	2026-11-08 15:20:58.091192260 +0000
++++ b/client/src/components/CookieBanner.tsx	2026-11-08 15:20:58.096038000 +0000
+@@ -1,9 +1,13 @@
+ import { useState, useEffect } from "react";
+ import { Button } from "@/components/ui/button";
+ import { Cookie } from "lucide-react";
++import {
++  CONSENT_CHANGE_EVENT,
++  CONSENT_STORAGE_KEY,
++  SHARED_CONSENT_COOKIE,
++  readConsent,
++} from "@/lib/consent";
+ 
+-const CONSENT_CHANGE_EVENT = "flowpoint-cookie-consent-change";
+-const SHARED_CONSENT_COOKIE = "fp_analytics_consent";
+ const COOKIE_COPY = {
+   en: {
+     settings: "Cookie preferences",
+@@ -25,7 +29,7 @@
+ 
+ function saveConsent(consent: "accepted" | "refused") {
+   try {
+-    localStorage.setItem("cookie_consent", consent);
++    localStorage.setItem(CONSENT_STORAGE_KEY, consent);
+   } catch {
+     // The shared cookie can still carry the visitor's choice to the app.
+   }
+@@ -49,14 +53,10 @@
+     const selectedLanguage = document.documentElement.lang.toLowerCase();
+     setLanguage(selectedLanguage.startsWith("fr") ? "fr" : selectedLanguage);
+ 
+-    let consent: string | null = null;
+-    try {
+-      consent = localStorage.getItem("cookie_consent");
+-    } catch {
+-      // Storage can be unavailable in restricted browser contexts.
+-    }
++    // localStorage first, then the shared cookie when storage is unavailable.
++    const consent = readConsent();
+ 
+-    if (consent === "accepted" || consent === "refused") {
++    if (consent) {
+       try {
+         saveConsent(consent);
+       } catch {
+@@ -124,10 +124,11 @@
+           </p>
+         </div>
+         <div className="flex gap-3 flex-shrink-0">
++          {/* Refuse and Accept share the same size, weight and colour: refusing
++              must be as easy and as visible as accepting. */}
+           <Button
+-            variant="outline"
+             onClick={handleRefuse}
+-            className="rounded-lg text-sm"
++            className="bg-blue-600 border-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm"
+             data-testid="button-cookie-refuse"
+           >
+             {copy.refuse}
+diff -ruN a/client/src/components/GoogleAnalytics.tsx b/client/src/components/GoogleAnalytics.tsx
+--- a/client/src/components/GoogleAnalytics.tsx	2026-11-08 15:20:58.091151972 +0000
++++ b/client/src/components/GoogleAnalytics.tsx	2026-11-08 15:20:58.095761764 +0000
+@@ -1,10 +1,9 @@
+ import { useEffect, useRef, useState } from "react";
+ import { useLocation } from "wouter";
++import { CONSENT_CHANGE_EVENT, CONSENT_STORAGE_KEY, hasAnalyticsConsent } from "@/lib/consent";
+ 
+ const GA_MEASUREMENT_ID = "G-32HPNSRLEM";
+ const GA_SCRIPT_ID = "flowpoint-ga4-script";
+-const CONSENT_STORAGE_KEY = "cookie_consent";
+-const CONSENT_CHANGE_EVENT = "flowpoint-cookie-consent-change";
+ 
+ declare global {
+   interface Window {
+@@ -14,10 +13,6 @@
+   }
+ }
+ 
+-function hasAnalyticsConsent() {
+-  return window.localStorage.getItem(CONSENT_STORAGE_KEY) === "accepted";
+-}
+-
+ function initializeGoogleAnalytics() {
+   if (window.__flowpointGa4Configured) return;
+ 
+diff -ruN a/client/src/lib/analytics.ts b/client/src/lib/analytics.ts
+--- a/client/src/lib/analytics.ts	2026-11-08 15:20:58.091051177 +0000
++++ b/client/src/lib/analytics.ts	2026-11-08 15:20:58.095582652 +0000
+@@ -1,3 +1,5 @@
++import { hasAnalyticsConsent } from "./consent";
++
+ export type AnalyticsData = Record<string, string | number | boolean>;
+ 
+ declare global {
+@@ -12,7 +14,7 @@
+   if (typeof window === "undefined") return;
+ 
+   try {
+-    if (window.localStorage.getItem("cookie_consent") !== "accepted") return;
++    if (!hasAnalyticsConsent()) return;
+     window.umami?.track(name, data);
+   } catch {
+     // Analytics must never break the app.
+diff -ruN a/client/src/lib/consent.ts b/client/src/lib/consent.ts
+--- a/client/src/lib/consent.ts	1970-01-01 00:00:00.000000000 +0000
++++ b/client/src/lib/consent.ts	2026-11-08 15:20:58.095702019 +0000
+@@ -0,0 +1,39 @@
++// Single reader of the visitor's cookie choice, shared by every component that
++// loads a third-party script or stores an identifier.
++//
++// The choice is written by CookieBanner.tsx in two places: localStorage
++// ("cookie_consent") and a first-party cookie (fp_analytics_consent, shared with
++// app.flowpoint.pro). localStorage can throw (private mode, blocked site data):
++// the cookie is then used as a fallback so a visitor who accepted or refused is
++// not asked again and a refusal is never mistaken for "no answer yet".
++//
++// Rule: anything that is not strictly necessary (GA4, Apollo, Google Translate,
++// visitor id, stored UTM / lead id) runs only when readConsent() === "accepted".
++
++export const CONSENT_STORAGE_KEY = "cookie_consent";
++export const SHARED_CONSENT_COOKIE = "fp_analytics_consent";
++export const CONSENT_CHANGE_EVENT = "flowpoint-cookie-consent-change";
++
++export type ConsentChoice = "accepted" | "refused";
++
++export function readConsent(): ConsentChoice | null {
++  if (typeof window === "undefined") return null;
++  try {
++    const stored = window.localStorage.getItem(CONSENT_STORAGE_KEY);
++    if (stored === "accepted" || stored === "refused") return stored;
++  } catch {
++    // Fall through to the cookie.
++  }
++  try {
++    const match = document.cookie.match(
++      new RegExp(`(?:^|;\\s*)${SHARED_CONSENT_COOKIE}=(accepted|refused)(?:;|$)`),
++    );
++    return match ? (match[1] as ConsentChoice) : null;
++  } catch {
++    return null;
++  }
++}
++
++export function hasAnalyticsConsent(): boolean {
++  return readConsent() === "accepted";
++}
+diff -ruN a/client/src/lib/fp-lid.ts b/client/src/lib/fp-lid.ts
+--- a/client/src/lib/fp-lid.ts	2026-11-08 15:20:58.091071755 +0000
++++ b/client/src/lib/fp-lid.ts	2026-11-08 15:20:58.094816743 +0000
+@@ -1,3 +1,5 @@
++import { hasAnalyticsConsent } from "./consent";
++
+ const APP_ORIGIN = "https://app.flowpoint.pro";
+ const FP_LID_STORAGE_KEY = "flowpoint:marketing:fp_lid";
+ const FP_LID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+@@ -27,15 +29,25 @@
+       return null;
+     }
+ 
+-    try {
+-      window.sessionStorage.setItem(FP_LID_STORAGE_KEY, incomingFpLid);
+-    } catch {
+-      // The current page can still use the URL value if storage is unavailable.
++    // The lead id is kept across pages only with the visitor's consent. Without
++    // it, the value in the current URL is still returned (and copied into links
++    // to the app on this page) but nothing is written to the browser.
++    if (hasAnalyticsConsent()) {
++      try {
++        window.sessionStorage.setItem(FP_LID_STORAGE_KEY, incomingFpLid);
++      } catch {
++        // The current page can still use the URL value if storage is unavailable.
++      }
+     }
+ 
+     return incomingFpLid;
+   }
+ 
++  if (!hasAnalyticsConsent()) {
++    clearStoredFpLid();
++    return null;
++  }
++
+   try {
+     const storedFpLid = window.sessionStorage.getItem(FP_LID_STORAGE_KEY);
+     if (!isValidFpLid(storedFpLid)) {
+diff -ruN a/client/src/lib/funnel-tracking.ts b/client/src/lib/funnel-tracking.ts
+--- a/client/src/lib/funnel-tracking.ts	2026-11-08 15:20:58.091091221 +0000
++++ b/client/src/lib/funnel-tracking.ts	2026-11-08 15:20:58.095324684 +0000
+@@ -1,4 +1,5 @@
+ import { getActiveFpLid } from "./fp-lid";
++import { readConsent } from "./consent";
+ import { addSellerRefToAppUrl, normalizeSellerRef, readSellerRefFromSearch } from "./signup-url";
+ 
+ export type FunnelStep =
+@@ -7,7 +8,6 @@
+   | "cta_clique"
+   | "signup_started";
+ 
+-const CONSENT_KEY = "cookie_consent";
+ const VISITOR_KEY = "flowpoint_funnel_visitor";
+ const SOURCE_KEY = "flowpoint_funnel_source";
+ const ATTRIBUTION_KEY = "flowpoint_funnel_attribution";
+@@ -46,14 +46,6 @@
+ 
+ let volatileVisitorId: string | null = null;
+ 
+-function readConsent(): string | null {
+-  try {
+-    return window.localStorage.getItem(CONSENT_KEY);
+-  } catch {
+-    return null;
+-  }
+-}
+-
+ export function hasFunnelConsent(): boolean {
+   return typeof window !== "undefined" && readConsent() === "accepted";
+ }
