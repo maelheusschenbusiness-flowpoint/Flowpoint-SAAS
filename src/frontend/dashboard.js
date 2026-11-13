@@ -75715,6 +75715,17 @@ window.fpTrackUsage = async function(kind) {
 window.FP_CRM_API = {
   async load() {
     try {
+      // Retour du fournisseur apres l'autorisation OAuth (resultat uniquement, jamais de secret dans l'URL).
+      try {
+        const q = new URLSearchParams(window.location.search);
+        if (q.has('crm_connected') || q.has('crm_error')) {
+          const ok = q.has('crm_connected');
+          q.delete('crm_connected'); q.delete('crm_error'); q.delete('crm_provider');
+          const rest = q.toString();
+          window.history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
+          setTimeout(() => { if (typeof showToast === 'function') showToast(ok ? 'success' : 'error', fpT(ok ? 'CRM connecté !' : 'La connexion au CRM a échoué ou a été refusée.')); }, 500);
+        }
+      } catch (_) { /* affichage seulement */ }
       const [status, logs] = await Promise.allSettled([
         apiFetch('/api/crm/status').catch(()=>null),
         apiFetch('/api/crm/logs?limit=20').catch(()=>null),
@@ -76200,16 +76211,8 @@ function renderCRM() {
       <div class="fp-card" style="width:440px;max-width:92vw;padding:24px">
         <div id="fp-crm-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">Connecter un CRM</div>
         <div style="display:flex;flex-direction:column;gap:12px">
-          <div>
-            <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Access Token OAuth</label>
-            <input id="crm-token" class="fp-input" placeholder="eyJ..." type="password"/>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Portal ID (optionnel)</label>
-            <input id="crm-portal" class="fp-input" placeholder="12345678"/>
-          </div>
-          <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-            ℹ️ En production, le flux OAuth redirige vers votre CRM pour autorisation sécurisée.
+          <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">
+            ${fpT('Vous allez être redirigé vers votre CRM pour autoriser Flowpoint en lecture seule. Aucun jeton n’est à copier : il est échangé et chiffré côté serveur.')}
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
@@ -76227,23 +76230,16 @@ function renderCRM() {
       document.getElementById('fp-crm-modal').style.display = 'flex';
     };
     window._submitCrmConnect = async function() {
-      const token = document.getElementById('crm-token').value.trim();
-      const portal = document.getElementById('crm-portal').value.trim();
-      if (!token) { showToast('error', fpT('Access token requis')); return; }
-      showToast('info', fpT('Connexion en cours…'));
+      showToast('info', fpT('Redirection vers le CRM…'));
       try {
-        const r = await window.FP_CRM_API.connect(window._currentCrmProvider, { accessToken: token, portalId: portal || undefined });
-        if (r?.ok) {
-          document.getElementById('fp-crm-modal').style.display = 'none';
-          showToast('success', fpT('CRM connecté !'));
-          await window.FP_CRM_API.load();
-          render(STATE.currentSection);
-        } else {
-          const msg = r?.error || 'Erreur de connexion';
-          if (msg.includes('Limite')) showToast('error', fpT('Limite du plan atteinte. Passez à un plan supérieur.'));
-          else showToast('error', msg);
-        }
-      } catch(e) { showToast('error', String(e)); }
+        const r = await window.FP_CRM_API.connect(window._currentCrmProvider, {});
+        if (r?.ok && typeof r.url === 'string' && /^https:\/\//.test(r.url)) { window.location.assign(r.url); return; }
+        showToast('error', r?.error || fpT('Connexion impossible pour le moment.'));
+      } catch(e) {
+        const msg = String(e?.message || e);
+        if (/limite|limit/i.test(msg)) showToast('error', fpT('Limite du plan atteinte. Passez à un plan supérieur.'));
+        else showToast('error', fpT('Connexion impossible pour le moment.'));
+      }
     };
     </script>
   `;

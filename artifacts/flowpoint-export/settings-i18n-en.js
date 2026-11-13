@@ -1034,5 +1034,9 @@ window.FP_I18N_EN_SETTINGS = {
   "Export impossible.": "Export failed.",
   "La cible doit être un pourcentage entre 90 et 99,999.": "The target must be a percentage between 90 and 99.999.",
   "Export impossible pour le moment.": "Export is not available right now.",
-  "Les données de veille sont momentanément indisponibles. Réessayez dans un instant.": "Market data is temporarily unavailable. Please try again in a moment."
+  "Les données de veille sont momentanément indisponibles. Réessayez dans un instant.": "Market data is temporarily unavailable. Please try again in a moment.",
+  "Vous allez être redirigé vers votre CRM pour autoriser Flowpoint en lecture seule. Aucun jeton n’est à copier : il est échangé et chiffré côté serveur.": "You will be redirected to your CRM to authorize Flowpoint with read-only access. There is no token to copy: it is exchanged and encrypted on the server.",
+  "Redirection vers le CRM…": "Redirecting to your CRM…",
+  "Connexion impossible pour le moment.": "Connection is not available right now.",
+  "La connexion au CRM a échoué ou a été refusée.": "The CRM connection failed or was declined."
 };
