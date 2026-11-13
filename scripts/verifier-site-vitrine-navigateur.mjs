@@ -120,16 +120,19 @@ const cookies = async (context) => (await context.cookies(BASE)).map((c) => ({ n
   check("N3c", "3 boutons de plan (standard, pro, ultra) presents", nbBoutonsPlan >= 3, `boutons=${nbBoutonsPlan}`);
   await context.close();
 }
-{
+for (const [nom, preparer, chemin] of [
+  ["cookie googtrans=/en/fr (selecteur de langue du site)", (c) => c.addCookies([{ name: "googtrans", value: "/en/fr", domain: ".flowpoint.pro", path: "/", secure: true, sameSite: "Lax" }]), "/pricing"],
+  ["parametre ?lang=fr", async () => {}, "/pricing?lang=fr"],
+]) {
   const { context } = await nouveauContexte();
+  await preparer(context);
   const page = await context.newPage();
-  await page.addInitScript(() => { try { localStorage.setItem("flowpoint-language", "fr"); } catch { /* ignore */ } });
-  await page.goto(`${BASE}/pricing`, { waitUntil: "networkidle", timeout: 45_000 });
+  await page.goto(`${BASE}${chemin}`, { waitUntil: "networkidle", timeout: 45_000 });
   await page.waitForTimeout(1500);
   const texte = (await page.locator("body").innerText()).toLowerCase();
   const hrefsFr = await page.$$eval('a[href^="https://app.flowpoint.pro/"]', (els) => els.map((e) => e.href));
-  check("N3d", "langue francaise choisie : mention « carte bancaire requise · débit automatique après 14 jours »", texte.includes("carte bancaire requise"));
-  check("N3e", "langue francaise choisie : tous les liens vers l'application portent lang=fr", hrefsFr.length > 0 && hrefsFr.every((h) => /[?&]lang=fr(&|$)/.test(h)), `liens=${hrefsFr.length}`);
+  check(`N3d[${nom}]`, "francais : mention « carte bancaire requise · débit automatique après 14 jours sauf annulation »", texte.includes("carte bancaire requise"));
+  check(`N3e[${nom}]`, "francais : tous les liens vers l'application portent lang=fr", hrefsFr.length > 0 && hrefsFr.every((h) => /[?&]lang=fr(&|$)/.test(h)), `liens=${hrefsFr.length}`);
   await context.close();
 }
 
