@@ -126,7 +126,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // ── 5. Stripe raw body (must come before JSON parser) ────────────────────────
 // Registered on both paths: canonical /api/webhooks/stripe AND legacy
 // /api/billing/webhook (active Stripe Dashboard endpoint).
-for (const webhookPath of ["/api/webhooks/stripe", "/api/billing/webhook"]) {
+for (const webhookPath of ["/api/webhooks/stripe", "/api/billing/webhook", "/api/crm/webhook"]) {
   app.use(
     webhookPath,
     express.raw({ type: "application/json" }),
