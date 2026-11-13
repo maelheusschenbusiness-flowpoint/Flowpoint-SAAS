@@ -1033,5 +1033,6 @@ window.FP_I18N_EN_SETTINGS = {
   "Impossible de supprimer la cible.": "Could not remove the target.",
   "Export impossible.": "Export failed.",
   "La cible doit être un pourcentage entre 90 et 99,999.": "The target must be a percentage between 90 and 99.999.",
-  "Export impossible pour le moment.": "Export is not available right now."
+  "Export impossible pour le moment.": "Export is not available right now.",
+  "Les données de veille sont momentanément indisponibles. Réessayez dans un instant.": "Market data is temporarily unavailable. Please try again in a moment."
 };

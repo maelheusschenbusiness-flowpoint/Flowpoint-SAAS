@@ -60,8 +60,11 @@
       if (SOURCES.indexOf(stored) !== -1) return stored;
       var q = new URLSearchParams(window.location.search);
       var fromUrl = q.get('fp_src') || q.get('utm_source') || '';
-      if (/smartlead/i.test(fromUrl)) return 'smartlead';
-      return SOURCES.indexOf(fromUrl) !== -1 ? fromUrl : 'direct';
+      var found = /smartlead/i.test(fromUrl) ? 'smartlead' : (SOURCES.indexOf(fromUrl) !== -1 ? fromUrl : 'direct');
+      // Premiere touche : memorisee (consentement obligatoire) pour que la page d'inscription et le
+      // checkout, qui lisent la meme cle, parlent de la meme source que les tarifs.
+      if (found !== 'direct' && hasConsent()) { try { localStorage.setItem('fp_source', found); } catch (e) {} }
+      return found;
     } catch (e) { return 'direct'; }
   }
 
@@ -108,4 +111,10 @@
       }
     } catch (e) { /* ne bloque jamais le clic */ }
   }, true);
+
+  /* Vue de la page tarifs : une fois par chargement, meme identite (`fp_vid`) et meme consentement
+     que les autres etapes ; le serveur deduplique par visiteur + etape + jour. */
+  try {
+    if (/\/pricing\.html$/i.test(window.location.pathname || '')) track('tarifs_vus');
+  } catch (e) { /* une mesure ratee ne bloque jamais la page */ }
 })();

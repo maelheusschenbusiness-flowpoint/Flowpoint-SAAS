@@ -113,7 +113,7 @@ describe("Advanced SEO Lab — analyse de contenu et génération de missions", 
   it("retourne l'analyse DataForSEO pour un utilisateur autorisé et consigne l'action dans son organisation", async () => {
     const res = await request(makeApp())
       .post("/api/seo/content-optimization")
-      .send({ url: "https://seo-test.example/page" });
+      .send({ url: "https://seo-test.example/page", keyword: "plomberie urgence" });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -125,7 +125,7 @@ describe("Advanced SEO Lab — analyse de contenu et génération de missions", 
     expect(mocks.verifyQuota).toHaveBeenCalledWith(ORG_ID, "standard");
     expect(mocks.getContentOptimization).toHaveBeenCalledWith(
       "https://seo-test.example/page",
-      "seo local",
+      "plomberie urgence", // le mot-cle du client, jamais une valeur d'exemple
       ORG_ID,
     );
     expect(mocks.logActivity).toHaveBeenCalledWith(expect.objectContaining({
@@ -139,7 +139,7 @@ describe("Advanced SEO Lab — analyse de contenu et génération de missions", 
     mocks.role = "viewer";
     const res = await request(makeApp())
       .post("/api/seo/content-optimization")
-      .send({ url: "https://seo-test.example/page" });
+      .send({ url: "https://seo-test.example/page", keyword: "plomberie urgence" });
 
     expect(res.status).toBe(403);
     expect(mocks.verifyQuota).not.toHaveBeenCalled();
@@ -150,7 +150,7 @@ describe("Advanced SEO Lab — analyse de contenu et génération de missions", 
     mocks.loadBillingContext.mockResolvedValue({ addons: { advancedSeoLab: false } });
     const res = await request(makeApp())
       .post("/api/seo/content-optimization")
-      .send({ url: "https://seo-test.example/page" });
+      .send({ url: "https://seo-test.example/page", keyword: "plomberie urgence" });
 
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ code: "ADDON_REQUIRED", addonKey: "advancedSeoLab" });
@@ -167,7 +167,7 @@ describe("Advanced SEO Lab — analyse de contenu et génération de missions", 
     });
     const res = await request(makeApp())
       .post("/api/seo/content-optimization")
-      .send({ url: "https://seo-test.example/page" });
+      .send({ url: "https://seo-test.example/page", keyword: "plomberie urgence" });
 
     expect(res.status).toBe(429);
     expect(res.body).toMatchObject({ used: 1000, limit: 1000 });
@@ -182,7 +182,7 @@ describe("Advanced SEO Lab — analyse de contenu et génération de missions", 
     ));
     const res = await request(makeApp())
       .post("/api/seo/content-optimization")
-      .send({ url: "https://seo-test.example/page" });
+      .send({ url: "https://seo-test.example/page", keyword: "plomberie urgence" });
 
     expect(res.status).toBe(503);
     expect(res.body).toMatchObject({ ok: false, code: "DATAFORSEO_NOT_CONFIGURED" });

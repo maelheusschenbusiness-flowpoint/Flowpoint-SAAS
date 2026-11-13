@@ -1702,12 +1702,12 @@ window.__fpPageLoadTs = Date.now();
     },
     getKeywords: async function (keyword, location, language) {
       try {
-        return await apiFetch('/api/seo/keywords?keyword=' + encodeURIComponent(keyword || 'seo') + '&location=' + encodeURIComponent(location || 'France') + '&language=' + (language || 'fr'));
+        return await apiFetch('/api/seo/keywords?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'France') + '&language=' + (language || 'fr'));
       } catch (e) { console.warn('[FP] DFS keywords:', e.message); return null; }
     },
     getSERP: async function (keyword, location) {
       try {
-        return await apiFetch('/api/seo/serp?keyword=' + encodeURIComponent(keyword || 'seo') + '&location=' + encodeURIComponent(location || 'France'));
+        return await apiFetch('/api/seo/serp?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'France'));
       } catch (e) { console.warn('[FP] DFS serp:', e.message); return null; }
     },
     getCompetitors: async function (domain) {
@@ -1727,12 +1727,12 @@ window.__fpPageLoadTs = Date.now();
     },
     getLocalRank: async function (keyword, location) {
       try {
-        return await apiFetch('/api/seo/local-rank?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'Paris'));
+        return await apiFetch('/api/seo/local-rank?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || ''));
       } catch (e) { console.warn('[FP] DFS local rank:', e.message); return null; }
     },
     getMaps: async function (keyword, location) {
       try {
-        return await apiFetch('/api/seo/maps?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || 'Paris'));
+        return await apiFetch('/api/seo/maps?keyword=' + encodeURIComponent(keyword || '') + '&location=' + encodeURIComponent(location || ''));
       } catch (e) { console.warn('[FP] DFS maps:', e.message); return null; }
     },
     getAIMentions: async function (keyword) {

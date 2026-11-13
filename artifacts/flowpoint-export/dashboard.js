@@ -75749,7 +75749,9 @@ window.FP_MARKET_INTEL_API = {
         apiFetch('/api/market-intelligence/reports'),
       ]);
       const data = dashboard.status === 'fulfilled' ? dashboard.value : null;
-      if (!data) return;
+      window.FP_DATA = window.FP_DATA || {};
+      // Une panne n'est pas « aucune donnee » : l'etat est explicite, jamais un tableau vide muet.
+      if (!data) { window.FP_DATA.marketIntel = { unavailable: true, loadedAt: Date.now() }; return; }
       const reportData = reportResponse.status === 'fulfilled' ? reportResponse.value : null;
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.marketIntel = {
@@ -76254,6 +76256,9 @@ function renderMarketIntelligence() {
   const plan = STATE.me?.plan || 'Pro';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
   const mi = window.FP_DATA?.marketIntel || {};
+  if (mi.unavailable) {
+    return `<div class="fp-card"><h2>Market Intelligence</h2><p class="fp-text-muted" role="alert">${fpT('Les données de veille sont momentanément indisponibles. Réessayez dans un instant.')}</p></div>`;
+  }
   const trends = mi.trends || [];
   const opportunities = mi.opportunities || [];
   const movements = mi.competitor_movements || [];

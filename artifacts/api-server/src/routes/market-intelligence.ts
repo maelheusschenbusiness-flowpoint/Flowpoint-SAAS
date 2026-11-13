@@ -24,7 +24,7 @@ router.get("/market-intelligence", async (req, res) => {
     const orgId = org(req);
     const data = await getMarketDashboard(orgId);
     res.json(data);
-  } catch { res.json({ trends: [], opportunities: [], signals: [], competitor_movements: [], summary: null, stats: { avgOpportunityScore: 0, emergingTrends: 0 }, source: "no_data" }); }
+  } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", trends: [], opportunities: [], signals: [], competitor_movements: [], summary: null, stats: { avgOpportunityScore: 0, emergingTrends: 0 } }); }
 });
 
 router.get("/market-intelligence/trends", async (req, res) => {
@@ -35,7 +35,7 @@ router.get("/market-intelligence/trends", async (req, res) => {
     const trends = (await getMarketDashboard(org(req))).trends
       .filter((trend) => trend.opportunity_score >= minScore).slice(0, limit);
     res.json({ trends, count: trends.length, source: trends.length ? "gsc" : "no_data" });
-  } catch { res.json({ trends: [], count: 0 }); }
+  } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", trends: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/opportunities", async (req, res) => {
@@ -45,7 +45,7 @@ router.get("/market-intelligence/opportunities", async (req, res) => {
     const opportunities = (await getMarketDashboard(org(req))).opportunities
       .filter((item) => !type || item.type === type).slice(0, limit);
     res.json({ opportunities, count: opportunities.length, source: opportunities.length ? "gsc" : "no_data" });
-  } catch { res.json({ opportunities: [], count: 0 }); }
+  } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", opportunities: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/competitor-movements", async (req, res) => {
@@ -54,7 +54,7 @@ router.get("/market-intelligence/competitor-movements", async (req, res) => {
     const limit = Math.min(100, Math.max(1, Number.parseInt(lim, 10) || 20));
     const movements = (await detectCompetitorMovements(org(req), domain)).slice(0, limit);
     res.json({ movements, count: movements.length, source: movements.length ? "competitor_rankings" : "no_data" });
-  } catch { res.json({ movements: [], count: 0 }); }
+  } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", movements: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/signals", async (req, res) => {
@@ -65,7 +65,7 @@ router.get("/market-intelligence/signals", async (req, res) => {
       [orgId]
     );
     res.json({ signals: r.rows, count: r.rows.length });
-  } catch { res.json({ signals: [], count: 0 }); }
+  } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", signals: [], count: 0 }); }
 });
 
 router.get("/market-intelligence/reports", async (req, res) => {

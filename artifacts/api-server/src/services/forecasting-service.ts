@@ -1,3 +1,4 @@
+import { stableId } from "../lib/stable-id.js";
 import { pool } from "@workspace/db";
 import { getGA4ForecastHistory } from "./ga4-service.js";
 
@@ -166,6 +167,38 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
   return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
 }
 
+/**
+ * Identifiant stable et UNIQUE d'une ligne de prevision.
+ *
+ * L'ancien identifiant — `fc_<org>_<site>_<date>_<scenario>` tronque a 80 caracteres —
+ * perdait la date puis le scenario des que l'UUID de l'organisation et l'URL du site depassaient
+ * ~25 caracteres : 270 lignes se retrouvaient avec 1 a 10 identifiants, `id` est la cle
+ * primaire et l'ON CONFLICT ne la vise pas, donc la generation levait une violation de cle (500).
+ * Un condense de la cle metier (org, site, date, scenario) est de longueur fixe et sans collision.
+ */
+export function forecastRowId(orgId: string, siteUrl: string, date: string, scenario: string): string {
+  return stableId("fc", orgId, siteUrl, date, scenario);
+}
+
+type ForecastRow = { date: string; predictedTraffic: number; predictedConversions: unknown; predictedRevenue: unknown; confidence: unknown; scenario: string };
+
+/** Ecrit (ou met a jour) les lignes de prevision ; a appeler dans la transaction de l'appelant. */
+export async function persistForecastRows(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  orgId: string, siteUrl: string, forecasts: ForecastRow[],
+): Promise<void> {
+  for (const f of forecasts) {
+    await client.query(
+      `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+       ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
+         predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, source=$10, generated_at=NOW()`,
+      [forecastRowId(orgId, siteUrl, f.date, f.scenario), orgId, siteUrl, f.date, f.predictedTraffic,
+        f.predictedConversions, f.predictedRevenue, f.confidence, f.scenario, "gsc+ga4"],
+    );
+  }
+}
+
 export async function generateForecasts(orgId: string, siteUrl: string): Promise<ForecastData> {
   const client = await pool.connect();
   try {
@@ -249,17 +282,7 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
     try {
       await client.query("BEGIN");
       txActive = true;
-      for (const f of forecasts) {
-        await client.query(
-          `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-           ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
-             predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, source=$10, generated_at=NOW()`,
-          [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-            orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue,
-            f.confidence, f.scenario, "gsc+ga4"]
-        );
-      }
+      await persistForecastRows(client, orgId, siteUrl, forecasts);
       await client.query("COMMIT");
       txActive = false;
     } catch (error) {
