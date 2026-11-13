@@ -32,6 +32,23 @@ describe("local geo heatmap", () => {
     expect(findBusinessRank([{ name: "Another business", rank: 2 }], "Café René Centre")).toBeNull();
   });
 
+  it("keeps letters that are not plain latin while still stripping accents", () => {
+    expect(normalizeBusinessName("Ørsted")).toBe("ørsted");
+    expect(normalizeBusinessName("Straße München")).toBe("straße munchen");
+  });
+
+  it("keeps a name written in another script unchanged", () => {
+    expect(normalizeBusinessName("東京ラーメン")).toBe("東京ラーメン");
+  });
+
+  it("finds the rank of a business named in another script", () => {
+    expect(findBusinessRank([{ name: "東京ラーメン", rank: 3 }], "東京ラーメン")).toBe(3);
+  });
+
+  it("returns no rank for a name made only of punctuation", () => {
+    expect(findBusinessRank([{ name: "東京ラーメン", rank: 3 }], "— !")).toBeNull();
+  });
+
   it("separates measured coverage from rankings where the business was not in the returned results", () => {
     const summary = summarizeMeasuredCells([
       { row: 0, column: 0, latitude: 50, longitude: 4, status: "measured", rank: 2 },
