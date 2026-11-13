@@ -17,15 +17,21 @@ const { orgDbMock, getCrmStatusMock, syncCrmMock, serviceStubs } = vi.hoisted(()
 
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: any, _res: any, next: any) => next(),
+  resolvePlanFromDB: async () => "pro",
 }));
+vi.mock("@workspace/db", () => ({ pool: { query: vi.fn(), connect: vi.fn() } }));
+vi.mock("../lib/logger.js", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../services/crm-service.js", () => ({
-  CRM_PROVIDERS: [{ id: "hubspot", name: "HubSpot", color: "#ff7a59", icon: "crm", scopes: [] }],
+  CRM_PROVIDERS: [
+    { id: "hubspot", name: "HubSpot", color: "#ff7a59", icon: "crm", scopes: [] },
+    { id: "salesforce", name: "Salesforce", color: "#00a1e0", icon: "crm", scopes: [] },
+  ],
   getCrmStatus: getCrmStatusMock,
   syncCrm: syncCrmMock,
   ...serviceStubs,
 }));
 
-import crmRouter from "./crm.js";
+import crmRouter, { crmPublicRouter } from "./crm.js";
 
 function makeApp() {
   const app = express();
@@ -34,18 +40,21 @@ function makeApp() {
     Object.assign(req, { orgId: "org-a", orgDb: orgDbMock, me: { plan: "Pro" } });
     next();
   });
+  app.use("/api", crmPublicRouter);
   app.use("/api", crmRouter);
   return app;
 }
 
-describe("CRM routes before provider integration is implemented", () => {
+// Fournisseurs SANS adaptateur (Salesforce...) : explicitement indisponibles. HubSpot (adaptateur reel) est
+// couvert par services/crm/crm-hubspot.test.ts contre une fausse API.
+describe("CRM routes for providers without an implemented adapter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("does not accept or persist a raw token as a connected provider", async () => {
     const response = await request(makeApp())
-      .post("/api/crm/connect/hubspot")
+      .post("/api/crm/connect/salesforce")
       .send({ accessToken: "dummy-test-token" });
 
     expect(response.status).toBe(501);
@@ -56,7 +65,7 @@ describe("CRM routes before provider integration is implemented", () => {
   it("does not report a fabricated connection-test success", async () => {
     const response = await request(makeApp())
       .post("/api/crm/test")
-      .send({ provider: "hubspot" });
+      .send({ provider: "salesforce" });
 
     expect(response.status).toBe(501);
     expect(response.body).toMatchObject({ ok: false, code: "CRM_TEST_UNAVAILABLE" });
@@ -64,12 +73,9 @@ describe("CRM routes before provider integration is implemented", () => {
   });
 
   it("does not report a successful zero-record synchronization", async () => {
-    const unavailable = Object.assign(new Error("Not implemented"), { code: "CRM_SYNC_UNAVAILABLE" });
-    syncCrmMock.mockRejectedValue(unavailable);
-
     const response = await request(makeApp())
       .post("/api/crm/sync")
-      .send({ provider: "hubspot" });
+      .send({ provider: "salesforce" });
 
     expect(response.status).toBe(501);
     expect(response.body).toMatchObject({ ok: false, code: "CRM_SYNC_UNAVAILABLE" });
@@ -107,8 +113,14 @@ describe("CRM routes before provider integration is implemented", () => {
       .post("/api/crm/webhook/hubspot")
       .send({ eventType: "contact.created" });
 
-    expect(response.status).toBe(501);
-    expect(response.body).toMatchObject({ ok: false, code: "CRM_WEBHOOK_UNAVAILABLE" });
+    expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({ ok: false, code: "CRM_WEBHOOK_UNAUTHORIZED" });
     expect(orgDbMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects webhooks for a provider without adapter", async () => {
+    const response = await request(makeApp()).post("/api/crm/webhook/salesforce").send({});
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({ ok: false, code: "CRM_PROVIDER_UNSUPPORTED" });
   });
 });

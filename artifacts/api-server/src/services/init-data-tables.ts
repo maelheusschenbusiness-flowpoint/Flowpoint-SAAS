@@ -3274,6 +3274,48 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS crm_integrations_org_provider_idx ON crm_integrations(org_id, provider)`);
       await applyTenantRls("crm_integrations");
 
+      // ── CRM : etat OAuth (usage unique), contacts synchronises, evenements webhook dedupliques ──
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS crm_oauth_states (
+          state_hash TEXT        PRIMARY KEY,
+          org_id     TEXT        NOT NULL,
+          provider   TEXT        NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE INDEX IF NOT EXISTS crm_oauth_states_expiry_idx ON crm_oauth_states(expires_at)`);
+      await applyTenantRls("crm_oauth_states");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS crm_contacts (
+          id                  TEXT        PRIMARY KEY,
+          org_id              TEXT        NOT NULL DEFAULT 'default',
+          provider            TEXT        NOT NULL DEFAULT '',
+          external_id         TEXT        NOT NULL DEFAULT '',
+          name                TEXT,
+          email               TEXT,
+          phone               TEXT,
+          status              TEXT,
+          source              TEXT,
+          external_updated_at TEXT,
+          synced_at           TIMESTAMPTZ,
+          created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS crm_contacts_org_provider_ext_idx ON crm_contacts(org_id, provider, external_id)`);
+      await run(client, `CREATE INDEX IF NOT EXISTS crm_contacts_org_created_idx ON crm_contacts(org_id, created_at DESC)`);
+      await applyTenantRls("crm_contacts");
+      await run(client, `
+        CREATE TABLE IF NOT EXISTS crm_webhook_events (
+          provider    TEXT        NOT NULL,
+          event_id    TEXT        NOT NULL,
+          org_id      TEXT        NOT NULL DEFAULT 'default',
+          received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (provider, event_id)
+        )
+      `);
+      await applyTenantRls("crm_webhook_events");
+
       // ── google_locations ────────────────────────────────────────────────────
       await run(client, `
         CREATE TABLE IF NOT EXISTS google_locations (

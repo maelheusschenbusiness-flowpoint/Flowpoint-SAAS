@@ -58,10 +58,10 @@ export async function getCrmStatus(orgId: string): Promise<{
   const client = await pool.connect();
   try {
     const r = await client.query(
-      `SELECT id, provider, name, status, created_at, updated_at, last_sync_at, last_sync_status, synced_contacts
+      `SELECT id, provider, name, status, connected_at AS created_at, updated_at, last_sync_at, last_sync_status, synced_contacts
          FROM crm_integrations
         WHERE org_id=$1
-        ORDER BY created_at DESC`,
+        ORDER BY connected_at DESC`,
       [orgId],
     );
     const connected = r.rows.filter((i: { status: string }) => i.status === 'connected').length;
