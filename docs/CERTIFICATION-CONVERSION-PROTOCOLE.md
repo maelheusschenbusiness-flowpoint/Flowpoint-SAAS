@@ -15,6 +15,17 @@ Commande : `BASE_URL=… ADMIN_KEY=… CHROMIUM_PATH=… node scripts/certify-co
 | Navigateur | Playwright, viewport 390×844 mobile (et 360×800 Android) |
 | Nettoyage | à la fin : annuler les abonnements TEST créés **par ce scénario**, supprimer ses clients TEST, ne rien toucher d'autre |
 
+## Ordre d'exécution rapide (une journée, aucun LIVE)
+1. `node scripts/certify-preflight.mjs conversion` → doit afficher « prêt » (refuse toute clé `*_live_`, la production et toute cible hors `localhost` / `127.0.0.1` / `flowpoint-test.onrender.com`). Sans valeur affichée.
+2. **Site vitrine** : une fois la publication demandée à Replit faite (`docs/REPLIT-MESSAGE-SITE-MARKETING.md`), `node scripts/verifier-site-vitrine.mjs` doit renvoyer **12/12** sur le site publié (lecture seule). État au 13 novembre : 8/12, P0 non corrigés.
+3. **Stripe TEST réel** (Parcours 1 et 2, côté paiement) : suite Playwright + scripts de preuves de `docs/CERTIFICATION-STRIPE-REEL.md` (vrai Payment Element, 3DS, SetupIntent, webhook signé, souscription unique, nettoyage limité au scénario).
+4. **AI Lab de test** (Parcours 3) : instance de test + `fp_lid` de test présent dans `lead_tokens` ; relever `conversion_event_outbox`.
+5. **Dashboards** (Parcours 5) : `GET /api/admin/conversion/global` et `/outbound` ; archiver les réponses.
+6. Rejouer `node scripts/certify-conversion-local.mjs` (32/32) sur le même build : l'écart éventuel entre local et réel est une anomalie à expliquer.
+7. HubSpot : protocole séparé `docs/CERTIFICATION-HUBSPOT-PROTOCOLE.md`.
+
+**Ce qui bloque aujourd'hui** (aucun n'est technique côté code) : clés Stripe TEST + secret de webhook TEST ; instance AI Lab de test + `CONVERSION_EVENT_SECRET` ; capture e-mail ; publication Replit ; (HubSpot) application de test.
+
 ## Parcours 1 — Transparence de l'essai (14 jours, carte obligatoire)
 1. Ouvrir `/pricing.html?lang=en` puis `?lang=fr` à 390 px. **Attendu :** FAQ « plan choisi avant, carte requise, rien débité pendant l'essai, débit automatique à J+14 sauf annulation » ; cartes « 14 days free · then €X/month ».
 2. Aller jusqu'au paiement (parcours 2) avec une carte TEST `4242 4242 4242 4242`. **Attendu :** le Checkout n'affiche aucun montant à payer aujourd'hui ; l'abonnement Stripe est `trialing`, `trial_end` = J+14 ; **aucun** `invoice.payment_succeeded` > 0 pendant l'essai.
