@@ -102,9 +102,14 @@ export class TTLCache {
     const running = this.inFlight.get(cacheKey) as Promise<T> | undefined;
     if (running) return running;
 
-    const pending = (async () => {
+    // Declared first so the fetch can check, once resolved, that it is still the current one.
+    let pending: Promise<T> | undefined = undefined;
+    pending = (async () => {
       const value = await fetcher();
-      this.set(namespace, key, value, ttlSeconds);
+      // Only cache the result if this fetch is still the current one: an invalidate()
+      // (or clear) issued while it ran forgets it, so a value computed from stale data
+      // is returned to its own callers but never written back into the cache.
+      if (this.inFlight.get(cacheKey) === pending) this.set(namespace, key, value, ttlSeconds);
       return value;
     })();
     this.inFlight.set(cacheKey, pending);
@@ -118,7 +123,9 @@ export class TTLCache {
 
   /** Invalidate a specific key */
   invalidate(namespace: string, key: string): void {
-    this.store.delete(`${namespace}:${key}`);
+    const cacheKey = `${namespace}:${key}`;
+    this.store.delete(cacheKey);
+    this.inFlight.delete(cacheKey);
   }
 
   /** Invalidate all keys in a namespace */
@@ -127,12 +134,18 @@ export class TTLCache {
     for (const k of this.store.keys()) {
       if (k.startsWith(prefix)) this.store.delete(k);
     }
+    for (const k of this.inFlight.keys()) {
+      if (k.startsWith(prefix)) this.inFlight.delete(k);
+    }
   }
 
   /** Invalidate all keys containing a pattern */
   invalidatePattern(pattern: string): void {
     for (const k of this.store.keys()) {
       if (k.includes(pattern)) this.store.delete(k);
+    }
+    for (const k of this.inFlight.keys()) {
+      if (k.includes(pattern)) this.inFlight.delete(k);
     }
   }
 
@@ -155,7 +168,7 @@ export class TTLCache {
     };
   }
 
-  clear(): void { this.store.clear(); }
+  clear(): void { this.store.clear(); this.inFlight.clear(); }
   destroy(): void {
     if (this.sweepInterval) clearInterval(this.sweepInterval);
     this.store.clear();

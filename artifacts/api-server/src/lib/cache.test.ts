@@ -175,4 +175,52 @@ describe("TTLCache", () => {
 
     cache.destroy();
   });
+
+  it("does not write back a fetch that was invalidated while it ran", async () => {
+    const cache = new TTLCache(NO_SWEEP);
+    let release!: (v: string) => void;
+    const stale = vi.fn(() => new Promise<string>((r) => { release = r; }));
+
+    const first = cache.getOrSet("ns", "k", 60, stale);
+    cache.invalidate("ns", "k");
+    release("stale");
+
+    // The caller that started the fetch still gets its own result...
+    await expect(first).resolves.toBe("stale");
+    // ...but the stale value is not cached: the next call fetches fresh data.
+    expect(cache.get("ns", "k")).toBeNull();
+    const fresh = vi.fn(async () => "fresh");
+    await expect(cache.getOrSet("ns", "k", 60, fresh)).resolves.toBe("fresh");
+    expect(fresh).toHaveBeenCalledTimes(1);
+    expect(cache.get("ns", "k")).toBe("fresh");
+
+    cache.destroy();
+  });
+
+  it("starts a new fetch after invalidation instead of joining the stale one, for every invalidation kind", async () => {
+    const kinds: Array<(c: TTLCache) => void> = [
+      (c) => c.invalidate("ns", "k"),
+      (c) => c.invalidateNamespace("ns"),
+      (c) => c.invalidatePattern("k"),
+      (c) => c.clear(),
+    ];
+    for (const invalidate of kinds) {
+      const cache = new TTLCache(NO_SWEEP);
+      let release!: (v: string) => void;
+      const slow = vi.fn(() => new Promise<string>((r) => { release = r; }));
+      const fresh = vi.fn(async () => "fresh");
+
+      const first = cache.getOrSet("ns", "k", 60, slow);
+      invalidate(cache);
+      const second = cache.getOrSet("ns", "k", 60, fresh);
+      release("stale");
+
+      await expect(first).resolves.toBe("stale");
+      await expect(second).resolves.toBe("fresh");
+      expect(fresh).toHaveBeenCalledTimes(1);
+      expect(cache.get("ns", "k")).toBe("fresh");
+
+      cache.destroy();
+    }
+  });
 });
