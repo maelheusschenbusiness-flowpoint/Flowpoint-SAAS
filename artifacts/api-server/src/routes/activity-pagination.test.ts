@@ -131,3 +131,97 @@ describe("GET /api/activity — real-total pagination contract", () => {
     expect(res.headers["x-has-more"]).toBe("0");
   });
 });
+
+/**
+ * `limit` and `page` come from the query string: whatever the caller typed.
+ * `parseInt` accepted prefixes ("50abc" → 50, "2.7" → 2) and `page` had no
+ * upper bound, so `?page=99999999999999999999` produced an offset that is not
+ * a representable integer and PostgreSQL rejected the query (HTTP 500).
+ */
+describe("GET /api/activity — limit/page are read, not guessed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getFilteredActivityPage.mockResolvedValue({
+      events: [],
+      total: 0,
+      hasMore: false,
+      limit: 50,
+      offset: 0,
+      error: false,
+    });
+  });
+
+  /** The { limit, offset } actually handed to the store for a given query. */
+  async function pageArgs(query: string) {
+    const res = await request(makeApp()).get(`/api/activity${query}`);
+    expect(res.status).toBe(200);
+    const [args] = getFilteredActivityPage.mock.calls[0] as [{ limit: number; offset: number }];
+    return args;
+  }
+
+  it("bounds an enormous page instead of answering 500", async () => {
+    const res = await request(makeApp()).get("/api/activity?meta=1&page=99999999999999999999");
+    expect(res.status).not.toBe(500);
+    expect(res.status).toBe(200);
+    // Past 2^53 the value cannot be read faithfully, so it counts as "not
+    // provided" and the default page applies. Either way the page stays inside
+    // [0, 10000] and the offset handed to PostgreSQL is a real integer.
+    expect(res.body.page).toBeGreaterThanOrEqual(0);
+    expect(res.body.page).toBeLessThanOrEqual(10000);
+    const [args] = getFilteredActivityPage.mock.calls[0] as [{ limit: number; offset: number }];
+    expect(args.limit).toBe(50);
+    expect(Number.isSafeInteger(args.offset)).toBe(true);
+    expect(args.offset).toBe(res.body.page * 50);
+  });
+
+  it("clamps a page above the maximum down to 10000", async () => {
+    const res = await request(makeApp()).get("/api/activity?meta=1&page=999999");
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(10000);
+    expect(getFilteredActivityPage).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 10000 * 50 })
+    );
+  });
+
+  it("brings a negative page back to 0", async () => {
+    const res = await request(makeApp()).get("/api/activity?meta=1&page=-3");
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(0);
+    expect(getFilteredActivityPage).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 0 })
+    );
+  });
+
+  it("falls back to limit 50 on a partially numeric value", async () => {
+    expect(await pageArgs("?limit=50abc")).toMatchObject({ limit: 50, offset: 0 });
+  });
+
+  it("falls back to limit 50 on a decimal value", async () => {
+    expect(await pageArgs("?limit=2.7")).toMatchObject({ limit: 50, offset: 0 });
+  });
+
+  it("clamps limit 0 up to 1", async () => {
+    expect(await pageArgs("?limit=0")).toMatchObject({ limit: 1, offset: 0 });
+  });
+
+  it("clamps a negative limit up to 1", async () => {
+    expect(await pageArgs("?limit=-5")).toMatchObject({ limit: 1, offset: 0 });
+  });
+
+  it("clamps limit 1000 down to 200", async () => {
+    expect(await pageArgs("?limit=1000")).toMatchObject({ limit: 200, offset: 0 });
+  });
+
+  it("passes a valid page and limit through unchanged (offset = page * limit)", async () => {
+    expect(await pageArgs("?limit=25&page=4")).toMatchObject({ limit: 25, offset: 100 });
+  });
+
+  it("uses limit 50 / page 0 when no parameter is given", async () => {
+    const res = await request(makeApp()).get("/api/activity?meta=1");
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(0);
+    expect(getFilteredActivityPage).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 0 })
+    );
+  });
+});

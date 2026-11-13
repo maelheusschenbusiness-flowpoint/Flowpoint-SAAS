@@ -2,16 +2,17 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { logger } from "../lib/logger.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 
 router.get("/activity", async (req: Request, res: Response) => {
   try {
     const orgId    = (req as Request & { orgId?: string }).orgId ?? "default";
-    const rawLimit = parseInt(String(req.query.limit ?? "50"), 10);
-    const limit    = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
-    const rawPage  = parseInt(String(req.query.page  ?? "0"), 10);
-    const page     = Number.isFinite(rawPage)  ? Math.max(rawPage, 0) : 0;
+    const limit    = queryInt(req.query.limit, { defaut: 50, min: 1, max: 200, horsBornes: "borner" });
+    // `page` a aussi une borne haute : sans elle, `page * limit` depasse l'entier
+    // representable et PostgreSQL refuse l'OFFSET (la route repondait 500).
+    const page     = queryInt(req.query.page, { defaut: 0, min: 0, max: 10000, horsBornes: "borner" });
     const type     = typeof req.query.type === "string" && req.query.type ? req.query.type : undefined;
 
     const offset = page * limit;
