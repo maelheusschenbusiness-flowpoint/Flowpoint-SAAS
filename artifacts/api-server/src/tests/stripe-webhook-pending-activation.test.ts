@@ -18,6 +18,32 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHmac } from "node:crypto";
 
+// ── Stripe sans réseau ────────────────────────────────────────────────────────
+// Le gestionnaire crée son client par `new Stripe(clé)` : sans simulation, ces tests appelaient
+// réellement api.stripe.com avec une clé de test inconnue. En CI (réseau ouvert), Stripe répondait
+// 401 ; dans un bac à sable sans réseau, chaque appel attendait environ 1 s avant d'échouer.
+// La vraie classe Stripe est conservée (signatures de webhook, erreurs typées) ; seul son client
+// HTTP est remplacé par une réponse 401 déterministe, celle que Stripe renvoie pour une clé
+// inconnue. Les requêtes sont enregistrées : aucun appel ne sort de la machine.
+const stripeSimule = vi.hoisted(() => ({ requetes: [] as { methode: string; chemin: string }[] }));
+vi.mock("stripe", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("stripe")>();
+  const Original = mod.default;
+  const reponse401 = JSON.stringify({ error: { type: "invalid_request_error", message: "Invalid API Key provided: sk_test_***" } });
+  const fetchSimule = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const u = new URL(typeof url === "string" || url instanceof URL ? url : url.url);
+    stripeSimule.requetes.push({ methode: String(init?.method ?? "GET"), chemin: u.pathname });
+    return new Response(reponse401, { status: 401, headers: { "content-type": "application/json", "request-id": "req_simule" } });
+  };
+  class StripeSansReseau extends (Original as unknown as new (...a: unknown[]) => object) {
+    constructor(cle: string, config: Record<string, unknown> = {}) {
+      super(cle, { ...config, httpClient: Original.createFetchHttpClient(fetchSimule as typeof fetch), maxNetworkRetries: 0 });
+    }
+  }
+  return { ...mod, default: StripeSansReseau, Stripe: StripeSansReseau };
+});
+
+
 const TEST_WEBHOOK_SECRET = "whsec_pending_activation_unit";
 vi.hoisted(() => {
   process.env["STRIPE_TEST_MODE"] = "true";
@@ -628,5 +654,12 @@ describe("STRIPE_INVOICE_SCHEMA_COMPAT — current and legacy invoice shapes", (
       await deliver(ev("evt_LEG_UPD_PLAN", "invoice.payment_succeeded", legacy({ amount_paid: 7000, billing_reason: "subscription_update", lines: { data: [lineLegacy(PLAN_PRICE)] } })));
       expect(await sent()).toEqual({ plan: 1, addon: 0 });
     });
+  });
+});
+
+describe("Stripe : aucun appel réseau réel", () => {
+  it("les appels à l'API Stripe passent par le client simulé (401 déterministe), jamais par le réseau", () => {
+    expect(stripeSimule.requetes.length).toBeGreaterThan(0);
+    expect(stripeSimule.requetes.every((r) => r.chemin.startsWith("/v1/"))).toBe(true);
   });
 });
