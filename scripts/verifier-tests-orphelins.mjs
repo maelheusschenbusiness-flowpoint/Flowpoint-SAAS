@@ -40,11 +40,16 @@ function parcourir(dossier, sortie = []) {
 
 /** Convertit un glob simple (`**`, `*`) en expression reguliere. */
 function glob(motif) {
+  // Les jokers sont remplaces par des marqueurs AVANT le remplacement de `*` simple : sinon le `*` de
+  // `(?:.*/)?` etait lui-meme reecrit en `[^/]*` et `src/**/*.test.ts` ne couvrait que UN niveau de
+  // dossier (un test sous src/services/crm/ etait declare orphelin alors que vitest l'execute).
   const re = motif
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*\//g, "(?:.*/)?")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*");
+    .replace(/\*\*\//g, "\u0000D\u0000")
+    .replace(/\*\*/g, "\u0000A\u0000")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\u0000D\u0000/g, "(?:.*/)?")
+    .replace(/\u0000A\u0000/g, ".*");
   return new RegExp(`^${re}$`);
 }
 
