@@ -74840,7 +74840,7 @@ window.FP_KEYWORDS_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 window.FP_BEHAVIORAL_API = {
-  async load(siteUrl, periodDays = 30) {
+  async load(siteUrl, periodDays = 30, force = false) {
     siteUrl = siteUrl || window.STATE?.siteUrl || '';
     if (window.STATE) {
       window.STATE.behavioral = {
@@ -74854,7 +74854,7 @@ window.FP_BEHAVIORAL_API = {
       const params = new URLSearchParams({ periodDays: String(periodDays) });
       if (siteUrl) params.set('siteUrl', siteUrl);
       const url = `/api/behavioral/insights?${params.toString()}`;
-      const data = await apiFetch(url);
+      const data = await apiFetch(url, { force });
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.behavioral = {
         sessionStats:  data.sessionStats  || data.stats  || null,
@@ -74982,14 +74982,15 @@ window.FP_BEHAVIORAL_API = {
 
   async generateInsights(siteUrl) {
     if (!siteUrl) { showToast('error', fpT('siteUrl requis')); return; }
+    const periodDays = window.STATE?.behavioral?.periodDays || 7;
     showToast('info', fpT('Génération des insights comportementaux…'));
     try {
       const r = await apiFetch('/api/behavioral/generate-insights', {
         method: 'POST',
-        body: JSON.stringify({ siteUrl, periodDays: window.STATE?.behavioral?.periodDays || 7 }),
+        body: JSON.stringify({ siteUrl, periodDays }),
       });
       if (r?.ok) {
-        await this.load(siteUrl);
+        await this.load(siteUrl, periodDays, true);
         render();
         showToast(r.aiGenerated ? 'success' : 'info', r.aiGenerated
           ? fpT('Insights IA générés à partir des événements observés')
