@@ -93,3 +93,16 @@ export function verifierDevis(espion: Espion, plan: Plan): void {
   expect(String(intention?.corps?.clientSecret ?? ""), "secret client TEST").toMatch(/^seti_.+_secret_/);
   expect(String(intention?.corps?.publishableKey ?? ""), "cle publiable TEST, jamais LIVE").toMatch(/^pk_test_/);
 }
+
+/**
+ * Stripe oppose parfois un hCaptcha (Radar) a un navigateur automatise lors de la confirmation avec une carte 3-D Secure.
+ * Ce n'est ni contournable ni souhaitable : le scenario se SAUTE explicitement (jamais un faux vert) et reste a faire a la main.
+ */
+export async function sauterSiHCaptcha(page: Page, delaiMs = 8_000): Promise<void> {
+  const fin = Date.now() + delaiMs;
+  while (Date.now() < fin) {
+    const defi = page.frames().find((f) => /hcaptcha\.com\/captcha\/.*(challenge|static)/i.test(f.url()));
+    if (defi) base.skip(true, "Stripe a oppose un hCaptcha au navigateur automatise (carte 3-D Secure) : scenario a executer manuellement.");
+    await page.waitForTimeout(500);
+  }
+}

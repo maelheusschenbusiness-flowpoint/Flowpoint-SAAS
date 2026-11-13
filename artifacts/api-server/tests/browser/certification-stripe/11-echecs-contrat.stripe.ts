@@ -1,5 +1,5 @@
 /** 11. Scenarios d'echec REELS (mode contrat) : aucune souscription ni droit premium incorrect n'est cree. */
-import { test, expect, exigerContrat, emailSynthetique, consentement, jusquAuPaiement, attributionDeTest, saisirCarte, repondre3ds, CARTES } from "./support/contrat.ts";
+import { test, expect, exigerContrat, emailSynthetique, consentement, jusquAuPaiement, attributionDeTest, saisirCarte, repondre3ds, sauterSiHCaptcha, CARTES } from "./support/contrat.ts";
 
 exigerContrat();
 
@@ -20,6 +20,7 @@ test("3-D Secure reussi (4000 0025 0000 3155) : une souscription", async ({ page
   const espion = await jusquAuPaiement(page, "standard", emailSynthetique("3ds-ok"), attributionDeTest());
   await saisirCarte(page, CARTES.authentification3ds);
   await page.locator("#fp-pay-btn").click();
+  await sauterSiHCaptcha(page);
   await repondre3ds(page, "reussir");
   await page.waitForURL(/\/checkout-return\.html/, { timeout: 120_000 });
   await expect.poll(() => espion.souscriptions().length, { timeout: 120_000 }).toBe(1);
@@ -30,6 +31,7 @@ test("3-D Secure echoue : erreur, aucune finalisation, aucune souscription", asy
   const espion = await jusquAuPaiement(page, "standard", emailSynthetique("3ds-ko"), attributionDeTest());
   await saisirCarte(page, CARTES.authentification3ds);
   await page.locator("#fp-pay-btn").click();
+  await sauterSiHCaptcha(page);
   await repondre3ds(page, "echouer");
   await expect(page.locator("#fp-alert")).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).pathname).toBe("/checkout-payment.html");

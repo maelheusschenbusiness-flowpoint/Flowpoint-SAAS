@@ -255,6 +255,11 @@ export async function saisirCarte(page: Page, numero: string): Promise<void> {
   // Onglet « Carte » si la presentation en onglets est active.
   const onglet = f.getByRole("tab", { name: /carte|card/i }).first();
   if (await onglet.isVisible({ timeout: 3000 }).catch(() => false)) await onglet.click();
+  else {
+    // Stripe classe les moyens de paiement par pays : « Card » peut etre relegue dans la liste « Additional Payment Methods ».
+    const liste = f.getByRole("combobox", { name: /additional payment methods|autres moyens/i }).first();
+    if (await liste.isVisible({ timeout: 1500 }).catch(() => false)) await liste.selectOption({ label: "Card" }).catch(() => liste.selectOption({ label: "Carte" })).catch(() => undefined);
+  }
   // Stripe Link peut afficher un champ téléphone et intercepter la confirmation;
   // ces scénarios certifient le parcours carte/3DS, pas l'inscription à Link.
   // Stripe Link : la case « Enregistrer mes informations » peut etre cochee par defaut et exige alors un telephone
