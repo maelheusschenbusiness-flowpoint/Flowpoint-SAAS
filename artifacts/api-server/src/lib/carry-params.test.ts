@@ -2,9 +2,22 @@ import { describe, it, expect } from "vitest";
 import { CARRIED_PARAMS, carriedParams, withCarriedParams } from "./carry-params.js";
 
 describe("carry-params — what survives a funnel hop", () => {
-  it("carries the attribution a prospect arrived with", () => {
-    expect(withCarriedParams("/signin.html", { fp_ref: "SELLER-AB12" }))
-      .toBe("/signin.html?fp_ref=SELLER-AB12");
+  it("carries valid funnel IDs, source aliases, UTMs, and the selected plan", () => {
+    expect(withCarriedParams("/signin.html", {
+      fp_lid: "AbCdEfGhIjKlMnOpQr_-12",
+      fp_vid: "123e4567-e89b-42d3-a456-426614174000",
+      fp_source: "smartlead",
+      fp_src: "smartlead",
+      utm_source: "newsletter",
+      utm_medium: "email",
+      utm_campaign: "autumn-2026",
+      plan: "PRO",
+    })).toBe(
+      "/signin.html?plan=pro&fp_lid=AbCdEfGhIjKlMnOpQr_-12" +
+      "&fp_vid=123e4567-e89b-42d3-a456-426614174000" +
+      "&fp_source=smartlead&fp_src=smartlead" +
+      "&utm_source=newsletter&utm_medium=email&utm_campaign=autumn-2026",
+    );
   });
 
   it("keeps an existing query string and appends alongside it", () => {
@@ -31,20 +44,41 @@ describe("carry-params — what survives a funnel hop", () => {
   it("forwards only the allowlist, never an arbitrary parameter", () => {
     const out = carriedParams({
       fp_ref: "SELLER-AB12",
+      fp_vid: "123e4567-e89b-42d3-a456-426614174000",
       redirect_to: "https://evil.example/steal",
       next: "//evil.example",
       token: "abc",
     });
-    expect(out).toEqual({ fp_ref: "SELLER-AB12" });
+    expect(out).toEqual({
+      fp_ref: "SELLER-AB12",
+      fp_vid: "123e4567-e89b-42d3-a456-426614174000",
+    });
     expect(CARRIED_PARAMS).not.toContain("redirect_to");
   });
 
-  it("drops values that cannot be ours", () => {
-    // Array (?plan=a&plan=b), too long, or carrying structure.
-    expect(carriedParams({ plan: ["a", "b"] })).toEqual({});
+  it("drops invalid IDs, sources, UTMs, plans, repeated values, and unsafe text", () => {
+    expect(carriedParams({
+      fp_lid: "too-short",
+      fp_vid: "not-a-visitor-id",
+      fp_source: "unknown-source",
+      fp_src: "unknown-source",
+      utm_source: "has spaces",
+      utm_medium: "m".repeat(65),
+      utm_campaign: "",
+      plan: "enterprise",
+      fp_ref: "https://evil.example",
+      ref: ["SELLER-A", "SELLER-B"],
+    })).toEqual({});
+
+    // Repeated query parameters are ambiguous and must not choose one value.
+    expect(carriedParams({ plan: ["pro", "ultra"], fp_vid: ["visitor", "visitor"] })).toEqual({});
     expect(carriedParams({ fp_ref: "x".repeat(129) })).toEqual({});
-    expect(carriedParams({ fp_ref: "a b" })).toEqual({});
-    expect(carriedParams({ fp_ref: "https://evil.example" })).toEqual({});
-    expect(carriedParams({ fp_ref: "" })).toEqual({});
+  });
+
+  it("does not add anything when attribution parameters are absent", () => {
+    const target = "/signin.html?error=google_signup_retry";
+    expect(carriedParams(undefined)).toEqual({});
+    expect(withCarriedParams(target, undefined)).toBe(target);
+    expect(withCarriedParams(target, {})).toBe(target);
   });
 });

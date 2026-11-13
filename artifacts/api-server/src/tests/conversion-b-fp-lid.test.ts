@@ -250,12 +250,22 @@ describe("E — activation copies fp_lid to the organization", () => {
 });
 
 describe("F — funnel and finalize contracts", () => {
-  it("root redirects carry fp_lid and nothing new otherwise", () => {
-    expect(withCarriedParams("/signin.html", { fp_lid: VALID })).toBe(`/signin.html?fp_lid=${VALID}`);
+  it("root and index return 301 and preserve validated funnel parameters", () => {
+    expect(withCarriedParams("/signin.html", {
+      fp_lid: VALID,
+      fp_vid: "123e4567-e89b-42d3-a456-426614174000",
+      fp_source: "smartlead",
+      utm_source: "newsletter",
+      plan: "pro",
+    })).toBe(
+      `/signin.html?plan=pro&fp_lid=${VALID}` +
+      "&fp_vid=123e4567-e89b-42d3-a456-426614174000" +
+      "&fp_source=smartlead&utm_source=newsletter",
+    );
     expect(withCarriedParams("/signin.html", {})).toBe("/signin.html");
     const appSrc = read("../app.ts");
-    expect(appSrc).toMatch(/app\.get\("\/index\.html"[\s\S]{0,120}withCarriedParams\("\/signin\.html"/);
-    expect(appSrc).toMatch(/app\.get\("\/",[\s\S]{0,120}withCarriedParams\("\/signin\.html"/);
+    expect(appSrc).toMatch(/app\.get\("\/index\.html"[\s\S]{0,150}res\.redirect\(301, withCarriedParams\("\/signin\.html"/);
+    expect(appSrc).toMatch(/app\.get\("\/",[\s\S]{0,150}res\.redirect\(301, withCarriedParams\("\/signin\.html"/);
   });
   it("finalize-checkout reads fp_lid and copies it with first-wins COALESCE in the consuming transaction", () => {
     const src = read("../routes/public-billing.ts");
