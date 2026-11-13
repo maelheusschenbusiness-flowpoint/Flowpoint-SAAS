@@ -6,9 +6,10 @@ const SCRIPT = pathToFileURL(resolve(process.cwd(), "../../scripts/certify-prefl
 const { evaluer } = (await import(/* @vite-ignore */ SCRIPT)) as { evaluer: (p: string, e: Record<string, string>) => { dangers: string[]; items: { id: string; etat: string }[] } };
 
 const complet = {
+  CERT_STRIPE_REEL: "1", CERT_STRIPE_BASE_URL: "http://127.0.0.1:8791", CERT_STRIPE_EMAIL_BASE: "proprietaire@example.test",
   STRIPE_TEST_MODE: "true", STRIPE_TEST_SECRET_KEY: "sk_test_abc", STRIPE_TEST_PUBLISHABLE_KEY: "pk_test_abc", STRIPE_TEST_WEBHOOK_SECRET: "whsec_abc",
-  AI_LAB_CONVERSION_URL: "https://ailab-test.example/api", CONVERSION_EVENT_SECRET: "x".repeat(32), TEST_MAIL_DIR: "/tmp/mails",
-  ADMIN_KEY: "k".repeat(20), BASE_URL: "http://127.0.0.1:8791",
+  ENABLE_TEST_MAILER: "true", TEST_MAIL_DIR: "/tmp/mails",
+  AI_LAB_CONVERSION_URL: "https://ailab-test.example/api", CONVERSION_EVENT_SECRET: "x".repeat(32), ADMIN_KEY: "k".repeat(20),
 };
 const etat = (r: ReturnType<typeof evaluer>, fragment: string) => r.items.find((i) => i.id.includes(fragment))?.etat;
 
@@ -20,7 +21,7 @@ describe("pre-controle des certifications reelles", () => {
   });
   it("conversion : sans rien, tous les prerequis sont signales MISSING", () => {
     const r = evaluer("conversion", {});
-    expect(r.items.every((i) => i.etat === "MISSING")).toBe(true);
+    expect(r.items.filter((i) => i.etat === "MISSING").length).toBe(r.items.length - 1); // le mailer est OPTIONAL hors Mode L
   });
   it("refuse (danger) toute cle LIVE, meme dans une variable inattendue", () => {
     expect(evaluer("conversion", { ...complet, AUTRE: "sk_live_abc" }).dangers.length).toBe(1);
@@ -28,8 +29,12 @@ describe("pre-controle des certifications reelles", () => {
   });
   it("refuse la production et les cibles hors liste", () => {
     expect(evaluer("conversion", { ...complet, NODE_ENV: "production" }).dangers.length).toBe(1);
-    expect(etat(evaluer("conversion", { ...complet, BASE_URL: "https://app.flowpoint.pro" }), "BASE_URL")).toBe("REFUSED");
-    expect(etat(evaluer("conversion", { ...complet, STRIPE_TEST_SECRET_KEY: "sk_foo" }), "secrete")).toBe("REFUSED");
+    expect(etat(evaluer("conversion", { ...complet, CERT_STRIPE_BASE_URL: "https://app.flowpoint.pro" }), "BASE_URL")).toBe("REFUSED");
+    expect(etat(evaluer("conversion", { ...complet, CERT_STRIPE_EMAIL_BASE: "a+b@example.test" }), "EMAIL_BASE")).toBe("REFUSED");
+    // Mode R : le mailer de test n'est pas exige (e-mails reels vers la boite de test)
+    const r = evaluer("conversion", { ...complet, CERT_STRIPE_BASE_URL: "https://flowpoint-test.onrender.com", ENABLE_TEST_MAILER: "", TEST_MAIL_DIR: "" });
+    expect(etat(r, "MAILER")).toBe("OPTIONAL");
+    expect(etat(evaluer("conversion", { ...complet, STRIPE_TEST_SECRET_KEY: "sk_foo" }), "SECRET_KEY")).toBe("REFUSED");
   });
   it("ne divulgue jamais une valeur", () => {
     const r = JSON.stringify(evaluer("conversion", complet));

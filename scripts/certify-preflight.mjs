@@ -25,17 +25,23 @@ export function evaluer(profil, env) {
   if (/^(production|prod)$/i.test(v("NODE_ENV"))) dangers.push("NODE_ENV=production : la certification ne s'execute que sur une base jetable ou une preproduction");
 
   if (profil === "conversion") {
-    add("STRIPE_TEST_MODE=true", v("STRIPE_TEST_MODE") === "true" ? "READY" : "MISSING", "mode TEST explicite");
-    const sk = v("STRIPE_TEST_SECRET_KEY") || v("STRIPE_SECRET_KEY");
-    add("cle secrete Stripe TEST (sk_test_...)", /^sk_test_/.test(sk) ? "READY" : sk ? "REFUSED" : "MISSING", sk && !/^sk_test_/.test(sk) ? "ne commence pas par sk_test_" : "");
-    const pk = v("STRIPE_TEST_PUBLISHABLE_KEY") || v("STRIPE_PUBLISHABLE_KEY");
-    add("cle publiable Stripe TEST (pk_test_...)", /^pk_test_/.test(pk) ? "READY" : pk ? "REFUSED" : "MISSING", "");
+    // Variables EXACTEMENT celles lues par la suite reelle (tools/certification-stripe/config.ts).
+    add("CERT_STRIPE_REEL=1", v("CERT_STRIPE_REEL") === "1" ? "READY" : "MISSING", "garde-fou : la suite ne tourne que sur demande explicite");
+    const base = v("CERT_STRIPE_BASE_URL");
+    const cibleOk = /^(http:\/\/(127\.0\.0\.1|localhost)(:\d+)?|https:\/\/flowpoint-test\.onrender\.com)\/?$/.test(base);
+    add("CERT_STRIPE_BASE_URL", cibleOk ? "READY" : base ? "REFUSED" : "MISSING", "admis : localhost, 127.0.0.1 (Mode L) ou flowpoint-test.onrender.com (Mode R) ; jamais app.flowpoint.pro");
+    const local = /^http:\/\/(127\.0\.0\.1|localhost)/.test(base);
+    add("CERT_STRIPE_EMAIL_BASE (nom@domaine, sans +)", /^[^@+\s]+@[^@\s]+\.[^@\s]+$/.test(v("CERT_STRIPE_EMAIL_BASE")) ? "READY" : v("CERT_STRIPE_EMAIL_BASE") ? "REFUSED" : "MISSING", "boite de test : adressage « + »");
+    const sk = v("STRIPE_TEST_SECRET_KEY");
+    add("STRIPE_TEST_SECRET_KEY (sk_test_...)", /^sk_test_/.test(sk) ? "READY" : sk ? "REFUSED" : "MISSING", "preuves cote Stripe");
+    const pk = v("STRIPE_TEST_PUBLISHABLE_KEY");
+    add("STRIPE_TEST_PUBLISHABLE_KEY (pk_test_...)", /^pk_test_/.test(pk) ? "READY" : pk ? "REFUSED" : "MISSING", "");
     add("STRIPE_TEST_WEBHOOK_SECRET (whsec_...)", /^whsec_/.test(v("STRIPE_TEST_WEBHOOK_SECRET")) ? "READY" : "MISSING", "secret du point de terminaison TEST / stripe listen");
+    add("STRIPE_TEST_MODE=true (serveur sous test)", v("STRIPE_TEST_MODE") === "true" ? "READY" : "MISSING", "mode TEST explicite cote application");
+    add("ENABLE_TEST_MAILER=true + TEST_MAIL_DIR", local ? (v("ENABLE_TEST_MAILER") === "true" && v("TEST_MAIL_DIR") ? "READY" : "MISSING") : "OPTIONAL", "requis en Mode L : e-mails captures, jamais envoyes");
     add("AI_LAB_CONVERSION_URL (instance de TEST)", /^https:\/\//.test(v("AI_LAB_CONVERSION_URL")) ? "READY" : "MISSING", "jamais l'instance de production d'acquisition");
     add("CONVERSION_EVENT_SECRET (>= 32 caracteres)", v("CONVERSION_EVENT_SECRET").length >= 32 ? "READY" : "MISSING", "");
-    add("TEST_MAIL_DIR (capture e-mail)", v("TEST_MAIL_DIR") ? "READY" : "MISSING", "aucun envoi a un vrai destinataire");
     add("ADMIN_KEY (lecture des deux dashboards)", v("ADMIN_KEY").length >= 16 ? "READY" : "MISSING", "");
-    add("BASE_URL de l'application sous test", /^(http:\/\/(127\.0\.0\.1|localhost)(:\d+)?|https:\/\/flowpoint-test\.onrender\.com)\/?$/.test(v("BASE_URL")) ? "READY" : v("BASE_URL") ? "REFUSED" : "MISSING", "cibles admises : localhost, 127.0.0.1, flowpoint-test.onrender.com (jamais app.flowpoint.pro)");
   } else if (profil === "hubspot") {
     add("HUBSPOT_CLIENT_ID", v("HUBSPOT_CLIENT_ID") ? "READY" : "MISSING", "application HubSpot de TEST (compte developpeur)");
     add("HUBSPOT_CLIENT_SECRET", v("HUBSPOT_CLIENT_SECRET").length >= 16 ? "READY" : "MISSING", "signe aussi les webhooks");

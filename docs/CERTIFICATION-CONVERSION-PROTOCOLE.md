@@ -9,7 +9,8 @@ Commande : `BASE_URL=… ADMIN_KEY=… CHROMIUM_PATH=… node scripts/certify-co
 | Besoin | Détail |
 |---|---|
 | Environnement | base **jetable**, `NODE_ENV=test` ou préproduction, `STRIPE_TEST_MODE=true` ; jamais la production |
-| Stripe TEST | clé `sk_test_…`, prix TEST existants (non modifiés), `STRIPE_TEST_WEBHOOK_SECRET` du point de terminaison TEST ; `stripe listen --forward-to <base>/api/webhooks/stripe` pour la réception réelle |
+| Garde-fous de la suite réelle | `CERT_STRIPE_REEL=1`, `CERT_STRIPE_BASE_URL` (`http://127.0.0.1:<port>` en Mode L, `https://flowpoint-test.onrender.com` en Mode R), `CERT_STRIPE_EMAIL_BASE` (boîte de test, adressage `+`), `ENABLE_TEST_MAILER=true` + `TEST_MAIL_DIR` en Mode L — voir `docs/CERTIFICATION-STRIPE-REEL.md` |
+| Stripe TEST | clé `STRIPE_TEST_SECRET_KEY=sk_test_…` (+ `STRIPE_TEST_PUBLISHABLE_KEY=pk_test_…`), prix TEST existants (non modifiés), `STRIPE_TEST_WEBHOOK_SECRET` du point de terminaison TEST ; `stripe listen --forward-to <base>/api/webhooks/stripe` pour la réception réelle |
 | AI Lab / acquisition | instance de **test** : `AI_LAB_CONVERSION_URL` + `CONVERSION_EVENT_SECRET` (≥ 32 caractères) ; un prospect de test dont le `fp_lid` (22 car.) existe dans `lead_tokens` |
 | E-mails | capture (`TEST_MAIL_DIR`) : aucun envoi à un vrai destinataire |
 | Navigateur | Playwright, viewport 390×844 mobile (et 360×800 Android) |
