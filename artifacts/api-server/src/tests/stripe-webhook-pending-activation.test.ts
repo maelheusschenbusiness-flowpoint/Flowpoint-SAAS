@@ -480,6 +480,14 @@ describe("INVOICE_TRIAL_STATUS — invoice.payment_succeeded and €0 trial invo
     expect(commissionCalls).toHaveLength(0);
   });
 
+  it("REGRESSION (flowpoint-test, 2026-11-13): paid invoice on a non-canonical (email) org id answers 200, never 500", async () => {
+    // Avant le correctif : le registre vendeur interrogeait organizations.id (UUID) avec l'e-mail -> 22P02 -> 500 -> Stripe re-livrait en boucle.
+    const res = await deliver(invoice("evt_INV_PAID_EMAILKEY", { amount_paid: 2900, billing_reason: "subscription_cycle" }));
+    expect(res.statusCode).toBe(200);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(commissionCalls).toHaveLength(0);
+  });
+
   it("€0 invoice inside the activation window writes nothing on the email key", async () => {
     const res = await deliver(invoice("evt_INV_WINDOW0", { amount_paid: 0, billing_reason: "subscription_create" }));
     expect(res.statusCode).toBe(200);
