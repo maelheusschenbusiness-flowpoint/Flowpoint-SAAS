@@ -62,7 +62,7 @@
       "raison": "heritage : messages d'erreur en francais, a traduire"
     },
     "artifacts/api-server/src/routes/crm.ts": {
-      "compte": 4,
+      "compte": 1,
       "raison": "heritage : messages d'erreur en francais, a traduire"
     },
     "artifacts/api-server/src/routes/cro.ts": {

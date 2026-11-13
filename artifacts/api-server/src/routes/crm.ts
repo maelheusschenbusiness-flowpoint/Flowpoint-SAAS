@@ -67,7 +67,7 @@ crmPublicRouter.post("/crm/webhook/:provider", async (req, res) => {
 function crmFailure(res: import("express").Response, err: unknown): void {
   if (err instanceof CrmError) { res.status(err.httpStatus).json({ ok: false, code: err.code, error: err.message }); return; }
   const code = (err as { code?: string } | null)?.code;
-  if (typeof code === "string" && code.startsWith("CRM_")) { res.status(502).json({ ok: false, code, error: "Le fournisseur CRM a refuse la requete." }); return; }
+  if (typeof code === "string" && code.startsWith("CRM_")) { res.status(502).json({ ok: false, code, error: "The CRM provider rejected the request." }); return; }
   res.status(500).json({ ok: false, code: "CRM_INTERNAL_ERROR", error: safeErrMsg(err) });
 }
 
@@ -127,7 +127,7 @@ router.post("/crm/connect/:provider", async (req, res) => {
     res.status(501).json({
       ok: false,
       code: "CRM_OAUTH_UNAVAILABLE",
-      error: "La connexion OAuth de ce CRM n’est pas encore disponible. Aucun jeton n’a été enregistré.",
+      error: "OAuth connection for this CRM is not available yet. No token was stored.",
     });
     return;
   }
@@ -150,10 +150,10 @@ router.post("/crm/sync", async (req, res) => {
   if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
   const adapter = getCrmAdapter(provider);
   if (!adapter) {
-    res.status(501).json({ ok: false, code: "CRM_SYNC_UNAVAILABLE", error: "La synchronisation de ce CRM n’est pas encore implémentée." });
+    res.status(501).json({ ok: false, code: "CRM_SYNC_UNAVAILABLE", error: "Synchronization for this CRM is not implemented yet." });
     return;
   }
-  if (entityType !== "contacts") { res.status(400).json({ ok: false, code: "CRM_ENTITY_UNSUPPORTED", error: "Seuls les contacts sont synchronisés." }); return; }
+  if (entityType !== "contacts") { res.status(400).json({ ok: false, code: "CRM_ENTITY_UNSUPPORTED", error: "Only contacts can be synchronized." }); return; }
   try {
     res.json(await syncCrmContacts(adapter, org(req)));
   } catch (err) { crmFailure(res, err); }
@@ -177,7 +177,7 @@ router.post("/crm/test", async (req, res) => {
   if (!adapter) {
     res.status(501).json({
       ok: false, provider, code: "CRM_TEST_UNAVAILABLE",
-      error: "Le test réel de connexion à ce fournisseur n’est pas encore implémenté.",
+      error: "The live connection test for this provider is not implemented yet.",
     });
     return;
   }

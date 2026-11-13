@@ -37,13 +37,13 @@ async function connectedCountExcluding(orgId: string, provider: string): Promise
 
 async function assertQuota(orgId: string, provider: string, plan: string): Promise<void> {
   if ((await connectedCountExcluding(orgId, provider)) >= getCrmLimit(plan)) {
-    throw new CrmError("CRM_LIMIT_REACHED", "Limite d'integrations CRM atteinte pour ce plan.", 403);
+    throw new CrmError("CRM_LIMIT_REACHED", "CRM integration limit reached for this plan.", 403);
   }
 }
 
 /** Etape 1 : etat aleatoire 256 bits, stocke haché, a usage unique, lie a l'organisation. */
 export async function startCrmOAuth(orgId: string, plan: string, adapter: CrmProviderAdapter): Promise<{ url: string; redirectUri: string }> {
-  if (!adapter.isConfigured()) throw new CrmError("CRM_PROVIDER_NOT_CONFIGURED", "Ce fournisseur CRM n'est pas configure.", 503);
+  if (!adapter.isConfigured()) throw new CrmError("CRM_PROVIDER_NOT_CONFIGURED", "This CRM provider is not configured.", 503);
   encryptCrmToken("configuration-check"); // echec ferme si la cle de chiffrement est absente
   await assertQuota(orgId, adapter.id, plan);
   const state = randomBytes(32).toString("hex");
@@ -100,7 +100,7 @@ export async function getValidCrmToken(adapter: CrmProviderAdapter, orgId: strin
   );
   const row = r.rows[0] as IntegrationRow | undefined;
   if (!row || row.status !== "connected" || !row.access_token || !row.refresh_token) {
-    throw new CrmError("CRM_NOT_CONNECTED", "Ce CRM n'est pas connecte.", 409);
+    throw new CrmError("CRM_NOT_CONNECTED", "This CRM is not connected.", 409);
   }
   if (row.token_expires_at && new Date(row.token_expires_at).getTime() > Date.now() + 60_000) {
     return { integrationId: row.id, accessToken: decryptCrmToken(row.access_token) };
@@ -121,7 +121,7 @@ export async function getValidCrmToken(adapter: CrmProviderAdapter, orgId: strin
         `UPDATE crm_integrations SET status='reauth_required', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
         [orgId, adapter.id],
       );
-      throw new CrmError("CRM_REAUTH_REQUIRED", "L'autorisation CRM a expire : reconnectez le CRM.", 409);
+      throw new CrmError("CRM_REAUTH_REQUIRED", "CRM authorization expired: reconnect the CRM.", 409);
     }
     throw error;
   }
@@ -150,7 +150,7 @@ export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string
         AND started_at > NOW() - $3::int * INTERVAL '1 minute' LIMIT 1`,
     [orgId, integrationId, SYNC_LOCK_MINUTES],
   );
-  if (running.rows.length > 0) throw new CrmError("CRM_SYNC_IN_PROGRESS", "Une synchronisation est deja en cours.", 409);
+  if (running.rows.length > 0) throw new CrmError("CRM_SYNC_IN_PROGRESS", "A synchronization is already in progress.", 409);
 
   const logId = stableId("crmlog", orgId, integrationId, randomBytes(8).toString("hex"));
   const started = Date.now();
@@ -193,7 +193,7 @@ export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string
      WHERE org_id=$1 AND provider=$2`,
     [orgId, adapter.id, status],
   );
-  if (status === "failed") throw new CrmError(errorCode ?? "CRM_SYNC_FAILED", "La synchronisation CRM a echoue.", 502);
+  if (status === "failed") throw new CrmError(errorCode ?? "CRM_SYNC_FAILED", "CRM synchronization failed.", 502);
   return { ok: true, created, updated, failed, durationMs, truncated };
 }
 
