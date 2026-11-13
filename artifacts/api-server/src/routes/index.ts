@@ -68,6 +68,7 @@ import clientModeRouter from "./client-mode.js";
 import progressionRouter from "./progression.js";
 import orgDataExportRouter from "./org-data-export.js";
 import onboardingRouter from "./onboarding.js";
+import { trialExpiredGate } from "../middlewares/trialExpiredGate.js";
 
 const router: IRouter = Router();
 
@@ -181,6 +182,10 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   }
   next();
 });
+
+// Essai sans carte expire : traitements couteux bloques cote serveur (402
+// TRIAL_EXPIRED). No-op tant que TRIAL_WITHOUT_CARD n'est pas "true".
+router.use(trialExpiredGate);
 
 router.use(meRouter);
 router.use(onboardingRouter);

@@ -926,9 +926,13 @@ export async function checkAllMonitorsDue(): Promise<{ checked: number; errors: 
        WHERE enabled = TRUE
          AND last_check::timestamptz < NOW() - (GREATEST(COALESCE(NULLIF(regexp_replace(frequency, '[^0-9]', '', 'g'), '')::int, 5), 1) || ' minutes')::interval`
     );
+    // Essai sans carte expire : la verification planifiee est sautee.
+    const { expiredCardlessTrialOrgIds } = await import("../services/trial-without-card.js");
+    const _expiredOrgs = await expiredCardlessTrialOrgIds(pool, rows.map(r => String(r["org_id"] ?? "")));
     for (const monitor of rows) {
       const _cronOrgId = monitor["org_id"] as string | undefined;
       if (!_cronOrgId) { errors++; continue; }
+      if (_expiredOrgs.has(_cronOrgId)) continue;
       try {
         const result = await performCheck(monitor["url"] as string);
         await saveCheckResult(
