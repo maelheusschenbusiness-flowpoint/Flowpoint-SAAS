@@ -503,6 +503,8 @@
       var _bd = {};
       if (_dv.name)  _bd.name  = _dv.name;
       if (_dv.email) _bd.email = _dv.email;
+      // Keep Stripe's postal-code validation aligned with the country entered at signup.
+      if (_dv.country) _bd.address = { country: _dv.country };
       if (Object.keys(_bd).length) _peDefaultValues = { billingDetails: _bd };
     }
     var paymentElement;
