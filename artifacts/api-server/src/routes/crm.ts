@@ -5,15 +5,23 @@ import {
   getSyncLogs, getFieldMappings, upsertFieldMapping, getCrmLimit, type CrmProvider,
 } from "../services/crm-service.js";
 import { requireAddon, resolvePlanFromDB } from "../middlewares/planGate.js";
+import { canAdmin } from "../middlewares/requireRole.js";
+import { timingSafeEqual } from "node:crypto";
 import { logger } from "../lib/logger.js";
 import { getCrmAdapter, implementedCrmProviders } from "../services/crm/registry.js";
 import {
-  CrmError, completeCrmOAuth, getValidCrmToken, consumeCrmState, crmRedirectUri, processCrmWebhook, startCrmOAuth, syncCrmContacts,
+  CrmError, completeCrmOAuth, disconnectCrmIntegration, getValidCrmToken, consumeCrmState, crmRedirectUri, processCrmWebhook, startCrmOAuth, syncCrmContacts,
 } from "../services/crm/crm-core.js";
 
 const router = Router();
 /** Routes publiques : redirection OAuth du fournisseur et webhooks signes (aucune session). */
 export const crmPublicRouter = Router();
+
+const CRM_STATE_COOKIE = "fp_crm_oauth";
+function sameSecret(a: string, b: string): boolean {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
 
 const frontendUrl = (): string => (process.env["FRONTEND_URL"] ?? "https://app.flowpoint.pro").replace(/\/+$/, "");
 
@@ -22,6 +30,13 @@ crmPublicRouter.get("/crm/oauth/:provider/callback", async (req, res) => {
   const adapter = getCrmAdapter(provider);
   const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
   if (!adapter) { res.status(404).json({ ok: false, code: "CRM_PROVIDER_UNSUPPORTED" }); return; }
+  // Protection CSRF : l'etat doit aussi correspondre au cookie pose au demarrage dans CE navigateur.
+  // Un lien de callback fabrique par un tiers (son propre code + son propre state) est refuse.
+  const cookieState = (req.cookies as Record<string, string> | undefined)?.[CRM_STATE_COOKIE];
+  res.clearCookie(CRM_STATE_COOKIE, { path: "/api/crm/oauth" });
+  if (typeof state !== "string" || typeof cookieState !== "string" || !sameSecret(state, cookieState)) {
+    res.status(400).json({ ok: false, code: "CRM_STATE_INVALID", error: "Invalid or expired OAuth state" }); return;
+  }
   // L'etat est consomme meme si le fournisseur renvoie une erreur : un etat ne sert qu'une fois.
   const orgId = typeof state === "string" ? await consumeCrmState(state, provider).catch(() => null) : null;
   if (!orgId) { res.status(400).json({ ok: false, code: "CRM_STATE_INVALID", error: "Invalid or expired OAuth state" }); return; }
@@ -58,6 +73,8 @@ crmPublicRouter.post("/crm/webhook/:provider", async (req, res) => {
   }
   try {
     const result = await processCrmWebhook(adapter, adapter.parseWebhook(rawBody));
+    // Evenement non traite (ex. CRM momentanement injoignable) : 503 pour que le fournisseur le re-livre.
+    if (result.retry > 0) { res.status(503).json({ ok: false, code: "CRM_WEBHOOK_RETRY", ...result }); return; }
     res.json({ ok: true, ...result });
   } catch {
     res.status(503).json({ ok: false, code: "CRM_WEBHOOK_UNAVAILABLE" });
@@ -119,7 +136,7 @@ router.get("/crm/status", async (req, res) => {
   }
 });
 
-router.post("/crm/connect/:provider", async (req, res) => {
+router.post("/crm/connect/:provider", canAdmin, async (req, res) => {
   const provider = req.params.provider as CrmProvider;
   if (!CRM_PROVIDERS.find(p => p.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
   const adapter = getCrmAdapter(provider);
@@ -132,14 +149,20 @@ router.post("/crm/connect/:provider", async (req, res) => {
     return;
   }
   try {
-    const { url } = await startCrmOAuth(org(req), await plan(req), adapter);
+    const { url, state } = await startCrmOAuth(org(req), await plan(req), adapter);
+    res.cookie(CRM_STATE_COOKIE, state, {
+      httpOnly: true, sameSite: "lax", secure: process.env["NODE_ENV"] === "production",
+      path: "/api/crm/oauth", maxAge: 10 * 60 * 1000,
+    });
     res.json({ ok: true, url });
   } catch (err) { crmFailure(res, err); }
 });
 
-router.post("/crm/disconnect/:provider", async (req, res) => {
+router.post("/crm/disconnect/:provider", canAdmin, async (req, res) => {
+  const adapter = getCrmAdapter(String(req.params.provider ?? ""));
   try {
-    await disconnectCrm(org(req), req.params.provider as CrmProvider);
+    if (adapter) await disconnectCrmIntegration(adapter, org(req));
+    else await disconnectCrm(org(req), req.params.provider as CrmProvider);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });

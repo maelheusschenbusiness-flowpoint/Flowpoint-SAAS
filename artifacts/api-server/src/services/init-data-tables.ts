@@ -3305,6 +3305,8 @@ export async function initDataTables(): Promise<void> {
       await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS crm_contacts_org_provider_ext_idx ON crm_contacts(org_id, provider, external_id)`);
       await run(client, `CREATE INDEX IF NOT EXISTS crm_contacts_org_created_idx ON crm_contacts(org_id, created_at DESC)`);
       await applyTenantRls("crm_contacts");
+      // Une seule synchronisation `running` par integration (verrou sans course).
+      await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS crm_sync_logs_one_running_idx ON crm_sync_logs(crm_integration_id) WHERE status = 'running'`);
       await run(client, `
         CREATE TABLE IF NOT EXISTS crm_webhook_events (
           provider    TEXT        NOT NULL,

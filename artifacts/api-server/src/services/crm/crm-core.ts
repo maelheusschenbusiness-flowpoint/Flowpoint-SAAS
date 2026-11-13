@@ -42,7 +42,7 @@ async function assertQuota(orgId: string, provider: string, plan: string): Promi
 }
 
 /** Etape 1 : etat aleatoire 256 bits, stocke haché, a usage unique, lie a l'organisation. */
-export async function startCrmOAuth(orgId: string, plan: string, adapter: CrmProviderAdapter): Promise<{ url: string; redirectUri: string }> {
+export async function startCrmOAuth(orgId: string, plan: string, adapter: CrmProviderAdapter): Promise<{ url: string; redirectUri: string; state: string }> {
   if (!adapter.isConfigured()) throw new CrmError("CRM_PROVIDER_NOT_CONFIGURED", "This CRM provider is not configured.", 503);
   encryptCrmToken("configuration-check"); // echec ferme si la cle de chiffrement est absente
   await assertQuota(orgId, adapter.id, plan);
@@ -54,7 +54,7 @@ export async function startCrmOAuth(orgId: string, plan: string, adapter: CrmPro
     [hashState(state), orgId, adapter.id, CRM_STATE_TTL_MINUTES],
   );
   const redirectUri = crmRedirectUri(adapter.id);
-  return { url: adapter.buildAuthUrl(state, redirectUri), redirectUri };
+  return { url: adapter.buildAuthUrl(state, redirectUri), redirectUri, state };
 }
 
 /** Consomme l'etat (usage unique, expiration, fournisseur identique) -> organisation, sinon null. */
@@ -74,18 +74,52 @@ export async function completeCrmOAuth(
   await assertQuota(orgId, adapter.id, plan);
   const tokens = await adapter.exchangeCode(code, crmRedirectUri(adapter.id));
   const id = stableId("crm", orgId, adapter.id);
-  await pool.query(
-    `INSERT INTO crm_integrations
-       (id, org_id, provider, name, status, access_token, refresh_token, token_expires_at, portal_id, scope, connected_at, updated_at)
-     VALUES ($1,$2,$3,$3,'connected',$4,$5,NOW() + $6::int * INTERVAL '1 second',$7,$8,NOW(),NOW())
-     ON CONFLICT (org_id, provider) DO UPDATE SET
-       status='connected', access_token=$4, refresh_token=$5,
-       token_expires_at=EXCLUDED.token_expires_at, portal_id=$7, scope=$8, updated_at=NOW()`,
-    [id, orgId, adapter.id, encryptCrmToken(tokens.accessToken), encryptCrmToken(tokens.refreshToken),
-      tokens.expiresInSeconds, tokens.accountId ?? null, tokens.scope ?? null],
-  );
+  // Verification du quota ET ecriture dans une transaction verrouillee par organisation :
+  // deux callbacks simultanes ne peuvent pas depasser la limite du plan.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`crm-quota:${orgId}`]);
+    const used = await client.query(
+      `SELECT COUNT(*)::int AS n FROM crm_integrations WHERE org_id=$1 AND status='connected' AND provider<>$2`,
+      [orgId, adapter.id],
+    );
+    if (Number((used.rows[0] as { n?: number }).n ?? 0) >= getCrmLimit(plan)) {
+      throw new CrmError("CRM_LIMIT_REACHED", "CRM integration limit reached for this plan.", 403);
+    }
+    await client.query(
+      `INSERT INTO crm_integrations
+         (id, org_id, provider, name, status, access_token, refresh_token, token_expires_at, portal_id, scope, connected_at, updated_at)
+       VALUES ($1,$2,$3,$3,'connected',$4,$5,NOW() + $6::int * INTERVAL '1 second',$7,$8,NOW(),NOW())
+       ON CONFLICT (org_id, provider) DO UPDATE SET
+         status='connected', access_token=$4, refresh_token=$5,
+         token_expires_at=EXCLUDED.token_expires_at, portal_id=$7, scope=$8, updated_at=NOW()`,
+      [id, orgId, adapter.id, encryptCrmToken(tokens.accessToken), encryptCrmToken(tokens.refreshToken),
+        tokens.expiresInSeconds, tokens.accountId ?? null, tokens.scope ?? null],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
   logger.info({ event: "crm_connected", provider: adapter.id }, "[crm] integration connected");
   return id;
+}
+
+/** Deconnexion : revocation chez le fournisseur (au mieux), puis jetons effaces localement dans tous les cas. */
+export async function disconnectCrmIntegration(adapter: CrmProviderAdapter, orgId: string): Promise<void> {
+  const r = await pool.query(`SELECT refresh_token FROM crm_integrations WHERE org_id=$1 AND provider=$2`, [orgId, adapter.id]);
+  const stored = (r.rows[0] as { refresh_token?: string | null } | undefined)?.refresh_token;
+  if (stored && adapter.revoke) {
+    try { await adapter.revoke(decryptCrmToken(stored)); }
+    catch (error) { logger.warn({ event: "crm_revoke_failed", provider: adapter.id, code: (error as { code?: string }).code }, "[crm] provider revocation failed"); }
+  }
+  await pool.query(
+    `UPDATE crm_integrations SET status='disconnected', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
+    [orgId, adapter.id],
+  );
 }
 
 interface IntegrationRow {
@@ -115,7 +149,8 @@ export async function getValidCrmToken(adapter: CrmProviderAdapter, orgId: strin
     );
     return { integrationId: row.id, accessToken: fresh.accessToken };
   } catch (error) {
-    if (error instanceof CrmProviderError && error.status !== undefined && error.status >= 400 && error.status < 500) {
+    if (error instanceof CrmProviderError && (error.status === 400 || error.status === 401 || error.status === 403)) {
+      // 429 / 5xx : panne transitoire, les jetons sont conserves.
       // Refresh refuse (revocation) : jetons effaces, reconnexion exigee.
       await pool.query(
         `UPDATE crm_integrations SET status='reauth_required', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
@@ -145,20 +180,25 @@ export interface CrmSyncResult { ok: boolean; created: number; updated: number; 
 /** Synchronisation de contacts : bornee, idempotente (cle org+provider+external_id), verrouillee, journalisee. */
 export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string): Promise<CrmSyncResult> {
   const { integrationId, accessToken } = await getValidCrmToken(adapter, orgId);
-  const running = await pool.query(
-    `SELECT 1 FROM crm_sync_logs WHERE org_id=$1 AND crm_integration_id=$2 AND status='running'
-        AND started_at > NOW() - $3::int * INTERVAL '1 minute' LIMIT 1`,
-    [orgId, integrationId, SYNC_LOCK_MINUTES],
-  );
-  if (running.rows.length > 0) throw new CrmError("CRM_SYNC_IN_PROGRESS", "A synchronization is already in progress.", 409);
-
   const logId = stableId("crmlog", orgId, integrationId, randomBytes(8).toString("hex"));
   const started = Date.now();
+  // Les verrous orphelins (processus interrompu) sont liberes ; un index unique partiel
+  // garantit ensuite UNE seule synchronisation `running` par integration, sans course.
   await pool.query(
-    `INSERT INTO crm_sync_logs (id, org_id, crm_integration_id, provider, direction, entity_type, status, started_at)
-     VALUES ($1,$2,$3,$4,'import','contacts','running',NOW())`,
-    [logId, orgId, integrationId, adapter.id],
+    `UPDATE crm_sync_logs SET status='failed', error='CRM_SYNC_STALE', completed_at=NOW()
+      WHERE org_id=$1 AND crm_integration_id=$2 AND status='running' AND started_at <= NOW() - $3::int * INTERVAL '1 minute'`,
+    [orgId, integrationId, SYNC_LOCK_MINUTES],
   );
+  try {
+    await pool.query(
+      `INSERT INTO crm_sync_logs (id, org_id, crm_integration_id, provider, direction, entity_type, status, started_at)
+       VALUES ($1,$2,$3,$4,'import','contacts','running',NOW())`,
+      [logId, orgId, integrationId, adapter.id],
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") throw new CrmError("CRM_SYNC_IN_PROGRESS", "A synchronization is already in progress.", 409);
+    throw error;
+  }
   let created = 0, updated = 0, failed = 0, truncated = false;
   let status = "success";
   let errorCode: string | null = null;
@@ -179,6 +219,13 @@ export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string
   } catch (error) {
     status = "failed";
     errorCode = error instanceof CrmProviderError ? error.code : "CRM_SYNC_FAILED";
+    if (errorCode === "CRM_UNAUTHORIZED") {
+      // Jeton rejete avant son expiration (acces revoque chez le fournisseur) : reconnexion exigee.
+      await pool.query(
+        `UPDATE crm_integrations SET status='reauth_required', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
+        [orgId, adapter.id],
+      );
+    }
     logger.warn({ event: "crm_sync_failed", provider: adapter.id, code: errorCode }, "[crm] sync failed");
   }
   const durationMs = Date.now() - started;
@@ -193,6 +240,7 @@ export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string
      WHERE org_id=$1 AND provider=$2`,
     [orgId, adapter.id, status],
   );
+  if (errorCode === "CRM_UNAUTHORIZED") throw new CrmError("CRM_REAUTH_REQUIRED", "CRM authorization expired: reconnect the CRM.", 409);
   if (status === "failed") throw new CrmError(errorCode ?? "CRM_SYNC_FAILED", "CRM synchronization failed.", 502);
   return { ok: true, created, updated, failed, durationMs, truncated };
 }
@@ -200,8 +248,8 @@ export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string
 /** Webhook authentifie : deduplication par evenement, rattachement a l'organisation via le portail. */
 export async function processCrmWebhook(
   adapter: CrmProviderAdapter, events: ReturnType<CrmProviderAdapter["parseWebhook"]>,
-): Promise<{ processed: number; duplicates: number; ignored: number }> {
-  let processed = 0, duplicates = 0, ignored = 0;
+): Promise<{ processed: number; duplicates: number; ignored: number; retry: number }> {
+  let processed = 0, duplicates = 0, ignored = 0, retry = 0;
   for (const event of events) {
     if (!event.portalId) { ignored++; continue; }
     const owner = await pool.query(
@@ -224,12 +272,12 @@ export async function processCrmWebhook(
       } catch (error) {
         // Evenement non traite : on le "libere" pour que la relivraison du fournisseur soit rejouee.
         await pool.query(`DELETE FROM crm_webhook_events WHERE provider=$1 AND event_id=$2 AND org_id=$3`, [adapter.id, event.eventId, orgId]);
-        processed--;
-        ignored++;
+        retry++;
+        continue;
         logger.warn({ event: "crm_webhook_fetch_failed", provider: adapter.id, code: (error as { code?: string }).code }, "[crm] webhook contact refresh failed");
       }
     }
     processed++;
   }
-  return { processed, duplicates, ignored };
+  return { processed, duplicates, ignored, retry };
 }

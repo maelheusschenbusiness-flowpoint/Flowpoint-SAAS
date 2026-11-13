@@ -92,6 +92,13 @@ export const hubspotAdapter: CrmProviderAdapter = {
     return tokens;
   },
 
+  async revoke(refreshToken) {
+    const response = await fetch(`${bases().api}/oauth/v1/refresh-tokens/${encodeURIComponent(refreshToken)}`, {
+      method: "DELETE", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok && response.status !== 404) throw new CrmProviderError("CRM_REVOKE_FAILED", `HubSpot revoke failed: ${response.status}`, response.status);
+  },
+
   refresh: (refreshToken) => tokenRequest({ grant_type: "refresh_token", refresh_token: refreshToken }),
 
   async fetchContacts(accessToken, cursor, limit): Promise<CrmContactPage> {

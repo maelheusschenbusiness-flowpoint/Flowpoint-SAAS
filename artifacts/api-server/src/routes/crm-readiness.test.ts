@@ -37,7 +37,7 @@ function makeApp() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    Object.assign(req, { orgId: "org-a", orgDb: orgDbMock, me: { plan: "Pro" } });
+    Object.assign(req, { orgId: "org-a", orgDb: orgDbMock, me: { plan: "Pro" }, orgContext: { role: "owner" } });
     next();
   });
   app.use("/api", crmPublicRouter);

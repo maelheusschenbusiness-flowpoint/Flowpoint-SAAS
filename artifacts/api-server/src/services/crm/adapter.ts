@@ -45,6 +45,8 @@ export interface CrmProviderAdapter {
   refresh(refreshToken: string): Promise<CrmTokenSet>;
   fetchContacts(accessToken: string, cursor: string | null, limit: number): Promise<CrmContactPage>;
   fetchContact(accessToken: string, externalId: string): Promise<CrmContact | null>;
+  /** Revocation du jeton chez le fournisseur (au mieux : un echec ne bloque pas la deconnexion locale). */
+  revoke?(refreshToken: string): Promise<void>;
   /** Valide la signature d'un webhook entrant ; echec ferme. */
   verifyWebhook(check: CrmWebhookCheck): boolean;
   /** Extrait les identifiants de contacts concernes par un webhook (deja authentifie). */
