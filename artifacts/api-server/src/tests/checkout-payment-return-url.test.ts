@@ -32,4 +32,10 @@ describe("checkout Payment Element return URL contract", () => {
       /stripe\.setupIntents\.confirm\(setup\.setupIntentId,\s*\{[\s\S]{0,160}return_url:\s*checkoutReturnUrl/,
     );
   });
+
+  it("prefills the billing country supplied by signup into the Payment Element", () => {
+    expect(checkoutPaymentHtml).toMatch(
+      /_bd\.address\s*=\s*\{\s*country:\s*_dv\.country\s*\}/,
+    );
+  });
 });
