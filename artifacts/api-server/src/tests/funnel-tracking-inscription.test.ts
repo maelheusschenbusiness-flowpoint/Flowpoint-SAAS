@@ -168,3 +168,13 @@ describe("envoi et echec du formulaire (production)", () => {
     }
   });
 });
+
+describe("le crochet de la page d'inscription", () => {
+  it("n'expose que l'envoi et l'echec, toujours soumis au consentement", () => {
+    const suivi = readFileSync(join(process.cwd(), "../flowpoint-export/funnel-tracking.js"), "utf8");
+    const hook = suivi.slice(suivi.indexOf("window.fpFunnelSend"), suivi.indexOf("window.fpFunnelSend") + 220);
+    expect(hook).toContain('step === "signup_submitted"');
+    expect(hook).toContain('step === "signup_failed"');
+    expect(hook).not.toContain("= send;");
+  });
+});

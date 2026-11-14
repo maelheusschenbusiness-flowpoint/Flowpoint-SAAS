@@ -159,7 +159,10 @@
   // premiere saisie (`signup_form_engaged`), une seule fois. Le retour Google
   // masque le formulaire : rien n'est alors compte comme affiche.
   // Envoi et echec du formulaire, emis par signin.html (famille d'erreur seulement).
-  window.fpFunnelSend = send;
+  window.fpFunnelSend = function (step, categorie) {
+    if (step === "signup_submitted") send(step);
+    else if (step === "signup_failed" && typeof categorie === "string") send(step, categorie);
+  };
 
   if (pathname.endsWith("/signin.html")) {
     const screen = document.getElementById("signup-screen");
