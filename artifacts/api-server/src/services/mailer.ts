@@ -246,6 +246,12 @@ function isTestMailerEnabled(): boolean {
     && process.env["REPLIT_DEPLOYMENT"] !== "1";
 }
 
+function isHostedRuntime(): boolean {
+  return !!process.env["RENDER"]
+    || !!process.env["FLY_APP_NAME"]
+    || process.env["REPLIT_DEPLOYMENT"] === "1";
+}
+
 export async function captureTestMail(opts: CaptureOptions): Promise<boolean> {
   if (!isTestMailerEnabled()) return false;
   const result = await send({ ...opts, text: opts.text ?? "" });
@@ -254,10 +260,12 @@ export async function captureTestMail(opts: CaptureOptions): Promise<boolean> {
 }
 
 async function send(opts: SendOptions): Promise<MailResult> {
-  if ((process.env["TEST_MAIL_DIR"] || process.env["NODE_ENV"] === "test") && !isTestMailerEnabled()) {
+  const testMailerEnabled = isTestMailerEnabled();
+  const localUnitTest = process.env["NODE_ENV"] === "test" && !isHostedRuntime();
+  if ((process.env["TEST_MAIL_DIR"] || localUnitTest) && !testMailerEnabled) {
     return { ok: false, error: "TEST_MAILER_NOT_ENABLED" };
   }
-  if (isTestMailerEnabled()) {
+  if (testMailerEnabled) {
     const testMailDir = process.env["TEST_MAIL_DIR"]!;
     try {
       fs.mkdirSync(testMailDir, { recursive: true });
