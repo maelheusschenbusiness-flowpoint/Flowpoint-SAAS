@@ -699,20 +699,22 @@
     var phone      = val('phone');
     var vat        = val('vat');
 
-    if (!firstName)   { showMsg(signupMsg,'error','Le prénom est requis.');              return; }
-    if (!lastName)    { showMsg(signupMsg,'error','Le nom est requis.');                 return; }
+    var fpF = function(e,c){try{window.fpFunnelSend&&window.fpFunnelSend(e,c);}catch(_){}};
+    if (!firstName)   { fpF('signup_failed','missing_first_name'); showMsg(signupMsg,'error','Le prénom est requis.');              return; }
+    if (!lastName)    { fpF('signup_failed','missing_last_name'); showMsg(signupMsg,'error','Le nom est requis.');                 return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      showMsg(signupMsg,'error','Adresse email invalide.'); return;
+      fpF('signup_failed','invalid_email'); showMsg(signupMsg,'error','Adresse email invalide.'); return;
     }
     if (isDisposable(email)) {
-      showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
+      fpF('signup_failed','disposable_email'); showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
     }
-    if (!companyName) { showMsg(signupMsg,'error',"Le nom de l'entreprise est requis."); return; }
-    if (!country)     { showMsg(signupMsg,'error','Le pays est requis.');                return; }
-    if (!address)     { showMsg(signupMsg,'error',"L'adresse est requise.");             return; }
-    if (!city)        { showMsg(signupMsg,'error','La ville est requise.');              return; }
-    if (!postalCode)  { showMsg(signupMsg,'error','Le code postal est requis.');         return; }
+    if (!companyName) { fpF('signup_failed','missing_company'); showMsg(signupMsg,'error',"Le nom de l'entreprise est requis."); return; }
+    if (!country)     { fpF('signup_failed','missing_country'); showMsg(signupMsg,'error','Le pays est requis.');                return; }
+    if (!address)     { fpF('signup_failed','missing_address'); showMsg(signupMsg,'error',"L'adresse est requise.");             return; }
+    if (!city)        { fpF('signup_failed','missing_city'); showMsg(signupMsg,'error','La ville est requise.');              return; }
+    if (!postalCode)  { fpF('signup_failed','missing_postal_code'); showMsg(signupMsg,'error','Le code postal est requis.');         return; }
 
+    fpF('signup_submitted');
     setLoading(signupBtn, true);
 
     fetch('/api/auth/pre-register', {
@@ -725,10 +727,14 @@
         seller_code: (function(){try{var _ref=new URLSearchParams(window.location.search).get('fp_ref')||localStorage.getItem('fp_seller_ref')||'';return _ref||undefined;}catch(e){return undefined;}})(),
         fp_lid: (function(){try{var _l=sessionStorage.getItem('fp_lid')||'';return /^[A-Za-z0-9_-]{22}$/.test(_l)?_l:undefined;}catch(e){return undefined;}})() })
     })
-    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(r) { return r.json().catch(function() { return {}; })
+                                .then(function(d) { return { ok: r.ok, status: r.status, data: d || {} }; }); })
     .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
+        fpF('signup_failed', res.data.redirectTo === '/login.html' ? 'account_exists'
+          : res.status === 409 ? 'conflict' : res.status === 429 ? 'rate_limited'
+          : res.status >= 500 ? 'server_error' : 'client_error');
         var errTxt = escHtml(res.data.error || 'Une erreur est survenue.');
         var redir  = res.data.redirectTo || '';
         if (redir === '/login.html') {
@@ -764,6 +770,7 @@
     })
     .catch(function() {
       setLoading(signupBtn, false);
+      fpF('signup_failed', 'network');
       showMsg(signupMsg, 'error', 'Impossible de joindre le serveur. Vérifiez votre connexion.');
     });
   });

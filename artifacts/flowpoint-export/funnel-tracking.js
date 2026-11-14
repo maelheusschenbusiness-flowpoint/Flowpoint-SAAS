@@ -128,7 +128,7 @@
     }
   }
 
-  function send(step) {
+  function send(step, categorie) {
     const id = visitorId();
     if (!id) return;
     const endpoint = location.hostname === "flowpoint.pro" || location.hostname === "www.flowpoint.pro"
@@ -139,7 +139,8 @@
       credentials: "include",
       keepalive: true,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ etape: step, visiteurId: id, source: source(), fp_lid: fpLid(), ...campaign() }),
+      body: JSON.stringify({ etape: step, visiteurId: id, source: source(), fp_lid: fpLid(),
+                           ...(categorie ? { categorie } : {}), ...campaign() }),
     }).catch(() => {});
   }
 
@@ -150,11 +151,19 @@
   const pathname = location.pathname.toLowerCase();
   if (pathname === "/") send("landing_vue");
   if (pathname.endsWith("/pricing.html")) send("tarifs_vus");
-  if (pathname.endsWith("/checkout.html")) send("signup_started");
+  // checkout.html n'est pas la page d'inscription : il redirige vers signin.html
+  // (sans session) qui compte deja `signup_started`. L'emettre ici comptait deux
+  // fois le meme parcours.
 
   // Page d'inscription : le formulaire affiche (`signup_started`), puis la
   // premiere saisie (`signup_form_engaged`), une seule fois. Le retour Google
   // masque le formulaire : rien n'est alors compte comme affiche.
+  // Envoi et echec du formulaire, emis par signin.html (famille d'erreur seulement).
+  window.fpFunnelSend = function (step, categorie) {
+    if (step === "signup_submitted") send(step);
+    else if (step === "signup_failed" && typeof categorie === "string") send(step, categorie);
+  };
+
   if (pathname.endsWith("/signin.html")) {
     const screen = document.getElementById("signup-screen");
     if (!screen || screen.style.display !== "none") send("signup_started");

@@ -94,7 +94,8 @@ describe("page d'inscription : formulaire affiche, puis premiere saisie", () => 
 
   it("les autres pages gardent leur comportement", () => {
     expect(executer({ path: "/pricing.html" }).envois.map((e) => e["etape"])).toEqual(["tarifs_vus"]);
-    expect(executer({ path: "/checkout.html" }).envois.map((e) => e["etape"])).toEqual(["signup_started"]);
+    // checkout.html redirige vers signin.html, qui compte deja l'affichage : plus de double compte.
+    expect(executer({ path: "/checkout.html" }).envois).toHaveLength(0);
     expect(executer({ path: "/dashboard.html" }).envois).toHaveLength(0);
   });
 });
@@ -148,5 +149,32 @@ describe("campagne UTM (Instagram) : lue de l'URL, gardee en premiere touche, en
       });
       expect(envois.at(-1)!["visiteurId"]).toBeTruthy();
     }
+  });
+});
+
+describe("envoi et echec du formulaire (production)", () => {
+  const SIGNIN = readFileSync(join(process.cwd(), "../flowpoint-export/signin.html"), "utf8");
+  it("l'envoi suit toutes les validations et precede le POST", () => {
+    const envoi = SIGNIN.indexOf("fpF('signup_submitted')");
+    expect(envoi).toBeGreaterThan(SIGNIN.indexOf("fpF('signup_failed','missing_postal_code')"));
+    expect(envoi).toBeLessThan(SIGNIN.indexOf("fetch('/api/auth/pre-register'"));
+  });
+  it("chaque famille emise est dans la liste fermee", async () => {
+    const { CATEGORIES_ECHEC } = await import("../services/funnel-events.js");
+    const cats = [...SIGNIN.matchAll(/fpF\('signup_failed',\s*'([a-z_]+)'\)/g)].map((m) => m[1]!);
+    expect(cats.length).toBe(10);
+    for (const c of [...cats, "account_exists", "conflict", "rate_limited", "server_error", "client_error"]) {
+      expect(CATEGORIES_ECHEC.has(c)).toBe(true);
+    }
+  });
+});
+
+describe("le crochet de la page d'inscription", () => {
+  it("n'expose que l'envoi et l'echec, toujours soumis au consentement", () => {
+    const suivi = readFileSync(join(process.cwd(), "../flowpoint-export/funnel-tracking.js"), "utf8");
+    const hook = suivi.slice(suivi.indexOf("window.fpFunnelSend"), suivi.indexOf("window.fpFunnelSend") + 220);
+    expect(hook).toContain('step === "signup_submitted"');
+    expect(hook).toContain('step === "signup_failed"');
+    expect(hook).not.toContain("= send;");
   });
 });

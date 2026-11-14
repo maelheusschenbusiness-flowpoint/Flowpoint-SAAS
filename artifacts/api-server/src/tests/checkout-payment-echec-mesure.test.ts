@@ -27,7 +27,7 @@ describe("refus de carte -> etape checkout_payment_failed", () => {
   });
   it("le script partage n'expose que cette etape et reste soumis au consentement", () => {
     expect(suivi).toContain('window.fpFunnelTrack = function (step) { if (step === "checkout_payment_failed") send(step); };');
-    const send = suivi.slice(suivi.indexOf("function send(step)"), suivi.indexOf("function send(step)") + 200);
+    const send = suivi.slice(suivi.indexOf("function send(step"), suivi.indexOf("function send(step") + 200);
     expect(send).toContain("const id = visitorId();");
     expect(send).toContain("if (!id) return;");
     expect(suivi.slice(suivi.indexOf("function visitorId()"), suivi.indexOf("function visitorId()") + 120)).toContain("if (!hasConsent()) return null;");
