@@ -18,6 +18,7 @@ import { hasGoogleConnection } from "../services/google-service.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { resolveOrgId } from "../lib/resolve-org-id.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 
@@ -150,7 +151,7 @@ router.post("/gsc/site", async (req: Request, res: Response) => {
 router.get("/gsc/analytics", async (req: Request, res: Response) => {
   let orgId: string;
   try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
-  const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
+  const days = queryInt(req.query["days"], { defaut: 30, min: 1, max: 365, horsBornes: "defaut" });
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
@@ -199,8 +200,8 @@ router.get("/gsc/analytics", async (req: Request, res: Response) => {
 router.get("/gsc/keywords", async (req: Request, res: Response) => {
   let orgId: string;
   try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
-  const days  = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-  const limit = Math.min(parseInt(req.query["limit"] as string || "100"), 1000);
+  const days  = queryInt(req.query["days"], { defaut: 30, min: 1, max: 365, horsBornes: "defaut" });
+  const limit = queryInt(req.query["limit"], { defaut: 100, min: 1, max: 1000, horsBornes: "borner" });
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
@@ -222,8 +223,8 @@ router.get("/gsc/keywords", async (req: Request, res: Response) => {
 router.get("/gsc/pages", async (req: Request, res: Response) => {
   let orgId: string;
   try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
-  const days  = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-  const limit = Math.min(parseInt(req.query["limit"] as string || "100"), 1000);
+  const days  = queryInt(req.query["days"], { defaut: 30, min: 1, max: 365, horsBornes: "defaut" });
+  const limit = queryInt(req.query["limit"], { defaut: 100, min: 1, max: 1000, horsBornes: "borner" });
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
@@ -245,7 +246,7 @@ router.get("/gsc/pages", async (req: Request, res: Response) => {
 router.get("/gsc/impressions", async (req: Request, res: Response) => {
   let orgId: string;
   try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
-  const days  = Math.min(parseInt(req.query["days"] as string || "90"), 365);
+  const days  = queryInt(req.query["days"], { defaut: 90, min: 1, max: 365, horsBornes: "defaut" });
   const { siteUrl: qSiteUrl } = req.query as { siteUrl?: string };
 
   try {
@@ -344,7 +345,7 @@ router.post("/gsc/disconnect", async (req: Request, res: Response) => {
 router.get("/gsc/logs", async (req: Request, res: Response) => {
   let orgId: string;
   try { orgId = getOrgId(req); } catch { res.status(401).json({ ok: false, error: "Unauthorized" }); return; }
-  const limit = Math.min(parseInt(req.query["limit"] as string || "20"), 100);
+  const limit = queryInt(req.query["limit"], { defaut: 20, min: 1, max: 100, horsBornes: "borner" });
   try {
     const logs = await getSyncLogs(orgId, limit);
     res.json({ ok: true, logs });
