@@ -246,6 +246,42 @@ function isTestMailerEnabled(): boolean {
     && process.env["REPLIT_DEPLOYMENT"] !== "1";
 }
 
+function isHostedRuntime(): boolean {
+  return !!process.env["RENDER"]
+    || !!process.env["FLY_APP_NAME"]
+    || process.env["REPLIT_DEPLOYMENT"] === "1";
+}
+
+function isAutomatedTestRun(): boolean {
+  const ci = process.env["CI"]?.trim().toLowerCase();
+  return process.env["FLOWPOINT_AUTOMATED_TESTS"] === "true"
+    || process.env["VITEST"] === "true"
+    || process.env["NODE_TEST_CONTEXT"] !== undefined
+    || process.env["JEST_WORKER_ID"] !== undefined
+    || ci === "true"
+    || ci === "1";
+}
+
+function isTestRecipientAllowed(to: string): boolean {
+  const allowed = process.env["TEST_EMAIL_RECIPIENT_ALLOWLIST"];
+  if (!allowed) return false;
+  const normalizedTo = to.trim().toLowerCase();
+  return allowed
+    .split(",")
+    .map((address) => address.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(normalizedTo);
+}
+
+function isHostedTestResendEnabled(to: string): boolean {
+  return process.env["NODE_ENV"] === "test"
+    && isHostedRuntime()
+    && process.env["ENABLE_HOSTED_TEST_EMAIL_DELIVERY"] === "true"
+    && !!process.env["RESEND_API_KEY"]
+    && !isAutomatedTestRun()
+    && isTestRecipientAllowed(to);
+}
+
 export async function captureTestMail(opts: CaptureOptions): Promise<boolean> {
   if (!isTestMailerEnabled()) return false;
   const result = await send({ ...opts, text: opts.text ?? "" });
@@ -254,10 +290,12 @@ export async function captureTestMail(opts: CaptureOptions): Promise<boolean> {
 }
 
 async function send(opts: SendOptions): Promise<MailResult> {
-  if ((process.env["TEST_MAIL_DIR"] || process.env["NODE_ENV"] === "test") && !isTestMailerEnabled()) {
+  const testMailerEnabled = isTestMailerEnabled();
+  const testEnvironment = process.env["NODE_ENV"] === "test";
+  if (process.env["TEST_MAIL_DIR"] && !testMailerEnabled) {
     return { ok: false, error: "TEST_MAILER_NOT_ENABLED" };
   }
-  if (isTestMailerEnabled()) {
+  if (testMailerEnabled) {
     const testMailDir = process.env["TEST_MAIL_DIR"]!;
     try {
       fs.mkdirSync(testMailDir, { recursive: true });
@@ -290,7 +328,14 @@ async function send(opts: SendOptions): Promise<MailResult> {
     }
   }
 
+  if (isAutomatedTestRun() || (testEnvironment && !isHostedTestResendEnabled(opts.to))) {
+    return { ok: false, error: "TEST_MAILER_NOT_ENABLED" };
+  }
+
   const resend = getResend();
+  if (testEnvironment && !resend) {
+    return { ok: false, error: "TEST_MAILER_NOT_ENABLED" };
+  }
   if (resend) {
     try {
       const result = await resend.emails.send({
@@ -302,6 +347,7 @@ async function send(opts: SendOptions): Promise<MailResult> {
         tags: opts.tag ? [{ name: "type", value: opts.tag }] : undefined,
       });
       if (result.error) {
+        if (testEnvironment) return { ok: false, error: result.error.message };
         logger.warn({ err: result.error, to: opts.to, tag: opts.tag }, "[Mailer] Resend error; trying SMTP fallback");
         const fallback = await sendViaSmtp(opts);
         return fallback ?? { ok: false, error: result.error.message };
@@ -311,10 +357,12 @@ async function send(opts: SendOptions): Promise<MailResult> {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error({ err, to: opts.to, tag: opts.tag }, "[Mailer] Resend send failed; trying SMTP fallback");
+      if (testEnvironment) return { ok: false, error: message };
       return (await sendViaSmtp(opts)) ?? { ok: false, error: message };
     }
   }
 
+  if (testEnvironment) return { ok: false, error: "TEST_MAILER_NOT_ENABLED" };
   const fallback = await sendViaSmtp(opts);
   if (fallback) return fallback;
   logger.warn({ to: opts.to, tag: opts.tag }, "[Mailer] no email transport configured");

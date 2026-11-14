@@ -35,7 +35,7 @@ export default defineConfig({
     globals:     false,
     reporters:   ["verbose"],
     // Mock heavy deps that would require a real DB connection
-    setupFiles:  ["./src/vitest.setup.ts"],
+    setupFiles:  ["./src/test-email-safety.setup.ts", "./src/vitest.setup.ts"],
     // Use the isolated tsconfig so oxc does NOT pick up the composite/references
     // from tsconfig.json (which targets compiled workspace packages, not source).
     // tsconfig.json composite+references must stay intact for tsc project build.

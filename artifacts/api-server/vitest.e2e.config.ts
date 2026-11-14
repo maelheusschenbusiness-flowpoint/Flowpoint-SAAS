@@ -6,5 +6,11 @@ export default defineConfig({
     "@workspace/db": resolve(api, "../../lib/db/src/index.ts"),
     "@workspace/api-zod": resolve(api, "../../lib/api-zod/src/index.ts"),
   } },
-  test: { root: api, include: ["src/tests/e2e-ailab-transmission.test.ts"], testTimeout: 30000, hookTimeout: 30000 },
+  test: {
+    root: api,
+    include: ["src/tests/e2e-ailab-transmission.test.ts"],
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    setupFiles: ["./src/test-email-safety.setup.ts"],
+  },
 });
