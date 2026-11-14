@@ -263,9 +263,25 @@ describe("webhook Stripe : la campagne UTM atteint les etapes payantes", () => {
     expect(rows[0]!.params).toHaveLength(6);
   });
 
-  it("une campagne sans consentement dans les metadonnees n'est jamais ecrite", async () => {
+  it("sans consentement : l'essai est compte (fait de facturation) mais AUCUNE donnee marketing n'est ecrite", async () => {
     await deliver(subscriptionEvent("evt_noconsent", "trialing", { ...META_FUNNEL, fp_analytics_consent: "refused" }));
     await settle();
-    expect(funnelInserts).toHaveLength(0);
+    const rows = inserted("trial_activated");
+    expect(rows).toHaveLength(1);
+    // Requete d'origine a six parametres : [etape, visiteur, organisation, plan, source, cle] — jamais de colonnes UTM.
+    expect(rows[0]!.params).toHaveLength(6);
+    const [, visiteur, organisation, , source, cle] = rows[0]!.params;
+    expect(visiteur).toBeNull();
+    expect(organisation).toBeNull();
+    expect(source).toBeNull();
+    expect(String(cle)).toBe("trial_activated:sub_evt_noconsent");
+    expect(JSON.stringify(rows[0]!.params)).not.toMatch(/audit|smartlead|utm|fp-|campagne/i);
+  });
+
+  it("un evenement non LIVE sans consentement n'est pas compte", async () => {
+    const ev = subscriptionEvent("evt_noconsent_test", "trialing", { ...META_FUNNEL, fp_analytics_consent: "refused" });
+    await deliver({ ...ev, livemode: false });
+    await settle();
+    expect(inserted("trial_activated")).toHaveLength(0);
   });
 });

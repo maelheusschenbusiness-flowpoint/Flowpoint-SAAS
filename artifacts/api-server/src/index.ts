@@ -125,6 +125,13 @@ async function main() {
     .then((r) => logger.info({ etat: r.etat, colonnes: "colonnes" in r ? r.colonnes : [] }, "[startup] funnel_events utm columns"))
     .catch((err) => logger.error({ code: getErrorCode(err), message: getSafeErrorMessage(err) }, "[startup] funnel_events utm columns NOT ensured"));
 
+  // 1c. Migration 021 (etapes du tunnel acceptees par la contrainte) : meme raison que 1b. Non fatale, mais
+  // sans elle les etapes recentes seraient refusees par la base puis perdues sans bruit.
+  await import("./services/funnel-events.js")
+    .then(({ assurerEtapesTunnel }) => assurerEtapesTunnel())
+    .then((r) => logger.info({ etat: r.etat }, "[startup] funnel_events etapes"))
+    .catch((err) => logger.error({ code: getErrorCode(err), message: getSafeErrorMessage(err) }, "[startup] funnel_events etapes NOT ensured"));
+
   // 2. Check if Pre-Deploy already ran all migrations (fast path for Render).
   const migrated = await schemaAlreadyMigrated();
 
