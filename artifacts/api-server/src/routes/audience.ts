@@ -16,6 +16,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { getAudienceStatus, getAudienceData } from "../services/audience-service.js";
 import { logger } from "../lib/logger.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 
@@ -28,8 +29,7 @@ function getOrgId(req: Request): string {
 }
 
 function parseDays(req: Request): number {
-  const d = parseInt((req.query["days"] as string) || "");
-  return Number.isFinite(d) && d >= 1 && d <= 365 ? d : 30;
+  return queryInt(req.query["days"], { defaut: 30, min: 1, max: 365, horsBornes: "defaut" });
 }
 
 function handleError(res: Response, e: unknown, label: string): void {

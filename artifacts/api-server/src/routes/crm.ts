@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+import { queryInt } from "../lib/query-params.js";
 import {
   CRM_PROVIDERS, getCrmStatus, disconnectCrm,
   getSyncLogs, getFieldMappings, upsertFieldMapping, getCrmLimit, type CrmProvider,
@@ -183,7 +184,7 @@ router.post("/crm/sync", async (req, res) => {
 });
 
 router.get("/crm/logs", async (req, res) => {
-  const limit = parseInt(req.query.limit as string || "50", 10);
+  const limit = queryInt(req.query.limit, { defaut: 50, min: 1, max: 200, horsBornes: "borner" });
   try {
     const logs = await getSyncLogs(org(req), limit);
     res.json({ logs, count: logs.length });
