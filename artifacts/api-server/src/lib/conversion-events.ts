@@ -82,6 +82,17 @@ export function stableEventId(prefix: string, token: string): string {
 /** La forme exacte qu'AI Lab attend d'un `fp_lid`. */
 const FP_LID_RE = /^[A-Za-z0-9_-]{22}$/;
 
+/**
+ * Les `fp_lid` synthetiques des scripts de certification et des documents.
+ *
+ * Ils ont la forme exacte d'un vrai jeton, mais l'acquisition engine ne les a
+ * jamais frappes. Le 13-14/11/2026, l'instance `flowpoint-test` en a envoye un a
+ * l'AI Lab de production : 400 `unknown_fp_lid` a chaque essai, rejeu de la file
+ * a 15, 60, 180 et 360 minutes, et des « conversions » fantomes dans ses
+ * compteurs de reception. Un jeton de test ne quitte jamais le SaaS.
+ */
+export const SYNTHETIC_FP_LIDS: ReadonlySet<string> = new Set(["AbCdEfGhIjKlMnOpQr_-12"]);
+
 interface Config {
   url: string;
   secret: string;
@@ -125,7 +136,7 @@ export function conversionConfiguree(): boolean {
 
 /** Valide le contrat localement, sans reseau. */
 export function jalonValide(event: ConversionEvent): boolean {
-  return FP_LID_RE.test(event.fpLid) && !!event.eventId && event.eventId.length >= 8
+  return FP_LID_RE.test(event.fpLid) && !SYNTHETIC_FP_LIDS.has(event.fpLid) && !!event.eventId && event.eventId.length >= 8
     && event.eventId.length <= 128 && !!event.occurredAt;
 }
 
