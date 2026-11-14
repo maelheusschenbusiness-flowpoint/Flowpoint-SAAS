@@ -34,7 +34,7 @@ describe("routes /admin/conversion/*", () => {
       const r = await request(app()).get(`/api/admin/conversion/${view}${Q}`).set("x-admin-key", KEY);
       expect(r.status).toBe(200);
       expect(r.headers["cache-control"]).toBe("no-store");
-      expect(r.body.stages.length).toBe(8);
+      expect(r.body.stages.length).toBe(10);
       expect(r.body.stages.every((s: { definition: string }) => s.definition.length > 10)).toBe(true);
       expect(r.body.stages.find((s: { key: string }) => s.key === "cta_clique").definition).toContain("n'est pas une conversion");
     });
