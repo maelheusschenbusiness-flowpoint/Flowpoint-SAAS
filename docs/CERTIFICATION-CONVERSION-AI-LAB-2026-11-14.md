@@ -126,3 +126,49 @@ Tests : `src/tests/checkout-payment-echec-mesure.test.ts` (corps sans donnée se
 | Compte créé sans essai | — | Non mesurable en taux (populations différentes) ; volume « inscriptions validées » vs « essais » seulement indicatif |
 | Refus de carte hors consentement, 3DS abandonné | — | Non instrumentés |
 | Départ de la page d'accueil sans action | — | Non instrumenté (aucun événement de sortie) ; se déduit seulement de `landing_vue` − `tarifs_vus` sur les consentants |
+
+---
+
+# Phase 5 — services déployés (état du 2026-11-14, lecture seule)
+
+## 9. Services réellement utilisés et configuration
+
+| Élément | Constat |
+|---|---|
+| `flowpoint-test` (`srv-danup5egekts73a8og7g`, Oregon) | En ligne sur le commit de #456 (`4d9759b`, déploiement `live`). Branche `Test-Replit`. |
+| Récepteur AI Lab | `flowpoint-acquisition-dashboard` (`srv-dag4572fngtc73dgho8g`, Frankfurt, **plan gratuit**, s'endort après 15 min, branche `main` du moteur). Route `POST /events/conversion`. |
+| Base AI Lab | `flowpoint-acquisition-db` (Postgres Render), accès externe limité à `178.104.240.137/32` (`ai-lab-vps acquisition-bridge`). **C'est la base de production d'AI Lab** : il n'existe aujourd'hui aucune instance AI Lab de test déployée. |
+| `AI_LAB_CONVERSION_URL`, `CONVERSION_EVENT_SECRET` sur `flowpoint-test` | Valeurs illisibles depuis le connecteur Render (et ne doivent pas l'être). **Présence et exactitude établies par les faits** : les logs AI Lab montrent des `400 unknown_fp_lid` émis par le validateur, donc la requête a franchi l'authentification par secret (sinon `401`) ; les logs `flowpoint-test` montrent les mêmes requêtes. URL et secret sont donc posés et corrects. |
+| Réseau entre services | HTTPS public, sans restriction côté dashboard AI Lab. Les `unreachable` observés sont des délais de réveil, pas un blocage. |
+| SaaS TEST | Projet Supabase de test, file `conversion_event_outbox` et `funnel_events` lisibles. |
+
+## 10. Preuves réelles disponibles sur la paire déployée (déjà produites, relues aujourd'hui)
+
+File durable de `flowpoint-test` (agrégats, aucun jeton) :
+- **2026-10-21 16:04–16:05** : 4 jalons `visit`, `signup_page`, `signup_started`, `signup` livrés `sent:202` du premier coup, plus un `visit` rejoué → `duplicate:202`. C'est la preuve réelle de transmission signée et de déduplication entre les services déployés (un `fp_lid` valide existait alors dans AI Lab).
+- Avant cela (15:21), des refus `400` du même type que ceux d'aujourd'hui : jeton alors inconnu d'AI Lab.
+- **2026-11-13/14** : 9 jalons `rejected:400:exhausted` : le `fp_lid` synthétique de certification, inconnu d'AI Lab, a épuisé la fenêtre de reprise (jeton effacé à la clôture, aucun secret dans les logs). Ils sont arrivés dans les compteurs de réception d'AI Lab de production (conséquence corrigée par #453 : un jeton synthétique ne quitte plus le SaaS).
+- Réveils Render : séries d'`unreachable` espacées de 10 s (timeout du worker), jamais de blocage d'inscription.
+
+**Non prouvé sur le déployé** : la persistance dans `conversion_funnel_events` (base inaccessible depuis cette session) pour un nouveau parcours.
+
+## 11. Défaut démontré et corrigé : les échecs réseau consommaient les essais réservés aux 400
+
+Reproduit par test (`conversion-outbox-db.test.ts`) : après 4 tentatives sans réponse (réveil Render long), le premier `400` fermait aussitôt la ligne en `rejected:400:exhausted` et effaçait son `fp_lid`, alors que la fenêtre de reprise des 400 (15/60/180/360 min, pensée pour un prospect pas encore synchronisé) n'avait jamais été ouverte. Correctif minimal : colonne `rejets_400` (`ADD COLUMN IF NOT EXISTS`), l'épuisement et le délai ne comptent que les 400 ; les échecs réseau ne font plus que décaler la prochaine tentative. Les 14 autres tests de la file restent verts.
+
+## 12. Indicateurs vérifiés sur données réellement persistées (SaaS TEST, 30 jours, hors `fp-test-%`)
+
+| Étape | Événements | Visiteurs |
+|---|---|---|
+| landing_vue / tarifs_vus / cta_clique | 1 / 1 / 2 | 1 / 1 / 2 |
+| signup_started / signup_form_engaged / signup_form_completed | 42 / 42 / 44 | 42 / 42 / 40 |
+| checkout_started → checkout_completed | 43 → 26 | 40 → 26 (taux consentants **0,605**, mêmes populations) |
+| trial_activated | 65 | 25 |
+| subscription_activated | 66 | 1 |
+| checkout_payment_failed | 0 (déployé aujourd'hui) | 0 |
+
+Ces chiffres proviennent des **certifications Stripe TEST**, pas de clients : aucun taux ne doit être lu comme une conversion commerciale. Les volumes « tous visiteurs » (essais, abonnements) restent séparés des étapes consentantes (`mixed_coverage`).
+
+## 13. Ce qui reste, et pourquoi je m'arrête là
+
+La suite exige d'écrire un prospect dans la base AI Lab, qui est la production : accès réseau limité au VPS, et aucune instance de test pour isoler. Le validateur n'accepte d'ailleurs que `CLIENTS_FR_BE_SMB` et `SELLERS_FR_BE`, des segments réels. Détails des options dans le rapport final.

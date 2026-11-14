@@ -144,6 +144,28 @@ describe("un jalon n'est perdu ni par un service endormi, ni par un redemarrage"
     expect(appels).toHaveLength(5);
   });
 
+  it("les echecs reseau (service endormi) ne consomment pas les essais reserves aux 400", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    // Un reveil Render long : quatre tentatives sans reponse, puis AI Lab repond 400
+    // (prospect pas encore synchronise). Le 400 doit ouvrir SA fenetre de reprise, pas clore la ligne.
+    reponse = "panne";
+    const j = jalon();
+    await queueConversionEvent(j);
+    for (let i = 0; i < 3; i++) { await echeance(j.eventId); await processConversionOutboxOnce(); }
+    expect(await ligne(j.eventId)).toMatchObject({ status: "pending", attempts: 4 });
+    reponse = 400;
+    await echeance(j.eventId); await processConversionOutboxOnce();
+    expect(await ligne(j.eventId)).toMatchObject({ status: "pending", fp_lid: FP_LID, last_status: "rejected:400" });
+    const delai = await pool.query<{ minutes: number }>(
+      `SELECT round(extract(epoch FROM next_attempt_at - now()) / 60)::int AS minutes
+         FROM conversion_event_outbox WHERE event_id = $1`, [j.eventId]);
+    expect(delai.rows[0]!.minutes).toBe(15);
+    // Le prospect devient connu : la ligne se livre.
+    reponse = 202;
+    await echeance(j.eventId); await processConversionOutboxOnce();
+    expect(await ligne(j.eventId)).toMatchObject({ status: "delivered", fp_lid: null });
+  });
+
   it("un jalon abandonne ne repart jamais, ne se duplique pas et ne laisse aucune donnee personnelle dans le journal", async (ctx) => {
     if (!dbOk) return ctx.skip();
     vi.clearAllMocks();
