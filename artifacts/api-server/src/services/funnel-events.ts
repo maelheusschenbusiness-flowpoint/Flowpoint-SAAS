@@ -7,6 +7,8 @@ export const ETAPES_TUNNEL = [
   "cta_clique",
   "signup_started",
   "signup_form_engaged",
+  "signup_submitted",
+  "signup_failed",
   "signup_form_completed",
   "checkout_started",
   "checkout_completed",
@@ -21,6 +23,20 @@ export const ETAPES_PUBLIQUES = new Set<string>([
   "cta_clique",
   "signup_started",
   "signup_form_engaged",
+  "signup_submitted",
+  "signup_failed",
+]);
+
+/**
+ * Famille d'erreur d'un `signup_failed`. Liste fermee, jamais de saisie. Elle
+ * est portee par la cle d'idempotence (`signup_failed:<famille>:<visiteur>:<jour>`,
+ * lisible par `split_part(cle_idempotence, ':', 2)`) : aucune colonne nouvelle.
+ */
+export const CATEGORIES_ECHEC = new Set<string>([
+  "missing_first_name", "missing_last_name", "invalid_email", "disposable_email",
+  "missing_company", "missing_country", "missing_address", "missing_city",
+  "missing_postal_code", "account_exists", "conflict", "rate_limited",
+  "client_error", "server_error", "network",
 ]);
 
 const ETAPES = new Set<string>(ETAPES_TUNNEL);

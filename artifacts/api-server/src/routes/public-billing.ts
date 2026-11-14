@@ -13,7 +13,7 @@ import { normalizeFpLid } from "../lib/fp-lid.js";
 import { stableEventId } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import {
-  ETAPES_PUBLIQUES,
+  ETAPES_PUBLIQUES, CATEGORIES_ECHEC,
   enregistrerEtape,
   lireAttributionFunnel,
   metadataAttributionFunnel,
@@ -66,13 +66,20 @@ router.post("/public/funnel-event", publicFunnelEventRateLimit, async (req: Requ
   }
   const maintenant = new Date();
   const day = maintenant.toISOString().slice(0, 10);
+  const categorie = typeof req.body?.categorie === "string" ? req.body.categorie.trim() : "";
+  if (etape === "signup_failed" && !CATEGORIES_ECHEC.has(categorie)) {
+    res.status(400).json({ ok: false, error: "Unknown failure category." });
+    return;
+  }
   const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     campagne: attribution.campagne,
     plan: typeof req.body?.plan === "string" ? req.body.plan : null,
-    cleIdempotence: `${etape}:${attribution.visiteurId}:${day}`,
+    cleIdempotence: etape === "signup_failed"
+      ? `${etape}:${categorie}:${attribution.visiteurId}:${day}`
+      : `${etape}:${attribution.visiteurId}:${day}`,
   });
   // Conversion B : le fp_lid opaque joint par le navigateur devient un jalon,
   // inscrit dans la file durable. Jamais pour un token mal forme, jamais pour
