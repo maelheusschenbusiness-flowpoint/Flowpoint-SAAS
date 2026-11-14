@@ -74,6 +74,9 @@ async function assurerTable(): Promise<void> {
         created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
         closed_at       TIMESTAMPTZ
       )`);
+    // Empreinte courte (8 hex de SHA-256) gardee quand `fp_lid` est efface a la
+    // cloture : de quoi rapprocher un refus d'un jeton du moteur, jamais le jeton.
+    await client.query(`ALTER TABLE conversion_event_outbox ADD COLUMN IF NOT EXISTS fp_lid_sha8 TEXT`);
     await client.query(`CREATE INDEX IF NOT EXISTS conversion_event_outbox_due_idx
       ON conversion_event_outbox (next_attempt_at) WHERE status = 'pending'`);
     // Table interne au backend : RLS active, aucun acces des roles d'API.
@@ -128,7 +131,8 @@ async function livrer(l: Ligne, timeoutMs?: number): Promise<{ outcome: EmitOutc
     const clos = outcome === "sent" || outcome === "duplicate" ? "delivered" : "rejected";
     await pool.query(`UPDATE conversion_event_outbox
       SET status = $2, last_status = $3, attempts = attempts + 1,
-          closed_at = now(), fp_lid = NULL
+          closed_at = now(),
+          fp_lid_sha8 = left(encode(sha256(convert_to(fp_lid, 'UTF8')), 'hex'), 8), fp_lid = NULL
       WHERE event_id = $1`, [l.event_id, clos, `${outcome}${status ? `:${status}` : ""}`]);
     return { outcome, clos: true };
   }
@@ -137,7 +141,8 @@ async function livrer(l: Ligne, timeoutMs?: number): Promise<{ outcome: EmitOutc
     if (essais >= ESSAIS_MAX_400) {
       await pool.query(`UPDATE conversion_event_outbox
         SET status = 'rejected', last_status = $2, attempts = $3,
-            closed_at = now(), fp_lid = NULL
+            closed_at = now(),
+          fp_lid_sha8 = left(encode(sha256(convert_to(fp_lid, 'UTF8')), 'hex'), 8), fp_lid = NULL
         WHERE event_id = $1`, [l.event_id, "rejected:400:exhausted", essais]);
       // Journal structure : l'etape, la source et le nombre d'essais — ni
       // `fp_lid`, ni identifiant, ni charge utile.

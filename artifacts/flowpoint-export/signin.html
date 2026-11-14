@@ -873,7 +873,7 @@
     } catch (e) { return ''; }
   }
 
-  function fpEtape(etape) {
+  function fpEtape(etape, categorie) {
     try {
       var vid = fpVid();
       if (!vid) return;
@@ -883,12 +883,16 @@
         keepalive: true,
         // fp_lid : l'identifiant opaque du lien d'outreach, deja valide plus haut.
         body: JSON.stringify({ etape: etape, visiteurId: vid, source: fpSource(),
+                               categorie: categorie || undefined,
                                fp_lid: (typeof fpLidValue === 'string' && fpLidValue) || undefined })
       }).catch(function () {});       // une mesure ratee ne doit jamais se voir
     } catch (e) { /* ignore */ }
   }
 
   fpIngestAttribution();
+  // `signup_started` = page d'inscription AFFICHEE (pas une interaction) : nom
+  // historique garde pour ne pas casser les series. Les etapes suivantes
+  // mesurent l'interaction, l'envoi et l'echec.
   fpEtape('signup_started');
 
   /* ── Step 1: form submit → POST /auth/pre-register ── */
@@ -915,15 +919,18 @@
     var lastName   = val('lastName');
     var email      = val('email').toLowerCase();
 
-    if (!firstName)   { showMsg(signupMsg,'error','First name is required.');              return; }
-    if (!lastName)    { showMsg(signupMsg,'error','Last name is required.');                 return; }
+    if (!firstName)   { fpEtape('signup_failed','missing_first_name'); showMsg(signupMsg,'error','First name is required.');              return; }
+    if (!lastName)    { fpEtape('signup_failed','missing_last_name'); showMsg(signupMsg,'error','Last name is required.');                 return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      fpEtape('signup_failed','invalid_email');
       showMsg(signupMsg,'error','Please enter a valid email address.'); return;
     }
     if (isDisposable(email)) {
+      fpEtape('signup_failed','disposable_email');
       showMsg(signupMsg,'error','Temporary email addresses are not accepted.'); return;
     }
 
+    fpEtape('signup_submitted');
     setLoading(signupBtn, true);
 
     fetch('/api/auth/pre-register', {
@@ -943,10 +950,17 @@
         // Meme source que `signup_started` : sans elle, l'inscription n'est pas rattachee a sa campagne.
         source: fpSource() || undefined })
     })
-    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(r) { return r.json().catch(function() { return {}; })
+                                .then(function(d) { return { ok: r.ok, status: r.status, data: d || {} }; }); })
     .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
+        // Famille d'erreur seulement : jamais le message ni la saisie.
+        fpEtape('signup_failed',
+          res.data.redirectTo === '/login.html' ? 'account_exists'
+          : res.status === 409 ? 'conflict'
+          : res.status === 429 ? 'rate_limited'
+          : res.status >= 500 ? 'server_error' : 'client_error');
         var rawError = res.data.error || 'An error occurred. Please try again.';
         if (window.fpResolveLanguage() === 'en') {
           var translatedError = window.fpPublicTranslateText(rawError);
@@ -986,6 +1000,7 @@
     })
     .catch(function() {
       setLoading(signupBtn, false);
+      fpEtape('signup_failed', 'network');
       showMsg(signupMsg, 'error', 'Unable to reach the server. Please check your connection.');
     });
   });

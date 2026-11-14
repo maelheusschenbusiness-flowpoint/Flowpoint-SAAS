@@ -40,15 +40,19 @@ export const GLOBAL_STAGES: readonly StageDef[] = [
   { key: "landing_vue", label: "Visites (site vitrine)", coverage: "consented", definition: "Page vitrine affichee, visiteur ayant accepte l'analytique." },
   { key: "tarifs_vus", label: "Vues des tarifs", coverage: "consented", definition: "Page tarifs affichee, visiteur consentant." },
   { key: "cta_clique", label: "Clics CTA", coverage: "consented", definition: "Clic sur un appel a l'action. Un clic n'est pas une conversion." },
-  { key: "signup_started", label: "Debuts d'inscription", coverage: "consented", definition: "Formulaire d'inscription affiche, visiteur consentant." },
+  { key: "signup_started", label: "Pages d'inscription vues", coverage: "consented", definition: "Page d'inscription affichee (chargement, aucune interaction requise). Inclut les scanners de liens qui executent le JavaScript." },
+  { key: "signup_form_engaged", label: "Formulaires touches", coverage: "consented", definition: "Premiere saisie reelle dans le formulaire d'inscription." },
+  { key: "signup_submitted", label: "Envois du formulaire", coverage: "consented", definition: "Envoi tente apres la validation du navigateur." },
+  { key: "signup_failed", label: "Envois echoues", coverage: "consented", definition: "Validation ou serveur ont refuse l'envoi ; une ligne par visiteur, famille d'erreur et jour." },
   { key: "signup_form_completed", label: "Inscriptions validees", coverage: "consented", definition: "Formulaire envoye et accepte par le serveur ; enregistre seulement si le visiteur a consenti a l'analytique." },
   { key: "checkout_started", label: "Debuts de checkout", coverage: "consented", definition: "Parcours de paiement ouvert cote serveur ; enregistre seulement si le visiteur a consenti a l'analytique." },
-  { key: "trial_activated", label: "Essais actives", coverage: "all", definition: "Abonnement passe au statut `trialing` signe par Stripe." },
+  { key: "trial_activated", label: "Essais demarres (trial_started)", coverage: "all", definition: "Abonnement passe au statut `trialing` signe par Stripe." },
   { key: "subscription_activated", label: "Abonnements payants", coverage: "all", definition: "Abonnement passe au statut `active` signe par Stripe." },
 ] as const;
 
 const RATE_PAIRS: ReadonlyArray<[string, string]> = [
-  ["tarifs_vus", "cta_clique"], ["cta_clique", "signup_started"], ["signup_started", "signup_form_completed"],
+  ["tarifs_vus", "cta_clique"], ["cta_clique", "signup_started"], ["signup_started", "signup_form_engaged"],
+  ["signup_form_engaged", "signup_submitted"], ["signup_submitted", "signup_form_completed"],
   ["signup_form_completed", "checkout_started"], ["checkout_started", "trial_activated"], ["trial_activated", "subscription_activated"],
 ];
 

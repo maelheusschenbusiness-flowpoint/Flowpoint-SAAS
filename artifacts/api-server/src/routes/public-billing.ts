@@ -4,7 +4,7 @@ import { subPeriodEnd } from "./billing.js";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import {
-  enregistrerEtape, ETAPES_PUBLIQUES, lireAttributionFunnel, metadataAttributionFunnel,
+  enregistrerEtape, ETAPES_PUBLIQUES, CATEGORIES_ECHEC, lireAttributionFunnel, metadataAttributionFunnel,
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, VALIDATION_REQUIRED_ADDONS, RETIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
@@ -549,12 +549,22 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
   // pas de doublon, mais un retour le lendemain reste compte.
   const maintenant = new Date();
   const jour = maintenant.toISOString().slice(0, 10);
+  // Un echec porte sa famille d'erreur (liste fermee). Une par visiteur, famille
+  // et jour : deux clics sur la meme erreur ne font qu'un echec.
+  const categorie = typeof req.body?.categorie === "string" ? req.body.categorie.trim() : "";
+  if (etape === "signup_failed" && !CATEGORIES_ECHEC.has(categorie)) {
+    res.status(400).json({ ok: false, error: "categorie inconnue." });
+    return;
+  }
   const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
     plan:   typeof req.body?.plan   === "string" ? req.body.plan   : null,
-    cleIdempotence: `${etape}:${visiteurId}:${jour}`,
+    cleIdempotence: etape === "signup_failed"
+      ? `${etape}:${categorie}:${visiteurId}:${jour}`
+      : `${etape}:${visiteurId}:${jour}`,
+    categorie: etape === "signup_failed" ? categorie : null,
   });
   // Le navigateur peut joindre son fp_lid opaque. Seules trois etapes deviennent
   // un jalon AI Lab, chacune avec la source qui peut la prouver ; jamais pour un

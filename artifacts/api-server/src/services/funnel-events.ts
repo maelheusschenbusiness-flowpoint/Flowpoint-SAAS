@@ -42,6 +42,8 @@ export const ETAPES_TUNNEL = [
   "cta_clique",              // clic sur un appel a l'action
   "signup_started",          // formulaire d'inscription affiche
   "signup_form_engaged",     // premiere saisie dans le formulaire d'inscription
+  "signup_submitted",        // envoi du formulaire tente (validation navigateur passee)
+  "signup_failed",           // envoi refuse ou impossible ; `categorie` dit pourquoi
   "signup_form_completed",   // formulaire envoye et accepte
   "checkout_started",        // session Stripe Checkout creee
   "checkout_completed",      // paiement/essai confirme par Stripe
@@ -57,6 +59,16 @@ const ETAPES = new Set<string>(ETAPES_TUNNEL);
 /** Les etapes qu'un navigateur peut declarer. Les autres viennent du serveur. */
 export const ETAPES_PUBLIQUES = new Set<string>([
   "landing_vue", "tarifs_vus", "cta_clique", "signup_started", "signup_form_engaged",
+  "signup_submitted", "signup_failed",
+]);
+
+/**
+ * Pourquoi un envoi d'inscription a echoue. Liste fermee, jamais de texte libre
+ * ni de donnee saisie : seulement la famille d'erreur.
+ */
+export const CATEGORIES_ECHEC = new Set<string>([
+  "missing_first_name", "missing_last_name", "invalid_email", "disposable_email",
+  "account_exists", "conflict", "rate_limited", "client_error", "server_error", "network",
 ]);
 
 const VISITEUR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
@@ -123,6 +135,8 @@ async function assurerTable(): Promise<void> {
         cle_idempotence TEXT,
         created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
       )`);
+    // Additive : `signup_failed` seulement. Les lignes existantes restent NULL.
+    await client.query(`ALTER TABLE funnel_events ADD COLUMN IF NOT EXISTS categorie TEXT`);
     await client.query(`CREATE INDEX IF NOT EXISTS funnel_events_etape_date_idx ON funnel_events (etape, created_at)`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS funnel_events_idem_uniq ON funnel_events (cle_idempotence) WHERE cle_idempotence IS NOT NULL`);
     // RLS : regle de la maison, toute table nouvelle l'active a la creation.
@@ -155,6 +169,8 @@ export interface EvenementTunnel {
   plan?: string | null;
   source?: string | null;
   cleIdempotence?: string | null;
+  /** `signup_failed` seulement ; ignoree si hors de `CATEGORIES_ECHEC`. */
+  categorie?: string | null;
 }
 
 /**
@@ -172,8 +188,8 @@ export async function enregistrerEtape(ev: EvenementTunnel): Promise<boolean> {
   try {
     await assurerTable();
     const r = await pool.query(
-      `INSERT INTO funnel_events (etape, visiteur_id, org_ref, plan, source, cle_idempotence)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO funnel_events (etape, visiteur_id, org_ref, plan, source, cle_idempotence, categorie)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (cle_idempotence) WHERE cle_idempotence IS NOT NULL DO NOTHING`,
       [
         ev.etape,
@@ -182,6 +198,8 @@ export async function enregistrerEtape(ev: EvenementTunnel): Promise<boolean> {
         tronquer(ev.plan),
         tronquer(ev.source),
         tronquer(ev.cleIdempotence),
+        ev.etape === "signup_failed" && ev.categorie && CATEGORIES_ECHEC.has(ev.categorie)
+          ? ev.categorie : null,
       ],
     );
     return (r.rowCount ?? 0) > 0;

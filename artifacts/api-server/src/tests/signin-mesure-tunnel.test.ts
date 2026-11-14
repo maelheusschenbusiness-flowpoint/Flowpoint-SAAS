@@ -107,7 +107,7 @@ describe("la mesure est posee et exploitable", () => {
   });
 
   it("chaque etape navigateur joint le fp_lid deja valide, jamais un autre", () => {
-    const fn = PAGE.slice(PAGE.indexOf("function fpEtape(etape)"), PAGE.indexOf("fpIngestAttribution();"));
+    const fn = PAGE.slice(PAGE.indexOf("function fpEtape(etape, categorie)"), PAGE.indexOf("fpIngestAttribution();"));
     expect(fn).toContain("fp_lid: (typeof fpLidValue === 'string' && fpLidValue) || undefined");
   });
 
@@ -322,5 +322,21 @@ describe("attribution commerciale respecte le consentement", () => {
     expect(metadata).toEqual({ fp_analytics_consent: "accepted", fp_visitor_id: visiteur, fp_source: "smartlead" });
     expect(lireAttributionFunnel(metadata)).toEqual({ visiteurId: visiteur, source: "smartlead" });
     expect(lireAttributionFunnel({ fp_visitor_id: visiteur, fp_source: "google" })).toBeNull();
+  });
+});
+
+describe("mesure distincte : affichage, interaction, envoi, echec", () => {
+  it("l'envoi n'est mesure qu'apres la validation du navigateur", () => {
+    const envoi = PAGE.indexOf("fpEtape('signup_submitted')");
+    expect(envoi).toBeGreaterThan(PAGE.indexOf("fpEtape('signup_failed','disposable_email')"));
+    expect(envoi).toBeLessThan(PAGE.indexOf("fetch('/api/auth/pre-register'"));
+  });
+  it("chaque echec porte une famille de la liste fermee, jamais la saisie", async () => {
+    const { CATEGORIES_ECHEC } = await import("../services/funnel-events.js");
+    const cats = [...PAGE.matchAll(/fpEtape\('signup_failed',\s*'([a-z_]+)'\)/g)].map((m) => m[1]);
+    for (const c of [...cats, "account_exists", "conflict", "rate_limited", "server_error", "client_error"]) {
+      expect(CATEGORIES_ECHEC.has(c!)).toBe(true);
+    }
+    expect(cats.length).toBeGreaterThanOrEqual(5);
   });
 });
