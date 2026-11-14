@@ -168,3 +168,12 @@ describe("envoi et echec du formulaire (production)", () => {
     }
   });
 });
+
+describe("contrainte d'etapes : elargie par union", () => {
+  it("lit les valeurs de la definition de production", async () => {
+    const { valeursContrainte, ETAPES_REQUISES } = await import("../services/funnel-events.js");
+    const def = "CHECK ((etape = ANY (ARRAY['landing_vue'::text, 'payment_failed'::text])))";
+    expect(valeursContrainte(def)).toEqual(["landing_vue", "payment_failed"]);
+    expect([...ETAPES_REQUISES]).toEqual(["signup_submitted", "signup_failed"]);
+  });
+});

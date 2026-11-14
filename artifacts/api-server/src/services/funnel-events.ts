@@ -292,6 +292,54 @@ export async function assurerColonnesUtm(): Promise<EtatColonnesUtm> {
   }
 }
 
+/** Les etapes que la contrainte `funnel_events_etape_check` doit admettre. */
+export const ETAPES_REQUISES = ["signup_submitted", "signup_failed"] as const;
+
+/** Les valeurs d'une definition `CHECK (etape = ANY (ARRAY['a'::text, ...]))`. */
+export function valeursContrainte(definition: string): string[] {
+  return [...definition.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+}
+
+/**
+ * Elargit la contrainte d'etapes au demarrage (pas d'etape Pre-Deploy sur Render).
+ * Additive : la nouvelle liste est l'UNION des valeurs deja admises (y compris
+ * celles ajoutees hors migration) et de `ETAPES_REQUISES`. Rien n'est retire,
+ * aucune ligne n'est touchee. Sans table ou deja a jour : rien.
+ */
+export async function assurerEtapesTunnel(): Promise<{ etat: string; ajoutees?: string[] }> {
+  const client = await pool.connect();
+  try {
+    const c = await client.query<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conname = 'funnel_events_etape_check'
+          AND conrelid = to_regclass('public.funnel_events')`,
+    );
+    const def = c.rows[0]?.def;
+    if (!def) return { etat: "contrainte_absente" };
+    const actuelles = valeursContrainte(def);
+    const manquantes = ETAPES_REQUISES.filter((e) => !actuelles.includes(e));
+    if (manquantes.length === 0) return { etat: "deja_a_jour" };
+    const toutes = [...actuelles, ...manquantes];
+    if (!toutes.every((v) => /^[a-z_]+$/.test(v))) return { etat: "valeur_inattendue" };
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL lock_timeout = '5s'");
+      await client.query("ALTER TABLE public.funnel_events DROP CONSTRAINT funnel_events_etape_check");
+      await client.query(
+        `ALTER TABLE public.funnel_events ADD CONSTRAINT funnel_events_etape_check
+           CHECK (etape IN (${toutes.map((v) => `'${v}'`).join(", ")}))`,
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
+    return { etat: "elargie", ajoutees: [...manquantes] };
+  } finally {
+    client.release();
+  }
+}
+
 /** Colonne absente (42703) : le schema n'a pas la migration 020. */
 export function estSchemaUtmAbsent(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === "42703";
