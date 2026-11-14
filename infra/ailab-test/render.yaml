@@ -44,9 +44,10 @@ services:
         sync: false
       - key: CONVERSION_EVENT_SECRET
         sync: false
-      # Une seule valeur "1" imprime le fp_lid synthetique une fois ; a retirer ensuite.
+      # "1" imprime le fp_lid synthetique dans les logs de CE service de test (a poser le temps de la
+      # certification, puis a repasser a "0"). Par defaut : rien n'est imprime.
       - key: CERT_PRINT_FP_LID
-        value: "1"
+        value: "0"
       # Render suffixe le nom de base d'une ressource creee par Blueprint (flowpoint_acquisition_xxxx) alors que le
       # moteur refuse toute base qui ne s'appelle pas exactement `flowpoint_acquisition` (garde conservee). On cree donc,
       # dans CETTE instance de test uniquement, la base portant ce nom, et on y pointe DATABASE_URL.

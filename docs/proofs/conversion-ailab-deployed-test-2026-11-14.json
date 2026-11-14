@@ -1,0 +1,87 @@
+{
+ "date": "2026-11-14",
+ "environnement": {
+  "saas": "flowpoint-test (Render, Oregon)",
+  "ailab": "flowpoint-ailab-test (Render free, Frankfurt)",
+  "base_ailab": "Postgres Render gratuit dedie, ipAllowList vide",
+  "prospect_fp_lid_sha256_prefix": "30c66d1d"
+ },
+ "emission_saas_parcours_reel": [
+  {
+   "etape": "signup_page",
+   "event_hash": "c60e9855",
+   "statut": "delivered sent:202",
+   "tentatives": 1
+  },
+  {
+   "etape": "signup_started",
+   "event_hash": "892d1de4",
+   "statut": "delivered sent:202",
+   "tentatives": 1
+  },
+  {
+   "etape": "signup",
+   "event_hash": "c717e867",
+   "statut": "delivered sent:202",
+   "tentatives": 1
+  },
+  {
+   "etape": "checkout",
+   "event_hash": "76c5d73a",
+   "statut": "delivered sent:202",
+   "tentatives": 1
+  },
+  {
+   "etape": "trial",
+   "event_hash": "8f638ed3",
+   "statut": "delivered sent:202",
+   "tentatives": 1
+  }
+ ],
+ "visit": {
+  "origine": "POST /api/public/funnel-event landing_vue (consentement accepted) sur flowpoint-test",
+  "event_hash": "3e08409f",
+  "rejeu_meme_jour": "204 sans nouvel evenement",
+  "consentement_refuse": "204 sans evenement"
+ },
+ "paid": {
+  "origine": "emission directe par le meme code d'emission (envoyerJalon) : l'etape n'existe qu'a la fin de l'essai de 14 jours",
+  "event_hash": "98dca8c9",
+  "premier_envoi": "sent:202",
+  "rejeu": "duplicate:202"
+ },
+ "reception_persistance_ailab_test": {
+  "lignes": 7,
+  "prospect": "30c66d1d",
+  "etapes": [
+   "signup_page/saas",
+   "signup_started/saas",
+   "signup/saas",
+   "checkout/stripe",
+   "trial/stripe",
+   "visit/marketing",
+   "paid/stripe"
+  ],
+  "doublons": 0
+ },
+ "panne": {
+  "methode": "URL AI Lab injoignable (.invalid) sur flowpoint-test pendant un parcours complet",
+  "inscription": "abouti (essai Stripe TEST cree)",
+  "file": "5 evenements pending, unreachable, fp_lid conserve, tentatives croissantes, 0 exhausted",
+  "reprise": "5 evenements delivered (duplicate:202), 0 ligne en plus cote AI Lab"
+ },
+ "redemarrage_ailab_test": {
+  "apres": "redeploiement du service",
+  "prospect": "30c66d1d (inchange)",
+  "lignes": 7
+ },
+ "isolation": {
+  "logs_ailab_production_depuis_15h50": "aucun evenement de conversion",
+  "base_test": "instance distincte, internet ferme",
+  "secrets_production": "aucun"
+ },
+ "tableaux_de_bord": {
+  "visiteurs_certification": 2,
+  "vue_commerciale_events": 0
+ }
+}
