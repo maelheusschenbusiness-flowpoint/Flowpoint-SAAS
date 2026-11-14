@@ -133,6 +133,8 @@ describe("la liste des etapes est fermee, et la frontiere navigateur/serveur tie
     for (const e of ETAPES_PUBLIQUES) {
       expect(ETAPES_TUNNEL as readonly string[]).toContain(e);
     }
+    // Le refus de carte est declarable par le navigateur (consentement exige), sans motif.
+    expect(ETAPES_PUBLIQUES.has("checkout_payment_failed")).toBe(true);
     // Les etapes qui engagent de l'argent ne doivent JAMAIS venir du client.
     for (const serveurUniquement of
          ["checkout_completed", "trial_activated", "subscription_activated", "trial_expired"]) {

@@ -45,6 +45,7 @@ export const ETAPES_TUNNEL = [
   "signup_form_completed",   // formulaire envoye et accepte
   "checkout_started",        // session Stripe Checkout creee
   "checkout_completed",      // paiement/essai confirme par Stripe
+  "checkout_payment_failed", // confirmation de carte refusee, declaree par le navigateur (sans motif ni donnee bancaire)
   "trial_activated",         // essai reellement ouvert
   "trial_expired",           // essai arrive a terme
   "subscription_activated",  // abonnement payant actif
@@ -57,6 +58,7 @@ const ETAPES = new Set<string>(ETAPES_TUNNEL);
 /** Les etapes qu'un navigateur peut declarer. Les autres viennent du serveur. */
 export const ETAPES_PUBLIQUES = new Set<string>([
   "landing_vue", "tarifs_vus", "cta_clique", "signup_started", "signup_form_engaged",
+  "checkout_payment_failed",
 ]);
 
 const VISITEUR_ID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;

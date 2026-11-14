@@ -1,0 +1,152 @@
+{
+  "run": "b93a374f",
+  "fp_lid_sha256_prefix": "ebb731ee",
+  "1_nominal": {
+    "queue_outcomes": {
+      "visit": "sent",
+      "signup_page": "sent",
+      "signup_started": "sent",
+      "signup": "sent",
+      "checkout": "sent",
+      "trial": "sent",
+      "paid": "sent"
+    },
+    "sender_rows": [
+      {
+        "event_id": "cert:b93a374f:visit",
+        "stage": "visit",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      },
+      {
+        "event_id": "cert:b93a374f:signup_page",
+        "stage": "signup_page",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      },
+      {
+        "event_id": "cert:b93a374f:signup_started",
+        "stage": "signup_started",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      },
+      {
+        "event_id": "cert:b93a374f:signup",
+        "stage": "signup",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      },
+      {
+        "event_id": "cert:b93a374f:checkout",
+        "stage": "checkout",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      },
+      {
+        "event_id": "cert:b93a374f:trial",
+        "stage": "trial",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      },
+      {
+        "event_id": "cert:b93a374f:paid",
+        "stage": "paid",
+        "status": "delivered",
+        "attempts": 1,
+        "last_status": "sent:202",
+        "fp_lid_erased": true
+      }
+    ],
+    "receiver_rows": [
+      {
+        "stage": "visit",
+        "source": "saas"
+      },
+      {
+        "stage": "signup_page",
+        "source": "saas"
+      },
+      {
+        "stage": "signup_started",
+        "source": "saas"
+      },
+      {
+        "stage": "signup",
+        "source": "saas"
+      },
+      {
+        "stage": "checkout",
+        "source": "saas"
+      },
+      {
+        "stage": "trial",
+        "source": "stripe"
+      },
+      {
+        "stage": "paid",
+        "source": "stripe"
+      }
+    ]
+  },
+  "2_replay": {
+    "outcomes": {
+      "visit": "duplicate",
+      "signup_page": "duplicate",
+      "signup_started": "duplicate",
+      "signup": "duplicate",
+      "checkout": "duplicate",
+      "trial": "duplicate",
+      "paid": "duplicate"
+    },
+    "receiver_count_before": 7,
+    "receiver_count_after": 7
+  },
+  "3_outage": {
+    "first_outcome": "queued",
+    "returned_in_ms": 7,
+    "row_after_first_attempt": {
+      "status": "pending",
+      "attempts": 1,
+      "last_status": "unreachable",
+      "future": true
+    },
+    "after_6_failed_retries": {
+      "status": "pending",
+      "attempts": 7,
+      "last_status": "unreachable"
+    },
+    "not_exhausted": true
+  },
+  "4_recovery": {
+    "row_after_recovery": {
+      "status": "delivered",
+      "attempts": 8,
+      "last_status": "sent:202"
+    },
+    "receiver_stages": [
+      "visit",
+      "click",
+      "signup_page",
+      "signup_started",
+      "signup",
+      "checkout",
+      "trial",
+      "paid"
+    ],
+    "receiver_count_after_recovery": 8,
+    "receiver_count_after_second_replay": 8,
+    "duplicates": 0
+  }
+}

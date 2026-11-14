@@ -43,13 +43,16 @@ export const GLOBAL_STAGES: readonly StageDef[] = [
   { key: "signup_started", label: "Debuts d'inscription", coverage: "consented", definition: "Formulaire d'inscription affiche, visiteur consentant." },
   { key: "signup_form_completed", label: "Inscriptions validees", coverage: "consented", definition: "Formulaire envoye et accepte par le serveur ; enregistre seulement si le visiteur a consenti a l'analytique." },
   { key: "checkout_started", label: "Debuts de checkout", coverage: "consented", definition: "Parcours de paiement ouvert cote serveur ; enregistre seulement si le visiteur a consenti a l'analytique." },
+  { key: "checkout_completed", label: "Paiements confirmes", coverage: "consented", definition: "Carte confirmee aupres de Stripe (intent reussi) ; enregistre seulement si le visiteur a consenti a l'analytique. Distinct de `trial_activated`, qui est signe par Stripe et compte tout le monde." },
+  { key: "checkout_payment_failed", label: "Echecs de confirmation de carte", coverage: "consented", definition: "Le navigateur signale un refus lors de la confirmation de la carte (au plus une fois par visiteur et par jour). Aucun motif, aucun detail bancaire ; consentants seulement, donc un minimum : les refus de visiteurs non consentants ne sont pas comptes." },
   { key: "trial_activated", label: "Essais actives", coverage: "all", definition: "Abonnement passe au statut `trialing` signe par Stripe." },
   { key: "subscription_activated", label: "Abonnements payants", coverage: "all", definition: "Abonnement passe au statut `active` signe par Stripe." },
 ] as const;
 
 const RATE_PAIRS: ReadonlyArray<[string, string]> = [
   ["tarifs_vus", "cta_clique"], ["cta_clique", "signup_started"], ["signup_started", "signup_form_completed"],
-  ["signup_form_completed", "checkout_started"], ["checkout_started", "trial_activated"], ["trial_activated", "subscription_activated"],
+  ["signup_form_completed", "checkout_started"], ["checkout_started", "checkout_completed"],
+  ["checkout_completed", "trial_activated"], ["trial_activated", "subscription_activated"],
 ];
 
 export type Query = (sql: string, params: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;

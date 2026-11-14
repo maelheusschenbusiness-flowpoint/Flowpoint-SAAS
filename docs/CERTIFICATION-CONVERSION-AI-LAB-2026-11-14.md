@@ -63,3 +63,66 @@ Rien ne peut etre fait sans vous car cela touche des secrets et une instance AI 
    `CONVERSION_EVENT_SECRET` (meme valeur que l'AI Lab), via le tableau de bord Render. Aucun deploiement production.
 3. Reveiller le dashboard AI Lab (plan gratuit) avant le run, ou accepter ~1 min de retards (la file durable les absorbe).
 Ensuite le parcours Playwright "mode contrat" existant, lance avec ce `fp_lid` de test, produit des evenements reels a verifier dans AI Lab.
+
+---
+
+# Addendum — certification réelle sur instance AI Lab de TEST isolée, et mesure des abandons
+
+## 5. Preuves réelles émetteur + récepteur
+
+**Instance** : vrai code du moteur d'acquisition (`flowpoint-acquisition-engine`, commit 7c6c55e) lancé par gunicorn sur un Postgres local jetable,
+nommé `flowpoint_acquisition` (la garde `Unexpected database` du moteur est conservée telle quelle). Aucun service payant, aucune donnée réelle,
+aucun prospect réel, aucune campagne. Reproductible : `tools/certification-conversion/local-ailab.sh <chemin du moteur>`.
+
+**Origine du `fp_lid`** : un prospect synthétique (`example.test`, segment `CLIENTS_FR_BE_SMB`) créé par `Store.upsert`, puis `Store.fp_lid_for` — le
+mécanisme qu'AI Lab utilise pour un vrai prospect (`tools/certification-conversion/mint-synthetic-prospect.py`). Aucun jeton inséré à la main ; le validateur n'est pas contourné.
+Le `fp_lid` n'apparaît jamais en clair (preuves : empreinte SHA-256 sur 8 caractères seulement).
+
+**Script** : `tools/certification-conversion/real-ailab.ts` (vrai émetteur + vraie file durable sur la base SaaS de test, lecture de la base AI Lab pour la preuve côté récepteur).
+Preuve archivée : `docs/proofs/conversion-ailab-isolated-2026-11-14.json`.
+
+| Contrôle | Côté émetteur (SaaS) | Côté récepteur (AI Lab) |
+|---|---|---|
+| 7 étapes visit→paid | 7 lignes `delivered`, `last_status=sent:202`, `fp_lid` effacé à la clôture | 7 lignes `conversion_funnel_events` jointes au prospect du `fp_lid` (via `lead_tokens`), source correcte (saas / stripe) |
+| Rejeu des mêmes `event_id` | 7 × `duplicate` (la file ne renvoie pas) | 7 lignes avant et après |
+| Rejeu direct au récepteur (curl, même `event_id` ; puis autre `event_id`, même étape) | — | `202 {"duplicate":true,"recorded":false}` ×3, toujours 8 lignes : une jalon par prospect et par étape |
+| AI Lab injoignable | `queued` en 8 ms (jamais bloquant), ligne `pending`, `unreachable` | rien reçu |
+| 6 reprises échouées | `pending`, 7 tentatives, **pas `exhausted`** (seuls des 400 répétés épuisent) | — |
+| AI Lab revient | `delivered` | 8 lignes, **0 doublon**, 8 après un nouveau rejeu |
+| Journaux | aucun `fp_lid`, aucun secret | idem (le log AI Lab ne cite que stage/source) |
+
+Réveil Render : l'émetteur coupe à 2 s (10 s pour le worker) ; une requête qui expire réveille quand même le service (~1 min). Après un échec réseau,
+la reprise a lieu à +1 min, +2, +4… (plafond 60 min), et les erreurs réseau/timeout ne comptent jamais pour l'épuisement : la politique est compatible
+avec un réveil d'environ une minute, sans augmenter le timeout ni créer de service.
+
+**Limite restante** : la preuve porte sur l'instance isolée, pas sur `flowpoint-test` → dashboard AI Lab Render déployé (URL non lisible, secret non partagé).
+Voir « Intervention requise » en section 4 : la même commande `real-ailab.ts` s'y applique avec `AI_LAB_CONVERSION_URL`, `CONVERSION_EVENT_SECRET`,
+`CERT_FP_LID` d'un prospect de test réellement créé dans AI Lab, et `AI_LAB_VERIFY_DATABASE_URL` en lecture seule.
+
+## 6. Décisions et corrections sur la mesure
+
+**A. `checkout_completed`** — existe déjà côté SaaS (`setup_intent.succeeded`, `payment_intent.succeeded`, `checkout.session.completed`, sous consentement).
+Décision : **ne pas l'ajouter au contrat AI Lab** (il dupliquerait `trial` : la même confirmation de carte aboutit à l'essai ; AI Lab ne compte qu'une jalon par étape et par prospect,
+et sa liste d'étapes est fermée). Il est **exploité dans le tableau de bord SaaS** : nouvelle étape « Paiements confirmés » (couverture *consented*).
+Conséquence : le taux `checkout_started → checkout_completed` est désormais calculé sur deux populations consentantes (abandon du paiement **mesurable**) ;
+`checkout_completed → trial_activated` reste `mixed_coverage` (pas de taux). L'ancien taux direct `checkout_started → trial_activated`, qui mélangeait deux populations, est supprimé.
+
+**B. Paiements refusés** — constat : le webhook Stripe TEST n'est abonné qu'à `invoice.payment_failed` (renouvellements), pas à `setup_intent.setup_failed` ni
+`payment_intent.payment_failed` ; un refus lors de l'inscription n'atteint donc jamais le serveur. Plutôt que de modifier la configuration Stripe, la page de paiement
+déclare désormais `checkout_payment_failed` quand `confirmSetup/confirmPayment` renvoie une erreur : **l'étape seule** (visiteur anonyme + source), jamais le motif, le code, le message Stripe ni une donnée bancaire ;
+**sous consentement analytique** (sans consentement, rien n'est émis), au plus une fois par visiteur et par jour, sans jamais gêner l'affichage de l'erreur. Étape affichée au tableau de bord (*consented*),
+**non transmise à AI Lab** (ce n'est pas un jalon de progression ; un événement commercial indispensable, lui, reste porté par Stripe : `invoice.payment_failed`).
+Limite explicite : les refus de visiteurs non consentants ne sont pas comptés, le chiffre est un plancher.
+
+Tests : `src/tests/checkout-payment-echec-mesure.test.ts` (corps sans donnée sensible, consentement, non-blocage), mise à jour de `conversion-dashboards-db.test.ts` et `funnel-events-db.test.ts`.
+
+## 7. Indicateurs fiables (et limites)
+
+| Indicateur | Population | Fiable ? |
+|---|---|---|
+| Visites vitrine, tarifs, clic CTA, inscription commencée, inscription validée, checkout ouvert, paiement confirmé | consentants uniquement | Oui, comme **taux entre étapes consentantes** ; jamais comme volume total de visiteurs |
+| Échecs de confirmation de carte | consentants uniquement | Plancher, pas un total |
+| Essais activés, abonnements payants | tous (signé Stripe) | Oui comme volumes ; **pas de taux depuis une étape consentante** (`mixed_coverage`) |
+| Compte créé sans essai | — | Non mesurable en taux (populations différentes) ; volume « inscriptions validées » vs « essais » seulement indicatif |
+| Refus de carte hors consentement, 3DS abandonné | — | Non instrumentés |
+| Départ de la page d'accueil sans action | — | Non instrumenté (aucun événement de sortie) ; se déduit seulement de `landing_vue` − `tarifs_vus` sur les consentants |

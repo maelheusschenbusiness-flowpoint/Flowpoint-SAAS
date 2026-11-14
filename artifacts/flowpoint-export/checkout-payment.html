@@ -570,6 +570,18 @@
       }
       if (result.error) {
         var msg = result.error.message || 'The payment failed. Check your details and try again.';
+        /* Mesure d'abandon : l'etape seule, jamais le motif ni le message Stripe.
+           Sans consentement analytique, fpFunnelAttribution() est vide : rien n'est emis. */
+        try {
+          var failAttr = fpFunnelAttribution();
+          if (failAttr.visiteurId) {
+            window.fetch('/api/public/funnel-event', {
+              method: 'POST', credentials: 'include', keepalive: true,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ etape: 'checkout_payment_failed', visiteurId: failAttr.visiteurId, source: failAttr.source })
+            }).catch(function () {});
+          }
+        } catch (e) { /* une mesure ratee ne doit jamais gener le paiement */ }
         showAlert(msg);
         setLoading(false, submitLabel());
         return;
