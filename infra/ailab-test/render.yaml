@@ -2,6 +2,7 @@
 #
 # ISOLATION
 #  - Base Postgres dediee (plan gratuit, internet ferme : ipAllowList vide), jamais celle d'AI Lab de production.
+#    Le service ne recoit que l'URL interne de CETTE base ; aucune ressource de production n'est referencee.
 #  - Aucun secret de production : mot de passe du tableau de bord et secret des evenements sont des
 #    valeurs propres au TEST, saisies a l'approbation (sync: false), jamais dans ce depot.
 #  - Aucune cle Hunter/Apollo/Smartlead/Snov, OUTREACH_ENABLED absent : rien ne peut etre envoye.
@@ -28,7 +29,7 @@ services:
     buildCommand: pip install -r requirements-dashboard.txt
     # Le schema, le prospect synthetique (mecanisme officiel Store.upsert + fp_lid_for) et l'observateur de
     # persistance sont lances avant Gunicorn ; tous sont idempotents (le service s'endort et redemarre).
-    startCommand: python -m src.dashboard_check --config && python -c "$BOOTSTRAP_PY" && { (python -c "$WATCH_PY" &) ; exec gunicorn src.dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 30; }
+    startCommand: python -m src.dashboard_check --config && export DATABASE_URL="$(python -c "$BOOTSTRAP_DB_PY")" && python -c "$BOOTSTRAP_PY" && { (python -c "$WATCH_PY" &) ; exec gunicorn src.dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 30; }
     healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
@@ -46,6 +47,24 @@ services:
       # Une seule valeur "1" imprime le fp_lid synthetique une fois ; a retirer ensuite.
       - key: CERT_PRINT_FP_LID
         value: "1"
+      # Render suffixe le nom de base d'une ressource creee par Blueprint (flowpoint_acquisition_xxxx) alors que le
+      # moteur refuse toute base qui ne s'appelle pas exactement `flowpoint_acquisition` (garde conservee). On cree donc,
+      # dans CETTE instance de test uniquement, la base portant ce nom, et on y pointe DATABASE_URL.
+      - key: BOOTSTRAP_DB_PY
+        value: |
+          import os, sys
+          import psycopg
+          from psycopg.conninfo import conninfo_to_dict, make_conninfo
+          url = os.environ['DATABASE_URL']
+          try:
+              with psycopg.connect(url, autocommit=True) as c:
+                  if not c.execute("select 1 from pg_database where datname = 'flowpoint_acquisition'").fetchone():
+                      c.execute('create database flowpoint_acquisition')
+          except Exception as e:
+              print('bootstrap_db_error', type(e).__name__, file=sys.stderr, flush=True)
+          d = conninfo_to_dict(url)
+          d['dbname'] = 'flowpoint_acquisition'
+          print(make_conninfo(**d))
       - key: BOOTSTRAP_PY
         value: |
           import os, json, hashlib
