@@ -43,7 +43,17 @@ const DELAI_WORKER_MS = 10_000;
 const PLAFOND_BACKOFF_MIN = 60;
 const LOT = 50;
 /** Les refus que rien ne corrigera : on clot la ligne. */
-const REFUS_DEFINITIFS = new Set([400, 413, 422]);
+const REFUS_DEFINITIFS = new Set([413, 422]);
+/**
+ * Le 400 d'AI Lab est volontairement muet sur son motif (il ne doit pas reveler
+ * si un `fp_lid` existe). Parmi ses motifs, un seul se resorbe de lui-meme :
+ * `unknown_fp_lid`, quand le prospect n'a pas encore ete synchronise cote
+ * acquisition. Les autres (etape, source, forme, horodatage, collision) sont
+ * valides localement ou constants. Un 400 est donc reessaye UNE FOIS CHAQUE
+ * fenetre, sur une duree bornee, puis clos : jamais de rejeu sans fin.
+ */
+const DELAIS_400_MIN = [15, 60, 180, 360];
+const ESSAIS_MAX_400 = DELAIS_400_MIN.length + 1;
 
 let tablePrete = false;
 async function assurerTable(): Promise<void> {
@@ -64,6 +74,9 @@ async function assurerTable(): Promise<void> {
         created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
         closed_at       TIMESTAMPTZ
       )`);
+    // Les 400 se comptent a part : un reveil Render long (echecs reseau) ne doit pas
+    // consommer la fenetre de reprise reservee aux 400 `unknown_fp_lid`.
+    await client.query(`ALTER TABLE conversion_event_outbox ADD COLUMN IF NOT EXISTS rejets_400 INTEGER NOT NULL DEFAULT 0`);
     await client.query(`CREATE INDEX IF NOT EXISTS conversion_event_outbox_due_idx
       ON conversion_event_outbox (next_attempt_at) WHERE status = 'pending'`);
     // Table interne au backend : RLS active, aucun acces des roles d'API.
@@ -90,6 +103,7 @@ interface Ligne {
   fp_lid: string | null;
   occurred_at: Date | string;
   attempts: number;
+  rejets_400?: number;
 }
 
 function enJalon(l: Ligne): ConversionEvent | null {
@@ -122,6 +136,26 @@ async function livrer(l: Ligne, timeoutMs?: number): Promise<{ outcome: EmitOutc
       WHERE event_id = $1`, [l.event_id, clos, `${outcome}${status ? `:${status}` : ""}`]);
     return { outcome, clos: true };
   }
+  if (outcome === "rejected" && status === 400) {
+    const rejets = (l.rejets_400 ?? 0) + 1;
+    const essais = l.attempts + 1;
+    if (rejets >= ESSAIS_MAX_400) {
+      await pool.query(`UPDATE conversion_event_outbox
+        SET status = 'rejected', last_status = $2, attempts = $3, rejets_400 = $4,
+            closed_at = now(), fp_lid = NULL
+        WHERE event_id = $1`, [l.event_id, "rejected:400:exhausted", essais, rejets]);
+      // Journal structure : l'etape, la source et le nombre d'essais — ni
+      // `fp_lid`, ni identifiant, ni charge utile.
+      logger.warn({ event: "conversion_event_abandoned", stage: l.stage, source: l.source, attempts: essais },
+        "[AI Lab] conversion milestone abandoned after repeated 400 (non-recoverable)");
+      return { outcome, clos: true };
+    }
+    await pool.query(`UPDATE conversion_event_outbox
+      SET attempts = $3, rejets_400 = $4, last_status = 'rejected:400',
+          next_attempt_at = now() + ($2 || ' minutes')::interval
+      WHERE event_id = $1`, [l.event_id, String(DELAIS_400_MIN[Math.min(rejets - 1, DELAIS_400_MIN.length - 1)]), essais, rejets]);
+    return { outcome, clos: false };
+  }
   const backoff = Math.min(PLAFOND_BACKOFF_MIN, 2 ** Math.min(l.attempts, 6));
   await pool.query(`UPDATE conversion_event_outbox
     SET attempts = attempts + 1, last_status = $2,
@@ -147,7 +181,7 @@ export async function queueConversionEvent(event: ConversionEvent): Promise<Queu
       `INSERT INTO conversion_event_outbox (event_id, stage, source, fp_lid, occurred_at)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (event_id) DO NOTHING
-       RETURNING event_id, stage, source, fp_lid, occurred_at, attempts, status`,
+       RETURNING event_id, stage, source, fp_lid, occurred_at, attempts, rejets_400, status`,
       [event.eventId, event.stage, event.source, event.fpLid, event.occurredAt]);
     ligne = r.rows[0];
     if (!ligne) return "duplicate";
@@ -220,7 +254,7 @@ export async function processConversionOutboxOnce(limit = LOT): Promise<number> 
         SELECT event_id FROM conversion_event_outbox
          WHERE status = 'pending' AND next_attempt_at <= now()
          ORDER BY next_attempt_at LIMIT $1 FOR UPDATE SKIP LOCKED)
-      RETURNING event_id, stage, source, fp_lid, occurred_at, attempts`, [limit]);
+      RETURNING event_id, stage, source, fp_lid, occurred_at, attempts, rejets_400`, [limit]);
   let livres = 0;
   for (const l of dues.rows) {
     const { outcome } = await livrer(l, DELAI_WORKER_MS);

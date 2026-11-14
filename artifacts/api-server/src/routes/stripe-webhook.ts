@@ -15,7 +15,7 @@ import { normalizeFpLid } from "../lib/fp-lid.js";
 import { type ConversionStage } from "../lib/conversion-events.js";
 import { queueConversionEvent } from "../lib/conversion-outbox.js";
 import { growthFactsFor } from "../lib/growth-facts.js";
-import { enregistrerEtape, lireAttributionFunnel } from "../services/funnel-events.js";
+import { enregistrerEtape, enregistrerEtapeTransactionnelle, lireAttributionFunnel } from "../services/funnel-events.js";
 
 // ── P0-1: persistSubscriptionMeta requires explicit orgId — never defaults to "default"
 // If orgId cannot be resolved, the caller must NOT invoke this function.
@@ -1873,24 +1873,18 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const status = String(obj["status"] || "active");
       const subscriptionMeta = (obj["metadata"] as Record<string, string>) ?? {};
       const subscriptionAttribution = lireAttributionFunnel(subscriptionMeta);
-      if (subscriptionAttribution && orgId) {
+      {
         const previousStatus = (
           event as unknown as {
             data?: { previous_attributes?: Record<string, unknown> };
           }
         ).data?.previous_attributes?.["status"];
-        if (
-          status === "active" &&
-          previousStatus === "trialing"
-        ) {
-          void enregistrerEtape({
-            etape: "trial_expired",
-            visiteurId: subscriptionAttribution.visiteurId,
-            source: subscriptionAttribution.source,
-            campagne: subscriptionAttribution.campagne,
-            plan: newPlan,
-            orgId,
-            cleIdempotence: `trial_expired:${String(obj["id"] ?? "")}`,
+        const subId = String(obj["id"] ?? "");
+        // Comptage transactionnel : avec ou sans consentement (voir enregistrerEtapeTransactionnelle).
+        if (subId && status === "active" && previousStatus === "trialing") {
+          void enregistrerEtapeTransactionnelle({
+            etape: "trial_expired", livemode: event.livemode, attribution: subscriptionAttribution,
+            plan: newPlan, orgId, cleIdempotence: `trial_expired:${subId}`,
           });
         }
         const step =
@@ -1901,15 +1895,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
                   (typeof previousStatus === "string" && previousStatus !== "active"))
               ? "subscription_activated"
               : null;
-        if (step) {
-          void enregistrerEtape({
-            etape: step,
-            visiteurId: subscriptionAttribution.visiteurId,
-            source: subscriptionAttribution.source,
-            campagne: subscriptionAttribution.campagne,
-            plan: newPlan,
-            orgId,
-            cleIdempotence: `${step}:${String(obj["id"] ?? "")}`,
+        if (step && subId) {
+          void enregistrerEtapeTransactionnelle({
+            etape: step, livemode: event.livemode, attribution: subscriptionAttribution,
+            plan: newPlan, orgId, cleIdempotence: `${step}:${subId}`,
           });
         }
       }
@@ -2192,6 +2181,13 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           "[Webhook] invoice.payment_succeeded: €0 invoice — subscription status left to customer.subscription.* events");
       }
       store.broadcast({ type: "payment_succeeded" }, orgId);
+      // Comptage transactionnel : un vrai paiement (montant > 0), une fois par facture.
+      if (_invAmountPaid > 0 && typeof obj["id"] === "string") {
+        void enregistrerEtapeTransactionnelle({
+          etape: "payment_succeeded", livemode: event.livemode, orgId,
+          cleIdempotence: `payment_succeeded:${obj["id"]}`,
+        });
+      }
 
       // Persist active add-ons from subscription (if subscription is in the event).
       // Invoice events are additive-only (no deactivation reconciliation here).
@@ -2428,6 +2424,14 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       if (!orgId) {
         logger.error("[Webhook] invoice.payment_failed: orgId unresolved — status NOT persisted, email NOT sent");
         break;
+      }
+
+      // Comptage transactionnel : une ligne par tentative echouee de la facture.
+      if (typeof obj["id"] === "string") {
+        void enregistrerEtapeTransactionnelle({
+          etape: "payment_failed", livemode: event.livemode, orgId,
+          cleIdempotence: `payment_failed:${obj["id"]}:${attemptCount}`,
+        });
       }
 
       // P0-1 + P0-3: persist to DB, no store.me mutation

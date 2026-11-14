@@ -29,6 +29,8 @@ export default defineConfig({
       // Conversion A — funnel fixes
       "src/lib/carry-params.test.ts",
       "src/services/funnel-events.test.ts",
+      "src/services/funnel-transactionnel-db.test.ts",
+      "src/tests/checkout-payment-echec-mesure.test.ts",
       // Attribution fine Instagram (UTM) : route, webhook, agregats admin.
       "src/routes/attribution-utm-db.test.ts",
       // Migration 020 au demarrage + reponses d echec distinctes (HTTP 500 du 29/10).
