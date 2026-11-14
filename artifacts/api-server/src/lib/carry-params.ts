@@ -17,11 +17,34 @@
 
 /** Parameters that identify where a prospect came from, and what they chose. */
 // `fp_lid` (Conversion B) is the opaque 22-character lead id from an outreach email.
-export const CARRIED_PARAMS = ["fp_ref", "ref", "plan", "fp_lid"] as const;
+export const CARRIED_PARAMS = [
+  "fp_ref",
+  "ref",
+  "plan",
+  "fp_lid",
+  "fp_vid",
+  "fp_source",
+  "fp_src",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+] as const;
 
 /** Values stay short and opaque: anything longer is not one of ours. */
 const MAX_VALUE_LENGTH = 128;
 const SAFE_VALUE = /^[A-Za-z0-9._~-]+$/;
+const SAFE_UTM_VALUE = /^[A-Za-z0-9._-]{1,64}$/;
+const VALID_PLANS = new Set(["standard", "pro", "ultra"]);
+const VALID_SOURCES = new Set([
+  "smartlead",
+  "google",
+  "direct",
+  "social",
+  "other_campaign",
+]);
+const VALID_FP_LID = /^[A-Za-z0-9_-]{22}$/;
+const VALID_VISITOR_ID =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
 
 export function isCarryableValue(value: unknown): value is string {
   return typeof value === "string"
@@ -41,9 +64,28 @@ export function carriedParams(query: QueryLike): Record<string, string> {
   if (!query) return out;
   for (const name of CARRIED_PARAMS) {
     const value = query[name];
-    if (isCarryableValue(value)) out[name] = value;
+    if (!isValidCarriedParam(name, value)) continue;
+    out[name] = name === "plan" ? value.toLowerCase() : value;
   }
   return out;
+}
+
+function isValidCarriedParam(
+  name: (typeof CARRIED_PARAMS)[number],
+  value: unknown,
+): value is string {
+  if (name === "fp_lid") return typeof value === "string" && VALID_FP_LID.test(value);
+  if (name === "fp_vid") return typeof value === "string" && VALID_VISITOR_ID.test(value);
+  if (name === "fp_source" || name === "fp_src") {
+    return typeof value === "string" && VALID_SOURCES.has(value);
+  }
+  if (name === "plan") {
+    return typeof value === "string" && VALID_PLANS.has(value.toLowerCase());
+  }
+  if (name === "utm_source" || name === "utm_medium" || name === "utm_campaign") {
+    return typeof value === "string" && SAFE_UTM_VALUE.test(value);
+  }
+  return isCarryableValue(value);
 }
 
 /**
