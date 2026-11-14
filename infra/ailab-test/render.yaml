@@ -1,0 +1,83 @@
+# AI Lab TEST — instance isolee et gratuite, pour certifier SaaS TEST -> AI Lab.
+#
+# ISOLATION
+#  - Base Postgres dediee (plan gratuit, internet ferme : ipAllowList vide), jamais celle d'AI Lab de production.
+#  - Aucun secret de production : mot de passe du tableau de bord et secret des evenements sont des
+#    valeurs propres au TEST, saisies a l'approbation (sync: false), jamais dans ce depot.
+#  - Aucune cle Hunter/Apollo/Smartlead/Snov, OUTREACH_ENABLED absent : rien ne peut etre envoye.
+#  - Aucun cron : seul le recepteur HTTP tourne. Le code est celui du moteur (validateur, authentification
+#    par secret, garde de nom de base), sans aucune desactivation.
+# COUT : 0 (web service gratuit + Postgres gratuit, expire apres 30 jours).
+databases:
+  - name: flowpoint-ailab-test-pg
+    databaseName: flowpoint_acquisition   # le moteur refuse toute autre base (garde conservee)
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: []
+
+services:
+  - type: web
+    name: flowpoint-ailab-test
+    runtime: python
+    region: frankfurt
+    plan: free
+    repo: https://github.com/maelheusschenbusiness-flowpoint/flowpoint-acquisition-engine
+    branch: main
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements-dashboard.txt
+    # Le schema, le prospect synthetique (mecanisme officiel Store.upsert + fp_lid_for) et l'observateur de
+    # persistance sont lances avant Gunicorn ; tous sont idempotents (le service s'endort et redemarre).
+    startCommand: python -m src.dashboard_check --config && python -c "$BOOTSTRAP_PY" && { (python -c "$WATCH_PY" &) ; exec gunicorn src.dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 30; }
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.11"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: flowpoint-ailab-test-pg
+          property: connectionString
+      - key: DASHBOARD_ADMIN_PASSWORD
+        sync: false
+      - key: CONVERSION_EVENT_SECRET
+        sync: false
+      # Une seule valeur "1" imprime le fp_lid synthetique une fois ; a retirer ensuite.
+      - key: CERT_PRINT_FP_LID
+        value: "1"
+      - key: BOOTSTRAP_PY
+        value: |
+          import os, json, hashlib
+          from src.store import Store
+          s = Store(os.environ['DATABASE_URL']); s.init()
+          row = s.db.execute("select lt.fp_lid from lead_tokens lt join segments sg on sg.prospect_id = lt.prospect_id where sg.segment = 'CLIENTS_FR_BE_SMB' and lt.prospect_id in (select prospect_id from observations where source = 'certification') limit 1").fetchone()
+          if row:
+              lid = row['fp_lid']
+          else:
+              p = {'source': 'certification', 'source_id': 'ailab-test-synthetic-0001', 'segment': 'CLIENTS_FR_BE_SMB',
+                   'email': 'ailab-test-synthetic@example.test', 'company': 'FP-CERT Synthetic', 'domain': 'example.test', 'country': 'FR'}
+              with s.db.transaction():
+                  s.lock(); s.upsert(p)
+              pid = s.db.execute("select prospect_id from observations where source = 'certification' limit 1").fetchone()['prospect_id']
+              lid = s.fp_lid_for(pid)
+          out = {'event': 'ailab_test_bootstrap', 'fp_lid_sha256_prefix': hashlib.sha256(lid.encode()).hexdigest()[:8]}
+          if os.environ.get('CERT_PRINT_FP_LID') == '1':
+              out['fp_lid'] = lid
+          print(json.dumps(out), flush=True)
+      - key: WATCH_PY
+        value: |
+          import os, time, json
+          import psycopg
+          last = None
+          while True:
+              try:
+                  with psycopg.connect(os.environ['DATABASE_URL'], autocommit=True) as c:
+                      rows = c.execute("select e.stage, e.source, left(encode(sha256(convert_to(e.event_id, 'UTF8')), 'hex'), 8), left(encode(sha256(convert_to(lt.fp_lid, 'UTF8')), 'hex'), 8), e.occurred_at from conversion_funnel_events e join lead_tokens lt on lt.prospect_id = e.prospect_id order by e.occurred_at, e.stage").fetchall()
+                  snap = [[r[0], r[1], r[2], r[3], r[4].isoformat()] for r in rows]
+                  if snap != last:
+                      print(json.dumps({'event': 'ailab_test_persisted', 'count': len(snap), 'rows': snap}), flush=True)
+                      last = snap
+              except Exception as e:
+                  print(json.dumps({'event': 'ailab_test_watch_error', 'err': type(e).__name__}), flush=True)
+              time.sleep(15)
