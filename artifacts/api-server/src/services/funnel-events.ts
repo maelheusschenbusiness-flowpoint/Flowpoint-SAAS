@@ -14,6 +14,8 @@ export const ETAPES_TUNNEL = [
   "trial_activated",
   "trial_expired",
   "subscription_activated",
+  "payment_succeeded",
+  "payment_failed",
 ] as const;
 
 export const ETAPES_PUBLIQUES = new Set<string>([
@@ -332,6 +334,73 @@ export interface LigneAttribution {
  * Comptes par jour UTC x etape x source x campagne. Ne selectionne aucun
  * identifiant : ni visiteur_id, ni org_ref, ni cle d'idempotence.
  */
+/**
+ * COMPTAGE TRANSACTIONNEL — statistiques operationnelles, hors consentement.
+ *
+ * Un essai, un abonnement ou un paiement est un fait de facturation : il est compte pour tout evenement Stripe
+ * signe, que le visiteur ait accepte ou refuse les cookies analytiques. La frontiere avec le suivi marketing :
+ *   - avec consentement : la ligne garde son attribution (visiteur, source, campagne, organisation) ;
+ *   - sans consentement : la ligne ne porte NI visiteur, NI source, NI campagne, NI organisation — seulement
+ *     l'etape, le plan et une cle d'idempotence (identifiant Stripe, jamais une donnee personnelle).
+ * Les lignes sans consentement ne sont ecrites que pour un evenement LIVE et un compte non synthetique : les
+ * certifications et les comptes de test ne deviennent jamais une conversion reelle.
+ * Le doublon est impossible : la cle d'idempotence est l'identifiant Stripe de l'objet (abonnement, facture), pas celui
+ * de l'evenement, donc un rejeu ou un second evenement pour le meme objet n'ajoute aucune ligne.
+ */
+const EMAIL_SYNTHETIQUE_RE =
+  /@(flowpoint[.-]test(\.[a-z]+)?|example\.(test|com|org|net)|[a-z0-9.-]+\.(test|invalid|internal|example))$/i;
+const PREFIXE_SYNTHETIQUE_RE = /^(fp-cert|cert|test)[-_.]/i;
+
+export function emailEstSynthetique(email: unknown): boolean {
+  if (typeof email !== "string") return false;
+  const e = email.trim();
+  return EMAIL_SYNTHETIQUE_RE.test(e) || PREFIXE_SYNTHETIQUE_RE.test(e);
+}
+
+/** Vrai si l'organisation est un compte de certification ou de test. En cas de doute (lecture impossible) : faux. */
+export async function estCompteSynthetique(orgId: string | null | undefined): Promise<boolean> {
+  if (!orgId) return false;
+  try {
+    const r = await pool.query<{ owner_email: string | null; name: string | null }>(
+      `SELECT owner_email, name FROM organizations WHERE id::text = $1 LIMIT 1`, [orgId]);
+    const row = r.rows[0];
+    if (!row) return false;
+    return emailEstSynthetique(row.owner_email) || /^(fp-cert|cert\b|test\b)/i.test(String(row.name ?? ""));
+  } catch (err) {
+    logger.warn({ err: (err as Error)?.name }, "[Tunnel] synthetic account check unavailable — event counted");
+    return false;
+  }
+}
+
+export interface EvenementTransactionnel {
+  etape: "trial_activated" | "trial_expired" | "subscription_activated" | "payment_succeeded" | "payment_failed";
+  /** `event.livemode` de Stripe. Seul `true` est compte sans consentement. */
+  livemode: boolean | undefined;
+  /** Attribution marketing, uniquement si le visiteur a consenti. */
+  attribution?: AttributionFunnel | null;
+  orgId?: string | null;
+  plan?: string | null;
+  /** Identifiant Stripe de l'objet (abonnement ou facture), prefixe par l'etape. */
+  cleIdempotence: string;
+}
+
+/** Ne leve jamais. Rend `true` si une ligne a ete ecrite. */
+export async function enregistrerEtapeTransactionnelle(ev: EvenementTransactionnel): Promise<boolean> {
+  const a = ev.attribution ?? null;
+  if (a && ev.orgId) {
+    // Parcours consenti : inchange (attribution complete).
+    return enregistrerEtape({
+      etape: ev.etape, visiteurId: a.visiteurId, source: a.source, campagne: a.campagne,
+      plan: ev.plan, orgId: ev.orgId, cleIdempotence: ev.cleIdempotence,
+    });
+  }
+  if (ev.livemode !== true) return false;
+  if (await estCompteSynthetique(ev.orgId)) return false;
+  return enregistrerEtape({
+    etape: ev.etape, visiteurId: null, source: null, plan: ev.plan, orgId: null, cleIdempotence: ev.cleIdempotence,
+  });
+}
+
 export async function agregerAttribution(du: string, au: string): Promise<LigneAttribution[]> {
   const r = await pool.query<LigneAttribution>(
     `SELECT to_char((created_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS jour,
