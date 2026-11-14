@@ -49,4 +49,14 @@ describe("adresses d'essai par adressage +", () => {
     expect(re.test("moi+client-reel@exemple.fr")).toBe(false);
   });
   it("refuse une base qui contient deja un +", () => { expect(() => emailDeTest("moi+x@exemple.fr", "a", "b")).toThrow(CleRefusee); });
+
+  it("mode contrat : seuls les garde-fous de securite sont exiges (aucune cle secrete, aucun e-mail)", () => {
+    const base = { CERT_STRIPE_REEL: "1", CERT_STRIPE_BASE_URL: "https://flowpoint-test.onrender.com" };
+    const c = resoudreConfigStripeReel(base);
+    expect(c.pretContrat).toBe(true);
+    expect(c.pret).toBe(false);                 // la suite complete exige toujours cle, e-mail et webhook
+    expect(resoudreConfigStripeReel({ ...base, CERT_STRIPE_REEL: "" }).pretContrat).toBe(false);
+    expect(resoudreConfigStripeReel({ ...base, CERT_STRIPE_BASE_URL: "https://app.flowpoint.pro" }).pretContrat).toBe(false);
+    expect(resoudreConfigStripeReel({ ...base, STRIPE_SECRET_KEY: "sk_live_abc" }).pretContrat).toBe(false);
+  });
 });
