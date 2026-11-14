@@ -254,6 +254,13 @@ describe("6 — aucun secret ni fp_lid dans les journaux", () => {
     sansFuite(debugs);
   });
 
+  it("le fp_lid synthetique des certifications n est jamais poste", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    expect(await emitConversionEvent({ ...event(), fpLid: "AbCdEfGhIjKlMnOpQr_-12" })).toBe("invalid-input");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("un fp_lid malforme n est jamais poste", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
