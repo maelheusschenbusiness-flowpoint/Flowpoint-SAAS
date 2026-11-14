@@ -172,3 +172,21 @@ Ces chiffres proviennent des **certifications Stripe TEST**, pas de clients : au
 ## 13. Ce qui reste, et pourquoi je m'arrête là
 
 La suite exige d'écrire un prospect dans la base AI Lab, qui est la production : accès réseau limité au VPS, et aucune instance de test pour isoler. Le validateur n'accepte d'ailleurs que `CLIENTS_FR_BE_SMB` et `SELLERS_FR_BE`, des segments réels. Détails des options dans le rapport final.
+
+---
+
+# Phase 5 (suite) — certification réelle SaaS TEST → AI Lab TEST déployé
+
+Preuves anonymisées : `docs/proofs/conversion-ailab-deployed-test-2026-11-14.json`. Scénario : `tests/browser/certification-stripe/13-ailab-test.stripe.ts`.
+
+**Ressources de test (coût supplémentaire : 0 €).** Blueprint `infra/ailab-test/render.yaml` : un service web gratuit (`flowpoint-ailab-test`, Frankfurt) et un Postgres gratuit dédié (30 jours, accès externe fermé). Le service n'a aucun secret de production, aucune clé commerciale, aucun cron. `flowpoint-test` pointe désormais exclusivement vers lui (les logs d'AI Lab de production ne montrent aucun événement de conversion depuis le changement). Render suffixe le nom de base ; le moteur exige `flowpoint_acquisition` : le démarrage crée cette base dans l'instance de test **sans toucher à la garde du moteur** (échec initial `unexpected_database`, corrigé par l'ordre de démarrage).
+
+**Origine du `fp_lid`.** Prospect `example.test` créé par `Store.upsert` + `fp_lid_for` au démarrage du service de test (empreinte `30c66d1d`).
+
+**Sept jalons.** Parcours réel sur `flowpoint-test` (Playwright, Stripe TEST, visiteur `fp-test-…`) : `signup_page`, `signup_started`, `signup`, `checkout`, `trial` livrés `202` du premier coup. `visit` : endpoint public `funnel-event` (`landing_vue`, consentement déclaré). `paid` : **émission directe** avec le même code d'émission (l'étape n'existe qu'à la fin de l'essai de 14 jours) ; c'est la seule étape non issue d'un parcours complet. Persistance : AI Lab TEST contient 7 lignes rattachées au prospect `30c66d1d`, empreintes d'événements identiques côté SaaS (`c60e9855`, `892d1de4`, `c717e867`, `76c5d73a`, `8f638ed3`).
+
+**Déduplication.** Rejeu du `paid` : `duplicate:202` ; rejeu du `visit` le même jour : `204`, aucun nouvel événement ; consentement refusé : `204`, aucun événement ; après la reprise, 5 réémissions : `duplicate:202`, toujours 7 lignes.
+
+**Panne et reprise.** URL d'AI Lab rendue injoignable (`.invalid`) sur `flowpoint-test` : un parcours complet d'inscription aboutit (essai Stripe TEST créé) ; 5 événements restent `pending` (`unreachable`, `fp_lid` conservé), tentatives croissantes, 0 `exhausted`. AI Lab de nouveau joignable : les 5 sont livrés (le service gratuit s'était rendormi : première série de timeouts, puis succès, comportement attendu). Après un redéploiement d'AI Lab TEST : même prospect, 7 lignes. Remarque : le délai de reprise double (1, 2, 4, 8, 16, 32 min) ; un réveil Render d'environ 1 min coûte une tentative et une reprise à +1 min, sans épuisement (seuls les 400 épuisent).
+
+**Tableaux de bord.** Les données de certification (visiteurs `fp-test-…`) sont exclues de la vue commerciale : 2 visiteurs de test en base, 0 événement côté vue commerciale. Rien de ce qui a été reçu par AI Lab TEST n'est une conversion réelle.
