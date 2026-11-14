@@ -71,20 +71,31 @@ export async function preparerContexte(context: BrowserContext, plan = "pro", co
   if (consentement) await context.addCookies([{ name: "fp_analytics_consent", value: "accepted", url: cfg.baseUrl }]);
 }
 
+/**
+ * Formulaire d'inscription DEPLOYE : prenom, nom, e-mail (les champs societe / adresse ont ete retires).
+ * Les champs optionnels d'anciennes versions ne sont remplis que s'ils existent : la suite suit le formulaire reel
+ * au lieu de casser a chaque changement.
+ */
+export async function remplirFormulaireInscription(page: Page, email: string): Promise<void> {
+  await page.locator("#firstName").fill(FORM.firstName);
+  await page.locator("#lastName").fill(FORM.lastName);
+  await page.locator("#email").fill(email);
+  const optionnels: Array<[string, string]> = [["#companyName", FORM.companyName], ["#address", FORM.address], ["#city", FORM.city], ["#postalCode", FORM.postalCode]];
+  for (const [sel, valeur] of optionnels) {
+    const champ = page.locator(sel);
+    if (await champ.count() && await champ.first().isVisible().catch(() => false)) await champ.first().fill(valeur);
+  }
+  const pays = page.locator("#country");
+  if (await pays.count() && await pays.first().isVisible().catch(() => false)) await pays.first().selectOption(FORM.country);
+}
+
 export async function inscriptionJusquAuPaiement(
   page: Page,
   email: string,
   cleanup: StripeResourceCleanup,
 ): Promise<void> {
   await page.goto("/signin.html");
-  await page.locator("#firstName").fill(FORM.firstName);
-  await page.locator("#lastName").fill(FORM.lastName);
-  await page.locator("#email").fill(email);
-  await page.locator("#companyName").fill(FORM.companyName);
-  await page.locator("#country").selectOption(FORM.country);
-  await page.locator("#address").fill(FORM.address);
-  await page.locator("#city").fill(FORM.city);
-  await page.locator("#postalCode").fill(FORM.postalCode);
+  await remplirFormulaireInscription(page, email);
   await page.locator("#signup-btn").click();
   await page.waitForURL(/\/checkout\.html/, { timeout: 30_000 });
   await expect(page.locator("#fp-pay-btn")).toBeEnabled({ timeout: 30_000 });
@@ -244,16 +255,24 @@ export async function saisirCarte(page: Page, numero: string): Promise<void> {
   // Onglet « Carte » si la presentation en onglets est active.
   const onglet = f.getByRole("tab", { name: /carte|card/i }).first();
   if (await onglet.isVisible({ timeout: 3000 }).catch(() => false)) await onglet.click();
+  else {
+    // Stripe classe les moyens de paiement par pays : « Card » peut etre relegue dans la liste « Additional Payment Methods ».
+    const liste = f.getByRole("combobox", { name: /additional payment methods|autres moyens/i }).first();
+    if (await liste.isVisible({ timeout: 1500 }).catch(() => false)) await liste.selectOption({ label: "Card" }).catch(() => liste.selectOption({ label: "Carte" })).catch(() => undefined);
+  }
   // Stripe Link peut afficher un champ téléphone et intercepter la confirmation;
   // ces scénarios certifient le parcours carte/3DS, pas l'inscription à Link.
-  const enregistrerAvecLink = f.getByRole("checkbox", {
-    name: /enregistrer mes informations|save my information/i,
-  }).first();
-  if (
-    await enregistrerAvecLink.isVisible({ timeout: 1500 }).catch(() => false) &&
-    await enregistrerAvecLink.isChecked().catch(() => false)
-  ) {
-    await enregistrerAvecLink.uncheck();
+  // Stripe Link : la case « Enregistrer mes informations » peut etre cochee par defaut et exige alors un telephone
+  // (« Your phone number is incomplete ») ; ces scenarios certifient la carte / le 3DS, pas Link. On la decoche de facon verifiee.
+  const enregistrerAvecLink = f.getByRole("checkbox", { name: /enregistrer mes informations|save my information/i }).first();
+  for (let essai = 0; essai < 4; essai++) {
+    if (!(await enregistrerAvecLink.isVisible({ timeout: 1500 }).catch(() => false))) break;
+    if (!(await enregistrerAvecLink.isChecked().catch(() => false))) break;
+    await f.locator("label[for='payment-linkOptInInput']").click({ timeout: 3_000 }).catch(() => undefined);
+    if (await enregistrerAvecLink.isChecked().catch(() => false)) {
+      await enregistrerAvecLink.evaluate((el) => (el as HTMLInputElement).click()).catch(() => undefined);
+    }
+    await page.waitForTimeout(400);
   }
   await f.locator('input[name="number"]').fill(numero);
   await f.locator('input[name="expiry"]').fill("12 / 34");

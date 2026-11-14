@@ -17,6 +17,13 @@ export interface ConfigStripeReel {
   mode: "L" | "R";
   /** Base de l'adresse d'essai, ex. proprietaire@gmail.com -> proprietaire+fp-cert-<run>-<etiquette>@gmail.com */
   emailBase: string;
+  /**
+   * Mode « contrat » : prerequis MINIMAUX (demande explicite + cible autorisee + aucune cle LIVE). Il permet d'executer le parcours
+   * navigateur reel et de n'asserter que sur les reponses API de l'application, sans cle secrete ni base. Les preuves cote Stripe /
+   * base (suite complete) exigent `pret`.
+   */
+  pretContrat: boolean;
+  raisonsContrat: string[];
   /** Dossier des e-mails captures (Mode L) ; vide en Mode R. */
   dossierMails: string;
 }
@@ -67,5 +74,11 @@ export function resoudreConfigStripeReel(env: Env = process.env): ConfigStripeRe
     try { assertSecretWebhookTest(env["STRIPE_TEST_WEBHOOK_SECRET"], env); } catch (e) { raisons.push((e as Error).message); }
     if (!env["TEST_MAIL_DIR"] || env["ENABLE_TEST_MAILER"] !== "true") raisons.push("TEST_MAIL_DIR et ENABLE_TEST_MAILER=true requis en Mode L (e-mails captures, jamais envoyes).");
   }
-  return { pret: raisons.length === 0, raisons, baseUrl, mode, emailBase, dossierMails: env["TEST_MAIL_DIR"] ?? "" };
+  // Mode contrat : seulement les garde-fous de securite (jamais de prerequis secret).
+  const raisonsContrat: string[] = [];
+  if (env["CERT_STRIPE_REEL"] !== "1") raisonsContrat.push("CERT_STRIPE_REEL=1 n'est pas defini.");
+  if (!baseUrl) raisonsContrat.push("CERT_STRIPE_BASE_URL absente.");
+  else { try { verifierBaseUrl(baseUrl); } catch (e) { raisonsContrat.push((e as Error).message); } }
+  try { assertEnvironnementSansCleLive(env); } catch (e) { raisonsContrat.push((e as Error).message); }
+  return { pret: raisons.length === 0, raisons, pretContrat: raisonsContrat.length === 0, raisonsContrat, baseUrl, mode, emailBase, dossierMails: env["TEST_MAIL_DIR"] ?? "" };
 }

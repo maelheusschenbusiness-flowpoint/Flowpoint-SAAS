@@ -1495,10 +1495,12 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
       /* SetupIntent — collect card for trial subscription, 0€ today */
       const si = await stripe.setupIntents.create({
         ...(preRegCustomerId ? { customer: preRegCustomerId } : {}),
-        /* allow_redirects:'never' keeps only non-redirect methods (card, SEPA);
-           removes Stripe Link and redirect-based wallets (Bancontact, PayPal, Klarna)
-           which cannot be saved for future off_session charges anyway */
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        /* CARTE UNIQUEMENT : l'essai de 14 jours est annonce « carte bancaire obligatoire » (FAQ, page tarifs, devis).
+           `automatic_payment_methods` proposait en plus tout ce qui est active sur le compte (BLIK, Revolut Pay, SEPA,
+           Link...) : observe sur flowpoint-test, le Payment Element ouvrait sur BLIK avec « Card » relegue dans une
+           liste deroulante, et la case Link imposait un telephone — friction de conversion et moyen de paiement non carte
+           pour un essai facture automatiquement a J+14. */
+        payment_method_types: ["card"],
         usage: "off_session",
         metadata,
       }, {
