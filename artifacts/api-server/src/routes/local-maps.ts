@@ -1,6 +1,7 @@
 import { stableId } from "../lib/stable-id.js";
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+import { queryInt } from "../lib/query-params.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import {
   createHeatmap, getHeatmaps, getHeatmapDetail,
@@ -100,7 +101,7 @@ router.get("/local-maps/competitors", async (req, res) => {
     if (min_authority) { params.push(parseInt(min_authority, 10)); q += ` AND authority_score>=$${params.length}`; }
     if (in_pack === 'true') { q += ` AND is_local_pack=true`; }
     q += ` ORDER BY authority_score DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(lim, 10));
+    params.push(queryInt(lim, { defaut: 20, min: 1, max: 200, horsBornes: "borner" }));
     const r = await client.query(q, params);
     res.json({ competitors: r.rows, count: r.rows.length });
   } finally { client.release(); }

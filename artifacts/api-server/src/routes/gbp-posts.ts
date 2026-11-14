@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+import { queryInt } from "../lib/query-params.js";
 import {
   createPost, generateAiPost, publishPost, getPostsDashboard, deletePost, getScheduledPosts,
 } from "../services/gbp-posting-service.js";
@@ -35,7 +36,7 @@ router.get("/gbp-posts/list", async (req, res) => {
     if (status)      { params.push(status);      q += ` AND status=$${params.length}`; }
     if (location_id) { params.push(location_id); q += ` AND location_id=$${params.length}`; }
     q += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(lim, 10));
+    params.push(queryInt(lim, { defaut: 50, min: 1, max: 200, horsBornes: "borner" }));
     const r = await db(req)(q, params);
     res.json({ posts: r.rows, count: r.rows.length });
   } catch { res.json({ posts: [], count: 0 }); }

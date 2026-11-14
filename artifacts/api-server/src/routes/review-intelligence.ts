@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+import { queryInt } from "../lib/query-params.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import { pool } from "@workspace/db";
 import {
@@ -41,7 +42,7 @@ router.get("/review-intelligence/reviews", async (req, res) => {
     if (rating)      { params.push(parseInt(rating, 10));     q += ` AND rating=$${params.length}`; }
     if (location_id) { params.push(location_id);              q += ` AND location_id=$${params.length}`; }
     q += ` ORDER BY reviewed_at DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(lim, 10));
+    params.push(queryInt(lim, { defaut: 30, min: 1, max: 200, horsBornes: "borner" }));
     const r = await db(req)(q, params);
     res.json({ reviews: r.rows, count: r.rows.length });
   } catch { res.json({ reviews: [], count: 0 }); }
@@ -117,7 +118,7 @@ router.get("/review-intelligence/alerts", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT * FROM review_alerts WHERE org_id=$1 AND resolved=$2 ORDER BY created_at DESC LIMIT $3`,
-      [org(req), resolved === "true", parseInt(lim, 10)]
+      [org(req), resolved === "true", queryInt(lim, { defaut: 20, min: 1, max: 200, horsBornes: "borner" })]
     );
     res.json({ alerts: r.rows, count: r.rows.length });
   } catch { res.json({ alerts: [], count: 0 }); }
