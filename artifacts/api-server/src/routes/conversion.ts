@@ -29,6 +29,7 @@ import {
   getConversionGeo,
 } from "../services/conversion-service.js";
 import { logger } from "../lib/logger.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 
@@ -41,8 +42,7 @@ function getOrgId(req: Request): string {
 }
 
 function parseDays(req: Request, def = 30): number {
-  const d = parseInt((req.query["days"] as string) || "");
-  return Number.isFinite(d) && d >= 1 && d <= 365 ? d : def;
+  return queryInt(req.query["days"], { defaut: def, min: 1, max: 365, horsBornes: "defaut" });
 }
 
 function dateBounds(days: number): { startDate: string; endDate: string } {
