@@ -143,6 +143,10 @@
     }).catch(() => {});
   }
 
+  // Etape declaree par une page (refus de carte). Le consentement et l'identifiant visiteur sont
+  // verifies par `send` : sans consentement, rien n'est emis. Aucun motif, aucune donnee bancaire.
+  window.fpFunnelTrack = function (step) { if (step === "checkout_payment_failed") send(step); };
+
   const pathname = location.pathname.toLowerCase();
   if (pathname === "/") send("landing_vue");
   if (pathname.endsWith("/pricing.html")) send("tarifs_vus");
