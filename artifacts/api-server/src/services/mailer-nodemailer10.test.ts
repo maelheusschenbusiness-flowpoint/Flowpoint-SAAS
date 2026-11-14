@@ -7,6 +7,7 @@ const envKeys = [
   "RESEND_API_KEY", "SMTP_HOST", "SMTP_PASS", "SMTP_PORT", "SMTP_SECURE",
   "SMTP_USER", "SMTP_FROM", "TEST_MAIL_DIR", "ENABLE_TEST_MAILER",
   "RENDER", "FLY_APP_NAME", "REPLIT_DEPLOYMENT",
+  "FLOWPOINT_AUTOMATED_TESTS", "VITEST", "NODE_TEST_CONTEXT", "JEST_WORKER_ID", "CI",
 ] as const;
 const previousEnv = new Map<string, string | undefined>();
 
@@ -23,6 +24,10 @@ describe("Nodemailer 10 SMTP fallback — mocked, no network delivery", () => {
     // This suite explicitly replaces Nodemailer's transport with a mock, so it
     // can exercise the SMTP path without opening a network connection.
     process.env.NODE_ENV = "development";
+    // The SMTP transport is replaced by the mock below; no network is used.
+    process.env["FLOWPOINT_AUTOMATED_TESTS"] = "false";
+    process.env["VITEST"] = "false";
+    process.env["CI"] = "false";
     process.env.SMTP_HOST = "smtp.invalid";
     process.env.SMTP_PASS = "mock-only";
     process.env.SMTP_USER = "flowpoint-test";

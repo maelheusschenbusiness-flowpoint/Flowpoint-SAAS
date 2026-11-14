@@ -31,6 +31,9 @@ const envSchema = z.object({
   STRIPE_CANCEL_URL: z.string().url().optional(),
   OPENAI_API_KEY: z.string().startsWith("sk-").optional(),
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
+  // Test-runtime delivery is fail-closed: it also requires an exact recipient allowlist.
+  ENABLE_HOSTED_TEST_EMAIL_DELIVERY: z.enum(["true", "false"]).optional(),
+  TEST_EMAIL_RECIPIENT_ALLOWLIST: z.string().optional(),
   EMAIL_FROM: z.string().min(1).default("noreply@flowpoint.app"),
   REDIS_URL: z.string().optional(),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
