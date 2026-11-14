@@ -41,6 +41,8 @@ beforeAll(async () => {
     await ev("signup_form_completed", v(1), "google", "dash:f1");
     await ev("signup_form_completed", v(2), "smartlead", "dash:f2");
     await ev("checkout_started", v(1), "google", "dash:k1");
+    await ev("checkout_completed", v(1), "google", "checkout_completed:seti_dash");
+    await ev("checkout_payment_failed", v(3), "smartlead", "dash:pf3");
     await ev("trial_activated", v(2), "smartlead", "trial_activated:sub_a");
     await ev("trial_activated", null, null, "trial_activated:sub_b");
     await ev("subscription_activated", v(2), "smartlead", "subscription_activated:sub_a");
@@ -58,6 +60,8 @@ describe("conversion globale (SQL réel)", () => {
     expect(s["cta_clique"]).toMatchObject({ events: 2, uniqueVisitors: 2 });
     expect(s["signup_form_completed"]).toMatchObject({ events: 2, uniqueVisitors: 2 }); // enregistrée seulement avec consentement
     expect(s["checkout_started"]).toMatchObject({ events: 1, uniqueVisitors: 1 });
+    expect(s["checkout_completed"]).toMatchObject({ events: 1, uniqueVisitors: 1, coverage: "consented" });
+    expect(s["checkout_payment_failed"]).toMatchObject({ events: 1, uniqueVisitors: 1, coverage: "consented" });
     expect(s["trial_activated"]).toMatchObject({ events: 2, uniqueVisitors: 1 });         // essai sans consentement : compté, visiteur non identifié (null côté visiteurs, pas 0)
     expect(s["landing_vue"]).toMatchObject({ events: 0, uniqueVisitors: null });
     expect(g.measurableVisitors).toBe(3);
@@ -71,7 +75,9 @@ describe("conversion globale (SQL réel)", () => {
     expect(r["tarifs_vus>cta_clique"]).toEqual({ from: "tarifs_vus", to: "cta_clique", ratio: 0.5, reason: "ok" });
     expect(r["signup_started>signup_form_completed"]).toMatchObject({ ratio: 1, reason: "ok" });             // consenti -> consenti
     expect(r["signup_form_completed>checkout_started"]).toMatchObject({ ratio: 0.5, reason: "ok" });
-    expect(r["checkout_started>trial_activated"]).toMatchObject({ ratio: null, reason: "mixed_coverage" }); // consenti -> tous : jamais de taux
+    expect(r["checkout_started>checkout_completed"]).toMatchObject({ ratio: 1, reason: "ok" });             // consenti -> consenti : abandon du paiement mesurable
+    expect(r["checkout_completed>trial_activated"]).toMatchObject({ ratio: null, reason: "mixed_coverage" }); // consenti -> tous : jamais de taux
+    expect(r["checkout_started>trial_activated"]).toBeUndefined();                                            // plus de taux trompeur direct
     expect(r["trial_activated>subscription_activated"]).toMatchObject({ ratio: 0.5, reason: "ok" });
   });
   it("une fenêtre sans donnée renvoie des zéros d'événements et des null, jamais d'invention", async (ctx) => {
