@@ -10,7 +10,7 @@ vi.mock("@workspace/db", async (importOriginal) => importOriginal<typeof import(
 import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 import {
-  enregistrerEtapeTransactionnelle, emailEstSynthetique, agregerAttribution,
+  enregistrerEtapeTransactionnelle, emailEstSynthetique, agregerAttribution, assurerEtapesTunnel, enregistrerEtape, ETAPES_TUNNEL,
 } from "./funnel-events.js";
 
 const RUN = `txn-${randomUUID().slice(0, 8)}`;
@@ -29,6 +29,7 @@ const lignes = (cle: string) => pool.query(
 beforeAll(async () => {
   try {
     await pool.query("SELECT 1 FROM organizations LIMIT 1");
+    await assurerEtapesTunnel();
     dbOk = true;
   } catch { dbOk = false; }
 });
@@ -132,5 +133,25 @@ describe("separation operationnel / marketing dans l'export agrege", () => {
     expect(sansSource!.evenements).toBeGreaterThanOrEqual(1);
     expect(sansSource!.visiteurs).toBe(0);
     expect(Object.keys(sansSource!).sort()).toEqual(["etape", "evenements", "jour", "source", "utm_campaign", "utm_medium", "utm_source", "visiteurs"]);
+  });
+});
+
+describe("schema : la base accepte TOUTES les etapes du tunnel", () => {
+  it("chaque etape de ETAPES_TUNNEL s'ecrit (une contrainte en retard perd les mesures sans bruit)", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    for (const etape of ETAPES_TUNNEL) {
+      const cle = `${etape}:schema_${RUN}`;
+      expect(await enregistrerEtape({ etape, cleIdempotence: cle }), etape).toBe(true);
+    }
+  });
+  it("assurerEtapesTunnel est idempotente", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    expect((await assurerEtapesTunnel()).etat).toMatch(/deja_a_jour|sans_contrainte/);
+  });
+  it("la migration 021 liste exactement les etapes du tunnel", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync(new URL("../../migrations/021_funnel_events_etapes_transactionnelles.sql", import.meta.url), "utf8");
+    const liste = [...sql.slice(sql.indexOf("CHECK (etape IN")).matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+    expect(liste).toEqual([...ETAPES_TUNNEL].sort());
   });
 });

@@ -114,6 +114,13 @@ async function migrate() {
     );
     await pool.query(utmSql);
     console.log("  ✓ funnel_events utm columns applied");
+    // 021 apres 019 : 019 reecrit la contrainte avec l'ancienne liste, 021 la rend a jour.
+    const etapesSql = await readFile(
+      new URL("../migrations/021_funnel_events_etapes_transactionnelles.sql", import.meta.url),
+      "utf8",
+    );
+    await pool.query(etapesSql);
+    console.log("  ✓ funnel_events etapes applied");
   } catch (err: any) {
     console.error(`  ✗ funnel_events migration failed: ${err.message}`);
     process.exit(1);

@@ -280,6 +280,43 @@ export async function assurerColonnesUtm(): Promise<EtatColonnesUtm> {
   }
 }
 
+/**
+ * Applique la migration 021 au demarrage (meme raison que 020 : pas d'etape Pre-Deploy sur le service).
+ * Elargit la contrainte `funnel_events_etape_check` pour qu'elle accepte toutes les etapes de `ETAPES_TUNNEL`.
+ * Idempotente : si la contrainte les accepte deja, rien n'est retouche (aucun verrou). Sinon, une transaction
+ * courte (`lock_timeout` 5 s) remplace la contrainte ; les lignes existantes la respectent toutes (elargissement).
+ * Sans table, rien n'est cree.
+ */
+export type EtatEtapesTunnel = { etat: "table_absente" | "deja_a_jour" | "sans_contrainte" | "elargie" };
+
+export async function assurerEtapesTunnel(): Promise<EtatEtapesTunnel> {
+  const client = await pool.connect();
+  try {
+    const t = await client.query<{ t: string | null }>(`SELECT to_regclass('public.funnel_events')::text AS t`);
+    if (!t.rows[0]?.t) return { etat: "table_absente" };
+    const c = await client.query<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conrelid = 'public.funnel_events'::regclass AND conname = 'funnel_events_etape_check'`);
+    const def = c.rows[0]?.def;
+    if (!def) return { etat: "sans_contrainte" };
+    if (ETAPES_TUNNEL.every((e) => def.includes(`'${e}'`))) return { etat: "deja_a_jour" };
+    const liste = ETAPES_TUNNEL.map((e) => `'${e}'`).join(", ");
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL lock_timeout = '5s'");
+      await client.query("ALTER TABLE public.funnel_events DROP CONSTRAINT IF EXISTS funnel_events_etape_check");
+      await client.query(`ALTER TABLE public.funnel_events ADD CONSTRAINT funnel_events_etape_check CHECK (etape IN (${liste}))`);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    }
+    return { etat: "elargie" };
+  } finally {
+    client.release();
+  }
+}
+
 /** Colonne absente (42703) : le schema n'a pas la migration 020. */
 export function estSchemaUtmAbsent(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === "42703";
