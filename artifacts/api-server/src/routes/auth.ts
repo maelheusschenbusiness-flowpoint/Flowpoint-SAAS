@@ -1031,11 +1031,9 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 
   if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
   if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
-  if (!company)    { res.status(400).json({ error: "Le nom de l'entreprise est requis." }); return; }
   if (!countryVal) { res.status(400).json({ error: "Le pays est requis." });                return; }
-  if (!addressVal) { res.status(400).json({ error: "L'adresse est requise." });             return; }
-  if (!cityVal)    { res.status(400).json({ error: "La ville est requise." });              return; }
-  if (!postalVal)  { res.status(400).json({ error: "Le code postal est requis." });         return; }
+  // Inscription courte : entreprise et adresse sont facultatives. `company_name`
+  // reste NOT NULL en base : a defaut, le nom de la personne (modifiable ensuite).
 
   if (isDisposableEmail(normalizedEmail)) {
     res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
@@ -1201,8 +1199,8 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
        RETURNING created_at, fp_lid`,
       [
-        preToken, normalizedEmail, fn, ln, company,
-        countryVal, addressVal, cityVal, postalVal,
+        preToken, normalizedEmail, fn, ln, company || `${fn} ${ln}`.trim(),
+        countryVal, addressVal || null, cityVal || null, postalVal || null,
         String(phone || "").trim() || null,
         String(vat   || "").trim() || null,
         _preRegSellerId,
