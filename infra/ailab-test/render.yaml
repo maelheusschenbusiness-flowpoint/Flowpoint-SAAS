@@ -29,7 +29,7 @@ services:
     buildCommand: pip install -r requirements-dashboard.txt
     # Le schema, le prospect synthetique (mecanisme officiel Store.upsert + fp_lid_for) et l'observateur de
     # persistance sont lances avant Gunicorn ; tous sont idempotents (le service s'endort et redemarre).
-    startCommand: python -m src.dashboard_check --config && export DATABASE_URL="$(python -c "$BOOTSTRAP_DB_PY")" && python -c "$BOOTSTRAP_PY" && { (python -c "$WATCH_PY" &) ; exec gunicorn src.dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 30; }
+    startCommand: export DATABASE_URL="$(python -c "$BOOTSTRAP_DB_PY")" && python -m src.dashboard_check --config && python -c "$BOOTSTRAP_PY" && { (python -c "$WATCH_PY" &) ; exec gunicorn src.dashboard:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 30; }
     healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
