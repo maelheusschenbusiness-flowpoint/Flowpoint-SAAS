@@ -511,6 +511,8 @@
       }
       if (result.error) {
         var msg = result.error.message || 'Le paiement a échoué. Vérifiez vos informations.';
+        /* Mesure d'abandon : l'etape seule (sous consentement), jamais le motif ni le message Stripe. */
+        try { if (window.fpFunnelTrack) window.fpFunnelTrack('checkout_payment_failed'); } catch (e) { /* mesure non bloquante */ }
         showAlert(msg);
         setLoading(false, mode === 'payment'
           ? 'Payer ' + eur(quote ? quote.totalMinor : 0) + ' →'

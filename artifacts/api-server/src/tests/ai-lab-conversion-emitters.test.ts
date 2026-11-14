@@ -82,6 +82,24 @@ describe("1 — emission reussie", () => {
     expect(await emitConversionEvent(event())).toBe("duplicate");
     expect(warns).toHaveLength(0);
   });
+
+  it("accepte aussi une visite marketing prouvee avec fp_lid", async () => {
+    const calls: { body: string }[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      calls.push({ body: String(init.body) });
+      return new Response(JSON.stringify({ recorded: true, duplicate: false }), { status: 202 });
+    });
+    expect(await emitConversionEvent({
+      eventId: stableEventId("marketing:visit", `${FP_LID}:2026-10-21`),
+      stage: "visit",
+      source: "marketing",
+      fpLid: FP_LID,
+      occurredAt: "2026-10-21T08:00:00.000Z",
+    })).toBe("sent");
+    expect(JSON.parse(calls[0]!.body)).toMatchObject({
+      stage: "visit", source: "marketing", fp_lid: FP_LID,
+    });
+  });
 });
 
 describe("2 — secret absent : aucun appel", () => {
@@ -234,6 +252,13 @@ describe("6 — aucun secret ni fp_lid dans les journaux", () => {
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ recorded: true }), { status: 202 }));
     await emitConversionEvent(event());
     sansFuite(debugs);
+  });
+
+  it("le fp_lid synthetique des certifications n est jamais poste", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    expect(await emitConversionEvent({ ...event(), fpLid: "AbCdEfGhIjKlMnOpQr_-12" })).toBe("invalid-input");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("un fp_lid malforme n est jamais poste", async () => {
