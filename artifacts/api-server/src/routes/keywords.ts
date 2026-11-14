@@ -16,6 +16,7 @@ import { checkAIQuota, recordCompletedUsageDeferred, type AIModel } from "../ser
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 import { parseContentDecayStrategy } from "../services/content-decay-strategy.js";
 import { buildKeywordDominationReport } from "../services/keyword-domination.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 const contentDecayGate = requireAddon("aiContentStrategist", "SEO Content Decay Radar");
@@ -252,13 +253,15 @@ router.get("/keywords/stats", async (req, res) => {
 // GET /api/keywords/opportunities
 router.get("/keywords/opportunities", async (req, res) => {
   const orgId = getOrg(req);
-  const { type, limit: lim = "20" } = req.query as Record<string,string>;
+  const { type } = req.query as Record<string,string>;
   try {
     let query = `SELECT * FROM keyword_opportunities WHERE org_id = $1`;
     const params: unknown[] = [orgId];
     if (type) { params.push(type); query += ` AND type = $${params.length}`; }
     query += ` ORDER BY opportunity_score DESC LIMIT $${params.length + 1}`;
-    params.push(parseInt(lim, 10));
+    // `parseInt(lim, 10)` laissait partir NaN ou une valeur negative dans LIMIT :
+    // PostgreSQL refusait, l'erreur etait avalee et la liste rendue vide.
+    params.push(queryInt(req.query["limit"], { defaut: 20, min: 1, max: 200, horsBornes: "borner" }));
     const r = await (req as OrgReq).orgDb(query, params);
     res.json({ opportunities: r.rows, count: r.rows.length });
   } catch { res.json({ opportunities: [], count: 0 }); }
@@ -330,9 +333,12 @@ router.get("/keywords/:id", async (req, res) => {
 // GET /api/keywords/:id/history
 router.get("/keywords/:id/history", async (req, res) => {
   const orgId = getOrg(req);
-  const { days = "30" } = req.query as Record<string,string>;
+  // Ordre de la signature : getRankingHistory(orgId, keywordId, days). Les deux
+  // premiers arguments etaient inverses, la requete filtrait donc
+  // `org_id = <id du mot-cle>` et l'historique etait toujours vide.
+  const days = queryInt(req.query["days"], { defaut: 30, min: 1, max: 90, horsBornes: "defaut" });
   try {
-    const history = await getRankingHistory(req.params.id, orgId, parseInt(days, 10));
+    const history = await getRankingHistory(orgId, req.params.id, days);
     res.json({ history, count: history.length });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
