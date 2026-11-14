@@ -1,0 +1,723 @@
+{
+ "source": "flowpoint-acquisition-engine conversion_funnel.validate_event",
+ "engine_commit": "7c6c55e",
+ "now": "2026-11-14T12:00:00Z",
+ "stages": [
+  "click",
+  "visit",
+  "signup_page",
+  "signup_started",
+  "signup",
+  "checkout",
+  "trial",
+  "paid"
+ ],
+ "cases": [
+  {
+   "name": "matrix:smartlead/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "smartlead",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid stage"
+  },
+  {
+   "name": "matrix:smartlead/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "smartlead",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid stage"
+  },
+  {
+   "name": "matrix:smartlead/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "smartlead",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid stage"
+  },
+  {
+   "name": "matrix:smartlead/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "smartlead",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid stage"
+  },
+  {
+   "name": "matrix:smartlead/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "smartlead",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid stage"
+  },
+  {
+   "name": "matrix:click/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "click",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:click/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "click",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:click/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "click",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:click/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "click",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:click/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "click",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:visit/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:visit/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:visit/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:visit/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:visit/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:signup_page/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_page",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup_page/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_page",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup_page/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_page",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:signup_page/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_page",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup_page/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_page",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:signup_started/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_started",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup_started/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_started",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup_started/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_started",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:signup_started/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_started",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup_started/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup_started",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:signup/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:signup/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:signup/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "signup",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:checkout/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "checkout",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:checkout/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "checkout",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:checkout/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "checkout",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:checkout/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "checkout",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:checkout/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "checkout",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:trial/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "trial",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:trial/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "trial",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:trial/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "trial",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:trial/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "trial",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:trial/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "trial",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "matrix:paid/smartlead",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "paid",
+    "source": "smartlead",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:paid/marketing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "paid",
+    "source": "marketing",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:paid/saas",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "paid",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "source cannot prove stage"
+  },
+  {
+   "name": "matrix:paid/stripe",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "paid",
+    "source": "stripe",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "matrix:paid/other",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "paid",
+    "source": "other",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid source"
+  },
+  {
+   "name": "event_id too short",
+   "payload": {
+    "event_id": "abc",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid event_id"
+  },
+  {
+   "name": "event_id bad chars",
+   "payload": {
+    "event_id": "evt id with space",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid event_id"
+  },
+  {
+   "name": "event_id 128",
+   "payload": {
+    "event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "event_id 129",
+   "payload": {
+    "event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid event_id"
+  },
+  {
+   "name": "fp_lid short",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "abc",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid fp_lid"
+  },
+  {
+   "name": "fp_lid 23",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001Ax",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid fp_lid"
+  },
+  {
+   "name": "fp_lid bad char",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_000000001!A",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid fp_lid"
+  },
+  {
+   "name": "fp_lid missing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "occurred_at": "2026-11-14T11:59:00Z"
+   },
+   "accepted": false,
+   "reason": "invalid fp_lid"
+  },
+  {
+   "name": "naive ts",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T11:59:00"
+   },
+   "accepted": false,
+   "reason": "occurred_at timezone required"
+  },
+  {
+   "name": "future 11min",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T12:11:00Z"
+   },
+   "accepted": false,
+   "reason": "occurred_at out of range"
+  },
+  {
+   "name": "future 5min",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2026-11-14T12:05:00Z"
+   },
+   "accepted": true,
+   "reason": null
+  },
+  {
+   "name": "too old",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "2025-10-01T00:00:00Z"
+   },
+   "accepted": false,
+   "reason": "occurred_at out of range"
+  },
+  {
+   "name": "ts missing",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A"
+   },
+   "accepted": false,
+   "reason": "occurred_at required"
+  },
+  {
+   "name": "ts garbage",
+   "payload": {
+    "event_id": "evt:abcdef0123",
+    "stage": "visit",
+    "source": "saas",
+    "fp_lid": "TestLeadFp_0000000001A",
+    "occurred_at": "hier"
+   },
+   "accepted": false,
+   "reason": "invalid occurred_at"
+  }
+ ]
+}
