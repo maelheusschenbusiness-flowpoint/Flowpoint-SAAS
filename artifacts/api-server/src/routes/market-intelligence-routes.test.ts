@@ -10,9 +10,13 @@ const m = vi.hoisted(() => ({
   getMarketDashboard: vi.fn(), generateMarketReport: vi.fn(), detectCompetitorMovements: vi.fn(), orgDb: vi.fn(),
   role: { current: "owner" as string },
 }));
-vi.mock("../services/market-intel-service.js", () => ({
-  getMarketDashboard: m.getMarketDashboard, generateMarketReport: m.generateMarketReport, detectCompetitorMovements: m.detectCompetitorMovements,
-}));
+vi.mock("../services/market-intel-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/market-intel-service.js")>();
+  return {
+    marketLang: actual.marketLang, localizeReportTitle: actual.localizeReportTitle,
+    getMarketDashboard: m.getMarketDashboard, generateMarketReport: m.generateMarketReport, detectCompetitorMovements: m.detectCompetitorMovements,
+  };
+});
 vi.mock("../middlewares/planGate.js", () => ({ requireAddon: () => (_a: unknown, _b: unknown, n: () => void) => n() }));
 vi.mock("../middlewares/requireRole.js", () => ({
   canWrite: (_req: unknown, res: express.Response, next: () => void) => (m.role.current === "viewer" ? res.status(403).json({ error: "Forbidden" }) : next()),
@@ -83,10 +87,37 @@ describe("écriture", () => {
     m.generateMarketReport.mockResolvedValue({ id: "r1", org_id: "org-a" });
     const r = await request(app("org-a")).post("/api/market-intelligence/report/generate").send({});
     expect(r.status).toBe(200);
-    expect(m.generateMarketReport).toHaveBeenCalledWith("org-a");
+    expect(m.generateMarketReport).toHaveBeenCalledWith("org-a", expect.any(String));
   });
   it("competitor-movement exige un domaine", async () => {
     expect((await request(app()).post("/api/market-intelligence/competitor-movement").send({})).status).toBe(400);
     expect(m.detectCompetitorMovements).not.toHaveBeenCalled();
+  });
+});
+
+describe("langue d'affichage", () => {
+  beforeEach(() => { vi.clearAllMocks(); m.role.current = "owner"; m.orgDb.mockResolvedValue({ rows: [] }); });
+
+  it("recalcule le titre par défaut d'un ancien rapport selon la langue demandée, sans toucher aux autres titres", async () => {
+    m.orgDb.mockResolvedValue({ rows: [
+      { id: "r1", title: "Rapport Intelligence Marché — 12/11/2026", summary: "s", data: {}, generated_at: "2026-11-12T10:00:00Z" },
+      { id: "r2", title: "Mon titre libre", summary: "s", data: {}, generated_at: "2026-11-12T10:00:00Z" },
+    ] });
+    const en = await request(app()).get("/api/market-intelligence/reports?lang=en");
+    expect(en.body.reports[0].title).toMatch(/^Market Intelligence Report — /);
+    expect(en.body.reports[1].title).toBe("Mon titre libre");
+    const es = await request(app()).get("/api/market-intelligence/reports?lang=es");
+    expect(es.body.reports[0].title).toMatch(/^Informe de Inteligencia de Mercado — /);
+    const fr = await request(app()).get("/api/market-intelligence/reports?lang=fr");
+    expect(fr.body.reports[0].title).toMatch(/^Rapport Intelligence Marché — /);
+  });
+
+  it("transmet la langue explicite à la génération et au tableau de bord", async () => {
+    m.generateMarketReport.mockResolvedValue({ id: "r1" });
+    await request(app()).post("/api/market-intelligence/report/generate?lang=es").send({});
+    expect(m.generateMarketReport).toHaveBeenCalledWith("org-a", "es");
+    m.getMarketDashboard.mockResolvedValue(dash(1));
+    await request(app()).get("/api/market-intelligence?lang=en");
+    expect(m.getMarketDashboard).toHaveBeenCalledWith("org-a", "en");
   });
 });

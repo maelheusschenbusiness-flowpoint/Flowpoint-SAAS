@@ -59,17 +59,78 @@ export function deriveMarketTrends(rows: readonly GscTrendInput[]): MarketTrend[
   }).sort((a, b) => b.opportunity_score - a.opportunity_score).slice(0, 20);
 }
 
-export function deriveMarketOpportunities(trends: readonly MarketTrend[]): MarketOpportunity[] {
+export type MarketLang = "fr" | "en" | "es";
+
+const MARKET_TEXT: Record<MarketLang, {
+  rising: (keyword: string) => string;
+  detail: (recent: number, previous: number, growth: number, volume: number) => string;
+  impact: string; timeframe: string;
+  reportTitle: (date: string) => string;
+  reportSummary: (trends: number, opportunities: number) => string;
+  locale: string;
+}> = {
+  fr: {
+    rising: (k) => `Requête en hausse : ${k}`,
+    detail: (r, p, g, v) => `${r} clics contre ${p} sur les deux périodes de 28 jours (+${g} %). ${v} impressions récentes.`,
+    impact: "À mesurer", timeframe: "28 jours comparés",
+    reportTitle: (d) => `Rapport Intelligence Marché — ${d}`,
+    reportSummary: (t, o) => `${t} tendances mesurées, ${o} opportunités calculées`,
+    locale: "fr-FR",
+  },
+  en: {
+    rising: (k) => `Rising query: ${k}`,
+    detail: (r, p, g, v) => `${r} clicks versus ${p} over the two 28-day periods (+${g}%). ${v} recent impressions.`,
+    impact: "To be measured", timeframe: "28 days compared",
+    reportTitle: (d) => `Market Intelligence Report — ${d}`,
+    reportSummary: (t, o) => `${t} trends measured, ${o} opportunities calculated`,
+    locale: "en-GB",
+  },
+  es: {
+    rising: (k) => `Consulta en alza: ${k}`,
+    detail: (r, p, g, v) => `${r} clics frente a ${p} en los dos periodos de 28 días (+${g} %). ${v} impresiones recientes.`,
+    impact: "Por medir", timeframe: "28 días comparados",
+    reportTitle: (d) => `Informe de Inteligencia de Mercado — ${d}`,
+    reportSummary: (t, o) => `${t} tendencias medidas, ${o} oportunidades calculadas`,
+    locale: "es-ES",
+  },
+};
+
+/** Langue d'affichage supportée ; toute autre valeur retombe sur l'anglais. */
+export function marketLang(value: unknown): MarketLang {
+  const v = typeof value === "string" ? value.trim().toLowerCase().split(/[-_]/, 1)[0] : "";
+  return v === "fr" || v === "es" ? v : "en";
+}
+
+const DEFAULT_TITLES: Array<[RegExp, MarketLang]> = [
+  [/^Rapport Intelligence Marché — /, "fr"],
+  [/^Market Intelligence Report — /, "en"],
+  [/^Informe de Inteligencia de Mercado — /, "es"],
+];
+
+/** Titre d'un rapport selon la langue demandée. Les titres persistés au format par défaut
+ *  (avant la prise en charge des langues, toujours en français) sont recalculés depuis leur
+ *  date ; un titre d'une autre forme n'est jamais modifié. */
+export function localizeReportTitle(title: unknown, generatedAt: unknown, lang: MarketLang): string {
+  const text = typeof title === "string" ? title : "";
+  if (!DEFAULT_TITLES.some(([re]) => re.test(text))) return text;
+  const date = new Date(String(generatedAt));
+  if (Number.isNaN(date.getTime())) return text;
+  const t = MARKET_TEXT[lang];
+  return t.reportTitle(date.toLocaleDateString(t.locale));
+}
+
+export function deriveMarketOpportunities(trends: readonly MarketTrend[], lang: MarketLang = "fr"): MarketOpportunity[] {
+  const t = MARKET_TEXT[lang];
   return trends
     .filter((trend) => trend.growth_rate !== null && trend.growth_rate > 0 && trend.search_volume >= 100)
     .map((trend) => ({
       id: `rising-query:${trend.id}`,
       type: "rising_query",
-      title: `Requête en hausse : ${trend.keyword}`,
-      description: `${trend.recent_clicks} clics contre ${trend.previous_clicks} sur les deux périodes de 28 jours (+${trend.growth_rate} %). ${trend.search_volume} impressions récentes.`,
+      title: t.rising(trend.keyword),
+      description: t.detail(trend.recent_clicks, trend.previous_clicks, trend.growth_rate as number, trend.search_volume),
       score: trend.opportunity_score,
-      estimated_impact: "À mesurer",
-      timeframe: "28 jours comparés",
+      estimated_impact: t.impact,
+      timeframe: t.timeframe,
     }))
     .slice(0, 15);
 }
@@ -116,7 +177,7 @@ export function deriveCompetitorMovements(rows: readonly CompetitorSnapshot[]): 
   return movements.sort((a, b) => b.detected_at.localeCompare(a.detected_at)).slice(0, 20);
 }
 
-export async function getMarketDashboard(orgId: string): Promise<MarketDashboard> {
+export async function getMarketDashboard(orgId: string, lang: MarketLang = "fr"): Promise<MarketDashboard> {
   const client = await pool.connect();
   try {
     const [trendRows, signals, rankingRows] = await Promise.all([
@@ -149,7 +210,7 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
       ),
     ]);
     const trends = deriveMarketTrends(trendRows.rows);
-    const opportunities = deriveMarketOpportunities(trends);
+    const opportunities = deriveMarketOpportunities(trends, lang);
     const competitorMovements = deriveCompetitorMovements(rankingRows.rows);
     const avgOpportunityScore = trends.length > 0
       ? Math.round(trends.reduce((sum, trend) => sum + trend.opportunity_score, 0) / trends.length)
@@ -168,11 +229,12 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
   } finally { client.release(); }
 }
 
-export async function generateMarketReport(orgId: string): Promise<Record<string, unknown>> {
-  const dashboard = await getMarketDashboard(orgId);
+export async function generateMarketReport(orgId: string, lang: MarketLang = "fr"): Promise<Record<string, unknown>> {
+  const dashboard = await getMarketDashboard(orgId, lang);
+  const text = MARKET_TEXT[lang];
   const id = randomUUID();
-  const title = `Rapport Intelligence Marché — ${new Date().toLocaleDateString("fr-FR")}`;
-  const summary = `${dashboard.trends.length} tendances mesurées, ${dashboard.opportunities.length} opportunités calculées`;
+  const title = text.reportTitle(new Date().toLocaleDateString(text.locale));
+  const summary = text.reportSummary(dashboard.trends.length, dashboard.opportunities.length);
   const client = await pool.connect();
   try {
     const saved = await client.query<{ generated_at: string }>(
