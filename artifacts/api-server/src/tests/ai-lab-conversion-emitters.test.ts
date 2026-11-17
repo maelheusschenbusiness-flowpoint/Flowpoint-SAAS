@@ -261,6 +261,15 @@ describe("6 — aucun secret ni fp_lid dans les journaux", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("tous les fp_lid synthetiques connus du depot restent chez nous (jamais 400 unknown_fp_lid en production)", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    for (const fpLid of ["AbCdEfGhIjKlMnOpQr_-12", "AbCdEfGhIjKlMnOpQrStUv", "abcdefghijklmnopqrstuv"]) {
+      expect(await emitConversionEvent({ ...event(), fpLid }), fpLid).toBe("invalid-input");
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("un fp_lid malforme n est jamais poste", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

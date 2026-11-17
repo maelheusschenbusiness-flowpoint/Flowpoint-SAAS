@@ -91,7 +91,11 @@ const FP_LID_RE = /^[A-Za-z0-9_-]{22}$/;
  * a 15, 60, 180 et 360 minutes, et des « conversions » fantomes dans ses
  * compteurs de reception. Un jeton de test ne quitte jamais le SaaS.
  */
-export const SYNTHETIC_FP_LIDS: ReadonlySet<string> = new Set(["AbCdEfGhIjKlMnOpQr_-12"]);
+export const SYNTHETIC_FP_LIDS: ReadonlySet<string> = new Set([
+  "AbCdEfGhIjKlMnOpQr_-12",   // scripts de certification, documents du site vitrine
+  "AbCdEfGhIjKlMnOpQrStUv",   // certification navigateur (tests/browser/certification/06-suivi-conversion.cert.ts)
+  "abcdefghijklmnopqrstuv",   // exemple en minuscules des tests de contrat
+]);
 
 interface Config {
   url: string;
