@@ -138,9 +138,11 @@ describe("comportements degrades : le doute ne profite jamais a l'appelant", () 
     const espion = vi.spyOn(pool, "query").mockRejectedValue(
       new Error('relation "bs_monitor_ownership" does not exist') as never);
     try {
-      expect(await monitorsDeLOrganisation(A)).toEqual(new Set());
-      await expect(updateMonitor(M_A, A, {} as never)).rejects.toThrow(/not found/i);
-      expect(await listMonitors(A)).toEqual([]);
+      // Une panne du registre est signalee (503), jamais presentee comme « aucun
+      // moniteur » (liste vide en 200) ni comme « introuvable » (404) — et rien ne fuite.
+      await expect(monitorsDeLOrganisation(A)).rejects.toMatchObject({ statusCode: 503 });
+      await expect(updateMonitor(M_A, A, {} as never)).rejects.toMatchObject({ statusCode: 503 });
+      await expect(listMonitors(`${A}-registre-illisible`)).rejects.toMatchObject({ statusCode: 503 });
       expect(appels.filter((u) => u.includes("PATCH")), "une mutation est partie sans appartenance lisible").toEqual([]);
     } finally {
       espion.mockRestore();

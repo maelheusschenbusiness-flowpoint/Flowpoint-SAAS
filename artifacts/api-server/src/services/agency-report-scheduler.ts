@@ -7,6 +7,7 @@ import {
   getAgencyPublicBaseUrl,
   isAgencyReportDeliveryReady,
 } from "./agency-reporting.js";
+import { hasAddonEntitlementForOrg } from "./addon-entitlement.js";
 
 type ScheduleRow = {
   id: string;
@@ -54,6 +55,10 @@ export async function deliverAgencyReportSchedule(row: ScheduleRow, scheduledAt 
   );
   if (!claim.rows.length) return;
   try {
+    // Aucune requete HTTP ici : l'add-on doit etre verifie a CHAQUE livraison.
+    // Sinon une planification creee avant la resiliation continuerait de
+    // generer des rapports et d'envoyer des e-mails sans droit actif.
+    if (!(await hasAddonEntitlementForOrg(row.org_id, "agencyPacks"))) throw new Error("AGENCY_ADDON_INACTIVE");
     const selectedIds = typeof row.audit_ids === "string" ? JSON.parse(row.audit_ids) : row.audit_ids;
     if (!Array.isArray(selectedIds) || selectedIds.length < 2 || !selectedIds.every(id => typeof id === "string")) {
       throw new Error("Invalid selected audit list");

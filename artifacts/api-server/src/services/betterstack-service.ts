@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { checkQuota } from "./billing-service.js";
@@ -95,7 +96,10 @@ export interface BSMonitor {
 export interface BSIncident {
   id: string;
   type: string;
+  /** Lien JSON:API vers le moniteur, quand Better Stack le fournit. */
+  relationships?: { monitor?: { data?: { id?: string | number } | null } | null };
   attributes: {
+    monitor_id?: string | number | null;
     name: string;
     url: string;
     http_method?: string;
@@ -165,7 +169,12 @@ export class MonitorIntrouvable extends Error {
   }
 }
 
-/** Identifiants des moniteurs appartenant a cette organisation. */
+/**
+ * Identifiants des moniteurs appartenant a cette organisation.
+ * Jete `AppartenanceNonEnregistrable` (503) si le registre est illisible : une
+ * panne ne doit jamais se presenter comme « cette organisation n'a aucun
+ * moniteur » (200 vide) ni comme « moniteur introuvable » (404).
+ */
 export async function monitorsDeLOrganisation(orgId: string): Promise<Set<string>> {
   try {
     const r = await pool.query<{ bs_id: string }>(
@@ -175,10 +184,10 @@ export async function monitorsDeLOrganisation(orgId: string): Promise<Set<string
     return new Set(r.rows.map((x) => String(x.bs_id)));
   } catch (err) {
     // Table absente ou base injoignable : on ne sait pas a qui appartient quoi.
-    // On refuse donc TOUT plutot que de laisser passer — un doute sur
-    // l'appartenance ne doit jamais se resoudre en faveur de l'appelant.
+    // On refuse donc TOUT (aucune donnee d'un autre locataire ne passe) et on
+    // le dit explicitement plutot que de repondre « vide ».
     logger.error({ err, orgId }, "[BS] appartenance illisible — acces refuse par defaut");
-    return new Set();
+    throw new AppartenanceNonEnregistrable();
   }
 }
 
@@ -350,23 +359,58 @@ export async function getMonitorSLA(bsId: string, orgId: string, fromDate?: stri
 }
 
 // ── Monitor Response Times ────────────────────────────────────────────────────
-export async function getResponseTimes(bsId: string, period: string = "24h"): Promise<unknown> {
+/** Periodes acceptees : un nombre suivi de h, d, w ou m (ex. 24h, 7d). */
+export const RESPONSE_TIMES_PERIOD_RE = /^[0-9]{1,3}[hdwm]$/;
+
+export class PeriodeInvalide extends Error {
+  readonly statusCode = 400;
+  constructor() { super("period must look like 24h, 7d, 4w or 3m"); this.name = "PeriodeInvalide"; }
+}
+
+export async function getResponseTimes(bsId: string, orgId: string, period: string = "24h"): Promise<unknown> {
+  // Le compte BetterStack est partage : sans controle d'appartenance, n'importe
+  // quelle organisation lirait les temps de reponse du moniteur d'une autre.
+  await exigerAppartenance(bsId, orgId);
+  if (!RESPONSE_TIMES_PERIOD_RE.test(period)) throw new PeriodeInvalide();
   const cacheKey = `rt:${bsId}:${period}`;
   const cached = getCache<unknown>(cacheKey);
   if (cached) return cached;
 
-  const data = await bsRequest<unknown>(`/monitors/${bsId}/response-times?period=${period}`);
+  const data = await bsRequest<unknown>(`/monitors/${encodeURIComponent(bsId)}/response-times?period=${encodeURIComponent(period)}`);
   setCache(cacheKey, data, 120_000); // 2 min cache
   return data;
 }
 
 // ── Incidents ─────────────────────────────────────────────────────────────────
+/**
+ * Un incident appartient a l'organisation si son moniteur lui appartient. Le
+ * lien vient de Better Stack (relation ou `monitor_id`) ; a defaut, l'URL
+ * surveillee doit etre celle d'un moniteur de l'organisation. Sans lien
+ * demontrable, l'incident n'est a personne et reste invisible.
+ */
+export function incidentBelongsToOrg(inc: BSIncident, ownedIds: Set<string>, ownedUrls: Set<string>): boolean {
+  const linked = inc.relationships?.monitor?.data?.id ?? inc.attributes.monitor_id;
+  if (linked !== undefined && linked !== null && String(linked) !== "") return ownedIds.has(String(linked));
+  const url = String(inc.attributes.url ?? "").trim().toLowerCase();
+  return url !== "" && ownedUrls.has(url);
+}
+
+async function incidentOwnership(orgId: string): Promise<{ ids: Set<string>; urls: Set<string> }> {
+  const monitors = await listMonitors(orgId);
+  return {
+    ids: new Set(monitors.map(m => String(m.id))),
+    urls: new Set(monitors.map(m => String(m.attributes.url ?? "").trim().toLowerCase()).filter(Boolean)),
+  };
+}
+
 export async function listIncidents(orgId: string, params?: {
   monitor_id?: string;
   from?: string;
   to?: string;
   resolved?: boolean;
 }): Promise<BSIncident[]> {
+  // Filtrer sur un moniteur d'autrui ne doit pas servir de sonde d'existence.
+  if (params?.monitor_id) await exigerAppartenance(params.monitor_id, orgId);
   const query = new URLSearchParams({ per_page: "50" });
   if (params?.monitor_id) query.set("monitor_id", params.monitor_id);
   if (params?.from) query.set("from", params.from);
@@ -378,20 +422,27 @@ export async function listIncidents(orgId: string, params?: {
   if (cached) return cached;
 
   const res = await bsRequest<BSListResponse<BSIncident>>(`/incidents?${query}`);
-  const incidents = res.data || [];
+  // Meme compte partage que pour les moniteurs : l'appel renvoie les incidents
+  // de TOUTES les organisations. On ne garde que les siens.
+  const own = await incidentOwnership(orgId);
+  const incidents = (res.data || []).filter(inc => incidentBelongsToOrg(inc, own.ids, own.urls));
   setCache(cacheKey, incidents, 60_000);
 
   await syncIncidentsToDB(incidents, orgId);
   return incidents;
 }
 
-export async function getIncident(bsId: string): Promise<BSIncident> {
-  const res = await bsRequest<BSSingleResponse<BSIncident>>(`/incidents/${bsId}`);
+export async function getIncident(bsId: string, orgId: string): Promise<BSIncident> {
+  const res = await bsRequest<BSSingleResponse<BSIncident>>(`/incidents/${encodeURIComponent(bsId)}`);
+  const own = await incidentOwnership(orgId);
+  // 404 et non 403 : ne pas confirmer l'existence d'un incident d'autrui.
+  if (!incidentBelongsToOrg(res.data, own.ids, own.urls)) throw new MonitorIntrouvable();
   return res.data;
 }
 
-export async function acknowledgeIncident(bsId: string): Promise<void> {
-  await bsRequest<unknown>(`/incidents/${bsId}/acknowledge`, { method: "POST" });
+export async function acknowledgeIncident(bsId: string, orgId: string): Promise<void> {
+  await getIncident(bsId, orgId);
+  await bsRequest<unknown>(`/incidents/${encodeURIComponent(bsId)}/acknowledge`, { method: "POST" });
 }
 
 // ── Heartbeats ────────────────────────────────────────────────────────────────
@@ -455,12 +506,12 @@ export async function getMonitoringStats(orgId: string): Promise<{
   up: number;
   down: number;
   paused: number;
-  avgUptime: number;
-  avgResponseTime: number;
+  avgUptime: number | null;
+  avgResponseTime: number | null;
   sslWarnings: number;
-  activeIncidents: number;
-  heartbeatsOk: number;
-  heartbeatsMissed: number;
+  activeIncidents: number | null;
+  heartbeatsOk: number | null;
+  heartbeatsMissed: number | null;
 }> {
   const cacheKey = `stats:${orgId}`;
   const cached = getCache<ReturnType<typeof getMonitoringStats>>(cacheKey);
@@ -472,12 +523,22 @@ export async function getMonitoringStats(orgId: string): Promise<{
     listHeartbeats(orgId),
   ]);
 
-  const ms = monitors.status === "fulfilled" ? monitors.value : [];
-  const inc = incidents.status === "fulfilled" ? incidents.value : [];
-  const hbs = heartbeats.status === "fulfilled" ? heartbeats.value : [];
+  // Sans la liste des moniteurs il n'y a aucune statistique : on propage la
+  // panne (503/5xx) au lieu de servir « 0 moniteur, 100 % » en 200.
+  if (monitors.status === "rejected") throw monitors.reason;
+  const ms = monitors.value;
+  // Incidents et heartbeats : une source indisponible reste `null` (inconnu),
+  // jamais 0 (« aucun incident »).
+  const inc = incidents.status === "fulfilled" ? incidents.value : null;
+  const hbs = heartbeats.status === "fulfilled" ? heartbeats.value : null;
 
-  const activeMs = ms.filter(m => !m.attributes.paused);
-  const uptimes = ms.map(m => parseFloat(m.attributes.uptime_percentage || "100")).filter(u => !isNaN(u));
+  // Une disponibilite absente n'est pas 100 % : seuls les moniteurs qui en
+  // rapportent une entrent dans la moyenne, et sans aucune mesure elle vaut null.
+  const uptimes = ms
+    .map(m => m.attributes.uptime_percentage)
+    .filter(u => u !== undefined && u !== null && String(u).trim() !== "")
+    .map(u => Number(u))
+    .filter(u => Number.isFinite(u) && u >= 0 && u <= 100);
   const rts = ms.map(m => m.attributes.avg_response_time || 0).filter(rt => rt > 0);
   const sslWarnings = ms.filter(m => {
     const days = m.attributes.ssl_expiration;
@@ -489,12 +550,12 @@ export async function getMonitoringStats(orgId: string): Promise<{
     up: ms.filter(m => m.attributes.status === "up").length,
     down: ms.filter(m => m.attributes.status === "down" || m.attributes.status === "seems_down").length,
     paused: ms.filter(m => m.attributes.paused).length,
-    avgUptime: uptimes.length ? Math.round(uptimes.reduce((a, b) => a + b, 0) / uptimes.length * 10) / 10 : 100,
-    avgResponseTime: rts.length ? Math.round(rts.reduce((a, b) => a + b, 0) / rts.length) : 0,
+    avgUptime: uptimes.length ? Math.round(uptimes.reduce((a, b) => a + b, 0) / uptimes.length * 10) / 10 : null,
+    avgResponseTime: rts.length ? Math.round(rts.reduce((a, b) => a + b, 0) / rts.length) : null,
     sslWarnings,
-    activeIncidents: inc.length,
-    heartbeatsOk: hbs.filter(h => h.attributes.status === "up").length,
-    heartbeatsMissed: hbs.filter(h => h.attributes.status === "pending" || h.attributes.status === "down").length,
+    activeIncidents: inc ? inc.length : null,
+    heartbeatsOk: hbs ? hbs.filter(h => h.attributes.status === "up").length : null,
+    heartbeatsMissed: hbs ? hbs.filter(h => h.attributes.status === "pending" || h.attributes.status === "down").length : null,
   };
 
   setCache(cacheKey, stats, 60_000);
@@ -503,12 +564,14 @@ export async function getMonitoringStats(orgId: string): Promise<{
 
 // ── DB sync helpers ───────────────────────────────────────────────────────────
 async function syncMonitorsToDB(monitors: BSMonitor[], orgId: string): Promise<void> {
-  const client = await pool.connect();
+  // Cache d'affichage : une connexion indisponible ne doit pas faire echouer la lecture.
+  let client: PoolClient | null = null;
   try {
+    client = await pool.connect();
     for (const m of monitors) {
       const a = m.attributes;
       const sslDays = typeof a.ssl_expiration === "number" ? a.ssl_expiration : null;
-      await client.query(`
+      await client!.query(`
         INSERT INTO bs_monitors (
           id, org_id, bs_id, name, url, monitor_type, status, check_frequency,
           regions, paused, uptime_percentage, avg_response_time,
@@ -526,7 +589,9 @@ async function syncMonitorsToDB(monitors: BSMonitor[], orgId: string): Promise<v
       `, [
         `bs_${m.id}`, orgId, m.id, a.pronunciation_name || a.url || 'Monitor', a.url, a.monitor_type, a.status,
         a.check_frequency, JSON.stringify(a.regions || []), a.paused,
-        parseFloat(a.uptime_percentage || "100"),
+        // Disponibilite inconnue : NULL, jamais 100 %.
+        (a.uptime_percentage !== undefined && a.uptime_percentage !== null && String(a.uptime_percentage).trim() !== "" && Number.isFinite(Number(a.uptime_percentage)))
+          ? Number(a.uptime_percentage) : null,
         a.avg_response_time || null, sslDays,
         a.verify_ssl, a.follow_redirects, a.remember_cookies,
         a.team_name || null, a.recovery_period,
@@ -535,13 +600,15 @@ async function syncMonitorsToDB(monitors: BSMonitor[], orgId: string): Promise<v
   } catch (err) {
     logger.warn({ err }, "[BetterStack] syncMonitorsToDB failed");
   } finally {
-    client.release();
+    client?.release();
   }
 }
 
 async function syncIncidentsToDB(incidents: BSIncident[], orgId: string): Promise<void> {
-  const client = await pool.connect();
+  // Cache d'affichage : une connexion indisponible ne doit pas faire echouer la lecture.
+  let client: PoolClient | null = null;
   try {
+    client = await pool.connect();
     for (const inc of incidents) {
       const a = inc.attributes;
       const startedAt = a.started_at ? new Date(a.started_at) : null;
@@ -550,7 +617,7 @@ async function syncIncidentsToDB(incidents: BSIncident[], orgId: string): Promis
         ? Math.round((resolvedAt.getTime() - startedAt.getTime()) / 1000)
         : null;
 
-      await client.query(`
+      await client!.query(`
         INSERT INTO bs_incidents (
           id, org_id, bs_id, name, url, cause, status,
           started_at, resolved_at, duration_seconds,
@@ -572,16 +639,18 @@ async function syncIncidentsToDB(incidents: BSIncident[], orgId: string): Promis
   } catch (err) {
     logger.warn({ err }, "[BetterStack] syncIncidentsToDB failed");
   } finally {
-    client.release();
+    client?.release();
   }
 }
 
 async function syncHeartbeatsToDB(hbs: BSHeartbeat[], orgId: string): Promise<void> {
-  const client = await pool.connect();
+  // Cache d'affichage : une connexion indisponible ne doit pas faire echouer la lecture.
+  let client: PoolClient | null = null;
   try {
+    client = await pool.connect();
     for (const hb of hbs) {
       const a = hb.attributes;
-      await client.query(`
+      await client!.query(`
         INSERT INTO bs_heartbeats (
           id, org_id, bs_id, name, period, grace, status,
           last_ping_at, url, email, paused, synced_at, created_at, updated_at
@@ -600,16 +669,18 @@ async function syncHeartbeatsToDB(hbs: BSHeartbeat[], orgId: string): Promise<vo
   } catch (err) {
     logger.warn({ err }, "[BetterStack] syncHeartbeatsToDB failed");
   } finally {
-    client.release();
+    client?.release();
   }
 }
 
 async function syncStatusPagesToDB(pages: BSStatusPage[], orgId: string): Promise<void> {
-  const client = await pool.connect();
+  // Cache d'affichage : une connexion indisponible ne doit pas faire echouer la lecture.
+  let client: PoolClient | null = null;
   try {
+    client = await pool.connect();
     for (const p of pages) {
       const a = p.attributes;
-      await client.query(`
+      await client!.query(`
         INSERT INTO bs_status_pages (
           id, org_id, bs_id, name, subdomain, custom_domain, synced_at, created_at, updated_at
         ) VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW(),NOW())
@@ -626,7 +697,7 @@ async function syncStatusPagesToDB(pages: BSStatusPage[], orgId: string): Promis
   } catch (err) {
     logger.warn({ err }, "[BetterStack] syncStatusPagesToDB failed");
   } finally {
-    client.release();
+    client?.release();
   }
 }
 

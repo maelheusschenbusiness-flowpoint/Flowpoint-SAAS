@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryMock, connectMock, consolidateMock, portalMock, sendReportGeneratedMock, deliveryReadyMock, publicBaseUrlMock } = vi.hoisted(() => ({
+const { entitlementMock, queryMock, connectMock, consolidateMock, portalMock, sendReportGeneratedMock, deliveryReadyMock, publicBaseUrlMock } = vi.hoisted(() => ({
+  entitlementMock: vi.fn(),
   queryMock: vi.fn(),
   connectMock: vi.fn(),
   consolidateMock: vi.fn(),
@@ -18,6 +19,9 @@ vi.mock("./agency-reporting.js", () => ({
   createAgencyCustomerPortal: portalMock,
   getAgencyPublicBaseUrl: publicBaseUrlMock,
   isAgencyReportDeliveryReady: deliveryReadyMock,
+}));
+vi.mock("./addon-entitlement.js", () => ({
+  hasAddonEntitlementForOrg: entitlementMock,
 }));
 vi.mock("./mailer.js", () => ({
   mailer: { sendReportGenerated: sendReportGeneratedMock },
@@ -38,6 +42,7 @@ const schedule = {
 describe("scheduled Agency Reporting Pack delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    entitlementMock.mockResolvedValue(true);
     deliveryReadyMock.mockReturnValue(true);
     publicBaseUrlMock.mockReturnValue("https://agency.example.test");
     vi.stubEnv("PUBLIC_URL", "https://agency.example.test");
@@ -110,5 +115,32 @@ describe("scheduled Agency Reporting Pack delivery", () => {
       .rejects.toThrow("AGENCY_PUBLIC_URL_REQUIRED");
     expect(queryMock).not.toHaveBeenCalled();
     expect(consolidateMock).not.toHaveBeenCalled();
+  });
+  it("refuse de générer ou d'envoyer quand l'add-on n'est plus actif, et consigne l'échec", async () => {
+    entitlementMock.mockResolvedValue(false);
+
+    await deliverAgencyReportSchedule(schedule, new Date("2026-11-09T09:00:00.000Z"));
+
+    expect(entitlementMock).toHaveBeenCalledWith("org-a", "agencyPacks");
+    expect(consolidateMock).not.toHaveBeenCalled();
+    expect(portalMock).not.toHaveBeenCalled();
+    expect(sendReportGeneratedMock).not.toHaveBeenCalled();
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("last_status='failed'"),
+      ["AGENCY_ADDON_INACTIVE", "agency_schedule_a", "org-a"],
+    );
+  });
+
+  it("une panne de lecture des droits est un échec consigné, jamais une livraison", async () => {
+    entitlementMock.mockRejectedValue(new Error("db down"));
+
+    await deliverAgencyReportSchedule(schedule, new Date("2026-11-09T09:00:00.000Z"));
+
+    expect(consolidateMock).not.toHaveBeenCalled();
+    expect(sendReportGeneratedMock).not.toHaveBeenCalled();
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("last_status='failed'"),
+      ["db down", "agency_schedule_a", "org-a"],
+    );
   });
 });

@@ -7210,10 +7210,15 @@ function renderMonitors() {
     ? Math.round(_upMonsLat.reduce((s, m) => s + m.latency, 0) / _upMonsLat.length)
     : 0;
   // avgUptime uses m.uptime (real DB rolling-30d value), not seededRand-based computeRealUptime.
-  const avgUptime = (
-    monitors.reduce((s, m) => s + (m.uptime != null ? parseFloat(String(m.uptime)) : 100), 0) /
-    Math.max(1, monitors.length)
-  ).toFixed(1);
+  // Seuls les monitors déjà vérifiés (lastCheck) et dotés d'une disponibilité mesurée comptent :
+  // une valeur absente n'est pas « 100 % », et sans aucune mesure la moyenne est inconnue.
+  const _measuredUptimes = monitors
+    .filter(m => m.lastCheck != null && m.uptime != null && Number.isFinite(parseFloat(String(m.uptime))))
+    .map(m => parseFloat(String(m.uptime)));
+  const avgUptime = _measuredUptimes.length
+    ? (_measuredUptimes.reduce((s, v) => s + v, 0) / _measuredUptimes.length).toFixed(1)
+    : null;
+  const avgUptimeTxt = avgUptime == null ? '—' : avgUptime + '%';
 
   const _tlNow = new Date();
   const _tlFmt = (d) => d.toLocaleTimeString(getLocale(), {hour:'2-digit', minute:'2-digit'});
@@ -7226,10 +7231,11 @@ function renderMonitors() {
        : `${fpT('Check OK · Latence :')} ${m.latency == null ? '—' : m.latency + 'ms'}`,
   }));
   const _monAiMsg = (() => {
-    if (nDown > 0) return `🚨 <strong>${nDown} ${fpT('monitor(s) DOWN')}</strong> ${fpT('en ce moment — intervention immédiate requise. Latence moyenne :')} ${avgLatency}ms. ${fpT('Uptime global :')} ${avgUptime}%.`;
+    if (nDown > 0) return `🚨 <strong>${nDown} ${fpT('monitor(s) DOWN')}</strong> ${fpT('en ce moment — intervention immédiate requise. Latence moyenne :')} ${avgLatency}ms. ${fpT('Uptime global :')} ${avgUptimeTxt}.`;
     if (nWarn > 0) return `⚠️ <strong>${nWarn} ${fpT('alerte(s) actives')}</strong>. ${fpT('Latence moyenne :')} ${avgLatency}ms. ${fpT('Vérifiez les performances avant que les incidents n\u2019impactent vos utilisateurs.')}`;
     if (monitors.length === 0) return `${fpT('Aucun monitor configuré.')} <a class="fp-link-btn" onclick="openFloatPanel(fpT('Nouveau monitor'),renderNewMonitorPanel());setupNewMonitorPanel()">${fpT('Créer votre premier monitor →')}</a> ${fpT('pour surveiller la disponibilité 24/7 et être alerté instantanément.')}`;
-    return `✅ ${fpT('Tous les monitors opérationnels. Uptime global :')} <strong>${avgUptime}%</strong>${fpT(', latence moyenne :')} <strong>${avgLatency}ms</strong>. ${fpT('Infrastructure stable.')}`;
+    if (avgUptime == null) return fpT('Aucune vérification enregistrée pour le moment : disponibilité et latence apparaîtront après les premiers contrôles.');
+    return `✅ ${fpT('Tous les monitors opérationnels. Uptime global :')} <strong>${avgUptimeTxt}</strong>${fpT(', latence moyenne :')} <strong>${avgLatency}ms</strong>. ${fpT('Infrastructure stable.')}`;
   })();
   const deps = (STATE.monitors||[]).slice(0,6).map(m => ({
     name:    (m.name||m.url||'Monitor').replace(/^https?:\/\//,'').slice(0,24),
@@ -7264,7 +7270,7 @@ function renderMonitors() {
     ${aiBlock(
       nDown > 0
         ? `🚨 <strong>${nDown} ${fpT('site(s) DOWN')}</strong> ${fpT('actuellement. Impact estimé :')} <strong>~${nDown * 8}–${nDown * 15}€/min</strong>.${nWarn > 0 ? ' ' + nWarn + ' ' + fpT('site(s) en dégradation.') : ''} ${fpT('Latence moy. :')} <strong>${avgLatency}ms</strong>.`
-        : `${fpT('Tous les sites opérationnels. Uptime moy. :')} <strong>${avgUptime}%</strong> ${fpT('· Latence moy. :')} <strong>${avgLatency}ms</strong>.${nWarn > 0 ? ' <strong>' + nWarn + ' ' + fpT('alerte(s)') + '</strong> ' + fpT('latence à surveiller.') : ' ' + fpT('Performance nominale.')}`,
+        : `${fpT('Tous les sites opérationnels. Uptime moy. :')} <strong>${avgUptimeTxt}</strong> ${fpT('· Latence moy. :')} <strong>${avgLatency}ms</strong>.${nWarn > 0 ? ' <strong>' + nWarn + ' ' + fpT('alerte(s)') + '</strong> ' + fpT('latence à surveiller.') : ' ' + fpT('Performance nominale.')}`,
       nDown > 0
         ? [fpT('Diagnostiquer les pannes'), fpT('Notifier les clients'), fpT('Créer un incident')]
         : [fpT('Rapport uptime complet'), fpT('Optimiser la latence'), fpT('Configurer SLA')]
@@ -7276,7 +7282,7 @@ function renderMonitors() {
           { l: fpT('En ligne'),       v: `${nUp}/${monitors.length}`, c: '#22c55e',                                        sub: fpT('{count} en alerte', {count:nWarn}) },
           { l: fpT('DOWN'),           v: String(nDown),                  c: nDown > 0 ? '#ef4444' : '#22c55e',             sub: fpT(nDown > 0 ? 'Action requise' : 'Tout OK') },
           { l: fpT('Latence moy.'),   v: `${avgLatency}ms`,           c: avgLatency > 400 ? '#ef4444' : avgLatency > 200 ? '#f59e0b' : '#22c55e', sub: fpT(monitors.length > 0 ? 'latence moyenne actuelle' : '—') },
-          { l: fpT('Uptime global'),  v: `${avgUptime}%`,             c: parseFloat(avgUptime) >= 99 ? '#22c55e' : '#f59e0b', sub: fpT('SLA 99.0% cible') },
+          { l: fpT('Uptime global'),  v: avgUptimeTxt,             c: avgUptime == null ? '#94a3b8' : parseFloat(avgUptime) >= 99 ? '#22c55e' : '#f59e0b', sub: fpT('SLA 99.0% cible') },
           { l: fpT('Incidents/mois'), v: String(monitors.filter(m => m.status === 'down').length + monitors.filter(m => m.status === 'warn').length || (monitors.length > 0 ? 0 : 0)), c: monitors.filter(m=>m.status==='down').length > 0 ? '#ef4444' : '#22c55e', sub: fpT(monitors.length > 0 ? 'ce mois' : '—') },
         ].map(s => `
           <div class="fp-card fp-card-sm">
@@ -24528,6 +24534,30 @@ function bindGlobalEvents() {
     "Incident le plus long": "Longest incident",
     "Durée moyenne d’incident": "Average incident duration",
     "Mesures Better Stack du {from} au {to}.": "Better Stack measurements from {from} to {to}.",
+    "Cible SLA respectée : {availability} pour une cible de {target} (marge {margin} pt).": "SLA target met: {availability} against a target of {target} (margin {margin} pt).",
+    "Cible SLA non respectée : {availability} pour une cible de {target} (écart {margin} pt).": "SLA target missed: {availability} against a target of {target} (gap {margin} pt).",
+    "Données insuffisantes pour évaluer la cible SLA sur cette période.": "Not enough data to assess the SLA target for this period.",
+    "Aucune cible SLA définie pour ce monitor.": "No SLA target is set for this monitor.",
+    "La conformité SLA est momentanément indisponible.": "SLA compliance is temporarily unavailable.",
+    "Cible de disponibilité (%)": "Availability target (%)",
+    "Enregistrer la cible": "Save target",
+    "Impossible d’enregistrer la cible.": "Could not save the target.",
+    "Supprimer la cible": "Delete target",
+    "Impossible de supprimer la cible.": "Could not delete the target.",
+    "Exporter en CSV": "Export as CSV",
+    "Export impossible.": "Export failed.",
+    "La cible doit être un pourcentage entre 90 et 99,999.": "The target must be a percentage between 90 and 99.999.",
+    "Export impossible pour le moment.": "Export is not possible right now.",
+    "Cette fonction nécessite l’add-on actif sur votre organisation.": "This feature requires the active add-on on your organization.",
+    "Votre rôle ne permet pas d’accéder à cette fonction.": "Your role does not allow access to this feature.",
+    "Monitor introuvable pour cette organisation.": "Monitor not found for this organization.",
+    "Le service de monitoring est momentanément indisponible. Réessayez dans quelques instants.": "The monitoring service is temporarily unavailable. Please try again shortly.",
+    "Aucune vérification enregistrée pour le moment : disponibilité et latence apparaîtront après les premiers contrôles.": "No check has been recorded yet: availability and latency will appear after the first checks.",
+    "Le quota de rapports est atteint : le pack complet nécessite trois rapports disponibles.": "The report quota is reached: the complete pack needs three available reports.",
+    "L’audit sélectionné doit être terminé.": "The selected audit must be completed.",
+    "Actualiser": "Refresh",
+    "Fuseau horaire": "Time zone",
+    "Incidents": "Incidents",
     "Aucune région de contrôle configurée dans Better Stack.": "No check regions are configured in Better Stack.",
     "{regions} régions · {monitors} monitors": "{regions} regions · {monitors} monitors",
     "{count} monitor(s) en alerte": "{count} monitor(s) in alert",
@@ -25633,6 +25663,92 @@ function bindGlobalEvents() {
     "Synchronisation manuelle des contacts": "Sincronización manual de contactos",
     "Mise à jour via webhooks HubSpot signés": "Actualización mediante webhooks de HubSpot firmados",
     "Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close : bientôt": "Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close: próximamente",
+    "Charger les monitors…": "Cargar los monitores…",
+    "Du": "Del",
+    "Au": "Al",
+    "Sélectionnez un monitor et une période pour charger les mesures.": "Selecciona un monitor y un período para cargar las mediciones.",
+    "SLA Better Stack": "SLA de Better Stack",
+    "Disponibilité et incidents mesurés par Better Stack pour un monitor de cette organisation.": "Disponibilidad e incidentes medidos por Better Stack para un monitor de esta organización.",
+    "Charger le rapport": "Cargar el informe",
+    "Monitor Better Stack pour le rapport SLA": "Monitor de Better Stack para el informe SLA",
+    "Régions de contrôle configurées dans Better Stack": "Regiones de control configuradas en Better Stack",
+    "Chargez les régions configurées pour ce workspace.": "Carga las regiones configuradas para este espacio de trabajo.",
+    "Nom du client pour le pack complet": "Nombre del cliente para el pack completo",
+    "Audit à inclure dans les rapports": "Auditoría que se incluirá en los informes",
+    "Sélectionnez un audit": "Selecciona una auditoría",
+    "score indisponible": "puntuación no disponible",
+    "Score {score}": "Puntuación {score}",
+    "Site": "Sitio",
+    "Créer le pack complet (3 rapports)": "Crear el pack completo (3 informes)",
+    "Lancez d’abord un audit pour générer les rapports.": "Lanza primero una auditoría para generar los informes.",
+    "Créer le rapport": "Crear el informe",
+    "Rapport multi-sites": "Informe multisitio",
+    "Sélectionnez les audits terminés à inclure; seules ces mesures seront consolidées.": "Selecciona las auditorías terminadas que quieras incluir; solo se consolidarán esas mediciones.",
+    "Consolider les sites et créer un portail": "Consolidar los sitios y crear un portal",
+    "Email client": "Correo del cliente",
+    "Expression cron": "Expresión cron",
+    "Planifier la génération et l’envoi": "Programar la generación y el envío",
+    "La livraison planifiée est désactivée par la configuration du serveur.": "La entrega programada está desactivada por la configuración del servidor.",
+    "Révoqué": "Revocado",
+    "Révoquer le portail": "Revocar el portal",
+    "Jamais exécuté": "Nunca ejecutado",
+    "Suspendre": "Suspender",
+    "Reprendre": "Reanudar",
+    "Aucun pack chargé.": "Ningún pack cargado.",
+    "Packs de rapports d’agence": "Packs de informes de agencia",
+    "Modèles réutilisables pour les rapports clients": "Plantillas reutilizables para los informes de clientes",
+    "Actualiser les packs": "Actualizar los packs",
+    "Charger les packs": "Cargar los packs",
+    "Chargement des monitors Better Stack…": "Cargando los monitores de Better Stack…",
+    "Better Stack n’est pas configuré pour ce serveur.": "Better Stack no está configurado en este servidor.",
+    "Aucun monitor Better Stack appartenant à cette organisation.": "Ningún monitor de Better Stack pertenece a esta organización.",
+    "Choisissez une période valide, du plus ancien au plus récent.": "Elige un período válido, del más antiguo al más reciente.",
+    "Better Stack n’a pas renvoyé de mesures SLA exploitables pour cette période.": "Better Stack no devolvió mediciones SLA utilizables para este período.",
+    "Disponibilité": "Disponibilidad",
+    "Temps d’indisponibilité": "Tiempo de inactividad",
+    "Incident le plus long": "Incidente más largo",
+    "Durée moyenne d’incident": "Duración media de los incidentes",
+    "Mesures Better Stack du {from} au {to}.": "Mediciones de Better Stack del {from} al {to}.",
+    "Impossible de charger le rapport SLA Better Stack.": "No se pudo cargar el informe SLA de Better Stack.",
+    "Cible SLA respectée : {availability} pour une cible de {target} (marge {margin} pt).": "Objetivo SLA cumplido: {availability} frente a un objetivo de {target} (margen {margin} pt).",
+    "Cible SLA non respectée : {availability} pour une cible de {target} (écart {margin} pt).": "Objetivo SLA incumplido: {availability} frente a un objetivo de {target} (diferencia {margin} pt).",
+    "Données insuffisantes pour évaluer la cible SLA sur cette période.": "Datos insuficientes para evaluar el objetivo SLA en este período.",
+    "Aucune cible SLA définie pour ce monitor.": "No hay ningún objetivo SLA definido para este monitor.",
+    "La conformité SLA est momentanément indisponible.": "El cumplimiento del SLA no está disponible momentáneamente.",
+    "Cible de disponibilité (%)": "Objetivo de disponibilidad (%)",
+    "Enregistrer la cible": "Guardar el objetivo",
+    "Impossible d’enregistrer la cible.": "No se pudo guardar el objetivo.",
+    "Supprimer la cible": "Eliminar el objetivo",
+    "Impossible de supprimer la cible.": "No se pudo eliminar el objetivo.",
+    "Exporter en CSV": "Exportar a CSV",
+    "Export impossible.": "Exportación imposible.",
+    "La cible doit être un pourcentage entre 90 et 99,999.": "El objetivo debe ser un porcentaje entre 90 y 99,999.",
+    "Export impossible pour le moment.": "La exportación no es posible por el momento.",
+    "Aucune région de contrôle configurée dans Better Stack.": "No hay ninguna región de control configurada en Better Stack.",
+    "{regions} régions · {monitors} monitors": "{regions} regiones · {monitors} monitores",
+    "{count} monitor(s) en alerte": "{count} monitor(es) en alerta",
+    "{count} statuts inconnus": "{count} estados desconocidos",
+    "Aucun monitor en alerte": "Ningún monitor en alerta",
+    "{count} monitor(s)": "{count} monitor(es)",
+    "Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.": "No se pudieron cargar las regiones. Comprueba Better Stack y el acceso al add-on.",
+    "Impossible de charger les packs. Vérifiez l’accès à l’add-on.": "No se pudieron cargar los packs. Comprueba el acceso al add-on.",
+    "Rapport multi-sites créé. Portail client : {url}": "Informe multisitio creado. Portal del cliente: {url}",
+    "Impossible de créer le rapport et le portail": "No se pudo crear el informe y el portal",
+    "Génération et livraison planifiées": "Generación y entrega programadas",
+    "Impossible de planifier la livraison": "No se pudo programar la entrega",
+    "Impossible de révoquer le portail": "No se pudo revocar el portal",
+    "Impossible de modifier la planification": "No se pudo modificar la programación",
+    "Saisissez le nom du client": "Introduce el nombre del cliente",
+    "Pack créé : 3 rapports vérifiés pour {client}": "Pack creado: 3 informes verificados para {client}",
+    "Le pack complet n’a pas pu être créé": "No se pudo crear el pack completo",
+    "Impossible de créer le rapport": "No se pudo crear el informe",
+    "Cette fonction nécessite l’add-on actif sur votre organisation.": "Esta función requiere el add-on activo en tu organización.",
+    "Votre rôle ne permet pas d’accéder à cette fonction.": "Tu rol no permite acceder a esta función.",
+    "Monitor introuvable pour cette organisation.": "Monitor no encontrado para esta organización.",
+    "Le service de monitoring est momentanément indisponible. Réessayez dans quelques instants.": "El servicio de monitorización no está disponible momentáneamente. Inténtalo de nuevo en unos instantes.",
+    "Aucune vérification enregistrée pour le moment : disponibilité et latence apparaîtront après les premiers contrôles.": "Todavía no se ha registrado ninguna verificación: la disponibilidad y la latencia aparecerán tras los primeros controles.",
+    "Le quota de rapports est atteint : le pack complet nécessite trois rapports disponibles.": "Se alcanzó la cuota de informes: el pack completo necesita tres informes disponibles.",
+    "L’audit sélectionné doit être terminé.": "La auditoría seleccionada debe estar terminada.",
     "Sites critiques à corriger": "Sitios críticos a corregir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Algunos sitios tienen una puntuación SEO inferior a 50/100. Corrige primero las etiquetas faltantes y la velocidad móvil.",
     "À prioriser": "A priorizar",
@@ -74489,6 +74605,8 @@ function renderAgencyPacksPanel() {
   if (!STATE.me?.addons?.agencyPacks) return '';
   const panelState = window._fpAgencyPacksState || {};
   const audits = Array.isArray(panelState.audits) ? panelState.audits : [];
+  // Un pack ne repose que sur des mesures : les audits en cours ou en échec ne sont pas proposés.
+  const completedAudits = audits.filter(audit => audit && audit.status === 'completed');
   const packs = Array.isArray(panelState.packs) ? panelState.packs : [];
   const selectedAuditId = String(panelState.selectedAuditId || '');
   const selectedAuditIds = Array.isArray(panelState.selectedAuditIds) ? panelState.selectedAuditIds : [];
@@ -74501,7 +74619,7 @@ function renderAgencyPacksPanel() {
       <select required aria-label="${fpT('Audit à inclure dans les rapports')}"
         onchange="window.FP_V1_ADDON_PANELS.updateAgencyPackDraft('selectedAuditId',this.value)">
         <option value="" disabled ${selectedAuditId ? '' : 'selected'}>${fpT('Sélectionnez un audit')}</option>
-        ${audits.map(audit => {
+        ${completedAudits.map(audit => {
           const id = String(audit.id || '');
           const measuredScore = audit.score === null || audit.score === undefined || audit.score === ''
             ? fpT('score indisponible')
@@ -74513,16 +74631,16 @@ function renderAgencyPacksPanel() {
       </select>
       <button type="button" class="fp-btn fp-btn-primary fp-btn-sm"
         onclick="window.FP_V1_ADDON_PANELS.createAgencyPack()"
-        ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le pack complet (3 rapports)')}</button>
+        ${!completedAudits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le pack complet (3 rapports)')}</button>
     </div>
-    ${!audits.length ? `<p class="fp-text-muted">${fpT('Lancez d’abord un audit pour générer les rapports.')}</p>` : ''}
+    ${!completedAudits.length ? `<p class="fp-text-muted">${fpT('Lancez d’abord un audit pour générer les rapports.')}</p>` : ''}
     ${packs.map((pack, index) => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--fp-border)">
         <span>${escHtml(`${pack.name || ''} — ${pack.description || ''}`)}</span>
         <button type="button" class="fp-btn fp-btn-primary fp-btn-sm"
           data-fp-agency-pack-index="${index}"
           onclick="window.FP_V1_ADDON_PANELS.createAgencySinglePack(this.dataset.fpAgencyPackIndex)"
-          ${!audits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le rapport')}</button>
+          ${!completedAudits.length || panelState.submitting ? 'disabled' : ''}>${fpT('Créer le rapport')}</button>
       </div>`).join('')}
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--fp-border)">
       <h3>${fpT('Rapport multi-sites')}</h3>
@@ -74627,7 +74745,9 @@ window.FP_V1_ADDON_PANELS = {
       }
       const report = await window.FP_BETTERSTACK_API.getMonitorSLA(select.value, from, to);
       const metrics = report?.data?.attributes;
-      const availability = Number(metrics?.availability);
+      // Number(null) et Number('') valent 0 : une disponibilité ABSENTE ne doit jamais s'afficher « 0 % ».
+      const rawAvailability = metrics ? metrics.availability : undefined;
+      const availability = (rawAvailability === null || rawAvailability === undefined || rawAvailability === '') ? NaN : Number(rawAvailability);
       if (!metrics || !Number.isFinite(availability) || availability < 0 || availability > 100) {
         throw new Error(fpT('Better Stack n’a pas renvoyé de mesures SLA exploitables pour cette période.'));
       }
@@ -74667,7 +74787,20 @@ window.FP_V1_ADDON_PANELS = {
       status.textContent = fpT('Mesures Better Stack du {from} au {to}.', {from, to});
     } catch (err) {
       status.textContent = err?.message || fpT('Impossible de charger le rapport SLA Better Stack.');
+      // Erreur HTTP : message localisé et distinct (add-on, rôle, non configuré, indisponible).
+      if (err?.status) status.textContent = window.FP_V1_ADDON_PANELS.monitoringErrorText(err, status.textContent);
     }
+  },
+  /** Message distinct : add-on requis / rôle / introuvable / non configuré / indisponible. */
+  monitoringErrorText(err, fallback) {
+    const status = Number(err?.status);
+    const message = String(err?.message || '');
+    if (err?.code === 'ADDON_REQUIRED' || status === 402) return fpT('Cette fonction nécessite l’add-on actif sur votre organisation.');
+    if (status === 403) return fpT('Votre rôle ne permet pas d’accéder à cette fonction.');
+    if (status === 404) return fpT('Monitor introuvable pour cette organisation.');
+    if (status === 503 && /not configured/i.test(message)) return fpT('Better Stack n’est pas configuré pour ce serveur.');
+    if (status === 502 || status === 503 || status === 504) return fpT('Le service de monitoring est momentanément indisponible. Réessayez dans quelques instants.');
+    return fallback;
   },
   renderSlaCompliance(container, compliance, monitorId, from, to) {
     const box = document.createElement('div');
@@ -74768,8 +74901,8 @@ window.FP_V1_ADDON_PANELS = {
       const note = document.createElement('small');
       note.textContent = summary.note || '';
       target.appendChild(note);
-    } catch {
-      target.textContent = fpT('Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.');
+    } catch (err) {
+      target.textContent = window.FP_V1_ADDON_PANELS.monitoringErrorText(err, fpT('Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.'));
     }
   },
   async loadAgencyPacks() {
@@ -74789,12 +74922,15 @@ window.FP_V1_ADDON_PANELS = {
       panelState.portals = Array.isArray(portalResult) ? portalResult : [];
       panelState.schedules = Array.isArray(scheduleResult?.schedules) ? scheduleResult.schedules : [];
       panelState.schedulerEnabled = scheduleResult?.schedulerEnabled === true;
-      if (!panelState.audits.some(audit => String(audit.id || '') === panelState.selectedAuditId)) {
-        panelState.selectedAuditId = String(panelState.audits[0]?.id || '');
+      const _completedAudits = panelState.audits.filter(audit => audit && audit.status === 'completed');
+      if (!_completedAudits.some(audit => String(audit.id || '') === panelState.selectedAuditId)) {
+        panelState.selectedAuditId = String(_completedAudits[0]?.id || '');
       }
       panelState.loaded = true;
-    } catch {
-      panelState.error = fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
+    } catch (err) {
+      panelState.error = err?.status
+        ? window.FP_V1_ADDON_PANELS.monitoringErrorText(err, fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.'))
+        : fpT('Impossible de charger les packs. Vérifiez l’accès à l’add-on.');
       if (!panelState.loaded) panelState.loaded = false;
     } finally {
       panelState.loading = false;
@@ -74877,7 +75013,7 @@ window.FP_V1_ADDON_PANELS = {
     const clientName = String(panelState.clientName || '').trim();
     const auditId = String(panelState.selectedAuditId || '');
     if (clientName.length < 2) { showToast('error', fpT('Saisissez le nom du client')); return; }
-    if (!auditId || !panelState.audits.some(audit => String(audit.id || '') === auditId)) {
+    if (!auditId || !panelState.audits.some(audit => audit && audit.status === 'completed' && String(audit.id || '') === auditId)) {
       showToast('error', fpT('Sélectionnez un audit'));
       return;
     }
@@ -74898,8 +75034,12 @@ window.FP_V1_ADDON_PANELS = {
       const visibleIds = new Set((window._fpReportsState?.reports || []).map(report => String(report.id)));
       if (createdIds.some(id => !visibleIds.has(id))) throw new Error('Les rapports créés ne sont pas visibles après rechargement');
       showToast('success', fpT('Pack créé : 3 rapports vérifiés pour {client}', { client: escHtml(clientName) }));
-    } catch {
-      showToast('error', fpT('Le pack complet n’a pas pu être créé'));
+    } catch (error) {
+      showToast('error', error?.status === 402
+        ? fpT('Le quota de rapports est atteint : le pack complet nécessite trois rapports disponibles.')
+        : error?.status === 422
+          ? fpT('L’audit sélectionné doit être terminé.')
+          : fpT('Le pack complet n’a pas pu être créé'));
     } finally {
       panelState.submitting = false;
       render();
