@@ -1,7 +1,12 @@
 /* Vérifie, dans un navigateur réel en fr-FR sans préférence, que les 11 pages publiques s'affichent en anglais
    (aucun texte français visible) et que la logique de tarifs reste indépendante de la langue.
    Usage : node scripts/verifier-langue-pages-publiques.cjs http://127.0.0.1:4400   (serveur de test local uniquement) */
-const BASE = process.argv[2]; if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(BASE || '')) { console.error('cible refusée : serveur local uniquement'); process.exit(2); }
+const BASE = process.argv[2];
+/* Local par défaut. Lecture seule distante UNIQUEMENT sur app.flowpoint.pro ou flowpoint-test.onrender.com, avec FP_VERIFY_READONLY_REMOTE=1 :
+   le script ne fait que charger des pages (GET) et exécuter du JavaScript côté navigateur ; aucune saisie, aucun envoi de formulaire. */
+const LOCAL = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(BASE || '');
+const REMOTE_RO = process.env.FP_VERIFY_READONLY_REMOTE === '1' && /^https:\/\/(app\.flowpoint\.pro|flowpoint-test\.onrender\.com)$/.test(BASE || '');
+if (!LOCAL && !REMOTE_RO) { console.error('cible refusée : serveur local, ou FP_VERIFY_READONLY_REMOTE=1 avec app.flowpoint.pro / flowpoint-test.onrender.com'); process.exit(2); }
 const { chromium } = require('playwright');
 const PAGES = ['signin','login','login-verify','pricing','checkout','checkout-payment','checkout-return','success','cancel','accept-invitation','report-view'];
 (async()=>{
