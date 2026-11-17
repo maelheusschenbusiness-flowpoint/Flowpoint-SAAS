@@ -166,3 +166,7 @@ Pour un futur comportement cible non encore livré, réintroduire un `test.fixme
   code postal que si le formulaire les porte (retirés par 4759b92b) ; 4 cas de validation devenus sans objet retirés de 02 ; libellés français
   de 04 alignés (« Commencer mon essai gratuit », « Votre compte est prêt ! Consultez vos emails ») ; 06 retrouve la souscription par le client de
   l'organisation (le SetupIntent n'a plus de `customer` à la création).
+
+* **D1 corrigé** (`pricing.html`) : un appui sur un plan avant la fin du chargement de `/api/plans/catalog` attend le catalogue (boutons inactifs,
+  message de chargement), relance le chargement une fois s'il avait échoué, puis continue ; l'erreur n'apparaît que si le chargement échoue vraiment.
+  Le test 09A correspondant est un test obligatoire (plus `defautConnu`).
