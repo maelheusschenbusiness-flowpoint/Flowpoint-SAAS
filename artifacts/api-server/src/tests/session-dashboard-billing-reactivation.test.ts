@@ -41,6 +41,19 @@ describe("dashboard account/session isolation contracts", () => {
     expect(dashboardSource).toContain("_fpResetDashboardCaches();");
   });
 
+  it("keeps the hash route of a first login instead of forcing the overview", () => {
+    // Nouveau compte sur ce navigateur : seule la route sans hash retombe sur
+    // l'accueil. Un lien profond ou une navigation faite pendant le chargement
+    // initial (hash deja pose) ne doit pas etre ecrase quand loadData() se termine.
+    const start = dashboardSource.indexOf("_fpResetDashboardCaches();\n        // Nouveau compte");
+    expect(start).toBeGreaterThan(-1);
+    const branch = dashboardSource.slice(start, start + 900);
+    const guard = branch.indexOf("if (!window.location.hash.slice(1)) {");
+    expect(guard).toBeGreaterThan(-1);
+    expect(branch.indexOf("STATE.route = 'overview';")).toBeGreaterThan(guard);
+    expect(branch.indexOf("history.replaceState(")).toBeGreaterThan(guard);
+  });
+
   it("does not use shared localStorage auth or a bare PSI cache", () => {
     expect(config).toContain("sessionStorage.getItem('fp_session_token')");
     expect(config).not.toContain("localStorage.getItem('token')");
