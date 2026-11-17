@@ -138,7 +138,10 @@ export const ADDON_REGISTRY = [
       "src/services/global-monitoring-postgres.test.ts",
       "src/routes/betterstack-sla-route.test.ts",
     ],
-    browserTitle: "Global Monitoring fails closed without provider data and shows no fabricated metrics",
+    browserTitles: [
+      "Global Monitoring fails closed without provider data and shows no fabricated metrics",
+      "Global Monitoring keeps its result and its in-flight request when a late background loader re-renders the page",
+    ],
   },
   {
     id: "sla-monitoring-avance",
@@ -264,7 +267,10 @@ export const ADDON_REGISTRY = [
       "src/services/conversion-opportunity-engine.test.ts",
       "src/routes/conversion-opportunity-engine.test.ts",
     ],
-    browserTitle: CONVERSION_BROWSER_TITLE,
+    browserTitles: [
+      CONVERSION_BROWSER_TITLE,
+      "Conversion Opportunity Engine keeps typed thresholds when a late background loader re-renders the page",
+    ],
   },
   {
     id: "seo-change-impact",
@@ -274,7 +280,10 @@ export const ADDON_REGISTRY = [
       "src/services/seo-change-impact.test.ts",
       "src/routes/seo-change-impact.test.ts",
     ],
-    browserTitle: SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+    browserTitles: [
+      SHARED_REPLACEMENT_ADDON_BROWSER_TITLE,
+      "SEO Change Impact keeps typed settings when a late background loader re-renders the page",
+    ],
     browserLabel: SHARED_REPLACEMENT_ADDON_BROWSER_LABEL,
   },
   {
