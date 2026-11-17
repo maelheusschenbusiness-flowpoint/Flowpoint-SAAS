@@ -2127,6 +2127,19 @@ async function loadData(options = {}) {
   STATE.me = me || (PREVIEW_MODE ? MOCK_ME : null);
   if (!STATE.me) { clearTimeout(_loadSafetyTimer); _loadDataInProgress = false; window.__fpLoadDataInProgress = false; showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
+  // Langue du compte sur un appareil neuf : sans choix explicite memorise sur CET appareil (fp:language),
+  // la langue enregistree sur le compte (/api/me.language) s'applique. Un choix local existant n'est jamais ecrase ;
+  // aucune detection par navigator.language / Accept-Language.
+  try {
+    var _acctLang = typeof STATE.me.language === 'string' ? STATE.me.language.trim() : '';
+    if (_acctLang && !localStorage.getItem('fp:language')) {
+      var _acctRes = typeof window.fpResolveLanguage === 'function' ? window.fpResolveLanguage(_acctLang) : _acctLang.toLowerCase();
+      localStorage.setItem('fp:language', _acctRes);
+      if (!STATE.settings || typeof STATE.settings !== 'object') STATE.settings = {};
+      STATE.settings.language = _acctRes;
+      _setDocumentLanguage(_acctRes);
+    }
+  } catch (_) { /* stockage indisponible : la langue par defaut reste en vigueur */ }
   // Session confirmed: live /api/me succeeded — it is now safe to show billing/plans.
   // Any route restored from localStorage that was gated behind this flag will
   // re-render correctly once STATE.loading = false at the end of loadData().
@@ -19258,7 +19271,7 @@ function _fpRenderOnboardingModal() {
   }).join('');
 
   const videoHtml = step.videoUrl
-    ? '<video class="fp-ob-video" src="' + escHtml(step.videoUrl) + '" controls preload="none" aria-label="' + escHtml(step.title) + '" style="width:100%;aspect-ratio:16/9;border-radius:10px;background:#000;display:block"></video>'
+    ? '<video class="fp-ob-video" src="' + escHtml(step.videoUrl) + '" controls preload="none" aria-label="' + escHtml(fpT(step.title)) + '" style="width:100%;aspect-ratio:16/9;border-radius:10px;background:#000;display:block"></video>'
     : '<div class="fp-ob-video-placeholder" role="img" aria-label="' + fpT('Vidéo bientôt disponible') + '">' +
         '<div class="fp-ob-video-icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>' +
         '<div class="fp-ob-video-label">' + fpT('Vidéo bientôt disponible') + '</div>' +
@@ -19279,8 +19292,8 @@ function _fpRenderOnboardingModal() {
       '</div>' +
       '<div class="fp-ob-media">' + videoHtml + '</div>' +
       '<div class="fp-ob-body">' +
-        '<div class="fp-ob-title">' + escHtml(step.title) + '</div>' +
-        '<div class="fp-ob-desc">' + escHtml(step.desc) + '</div>' +
+        '<div class="fp-ob-title">' + escHtml(fpT(step.title)) + '</div>' +
+        '<div class="fp-ob-desc">' + escHtml(fpT(step.desc)) + '</div>' +
         '<div class="fp-ob-dots">' + dots + '</div>' +
         '<div class="fp-ob-actions">' +
           '<button class="fp-btn fp-btn-ghost fp-ob-skip" onclick="window._fpObSkip()" aria-label="' + fpT('Passer la visite') + '">' + fpT('Passer la visite') + '</button>' +
@@ -19575,6 +19588,19 @@ function bindGlobalEvents() {
   // keeps every supported language deterministic across rerenders; user content
   // is deliberately left untouched when it has no UI-key match.
   var FP_I18N_EN = {
+    // Visite guidee d'accueil (FP_ONBOARDING_STEPS)
+    "Prenez vos repères": "Get your bearings",
+    "Visualisez la santé de votre portefeuille et accédez rapidement aux fonctions principales depuis un espace unique.": "See the health of your portfolio and quickly reach the main features from a single workspace.",
+    "Passez du diagnostic à l'action": "Go from diagnosis to action",
+    "Lancez un audit SEO, identifiez les problèmes prioritaires puis transformez les recommandations en missions suivies.": "Run an SEO audit, identify the priority issues, then turn the recommendations into tracked missions.",
+    "Surveillez et soyez alerté": "Monitor and get alerted",
+    "Contrôlez la disponibilité et la latence de vos sites, puis centralisez les incidents et alertes critiques.": "Check the availability and latency of your sites, then centralize incidents and critical alerts.",
+    "Pilotez votre visibilité locale": "Manage your local visibility",
+    "Repérez vos opportunités Google Maps et comparez votre présence locale avec celle de vos concurrents.": "Spot your Google Maps opportunities and compare your local presence with your competitors'.",
+    "Accélérez avec le Copilot": "Speed up with the Copilot",
+    "Interrogez l'Assistant IA avec le contexte de votre workspace, puis générez des rapports prêts à partager.": "Ask the AI Assistant with the context of your workspace, then generate reports ready to share.",
+    "Gardez le cap chaque jour": "Stay on track every day",
+    "Consultez les événements, traitez les actions prioritaires et mesurez régulièrement la progression de vos indicateurs.": "Review events, handle priority actions and regularly measure the progress of your indicators.",
     "🤖 Générateur de posts GBP IA": "🤖 AI GBP post generator",
     "Génération automatique de posts GBP par IA — planification, adaptation saisonnière et publication directe sur Google.": "Automatically generate GBP posts with AI, schedule them, adapt them seasonally, and publish directly to Google.",
     "Génération IA et publication directe sur Google — bientôt disponible.": "AI generation and direct publishing to Google — coming soon.",
