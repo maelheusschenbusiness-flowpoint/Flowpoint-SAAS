@@ -240,11 +240,9 @@ if (IS_LOCAL) {
     });
 
     // Lien direct vers le recapitulatif par un visiteur sans compte (annonce, e-mail) : le plan du lien doit survivre a l'inscription.
-    // DEFAUT P2 (documente, remonte) : le plan du lien direct est bien range dans le panier, mais la page d'inscription le IGNORE
-    // (le panier restaure apres la redirection n'a ni `_v` ni `_updatedAt`, donc fpCartPlan() renvoie ''): le bouton annonce « Continuer
-    // vers le choix du plan » et, apres le formulaire, l'ecran de choix du plan REAPPARAIT ; le lien Google ne transporte pas le plan.
+    // Regression D3 (corrige) : checkout.html estampille le panier (_v / _updatedAt) avant la redirection anonyme.
     for (const l of LANGS) {
-      defautConnu(`lien direct /checkout.html?plan=ultra par un visiteur anonyme | ${l} : le plan survit a l'inscription, sans re-choisir (DEFAUT P2 : le choix du plan reapparait)`, async ({ page, context, newEmail }) => {
+      test(`lien direct /checkout.html?plan=ultra par un visiteur anonyme | ${l} : le plan survit a l'inscription, sans re-choisir`, async ({ page, context, newEmail }) => {
         await poserLangue(context, l);
         const t = T[langueCode(l)];
         await page.goto("/checkout.html?plan=ultra");

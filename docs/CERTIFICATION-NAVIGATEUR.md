@@ -170,3 +170,5 @@ Pour un futur comportement cible non encore livré, réintroduire un `test.fixme
 * **D1 corrigé** (`pricing.html`) : un appui sur un plan avant la fin du chargement de `/api/plans/catalog` attend le catalogue (boutons inactifs,
   message de chargement), relance le chargement une fois s'il avait échoué, puis continue ; l'erreur n'apparaît que si le chargement échoue vraiment.
   Le test 09A correspondant est un test obligatoire (plus `defautConnu`).
+* **D3 corrigé** (`checkout.html`) : le plan du lien direct `?plan=` (liste blanche standard / pro / ultra) est rangé dans un panier estampillé
+  (`_v`, `_updatedAt`) avant la redirection anonyme ; `signin.html` le retrouve et ne réaffiche plus le choix du plan. Le serveur reste maître du prix.
