@@ -7,6 +7,7 @@ import { canWrite } from "../middlewares/requireRole.js";
 import { consumeAICredits } from "../services/ai-engine.js";
 import { loadOrgAIPrefs } from "../services/ai-prefs.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 
@@ -83,7 +84,12 @@ router.get("/missions", async (req: Request, res: Response) => {
   logger.info({ org: orgId(req) }, "[MISSIONS] API start");
   try {
     const org = orgId(req);
-    const { status, category, priority, quick_win, limit = "100", offset = "0" } = req.query as Record<string, string>;
+    const { status, category, priority, quick_win } = req.query as Record<string, string>;
+    // Une limite negative ou un offset negatif partaient tels quels dans le
+    // LIMIT/OFFSET : PostgreSQL les refuse, l'erreur etait avalee et la route
+    // repondait 200 avec une liste vide, masquant les missions de l'organisation.
+    const limit = queryInt(req.query.limit, { defaut: 100, min: 1, max: 200, horsBornes: "borner" });
+    const offset = queryInt(req.query.offset, { defaut: 0, min: 0, max: 100000, horsBornes: "defaut" });
 
     let query = `SELECT * FROM missions WHERE org_id = $1`;
     const params: unknown[] = [org];
@@ -95,7 +101,7 @@ router.get("/missions", async (req: Request, res: Response) => {
     if (quick_win === "true") { query += ` AND ai_quick_win = true`; }
 
     query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
-    params.push(parseInt(limit) || 100, parseInt(offset) || 0);
+    params.push(limit, offset);
 
     const result = await pool.query(query, params);
     const ms = Date.now() - _t0;
