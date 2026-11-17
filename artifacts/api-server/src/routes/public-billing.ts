@@ -1,3 +1,4 @@
+import { customerAddressFrom } from "../lib/customer-address.js";
 import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
@@ -1372,15 +1373,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
           /* Expose to frontend for Address Element pre-fill */
           _piDefaultValues = { name: _piName, email: _piEmail, country: _piRow.country || "FR" };
           /* Merge: submitted form address takes priority over stored address */
-          const _piAddr = billingAddress?.line1 ? billingAddress : (
-            (_piRow.address || _piRow.city || _piRow.country) ? {
-              line1:       _piRow.address  ?? "",
-              line2:       "",
-              city:        _piRow.city     ?? "",
-              postal_code: _piRow.postal_code ?? "",
-              country:     _piRow.country  ?? "",
-            } : null
-          );
+          const _piAddr = customerAddressFrom(_piRow, billingAddress);
           const _piCustomerData = {
             email:              _piEmail,
             name:               _piName,
@@ -1393,13 +1386,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
               ..._piRow.company_name ? { companyName: _piRow.company_name } : {},
               environment: process.env["NODE_ENV"] === "production" ? "production" : "development",
             },
-            ...(_piAddr?.line1 ? { address: {
-              line1:       _piAddr.line1,
-              line2:       _piAddr.line2 || undefined,
-              city:        _piAddr.city,
-              postal_code: _piAddr.postal_code,
-              country:     _piAddr.country,
-            } } : {}),
+            ...(_piAddr ? { address: _piAddr } : {}),
           };
 
           // 1. Reuse customer stored from a previous attempt (checkout-session or prior payment-intent)
@@ -1417,7 +1404,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
                     ...(!_piEcFull.name ? { name: _piCustomerData.name } : {}),
                     ...(!_piEcFull2.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
                     preferred_locales: ["fr"],
-                    ...(_piAddr?.line1 && !_piEcFull.address && _piCustomerData.address
+                    ...(_piAddr && !_piEcFull.address && _piCustomerData.address
                       ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
                       : {}),
                   }).catch(() => {});
@@ -1439,7 +1426,7 @@ router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Reque
                 ...(!_piFoundFull.name ? { name: _piCustomerData.name } : {}),
                 ...(!_piFoundFull.description && _piRow.company_name ? { description: _piRow.company_name } : {}),
                 preferred_locales: ["fr"],
-                ...(_piAddr?.line1 && !_piFoundFull.address && _piCustomerData.address
+                ...(_piAddr && !_piFoundFull.address && _piCustomerData.address
                   ? { address: _piCustomerData.address as import("stripe").Stripe.AddressParam }
                   : {}),
               }).catch(() => {});

@@ -2166,10 +2166,13 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               await _gpClient.query(
                 `INSERT INTO pending_signups
                    (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,$7,NOW(),NOW() + INTERVAL '2 hours')
+                 VALUES ($1,$2,$3,$4,$5,'FR',NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours')
                  ON CONFLICT (token) DO NOTHING`,
-                // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
+                // Google ne donne ni entreprise ni adresse : comme l'inscription courte
+                // (#466), l'entreprise prend le nom de la personne et l'adresse reste
+                // NULL. Plus de valeurs de remplissage ("—", "00000") envoyees a Stripe.
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName,
+                 `${googleFirstName} ${googleLastName}`.trim() || resolvedEmail, sellerIdFromState, _gpFpLid],
               );
               logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
             } finally {

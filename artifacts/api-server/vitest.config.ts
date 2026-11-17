@@ -16,6 +16,8 @@ export default defineConfig({
       "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
+      "src/tests/signup-short-flow-db.test.ts",
+      "src/lib/customer-address.test.ts",
       // AI Lab — emission des jalons de conversion (signup, checkout, trial, paid).
       "src/tests/ai-lab-conversion-emitters.test.ts",
       // Les handlers eux-memes : prouve que quelqu un appelle l emetteur.
