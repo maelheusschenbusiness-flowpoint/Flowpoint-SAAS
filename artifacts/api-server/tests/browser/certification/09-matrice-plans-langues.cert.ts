@@ -202,18 +202,16 @@ test.describe("9B. Parcours complet par plan x langue x methode", () => {
     expect(await page.evaluate(() => document.documentElement.lang)).toMatch(/^en/);
   });
 
-  // DEFAUT P2 (documente, remonte) : sur un appareil sans preference locale, le tableau de bord ignore la langue memorisee
-  // cote serveur : un compte « fr » s'ouvre en anglais (menu « MAIN Overview Growth… », <html lang="en-US">), alors que
-  // /api/me renvoie language=fr et user_prefs.settings.language=fr. Preuve : CERT_RUN_PENDING=1 (rapport joint a la PR).
-  defautConnu("apres l'essai | fr : le lien magique sur un appareil neuf affiche le tableau de bord en francais (DEFAUT P2 : s'ouvre en anglais)", async ({ page, request, newEmail, magicToken, context }) => {
+  // Regression (ex-defaut P2 corrige) : sur un appareil sans preference locale, la langue memorisee sur le compte
+  // (/api/me.language) s'applique : un compte « fr » ouvre le tableau de bord en francais.
+  test("apres l'essai | fr : le lien magique sur un appareil neuf affiche le tableau de bord en francais", async ({ page, request, newEmail, magicToken, context }) => {
     await ouvrirSurAppareilNeuf(page, request, context, newEmail("dash-fr"), "fr", magicToken);
     await expect(page.locator("body")).toContainText("Vue d'ensemble", { useInnerText: true });
     expect(await page.evaluate(() => document.documentElement.lang)).toMatch(/^fr/);
   });
 
-  // DEFAUT P2 (documente, remonte) : la visite guidee d'accueil est rendue en FRANCAIS (« Prenez vos reperes… ») pour un compte
-  // ANGLAIS ouvert depuis un navigateur fr-FR : melange de langues dans le tout premier ecran de l'application.
-  defautConnu("apres l'essai | en : la visite guidee d'accueil n'est pas en francais pour un compte anglais (DEFAUT P2 : melange fr/en)", async ({ page, request, newEmail, magicToken, context }) => {
+  // Regression (ex-defaut P2 corrige) : la visite guidee d'accueil suit la langue active (plus de francais pour un compte anglais).
+  test("apres l'essai | en : la visite guidee d'accueil n'est pas en francais pour un compte anglais", async ({ page, request, newEmail, magicToken, context }) => {
     await ouvrirSurAppareilNeuf(page, request, context, newEmail("dash-en-tour"), "en", magicToken, true);
     await expect(page.getByText(/WELCOME TO FLOWPOINT|BIENVENUE/i).first(), "la visite guidee est affichee").toBeVisible({ timeout: 15_000 });
     await expect(page.locator("body")).not.toContainText("Prenez vos repères", { useInnerText: true });
