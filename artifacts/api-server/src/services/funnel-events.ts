@@ -31,6 +31,7 @@
 
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { compterRejetFunnel } from "./funnel-rejections.js";
 
 /**
  * Les etapes du tunnel. Liste fermee : une etape inconnue est refusee, pour
@@ -189,6 +190,8 @@ export async function enregistrerEtape(ev: EvenementTunnel): Promise<boolean> {
     return (r.rowCount ?? 0) > 0;
   } catch (err) {
     logger.warn({ err, etape: ev.etape }, "[Tunnel] enregistrement impossible (non fatal)");
+    // Un evenement valide perdu (contrainte, base) : compte, sans donnee personnelle.
+    void compterRejetFunnel("storage_error");
     return false;
   }
 }
