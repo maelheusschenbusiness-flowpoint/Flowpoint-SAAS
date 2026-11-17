@@ -949,10 +949,8 @@
       if (!res.ok) {
         var rawError = res.data.error || 'An error occurred. Please try again.';
         if (res.status === 409) {
-          // Compte deja existant : message localise cle sur le statut HTTP (le texte serveur reste anglais, jamais affiche tel quel en fr).
-          rawError = window.fpPublicText(
-            'Un compte existe déjà avec cette adresse e-mail. Connectez-vous pour gérer votre abonnement.',
-            'An account already exists with this email address. Sign in to manage your subscription.');
+          // Existing account: localized message keyed on the HTTP status (server text stays English and is never shown as-is in French).
+          rawError = window.fpAccessText('accountExists');
         } else if (window.fpResolveLanguage() === 'en') {
           var translatedError = window.fpPublicTranslateText(rawError);
           rawError = translatedError !== rawError ? translatedError : 'An error occurred. Please try again.';
