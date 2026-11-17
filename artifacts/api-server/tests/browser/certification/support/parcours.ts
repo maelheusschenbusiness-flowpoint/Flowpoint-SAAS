@@ -18,11 +18,13 @@ export async function remplirInscription(page: Page, email: string, o: Partial<t
   await page.locator("#firstName").fill(f.firstName);
   await page.locator("#lastName").fill(f.lastName);
   await page.locator("#email").fill(email);
-  await page.locator("#companyName").fill(f.companyName);
-  await page.locator("#country").selectOption(f.country);
-  await page.locator("#address").fill(f.address);
-  await page.locator("#city").fill(f.city);
-  await page.locator("#postalCode").fill(f.postalCode);
+  // Depuis « Inscription : formulaire reduit a prenom, nom, e-mail » (4759b92b), societe / pays / adresse / ville / code postal
+  // ne sont plus demandes : on ne les remplit que si le formulaire les porte encore (compatibilite des anciens parcours).
+  const optionnels: Array<[string, string, boolean]> = [["#companyName", f.companyName, false], ["#country", f.country, true], ["#address", f.address, false], ["#city", f.city, false], ["#postalCode", f.postalCode, false]];
+  for (const [sel, val, isSelect] of optionnels) {
+    if (!(await page.locator(sel).count())) continue;
+    if (isSelect) await page.locator(sel).selectOption(val); else await page.locator(sel).fill(val);
+  }
   if (o.honeypot) await page.locator("#_hp").evaluate((el, v) => { (el as HTMLInputElement).value = v; }, o.honeypot);
 }
 

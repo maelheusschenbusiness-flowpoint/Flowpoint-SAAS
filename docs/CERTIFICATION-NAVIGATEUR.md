@@ -101,6 +101,9 @@ CERT_BASE_URL=https://flowpoint-test.onrender.com \
 | 5 | `05-lien-magique-dashboard` | lien -> session -> dashboard (plan, essai 14 j, aucune 401/403/500 inattendue, console propre), usage unique, lien invalide | oui | oui | oui |
 | 6 | `06-suivi-conversion` | `cta_clique`, `signup_started`, `signup_form_engaged`, `checkout_started`, `checkout_completed`, `trial_activated` avec consentement ; **aucun** sans consentement ou consentement refusé ; UTM / `fp_lid` conservés ; idempotence | oui | oui | oui |
 | 7 | `07-abonnement-etats` | trialing, active, past_due (grâce / terminé), canceled (période valide / terminée), expired : `hasPaidAccess`, 402 `SUBSCRIPTION_REQUIRED` hors période payée, régularisation (`/me`, `/billing/*`, `/plans/*`) toujours ouverte (PR #376) | oui | oui | oui |
+| 9 | `09-matrice-plans-langues` | **matrice** plan (Standard, Pro, Ultra) x langue (anglais par défaut sans préférence + navigateur fr-FR ; français par préférence ; français par `?lang=fr`) x méthode (e-mail, Google simulé) : tarifs → inscription → récapitulatif → carte → essai de 14 jours, textes, absence de mélange de langues, prix du catalogue, `pk_test_`, carte attachée, langue mémorisée (inscription en attente, organisation), e-mail d'activation dans la langue ; langue par défaut ; `?lang=` | oui | oui | oui |
+| 10 | `10-navigation-erreurs` | entrée directe sur chaque page du tunnel (en / fr), retour arrière, avance, rechargement (avant et après succès), panier `fp_cart` frais / périmé (> 1 h) / plan invalide / corrompu / ancien format, lien direct `checkout.html?plan=`, erreurs en / fr : e-mail invalide, 409, 429 simulé **et réel** (limiteur), 500 / 502 / 503, réseau coupé (inscription, paiement), Stripe.js bloqué, intent refusé puis reprise, finalisation en échec puis « réessayer » | oui | oui | oui |
+| 11 | `11-stripe-webhooks-carte` | **carte obligatoire** (SetupIntent à 0 EUR, finalisation refusée sans carte confirmée / carte refusée / retour falsifié / plan falsifié, aucun lien magique sans carte), essai de 14 jours par plan, **webhooks** signés (`customer.subscription.updated` / `deleted`, `invoice.payment_failed` / `payment_succeeded`, `payment_intent.*`, `checkout.session.completed`, `setup_intent.succeeded` incomplet) et leur effet sur l'organisation, idempotence, signature ; 11C : sondes en lecture seule sur `flowpoint-test.onrender.com` | oui | oui | oui |
 
 Réponses d'API que le produit renvoie volontairement (402 `ADDON_REQUIRED`, 403 `PLAN_REQUIRED`, 401 d'un visiteur anonyme)
 ne sont pas comptées comme erreurs ; tout autre 4xx/5xx de `/api/*` ou erreur console de l'origine testée fait échouer le test.
@@ -149,3 +152,17 @@ Pour un futur comportement cible non encore livré, réintroduire un `test.fixme
 * Info — le dashboard d'un compte en essai interroge au chargement des routes d'add-ons non possédés (402 `ADDON_REQUIRED`,
   403 `PLAN_REQUIRED`) : comportement voulu côté API, mais la console du navigateur affiche ces erreurs.
 * Info — le dashboard annonce l'essai par sa **date de fin** (« Essai gratuit · Expire le … »), pas par un nombre de jours restants.
+
+## 9. Phase 2 — matrice de certification du tunnel (fichiers 09 à 11)
+
+* **Deux niveaux Stripe.** Niveau 1 : Stripe **simulé** du harnais (local, base jetable) — tout 09 / 10 / 11A / 11B. Niveau 2 : Stripe **TEST réel**,
+  uniquement via `https://flowpoint-test.onrender.com` : seules les sondes en lecture seule (09A, 10A, 11C) y sont exécutées. Les parcours de
+  carte réels ne le sont pas : ils créent des comptes, des clients et des SetupIntents de test que la suite ne peut pas nettoyer sans clé
+  d'administration (`sk_test_`), sans secret de webhook de TEST ni accès à la boîte de réception de test.
+* **Défauts documentés** : les tests qui décrivent un comportement attendu non encore livré sont déclarés avec `defautConnu(...)`
+  (`support/matrice.ts`) : `test.fixme` par défaut (la barrière reste verte), bloquants avec `CERT_RUN_PENDING=1` (rejeu de preuve, ou
+  contrôle après correction). La liste et les preuves sont dans la PR.
+* **Dérive corrigée dans la suite existante** (sans toucher au produit) : `remplirInscription` ne remplit plus société / pays / adresse / ville /
+  code postal que si le formulaire les porte (retirés par 4759b92b) ; 4 cas de validation devenus sans objet retirés de 02 ; libellés français
+  de 04 alignés (« Commencer mon essai gratuit », « Votre compte est prêt ! Consultez vos emails ») ; 06 retrouve la souscription par le client de
+  l'organisation (le SetupIntent n'a plus de `customer` à la création).
