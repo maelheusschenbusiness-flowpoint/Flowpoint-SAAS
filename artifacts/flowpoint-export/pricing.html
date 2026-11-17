@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
@@ -305,6 +305,7 @@
       .fp-nav-logo svg { display: none; }
     }
   </style>
+<script src="/fp-locale.js"></script>
 </head>
 <body>
 
@@ -1117,7 +1118,7 @@
     if (cmpWrap) {
       var rows = cmpWrap.querySelectorAll('tbody tr');
       rows.forEach(function(tr) {
-        var label = (tr.querySelector('td:first-child') || {}).textContent || '';
+        var label = _fpSource(tr.querySelector('td:first-child'));
         var cells = tr.querySelectorAll('td');
         if (cells.length < 4) return;
         if (label.indexOf('Audits SEO') !== -1) {
@@ -1825,7 +1826,7 @@
         btn.style.cursor = '';
         btn.style.opacity = '';
         /* Restore default label only if it was set by applyBillingState, not by selectPlan() */
-        if (btn.textContent === '\u2713 Votre plan actuel') {
+        if (_fpSource(btn) === '\u2713 Votre plan actuel') {
           btn.textContent = planLabelsDefault[btnPlan] || 'Commencer';
         }
         var cardEl = btn.closest('.fp-card');
@@ -1873,7 +1874,7 @@
         btn.style.borderColor = '';
         btn.style.color = '';
         btn.style.cursor = '';
-        if (btn.textContent === '\u2713 Actif' || btn.textContent === '\u2713 Dans le panier') {
+        if (_fpSource(btn) === '\u2713 Actif' || _fpSource(btn) === '\u2713 Dans le panier') {
           btn.textContent = 'Activer \u2192';
         }
       }
@@ -1898,7 +1899,7 @@
     };
     document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function(btn) {
       var btnPlan = btn.getAttribute('data-plan');
-      if (btn.textContent === '\u2713 Votre plan actuel') {
+      if (_fpSource(btn) === '\u2713 Votre plan actuel') {
         btn.textContent = planLabelsDefault[btnPlan] || 'Commencer';
         var cardEl = btn.closest('.fp-card');
         if (cardEl) { cardEl.style.borderColor = ''; cardEl.style.boxShadow = ''; }
@@ -1924,7 +1925,7 @@
       btn.style.borderColor = '';
       btn.style.color = '';
       btn.style.cursor = '';
-      if (btn.textContent === '\u2713 Actif' || btn.textContent === '\u2713 Dans le panier') {
+      if (_fpSource(btn) === '\u2713 Actif' || _fpSource(btn) === '\u2713 Dans le panier') {
         btn.textContent = 'Activer \u2192';
       }
     });
