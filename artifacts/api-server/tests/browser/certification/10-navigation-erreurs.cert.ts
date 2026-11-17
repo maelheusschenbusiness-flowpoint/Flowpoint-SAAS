@@ -276,13 +276,10 @@ if (IS_LOCAL) {
         expect(envois).toBe(0);
       });
 
-      // Compte existant (409) : le message DOIT dire qu'un compte existe, dans la langue de l'interface.
-      // DEFAUT P2 (documente, remonte) — signin.html (gestionnaire de pre-register) :
-      //   * interface ANGLAISE : tout message serveur absent du dictionnaire est remplace par « An error occurred. Please try again. »
-      //     (la raison — compte deja existant — est perdue ; seul le lien « -> Sign in » reste) ;
-      //   * interface FRANCAISE : aucune traduction, le message serveur s'affiche en ANGLAIS (« An account already exists… »)
-      //     suivi du lien « Se connecter » en francais.
-      defautConnu(`compte existant (409) | ${l} : message explicite dans la langue de l'interface + lien vers la connexion (DEFAUT P2 : ${l === "en" ? "message generique" : "message anglais"})`, async ({ page, context, request, signupViaApi }) => {
+      // Compte existant (409) : le message dit qu'un compte existe, dans la langue de l'interface (cle sur le statut HTTP,
+      // jamais sur le texte serveur, qui reste anglais), suivi du lien vers la connexion.
+      // Regression (ex-defaut P2 corrige) : en anglais le message etait generique, en francais il s'affichait en anglais.
+      test(`compte existant (409) | ${l} : message explicite dans la langue de l'interface + lien vers la connexion`, async ({ page, context, request, signupViaApi }) => {
         await poserLangue(context, l);
         const { email } = await signupViaApi(request);
         await page.goto("/signin.html");
