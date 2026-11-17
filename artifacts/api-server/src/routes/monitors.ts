@@ -11,6 +11,7 @@ import { store } from "../services/store.js";
 import { isQaFixturesEnabled } from "./qa-fixtures.js";
 import { checkQuota } from "../services/billing-service.js";
 import { keysEqual } from "../lib/auth-token.js";
+import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
 const monitorCreateRateLimit = createRateLimit("reportsPerHour");
@@ -558,8 +559,10 @@ router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
       const bCtx = await loadBillingContext(orgId).catch(() => null);
       if (bCtx?.addons?.["retention365d"]) maxDays = 365;
     } catch { /* non-blocking */ }
-    const requestedDays = Number(req.query["days"] ?? 30);
-    const days  = Math.min(requestedDays, maxDays);
+    // `days` est ce que le client a tape : « abc », « 1.5 » ou « -5 » donnaient
+    // une borne NaN ou hors du temps, que PostgreSQL refusait ou qui vidait la
+    // liste. On lit un entier borne a [1, maxDays], maxDays etant connu ici.
+    const days  = queryInt(req.query["days"], { defaut: 30, min: 1, max: maxDays, horsBornes: "borner" });
     const since = Date.now() - days * 24 * 60 * 60 * 1000;
 
     const result = await req.orgDb(
