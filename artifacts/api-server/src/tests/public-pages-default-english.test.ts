@@ -13,7 +13,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { JSDOM } from "jsdom";
+import { createRequire } from "node:module";
+
+// jsdom n'a pas de déclaration de types dans ce paquet : même approche que les autres tests de langue.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { JSDOM } = createRequire(import.meta.url)("jsdom") as { JSDOM: any };
 
 const DIR = join(process.cwd(), "../flowpoint-export");
 const LOCALE_SRC = readFileSync(join(DIR, "fp-locale.js"), "utf8");
@@ -28,7 +32,10 @@ const ALL_PAGES = [...PAGES, "pricing", "checkout-return"] as const;
 
 type Options = { navigatorLanguage: string; stored?: string; search?: string };
 
-async function render(page: string, { navigatorLanguage, stored, search = "" }: Options) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Win = any;
+
+async function render(page: string, { navigatorLanguage, stored, search = "" }: Options): Promise<Win> {
   const html = readFileSync(join(DIR, `${page}.html`), "utf8").replace(/<script[\s\S]*?<\/script>/gi, "");
   const dom = new JSDOM(html, { url: `https://app.flowpoint.pro/${page}.html${search}`, runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
@@ -42,7 +49,7 @@ async function render(page: string, { navigatorLanguage, stored, search = "" }: 
 
 const FRENCH = /\b(votre|vos|vous|nous|pour|avec|mois|essai|gratuit|gratuits|créer|compte|tarifs?|choisissez|connecter|connexion|déjà|prénom|entreprise|adresse e-mail|se connecter|annul[ée]|paiement|rejoindre|équipe|rapport|vérification)\b|[éèêàçùôîû]/i;
 
-function visibleStrings(window: Awaited<ReturnType<typeof render>>): string[] {
+function visibleStrings(window: Win): string[] {
   const doc = window.document;
   const out: string[] = [doc.title];
   const walker = doc.createTreeWalker(doc.body, window.NodeFilter.SHOW_TEXT);
@@ -53,14 +60,14 @@ function visibleStrings(window: Awaited<ReturnType<typeof render>>): string[] {
     const t = (n.nodeValue ?? "").trim();
     if (t) out.push(t);
   }
-  doc.querySelectorAll("[placeholder],[aria-label],[title],input[type=submit],input[type=button]").forEach((el) => {
+  doc.querySelectorAll("[placeholder],[aria-label],[title],input[type=submit],input[type=button]").forEach((el: Element) => {
     if (el.closest("#fp-addons-grid")) return;
     for (const a of ["placeholder", "aria-label", "title", "value"]) {
       const v = el.getAttribute(a);
       if (v && (a !== "value" || /^(submit|button)$/i.test((el as HTMLInputElement).type))) out.push(v);
     }
   });
-  doc.querySelectorAll('meta[name="description"],meta[property^="og:"],meta[name^="twitter:"]').forEach((m) => {
+  doc.querySelectorAll('meta[name="description"],meta[property^="og:"],meta[name^="twitter:"]').forEach((m: Element) => {
     const c = m.getAttribute("content");
     if (c && !/^https?:\/\//.test(c)) out.push(c);
   });
