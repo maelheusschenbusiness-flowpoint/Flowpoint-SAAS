@@ -2008,7 +2008,9 @@
     var addonCount = Object.keys(_cart.addons || {}).length;
     var isSubscriber = bs && (bs.status === 'active' || bs.status === 'trialing');
     var fromDash = new URLSearchParams(window.location.search).get('from') === 'dashboard';
-    if (addonCount === 0 && !isSubscriber && !fromDash && typeof window.goToCheckout === 'function') {
+    /* Restauration d'un panier frais (retour aux tarifs) : on remet la selection en place SANS relancer la redirection,
+       sinon le visiteur ne peut plus changer de plan. Seul un clic explicite navigue. */
+    if (addonCount === 0 && !isSubscriber && !fromDash && !window.__fpRestoringCart && typeof window.goToCheckout === 'function') {
       showToast(_fpPricingText('Plan ' + planName + ' sélectionné — redirection…', 'Plan ' + planName + ' selected — redirecting…'));
       window.goToCheckout();
       return;
@@ -2853,6 +2855,10 @@
      and the anonymous visitor-cart restore above.                          */
   function restoreCartSelections() {
     if (!cart) return;
+    window.__fpRestoringCart = true;
+    try { restoreCartSelectionsInner(); } finally { window.__fpRestoringCart = false; }
+  }
+  function restoreCartSelectionsInner() {
 
     /* ── Pre-select plan ── */
     var plan = cart.plan || params.get('plan');
