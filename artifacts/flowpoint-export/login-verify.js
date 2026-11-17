@@ -14,7 +14,39 @@
 
   // SECURITY (P0): Purge ALL cached user state before validating a new magic link.
   // Prevents cross-user data leakage when the same browser switches between accounts.
+  /* Attribution du visiteur : ni donnee de compte ni secret (identifiant aleatoire,
+     source de campagne, identifiant opaque du lien d'outreach). Elle survit a la
+     purge, VALIDEE, pour que la conversion reste rattachee a sa campagne.
+     Memes formats que signin.html / pricing-funnel.js. */
+  var VISITOR_ID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|fp-[a-z0-9]+-[a-z0-9]+)$/i;
+  var SOURCES = ['smartlead', 'google', 'direct', 'social', 'other_campaign'];
+  var LEAD_ID_RE = /^[A-Za-z0-9_-]{22}$/;
+
+  function readAttribution() {
+    var kept = { vid: '', source: '', lid: '' };
+    try {
+      var v = localStorage.getItem('fp_vid') || '';
+      if (VISITOR_ID_RE.test(v)) kept.vid = v;
+      var s = localStorage.getItem('fp_source') || '';
+      if (SOURCES.indexOf(s) !== -1) kept.source = s;
+    } catch (e) { /* non-fatal */ }
+    try {
+      var l = sessionStorage.getItem('fp_lid') || '';
+      if (LEAD_ID_RE.test(l)) kept.lid = l;
+    } catch (e) { /* non-fatal */ }
+    return kept;
+  }
+
+  function restoreAttribution(kept) {
+    try {
+      if (kept.vid) localStorage.setItem('fp_vid', kept.vid);
+      if (kept.source) localStorage.setItem('fp_source', kept.source);
+    } catch (e) { /* non-fatal */ }
+    try { if (kept.lid) sessionStorage.setItem('fp_lid', kept.lid); } catch (e) { /* non-fatal */ }
+  }
+
   function purgeUserCache() {
+    var attribution = readAttribution();
     try {
       var keysToRemove = [];
       for (var i = 0; i < localStorage.length; i++) {
@@ -32,6 +64,7 @@
       // page (for example the Alert Command Center) after account recreation.
       sessionStorage.clear();
     } catch (e) { /* non-fatal */ }
+    restoreAttribution(attribution);
   }
 
   function readPendingCheckout() {
