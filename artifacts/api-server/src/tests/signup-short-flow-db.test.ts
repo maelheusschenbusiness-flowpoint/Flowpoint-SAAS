@@ -263,3 +263,20 @@ describe("G — page d'inscription : exactement quatre champs obligatoires", () 
     }
   });
 });
+
+describe("H — adresse de facturation collectee au paiement (factures conformes)", () => {
+  const page = readFileSync(resolve(__dirname, "../../../flowpoint-export/checkout-payment.html"), "utf8");
+  const billing = readFileSync(resolve(__dirname, "../routes/public-billing.ts"), "utf8");
+  it("Address Element en mode billing, monte avant le Payment Element, dans le meme groupe", () => {
+    const address = page.indexOf("elements.create('address'");
+    const payment = page.indexOf("elements.create('payment'");
+    expect(address).toBeGreaterThan(0);
+    expect(address).toBeLessThan(payment);
+    expect(page.slice(address, payment)).toMatch(/mode:\s*'billing'/);
+    expect(page).toContain('id="fp-address-element"');
+  });
+  it("finalize-checkout recopie l'adresse du moyen de paiement (ligne 1 + pays) sur le client", () => {
+    expect(billing).toMatch(/_fcHasPmAddr\s*=\s*!!\(_fcPmAddr\?\.line1 && _fcPmAddr\?\.country\)/);
+    expect(billing).toMatch(/\.\.\.\(_fcHasPmAddr\s*\?\s*\{\s*address:/);
+  });
+});

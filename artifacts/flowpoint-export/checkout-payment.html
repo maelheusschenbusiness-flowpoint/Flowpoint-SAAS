@@ -161,6 +161,9 @@
     <div class="fp-card-title">Informations de paiement</div>
     <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
+    <!-- Adresse de facturation (inscription courte #466) : collectee ici, rattachee a la
+         carte par Stripe, puis recopiee sur le client par finalize-checkout. -->
+    <div id="fp-address-element" role="group" aria-label="Adresse de facturation" style="margin-bottom:18px"></div>
     <div id="fp-payment-element" role="group" aria-label="Informations de paiement"></div>
 
     <span id="fp-pay-desc" hidden>Confirme et finalise votre abonnement FlowPoint. Paiement sécurisé par Stripe.</span>
@@ -446,6 +449,23 @@
       if (_dv.name)  _bd.name  = _dv.name;
       if (_dv.email) _bd.email = _dv.email;
       if (Object.keys(_bd).length) _peDefaultValues = { billingDetails: _bd };
+    }
+    /* Adresse de facturation : Address Element en mode 'billing'. Stripe la joint aux
+       billing_details du moyen de paiement ; finalize-checkout la recopie sur le
+       client (ligne 1 + pays), donc sur les factures. Obligatoire depuis que
+       l'inscription ne demande plus l'adresse (#466). */
+    try {
+      var _aeDefaults = {};
+      if (data.defaultValues && data.defaultValues.name) _aeDefaults.name = data.defaultValues.name;
+      if (data.defaultValues && data.defaultValues.country) _aeDefaults.address = { country: data.defaultValues.country };
+      var addressElement = elements.create('address', {
+        mode: 'billing',
+        defaultValues: Object.keys(_aeDefaults).length ? _aeDefaults : undefined,
+      });
+      addressElement.mount('#fp-address-element');
+    } catch (e) {
+      showAlert('[S3a] Adresse de facturation : ' + (e.message || e));
+      return;
     }
     var paymentElement;
     try {
