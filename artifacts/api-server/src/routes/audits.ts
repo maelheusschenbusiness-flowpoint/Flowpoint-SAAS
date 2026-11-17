@@ -225,10 +225,11 @@ router.get("/audits/quick-scan", async (req: Request, res: Response) => {
   } catch { res.json({ score: 0, status: "no-data", url: url ?? "" }); }
 });
 
-// ── GET /audits/schedule + /audits/upcoming ───────────────────────────────────
+// ── GET /audits/schedule(s) + /audits/upcoming ────────────────────────────────
 // Must be registered BEFORE /:id.
 
 router.get("/audits/schedule",  listSchedules);
+router.get("/audits/schedules", listSchedules);
 router.get("/audits/upcoming",  upcomingSchedules);
 
 // ── GET /audits/:id ───────────────────────────────────────────────────────────
@@ -406,11 +407,10 @@ async function deleteSchedule(req: Request, res: Response) {
   } catch { res.json({ ok: true }); }
 }
 
-// (schedule + upcoming GET routes registered earlier, before /:id)
+// (schedule(s) + upcoming GET routes registered earlier, before /:id)
 router.post("/audits/schedule",        canWrite,  createSchedule);
 router.patch("/audits/schedule/:id",   canWrite,  patchSchedule);
 router.delete("/audits/schedule/:id",  canAdmin,  deleteSchedule);
-router.get("/audits/schedules",        listSchedules);
 router.post("/audits/schedules",       canWrite,  createSchedule);
 router.patch("/audits/schedules/:id",  canWrite,  patchSchedule);
 router.delete("/audits/schedules/:id", canAdmin,  deleteSchedule);
