@@ -59,16 +59,28 @@ test.describe("9A. Tarifs -> inscription par plan et par langue (lecture seule)"
     }
   }
 
-  // DEFAUT P2 (documente, remonte) : sur pricing.html, un appui sur un plan avant la fin du chargement de /api/plans/catalog ne mene
-  // nulle part : le bouton passe a « Selected » puis le toast « The add-on catalog is unavailable. Refresh the page before continuing. »
-  // s'affiche et AUCUNE navigation n'a lieu (goToCheckout exige FP_CATALOG). Reproduit contre flowpoint-test.onrender.com : ~3 appuis sur
-  // 10 (iPhone 13), des que le reseau est un peu lent. Ici le catalogue est retarde de 2,5 s pour le rendre deterministe.
-  defautConnu("pricing : un appui sur un plan AVANT la fin du chargement du catalogue mene tout de meme a l'inscription (DEFAUT P2 : toast « catalogue indisponible », aucune navigation)", async ({ page }) => {
+  // Regression D1 (corrige) : un appui sur un plan avant la fin du chargement de /api/plans/catalog attend le catalogue (boutons
+  // inactifs + message de chargement), puis continue vers l'inscription ; l'erreur n'apparait que si le chargement echoue vraiment.
+  // Le catalogue est retarde de 2,5 s pour rendre le cas deterministe.
+  test("pricing : un appui sur un plan AVANT la fin du chargement du catalogue attend le catalogue puis mene a l'inscription", async ({ page }) => {
     await page.route("**/api/plans/catalog", async (route) => { await new Promise((r) => setTimeout(r, 2_500)); await route.continue(); });
     await page.goto("/pricing.html");
     await page.waitForLoadState("load");
     await page.locator('.fp-card-btn[data-plan="pro"]').click();
+    await expect(page.locator('.fp-card-btn[data-plan="ultra"]'), "etat de chargement visible : boutons inactifs").toBeDisabled();
     await page.waitForURL(/\/signin\.html/, { timeout: 20_000, waitUntil: "commit" });
+  });
+
+  test("pricing : si le catalogue echoue vraiment (apres une reprise), l'appui sur un plan affiche l'erreur et ne navigue pas", async ({ page }) => {
+    let appels = 0;
+    await page.route("**/api/plans/catalog", async (route) => { appels += 1; await route.fulfill({ status: 503, contentType: "application/json", body: "{}" }); });
+    await page.goto("/pricing.html");
+    await page.waitForLoadState("load");
+    await expect.poll(() => appels).toBeGreaterThanOrEqual(1);
+    await page.locator('.fp-card-btn[data-plan="pro"]').click();
+    await expect(page.locator("#fp-toast.error")).toBeVisible();
+    expect(page.url()).toMatch(/\/pricing\.html/);
+    expect(appels, "une reprise a ete tentee").toBeGreaterThanOrEqual(2);
   });
 
   test("la langue par defaut est l'ANGLAIS meme avec un navigateur fr-FR, sur chaque page d'entree du tunnel", async ({ page }) => {
