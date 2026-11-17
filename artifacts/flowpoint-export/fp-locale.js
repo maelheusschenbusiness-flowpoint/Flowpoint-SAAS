@@ -339,6 +339,7 @@
     "La ville est requise.": "City is required.",
     "Le code postal est requis.": "Postal code is required.",
     "Une erreur est survenue.": "An error occurred.",
+    "Un compte existe déjà avec cette adresse e-mail. Connectez-vous pour gérer votre abonnement.": "An account already exists with this email address. Sign in to manage your subscription.",
     "Impossible de joindre le serveur. Vérifiez votre connexion.": "Unable to reach the server. Check your connection.",
     "→ Me connecter": "→ Sign in",
     "Échec de la connexion Google. Réessayez.": "Google sign-in failed. Please try again.",
@@ -1078,7 +1079,8 @@
       graceBody: 'Le dernier paiement a \u00e9chou\u00e9. Votre acc\u00e8s reste complet jusqu\u2019au {date}, puis l\u2019espace passera en lecture seule.',
       cancelTitle: 'Abonnement annul\u00e9',
       cancelBody: 'Votre acc\u00e8s reste complet jusqu\u2019au {date}, puis l\u2019espace passera en lecture seule (donn\u00e9es conserv\u00e9es).',
-      action: 'G\u00e9rer mon abonnement'
+      action: 'G\u00e9rer mon abonnement',
+      accountExists: 'Un compte existe d\u00e9j\u00e0 avec cette adresse e-mail. Connectez-vous pour g\u00e9rer votre abonnement.'
     },
     en: {
       readOnlyTitle: 'Workspace is read-only',
@@ -1088,7 +1090,8 @@
       graceBody: 'The last payment failed. You keep full access until {date}, after which the workspace becomes read-only.',
       cancelTitle: 'Subscription canceled',
       cancelBody: 'You keep full access until {date}, after which the workspace becomes read-only (your data is kept).',
-      action: 'Manage my subscription'
+      action: 'Manage my subscription',
+      accountExists: 'An account already exists with this email address. Sign in to manage your subscription.'
     }
   };
   window.fpAccessText = function (key, vars) {
