@@ -16818,6 +16818,15 @@ function fpSyncAccessBanner() {
   el.append(strong, span, btn);
 }
 let _fpLastRenderedKey = null;
+// Routes whose content is a bare add-on root filled by window.FP_ADDON_RENDERERS (see _doRender).
+const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
+  'conversion-opportunity-engine',
+  'seo-change-impact',
+  'technical-seo-fix-verification',
+  'organic-campaign-tracker',
+  'agency-portfolio-priorities',
+]);
+
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
@@ -16956,6 +16965,24 @@ function _doRender() {
       </div>
       <button class="fp-btn fp-btn-ghost" onclick="navigate('overview')" style="margin-top:8px">${fpT("← Retour à l'accueil")}</button>
     </div>`;
+    window.fpHideNavSpinner();
+    return;
+  }
+
+  // ── Self-rendered add-on routes: keep the mounted panel on background refreshes ──
+  // These routes emit an empty, STATE-independent root (#fp-addon-<route>) and the
+  // add-on renderer owns everything inside it (its own fetch, form, draft values).
+  // A same-route render() requested by an unrelated background loader (GBP, CRM,
+  // AI credits... ~20 of them resolve after the first paint) would rebuild that
+  // root, reset the form to server defaults and drop what the user was typing.
+  // Navigation, the canceled/RBAC gates above and a missing root still render normally.
+  if (!_isNavigation && FP_SELF_RENDERED_ADDON_ROUTES.has(STATE.route)
+      && page.querySelector('#fp-addon-' + STATE.route)) {
+    syncBulkBar();
+    closeFAB();
+    closeCtxMenu();
+    updatePlanSwitcher();
+    if (window.fpSyncAiBadge) window.fpSyncAiBadge();
     window.fpHideNavSpinner();
     return;
   }
@@ -74324,13 +74351,42 @@ window.FP_BETTERSTACK_API = {
   },
 };
 
+// Global Monitoring panel state lives outside the DOM: render() rebuilds the monitors
+// page on every background refresh, and a result held only in the DOM node was reset
+// to the idle text (even while a request was in flight).
+function fpGlobalMonitoringState() {
+  const orgId = STATE.me?.orgId || null;
+  let st = window._fpGlobalMonitoringState;
+  if (!st || st.orgId !== orgId) st = window._fpGlobalMonitoringState = { orgId, status: 'idle', summary: null };
+  return st;
+}
+
+function fpGlobalMonitoringResultHtml() {
+  const st = fpGlobalMonitoringState();
+  if (st.status === 'loading') return escHtml(fpT('Chargement…'));
+  if (st.status === 'error') return escHtml(fpT('Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.'));
+  if (st.status === 'empty') return escHtml(fpT('Aucune région de contrôle configurée dans Better Stack.'));
+  if (st.status === 'ready' && st.summary) {
+    const summary = st.summary;
+    const rows = summary.regions.map(region => {
+      const health = region.health || {};
+      const alerts = (health.down || 0) + (health.degraded || 0);
+      const statusText = alerts > 0 ? fpT('{count} monitor(s) en alerte', {count:alerts}) : (health.unknown || 0) > 0 ? fpT('{count} statuts inconnus', {count:health.unknown}) : fpT('Aucun monitor en alerte');
+      return '<p>' + escHtml(region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ')) + '</p>';
+    }).join('');
+    return '<p>' + escHtml(fpT('{regions} régions · {monitors} monitors', {regions:summary.configuredRegionCount, monitors:summary.configuredMonitorCount})) + '</p>'
+      + rows + '<small>' + escHtml(summary.note || '') + '</small>';
+  }
+  return escHtml(fpT('Chargez les régions configurées pour ce workspace.'));
+}
+
 function renderGlobalMonitoringPanel() {
   if (!STATE.me?.addons?.globalMonitoring) return '';
   return `<section class="fp-card" style="margin-top:18px">
     <div class="fp-card-header"><div><h2>Global Monitoring</h2><p class="fp-text-muted">${fpT('Régions de contrôle configurées dans Better Stack')}</p></div>
       <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_V1_ADDON_PANELS.loadGlobal()">${fpT('Actualiser')}</button>
     </div>
-    <div id="fp-global-monitoring-result" class="fp-text-muted">${fpT('Chargez les régions configurées pour ce workspace.')}</div>
+    <div id="fp-global-monitoring-result" class="fp-text-muted">${fpGlobalMonitoringResultHtml()}</div>
   </section>`;
 }
 
@@ -74593,33 +74649,30 @@ window.FP_V1_ADDON_PANELS = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
   async loadGlobal() {
-    const target = document.getElementById('fp-global-monitoring-result');
-    if (!target) return;
-    target.textContent = fpT('Chargement…');
+    const state = fpGlobalMonitoringState();
+    // The panel node is looked up at every paint: a re-render during the request
+    // replaces it, and the outcome must land in the live node, not a detached one.
+    const paint = () => {
+      const target = document.getElementById('fp-global-monitoring-result');
+      if (target) target.innerHTML = fpGlobalMonitoringResultHtml();
+    };
+    if (!document.getElementById('fp-global-monitoring-result')) return;
+    state.status = 'loading';
+    paint();
     try {
       const summary = await window.FP_BETTERSTACK_API.loadGlobalOverview();
-      target.replaceChildren();
       if (!summary?.regions?.length) {
-        target.textContent = fpT('Aucune région de contrôle configurée dans Better Stack.');
-        return;
+        state.status = 'empty';
+        state.summary = null;
+      } else {
+        state.status = 'ready';
+        state.summary = summary;
       }
-      const heading = document.createElement('p');
-      heading.textContent = fpT('{regions} régions · {monitors} monitors', {regions:summary.configuredRegionCount, monitors:summary.configuredMonitorCount});
-      target.appendChild(heading);
-      for (const region of summary.regions) {
-        const row = document.createElement('p');
-        const health = region.health || {};
-        const alerts = (health.down || 0) + (health.degraded || 0);
-        const statusText = alerts > 0 ? fpT('{count} monitor(s) en alerte', {count:alerts}) : (health.unknown || 0) > 0 ? fpT('{count} statuts inconnus', {count:health.unknown}) : fpT('Aucun monitor en alerte');
-        row.textContent = region.region + ': ' + fpT('{count} monitor(s)', {count:region.monitorCount}) + ' — ' + statusText + ' — ' + region.monitors.map(m => m.monitorName + ' (' + m.status + ')').join(', ');
-        target.appendChild(row);
-      }
-      const note = document.createElement('small');
-      note.textContent = summary.note || '';
-      target.appendChild(note);
     } catch {
-      target.textContent = fpT('Impossible de charger les régions. Vérifiez Better Stack et l’accès à l’add-on.');
+      state.status = 'error';
+      state.summary = null;
     }
+    paint();
   },
   async loadAgencyPacks() {
     const panelState = window._fpAgencyPacksState;
