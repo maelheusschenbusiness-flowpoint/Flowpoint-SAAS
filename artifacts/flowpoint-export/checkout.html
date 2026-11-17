@@ -540,10 +540,17 @@
     /* Read the selection before the auth gate so an anonymous redirect cannot
        overwrite the visitor's cart with an empty pending intent. */
     try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch (e) {}
-    if (!cart) {
+    /* Lien direct /checkout.html?plan=… : le plan de l'URL n'est qu'une préférence
+       (liste blanche stricte ; le serveur reste maître du prix, de l'essai et des quotas).
+       Le panier est ESTAMPILLÉ (_v / _updatedAt) : sans cela, signin.html le juge
+       périmé après l'inscription et réaffiche le choix du plan. */
+    if (!cart || typeof cart !== 'object' || !cart.plan) {
       var earlyParams = new URLSearchParams(window.location.search);
       var earlyPlan = (earlyParams.get('plan') || '').toLowerCase();
-      if (earlyPlan) cart = { plan: earlyPlan, addons: {} };
+      if (['standard', 'pro', 'ultra'].indexOf(earlyPlan) !== -1) {
+        var earlyAddons = cart && typeof cart === 'object' && cart.addons && typeof cart.addons === 'object' ? cart.addons : {};
+        cart = { plan: earlyPlan, addons: earlyAddons, _v: 1, _updatedAt: Date.now() };
+      }
     }
     if (!await requireAuthenticatedCheckout()) return;
     /* Identité (pour le versionnage du panier uniquement — jamais pour les prix) */
