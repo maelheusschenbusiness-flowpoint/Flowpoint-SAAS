@@ -1,3 +1,4 @@
+import { stripeTaxParams } from "../lib/billing-identity.js";
 /**
  * Addon ↔ Stripe subscription sync.
  *
@@ -115,7 +116,7 @@ async function findOrCreateAddonSubscription(
   // Create a fresh add-on subscription with a billing cycle starting today.
   // billing_cycle_anchor:"now" is what gives each add-on its independent monthly
   // cycle decoupled from the plan subscription's renewal date.
-  const created = await stripe.subscriptions.create({
+  const created = await stripe.subscriptions.create({ ...stripeTaxParams(),
     customer: stripeCustomerId,
     items: [{ price: firstPriceId, quantity: firstQty }],
     metadata: { addonSub: "true", orgId },

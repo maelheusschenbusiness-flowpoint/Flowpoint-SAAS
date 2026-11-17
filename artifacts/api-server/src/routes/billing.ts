@@ -1,3 +1,4 @@
+import { stripeTaxParams } from "../lib/billing-identity.js";
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
@@ -263,7 +264,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, ownerOnly, async (req
     }
 
     logger.info(getStripeCheckoutModeLog(stripeKey), "[BillingCertification] Checkout Session mode");
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({ ...stripeTaxParams(),
       mode: "subscription",
       customer: customerId,
       line_items: lineItems,
@@ -1116,7 +1117,7 @@ async function attemptServerSideReactivation(
 
     logger.info({ customerId, orgId, pmId, targetPlan }, "[Billing] attemptServerSideReactivation: PM found — creating subscription server-side");
 
-    const newSub = await stripe.subscriptions.create({
+    const newSub = await stripe.subscriptions.create({ ...stripeTaxParams(),
       customer:               customerId,
       items:                  [{ price: priceId, quantity: 1 }],
       default_payment_method: pmId,
@@ -1372,7 +1373,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         const idempotencyBucket = Math.floor(Date.now() / (30 * 60 * 1000));
         const idempotencyKey    = `fp-reactivation-${orgId}-${targetPlan}-${idempotencyBucket}`;
         const session = await stripe.checkout.sessions.create(
-          {
+          { ...stripeTaxParams(),
             customer:    billingCtx.stripeCustomerId,
             mode:        "subscription",
             line_items:  [{ price: priceId, quantity: 1 }],
@@ -1862,7 +1863,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           return;
         }
         const _newSess = await stripe.checkout.sessions.create(
-          {
+          { ...stripeTaxParams(),
             customer:    billingCtx.stripeCustomerId!,
             mode:        "subscription",
             line_items:  [{ price: _reactPriceId, quantity: 1 }],
@@ -1907,7 +1908,7 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       const _nsBucket = Math.floor(Date.now() / (30 * 60 * 1000));
       const _nsKey    = `fp-nosub-checkout-${orgId}-${targetPlan}-${_nsBucket}`;
       const _nsSess = await stripe.checkout.sessions.create(
-        {
+        { ...stripeTaxParams(),
           mode:       "subscription",
           line_items: [{ price: _nsPriceId, quantity: 1 }],
           ...(billingCtx.email ? { customer_email: billingCtx.email } : {}),
@@ -2241,7 +2242,7 @@ router.post("/billing/checkout/annual", ownerOnly, async (req: Request, res: Res
       }
     }
 
-    const sessionParams: Record<string, unknown> = {
+    const sessionParams: Record<string, unknown> = { ...stripeTaxParams(),
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: annualPriceId, quantity: 1 }],
@@ -2469,7 +2470,7 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, ownerOnly,
 
     const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({ ...stripeTaxParams(),
       mode: "payment",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -2692,7 +2693,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, ownerOnly, asyn
     }
 
     const isAiCreditPack = AI_CREDIT_PACK_KEYS.has(addonKey);
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({ ...stripeTaxParams(),
       mode: isAiCreditPack ? "payment" : "subscription",
       ...(addonCustomerId ? { customer: addonCustomerId } : {}),
       line_items: [{ price: priceId, quantity: checkoutQty }],
