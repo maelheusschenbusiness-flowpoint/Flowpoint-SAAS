@@ -153,8 +153,25 @@ describe("Agency Reporting Packs", () => {
     );
   });
 
+  it("refuses a pack built on an audit that is not completed, before any transaction or quota use", async () => {
+    for (const status of ["running", "failed", "pending"]) {
+      orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1", status }] });
+      poolConnectMock.mockClear();
+      checkQuotaMock.mockClear();
+
+      const response = await request(makeApp())
+        .post("/api/reports/agency-packs/generate")
+        .send({ clientName: "Client A", auditId: "audit-a1" });
+
+      expect(response.status).toBe(422);
+      expect(response.body.code).toBe("AUDIT_INCOMPLETE");
+      expect(poolConnectMock).not.toHaveBeenCalled();
+      expect(checkQuotaMock).not.toHaveBeenCalled();
+    }
+  });
+
   it("creates three reports linked to the selected audit", async () => {
-    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1" }] });
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1", status: "completed" }] });
     const inserts: Array<{ id: unknown; auditId: unknown }> = [];
     const client = {
       query: vi.fn(async (sql: string, values: unknown[] = []) => {
@@ -363,7 +380,7 @@ describe("Agency Reporting Packs", () => {
 
   it("rejects the complete pack without partial inserts when fewer than three report slots remain", async () => {
     checkQuotaMock.mockResolvedValue({ allowed: true, limit: 20, used: 18 });
-    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1" }] });
+    orgDbMock.mockResolvedValue({ rows: [{ id: "audit-a1", status: "completed" }] });
     const client = {
       query: vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [], rowCount: 1 })),
       release: vi.fn(),
