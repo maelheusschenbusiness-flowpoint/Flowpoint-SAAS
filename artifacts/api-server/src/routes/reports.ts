@@ -77,11 +77,17 @@ router.post("/reports/agency-packs/generate", requireAddon("agencyPacks", "Agenc
   }
   try {
     const ownedAudit = await db(req)(
-      `SELECT id FROM audits WHERE id=$1 AND org_id=$2 LIMIT 1`,
+      `SELECT id, status FROM audits WHERE id=$1 AND org_id=$2 LIMIT 1`,
       [selectedAuditId, orgId],
     );
     if (!ownedAudit.rows.length) {
       res.status(404).json({ error: "Audit introuvable pour cette organisation.", code: "AUDIT_NOT_FOUND" });
+      return;
+    }
+    // Un pack client ne repose que sur des mesures : un audit en cours ou en
+    // echec n'en a pas (la consolidation multi-sites applique deja cette regle).
+    if (ownedAudit.rows[0]?.["status"] !== "completed") {
+      res.status(422).json({ error: "L’audit sélectionné doit être terminé pour générer le pack agence.", code: "AUDIT_INCOMPLETE" });
       return;
     }
   } catch (err) {
@@ -651,7 +657,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     }
   } catch (err) {
     logger.error({ err, orgId: org(req), reportId: id }, "[reports] post-creation read failed");
-    if (!res.headersSent) res.status(500).json({ error: "Le rapport n'a pas pu être vérifié après sa création.", code: "REPORT_NOT_PERSISTED" });
+    if (!res.headersSent) res.status(500).json({ error: "The report could not be verified after it was created.", code: "REPORT_NOT_PERSISTED" });
   }
 });
 
