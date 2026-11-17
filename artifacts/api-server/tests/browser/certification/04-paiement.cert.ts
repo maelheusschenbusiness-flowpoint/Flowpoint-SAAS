@@ -26,16 +26,16 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     await shot(page, "recapitulatif");
     await page.locator("#fp-pay-btn").click();
     await page.waitForURL(/\/checkout-payment\.html/);
-    await expect(page.locator("#fp-pay-btn")).toHaveText("Démarrer l'essai gratuit →", { timeout: 15_000 });
+    await expect(page.locator("#fp-pay-btn")).toHaveText("Commencer mon essai gratuit", { timeout: 15_000 });
     await expect(page.locator("#fp-pay-btn")).toBeEnabled();
-    await expect(page.locator("#fp-trial-note")).toContainText("Aucun débit aujourd'hui");
+    await expect(page.locator("#fp-trial-note")).toContainText("0 € aujourd'hui");
     await expect(page.locator("#fp-trial-note")).toContainText("14");
     await shot(page, "paiement");
     const appels = await page.evaluate(() => (window as any).__fpStripeCalls as Array<{ fn: string; pk?: string }>);
     expect(appels.find((a) => a.fn === "Stripe")?.pk).toMatch(/^pk_test_/);       // jamais pk_live_ en test
     await payer(page);
     await page.waitForURL(/\/checkout-return\.html/);
-    await expect(page.locator("#fp-title")).toHaveText("Compte activé ! Vérifiez vos emails", { timeout: 20_000 });
+    await expect(page.locator("#fp-title")).toHaveText("Votre compte est prêt ! Consultez vos emails", { timeout: 20_000 });
     await shot(page, "retour");
 
     // Etat reel : 1 organisation en essai de 14 jours, adossee a UNE souscription trialing.
@@ -68,7 +68,7 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     await payer(page);
     await expect(page.locator("#fp-alert")).toContainText("Votre carte a été refusée.");
     await expect(page.locator("#fp-pay-btn")).toBeEnabled();
-    await expect(page.locator("#fp-pay-btn")).toHaveText("Démarrer l'essai gratuit →");
+    await expect(page.locator("#fp-pay-btn")).toHaveText("Commencer mon essai gratuit");
     expect(new URL(page.url()).pathname).toBe("/checkout-payment.html");
     await shot(page, "refus");
     expect(await orgOf(email)).toBeNull();
@@ -76,7 +76,7 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     // Reprise : une carte valide aboutit sur la meme page, sans repartir de zero.
     await page.locator("#fake-card-number").fill("4242 4242 4242 4242");
     await payer(page);
-    await expect(page.locator("#fp-title")).toHaveText("Compte activé ! Vérifiez vos emails", { timeout: 20_000 });
+    await expect(page.locator("#fp-title")).toHaveText("Votre compte est prêt ! Consultez vos emails", { timeout: 20_000 });
     expect((await orgOf(email))?.subscription_status).toBe("trialing");
   });
 
@@ -181,7 +181,7 @@ test.describe("4. Paiement (SetupIntent, essai 14 jours)", () => {
     test("retour Stripe en echec (redirect_status=failed, intent inconnu, visiteur sans session) n'affiche pas « paiement enregistre »", async ({ page }) => {
       await page.goto("/checkout-return.html?setup_intent=seti_inconnu&redirect_status=failed");
       await expect(page.locator("#fp-title")).toBeVisible();
-      await expect(page.locator("#fp-title")).not.toHaveText(/Paiement enregistré|Compte activé|confirmée/);
+      await expect(page.locator("#fp-title")).not.toHaveText(/Paiement enregistré|Compte activé|Votre compte est prêt|confirmée/);
     });
   });
 });

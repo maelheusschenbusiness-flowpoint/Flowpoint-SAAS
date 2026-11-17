@@ -94,8 +94,9 @@ test.describe("6. Suivi de conversion", () => {
     expect(fin.status()).toBe(200);
     const st = await stripeState(page);
     const intent = st.intents.find((i) => i["id"] === intentId) as any;
-    const sub = st.subscriptions.find((s) => s["customer"] === intent.customer)!;
-    const org = (await one<{ id: string }>("SELECT id::text FROM organizations WHERE lower(owner_email)=lower($1)", [email]))!;
+    // Depuis la creation du client a la finalisation, le SetupIntent n'a plus de `customer` : on retrouve la souscription par le client de l'organisation.
+    const org = (await one<{ id: string; stripe_customer_id: string }>("SELECT id::text, stripe_customer_id FROM organizations WHERE lower(owner_email)=lower($1)", [email]))!;
+    const sub = st.subscriptions.find((s) => s["customer"] === org.stripe_customer_id)!;
     const evt = async (type: string, object: unknown, id: string) => { for (let i = 0; i < 2; i++) { const w = await request.post(`${BASE_URL}/__fake/webhook`, { data: { type, id, object } }); expect(((await w.json()) as any).status).toBe(200); } };   // 2 livraisons
     await evt("setup_intent.succeeded", { id: intentId, object: "setup_intent", customer: intent.customer, status: "succeeded", payment_method: intent.payment_method, metadata: intent.metadata }, `evt_cert_si_${vid}`);
     await evt("customer.subscription.created", { ...sub, object: "subscription", metadata: { ...sub.metadata, orgId: org.id } }, `evt_cert_sub_${vid}`);
