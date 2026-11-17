@@ -10,7 +10,7 @@
  *   - self-heal that still fails         → THROWS (never a silent [])
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mock pool + logger + init-data-tables ───────────────────────────────────
 const mockQuery = vi.fn();
@@ -80,6 +80,156 @@ describe("getClientReports — reliability", () => {
       .mockRejectedValueOnce(pgErr("42P01"));
     await expect(getClientReports("org-1")).rejects.toMatchObject({ code: "42P01" });
     expect(mockInitDataTables).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The reports → share_tokens join yields one row per share link. Each report
+ * must be returned exactly once, with its freshest non-expired link; a report
+ * with no link at all, or whose every link has expired, is not returned (its
+ * public page would answer 404/410).
+ */
+describe("getClientReports — grouping by report, freshest live link", () => {
+  const NOW = new Date("2026-03-01T12:00:00.000Z");
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** One joined row: a report line duplicated per share link. */
+  function joinRow(opts: {
+    id: string;
+    token: string | null;
+    createdAt?: string | null;
+    expiresAt?: string | null;
+    name?: string;
+  }) {
+    return {
+      id: opts.id,
+      name: opts.name ?? `Rapport ${opts.id}`,
+      type: "PDF",
+      date: "2026-02-10T00:00:00.000Z",
+      pages: 4,
+      token: opts.token,
+      link_created_at: opts.createdAt ?? null,
+      link_expires_at: opts.expiresAt ?? null,
+    };
+  }
+
+  it("returns a twice-shared report once, with the most recent link", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r1", token: "old", createdAt: "2026-01-05T09:00:00.000Z", expiresAt: "2026-04-01T00:00:00.000Z" }),
+        joinRow({ id: "r1", token: "fresh", createdAt: "2026-02-20T09:00:00.000Z", expiresAt: "2026-04-01T00:00:00.000Z" }),
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ id: "r1", token: "fresh", pages: 4 });
+    expect(mockInitDataTables).not.toHaveBeenCalled();
+  });
+
+  it("keeps the most recent link whatever the row order", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r1", token: "fresh", createdAt: "2026-02-20T09:00:00.000Z" }),
+        joinRow({ id: "r1", token: "old", createdAt: "2026-01-05T09:00:00.000Z" }),
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out).toHaveLength(1);
+    expect(out[0]?.token).toBe("fresh");
+  });
+
+  it("drops a report with no share link (never shared / all links revoked)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r1", token: null }),
+        joinRow({ id: "r2", token: "t2", createdAt: "2026-02-01T09:00:00.000Z" }),
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out.map((r) => r.id)).toEqual(["r2"]);
+  });
+
+  it("drops a report whose every link has expired", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r1", token: "dead-1", createdAt: "2026-01-01T09:00:00.000Z", expiresAt: "2026-01-15T00:00:00.000Z" }),
+        joinRow({ id: "r1", token: "dead-2", createdAt: "2026-02-01T09:00:00.000Z", expiresAt: "2026-02-28T00:00:00.000Z" }),
+      ],
+    });
+
+    await expect(getClientReports("org-1")).resolves.toEqual([]);
+  });
+
+  it("keeps the live link when an expired link is more recent", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r1", token: "alive", createdAt: "2026-01-10T09:00:00.000Z", expiresAt: "2026-06-01T00:00:00.000Z" }),
+        joinRow({ id: "r1", token: "expired", createdAt: "2026-02-25T09:00:00.000Z", expiresAt: "2026-02-26T00:00:00.000Z" }),
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out).toHaveLength(1);
+    expect(out[0]?.token).toBe("alive");
+  });
+
+  it("treats a missing or unreadable expiry as 'no expiry'", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r1", token: "no-expiry", createdAt: "2026-02-01T09:00:00.000Z", expiresAt: null }),
+        joinRow({ id: "r2", token: "bad-expiry", createdAt: "2026-02-01T09:00:00.000Z", expiresAt: "not-a-date" }),
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out.map((r) => r.token)).toEqual(["no-expiry", "bad-expiry"]);
+  });
+
+  it("accepts a Date instance for the link timestamps", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { ...joinRow({ id: "r1", token: "old" }), link_created_at: new Date("2026-01-01T00:00:00.000Z"), link_expires_at: new Date("2026-05-01T00:00:00.000Z") },
+        { ...joinRow({ id: "r1", token: "recent" }), link_created_at: new Date("2026-02-01T00:00:00.000Z"), link_expires_at: new Date("2026-05-01T00:00:00.000Z") },
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out).toHaveLength(1);
+    expect(out[0]?.token).toBe("recent");
+  });
+
+  it("keeps the report order of the rows returned by the database", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        joinRow({ id: "r3", token: "t3a", createdAt: "2026-02-25T09:00:00.000Z" }),
+        joinRow({ id: "r2", token: "t2", createdAt: "2026-02-20T09:00:00.000Z" }),
+        joinRow({ id: "r3", token: "t3b", createdAt: "2026-02-26T09:00:00.000Z" }),
+        joinRow({ id: "r1", token: "t1", createdAt: "2026-02-10T09:00:00.000Z" }),
+      ],
+    });
+
+    const out = await getClientReports("org-1");
+
+    expect(out.map((r) => r.id)).toEqual(["r3", "r2", "r1"]);
+    expect(out.map((r) => r.token)).toEqual(["t3b", "t2", "t1"]);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 });
 

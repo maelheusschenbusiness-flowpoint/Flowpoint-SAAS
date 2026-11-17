@@ -191,14 +191,34 @@ export async function getClientKPIs(orgId: string): Promise<ClientKPIs> {
 }
 
 /**
+ * Parses a timestamp coming back from pg (Date, ISO string, …) into epoch ms.
+ * Returns null when the value is absent or unreadable — callers treat that as
+ * "unknown", never as a date in the past.
+ */
+function parseTimestamp(raw: unknown): number | null {
+  if (raw == null) return null;
+  const ms = raw instanceof Date ? raw.getTime() : new Date(String(raw)).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
  * Shared reports for the org. Joins reports → share_tokens so the client link
- * (token) is exposed. Both tables are provisioned by initDataTables; if either
- * is missing we self-heal ONCE and retry, so a fresh/drifted DB does not
- * masquerade as "no shared reports". Any non-schema error propagates.
+ * (token) is exposed. The join yields ONE ROW PER SHARE LINK, so the rows are
+ * filtered and grouped in TypeScript: each report appears exactly once, with
+ * its most recently created link that has not expired. A report with no link
+ * (never shared, or every link revoked) or whose links have all expired is not
+ * returned at all — a dead link would render an empty button or a public page
+ * answering 410. A missing/unreadable expires_at means "no expiry".
+ *
+ * Both tables are provisioned by initDataTables; if either is missing we
+ * self-heal ONCE and retry, so a fresh/drifted DB does not masquerade as
+ * "no shared reports". Any non-schema error propagates.
  */
 export async function getClientReports(orgId: string): Promise<ClientReport[]> {
   const sql =
     `SELECT r.id, r.name, r.type, r.date, r.pages, st.token
+          , st.created_at AS link_created_at
+          , st.expires_at AS link_expires_at
        FROM reports r
        LEFT JOIN share_tokens st ON st.report_id = r.id
        WHERE r.org_id=$1 AND r.shared=true
@@ -208,14 +228,40 @@ export async function getClientReports(orgId: string): Promise<ClientReport[]> {
     const client = await pool.connect();
     try {
       const r = await client.query(sql, [orgId]);
-      return (r.rows ?? []).map((row) => ({
-        id: String(row.id ?? ""),
-        name: String(row.name ?? ""),
-        type: String(row.type ?? "PDF"),
-        date: row.date ? new Date(row.date as string).toLocaleDateString("fr-FR") : "—",
-        pages: row.pages != null ? Number(row.pages) : null,
-        token: row.token ? String(row.token) : null,
-      }));
+      const now = Date.now();
+      // Grouped in the order the rows arrive, so the response keeps the
+      // date ordering produced by the query.
+      const grouped: { id: string; createdAt: number; report: ClientReport }[] = [];
+
+      for (const row of r.rows ?? []) {
+        const token = row.token ? String(row.token) : null;
+        if (!token) continue; // no link (or all links revoked) → not shareable
+
+        const expiresAt = parseTimestamp(row.link_expires_at);
+        if (expiresAt != null && expiresAt < now) continue; // expired link → 410
+
+        const id = String(row.id ?? "");
+        // An unreadable/absent creation date ranks last: any dated link wins.
+        const createdAt = parseTimestamp(row.link_created_at) ?? Number.NEGATIVE_INFINITY;
+        const report: ClientReport = {
+          id,
+          name: String(row.name ?? ""),
+          type: String(row.type ?? "PDF"),
+          date: row.date ? new Date(row.date as string).toLocaleDateString("fr-FR") : "—",
+          pages: row.pages != null ? Number(row.pages) : null,
+          token,
+        };
+
+        const existing = grouped.find((g) => g.id === id);
+        if (!existing) {
+          grouped.push({ id, createdAt, report });
+        } else if (createdAt > existing.createdAt) {
+          existing.createdAt = createdAt;
+          existing.report = report;
+        }
+      }
+
+      return grouped.map((g) => g.report);
     } finally {
       client.release();
     }
