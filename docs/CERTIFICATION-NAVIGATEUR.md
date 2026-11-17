@@ -166,3 +166,6 @@ Pour un futur comportement cible non encore livré, réintroduire un `test.fixme
   code postal que si le formulaire les porte (retirés par 4759b92b) ; 4 cas de validation devenus sans objet retirés de 02 ; libellés français
   de 04 alignés (« Commencer mon essai gratuit », « Votre compte est prêt ! Consultez vos emails ») ; 06 retrouve la souscription par le client de
   l'organisation (le SetupIntent n'a plus de `customer` à la création).
+
+* **D3 corrigé** (`checkout.html`) : le plan du lien direct `?plan=` (liste blanche standard / pro / ultra) est rangé dans un panier estampillé
+  (`_v`, `_updatedAt`) avant la redirection anonyme ; `signin.html` le retrouve et ne réaffiche plus le choix du plan. Le serveur reste maître du prix.

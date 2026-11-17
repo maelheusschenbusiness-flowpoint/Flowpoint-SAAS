@@ -212,8 +212,11 @@ test.describe("9B. Parcours complet par plan x langue x methode", () => {
     expect(prix.standard).toBeLessThan(prix.pro);
     expect(prix.pro).toBeLessThan(prix.ultra);
     for (const plan of PLANS) {
-      await page.goto("/pricing.html");
-      await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });     // le panier existant a priorite sur ?plan= (par conception) : on repart d'un navigateur vide
+      // Le panier existant a priorite sur ?plan= (par conception) : on repart d'un navigateur vide. Le vidage se fait sur une ressource
+      // JSON de meme origine (sans script) : sur pricing.html, un panier frais (estampille, ex. celui de l'iteration precedente) est
+      // restaure apres ~120 ms et relance la redirection, ce qui ferait courir le vidage.
+      await page.goto("/api/plans/catalog");
+      await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
       await page.goto(`/checkout.html?plan=${plan}`);
       // Visiteur anonyme : redirige vers l'inscription AVEC le plan conserve (jamais un recapitulatif sans compte).
       await page.waitForURL(/\/signin\.html/, { timeout: 15_000 });
