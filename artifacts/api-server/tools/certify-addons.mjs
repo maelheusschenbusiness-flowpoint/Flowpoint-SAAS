@@ -137,6 +137,9 @@ export const ADDON_REGISTRY = [
       "src/services/global-monitoring.test.ts",
       "src/services/global-monitoring-postgres.test.ts",
       "src/routes/betterstack-sla-route.test.ts",
+      "src/services/betterstack-service-tenancy.test.ts",
+      "src/services/betterstack-tenancy-db.test.ts",
+      "src/tests/monitoring-agency-frontend-honesty.test.ts",
     ],
     browserTitle: "Global Monitoring fails closed without provider data and shows no fabricated metrics",
   },
@@ -147,6 +150,11 @@ export const ADDON_REGISTRY = [
     tests: [
       "src/routes/sla-addon-gate.test.ts",
       "src/routes/betterstack-sla-route.test.ts",
+      "src/services/sla-compliance.test.ts",
+      "src/services/sla-targets-db.test.ts",
+      "src/services/betterstack-service-tenancy.test.ts",
+      "src/routes/monitors-create-uptime-honest.test.ts",
+      "src/tests/monitoring-agency-frontend-honesty.test.ts",
     ],
   },
   {

@@ -288,8 +288,9 @@ router.delete("/betterstack/monitors/:id/sla-target", canAdmin, requireAddon("sl
 router.get("/betterstack/monitors/:id/response-times", async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
-    const period = (req.query["period"] as string) || "24h";
-    const data = await getResponseTimes(req.params.id, period);
+    const rawPeriod = req.query["period"];
+    const period = rawPeriod === undefined ? "24h" : String(rawPeriod);
+    const data = await getResponseTimes(String(req.params.id), (req as unknown as { orgId?: string }).orgId ?? "default", period);
     res.json(data);
   } catch (err) {
     // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
@@ -322,7 +323,7 @@ router.get("/betterstack/incidents", async (req, res) => {
 router.get("/betterstack/incidents/:id", async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
-    const incident = await getIncident(req.params.id);
+    const incident = await getIncident(String(req.params.id), (req as unknown as { orgId?: string }).orgId ?? "default");
     res.json(incident);
   } catch (err) {
     // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait
@@ -334,7 +335,7 @@ router.get("/betterstack/incidents/:id", async (req, res) => {
 router.post("/betterstack/incidents/:id/acknowledge", canWrite, async (req, res) => {
   if (!isBSConfigured()) { res.status(503).json({ error: "Not configured", configured: false }); return; }
   try {
-    await acknowledgeIncident(String(req.params.id));
+    await acknowledgeIncident(String(req.params.id), (req as unknown as { orgId?: string }).orgId ?? "default");
     res.json({ ok: true });
   } catch (err) {
     // Une erreur d'appartenance porte son propre statut : repondre 500 laisserait

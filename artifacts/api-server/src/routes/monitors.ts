@@ -122,7 +122,7 @@ async function saveCheckResult(
 
   // BUG-W2-ALT-003 B3: hoisted so latency/uptime rule evaluation (post-commit)
   // can access the real values computed inside the withOrgDb transaction.
-  let capturedUptimePct: number | null = 100;
+  let capturedUptimePct: number | null = null;
 
   await withOrgDb(orgId, async (client) => {
     // 1. Insert check record
@@ -433,7 +433,8 @@ async function saveCheckResult(
           // rolling window computed and persisted inside the withOrgDb transaction.
           const observedValue = ruleType === "latency" ? result.latencyMs : capturedUptimePct;
 
-          const triggered = evaluateCondition(observedValue, ruleOp, ruleThresh);
+          // Sans mesure (null), aucune règle ne se déclenche : evaluateCondition rejette les non-finis.
+          const triggered = evaluateCondition(observedValue as number, ruleOp, ruleThresh);
           // Dedupe key is stable while condition holds — unique per rule×monitor×org.
           // The partial index (status='open') ensures resolution frees the slot.
           const dedupeKey = `${ruleType}_${orgId}_${monitorId}_${ruleId}`;
@@ -679,11 +680,13 @@ router.post("/monitors", monitorCreateRateLimit, canAdmin, async (req: Request, 
         return;
       }
 
+      // `uptime` reste NULL tant qu'aucune verification n'a eu lieu : un monitor
+      // jamais mesure n'est pas « 100 % disponible » (la colonne est nullable).
       await _monCl.query(
         `INSERT INTO monitors
            (id, org_id, name, url, status, uptime, latency,
             frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
+         VALUES ($1,$2,$3,$4,'up',NULL,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
         [_monId, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false],
       );
       await _monCl.query("COMMIT");
