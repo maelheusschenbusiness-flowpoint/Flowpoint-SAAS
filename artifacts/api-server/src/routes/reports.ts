@@ -657,7 +657,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
     }
   } catch (err) {
     logger.error({ err, orgId: org(req), reportId: id }, "[reports] post-creation read failed");
-    if (!res.headersSent) res.status(500).json({ error: "Le rapport n'a pas pu être vérifié après sa création.", code: "REPORT_NOT_PERSISTED" });
+    if (!res.headersSent) res.status(500).json({ error: "The report could not be verified after it was created.", code: "REPORT_NOT_PERSISTED" });
   }
 });
 
