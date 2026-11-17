@@ -12,7 +12,7 @@ const planDuPanier = (page: import("@playwright/test").Page) =>
   page.evaluate(() => { try { return JSON.parse(localStorage.getItem("fp_cart") || "null")?.plan ?? null; } catch { return "corrompu"; } });
 // Absence de navigation : on laisse a pricing.html le temps de restaurer un panier et de relancer une redirection eventuelle.
 const resteSurPricing = async (page: import("@playwright/test").Page) => {
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("load");
   await page.evaluate(() => new Promise<void>(r => setTimeout(r, 1500)));
   expect(new URL(page.url()).pathname, "pricing.html ne doit pas renvoyer le visiteur vers l'inscription").toBe("/pricing.html");
 };
