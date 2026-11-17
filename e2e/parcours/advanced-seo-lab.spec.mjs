@@ -136,7 +136,9 @@ test("Advanced SEO Lab exposes real actions, enforces access, and persists gener
 
   // The local cert launcher strips provider credentials. This proves an
   // unconfigured provider fails explicitly and cannot fabricate a score.
-  const unavailable = await postAsBrowser(page, "/api/seo/content-optimization", { url: siteUrl });
+  // Depuis d5273e03 le mot-cle cible est obligatoire (422 KEYWORD_REQUIRED sinon) :
+  // il faut en fournir un pour atteindre l'appel fournisseur.
+  const unavailable = await postAsBrowser(page, "/api/seo/content-optimization", { url: siteUrl, keyword: "contenu SEO Bruxelles" });
   expect(unavailable.status()).toBe(503);
   expect(await unavailable.json()).toMatchObject({ ok: false, code: "DATAFORSEO_NOT_CONFIGURED" });
 
