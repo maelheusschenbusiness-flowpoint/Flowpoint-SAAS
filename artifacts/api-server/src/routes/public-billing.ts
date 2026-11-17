@@ -7,6 +7,7 @@ import {
   enregistrerEtape, ETAPES_PUBLIQUES, lireAttributionFunnel, metadataAttributionFunnel,
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
+import { compterRejetFunnel } from "../services/funnel-rejections.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, VALIDATION_REQUIRED_ADDONS, RETIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
 import { publicCheckoutRateLimit, funnelEventRateLimit } from "../middlewares/rateLimiter.js";
@@ -521,11 +522,13 @@ const JALONS_NAVIGATEUR: Record<string, {
 router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, res: Response) => {
   const etape = typeof req.body?.etape === "string" ? req.body.etape.trim() : "";
   if (!ETAPES_PUBLIQUES.has(etape)) {
+    void compterRejetFunnel("unknown_stage");
     res.status(400).json({ ok: false, error: "Etape inconnue ou non declarable depuis le navigateur." });
     return;
   }
   const visiteurId = typeof req.body?.visiteurId === "string" ? req.body.visiteurId.trim() : "";
   if (!visiteurId) {
+    void compterRejetFunnel("missing_visitor_id");
     res.status(400).json({ ok: false, error: "visiteurId requis." });
     return;
   }
@@ -542,6 +545,9 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
     req.body?.source,
   );
   if (!attribution) {
+    // Ni consentement `accepted` ni identifiant de visiteur valide : rien n'est
+    // enregistre ; seul le motif est compte (aucune donnee de l'appelant).
+    void compterRejetFunnel("consent_missing");
     res.status(204).end();
     return;
   }
