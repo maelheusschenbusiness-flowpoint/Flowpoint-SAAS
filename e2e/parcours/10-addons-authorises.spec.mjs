@@ -430,6 +430,36 @@ test("authentifie normalement et certifie les add-ons historiques avec des donn�
   expect(decayPages).not.toContain("https://addon-b.qa-fixture.invalid/foreign");
 });
 
+// Deterministic late background refresh. The dashboard starts ~20 independent
+// loaders at page start (GBP, CRM, AI credits...) and each one calls render()
+// when it resolves, rebuilding #fp-page. Holding one of them (CRM status) and
+// releasing it only once the user has interacted reproduces the late re-render
+// without any sleep: the release waits for the render pass it triggers.
+async function holdBackgroundLoaderRefresh(page) {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route("**/api/crm/status*", async route => {
+    await gate;
+    await route.continue();
+  });
+  return async () => {
+    // fpSyncAiBadge runs at the end of every render pass (full or kept add-on panel).
+    await page.evaluate(() => {
+      const original = window.fpSyncAiBadge;
+      window.__fpRenderPasses = 0;
+      window.fpSyncAiBadge = function (...args) {
+        window.__fpRenderPasses += 1;
+        return typeof original === "function" ? original.apply(this, args) : undefined;
+      };
+    });
+    release();
+    await page.waitForFunction(() => Boolean(window.FP_DATA?.crm), null, { timeout: 20_000 });
+    // render() is debounced into a single pending timer: the next pass after the
+    // loader resolved is the one that loader requested.
+    await page.waitForFunction(() => window.__fpRenderPasses > 0, null, { timeout: 20_000 });
+  };
+}
+
 async function signInToDashboard(page) {
   const login = await page.request.post("/api/auth/login-request", { data: { email } });
   expect(login.ok()).toBe(true);
@@ -934,6 +964,35 @@ test("Conversion Opportunity Engine saves thresholds without fabricating GA4 dat
   expect(ownTenantData.settings).toEqual(settings);
   expect(ownTenantData.settings).not.toEqual(foreignSettings);
   expect(ownTenantData.opportunities).toEqual([]);
+});
+
+test("Conversion Opportunity Engine keeps typed thresholds when a late background loader re-renders the page", async ({ page }) => {
+  const releaseBackgroundLoader = await holdBackgroundLoaderRefresh(page);
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("conversion-opportunity-engine"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "conversion-opportunity-engine",
+    null,
+    { timeout: 20_000 },
+  );
+  const panel = page.locator("#fp-addon-conversion-opportunity-engine");
+  const settingsForm = panel.locator("form[data-coe-settings]");
+  await expect(settingsForm).toBeVisible({ timeout: 20_000 });
+  await settingsForm.locator('input[name="minimumSessions"]').fill("321");
+  await settingsForm.locator('input[name="maximumConversionRate"]').fill("2.5");
+
+  await releaseBackgroundLoader();
+
+  await expect(settingsForm.locator('input[name="minimumSessions"]')).toHaveValue("321");
+  await expect(settingsForm.locator('input[name="maximumConversionRate"]')).toHaveValue("2.5");
+  const saveResponsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/conversion-opportunity-engine/settings" &&
+    response.request().method() === "PUT",
+  );
+  await settingsForm.locator('button[type="submit"]').click();
+  const saveResponse = await saveResponsePromise;
+  expect(saveResponse.request().postDataJSON()).toEqual({ minimumSessions: 321, maximumConversionRate: 0.025 });
+  expect((await saveResponse.json()).settings).toEqual({ minimumSessions: 321, maximumConversionRate: 0.025 });
 });
 
 test("Agency Reporting Packs: valid Stripe TEST webhook is processed locally", async ({ page }) => {
@@ -1819,6 +1878,87 @@ test("Global Monitoring fails closed without provider data and shows no fabricat
 });
 
 
+
+test("SEO Change Impact keeps typed settings when a late background loader re-renders the page", async ({ page }) => {
+  const releaseBackgroundLoader = await holdBackgroundLoaderRefresh(page);
+  await signInToDashboard(page);
+  await page.evaluate(() => { window.location.hash = "#seo-change-impact"; });
+  await page.waitForFunction(
+    () => window.STATE?.route === "seo-change-impact" && Boolean(document.querySelector("#fp-addon-seo-change-impact")),
+    null,
+    { timeout: 20_000 },
+  );
+  const seo = page.locator("#fp-addon-seo-change-impact");
+  const seoForm = seo.locator("form[data-sci-settings]");
+  await expect(seoForm).toBeVisible({ timeout: 20_000 });
+  await seoForm.locator('input[name="lookbackDays"]').fill("45");
+  await seoForm.locator('input[name="minimumScoreChange"]').fill("7");
+
+  await releaseBackgroundLoader();
+
+  await expect(seoForm.locator('input[name="lookbackDays"]')).toHaveValue("45");
+  await expect(seoForm.locator('input[name="minimumScoreChange"]')).toHaveValue("7");
+  const seoSave = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/seo-change-impact/settings" &&
+    response.request().method() === "PUT"
+  );
+  await seoForm.locator('button[type="submit"]').click();
+  const seoSaveResponse = await seoSave;
+  expect(seoSaveResponse.request().postDataJSON()).toMatchObject({ lookbackDays: 45, minimumScoreChange: 7 });
+  expect((await seoSaveResponse.json()).settings).toMatchObject({ lookbackDays: 45, minimumScoreChange: 7 });
+});
+
+test("Global Monitoring keeps its result and its in-flight request when a late background loader re-renders the page", async ({ page }) => {
+  const releaseBackgroundLoader = await holdBackgroundLoaderRefresh(page);
+  let overviewRequested;
+  const overviewRequestSeen = new Promise(resolve => { overviewRequested = resolve; });
+  let releaseOverview;
+  const overviewGate = new Promise(resolve => { releaseOverview = resolve; });
+  await page.route("**/api/betterstack/global-overview*", async route => {
+    overviewRequested();
+    await overviewGate;
+    await route.continue();
+  });
+  await signInToDashboard(page);
+  await page.evaluate(() => window.navigate("monitors"));
+  await page.waitForFunction(
+    () => window.STATE?.route === "monitors" && Boolean(document.querySelector("#fp-global-monitoring-result")),
+    null,
+    { timeout: 20_000 },
+  );
+  const card = page.locator("section.fp-card").filter({ has: page.locator("#fp-global-monitoring-result") });
+  const result = page.locator("#fp-global-monitoring-result");
+  const responsePromise = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/betterstack/global-overview"
+  );
+  await card.locator("button.fp-btn-ghost").first().evaluate(button => button.click());
+  await overviewRequestSeen;
+  await expect(result).toContainText(/Chargement|Loading/i);
+
+  // The page is rebuilt while the request is still in flight.
+  await releaseBackgroundLoader();
+  await expect(result).toContainText(/Chargement|Loading/i);
+
+  releaseOverview();
+  const response = await responsePromise;
+  expect(response.status()).toBe(503);
+  expect(await response.json()).toMatchObject({ configured: false });
+  await expect(result).toContainText(/Impossible de charger les régions|Could not load regions/i);
+
+  // A refresh after the outcome must not reset the panel to its idle text either.
+  await page.evaluate(() => {
+    const original = window.fpSyncAiBadge;
+    window.__fpRenderPasses = 0;
+    window.fpSyncAiBadge = function (...args) {
+      window.__fpRenderPasses += 1;
+      return typeof original === "function" ? original.apply(this, args) : undefined;
+    };
+    window.render();
+  });
+  await page.waitForFunction(() => window.__fpRenderPasses > 0, null, { timeout: 20_000 });
+  await expect(result).toContainText(/Impossible de charger les régions|Could not load regions/i);
+  await expect(result).not.toContainText(/99\.9|QA monitor|configuredRegionCount/i);
+});
 
 test("AI Forecasting Engine shows insufficient history instead of fabricated projections", async ({ page }) => {
   await db.query("UPDATE organizations SET plan='ultra' WHERE id=$1::uuid", [orgA]);

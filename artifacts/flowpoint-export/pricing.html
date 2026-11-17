@@ -1785,45 +1785,59 @@
   }
 
   /* Canonical catalogue — sole source of add-on prices and plan inclusions. */
-  _fpSetPricingCatalogState("loading");
-  _fpSyncAddonCartState();
-  fetch('/api/plans/catalog')
-    .then(function (r) {
-      if (!r.ok) throw new Error("Catalogue add-ons indisponible (HTTP " + r.status + ")");
-      return r.json();
-    })
-    .then(function (cat) {
-      if (!cat || !Array.isArray(cat.addons) || !cat.addons.length) {
-        throw new Error("Réponse du catalogue add-ons invalide");
-      }
-      FP_CATALOG = cat;
-      _fpRenderAddonCards(cat);
-      _fpBuildAddonBottoms(cat);
-      _fpApplyCatalogInclusions(cat);
-      var sel = document.querySelector('.fp-card.selected');
-      var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
-      updateIncludedAddons(selId);
-      _fpSyncAddonCartState();
-      _fpSetPricingCatalogState("ready");
-    })
-    .catch(function (error) {
-      var grid = document.getElementById("fp-addons-grid");
-      _fpSetPricingCatalogState("error");
-      _fpSyncAddonCartState();
-      var message = document.createElement("p");
-      message.className = "fp-addon-catalog-error";
-      message.setAttribute("role", "alert");
-      message.textContent = _fpPricingText(
-        "Impossible de charger les add-ons. Actualisez la page pour réessayer.",
-        "Unable to load add-ons. Refresh the page to try again."
-      );
-      if (grid && grid.parentNode) {
-        var previous = grid.parentNode.querySelector(".fp-addon-catalog-error");
-        if (previous) previous.remove();
-        grid.parentNode.insertBefore(message, grid.nextSibling);
-      }
-      if (window.console && console.error) console.error("[pricing] Catalogue add-ons indisponible", error);
-    });
+  /* Loader reusable: le meme appel sert au chargement initial et a la reprise
+     declenchee par un appui sur un plan avant la fin du chargement (D1). */
+  var _fpCatalogPromise = null;
+  function _fpFetchCatalog() {
+    if (_fpCatalogPromise) return _fpCatalogPromise;
+    _fpSetPricingCatalogState("loading");
+    _fpSyncAddonCartState();
+    var attempt = fetch('/api/plans/catalog')
+      .then(function (r) {
+        if (!r.ok) throw new Error("Catalogue add-ons indisponible (HTTP " + r.status + ")");
+        return r.json();
+      })
+      .then(function (cat) {
+        if (!cat || !Array.isArray(cat.addons) || !cat.addons.length) {
+          throw new Error("Réponse du catalogue add-ons invalide");
+        }
+        FP_CATALOG = cat;
+        var gridOk = document.getElementById("fp-addons-grid");
+        var oldErr = gridOk && gridOk.parentNode && gridOk.parentNode.querySelector(".fp-addon-catalog-error");
+        if (oldErr) oldErr.remove();
+        _fpRenderAddonCards(cat);
+        _fpBuildAddonBottoms(cat);
+        _fpApplyCatalogInclusions(cat);
+        var sel = document.querySelector('.fp-card.selected');
+        var selId = sel && sel.id ? sel.id.replace('card-', '') : '';
+        updateIncludedAddons(selId);
+        _fpSyncAddonCartState();
+        _fpSetPricingCatalogState("ready");
+      })
+      .catch(function (error) {
+        _fpCatalogPromise = null; /* permet une nouvelle tentative */
+        var grid = document.getElementById("fp-addons-grid");
+        _fpSetPricingCatalogState("error");
+        _fpSyncAddonCartState();
+        var message = document.createElement("p");
+        message.className = "fp-addon-catalog-error";
+        message.setAttribute("role", "alert");
+        message.textContent = _fpPricingText(
+          "Impossible de charger les add-ons. Actualisez la page pour réessayer.",
+          "Unable to load add-ons. Refresh the page to try again."
+        );
+        if (grid && grid.parentNode) {
+          var previous = grid.parentNode.querySelector(".fp-addon-catalog-error");
+          if (previous) previous.remove();
+          grid.parentNode.insertBefore(message, grid.nextSibling);
+        }
+        if (window.console && console.error) console.error("[pricing] Catalogue add-ons indisponible", error);
+        throw error;
+      });
+    _fpCatalogPromise = attempt;
+    return attempt;
+  }
+  _fpFetchCatalog().catch(function () { /* deja signale dans l'interface */ });
 
   /* ── Restore cart from localStorage when redirected from dashboard ──────────
      Sets _cart data silently (plan + addons); visual state of the current plan
@@ -1994,7 +2008,9 @@
     var addonCount = Object.keys(_cart.addons || {}).length;
     var isSubscriber = bs && (bs.status === 'active' || bs.status === 'trialing');
     var fromDash = new URLSearchParams(window.location.search).get('from') === 'dashboard';
-    if (addonCount === 0 && !isSubscriber && !fromDash && typeof window.goToCheckout === 'function') {
+    /* Restauration d'un panier frais (retour aux tarifs) : on remet la selection en place SANS relancer la redirection,
+       sinon le visiteur ne peut plus changer de plan. Seul un clic explicite navigue. */
+    if (addonCount === 0 && !isSubscriber && !fromDash && !window.__fpRestoringCart && typeof window.goToCheckout === 'function') {
       showToast(_fpPricingText('Plan ' + planName + ' sélectionné — redirection…', 'Plan ' + planName + ' selected — redirecting…'));
       window.goToCheckout();
       return;
@@ -2100,12 +2116,45 @@
   };
 
   /* ── Go to checkout ── */
-  window.goToCheckout = function () {
+  var _fpCheckoutWaiting = false;
+  function _fpSetCheckoutBusy(busy) {
+    _fpCheckoutWaiting = busy;
+    var ctrls = document.querySelectorAll('.fp-card-btn[data-plan], #fp-cart-btn');
+    Array.prototype.forEach.call(ctrls, function (el) {
+      if (busy) {
+        if (!el.disabled) { el.disabled = true; el.setAttribute('data-fp-busy', '1'); }
+        el.setAttribute('aria-busy', 'true');
+      } else if (el.getAttribute('data-fp-busy') === '1') {
+        el.disabled = false;
+        el.removeAttribute('data-fp-busy');
+        el.removeAttribute('aria-busy');
+      } else {
+        el.removeAttribute('aria-busy');
+      }
+    });
+  }
+  window.goToCheckout = function fpGoToCheckout() {
     if (!FP_CATALOG) {
+      /* Catalogue pas encore charge : on attend (et on relance une fois s'il a echoue),
+         puis on continue. L'erreur n'est montree que si le chargement echoue vraiment. */
+      if (_fpCheckoutWaiting) return;
+      _fpSetCheckoutBusy(true);
       showToast(_fpPricingText(
-        "Le catalogue des add-ons est indisponible. Actualisez la page avant de continuer.",
-        "The add-on catalog is unavailable. Refresh the page before continuing."
-      ), true);
+        "Chargement du catalogue… vous allez être redirigé.",
+        "Loading the catalog… you will be redirected shortly."
+      ));
+      (_fpCatalogPromise || _fpFetchCatalog())
+        .catch(function () { return _fpFetchCatalog(); })
+        .then(function () {
+          _fpSetCheckoutBusy(false);
+          fpGoToCheckout();
+        }, function () {
+          _fpSetCheckoutBusy(false);
+          showToast(_fpPricingText(
+            "Le catalogue des add-ons est indisponible. Actualisez la page avant de continuer.",
+            "The add-on catalog is unavailable. Refresh the page before continuing."
+          ), true);
+        });
       return;
     }
     var currentPlan = _fpCurrentPricingPlan();
@@ -2806,6 +2855,10 @@
      and the anonymous visitor-cart restore above.                          */
   function restoreCartSelections() {
     if (!cart) return;
+    window.__fpRestoringCart = true;
+    try { restoreCartSelectionsInner(); } finally { window.__fpRestoringCart = false; }
+  }
+  function restoreCartSelectionsInner() {
 
     /* ── Pre-select plan ── */
     var plan = cart.plan || params.get('plan');

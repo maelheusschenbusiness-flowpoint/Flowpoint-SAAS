@@ -943,12 +943,15 @@
         // Meme source que `signup_started` : sans elle, l'inscription n'est pas rattachee a sa campagne.
         source: fpSource() || undefined })
     })
-    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
     .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
         var rawError = res.data.error || 'An error occurred. Please try again.';
-        if (window.fpResolveLanguage() === 'en') {
+        if (res.status === 409) {
+          // Existing account: localized message keyed on the HTTP status (server text stays English and is never shown as-is in French).
+          rawError = window.fpAccessText('accountExists');
+        } else if (window.fpResolveLanguage() === 'en') {
           var translatedError = window.fpPublicTranslateText(rawError);
           rawError = translatedError !== rawError ? translatedError : 'An error occurred. Please try again.';
         }
