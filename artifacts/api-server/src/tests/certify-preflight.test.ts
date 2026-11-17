@@ -41,9 +41,12 @@ describe("pre-controle des certifications reelles", () => {
     expect(r).not.toMatch(/sk_test_abc|whsec_abc|kkkkkkkk|xxxxxxxx/);
   });
   it("hubspot : complet / incomplet / surcharge de fausse API refusee", () => {
-    const ok = { HUBSPOT_CLIENT_ID: "id", HUBSPOT_CLIENT_SECRET: "s".repeat(20), CRM_TOKEN_ENCRYPTION_KEY: "ab".repeat(32), PUBLIC_URL: "https://flowpoint-test.onrender.com" };
+    const ok = { HUBSPOT_CLIENT_ID: "id", HUBSPOT_CLIENT_SECRET: "s".repeat(20), CRM_TOKEN_ENCRYPTION_KEY: "ab".repeat(32), PUBLIC_URL: "https://flowpoint-test.onrender.com", FRONTEND_URL: "https://flowpoint-test.onrender.com" };
     expect(evaluer("hubspot", ok).items.filter((i) => i.etat === "MISSING" || i.etat === "REFUSED")).toEqual([]);
-    expect(evaluer("hubspot", {}).items.filter((i) => i.etat === "MISSING").length).toBe(4);
+    expect(evaluer("hubspot", {}).items.filter((i) => i.etat === "MISSING").length).toBe(5);
+    // Le retour OAuth ne doit jamais viser la production (repli par defaut de FRONTEND_URL).
+    expect(etat(evaluer("hubspot", { ...ok, FRONTEND_URL: "https://app.flowpoint.pro" }), "FRONTEND_URL")).toBe("REFUSED");
+    expect(etat(evaluer("hubspot", { ...ok, FRONTEND_URL: "" }), "FRONTEND_URL")).toBe("MISSING");
     expect(etat(evaluer("hubspot", { ...ok, HUBSPOT_API_BASE: "http://127.0.0.1:1" }), "absents")).toBe("REFUSED");
   });
   it("profil inconnu : erreur explicite", () => {

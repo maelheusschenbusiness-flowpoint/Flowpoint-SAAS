@@ -474,3 +474,161 @@ describe("revue de securite : garanties supplementaires", () => {
     expect(all).not.toMatch(/at-\d|at-refreshed|rt-\d|good-code|fake-hubspot-client-secret|v1:[a-f\d]{24}/);
   });
 });
+
+// ── Revue finale du module #7 : etats distincts, isolation des mappings, honnetete des listes ──────────────
+describe("revue finale : etats explicites, mappings, leads, erreurs reseau", () => {
+  const cleanFlags = () => { fake.listStatus = 200; fake.oneStatus = 200; fake.refreshStatus = 200; };
+  beforeEach(cleanFlags);
+  afterAll(async () => {
+    if (dbOk) await pool.query("DELETE FROM crm_field_mappings WHERE org_id = ANY($1)", [[orgA, orgB]]);
+  });
+  const integrationId = async (org: string): Promise<string> =>
+    String((await pool.query("SELECT id FROM crm_integrations WHERE org_id=$1 AND provider='hubspot'", [org])).rows[0].id);
+
+  it("apres une revocation, les appels suivants restent « reconnexion requise » (jamais « non connecte »)", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    await pool.query("UPDATE crm_integrations SET token_expires_at = NOW() + INTERVAL '1 hour' WHERE org_id=$1", [orgA]);
+    fake.listStatus = 401;
+    expect((await request(app(orgA)).post("/api/crm/sync").send({ provider: "hubspot" })).body.code).toBe("CRM_REAUTH_REQUIRED");
+    cleanFlags();
+    // Deuxieme et troisieme appels : le statut stocke est `reauth_required`, pas `disconnected`.
+    const again = await request(app(orgA)).post("/api/crm/sync").send({ provider: "hubspot" });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("CRM_REAUTH_REQUIRED");
+    const probe = await request(app(orgA)).post("/api/crm/test").send({ provider: "hubspot" });
+    expect(probe.status).toBe(409);
+    expect(probe.body.code).toBe("CRM_REAUTH_REQUIRED");
+    const status = await request(app(orgA)).get("/api/crm/status");
+    expect(status.body.integrations.find((i: { provider: string }) => i.provider === "hubspot").status).toBe("reauth_required");
+    expect(status.body.connected).toBe(0);
+    // Une integration jamais connectee reste « non connecte ».
+    expect((await request(app(orgB)).post("/api/crm/sync").send({ provider: "hubspot" })).body.code).toBe("CRM_NOT_CONNECTED");
+    await connect(orgA);
+  });
+
+  it("test de connexion : jeton rejete par HubSpot => 409 reauth_required et jetons effaces (pas un 502 trompeur)", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    await pool.query("UPDATE crm_integrations SET token_expires_at = NOW() + INTERVAL '1 hour' WHERE org_id=$1", [orgA]);
+    fake.listStatus = 401;
+    const r = await request(app(orgA)).post("/api/crm/test").send({ provider: "hubspot" });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("CRM_REAUTH_REQUIRED");
+    const row = (await pool.query("SELECT status, access_token, refresh_token FROM crm_integrations WHERE org_id=$1", [orgA])).rows[0];
+    expect(row).toEqual({ status: "reauth_required", access_token: null, refresh_token: null });
+    cleanFlags();
+    await connect(orgA);
+  });
+
+  it("test de connexion : HubSpot injoignable => 503 CRM_PROVIDER_UNREACHABLE (pas de 500), jetons conserves", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    await pool.query("UPDATE crm_integrations SET token_expires_at = NOW() + INTERVAL '1 hour' WHERE org_id=$1", [orgA]);
+    const saved = process.env["HUBSPOT_API_BASE"];
+    process.env["HUBSPOT_API_BASE"] = "http://127.0.0.1:1"; // port ferme : connexion refusee
+    try {
+      const r = await request(app(orgA)).post("/api/crm/test").send({ provider: "hubspot" });
+      expect(r.status).toBe(503);
+      expect(r.body.code).toBe("CRM_PROVIDER_UNREACHABLE");
+    } finally { process.env["HUBSPOT_API_BASE"] = saved; }
+    const row = (await pool.query("SELECT status, access_token FROM crm_integrations WHERE org_id=$1", [orgA])).rows[0];
+    expect(row.status).toBe("connected");
+    expect(row.access_token).not.toBeNull();
+  });
+
+  it("deconnexion d'un fournisseur inconnu => 400 explicite (et non un faux succes)", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const r = await request(app(orgA)).post("/api/crm/disconnect/nimporte-quoi").send({});
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("CRM_PROVIDER_INVALID");
+    const unsupported = await request(app(orgA)).post("/api/crm/sync").send({ provider: "nimporte-quoi" });
+    expect(unsupported.body.code).toBe("CRM_PROVIDER_INVALID");
+  });
+
+  it("mappings : integration d'une autre organisation => 404 sans ecriture ; entree invalide => 400 ; remplacement reel", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    await connect(orgB);
+    const idA = await integrationId(orgA);
+    const idB = await integrationId(orgB);
+    const body = { entityType: "contacts", flowpointField: "name", crmField: "firstname" };
+    // B tente d'ecrire sur l'integration de A.
+    const foreign = await request(app(orgB)).post(`/api/crm/field-mappings/${idA}`).send(body);
+    expect(foreign.status).toBe(404);
+    expect(foreign.body.code).toBe("CRM_INTEGRATION_NOT_FOUND");
+    expect((await pool.query("SELECT 1 FROM crm_field_mappings WHERE crm_integration_id=$1", [idA])).rows.length).toBe(0);
+    // Entrees invalides.
+    for (const bad of [{}, { ...body, entityType: "deals" }, { ...body, crmField: "x".repeat(101) }, { ...body, flowpointField: "a b; DROP" }, { ...body, crmField: 12 }]) {
+      const r = await request(app(orgA)).post(`/api/crm/field-mappings/${idA}`).send(bad);
+      expect(r.status).toBe(400);
+      expect(r.body.code).toBe("CRM_MAPPING_INVALID");
+    }
+    // Ecriture puis remplacement : une seule ligne, la nouvelle valeur ; jamais annonce comme applique.
+    const first = await request(app(orgA)).post(`/api/crm/field-mappings/${idA}`).send(body);
+    expect(first.body).toEqual({ ok: true, applied: false });
+    await request(app(orgA)).post(`/api/crm/field-mappings/${idA}`).send({ ...body, crmField: "lastname" });
+    const mine = await request(app(orgA)).get(`/api/crm/field-mappings/${idA}`);
+    expect(mine.body.count).toBe(1);
+    expect(mine.body.mappings[0].crm_field).toBe("lastname");
+    expect(mine.body.applied).toBe(false);
+    // B ne lit rien de A, et A ne lit rien de B.
+    expect((await request(app(orgB)).get(`/api/crm/field-mappings/${idA}`)).body.count).toBe(0);
+    expect((await request(app(orgA)).get(`/api/crm/field-mappings/${idB}`)).body.count).toBe(0);
+    // Meme portail connecte a deux organisations => webhooks ambigus : on libere B pour la suite.
+    await request(app(orgB)).post("/api/crm/disconnect/hubspot").send({});
+  });
+
+  it("leads : seulement les contacts des CRM connectes, total reel, etat « non connecte » explicite", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const sync = await request(app(orgA)).post("/api/crm/sync").send({ provider: "hubspot" });
+    expect(sync.status).toBe(200);
+    const leads = await request(app(orgA)).get("/api/crm/leads");
+    expect(leads.body.leads).toHaveLength(100);
+    const expected = (await pool.query("SELECT COUNT(*)::int n FROM crm_contacts WHERE org_id=$1 AND provider='hubspot'", [orgA])).rows[0].n;
+    expect(leads.body.total).toBe(expected);
+    expect(expected).toBeGreaterThanOrEqual(TOTAL_CONTACTS);
+    expect(leads.body.truncated).toBe(true);
+    // Contact d'un fournisseur sans integration connectee : jamais renvoye.
+    await pool.query(
+      "INSERT INTO crm_contacts (id, org_id, provider, external_id, name) VALUES ($1,$2,'salesforce','sf-1','Fantome') ON CONFLICT DO NOTHING",
+      [`crmc-ghost-${orgA}`, orgA],
+    );
+    const names = (await request(app(orgA)).get("/api/crm/leads")).body.leads.map((l: { name: string }) => l.name);
+    expect(names).not.toContain("Fantome");
+    // Isolation : B ne voit pas les contacts de A.
+    const other = await request(app(orgB)).get("/api/crm/leads");
+    expect(other.body.leads.every((l: { name: string }) => l.name !== "Fantome")).toBe(true);
+    expect(other.body.total).toBe(0);
+    // Deconnecte : plus aucun contact expose, code explicite.
+    await request(app(orgA)).post("/api/crm/disconnect/hubspot").send({});
+    const after = await request(app(orgA)).get("/api/crm/leads");
+    expect(after.body).toMatchObject({ leads: [], total: 0, code: "CRM_NOT_CONNECTED" });
+    await pool.query("DELETE FROM crm_contacts WHERE org_id=$1", [orgA]);
+    await connect(orgA);
+  });
+
+  it("statut : une ligne « connected » d'un fournisseur sans adaptateur n'est jamais presentee comme connectee", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    await pool.query("INSERT INTO crm_integrations (id, org_id, provider, status) VALUES ($1,$2,'salesforce','connected')", [`legacy-${orgA}`, orgA]);
+    try {
+      const s = (await request(app(orgA)).get("/api/crm/status")).body;
+      const legacy = s.integrations.find((i: { provider: string }) => i.provider === "salesforce");
+      expect(legacy).toMatchObject({ status: "unavailable", implemented: false });
+      expect(s.integrations.find((i: { provider: string }) => i.provider === "hubspot")).toMatchObject({ status: "connected", implemented: true });
+      expect(s.connected).toBe(1); // HubSpot seulement
+      expect(s.slotsUsed).toBe(2); // mais la ligne heritee occupe toujours une place de quota tant qu'elle n'est pas deconnectee
+    } finally {
+      await pool.query("DELETE FROM crm_integrations WHERE id=$1", [`legacy-${orgA}`]);
+    }
+  });
+
+  it("webhook : l'echec de lecture du contact est journalise (sans secret) avant la relivraison", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const evt = JSON.stringify([{ eventId: 880777, objectId: 9777, portalId: Number(fake.hubId) }]);
+    const h = sign(evt);
+    logs.calls.length = 0;
+    fake.oneStatus = 500;
+    const failed = await request(app(orgA)).post("/api/crm/webhook/hubspot").set("content-type", "application/json")
+      .set("x-hubspot-signature-v3", h.sig).set("x-hubspot-request-timestamp", h.ts).send(evt);
+    expect(failed.status).toBe(503);
+    expect(JSON.stringify(logs.calls)).toContain("crm_webhook_fetch_failed");
+    expect(JSON.stringify(logs.calls)).not.toMatch(/at-\d|rt-\d|good-code|fake-hubspot-client-secret/);
+  });
+});

@@ -10915,7 +10915,7 @@ function renderBilling() {
       { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention90d), tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
       { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention365d), tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
-      { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
+      { key:'crmIntegration', cat:'API',        name:'CRM Intégrations', icon:'🏢', color:'#14b8a6', active:!!(me.addons?.crmIntegration), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Connexion HubSpot en lecture seule (contacts). Les autres CRM ne sont pas encore disponibles.', features:['Connexion HubSpot par OAuth (lecture seule)','Synchronisation manuelle des contacts','Mise à jour via webhooks HubSpot signés','Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close : bientôt'] },
       // ── Enterprise ──
       { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Preuve de propriété DNS TXT avant provisionnement','Provisionnement Render, HTTPS et routage isolé en certification Beta'] },
       { key:'ssoEnterprise', cat:'Ultra', name:'SSO Enterprise', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.', features:['Bientôt disponible'] },
@@ -20633,6 +20633,82 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    // ── CRM Hub (module #7) ──
+    "Reconnexion requise : l’autorisation du CRM a expiré ou a été révoquée.": "Reconnection required: the CRM authorization has expired or been revoked.",
+    "Ce CRM n’est pas connecté.": "This CRM is not connected.",
+    "Ce CRM n’est pas configuré sur ce serveur : contactez l’administrateur Flowpoint.": "This CRM is not configured on this server: contact your Flowpoint administrator.",
+    "Ce CRM n’est pas encore disponible.": "This CRM is not available yet.",
+    "Une synchronisation est déjà en cours.": "A synchronization is already in progress.",
+    "Le CRM est momentanément indisponible. Réessayez dans un instant.": "The CRM is temporarily unavailable. Please try again in a moment.",
+    "La synchronisation a échoué. Réessayez dans un instant.": "The synchronization failed. Please try again in a moment.",
+    "Le CRM limite temporairement les requêtes. Réessayez dans un instant.": "The CRM is temporarily rate-limiting requests. Please try again in a moment.",
+    "Le module CRM Integrations n’est pas activé pour cette organisation.": "The CRM Integrations module is not enabled for this organization.",
+    "Vous n’avez pas les droits nécessaires pour cette action.": "You do not have the required permissions for this action.",
+    "Une erreur est survenue. Réessayez.": "An error occurred. Please try again.",
+    "Autorisation refusée : aucun CRM n’a été connecté.": "Authorization denied: no CRM was connected.",
+    "La connexion au CRM a échoué. Réessayez.": "The CRM connection failed. Please try again.",
+    "La connexion au CRM a échoué ou a été refusée.": "The CRM connection failed or was declined.",
+    "Connecter {name}": "Connect {name}",
+    "Redirection vers le CRM…": "Redirecting to the CRM…",
+    "Connexion impossible pour le moment.": "Unable to connect right now.",
+    "Déconnecter {name} ?": "Disconnect {name}?",
+    "CRM déconnecté.": "CRM disconnected.",
+    "Déconnecter": "Disconnect",
+    "Synchronisation des contacts en cours…": "Syncing contacts…",
+    "{created} créés, {updated} mis à jour": "{created} created, {updated} updated",
+    "{failed} en échec": "{failed} failed",
+    "Limite atteinte : seuls les 2 000 premiers contacts ont été synchronisés.": "Limit reached: only the first 2,000 contacts were synchronized.",
+    "Connexion au CRM vérifiée.": "CRM connection verified.",
+    "Chargement des intégrations CRM…": "Loading CRM integrations…",
+    "Les intégrations CRM sont momentanément indisponibles. Réessayez dans un instant.": "CRM integrations are temporarily unavailable. Please try again in a moment.",
+    "Seuls les propriétaires et administrateurs peuvent connecter ou déconnecter un CRM.": "Only owners and administrators can connect or disconnect a CRM.",
+    "Votre rôle est en lecture seule : connexion, déconnexion et synchronisation sont réservées aux membres autorisés.": "Your role is read-only: connecting, disconnecting and synchronizing are reserved for authorized members.",
+    "Synchronisation manuelle des contacts (lecture seule)": "Manual contact synchronization (read-only)",
+    "Mise à jour instantanée via webhooks HubSpot signés": "Instant updates via signed HubSpot webhooks",
+    "Synchronisation automatique planifiée": "Scheduled automatic synchronization",
+    "Synchronisation bidirectionnelle (écriture vers le CRM)": "Two-way synchronization (writing back to the CRM)",
+    "Mapping de champs personnalisé": "Custom field mapping",
+    "Leads, deals et entreprises": "Leads, deals and companies",
+    "Disponible": "Available",
+    "Pas encore disponible": "Not available yet",
+    "{count} connecté": "{count} connected",
+    "{count} connectés": "{count} connected",
+    "Réussie": "Succeeded",
+    "Échec": "Failed",
+    "Partielle": "Partial",
+    "HubSpot disponible en lecture seule · autres CRM bientôt": "HubSpot available read-only · other CRMs coming soon",
+    "sur {limit} max ({plan})": "of {limit} max ({plan})",
+    "{count} contacts": "{count} contacts",
+    "Reconnexion requise": "Reconnection required",
+    "Non configuré sur ce serveur": "Not configured on this server",
+    "Ancienne connexion non vérifiable": "Legacy connection that cannot be verified",
+    "Aucune connexion réelle n’a pu être vérifiée pour ce CRM.": "No real connection could be verified for this CRM.",
+    "Intégration en préparation : non disponible pour le moment.": "Integration in progress: not available at the moment.",
+    "Lecture seule des contacts HubSpot via OAuth. Synchronisation manuelle et webhooks signés.": "Read-only access to HubSpot contacts via OAuth. Manual sync and signed webhooks.",
+    "Reconnecter": "Reconnect",
+    "Synchronisation manuelle": "Manual synchronization",
+    "Seuls les contacts sont synchronisés (lecture seule, 2 000 contacts maximum par synchronisation). Aucune synchronisation automatique : lancez-la ici ou laissez les webhooks HubSpot mettre à jour les contacts.": "Only contacts are synchronized (read-only, up to 2,000 contacts per synchronization). There is no automatic synchronization: start it here or let HubSpot webhooks update contacts.",
+    "Synchroniser les contacts": "Sync contacts",
+    "Tester la connexion": "Test connection",
+    "Capacités de synchronisation": "Synchronization capabilities",
+    "Mapping de champs": "Field mapping",
+    "Le mapping personnalisé n’est pas encore disponible : la synchronisation utilise les champs standard HubSpot (nom, e-mail, téléphone, étape).": "Custom mapping is not available yet: synchronization uses the standard HubSpot fields (name, email, phone, stage).",
+    "Historique de synchronisation": "Synchronization history",
+    "Direction": "Direction",
+    "Import": "Import",
+    "Contacts": "Contacts",
+    "Vous allez être redirigé vers votre CRM pour autoriser Flowpoint en lecture seule. Aucun jeton n’est à copier : il est échangé et chiffré côté serveur.": "You will be redirected to your CRM to authorize Flowpoint read-only. No token needs to be copied: it is exchanged and encrypted server-side.",
+    "CRM connectés": "CRMs connected",
+    "Contacts synchronisés": "Contacts synchronized",
+    "Syncs réalisées": "Syncs completed",
+    "au total": "in total",
+    "opérations": "operations",
+    "par sync": "per sync",
+    "Connexion HubSpot en lecture seule (contacts). Les autres CRM ne sont pas encore disponibles.": "Read-only HubSpot connection (contacts). Other CRMs are not available yet.",
+    "Connexion HubSpot par OAuth (lecture seule)": "HubSpot connection via OAuth (read-only)",
+    "Synchronisation manuelle des contacts": "Manual contact synchronization",
+    "Mise à jour via webhooks HubSpot signés": "Updates via signed HubSpot webhooks",
+    "Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close : bientôt": "Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close: coming soon",
     "Génère trois rapports persistés (Executive, SEO et Local) à partir d’un audit sélectionné; sans envoi planifié, portail client ni consolidation multi-sites.": "Creates three saved reports (Executive, SEO, and Local) from a selected audit; no scheduled delivery, client portal, or multi-site consolidation.",
     "Génère à la demande une synthèse IA fondée sur les audits et monitors mesurés, puis la sauvegarde dans Rapports; sans email, Slack ni planning hebdomadaire.": "Generates an on-demand AI summary from measured audits and monitors and saves it in Reports; no email, Slack, or weekly schedule.",
     "Disponibilité Better Stack par moniteur et période, cibles SLA par moniteur, conformité mesurée et export CSV; aucune alerte SLA automatique.": "Better Stack availability statistics by monitor and period; no SLA alert rules or dedicated export.",
@@ -25482,6 +25558,81 @@ function bindGlobalEvents() {
   var FP_I18N = {
     en: FP_I18N_EN,
     es: {
+    // ── CRM Hub (module #7) ──
+    "Reconnexion requise : l’autorisation du CRM a expiré ou a été révoquée.": "Reconexión necesaria: la autorización del CRM ha caducado o ha sido revocada.",
+    "Ce CRM n’est pas connecté.": "Este CRM no está conectado.",
+    "Ce CRM n’est pas configuré sur ce serveur : contactez l’administrateur Flowpoint.": "Este CRM no está configurado en este servidor: póngase en contacto con el administrador de Flowpoint.",
+    "Ce CRM n’est pas encore disponible.": "Este CRM aún no está disponible.",
+    "Une synchronisation est déjà en cours.": "Ya hay una sincronización en curso.",
+    "Le CRM est momentanément indisponible. Réessayez dans un instant.": "El CRM no está disponible temporalmente. Inténtelo de nuevo en un momento.",
+    "La synchronisation a échoué. Réessayez dans un instant.": "La sincronización ha fallado. Inténtelo de nuevo en un momento.",
+    "Le CRM limite temporairement les requêtes. Réessayez dans un instant.": "El CRM limita temporalmente las solicitudes. Inténtelo de nuevo en un momento.",
+    "Le module CRM Integrations n’est pas activé pour cette organisation.": "El módulo CRM Integrations no está activado para esta organización.",
+    "Vous n’avez pas les droits nécessaires pour cette action.": "No tiene los permisos necesarios para esta acción.",
+    "Une erreur est survenue. Réessayez.": "Se ha producido un error. Inténtelo de nuevo.",
+    "Autorisation refusée : aucun CRM n’a été connecté.": "Autorización denegada: no se ha conectado ningún CRM.",
+    "La connexion au CRM a échoué. Réessayez.": "La conexión con el CRM ha fallado. Inténtelo de nuevo.",
+    "La connexion au CRM a échoué ou a été refusée.": "La conexión con el CRM ha fallado o fue rechazada.",
+    "Connecter {name}": "Conectar {name}",
+    "Redirection vers le CRM…": "Redirigiendo al CRM…",
+    "Connexion impossible pour le moment.": "No se puede conectar por el momento.",
+    "Déconnecter {name} ?": "¿Desconectar {name}?",
+    "CRM déconnecté.": "CRM desconectado.",
+    "Synchronisation des contacts en cours…": "Sincronizando contactos…",
+    "{created} créés, {updated} mis à jour": "{created} creados, {updated} actualizados",
+    "{failed} en échec": "{failed} con error",
+    "Limite atteinte : seuls les 2 000 premiers contacts ont été synchronisés.": "Límite alcanzado: solo se sincronizaron los primeros 2000 contactos.",
+    "Connexion au CRM vérifiée.": "Conexión con el CRM verificada.",
+    "Chargement des intégrations CRM…": "Cargando integraciones CRM…",
+    "Les intégrations CRM sont momentanément indisponibles. Réessayez dans un instant.": "Las integraciones CRM no están disponibles temporalmente. Inténtelo de nuevo en un momento.",
+    "Seuls les propriétaires et administrateurs peuvent connecter ou déconnecter un CRM.": "Solo los propietarios y administradores pueden conectar o desconectar un CRM.",
+    "Votre rôle est en lecture seule : connexion, déconnexion et synchronisation sont réservées aux membres autorisés.": "Su rol es de solo lectura: conectar, desconectar y sincronizar están reservados a los miembros autorizados.",
+    "Synchronisation manuelle des contacts (lecture seule)": "Sincronización manual de contactos (solo lectura)",
+    "Mise à jour instantanée via webhooks HubSpot signés": "Actualización instantánea mediante webhooks de HubSpot firmados",
+    "Synchronisation automatique planifiée": "Sincronización automática programada",
+    "Synchronisation bidirectionnelle (écriture vers le CRM)": "Sincronización bidireccional (escritura hacia el CRM)",
+    "Mapping de champs personnalisé": "Mapeo de campos personalizado",
+    "Leads, deals et entreprises": "Leads, negocios y empresas",
+    "Disponible": "Disponible",
+    "Pas encore disponible": "Aún no disponible",
+    "{count} connecté": "{count} conectado",
+    "{count} connectés": "{count} conectados",
+    "Réussie": "Correcta",
+    "Échec": "Error",
+    "Partielle": "Parcial",
+    "HubSpot disponible en lecture seule · autres CRM bientôt": "HubSpot disponible en solo lectura · otros CRM próximamente",
+    "sur {limit} max ({plan})": "de {limit} máx. ({plan})",
+    "{count} contacts": "{count} contactos",
+    "Reconnexion requise": "Reconexión necesaria",
+    "Non configuré sur ce serveur": "No configurado en este servidor",
+    "Ancienne connexion non vérifiable": "Conexión antigua no verificable",
+    "Aucune connexion réelle n’a pu être vérifiée pour ce CRM.": "No se pudo verificar ninguna conexión real para este CRM.",
+    "Intégration en préparation : non disponible pour le moment.": "Integración en preparación: no disponible por el momento.",
+    "Lecture seule des contacts HubSpot via OAuth. Synchronisation manuelle et webhooks signés.": "Lectura de solo los contactos de HubSpot mediante OAuth. Sincronización manual y webhooks firmados.",
+    "Reconnecter": "Reconectar",
+    "Synchronisation manuelle": "Sincronización manual",
+    "Seuls les contacts sont synchronisés (lecture seule, 2 000 contacts maximum par synchronisation). Aucune synchronisation automatique : lancez-la ici ou laissez les webhooks HubSpot mettre à jour les contacts.": "Solo se sincronizan los contactos (solo lectura, hasta 2000 contactos por sincronización). No hay sincronización automática: inícela aquí o deje que los webhooks de HubSpot actualicen los contactos.",
+    "Dernière sync : {date} · Contacts : {count}": "Última sincronización: {date} · Contactos: {count}",
+    "Synchroniser les contacts": "Sincronizar contactos",
+    "Tester la connexion": "Probar la conexión",
+    "Capacités de synchronisation": "Capacidades de sincronización",
+    "Mapping de champs": "Mapeo de campos",
+    "Le mapping personnalisé n’est pas encore disponible : la synchronisation utilise les champs standard HubSpot (nom, e-mail, téléphone, étape).": "El mapeo personalizado aún no está disponible: la sincronización utiliza los campos estándar de HubSpot (nombre, correo, teléfono, etapa).",
+    "Direction": "Dirección",
+    "Import": "Importación",
+    "Contacts": "Contactos",
+    "Vous allez être redirigé vers votre CRM pour autoriser Flowpoint en lecture seule. Aucun jeton n’est à copier : il est échangé et chiffré côté serveur.": "Será redirigido a su CRM para autorizar a Flowpoint en solo lectura. No hay que copiar ningún token: se intercambia y cifra en el servidor.",
+    "CRM connectés": "CRM conectados",
+    "Contacts synchronisés": "Contactos sincronizados",
+    "Syncs réalisées": "Sincronizaciones realizadas",
+    "au total": "en total",
+    "opérations": "operaciones",
+    "par sync": "por sincronización",
+    "Connexion HubSpot en lecture seule (contacts). Les autres CRM ne sont pas encore disponibles.": "Conexión de solo lectura con HubSpot (contactos). Los demás CRM aún no están disponibles.",
+    "Connexion HubSpot par OAuth (lecture seule)": "Conexión con HubSpot mediante OAuth (solo lectura)",
+    "Synchronisation manuelle des contacts": "Sincronización manual de contactos",
+    "Mise à jour via webhooks HubSpot signés": "Actualización mediante webhooks de HubSpot firmados",
+    "Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close : bientôt": "Salesforce, Pipedrive, Zoho, Monday, Airtable, Notion, Close: próximamente",
     "Sites critiques à corriger": "Sitios críticos a corregir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Algunos sitios tienen una puntuación SEO inferior a 50/100. Corrige primero las etiquetas faltantes y la velocidad móvil.",
     "À prioriser": "A priorizar",
@@ -75709,6 +75860,39 @@ window.fpTrackUsage = async function(kind) {
 })();
 
 
+// ── CRM Hub : messages explicites par code d'erreur (jamais de donnée inventée) ─────────────────────────
+function fpCrmErrorMessage(err) {
+  const code = String((err && err.code) || '');
+  const status = Number(err && err.status) || 0;
+  const byCode = {
+    CRM_REAUTH_REQUIRED: 'Reconnexion requise : l’autorisation du CRM a expiré ou a été révoquée.',
+    CRM_NOT_CONNECTED: 'Ce CRM n’est pas connecté.',
+    CRM_PROVIDER_NOT_CONFIGURED: 'Ce CRM n’est pas configuré sur ce serveur : contactez l’administrateur Flowpoint.',
+    CRM_OAUTH_UNAVAILABLE: 'Ce CRM n’est pas encore disponible.',
+    CRM_SYNC_UNAVAILABLE: 'Ce CRM n’est pas encore disponible.',
+    CRM_TEST_UNAVAILABLE: 'Ce CRM n’est pas encore disponible.',
+    CRM_LIMIT_REACHED: 'Limite du plan atteinte. Passez à un plan supérieur.',
+    CRM_SYNC_IN_PROGRESS: 'Une synchronisation est déjà en cours.',
+    CRM_PROVIDER_UNREACHABLE: 'Le CRM est momentanément indisponible. Réessayez dans un instant.',
+    CRM_SYNC_FAILED: 'La synchronisation a échoué. Réessayez dans un instant.',
+    CRM_RATE_LIMITED: 'Le CRM limite temporairement les requêtes. Réessayez dans un instant.',
+    ADDON_REQUIRED: 'Le module CRM Integrations n’est pas activé pour cette organisation.',
+  };
+  if (byCode[code]) return fpT(byCode[code]);
+  if (status === 402) return fpT(byCode.ADDON_REQUIRED);
+  if (status === 403) return fpT('Vous n’avez pas les droits nécessaires pour cette action.');
+  if (status >= 500 || status === 0) return fpT('Le CRM est momentanément indisponible. Réessayez dans un instant.');
+  return fpT('Une erreur est survenue. Réessayez.');
+}
+
+function fpCrmClassifyLoadError(err) {
+  const status = Number(err && err.status) || 0;
+  const code = String((err && err.code) || '');
+  if (status === 402 || code === 'ADDON_REQUIRED') return 'addon_required';
+  if (status === 403) return 'forbidden';
+  return 'unavailable';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FP CRM API
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -75720,20 +75904,35 @@ window.FP_CRM_API = {
         const q = new URLSearchParams(window.location.search);
         if (q.has('crm_connected') || q.has('crm_error')) {
           const ok = q.has('crm_connected');
+          const failure = q.get('crm_error') || '';
           q.delete('crm_connected'); q.delete('crm_error'); q.delete('crm_provider');
           const rest = q.toString();
           window.history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
-          setTimeout(() => { if (typeof showToast === 'function') showToast(ok ? 'success' : 'error', fpT(ok ? 'CRM connecté !' : 'La connexion au CRM a échoué ou a été refusée.')); }, 500);
+          const failureMessages = {
+            consent_denied: 'Autorisation refusée : aucun CRM n’a été connecté.',
+            CRM_LIMIT_REACHED: 'Limite du plan atteinte. Passez à un plan supérieur.',
+            CRM_PROVIDER_NOT_CONFIGURED: 'Ce CRM n’est pas configuré sur ce serveur : contactez l’administrateur Flowpoint.',
+            oauth_failed: 'La connexion au CRM a échoué. Réessayez.',
+          };
+          const text = ok ? fpT('CRM connecté !') : fpT(failureMessages[failure] || 'La connexion au CRM a échoué ou a été refusée.');
+          setTimeout(() => { if (typeof showToast === 'function') showToast(ok ? 'success' : 'error', text); }, 500);
         }
       } catch (_) { /* affichage seulement */ }
-      const [status, logs] = await Promise.allSettled([
-        apiFetch('/api/crm/status').catch(()=>null),
-        apiFetch('/api/crm/logs?limit=20').catch(()=>null),
+      // Chaque lecture garde SON état d'échec : une panne n'est jamais présentée comme « aucun CRM connecté ».
+      const read = async (path) => {
+        try { return { ok: true, data: await apiFetch(path, { force: true }) }; }
+        catch (e) { return { ok: false, error: fpCrmClassifyLoadError(e) }; }
+      };
+      const [status, logs, providers] = await Promise.all([
+        read('/api/crm/status'), read('/api/crm/logs?limit=20'), read('/api/crm/providers'),
       ]);
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.crm = {
-        status: status.status==='fulfilled' ? status.value : {},
-        logs:   logs.status==='fulfilled' ? (logs.value?.logs||[]) : [],
+        status: status.ok ? status.data : null,
+        statusError: status.ok ? null : status.error,
+        logs: logs.ok ? (logs.data?.logs || []) : [],
+        logsError: logs.ok ? null : logs.error,
+        providers: providers.ok && Array.isArray(providers.data?.providers) ? providers.data.providers : null,
         loadedAt: Date.now(),
       };
     } catch(e) { console.warn('[FP_CRM_API]', e); }
@@ -75746,6 +75945,75 @@ window.FP_CRM_API = {
   },
   async sync(provider, entityType) {
     return await apiFetch('/api/crm/sync', { method:'POST', body: JSON.stringify({ provider, entityType }) });
+  },
+  async test(provider) {
+    return await apiFetch('/api/crm/test', { method:'POST', body: JSON.stringify({ provider }) });
+  },
+};
+
+// Actions de la section CRM Hub. Definies ici (et non dans un <script> du gabarit : un <script>
+// insere via innerHTML ne s'execute jamais, ce qui rendait le bouton « Connecter » sans effet).
+window.FP_CRM_UI = {
+  provider: null,
+  async refresh() {
+    await window.FP_CRM_API.load();
+    render(STATE.currentSection);
+  },
+  openConnect(id, name, icon) {
+    this.provider = id;
+    const title = document.getElementById('fp-crm-modal-title');
+    const modal = document.getElementById('fp-crm-modal');
+    if (title) title.textContent = icon + ' ' + fpT('Connecter {name}', { name });
+    if (modal) modal.style.display = 'flex';
+  },
+  closeConnect() {
+    const modal = document.getElementById('fp-crm-modal');
+    if (modal) modal.style.display = 'none';
+  },
+  async submitConnect() {
+    const provider = this.provider;
+    if (!provider) return;
+    showToast('info', fpT('Redirection vers le CRM…'));
+    try {
+      const r = await window.FP_CRM_API.connect(provider, {});
+      if (r?.ok && typeof r.url === 'string' && /^https:\/\//.test(r.url)) { window.location.assign(r.url); return; }
+      showToast('error', fpT('Connexion impossible pour le moment.'));
+    } catch (e) {
+      showToast('error', fpCrmErrorMessage(e));
+    }
+  },
+  disconnect(id, name) {
+    window.fpDarkConfirm(fpT('Déconnecter {name} ?', { name }), async () => {
+      try {
+        await window.FP_CRM_API.disconnect(id);
+        showToast('success', fpT('CRM déconnecté.'));
+      } catch (e) {
+        showToast('error', fpCrmErrorMessage(e));
+      }
+      await this.refresh();
+    }, fpT('Déconnecter'));
+  },
+  async sync(provider) {
+    showToast('info', fpT('Synchronisation des contacts en cours…'));
+    try {
+      const r = await window.FP_CRM_API.sync(provider, 'contacts');
+      let text = fpT('{created} créés, {updated} mis à jour', { created: r?.created ?? 0, updated: r?.updated ?? 0 });
+      if (r?.failed > 0) text += ' · ' + fpT('{failed} en échec', { failed: r.failed });
+      if (r?.truncated) text += ' · ' + fpT('Limite atteinte : seuls les 2 000 premiers contacts ont été synchronisés.');
+      showToast(r?.truncated || r?.failed > 0 ? 'warning' : 'success', text);
+    } catch (e) {
+      showToast('error', fpCrmErrorMessage(e));
+    }
+    await this.refresh();
+  },
+  async test(provider) {
+    try {
+      await window.FP_CRM_API.test(provider);
+      showToast('success', fpT('Connexion au CRM vérifiée.'));
+    } catch (e) {
+      showToast('error', fpCrmErrorMessage(e));
+    }
+    await this.refresh();
   },
 };
 
@@ -76051,152 +76319,224 @@ window.FP_GBP_POSTS_API = {
 // RENDER: CRM HUB
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderCRM() {
-  const plan = STATE.me?.plan || 'Pro';
-  const isStd = plan === 'Standard';
-  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const crmData = window.FP_DATA?.crm || {};
-  const integrations = crmData.status?.integrations || [];
-  const stats = crmData.status?.stats || {};
+  const role = String(STATE.me?.role || 'viewer').toLowerCase();
+  const canManage = role === 'owner' || role === 'admin';   // connecter / déconnecter
+  const canSync = canManage || role === 'member';           // synchroniser / tester (le lecteur est en lecture seule)
+  const loading = !crmData.loadedAt;
+  const loadError = crmData.statusError || null;            // addon_required | forbidden | unavailable
+  const status = crmData.status || {};
+  const knownProviderIds = ['hubspot','salesforce','pipedrive','zoho','monday','airtable','notion','close'];
+  const integrations = (Array.isArray(status.integrations) ? status.integrations : []).filter((i) => knownProviderIds.includes(i.provider));
+  const stats = status.stats || {};
   const logs = crmData.logs || [];
-  const limit = isStd ? 1 : isUltra ? Infinity : 3;
+  const limit = Number.isFinite(status.limit) ? status.limit : null;
+  const planLabel = status.plan || STATE.me?.plan || '';
   const connected = integrations.filter((i) => i.status === 'connected');
-  const activeTab = window._crmTab || 'overview';
+  const reauth = integrations.filter((i) => i.status === 'reauth_required');
+  // La navigation par sous-pages (Connexions / Synchronisation / Logs / Mapping) pilote l'onglet affiché.
+  const activeTab = ({ connections: 'overview', sync: 'sync', logs: 'logs', 'field-mapping': 'mapping' })[STATE.subRoute] || 'overview';
 
   const providers = [
-    { id:'hubspot',    name:'HubSpot',     icon:'🎯', color:'#ff7a59', desc:'CRM marketing leader. Contacts, deals, pipelines et séquences email.' },
-    { id:'salesforce', name:'Salesforce',  icon:'☁️', color:'#00a1e0', desc:'Enterprise CRM. Leads, opportunités et reporting avancé.' },
-    { id:'pipedrive',  name:'Pipedrive',   icon:'🔧', color:'#00c851', desc:'CRM commercial visuel. Pipeline deals et automatisations.' },
-    { id:'zoho',       name:'Zoho CRM',    icon:'🔴', color:'#e42527', desc:'Suite CRM complète. Contacts, ventes et analytics.' },
-    { id:'monday',     name:'Monday CRM',  icon:'📋', color:'#ff3d57', desc:'CRM collaboratif. Gestion de projets et suivi clients.' },
-    { id:'airtable',   name:'Airtable',    icon:'📊', color:'#18bfff', desc:'Base de données flexible. CRM sur-mesure en quelques clics.' },
-    { id:'notion',     name:'Notion CRM',  icon:'📄', color:'#ffffff', desc:'Workspace all-in-one. Pages clients, notes et pipelines.' },
-    { id:'close',      name:'Close CRM',   icon:'🔑', color:'#7b68ee', desc:'CRM conçu pour les équipes sales. Calling intégré.' },
+    { id:'hubspot',    name:'HubSpot',     icon:'🎯', color:'#ff7a59', desc:'Lecture seule des contacts HubSpot via OAuth. Synchronisation manuelle et webhooks signés.' },
+    { id:'salesforce', name:'Salesforce',  icon:'☁️', color:'#00a1e0' },
+    { id:'pipedrive',  name:'Pipedrive',   icon:'🔧', color:'#00c851' },
+    { id:'zoho',       name:'Zoho CRM',    icon:'🔴', color:'#e42527' },
+    { id:'monday',     name:'Monday CRM',  icon:'📋', color:'#ff3d57' },
+    { id:'airtable',   name:'Airtable',    icon:'📊', color:'#18bfff' },
+    { id:'notion',     name:'Notion CRM',  icon:'📄', color:'#ffffff' },
+    { id:'close',      name:'Close CRM',   icon:'🔑', color:'#7b68ee' },
+  ];
+  const apiProviders = Array.isArray(crmData.providers) ? crmData.providers : null;
+
+  // État de chaque fournisseur : jamais « connecté » sans preuve (ligne `connected` d'un CRM réellement implémenté).
+  const providerState = (p) => {
+    const meta = apiProviders ? apiProviders.find((x) => x.id === p.id) : null;
+    const implemented = meta ? !!meta.implemented : p.id === 'hubspot';
+    const configured = meta ? !!meta.configured : true;
+    const intg = integrations.find((i) => i.provider === p.id);
+    if (loading) return { key: 'loading', intg };
+    if (loadError) return { key: 'error', intg };
+    if (!implemented) return { key: intg && intg.status === 'unavailable' ? 'legacy' : 'soon', intg };
+    if (intg && intg.status === 'connected') return { key: 'connected', intg };
+    if (intg && intg.status === 'reauth_required') return { key: 'reauth', intg };
+    if (!configured) return { key: 'not_configured', intg };
+    return { key: 'idle', intg };
+  };
+  const stateLabel = {
+    connected:      { text: 'Connecté',                          color: 'var(--fp-success)' },
+    reauth:         { text: 'Reconnexion requise',               color: 'var(--fp-warning)' },
+    idle:           { text: 'Non connecté',                      color: 'var(--fp-text-faint)' },
+    soon:           { text: 'Bientôt disponible',                color: 'var(--fp-text-faint)' },
+    not_configured: { text: 'Non configuré sur ce serveur',      color: 'var(--fp-warning)' },
+    legacy:         { text: 'Ancienne connexion non vérifiable', color: 'var(--fp-warning)' },
+    error:          { text: 'Indisponible',                      color: 'var(--fp-danger)' },
+    loading:        { text: 'Chargement…',                       color: 'var(--fp-text-faint)' },
+  };
+
+  const banner = (kind, textKey, withRetry) => `
+    <div role="alert" data-crm-banner="${kind}" style="padding:12px 14px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);margin-bottom:16px;font-size:12px;color:var(--fp-text-muted);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span style="flex:1;min-width:200px">${fpT(textKey)}</span>
+      ${withRetry ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_CRM_UI.refresh()">${fpT('Réessayer')}</button>` : ''}
+    </div>`;
+
+  const topBanner = loading
+    ? banner('loading', 'Chargement des intégrations CRM…', false)
+    : loadError === 'addon_required' ? banner('addon_required', 'Le module CRM Integrations n’est pas activé pour cette organisation.', false)
+    : loadError === 'forbidden' ? banner('forbidden', 'Vous n’avez pas les droits nécessaires pour cette action.', false)
+    : loadError ? banner('unavailable', 'Les intégrations CRM sont momentanément indisponibles. Réessayez dans un instant.', true)
+    : '';
+  const roleNotice = !loading && !loadError && !canManage
+    ? `<div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:12px">${fpT(canSync ? 'Seuls les propriétaires et administrateurs peuvent connecter ou déconnecter un CRM.' : 'Votre rôle est en lecture seule : connexion, déconnexion et synchronisation sont réservées aux membres autorisés.')}</div>`
+    : '';
+
+  const capabilities = [
+    { label: 'Synchronisation manuelle des contacts (lecture seule)', ok: true },
+    { label: 'Mise à jour instantanée via webhooks HubSpot signés', ok: true },
+    { label: 'Synchronisation automatique planifiée', ok: false },
+    { label: 'Synchronisation bidirectionnelle (écriture vers le CRM)', ok: false },
+    { label: 'Mapping de champs personnalisé', ok: false },
+    { label: 'Leads, deals et entreprises', ok: false },
   ];
 
-  const syncEntities = ['contacts','leads','deals','companies'];
+  const countLabel = connected.length === 1 ? fpT('{count} connecté', { count: connected.length }) : fpT('{count} connectés', { count: connected.length });
+  const totalContacts = integrations.reduce((s, i) => s + (i.status === 'connected' || i.status === 'reauth_required' ? (i.synced_contacts || 0) : 0), 0);
+
+  const syncStatusLabel = (v) => ({ success: 'Réussie', failed: 'Échec', partial: 'Partielle', running: 'En cours' })[v] || null;
 
   return `
     <div class="fp-section-header">
       <div>
-        <h1 style="display:flex;align-items:center;gap:10px">🔗 CRM Hub ${connected.length>0?`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:var(--fp-success)">${connected.length} connecté${connected.length>1?'s':''}</span>`:''}</h1>
-        <div class="fp-section-sub">HubSpot · Salesforce · Pipedrive · Zoho · Monday · Airtable · Notion · Close</div>
+        <h1 style="display:flex;align-items:center;gap:10px">🔗 CRM Hub ${connected.length>0?`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:var(--fp-success)">${countLabel}</span>`:''}</h1>
+        <div class="fp-section-sub">${fpT('HubSpot disponible en lecture seule · autres CRM bientôt')}</div>
       </div>
-      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._crmTab='overview';window.FP_CRM_API?.load().then(()=>render(STATE.currentSection))">⟳ Actualiser</button>
+      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_CRM_UI.refresh()">⟳ ${fpT('Actualiser')}</button>
     </div>
 
-    ${aiBlock(
-      connected.length>0
-        ? `${connected.length} CRM connecté${connected.length>1?'s':''}. Dernière sync : ${stats.totalRecords||0} contacts traités, taux de succès ${stats.totalFailed>0?Math.round((1-stats.totalFailed/Math.max(stats.totalRecords,1))*100):100}%. Recommandation : activer la sync automatique pour maintenir vos données à jour.`
-        : 'Connectez votre CRM pour synchroniser automatiquement vos leads, contacts et opportunités avec FlowPoint.',
-      ['Connecter HubSpot', 'Configurer la sync', 'Voir le mapping']
-    )}
+    ${topBanner}
+    ${roleNotice}
 
-    <!-- STATS -->
+    <!-- STATS : uniquement des valeurs mesurées par l'API -->
+    ${(loading || loadError) ? '' : `
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('CRM connectés', String(connected.length), `sur ${isStd?1:isUltra?'∞':3} max (${plan})`, connected.length>0?'up':'neutral')}
-      ${statCard('Contacts synchronisés', String(integrations.reduce((s,i) => s+(i.synced_contacts||0),0)), 'au total', 'up')}
-      ${statCard('Syncs réalisées', String(stats.totalSyncs||0), 'opérations', 'up')}
+      ${statCard('CRM connectés', String(connected.length), limit !== null ? fpT('sur {limit} max ({plan})', { limit, plan: planLabel }) : '—', connected.length>0?'up':'neutral')}
+      ${statCard('Contacts synchronisés', String(totalContacts), 'au total', 'neutral')}
+      ${statCard('Syncs réalisées', String(stats.totalSyncs||0), 'opérations', 'neutral')}
       ${statCard('Latence moy.', stats.avgDurationMs ? stats.avgDurationMs+'ms' : '—', 'par sync', 'neutral')}
-    </div>
-
-    <!-- TABS -->
-    <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--fp-border)">
-      ${[['overview','🔗 Providers'],['sync','⚡ Synchronisation'],['logs','📋 Logs']].map(([id,label]) => `
-        <button onclick="window._crmTab='${id}';render(STATE.currentSection)"
-          style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer">
-          ${label}
-        </button>
-      `).join('')}
-    </div>
+    </div>`}
 
     ${activeTab === 'overview' ? `
       <!-- PROVIDER CARDS -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
         ${providers.map(p => {
-          const conn = integrations.find((i) => i.provider === p.id && i.status === 'connected');
+          const st = providerState(p);
+          const lab = stateLabel[st.key];
+          const conn = st.key === 'connected' ? st.intg : null;
+          const actions = (() => {
+            if (st.key === 'soon') return `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:11px" disabled>${fpT('Bientôt disponible')}</button>`;
+            if (st.key === 'not_configured') return `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:11px" disabled>${fpT('Non configuré sur ce serveur')}</button>`;
+            if (st.key === 'error' || st.key === 'loading') return '';
+            if (st.key === 'connected') return `
+              <div style="display:flex;gap:6px">
+                ${canSync ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;font-size:10px" onclick="navigateSub('sync')">⚡ ${fpT('Synchroniser')}</button>` : ''}
+                ${canManage ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_CRM_UI.disconnect('${p.id}','${p.name}')">${fpT('Déconnecter')}</button>` : ''}
+              </div>`;
+            if (st.key === 'reauth') return canManage ? `
+              <div style="display:flex;gap:6px">
+                <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex:1;font-size:11px" onclick="window.FP_CRM_UI.openConnect('${p.id}','${p.name}','${p.icon}')">${fpT('Reconnecter')}</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_CRM_UI.disconnect('${p.id}','${p.name}')">${fpT('Déconnecter')}</button>
+              </div>` : '';
+            if (st.key === 'legacy') return canManage ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;color:var(--fp-danger)" onclick="window.FP_CRM_UI.disconnect('${p.id}','${p.name}')">${fpT('Déconnecter')}</button>` : '';
+            return canManage ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:11px" onclick="window.FP_CRM_UI.openConnect('${p.id}','${p.name}','${p.icon}')">${fpT('Connecter')}</button>` : '';
+          })();
+          const note = st.key === 'not_configured' ? fpT('Ce CRM n’est pas configuré sur ce serveur : contactez l’administrateur Flowpoint.')
+            : st.key === 'reauth' ? fpT('Reconnexion requise : l’autorisation du CRM a expiré ou a été révoquée.')
+            : st.key === 'legacy' ? fpT('Aucune connexion réelle n’a pu être vérifiée pour ce CRM.')
+            : p.desc ? fpT(p.desc) : fpT('Intégration en préparation : non disponible pour le moment.');
           return `
-            <div style="padding:16px;border-radius:12px;border:1px solid ${conn?p.color+'44':'rgba(255,255,255,0.06)'};background:${conn?p.color+'08':'var(--fp-inner-card)'}">
+            <div data-crm-provider="${p.id}" data-crm-state="${st.key}" style="padding:16px;border-radius:12px;border:1px solid ${conn?p.color+'44':'rgba(255,255,255,0.06)'};background:${conn?p.color+'08':'var(--fp-inner-card)'}">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                 <span style="font-size:24px">${p.icon}</span>
                 <div style="flex:1">
                   <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${p.name}</div>
-                  ${conn ? `<span style="font-size:10px;color:var(--fp-success)">● Connecté · ${conn.synced_contacts||0} contacts</span>` : `<span style="font-size:10px;color:var(--fp-text-faint)">○ Non connecté</span>`}
+                  <span style="font-size:10px;color:${lab.color}">${conn ? `● ${fpT('Connecté')} · ${fpT('{count} contacts', { count: conn.synced_contacts || 0 })}` : `○ ${fpT(lab.text)}`}</span>
                 </div>
               </div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;line-height:1.5">${p.desc}</div>
-              ${conn ? `
-                <div style="display:flex;gap:6px">
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;font-size:10px" onclick="window._crmTab='sync';render(STATE.currentSection)">⚡ Sync</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_CRM_API?.disconnect('${p.id}').then(()=>{window.FP_CRM_API.load();render(STATE.currentSection)})">✕</button>
-                </div>
-              ` : `
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:11px" onclick="window._connectCrm('${p.id}','${p.name}','${p.icon}')">+ Connecter</button>
-              `}
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px;line-height:1.5">${note}</div>
+              ${actions}
             </div>
           `;
         }).join('')}
       </div>
     ` : activeTab === 'sync' ? `
       <div class="fp-card fp-mb-16">
-        <div class="fp-card-title" style="margin-bottom:14px">⚡ Synchronisation manuelle</div>
-        ${connected.length === 0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">Connectez un CRM d\'abord pour accéder à la synchronisation.</div>` : `
+        <div class="fp-card-title" style="margin-bottom:14px">⚡ ${fpT('Synchronisation manuelle')}</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:12px">${fpT('Seuls les contacts sont synchronisés (lecture seule, 2 000 contacts maximum par synchronisation). Aucune synchronisation automatique : lancez-la ici ou laissez les webhooks HubSpot mettre à jour les contacts.')}</div>
+        ${loadError ? '' : (connected.length + reauth.length) === 0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">${fpT('Connectez un CRM d\'abord pour accéder à la synchronisation.')}</div>` : `
           <div style="display:flex;flex-direction:column;gap:10px">
-            ${connected.map((i) => `
-              <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
-                <div style="flex:1">
-                  <div style="font-size:13px;font-weight:600">${escHtml(i.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Dernière sync : {date} · Contacts : {count}', {date:i.last_sync_at ? new Date(i.last_sync_at).toLocaleDateString(getLocale()) : fpT('Jamais'),count:i.synced_contacts||0})}</div>
+            ${reauth.map((i) => {
+              const p = providers.find((x) => x.id === i.provider);
+              return `
+              <div data-crm-reauth="${p.id}" style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-warning);background:var(--fp-inner-card);flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                  <div style="font-size:13px;font-weight:600">${p.name}</div>
+                  <div style="font-size:11px;color:var(--fp-warning)">${fpT('Reconnexion requise : l’autorisation du CRM a expiré ou a été révoquée.')}</div>
                 </div>
-                ${syncEntities.map(ent => `
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"
-                    onclick="showToast('info', fpT('Sync ${ent} en cours…'));window.FP_CRM_API?.sync('${i.provider}','${ent}').then(r=>{showToast('success',r?.created+' créés, '+r?.updated+' mis à jour');window.FP_CRM_API.load();render(STATE.currentSection)}).catch(e=>showToast('error',String(e)))">
-                    ⟳ ${ent}
-                  </button>
-                `).join('')}
+                ${canManage ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_CRM_UI.openConnect('${p.id}','${p.name}','${p.icon}')">${fpT('Reconnecter')}</button>` : ''}
+              </div>`;
+            }).join('')}
+            ${connected.map((i) => `
+              <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card);flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                  <div style="font-size:13px;font-weight:600">${escHtml(i.name || i.provider)}</div>
+                  <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Dernière sync : {date} · Contacts : {count}', {date:i.last_sync_at ? new Date(i.last_sync_at).toLocaleDateString(getLocale()) : fpT('Jamais'),count:i.synced_contacts||0})}</div>
+                </div>
+                ${canSync ? `
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window.FP_CRM_UI.sync('${escHtml(i.provider)}')">⟳ ${fpT('Synchroniser les contacts')}</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window.FP_CRM_UI.test('${escHtml(i.provider)}')">${fpT('Tester la connexion')}</button>
+                ` : ''}
               </div>
             `).join('')}
           </div>
         `}
       </div>
 
-      <!-- SYNC SETTINGS -->
+      <!-- CAPACITÉS RÉELLES (lecture seule : aucun réglage factice) -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">⚙️ Paramètres de synchronisation</div>
+        <div class="fp-card-title" style="margin-bottom:14px">⚙️ ${fpT('Capacités de synchronisation')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${[
-            {label:'Sync automatique', desc:'Synchronise toutes les 60 min', active:true},
-            {label:'Sync bidirectionnelle', desc:'FlowPoint ↔ CRM en temps réel', active:false, pro:true},
-            {label:'Résolution de conflits', desc:'FlowPoint a priorité sur les doublons', active:true},
-            {label:'Webhook sync', desc:'Mise à jour instantanée via webhooks CRM', active:false, ultra:true},
-          ].map(s => `
-            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${s.label}</div>
-                <div style="font-size:11px;color:var(--fp-text-faint)">${s.desc}</div>
-              </div>
-              ${s.ultra&&!isUltra ? `<span style="font-size:10px;color:var(--fp-text-faint)">Ultra</span>` : s.pro&&isStd ? `<span style="font-size:10px;color:var(--fp-text-faint)">Pro</span>` : `<button class="fp-toggle${s.active?' on':''}" onclick="(function(btn){var key=btn.dataset.settingKey||'setting';var val=!btn.classList.contains('on');apiAction('PATCH','/api/me/prefs',{settings:{[key]:val}}).then(()=>{btn.classList.toggle('on');}).catch(()=>showToast('error', fpT('Erreur')));}).call(this,this)"></button>`}
+          ${capabilities.map(c => `
+            <div data-crm-capability="${c.ok ? 'available' : 'unavailable'}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+              <div style="flex:1;font-size:13px;font-weight:600;color:var(--fp-text)">${fpT(c.label)}</div>
+              <span style="font-size:10px;font-weight:700;color:${c.ok ? 'var(--fp-success)' : 'var(--fp-text-faint)'}">${c.ok ? fpT('Disponible') : fpT('Pas encore disponible')}</span>
             </div>
           `).join('')}
         </div>
       </div>
+    ` : activeTab === 'mapping' ? `
+      <div class="fp-card" data-crm-mapping="unavailable">
+        <div class="fp-card-title" style="margin-bottom:14px">🧩 ${fpT('Mapping de champs')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">${fpT('Le mapping personnalisé n’est pas encore disponible : la synchronisation utilise les champs standard HubSpot (nom, e-mail, téléphone, étape).')}</div>
+      </div>
     ` : `
       <!-- LOGS -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">📋 Historique de synchronisation</div>
-        ${logs.length===0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">Aucune synchronisation encore. Lancez une sync pour commencer.</div>` : `
+        <div class="fp-card-title" style="margin-bottom:14px">📋 ${fpT('Historique de synchronisation')}</div>
+        ${crmData.logsError ? `<div role="alert" style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">${fpT(crmData.logsError === 'addon_required' ? 'Le module CRM Integrations n’est pas activé pour cette organisation.' : 'Les intégrations CRM sont momentanément indisponibles. Réessayez dans un instant.')}</div>`
+        : logs.length===0 ? `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:12px">${fpT('Aucune synchronisation encore. Lancez une sync pour commencer.')}</div>` : `
           <div style="overflow-x:auto">
             <table class="fp-data-table">
-              <thead><tr><th>CRM</th><th>Direction</th><th>Entité</th><th style="text-align:center">Créés</th><th style="text-align:center">MàJ</th><th style="text-align:center">Échecs</th><th style="text-align:center">Durée</th><th>Statut</th><th>Date</th></tr></thead>
+              <thead><tr><th>CRM</th><th>${fpT('Direction')}</th><th>${fpT('Entité')}</th><th style="text-align:center">${fpT('Créés')}</th><th style="text-align:center">${fpT('MàJ')}</th><th style="text-align:center">${fpT('Échecs')}</th><th style="text-align:center">${fpT('Durée')}</th><th>${fpT('Statut')}</th><th>${fpT('Date')}</th></tr></thead>
               <tbody>
                 ${logs.map((l) => `<tr>
                   <td style="font-size:12px;font-weight:600">${escHtml(l.integration_name||l.provider||'—')}</td>
-                  <td style="font-size:10px;color:var(--fp-text-faint)">${l.direction||'—'}</td>
-                  <td style="font-size:11px">${l.entity_type||'—'}</td>
+                  <td style="font-size:10px;color:var(--fp-text-faint)">${l.direction==='import'?fpT('Import'):escHtml(l.direction||'—')}</td>
+                  <td style="font-size:11px">${l.entity_type==='contacts'?fpT('Contacts'):escHtml(l.entity_type||'—')}</td>
                   <td style="text-align:center;font-size:12px;color:var(--fp-success)">${l.records_created||0}</td>
                   <td style="text-align:center;font-size:12px">${l.records_updated||0}</td>
                   <td style="text-align:center;font-size:12px;color:${l.records_failed>0?'var(--fp-danger)':'var(--fp-text-faint)'}">${l.records_failed||0}</td>
                   <td style="text-align:center;font-size:11px;color:var(--fp-text-faint)">${l.duration_ms?l.duration_ms+'ms':'—'}</td>
-                  <td><span style="font-size:10px;font-weight:700;color:${l.status==='success'?'var(--fp-success)':l.status==='failed'?'var(--fp-danger)':'var(--fp-warning)'}">${l.status||'—'}</span></td>
+                  <td><span style="font-size:10px;font-weight:700;color:${l.status==='success'?'var(--fp-success)':l.status==='failed'?'var(--fp-danger)':'var(--fp-warning)'}">${syncStatusLabel(l.status)?fpT(syncStatusLabel(l.status)):escHtml(l.status||'—')}</span></td>
                   <td style="font-size:10px;color:var(--fp-text-faint)">${l.started_at?new Date(l.started_at).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</td>
                 </tr>`).join('')}
               </tbody>
@@ -76206,42 +76546,21 @@ function renderCRM() {
       </div>
     `}
 
-    <!-- CONNECT MODAL -->
+    <!-- CONNECT MODAL (actions : window.FP_CRM_UI) -->
     <div id="fp-crm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
       <div class="fp-card" style="width:440px;max-width:92vw;padding:24px">
-        <div id="fp-crm-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">Connecter un CRM</div>
+        <div id="fp-crm-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">${fpT('Connecter un CRM')}</div>
         <div style="display:flex;flex-direction:column;gap:12px">
           <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">
             ${fpT('Vous allez être redirigé vers votre CRM pour autoriser Flowpoint en lecture seule. Aucun jeton n’est à copier : il est échangé et chiffré côté serveur.')}
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-crm-modal').style.display='none'">Annuler</button>
-          <button class="fp-btn fp-btn-primary" onclick="window._submitCrmConnect()">Connecter</button>
+          <button class="fp-btn fp-btn-ghost" onclick="window.FP_CRM_UI.closeConnect()">${fpT('Annuler')}</button>
+          <button class="fp-btn fp-btn-primary" onclick="window.FP_CRM_UI.submitConnect()">${fpT('Connecter')}</button>
         </div>
       </div>
     </div>
-    <script>
-    window._crmTab = window._crmTab || 'overview';
-    window._currentCrmProvider = null;
-    window._connectCrm = function(id, name, icon) {
-      window._currentCrmProvider = id;
-      document.getElementById('fp-crm-modal-title').textContent = icon + ' Connecter ' + name;
-      document.getElementById('fp-crm-modal').style.display = 'flex';
-    };
-    window._submitCrmConnect = async function() {
-      showToast('info', fpT('Redirection vers le CRM…'));
-      try {
-        const r = await window.FP_CRM_API.connect(window._currentCrmProvider, {});
-        if (r?.ok && typeof r.url === 'string' && /^https:\/\//.test(r.url)) { window.location.assign(r.url); return; }
-        showToast('error', r?.error || fpT('Connexion impossible pour le moment.'));
-      } catch(e) {
-        const msg = String(e?.message || e);
-        if (/limite|limit/i.test(msg)) showToast('error', fpT('Limite du plan atteinte. Passez à un plan supérieur.'));
-        else showToast('error', fpT('Connexion impossible pour le moment.'));
-      }
-    };
-    </script>
   `;
 }
 

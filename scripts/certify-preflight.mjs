@@ -47,6 +47,9 @@ export function evaluer(profil, env) {
     add("HUBSPOT_CLIENT_SECRET", v("HUBSPOT_CLIENT_SECRET").length >= 16 ? "READY" : "MISSING", "signe aussi les webhooks");
     add("CRM_TOKEN_ENCRYPTION_KEY (64 hex)", /^[a-f\d]{64}$/i.test(v("CRM_TOKEN_ENCRYPTION_KEY")) ? "READY" : "MISSING", "cle distincte de toute autre cle");
     add("CRM_OAUTH_REDIRECT_BASE ou PUBLIC_URL (https)", /^https:\/\//.test(v("CRM_OAUTH_REDIRECT_BASE") || v("PUBLIC_URL") || v("RENDER_EXTERNAL_URL")) ? "READY" : "MISSING", "HubSpot exige une URL de redirection https declaree dans l'application");
+    // Le callback OAuth redirige le navigateur vers FRONTEND_URL/dashboard (defaut : app.flowpoint.pro = PRODUCTION).
+    const front = v("FRONTEND_URL");
+    add("FRONTEND_URL (https, hote de test)", /^https:\/\//.test(front) && !/^https:\/\/app\.flowpoint\.pro\/?$/i.test(front) ? "READY" : front ? "REFUSED" : "MISSING", "le retour OAuth redirige vers cet hote ; absent = repli sur app.flowpoint.pro (production), refuse");
     add("CRM_WEBHOOK_PUBLIC_URL (si different)", v("CRM_WEBHOOK_PUBLIC_URL") ? "READY" : "OPTIONAL", "base exacte signee par HubSpot");
     const surcharge = v("HUBSPOT_AUTH_BASE") || v("HUBSPOT_API_BASE");
     add("HUBSPOT_AUTH_BASE / HUBSPOT_API_BASE absents", surcharge ? "REFUSED" : "READY", "ces surcharges (fausse API) ne doivent pas etre posees pour une certification reelle");
