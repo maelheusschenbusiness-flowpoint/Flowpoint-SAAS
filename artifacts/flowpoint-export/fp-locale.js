@@ -578,7 +578,16 @@
     "Votre paiement a été enregistré. Connectez-vous pour accéder à votre compte.": "Your payment has been recorded. Sign in to access your account.",
     "Bientôt disponible": "Coming soon",
     "Ce lien d'invitation est introuvable ou invalide.": "This invitation link could not be found or is invalid.",
-    "Cette invitation a déjà été acceptée. Connectez-vous directement.": "This invitation has already been accepted. Sign in directly."
+    "Cette invitation a déjà été acceptée. Connectez-vous directement.": "This invitation has already been accepted. Sign in directly.",
+    // ── Libellés renvoyés par /api/plans/definitions (production) ──
+    "Analyse des avis et réponses IA": "Review analysis and AI replies",
+    "Cartographie de visibilité locale": "Local visibility mapping",
+    "Détection des pertes de revenus": "Revenue leak detection",
+    "Expérimentation A/B assistée par IA": "AI-assisted A/B experimentation",
+    "Monitoring géographique multi-régions": "Multi-region geographic monitoring",
+    "Permissions avancées": "Advanced permissions",
+    "Templates de rapports multi-clients": "Multi-client report templates",
+    "🧪 Bêta — Inclus": "🧪 Beta — Included"
   };
 
   var PUBLIC_ENGLISH_ATTRIBUTES = {
@@ -1094,6 +1103,7 @@
     return m[1] + (m[1] === '1' ? ' day' : ' days');
   }
   var PUBLIC_ENGLISH_PATTERNS = [
+    [/^(\d+) jours?( \(\+ext\.\))?$/, function (m) { return m[1] + (m[1] === '1' ? ' day' : ' days') + (m[2] || ''); }],
     [/^Mensuel après (\d+) jours$/, function (m) { return 'Monthly after ' + m[1] + ' days'; }],
     [/^(\d+) jours d'essai gratuit · aucun débit si annulation avant\.$/, function (m) { return m[1] + '-day free trial · no charge if canceled before it ends.'; }],
     [/^Aucun débit aujourd'hui\. Premier paiement après (.+)\.$/, function (m) { var d = daysEn(m[1]); return d ? 'No charge today. First payment after ' + d + '.' : null; }],
@@ -1237,6 +1247,20 @@
     return number.toLocaleString(window.fpResolveLocale(language), options || {});
   };
 
+  // Texte d'origine (français) des noeuds traduits, pour la logique des pages : une page de production
+  // compare des libellés français (« ✓ Votre plan actuel », « Historique des données »...) ; une fois la page
+  // traduite, ces comparaisons doivent porter sur le texte d'origine et non sur le texte affiché.
+  var SOURCES = typeof WeakMap === 'function' ? new WeakMap() : null;
+  window.fpPublicSourceText = function (element) {
+    if (!element) return '';
+    var out = '';
+    var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
+      out += (SOURCES && SOURCES.has(node)) ? SOURCES.get(node) : node.nodeValue;
+    }
+    return out;
+  };
+
   // `translate` maps a trimmed source string to its translation (or null).
   // Without it, the historical FR -> EN direction is used (English only).
   function translateSubtree(root, translate) {
@@ -1254,7 +1278,12 @@
       var source = node.nodeValue.trim();
       if (!source) continue;
       var target = translate(source);
-      if (target && target !== source) node.nodeValue = node.nodeValue.replace(source, function () { return target; });
+      if (target && target !== source) {
+        // Les scripts de page lisent parfois un libellé français pour piloter leur logique :
+        // on garde le texte d'origine du noeud (voir fpPublicSourceText).
+        if (SOURCES && !SOURCES.has(node)) SOURCES.set(node, node.nodeValue);
+        node.nodeValue = node.nodeValue.replace(source, function () { return target; });
+      }
     }
     var selector = '[placeholder], [aria-label], [title], input[type="submit"], input[type="button"], meta[name="description"], meta[property="og:title"], meta[property="og:description"], meta[name="twitter:title"], meta[name="twitter:description"]';
     var elements = [];
