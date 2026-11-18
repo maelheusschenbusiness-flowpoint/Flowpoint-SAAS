@@ -2189,6 +2189,19 @@ export async function initDataTables(): Promise<void> {
     // legacy profile/billing compatibility paths still use raw pool queries.
     await applyTenantRls("org_settings");
 
+    // ── Add-ons du lot 1 : tables additives et idempotentes ───────────────────
+    // Hors du bloc `missing-production-tables-v3` : ce bloc est enregistre dans
+    // schema_migrations et n'est jamais rejoue sur une base de production deja
+    // migree. Ici tout s'execute a chaque migration (CREATE ... IF NOT EXISTS).
+    // Tables vides et inoffensives tant que l'add-on n'est pas vendu.
+    // [lot1:organicCampaignTracker]
+
+    // [lot1:technicalSeoFixVerification]
+
+    // [lot1:seoChangeImpact]
+
+    // [lot1:conversionOpportunityEngine]
+
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
       await run(client, `DELETE FROM schema_migrations WHERE migration_id IN ('missing-production-tables-v1','missing-production-tables-v2')`);

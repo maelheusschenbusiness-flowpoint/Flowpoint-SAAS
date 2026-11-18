@@ -10154,6 +10154,12 @@ function renderBilling() {
       { key:'keywordDomination', cat:'SEO',        name:'Keyword Domination Engine', icon:'🚀', color:'#2563EB', active:!!(me.addons?.keywordDomination), tag:'Ultra',           roi:'10× volume keywords trackés', desc:'Trackez 10 000+ mots-clés. IA de clustering, SERP features, et cannibalization.', features:['10 000 mots-clés trackés (vs 500 standard)','Clustering sémantique automatique','Détection cannibalisation IA','SERP Features tracker (PAA, featured snippets)','Alertes volatilité algo Google'] },
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
       { key:'aiContentStrategist', cat:'SEO',        name:'AI Content Strategist', icon:'✍️', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'IA',              roi:'+65% efficacité contenu',    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'] },
+      // [lot1:organicCampaignTracker]
+
+      // [lot1:technicalSeoFixVerification]
+
+      // [lot1:seoChangeImpact]
+
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'10 fiches GBP optimisées',    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'+42% engagement GBP',    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
@@ -10164,6 +10170,8 @@ function renderBilling() {
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse comportement IA', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'ROI',             roi:'Détecte fuites de revenus',    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
       { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'+22% conversion moyenne',    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
+      // [lot1:conversionOpportunityEngine]
+
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
@@ -10211,6 +10219,11 @@ function renderBilling() {
       // Fallback 'live' applies only when catalog hasn't loaded yet (d===null).
       a.availability   = (d && (d.status || d.availability)) || 'live';
     });
+    // ── Add-ons « garde prix » (lot 1) : visibles seulement si le catalogue serveur
+    //    les publie (variable de prix Stripe configurée côté serveur). Sinon : retirés. ──
+    for (let _gi = allAddons.length - 1; _gi >= 0; _gi--) {
+      if (allAddons[_gi].gated && allAddons[_gi].catalogMissing) allAddons.splice(_gi, 1);
+    }
     // ── Availability classification — must mirror backend COMING_SOON_ADDONS / BETA_ADDONS ──
     // Any key listed here blocks "Activer →" and shows the correct status badge instead.
     // Keep in sync with artifacts/api-server/src/lib/plans.ts when those sets change.
@@ -10478,7 +10491,7 @@ function renderBilling() {
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
                 : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">${fpT('✓ Déjà inclus')}</button>`
               : a.active
-                ? (_FP_QTY_ADDON_KEYS[a.key]
+                ? (a.openFn ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="closeFloatPanel&&closeFloatPanel();window.${a.openFn}()">${fpT('Ouvrir')}</button> ` : '') + (_FP_QTY_ADDON_KEYS[a.key]
                     // Quantity/cumulative add-on already active → qty selector + "Ajouter" + "Désactiver"
                     ? `<div style="display:flex;align-items:center;gap:8px"><div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
@@ -15915,6 +15928,16 @@ function render() {
   _renderTimer = setTimeout(() => { _renderTimer = null; _doRender(); }, 30);
 }
 let _fpLastRenderedKey = null;
+// Routes dont le contenu est une racine vide remplie par window.FP_ADDON_RENDERERS (add-ons du lot 1).
+const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
+  // [lot1:organicCampaignTracker]
+
+  // [lot1:technicalSeoFixVerification]
+
+  // [lot1:seoChangeImpact]
+
+  // [lot1:conversionOpportunityEngine]
+]);
 function _doRender() {
   const page = $('#fp-page');
   if (!page) return;
@@ -16056,6 +16079,18 @@ function _doRender() {
     return;
   }
 
+  // ── Routes d'add-ons auto-rendues : le panneau monté survit aux rafraîchissements d'arrière-plan ──
+  if (!_isNavigation && FP_SELF_RENDERED_ADDON_ROUTES.has(STATE.route)
+      && page.querySelector('#fp-addon-' + STATE.route)) {
+    syncBulkBar();
+    closeFAB();
+    closeCtxMenu();
+    updatePlanSwitcher();
+    if (window.fpSyncAiBadge) window.fpSyncAiBadge();
+    window.fpHideNavSpinner();
+    return;
+  }
+
   let html = '';
   // BUG-002 fix: wrap renderer in try/catch — if any renderXxx() throws,
   // the old page DOM must NOT be left visible. Show an error state instead.
@@ -16074,6 +16109,13 @@ function _doRender() {
     case 'growth':         html = renderGrowth(); break;
     case 'competitor':     html = renderCompetitor(); break;
     case 'conversion':     html = renderGA4Conversion(); break;
+    // [lot1:organicCampaignTracker]
+
+    // [lot1:technicalSeoFixVerification]
+
+    // [lot1:seoChangeImpact]
+
+    // [lot1:conversionOpportunityEngine]
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -65476,6 +65518,13 @@ window._fpToggleChecklistExtra = function(id, done) {
 };
 window.showToast   = showToast;
 window.navigate    = navigate;
+// [lot1:organicCampaignTracker]
+
+// [lot1:technicalSeoFixVerification]
+
+// [lot1:seoChangeImpact]
+
+// [lot1:conversionOpportunityEngine]
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 

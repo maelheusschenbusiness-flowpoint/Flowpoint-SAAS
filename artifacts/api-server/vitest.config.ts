@@ -69,6 +69,15 @@ export default defineConfig({
       "src/services/ensure-stripe-customer.test.ts",
       "src/agent/ai-tool-gate.test.ts",
       "src/lib/plans.test.ts",
+      // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
+      "src/lib/addon-price-gate.test.ts",
+      // [lot1:organicCampaignTracker]
+
+      // [lot1:technicalSeoFixVerification]
+
+      // [lot1:seoChangeImpact]
+
+      // [lot1:conversionOpportunityEngine]
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",

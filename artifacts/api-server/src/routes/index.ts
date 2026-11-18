@@ -55,6 +55,14 @@ import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
+// [lot1:organicCampaignTracker:import]
+
+// [lot1:technicalSeoFixVerification:import]
+
+// [lot1:seoChangeImpact:import]
+
+// [lot1:conversionOpportunityEngine:import]
+
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
 import analyticsRouter from "./analytics.js";
@@ -244,5 +252,14 @@ router.use("/conversion",  conversionRouter);
 router.use("/data-explorer", dataExplorerRouter);
 router.use("/client-mode", clientModeRouter);
 router.use(progressionRouter);
+
+// Add-ons du lot 1 (garde prix) : routes protegees par requireAddon(<cle>) ; une section par add-on.
+// [lot1:organicCampaignTracker]
+
+// [lot1:technicalSeoFixVerification]
+
+// [lot1:seoChangeImpact]
+
+// [lot1:conversionOpportunityEngine]
 
 export default router;

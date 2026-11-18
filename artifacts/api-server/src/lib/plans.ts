@@ -622,3 +622,77 @@ export function getAddonForPriceId(priceId: string): string | null {
   }
   return null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Add-ons « garde prix » (lot 1 de portage depuis Test-Replit)
+//
+// Un add-on déclaré ici est INVISIBLE ET NON ACHETABLE tant qu'aucun prix
+// Stripe n'est configuré pour lui :
+//   • LIVE  : variable `priceEnvVar` (convention STRIPE_PRICE_ID_<NOM>) non vide.
+//             Aucun identifiant de prix n'est codé en dur ni utilisé par défaut.
+//   • TEST  : uniquement si STRIPE_TEST_MODE=true avec une clé sk_test_, ET
+//             une variable STRIPE_TEST_PRICE_ID_ADDON_* non vide.
+// Tant que la garde est fermée, la clé n'est ajoutée à AUCUNE structure
+// (ADDON_DEFINITIONS, FLAG_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_PRICE_IDS) :
+// /api/plans/catalog, /api/addons, /api/billing/plans, le checkout et
+// l'activation se comportent exactement comme avant le portage.
+// Une section par add-on, sans interaction entre elles (revert isolé possible).
+// ═══════════════════════════════════════════════════════════════════════════
+export interface PriceGatedAddon {
+  definition: AddonDefinition;
+  /** Variable LIVE (nom seul) : STRIPE_PRICE_ID_<NOM>. Pas de valeur par défaut. */
+  priceEnvVar: string;
+  /** Variables TEST, la première renseignée l'emporte. */
+  testPriceEnvVars: readonly string[];
+}
+
+export const PRICE_GATED_ADDONS: Record<string, PriceGatedAddon> = {};
+
+// [lot1:organicCampaignTracker]
+
+// [lot1:technicalSeoFixVerification]
+
+// [lot1:seoChangeImpact]
+
+// [lot1:conversionOpportunityEngine]
+
+function isStripeTestModeActive(): boolean {
+  if (process.env["STRIPE_TEST_MODE"] !== "true") return false;
+  const key = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"] || "";
+  return key.startsWith("sk_test_");
+}
+
+/**
+ * Ouvre la garde des add-ons dont un prix est configuré. Exécutée une fois au
+ * chargement du module (comme le reste de la configuration par environnement).
+ * Retourne les clés ouvertes (utile aux tests).
+ */
+export function applyPriceGatedAddons(
+  env: Record<string, string | undefined> = process.env,
+  testMode: boolean = isStripeTestModeActive(),
+): string[] {
+  const opened: string[] = [];
+  for (const [key, gated] of Object.entries(PRICE_GATED_ADDONS)) {
+    const live = (env[gated.priceEnvVar] ?? "").trim();
+    const test = testMode
+      ? gated.testPriceEnvVars.map(name => (env[name] ?? "").trim()).find(v => v !== "") ?? ""
+      : "";
+    if (!live && !test) continue;
+    if (live) ADDON_PRICE_IDS[key] = live;
+    if (test) ADDON_PRICE_IDS_TEST[key] = test;
+    ADDON_DEFINITIONS[key] = gated.definition;
+    FLAG_ADDONS.add(key);
+    for (const planId of ["standard", "pro", "ultra", "agency"]) {
+      (PLAN_ALLOWED_ADDONS[planId] as Set<string>).add(key);
+    }
+    opened.push(key);
+  }
+  return opened;
+}
+
+applyPriceGatedAddons();
+
+/** Clés déclarées « garde prix » (ouvertes ou non) : sert à taire les avertissements des vues dérivées. */
+export function isPriceGatedAddonKey(key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(PRICE_GATED_ADDONS, key);
+}
