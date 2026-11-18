@@ -12,7 +12,7 @@ Méthode de preuve : suite Playwright en « mode contrat » (`CERT_STRIPE_REEL=1
 | Annulation pendant l'essai (réelle, webhook reçu) | 14 | 0 | — |
 
 ## 2. Matrice par plan (profils bureau / iphone / pixel, un abonnement chacun)
-Exemples d'ids (masqués) : Standard `sub_1UdFbF…PBmib` (29 €), Pro `sub_1UdFpc…o5Qv` (79 €), Ultra `sub_1UdFq2…VOwxS` → `sub_1UdFq29…IOVGs6Cj` (149 €).
+Exemples d'ids (masqués) : Standard `sub_1UdFbF…PBmib` (29 €), Pro `sub_1UdFpc…o5Qv` (79 €), Ultra `sub_1UdFq2…VGs6Cj` (149 €).
 
 | Étape | Standard | Pro | Ultra |
 |---|---|---|---|
