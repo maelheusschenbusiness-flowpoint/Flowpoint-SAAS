@@ -5,7 +5,7 @@
  * Utilisateurs, e-mails (`@flowpoint.test`, non livrables) et cartes sont SYNTHETIQUES.
  */
 import { test as base, expect, type Page, type BrowserContext } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { visiteurCertification } from "../../certification/support/visiteur";
 import { cfg, CARTES, saisirCarte, repondre3ds, attendrePaymentElementReel, remplirFormulaireInscription } from "./stripe-reel.ts";
 
 export { base as test, expect, CARTES, saisirCarte, repondre3ds, attendrePaymentElementReel };
@@ -58,7 +58,7 @@ export async function consentement(context: BrowserContext, accepte = true): Pro
 
 export interface Attribution { vid: string; utm_source: string; utm_medium: string; utm_campaign: string; fp_source: string; fp_ref?: string; fp_lid?: string }
 export const attributionDeTest = (extra: Partial<Attribution> = {}): Attribution =>
-  ({ vid: randomUUID(), utm_source: "cert", utm_medium: "e2e", utm_campaign: "stripe_test", fp_source: "other_campaign", ...extra });
+  ({ vid: visiteurCertification(), utm_source: "cert", utm_medium: "e2e", utm_campaign: "stripe_test", fp_source: "other_campaign", ...extra });
 
 /** Entree `signin.html?plan=…` (comme le bouton du site vitrine), formulaire reel, checkout, creation du SetupIntent. */
 export async function jusquAuPaiement(page: Page, plan: Plan, email: string, a: Attribution = attributionDeTest()): Promise<Espion> {

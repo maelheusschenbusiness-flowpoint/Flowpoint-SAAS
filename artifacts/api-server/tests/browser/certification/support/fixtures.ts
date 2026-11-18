@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 import { BASE_URL, IS_LOCAL } from "./cible";
 import { db, one, all } from "./db";
+import { visiteurCertification } from "./visiteur";
 
 const STUB_JS = fs.readFileSync(path.resolve(HERE, "../harness/stripe-js-stub.js"), "utf8");
 
@@ -99,7 +100,13 @@ export const test = base.extend<Fixtures & { extraHTTPHeaders: Record<string, st
 
   consent: async ({ context }, use) => {
     await use(async (accepted) => {
-      if (accepted) await context.addCookies([{ name: "fp_analytics_consent", value: "accepted", url: BASE_URL }]);
+      if (accepted) {
+        await context.addCookies([{ name: "fp_analytics_consent", value: "accepted", url: BASE_URL }]);
+        // Visiteur `fp-test-…` : exclu des tableaux de bord commerciaux (TEST_FILTER). Les pages
+        // gardent un identifiant valide deja present ; sinon elles generaient un UUID.
+        const vid = visiteurCertification();
+        await context.addInitScript((v) => { try { if (!localStorage.getItem("fp_vid")) localStorage.setItem("fp_vid", v); } catch { /* stockage indisponible */ } }, vid);
+      }
     });
   },
 

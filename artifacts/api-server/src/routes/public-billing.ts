@@ -4,7 +4,7 @@ import { subPeriodEnd } from "./billing.js";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import {
-  enregistrerEtape, ETAPES_PUBLIQUES, lireAttributionFunnel, metadataAttributionFunnel,
+  enregistrerEtape, ETAPES_PUBLIQUES, lireAttributionFunnel, normaliserPlanFunnel, metadataAttributionFunnel,
   normaliserAttributionFunnel,
 } from "../services/funnel-events.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_INCLUDED_ADDONS, ADDON_DEFINITIONS, VALIDATION_REQUIRED_ADDONS, RETIRED_ADDONS, getAddonPriceId, getPlanPriceId } from "../lib/plans.js";
@@ -549,12 +549,18 @@ router.post("/public/funnel-event", funnelEventRateLimit, async (req: Request, r
   // pas de doublon, mais un retour le lendemain reste compte.
   const maintenant = new Date();
   const jour = maintenant.toISOString().slice(0, 10);
+  // Plan : liste fermee (standard|pro|ultra), sinon ignore (la requete reste un 204).
+  // Pour `cta_clique`, le plan fait partie de la cle : comparer deux plans le meme
+  // jour doit compter deux clics, pas en perdre un.
+  const plan = normaliserPlanFunnel(req.body?.plan);
   const insere = await enregistrerEtape({
     etape,
     visiteurId: attribution.visiteurId,
     source: attribution.source,
-    plan:   typeof req.body?.plan   === "string" ? req.body.plan   : null,
-    cleIdempotence: `${etape}:${visiteurId}:${jour}`,
+    plan,
+    cleIdempotence: etape === "cta_clique"
+      ? `${etape}:${plan ?? "sans-plan"}:${visiteurId}:${jour}`
+      : `${etape}:${visiteurId}:${jour}`,
   });
   // Le navigateur peut joindre son fp_lid opaque. Seules trois etapes deviennent
   // un jalon AI Lab, chacune avec la source qui peut la prouver ; jamais pour un
