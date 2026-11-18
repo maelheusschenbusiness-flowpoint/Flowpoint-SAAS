@@ -52148,16 +52148,22 @@ async function init() {
           STATE.subRoute = savedSub || null;
         }
       } else {
-        STATE.route = 'overview';
-        STATE.subRoute = null;
         _fpResetDashboardCaches();
-        try {
-          history.replaceState(
-            { route:'overview', subRoute:null },
-            '',
-            window.location.pathname + window.location.search + '#overview',
-          );
-        } catch(_) {}
+        // Nouveau compte sur ce navigateur : rien n'est restaure depuis le
+        // stockage local (seul le cas _sameAccount le lit), donc la route
+        // courante vient du hash du lien ou d'une navigation faite pendant le
+        // chargement. Elle n'est ramenee a l'accueil que si le hash est vide.
+        if (!window.location.hash.slice(1)) {
+          STATE.route = 'overview';
+          STATE.subRoute = null;
+          try {
+            history.replaceState(
+              { route:'overview', subRoute:null },
+              '',
+              window.location.pathname + window.location.search + '#overview',
+            );
+          } catch(_) {}
+        }
       }
       localStorage.setItem('fp:last-org-id', String(_curOrgId));
       localStorage.setItem('fp:last-account-id', _curAccountId);
