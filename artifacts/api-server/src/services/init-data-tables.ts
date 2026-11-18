@@ -2233,6 +2233,22 @@ export async function initDataTables(): Promise<void> {
     await applyTenantRls("organic_campaign_goals");
 
     // [lot1:technicalSeoFixVerification]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS technical_seo_fix_verifications (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        before_audit_id TEXT NOT NULL,
+        after_audit_id TEXT NOT NULL,
+        before_issue_count INTEGER NOT NULL,
+        after_issue_count INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, before_audit_id, after_audit_id)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS technical_seo_fix_verifications_org_created_idx ON technical_seo_fix_verifications(org_id, created_at DESC)`);
+    await applyTenantRls("technical_seo_fix_verifications");
 
     // [lot1:seoChangeImpact]
 

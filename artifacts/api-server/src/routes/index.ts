@@ -59,6 +59,7 @@ import plansRouter from "./plans.js";
 import organicCampaignTrackerRouter from "./organic-campaign-tracker.js";
 
 // [lot1:technicalSeoFixVerification:import]
+import technicalSeoFixVerificationRouter from "./technical-seo-fix-verification.js";
 
 // [lot1:seoChangeImpact:import]
 
@@ -259,6 +260,7 @@ router.use(progressionRouter);
 router.use(organicCampaignTrackerRouter);
 
 // [lot1:technicalSeoFixVerification]
+router.use(technicalSeoFixVerificationRouter);
 
 // [lot1:seoChangeImpact]
 

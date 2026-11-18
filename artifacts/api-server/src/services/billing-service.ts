@@ -106,6 +106,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   organicCampaignTracker: { icon: "🎯", unit: "suivi de campagne" },
 
   // [lot1:technicalSeoFixVerification]
+  technicalSeoFixVerification: { icon: "🛠️", unit: "vérification corrective" },
 
   // [lot1:seoChangeImpact]
 

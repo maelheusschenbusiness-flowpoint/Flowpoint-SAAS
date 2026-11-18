@@ -10158,6 +10158,7 @@ function renderBilling() {
       { key:'organicCampaignTracker', gated:true, openFn:'fpOpenOrganicCampaignTracker', cat:'SEO', name:'Organic Campaign Tracker', icon:'🎯', color:'#2563EB', active:!!(me.addons?.organicCampaignTracker), tag:'GSC', roi:'Suivi des objectifs de campagnes organiques', desc:'Suivez les objectifs de clics et de position à partir des données GSC mesurées.', features:['Objectifs configurables par mot-clé','Clics et position moyenne sur 28 jours','Statuts fondés sur les données GSC','Aucune performance estimée'] },
 
       // [lot1:technicalSeoFixVerification]
+      { key:'technicalSeoFixVerification', gated:true, openFn:'fpOpenTechnicalSEOFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
 
       // [lot1:seoChangeImpact]
 
@@ -15935,6 +15936,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'organic-campaign-tracker',
 
   // [lot1:technicalSeoFixVerification]
+  'technical-seo-fix-verification',
 
   // [lot1:seoChangeImpact]
 
@@ -16122,6 +16124,14 @@ function _doRender() {
       break;
 
     // [lot1:technicalSeoFixVerification]
+    case 'technical-seo-fix-verification':
+      html = '<div id="fp-addon-technical-seo-fix-verification"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-technical-seo-fix-verification');
+        const renderAddon = window.FP_ADDON_RENDERERS?.technicalSeoFixVerification;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
 
     // [lot1:seoChangeImpact]
 
@@ -65605,6 +65615,9 @@ window.fpOpenOrganicCampaignTracker = function () {
 };
 
 // [lot1:technicalSeoFixVerification]
+window.fpOpenTechnicalSEOFixVerification = function () {
+  window.navigate('technical-seo-fix-verification');
+};
 
 // [lot1:seoChangeImpact]
 

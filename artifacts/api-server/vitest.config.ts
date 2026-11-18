@@ -79,6 +79,9 @@ export default defineConfig({
       "src/lib/addon-organic-campaign-tracker-gate.test.ts",
 
       // [lot1:technicalSeoFixVerification]
+      "src/routes/technical-seo-fix-verification.test.ts",
+      "src/services/technical-seo-fix-verification.test.ts",
+      "src/lib/addon-technical-seo-fix-verification-gate.test.ts",
 
       // [lot1:seoChangeImpact]
 

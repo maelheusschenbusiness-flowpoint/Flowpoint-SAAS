@@ -656,6 +656,11 @@ PRICE_GATED_ADDONS["organicCampaignTracker"] = {
 };
 
 // [lot1:technicalSeoFixVerification]
+PRICE_GATED_ADDONS["technicalSeoFixVerification"] = {
+  definition: { name: "Technical SEO Fix Verification", category: "SEO", description: "Comparez le nombre de problèmes signalés entre deux audits de la même URL.", priceEur: 19, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_TECHNICAL_SEO_FIX_VERIFICATION",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_TECHNICAL_SEO_FIX_VERIFICATION"],
+};
 
 // [lot1:seoChangeImpact]
 
