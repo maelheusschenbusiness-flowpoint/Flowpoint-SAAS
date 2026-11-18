@@ -1031,11 +1031,9 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 
   if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
   if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
-  if (!company)    { res.status(400).json({ error: "Le nom de l'entreprise est requis." }); return; }
   if (!countryVal) { res.status(400).json({ error: "Le pays est requis." });                return; }
-  if (!addressVal) { res.status(400).json({ error: "L'adresse est requise." });             return; }
-  if (!cityVal)    { res.status(400).json({ error: "La ville est requise." });              return; }
-  if (!postalVal)  { res.status(400).json({ error: "Le code postal est requis." });         return; }
+  // Inscription courte : entreprise et adresse sont facultatives. `company_name`
+  // reste NOT NULL en base : a defaut, le nom de la personne (modifiable ensuite).
 
   if (isDisposableEmail(normalizedEmail)) {
     res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
@@ -1201,8 +1199,8 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW() + INTERVAL '2 hours')
        RETURNING created_at, fp_lid`,
       [
-        preToken, normalizedEmail, fn, ln, company,
-        countryVal, addressVal, cityVal, postalVal,
+        preToken, normalizedEmail, fn, ln, company || `${fn} ${ln}`.trim(),
+        countryVal, addressVal || null, cityVal || null, postalVal || null,
         String(phone || "").trim() || null,
         String(vat   || "").trim() || null,
         _preRegSellerId,
@@ -2168,10 +2166,13 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
               await _gpClient.query(
                 `INSERT INTO pending_signups
                    (token, email, first_name, last_name, company_name, country, address, city, postal_code, seller_id, fp_lid, created_at, expires_at)
-                 VALUES ($1,$2,$3,$4,$5,'FR','—','—','00000',$6,$7,NOW(),NOW() + INTERVAL '2 hours')
+                 VALUES ($1,$2,$3,$4,$5,'FR',NULL,NULL,NULL,$6,$7,NOW(),NOW() + INTERVAL '2 hours')
                  ON CONFLICT (token) DO NOTHING`,
-                // company_name left blank — Google signup carries no company information
-                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName, "", sellerIdFromState, _gpFpLid],
+                // Google ne donne ni entreprise ni adresse : comme l'inscription courte
+                // (#466), l'entreprise prend le nom de la personne et l'adresse reste
+                // NULL. Plus de valeurs de remplissage ("—", "00000") envoyees a Stripe.
+                [googlePreRegToken, resolvedEmail, googleFirstName, googleLastName,
+                 `${googleFirstName} ${googleLastName}`.trim() || resolvedEmail, sellerIdFromState, _gpFpLid],
               );
               logger.info({ email: resolvedEmail }, "[Auth] Google signup — pending_signups record created for checkout");
             } finally {

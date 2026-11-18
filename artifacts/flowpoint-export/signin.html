@@ -371,10 +371,6 @@
           <input type="email" id="email" name="email" placeholder="marie@monentreprise.fr" required autocomplete="email" />
         </div>
 
-        <div class="field">
-          <label for="companyName">Nom de l'entreprise *</label>
-          <input type="text" id="companyName" name="companyName" placeholder="Mon Agence Digitale" required autocomplete="organization" />
-        </div>
 
         <div class="field">
           <label for="country">Pays *</label>
@@ -392,19 +388,26 @@
           </select>
         </div>
 
+        <details id="billing-details" style="margin-top:8px">
+        <summary style="cursor:pointer;font-weight:600">Informations de facturation <span style="font-weight:400;color:var(--text-muted)">(facultatif, modifiables plus tard)</span></summary>
         <div class="field">
-          <label for="address">Adresse *</label>
-          <input type="text" id="address" name="address" placeholder="12 rue de la Paix" required autocomplete="street-address" />
+          <label for="companyName">Nom de l'entreprise</label>
+          <input type="text" id="companyName" name="companyName" placeholder="Mon Agence Digitale" autocomplete="organization" />
+        </div>
+
+        <div class="field">
+          <label for="address">Adresse</label>
+          <input type="text" id="address" name="address" placeholder="12 rue de la Paix" autocomplete="street-address" />
         </div>
 
         <div class="row-2">
           <div class="field">
-            <label for="city">Ville *</label>
-            <input type="text" id="city" name="city" placeholder="Paris" required autocomplete="address-level2" />
+            <label for="city">Ville</label>
+            <input type="text" id="city" name="city" placeholder="Paris" autocomplete="address-level2" />
           </div>
           <div class="field">
-            <label for="postalCode">Code postal *</label>
-            <input type="text" id="postalCode" name="postalCode" placeholder="75001" required autocomplete="postal-code" />
+            <label for="postalCode">Code postal</label>
+            <input type="text" id="postalCode" name="postalCode" placeholder="75001" autocomplete="postal-code" />
           </div>
         </div>
 
@@ -418,6 +421,7 @@
             <input type="text" id="vat" name="vat" placeholder="FR 12 345678901" autocomplete="off" />
           </div>
         </div>
+        </details>
       </div>
 
       <div id="signup-msg" class="msg" role="alert"></div>
@@ -557,6 +561,18 @@
       if (link && next && next.charAt(0) === '/') link.href = '/login.html?next=' + encodeURIComponent(next);
     } catch (e) {}
   })();
+
+  /* Plan choisi avant l'inscription : ?plan= ou le panier des tarifs. Liste fermee. */
+  function fpChosenPlan() {
+    var ok = { standard: 1, pro: 1, ultra: 1 };
+    try {
+      var q = new URLSearchParams(window.location.search).get('plan');
+      if (q && ok[q]) return q;
+      var cart = JSON.parse(localStorage.getItem('fp_cart') || 'null');
+      if (cart && ok[cart.plan]) return cart.plan;
+    } catch (e) {}
+    return '';
+  }
 
   /* ── Called when user clicks a plan card ── */
   function choosePlan(plan, btn) {
@@ -709,11 +725,7 @@
     if (isDisposable(email)) {
       fpF('signup_failed','disposable_email'); showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
     }
-    if (!companyName) { fpF('signup_failed','missing_company'); showMsg(signupMsg,'error',"Le nom de l'entreprise est requis."); return; }
     if (!country)     { fpF('signup_failed','missing_country'); showMsg(signupMsg,'error','Le pays est requis.');                return; }
-    if (!address)     { fpF('signup_failed','missing_address'); showMsg(signupMsg,'error',"L'adresse est requise.");             return; }
-    if (!city)        { fpF('signup_failed','missing_city'); showMsg(signupMsg,'error','La ville est requise.');              return; }
-    if (!postalCode)  { fpF('signup_failed','missing_postal_code'); showMsg(signupMsg,'error','Le code postal est requis.');         return; }
 
     fpF('signup_submitted');
     setLoading(signupBtn, true);
@@ -765,7 +777,10 @@
       // Store token for the plan selection step
       _preRegisterToken = res.data.preRegisterToken || '';
 
-      // Show plan selection screen
+      // Plan deja choisi (tarifs ou ?plan=) : directement le paiement, sans
+      // second choix. Sinon, l'ecran de choix du plan, comme avant.
+      var chosen = fpChosenPlan();
+      if (chosen) { choosePlan(chosen, document.querySelector('.plan-card-btn[data-plan="' + chosen + '"]') || document.createElement('button')); return; }
       document.getElementById('signup-screen').style.display = 'none';
       document.getElementById('plan-screen').style.display   = 'block';
     })
