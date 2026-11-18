@@ -2189,6 +2189,28 @@ export async function initDataTables(): Promise<void> {
     // legacy profile/billing compatibility paths still use raw pool queries.
     await applyTenantRls("org_settings");
 
+    // ── gsc_keyword_data : absente de la production (le bloc v3 ci-dessous y est deja
+    // enregistre comme applique et n'y est jamais rejoue). Lue par Organic Campaign
+    // Tracker, Forecasting et gsc-service. Additif et idempotent ; schema identique a
+    // celui du bloc v3 (CREATE ... IF NOT EXISTS : sans effet quand la table existe deja).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS gsc_keyword_data (
+        id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        keyword     TEXT        NOT NULL DEFAULT '',
+        date        TEXT        NOT NULL DEFAULT '',
+        impressions INTEGER     NOT NULL DEFAULT 0,
+        clicks      INTEGER     NOT NULL DEFAULT 0,
+        ctr         REAL        NOT NULL DEFAULT 0,
+        position    REAL        NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_keyword_data_org_kw_date_idx ON gsc_keyword_data(org_id, keyword, date)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS gsc_keyword_data_org_idx ON gsc_keyword_data(org_id)`);
+    await applyTenantRls("gsc_keyword_data");
+
     // ── Add-ons du lot 1 : tables additives et idempotentes ───────────────────
     // Hors du bloc `missing-production-tables-v3` : ce bloc est enregistre dans
     // schema_migrations et n'est jamais rejoue sur une base de production deja

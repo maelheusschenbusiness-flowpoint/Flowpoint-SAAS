@@ -71,6 +71,8 @@ export default defineConfig({
       "src/lib/plans.test.ts",
       // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
       "src/lib/addon-price-gate.test.ts",
+      // gsc_keyword_data creee hors du bloc v3 (absente de la production)
+      "src/services/gsc-keyword-data-schema-db.test.ts",
       // [lot1:organicCampaignTracker]
 
       // [lot1:technicalSeoFixVerification]
