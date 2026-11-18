@@ -670,6 +670,11 @@ PRICE_GATED_ADDONS["seoChangeImpact"] = {
 };
 
 // [lot1:conversionOpportunityEngine]
+PRICE_GATED_ADDONS["conversionOpportunityEngine"] = {
+  definition: { name: "Conversion Opportunity Engine", category: "Conversion", description: "Repérez les pages à optimiser à partir des sessions et conversions GA4 mesurées.", priceEur: 12, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_CONVERSION_OPPORTUNITY_ENGINE",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"],
+};
 
 function isStripeTestModeActive(): boolean {
   if (process.env["STRIPE_TEST_MODE"] !== "true") return false;

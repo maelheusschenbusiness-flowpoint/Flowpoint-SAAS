@@ -2261,6 +2261,14 @@ export async function initDataTables(): Promise<void> {
     await applyTenantRls("seo_change_impact_settings");
 
     // [lot1:conversionOpportunityEngine]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS conversion_opportunity_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("conversion_opportunity_settings");
 
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)

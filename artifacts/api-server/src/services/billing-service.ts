@@ -112,6 +112,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   seoChangeImpact: { icon: "↕️", unit: "impact SEO mesuré" },
 
   // [lot1:conversionOpportunityEngine]
+  conversionOpportunityEngine: { icon: "📈", unit: "opportunités conversion" },
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {

@@ -65,6 +65,7 @@ import technicalSeoFixVerificationRouter from "./technical-seo-fix-verification.
 import seoChangeImpactRouter from "./seo-change-impact.js";
 
 // [lot1:conversionOpportunityEngine:import]
+import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
@@ -267,5 +268,6 @@ router.use(technicalSeoFixVerificationRouter);
 router.use(seoChangeImpactRouter);
 
 // [lot1:conversionOpportunityEngine]
+router.use(conversionOpportunityEngineRouter);
 
 export default router;

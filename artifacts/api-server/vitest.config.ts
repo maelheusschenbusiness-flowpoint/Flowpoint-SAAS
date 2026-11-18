@@ -89,6 +89,9 @@ export default defineConfig({
       "src/lib/addon-seo-change-impact-gate.test.ts",
 
       // [lot1:conversionOpportunityEngine]
+      "src/routes/conversion-opportunity-engine.test.ts",
+      "src/services/conversion-opportunity-engine.test.ts",
+      "src/lib/addon-conversion-opportunity-engine-gate.test.ts",
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",

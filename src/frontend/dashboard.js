@@ -10174,6 +10174,7 @@ function renderBilling() {
       { key:'revenueLeak', cat:'Conversion', name:'Revenue Leak AI', icon:'💸', color:'#f97316', active:!!(me.addons?.revenueLeak), tag:'ROI',             roi:'Détecte fuites de revenus',    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
       { key:'abTestingAI', cat:'Conversion', name:'AB Testing IA', icon:'🔀', color:'#f97316', active:!!(me.addons?.abTestingAI), tag:'Expérimentation', roi:'+22% conversion moyenne',    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
       // [lot1:conversionOpportunityEngine]
+      { key:'conversionOpportunityEngine', gated:true, openFn:'fpOpenConversionOpportunityEngine', cat:'Conversion', name:'Conversion Opportunity Engine', icon:'📈', color:'#f97316', active:!!(me.addons?.conversionOpportunityEngine), tag:'GA4', roi:'Pages avec faible conversion observée', desc:'Priorisez les pages à optimiser à partir des sessions et conversions GA4 réellement mesurées.', features:['Sessions et conversions GA4 mesurées','Seuils de sessions configurables','Taux de conversion maximal configurable','Aucune estimation de revenus non mesurés'] },
 
       // ── Reporting ──
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
@@ -15943,6 +15944,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'seo-change-impact',
 
   // [lot1:conversionOpportunityEngine]
+  'conversion-opportunity-engine',
 ]);
 function _doRender() {
   const page = $('#fp-page');
@@ -16146,6 +16148,14 @@ function _doRender() {
       break;
 
     // [lot1:conversionOpportunityEngine]
+    case 'conversion-opportunity-engine':
+      html = '<div id="fp-addon-conversion-opportunity-engine"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-conversion-opportunity-engine');
+        const renderAddon = window.FP_ADDON_RENDERERS?.conversionOpportunityEngine;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -65564,6 +65574,9 @@ window.fpOpenSEOChangeImpact = function () {
 };
 
 // [lot1:conversionOpportunityEngine]
+window.fpOpenConversionOpportunityEngine = function () {
+  window.navigate('conversion-opportunity-engine');
+};
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 
