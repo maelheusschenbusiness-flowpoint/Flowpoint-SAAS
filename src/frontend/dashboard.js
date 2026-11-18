@@ -10155,6 +10155,7 @@ function renderBilling() {
       { key:'backlinkIntelligence', cat:'SEO',        name:'Backlink Intelligence', icon:'🔗', color:'#2563EB', active:!!(me.addons?.backlinkIntelligence), tag:'Pro inclus',      roi:'Analyse profil de liens',    desc:'Analysez les backlinks de vos concurrents. Opportunités, toxiques, et outreach IA.', features:['Analyse backlinks concurrents en temps réel','Détection liens toxiques automatique','Opportunités d\'outreach IA','Score DA/DR de chaque domaine référent','Alertes nouveaux liens concurrents'] },
       { key:'aiContentStrategist', cat:'SEO',        name:'AI Content Strategist', icon:'✍️', color:'#2563EB', active:!!(me.addons?.aiContentStrategist), tag:'IA',              roi:'+65% efficacité contenu',    desc:'Stratégie de contenu IA. Briefs automatiques, SERP gap, et calendrier éditorial.', features:['Briefs SEO générés automatiquement par IA','Calendrier éditorial IA sur 3 mois','SERP gap par article ciblé','Score de pertinence avant publication','Intégration WordPress / Webflow'] },
       // [lot1:organicCampaignTracker]
+      { key:'organicCampaignTracker', gated:true, openFn:'fpOpenOrganicCampaignTracker', cat:'SEO', name:'Organic Campaign Tracker', icon:'🎯', color:'#2563EB', active:!!(me.addons?.organicCampaignTracker), tag:'GSC', roi:'Suivi des objectifs de campagnes organiques', desc:'Suivez les objectifs de clics et de position à partir des données GSC mesurées.', features:['Objectifs configurables par mot-clé','Clics et position moyenne sur 28 jours','Statuts fondés sur les données GSC','Aucune performance estimée'] },
 
       // [lot1:technicalSeoFixVerification]
 
@@ -15931,6 +15932,7 @@ let _fpLastRenderedKey = null;
 // Routes dont le contenu est une racine vide remplie par window.FP_ADDON_RENDERERS (add-ons du lot 1).
 const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   // [lot1:organicCampaignTracker]
+  'organic-campaign-tracker',
 
   // [lot1:technicalSeoFixVerification]
 
@@ -16110,6 +16112,14 @@ function _doRender() {
     case 'competitor':     html = renderCompetitor(); break;
     case 'conversion':     html = renderGA4Conversion(); break;
     // [lot1:organicCampaignTracker]
+    case 'organic-campaign-tracker':
+      html = '<div id="fp-addon-organic-campaign-tracker"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-organic-campaign-tracker');
+        const renderAddon = window.FP_ADDON_RENDERERS?.organicCampaignTracker;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
 
     // [lot1:technicalSeoFixVerification]
 
@@ -65519,6 +65529,9 @@ window._fpToggleChecklistExtra = function(id, done) {
 window.showToast   = showToast;
 window.navigate    = navigate;
 // [lot1:organicCampaignTracker]
+window.fpOpenOrganicCampaignTracker = function () {
+  window.navigate('organic-campaign-tracker');
+};
 
 // [lot1:technicalSeoFixVerification]
 

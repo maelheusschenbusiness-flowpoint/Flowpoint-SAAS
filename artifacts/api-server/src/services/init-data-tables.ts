@@ -2217,6 +2217,20 @@ export async function initDataTables(): Promise<void> {
     // migree. Ici tout s'execute a chaque migration (CREATE ... IF NOT EXISTS).
     // Tables vides et inoffensives tant que l'add-on n'est pas vendu.
     // [lot1:organicCampaignTracker]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS organic_campaign_goals (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        keyword TEXT NOT NULL,
+        target_position REAL NOT NULL CHECK (target_position > 0),
+        minimum_clicks INTEGER NOT NULL CHECK (minimum_clicks >= 0),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, keyword)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS organic_campaign_goals_org_idx ON organic_campaign_goals(org_id)`);
+    await applyTenantRls("organic_campaign_goals");
 
     // [lot1:technicalSeoFixVerification]
 

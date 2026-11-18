@@ -649,6 +649,11 @@ export interface PriceGatedAddon {
 export const PRICE_GATED_ADDONS: Record<string, PriceGatedAddon> = {};
 
 // [lot1:organicCampaignTracker]
+PRICE_GATED_ADDONS["organicCampaignTracker"] = {
+  definition: { name: "Organic Campaign Tracker", category: "SEO", description: "Suivez les objectifs de clics et de position à partir des données GSC mesurées.", priceEur: 12, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_ORGANIC_CAMPAIGN_TRACKER",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_ORGANIC_CAMPAIGN_TRACKER"],
+};
 
 // [lot1:technicalSeoFixVerification]
 

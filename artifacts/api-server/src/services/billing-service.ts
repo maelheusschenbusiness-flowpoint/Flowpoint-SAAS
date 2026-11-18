@@ -103,6 +103,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   aiCreditsPack500k:     { icon: "🤖", unit: "+500 000 crédits"     },
   // ── Lot 1 (garde prix : voir lib/plans.ts, PRICE_GATED_ADDONS) ─────────────
   // [lot1:organicCampaignTracker]
+  organicCampaignTracker: { icon: "🎯", unit: "suivi de campagne" },
 
   // [lot1:technicalSeoFixVerification]
 

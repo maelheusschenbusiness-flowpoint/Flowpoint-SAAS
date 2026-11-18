@@ -56,6 +56,7 @@ import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
 // [lot1:organicCampaignTracker:import]
+import organicCampaignTrackerRouter from "./organic-campaign-tracker.js";
 
 // [lot1:technicalSeoFixVerification:import]
 
@@ -255,6 +256,7 @@ router.use(progressionRouter);
 
 // Add-ons du lot 1 (garde prix) : routes protegees par requireAddon(<cle>) ; une section par add-on.
 // [lot1:organicCampaignTracker]
+router.use(organicCampaignTrackerRouter);
 
 // [lot1:technicalSeoFixVerification]
 
