@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
+      "src/lib/billing-identity.test.ts",
       "src/routes/billing-verify-plan-guard.test.ts",
       "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution

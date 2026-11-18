@@ -1,3 +1,4 @@
+import { stripeTaxParams } from "../lib/billing-identity.js";
 import { pool } from "@workspace/db";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
@@ -506,7 +507,7 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
       return { ok: true, trialEndsAt: trialEnd, subscriptionId: existingSub.id, plan, idempotent: true };
     }
 
-    const sub = await stripe.subscriptions.create({
+    const sub = await stripe.subscriptions.create({ ...stripeTaxParams(),
       customer: customerId,
       items: [{ price: planPriceId }],
       trial_period_days: days,

@@ -1,3 +1,4 @@
+import { stripeTaxParams } from "../lib/billing-identity.js";
 /**
  * reactivate-subscription.ts
  *
@@ -192,7 +193,7 @@ export async function reactivateSubscriptionAfterLogin(
     );
 
     const newSub = await stripe.subscriptions.create(
-      {
+      { ...stripeTaxParams(),
         customer: customerId,
         items: [{ price: priceId }],
         metadata: { org_id: orgId, plan: planName, reactivated_by: caller },

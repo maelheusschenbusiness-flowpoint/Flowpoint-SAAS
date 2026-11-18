@@ -1,3 +1,4 @@
+import { stripeBillingFields, stripeTaxParams } from "../lib/billing-identity.js";
 import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
@@ -1036,7 +1037,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       // customer was not shown (and never for a bundled add-on).
       const allLineItems = quoteToStripeLineItems(quote);
 
-      const sessionParams = urlOrEmbedded({
+      const sessionParams = urlOrEmbedded({ ...stripeTaxParams(),
         mode: "subscription",
         currency: "eur",
         line_items: allLineItems,
@@ -1071,7 +1072,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         res.status(400).json({ error: "Aucun pack IA sélectionné." });
         return;
       }
-      const sessionParams = urlOrEmbedded({
+      const sessionParams = urlOrEmbedded({ ...stripeTaxParams(),
         mode: "payment",
         line_items: quoteToStripeLineItems(quote),
         metadata,
@@ -1098,7 +1099,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         res.status(400).json({ error: "Aucun add-on valide sélectionné." });
         return;
       }
-      const sessionParams = urlOrEmbedded({
+      const sessionParams = urlOrEmbedded({ ...stripeTaxParams(),
         mode: "subscription",
         line_items: allItems,
         metadata,
@@ -2083,7 +2084,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
           } else {
             /* No existing plan subscription found — create a new add-on subscription as fallback.
                This covers non-plan subscribers or edge cases where no active sub was found. */
-            const _aoSub = await stripe.subscriptions.create({
+            const _aoSub = await stripe.subscriptions.create({ ...stripeTaxParams(),
               customer:               _aoCustomerId,
               items:                  _aoItems,
               trial_end:              Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
@@ -2373,12 +2374,13 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       let _fcSignupName = "";
       let _fcSignupEmail = "";
       let _fcSignupCompany = "";
+      let _fcSignupVat: { type: "eu_vat"; value: string } | null = null;
       if (_fcPrt2) {
         const { pool: _fcEnrichPool } = await import("@workspace/db");
         const _fcEnrichC = await _fcEnrichPool.connect();
         try {
           const _fcER = await _fcEnrichC.query(
-            `SELECT email, first_name, last_name, company_name
+            `SELECT email, first_name, last_name, company_name, country, vat
              FROM pending_signups WHERE token = $1 LIMIT 1`,
             [_fcPrt2]
           );
@@ -2387,6 +2389,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
             _fcSignupName    = `${_fcRow.first_name ?? ""} ${_fcRow.last_name ?? ""}`.trim() || _fcRow.company_name || "";
             _fcSignupEmail   = _fcRow.email || "";
             _fcSignupCompany = _fcRow.company_name || "";
+            _fcSignupVat     = stripeBillingFields({ vat: _fcRow.vat, country: _fcRow.country }).taxId ?? null;
           }
         } finally { _fcEnrichC.release(); }
       }
@@ -2414,6 +2417,19 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       };
 
       await stripe.customers.update(customerId!, _fcUpdate);
+      /* Numero de TVA (format valide seulement) : transmis a Stripe, qui le verifie
+         aupres de VIES de facon asynchrone. Non bloquant : un refus de Stripe ne
+         doit jamais empecher l'abonnement. Jamais deux fois le meme numero. */
+      if (_fcSignupVat) {
+        try {
+          const _fcExisting = await stripe.customers.listTaxIds(customerId!, { limit: 10 });
+          if (!_fcExisting.data.some((t: { value?: string | null }) => t.value === _fcSignupVat!.value)) {
+            await stripe.customers.createTaxId(customerId!, _fcSignupVat);
+          }
+        } catch (_fcVatErr) {
+          logger.warn({ customerId, err: (_fcVatErr as Error)?.message }, "[PublicBilling] finalize: VAT id not attached (non-fatal)");
+        }
+      }
       logger.info({ customerId, hasPmAddr: _fcHasPmAddr, hasName: !!_fcFinalName },
         "[PublicBilling] finalize: customer enriched (Address Element + signup data)");
 
@@ -2504,7 +2520,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
         });
         return;
       } else {
-        planSubscription = await stripe.subscriptions.create({
+        planSubscription = await stripe.subscriptions.create({ ...stripeTaxParams(),
           customer:               customerId,
           items:                  [{ price: planPriceId, quantity: 1 }],
           ...(trialEndUnix !== undefined ? { trial_end: trialEndUnix } : {}),
@@ -2549,7 +2565,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     let addonSubscriptionId: string | null = null;
     if (addonItems.length > 0) {
       const thirtyDaysFromNow = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-      const addonSub = await stripe.subscriptions.create({
+      const addonSub = await stripe.subscriptions.create({ ...stripeTaxParams(),
         customer:               customerId,
         items:                  addonItems,
         trial_end:              thirtyDaysFromNow,   /* skip first 30d — already paid via PI */
