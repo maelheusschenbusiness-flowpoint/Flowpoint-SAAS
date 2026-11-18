@@ -30,6 +30,13 @@
     "Email professionnel *": "Work email *",
     "Nom de l'entreprise *": "Company name *",
     "Pays *": "Country *",
+    // #466 : bloc de facturation facultatif de l'inscription courte.
+    "Informations de facturation": "Billing details",
+    "(facultatif, modifiables plus tard)": "(optional, can be changed later)",
+    "Nom de l'entreprise": "Company name",
+    "Adresse": "Address",
+    "Ville": "City",
+    "Code postal": "Postal code",
     "Adresse *": "Address *",
     "Ville *": "City *",
     "Code postal *": "Postal code *",
