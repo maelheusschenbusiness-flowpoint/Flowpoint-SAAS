@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
@@ -128,6 +128,7 @@
     .fp-secure-note { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
     .fp-trial-note { text-align: center; font-size: 12.5px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-brd); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
   </style>
+<script src="/fp-locale.js"></script>
 </head>
 <body>
 
@@ -344,6 +345,12 @@
   }
 
   /* ── Init Stripe : un seul appel renvoie l'intent ET le devis ── */
+  // Langue de Stripe = langue de l'interface FlowPoint (anglais par defaut, francais si choisi),
+  // jamais celle du navigateur : sans `locale`, le formulaire de carte suit le navigateur.
+  function stripeLocaleFor() {
+    try { return window.fpResolveLanguage && window.fpResolveLanguage() === 'fr' ? 'fr' : 'en'; }
+    catch (e) { return 'en'; }
+  }
   async function initStripe() {
     renderSummaryLoading();
 
@@ -434,7 +441,7 @@
       }
     };
 
-    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance }); }
+    try { elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance, locale: stripeLocaleFor() }); }
     catch (e) {
       showAlert('[S2] stripe.elements() : ' + (e.message || e));
       return;
