@@ -21,6 +21,7 @@ export const CARTES = {
   succes: "4242424242424242",
   authentification3ds: "4000002500003155",      // 3DS2 requis, y compris pour un SetupIntent
   refusee: "4000000000000002",                  // refus generique (card_declined)
+  authentification3dsToujours: "4000002760003184", // 3DS2 requis sur toute transaction (carte demandee par la campagne du 18/11)
   refuseeFonds: "4000000000009995",             // refus « insufficient_funds » (comportement sur SetupIntent : a confirmer)
   authPuisRefus: "4000008400001629",            // 3DS requis, authentification reussie puis refus (a confirmer)
 } as const;
