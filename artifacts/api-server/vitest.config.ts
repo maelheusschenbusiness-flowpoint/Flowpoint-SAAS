@@ -84,6 +84,9 @@ export default defineConfig({
       "src/lib/addon-technical-seo-fix-verification-gate.test.ts",
 
       // [lot1:seoChangeImpact]
+      "src/routes/seo-change-impact.test.ts",
+      "src/services/seo-change-impact.test.ts",
+      "src/lib/addon-seo-change-impact-gate.test.ts",
 
       // [lot1:conversionOpportunityEngine]
       "src/services/billing-quote.test.ts",

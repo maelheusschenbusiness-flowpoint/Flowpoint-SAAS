@@ -109,6 +109,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   technicalSeoFixVerification: { icon: "🛠️", unit: "vérification corrective" },
 
   // [lot1:seoChangeImpact]
+  seoChangeImpact: { icon: "↕️", unit: "impact SEO mesuré" },
 
   // [lot1:conversionOpportunityEngine]
 };

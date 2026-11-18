@@ -2251,6 +2251,14 @@ export async function initDataTables(): Promise<void> {
     await applyTenantRls("technical_seo_fix_verifications");
 
     // [lot1:seoChangeImpact]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS seo_change_impact_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"lookbackDays":30,"minimumScoreChange":0}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("seo_change_impact_settings");
 
     // [lot1:conversionOpportunityEngine]
 

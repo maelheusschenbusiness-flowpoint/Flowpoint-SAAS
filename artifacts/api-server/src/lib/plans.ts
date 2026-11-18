@@ -663,6 +663,11 @@ PRICE_GATED_ADDONS["technicalSeoFixVerification"] = {
 };
 
 // [lot1:seoChangeImpact]
+PRICE_GATED_ADDONS["seoChangeImpact"] = {
+  definition: { name: "SEO Change Impact", category: "SEO", description: "Comparez les variations réellement mesurées entre audits SEO terminés.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_SEO_CHANGE_IMPACT",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_SEO_CHANGE_IMPACT"],
+};
 
 // [lot1:conversionOpportunityEngine]
 

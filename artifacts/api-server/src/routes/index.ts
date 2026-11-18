@@ -62,6 +62,7 @@ import organicCampaignTrackerRouter from "./organic-campaign-tracker.js";
 import technicalSeoFixVerificationRouter from "./technical-seo-fix-verification.js";
 
 // [lot1:seoChangeImpact:import]
+import seoChangeImpactRouter from "./seo-change-impact.js";
 
 // [lot1:conversionOpportunityEngine:import]
 
@@ -263,6 +264,7 @@ router.use(organicCampaignTrackerRouter);
 router.use(technicalSeoFixVerificationRouter);
 
 // [lot1:seoChangeImpact]
+router.use(seoChangeImpactRouter);
 
 // [lot1:conversionOpportunityEngine]
 

@@ -10161,6 +10161,7 @@ function renderBilling() {
       { key:'technicalSeoFixVerification', gated:true, openFn:'fpOpenTechnicalSEOFixVerification', cat:'SEO', name:'Technical SEO Fix Verification', icon:'🛠️', color:'#2563EB', active:!!(me.addons?.technicalSeoFixVerification), tag:'Audits', roi:'Vérification mesurée après correction', desc:'Comparez le nombre total de problèmes entre deux audits terminés de la même URL.', features:['Comparaison de deux audits distincts','Nombre de problèmes avant et après','Historique des vérifications sauvegardé','Limite affichée : les audits ne détaillent pas les règles'] },
 
       // [lot1:seoChangeImpact]
+      { key:'seoChangeImpact', gated:true, openFn:'fpOpenSEOChangeImpact', cat:'SEO', name:'SEO Change Impact', icon:'↕️', color:'#2563EB', active:!!(me.addons?.seoChangeImpact), tag:'Audits', roi:'Impact mesuré entre deux audits', desc:'Comparez les variations réellement mesurées entre audits SEO terminés.', features:['Évolution du score SEO','Évolution des problèmes critiques','Évolution du score de vitesse','Paramètres de période et de seuil enregistrés'] },
 
       // ── Local SEO ──
       { key:'gbpSlots10', cat:'Local SEO',  name:'+10 Emplacements GBP', icon:'📍', color:'#22c55e', active:!!(me.addons?.gbpSlots10), tag:'Local',           roi:'10 fiches GBP optimisées',    desc:'Gérez 10 fiches Google Business Profile supplémentaires avec automatisation IA.', features:['10 fiches GBP gérées depuis FlowPoint','Publication de posts GBP automatisée','Synchronisation horaires et infos NAP','Alertes avis non répondus','Score complétude fiche en temps réel'] },
@@ -15939,6 +15940,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'technical-seo-fix-verification',
 
   // [lot1:seoChangeImpact]
+  'seo-change-impact',
 
   // [lot1:conversionOpportunityEngine]
 ]);
@@ -16134,6 +16136,14 @@ function _doRender() {
       break;
 
     // [lot1:seoChangeImpact]
+    case 'seo-change-impact':
+      html = '<div id="fp-addon-seo-change-impact"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-seo-change-impact');
+        const renderAddon = window.FP_ADDON_RENDERERS?.seoChangeImpact;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
 
     // [lot1:conversionOpportunityEngine]
     case 'alerts-center':  html = renderAlertsCenter(); break;
@@ -65620,6 +65630,9 @@ window.fpOpenTechnicalSEOFixVerification = function () {
 };
 
 // [lot1:seoChangeImpact]
+window.fpOpenSEOChangeImpact = function () {
+  window.navigate('seo-change-impact');
+};
 
 // [lot1:conversionOpportunityEngine]
 window.navigateSub = navigateSub;
