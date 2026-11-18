@@ -1,0 +1,99 @@
+diff -ruN a/server/replit_integrations/chat/routes.ts b/server/replit_integrations/chat/routes.ts
+--- a/server/replit_integrations/chat/routes.ts	2026-11-08 15:20:58.144283375 +0000
++++ b/server/replit_integrations/chat/routes.ts	2026-11-08 15:20:58.146716908 +0000
+@@ -3,5 +3,8 @@
+       if (!content || typeof content !== "string" || content.trim().length === 0) {
+         return res.status(400).json({ error: "Message content is required" });
+       }
++      if (content.length > 2000) {
++        return res.status(413).json({ error: "Message too long" });
++      }
+ 
+       // Save user message
+diff -ruN a/server/routes.ts b/server/routes.ts
+--- a/server/routes.ts	2026-11-08 15:20:58.144172534 +0000
++++ b/server/routes.ts	2026-11-08 15:20:58.146804273 +0000
+@@ -21,7 +21,15 @@
+     return next();
+   }
+ 
+-  const candidate = origin ?? (referer ? new URL(referer).origin : undefined);
++  // A malformed Referer must answer 403, not throw (which would be a 500).
++  let candidate: string | undefined = typeof origin === "string" ? origin : undefined;
++  if (!candidate && typeof referer === "string") {
++    try {
++      candidate = new URL(referer).origin;
++    } catch {
++      candidate = undefined;
++    }
++  }
+   if (candidate && ALLOWED_ORIGINS.has(candidate)) {
+     return next();
+   }
+@@ -29,6 +37,33 @@
+   return res.status(403).json({ error: "Forbidden" });
+ }
+ 
++export function escapeHtml(value: string): string {
++  return value
++    .replace(/&/g, "&amp;")
++    .replace(/</g, "&lt;")
++    .replace(/>/g, "&gt;")
++    .replace(/"/g, "&quot;")
++    .replace(/'/g, "&#39;");
++}
++
++const EMAIL_PATTERN = /^[^\s@<>"',;]{1,64}@[^\s@<>"',;]{1,255}\.[^\s@<>"',;]{2,}$/;
++
++/** Validates the contact form body. Returns cleaned strings or an error message. */
++export function parseContactBody(body: unknown):
++  | { ok: true; name: string; email: string; subject: string; message: string }
++  | { ok: false; error: string } {
++  const b = (body ?? {}) as Record<string, unknown>;
++  const clean = (v: unknown) => (typeof v === "string" ? v.trim() : "");
++  const name = clean(b.name);
++  const email = clean(b.email);
++  const subject = clean(b.subject).replace(/[\r\n]+/g, " ");
++  const message = clean(b.message);
++  if (!name || !email || !subject || !message) return { ok: false, error: "Tous les champs sont requis" };
++  if (name.length > 120 || subject.length > 200 || message.length > 5000) return { ok: false, error: "Champ trop long" };
++  if (email.length > 320 || !EMAIL_PATTERN.test(email)) return { ok: false, error: "Adresse e-mail invalide" };
++  return { ok: true, name, email, subject, message };
++}
++
+ const leadsLimiter = rateLimit({
+   windowMs: 15 * 60 * 1000,
+   max: 10,
+@@ -67,10 +102,11 @@
+ 
+   app.post("/api/contact", requireSameOrigin, contactLimiter, async (req, res) => {
+     try {
+-      const { name, email, subject, message } = req.body;
+-      if (!name || !email || !subject || !message) {
+-        return res.status(400).json({ error: "Tous les champs sont requis" });
++      const parsed = parseContactBody(req.body);
++      if (!parsed.ok) {
++        return res.status(400).json({ error: parsed.error });
+       }
++      const { name, email, subject, message } = parsed;
+ 
+       const { client, fromEmail } = await getUncachableResendClient();
+ 
+@@ -83,13 +119,13 @@
+           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+             <h2 style="color: #2563eb;">Nouveau message depuis flowpoint.pro</h2>
+             <table style="width: 100%; border-collapse: collapse;">
+-              <tr><td style="padding: 8px; font-weight: bold; width: 120px;">Nom :</td><td style="padding: 8px;">${name}</td></tr>
+-              <tr><td style="padding: 8px; font-weight: bold;">Email :</td><td style="padding: 8px;"><a href="mailto:${email}">${email}</a></td></tr>
+-              <tr><td style="padding: 8px; font-weight: bold;">Sujet :</td><td style="padding: 8px;">${subject}</td></tr>
++              <tr><td style="padding: 8px; font-weight: bold; width: 120px;">Nom :</td><td style="padding: 8px;">${escapeHtml(name)}</td></tr>
++              <tr><td style="padding: 8px; font-weight: bold;">Email :</td><td style="padding: 8px;"><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></td></tr>
++              <tr><td style="padding: 8px; font-weight: bold;">Sujet :</td><td style="padding: 8px;">${escapeHtml(subject)}</td></tr>
+             </table>
+             <hr style="margin: 16px 0;" />
+             <h3 style="color: #334155;">Message :</h3>
+-            <p style="white-space: pre-wrap; color: #475569;">${message}</p>
++            <p style="white-space: pre-wrap; color: #475569;">${escapeHtml(message)}</p>
+           </div>
+         `,
+       });

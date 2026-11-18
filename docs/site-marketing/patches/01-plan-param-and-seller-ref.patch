@@ -1,0 +1,171 @@
+diff -ruN a/client/src/lib/funnel-tracking.ts b/client/src/lib/funnel-tracking.ts
+--- a/client/src/lib/funnel-tracking.ts	2026-11-08 15:20:58.039316387 +0000
++++ b/client/src/lib/funnel-tracking.ts	2026-11-08 15:20:58.044284508 +0000
+@@ -1,4 +1,5 @@
+ import { getActiveFpLid } from "./fp-lid";
++import { addSellerRefToAppUrl, normalizeSellerRef, readSellerRefFromSearch } from "./signup-url";
+ 
+ export type FunnelStep =
+   | "landing_vue"
+@@ -10,6 +11,7 @@
+ const VISITOR_KEY = "flowpoint_funnel_visitor";
+ const SOURCE_KEY = "flowpoint_funnel_source";
+ const ATTRIBUTION_KEY = "flowpoint_funnel_attribution";
++const SELLER_REF_KEY = "flowpoint_funnel_seller_ref";
+ const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign"] as const;
+ const TEST_API_BASE_URL = "https://flowpoint-test.onrender.com";
+ const PRODUCTION_APP_ORIGIN = "https://app.flowpoint.pro";
+@@ -62,6 +64,7 @@
+     window.localStorage.removeItem(VISITOR_KEY);
+     window.localStorage.removeItem(SOURCE_KEY);
+     window.localStorage.removeItem(ATTRIBUTION_KEY);
++    window.localStorage.removeItem(SELLER_REF_KEY);
+   } catch {
+     // Consent withdrawal must still stop transmission if storage is blocked.
+   }
+@@ -254,7 +257,32 @@
+   }
+ }
+ 
++/**
++ * Seller referral code (fp_ref). It is copied from the current page URL into
++ * the link to the app, which stores nothing and works without consent. When the
++ * visitor has consented, the code is also kept so it survives navigation to
++ * other pages of the site before the click on the call to action.
++ */
++function currentSellerRef(): string | null {
++  const fromUrl = readSellerRefFromSearch(window.location.search);
++  if (!hasFunnelConsent()) return fromUrl;
++  if (fromUrl) {
++    safeStoreValue(SELLER_REF_KEY, fromUrl);
++    return fromUrl;
++  }
++  return normalizeSellerRef(safeStoredValue(SELLER_REF_KEY));
++}
++
++export function addSellerRefToSignupLink(anchor: HTMLAnchorElement): void {
++  try {
++    anchor.href = addSellerRefToAppUrl(anchor.href, currentSellerRef());
++  } catch {
++    // A referral that cannot be read must never prevent the click.
++  }
++}
++
+ export function addFunnelAttributionToSignupLink(anchor: HTMLAnchorElement): void {
++  addSellerRefToSignupLink(anchor);
+   if (!hasFunnelConsent()) return;
+ 
+   try {
+diff -ruN a/client/src/lib/signup-url.ts b/client/src/lib/signup-url.ts
+--- a/client/src/lib/signup-url.ts	1970-01-01 00:00:00.000000000 +0000
++++ b/client/src/lib/signup-url.ts	2026-11-08 15:20:58.044356199 +0000
+@@ -0,0 +1,56 @@
++// Single place that knows how the marketing site hands a visitor over to the
++// SaaS sign-up page (https://app.flowpoint.pro/signin.html).
++//
++// Contract with the SaaS (see saas-signin-plan-param.patch):
++//   ?plan=standard|pro|ultra   chosen card on /pricing; anything else is ignored
++//   ?fp_ref=SELLER-XXXX        seller referral code, copied from the page URL
++//
++// Nothing here reads or writes storage: it only builds URLs, so it is safe to
++// use before any consent decision. Visitor identifiers (fp_vid, fp_source,
++// UTM) stay in funnel-tracking.ts, which requires consent.
++
++export const SIGNUP_URL = "https://app.flowpoint.pro/signin.html";
++export const SIGNUP_PLANS = ["standard", "pro", "ultra"] as const;
++export type SignupPlan = (typeof SIGNUP_PLANS)[number];
++
++const APP_ORIGIN = "https://app.flowpoint.pro";
++const SELLER_REF_PATTERN = /^SELLER-[A-Z0-9]{1,20}$/;
++
++export function isSignupPlan(value: unknown): value is SignupPlan {
++  return typeof value === "string" && (SIGNUP_PLANS as readonly string[]).includes(value);
++}
++
++/** Sign-up URL for a pricing card. Unknown plans fall back to the plain URL. */
++export function signupUrlForPlan(plan?: string | null): string {
++  const normalized = (plan ?? "").trim().toLowerCase();
++  return isSignupPlan(normalized) ? `${SIGNUP_URL}?plan=${normalized}` : SIGNUP_URL;
++}
++
++/** Returns the canonical seller code or null when the value is not one. */
++export function normalizeSellerRef(value: string | null | undefined): string | null {
++  const candidate = (value ?? "").trim().toUpperCase();
++  return SELLER_REF_PATTERN.test(candidate) ? candidate : null;
++}
++
++/** Reads fp_ref (or its alias ref) from a query string such as location.search. */
++export function readSellerRefFromSearch(search: string): string | null {
++  const params = new URLSearchParams(search);
++  return normalizeSellerRef(params.get("fp_ref") ?? params.get("ref"));
++}
++
++/**
++ * Adds fp_ref to a link that targets the SaaS app. Existing parameters
++ * (plan, fp_vid, fp_source, utm_*, fp_lid) are preserved; links to any other
++ * origin are returned untouched.
++ */
++export function addSellerRefToAppUrl(href: string, ref: string | null): string {
++  if (!ref) return href;
++  try {
++    const url = new URL(href);
++    if (url.origin !== APP_ORIGIN) return href;
++    url.searchParams.set("fp_ref", ref);
++    return url.toString();
++  } catch {
++    return href;
++  }
++}
+diff -ruN a/client/src/pages/Pricing.tsx b/client/src/pages/Pricing.tsx
+--- a/client/src/pages/Pricing.tsx	2026-11-08 15:20:58.040308336 +0000
++++ b/client/src/pages/Pricing.tsx	2026-11-08 15:20:58.044854943 +0000
+@@ -16,6 +16,7 @@
+ } from "@/components/ui/accordion";
+ import { PRICING_FAQS, buildFaqPageJsonLd } from "@shared/structured-data-content";
+ import { trackEvent, trackSignupCta } from "@/lib/analytics";
++import { SIGNUP_URL, signupUrlForPlan } from "@/lib/signup-url";
+ 
+ const fadeInUp = {
+   // The initial state must remain visible in SSR and without JavaScript.
+@@ -27,7 +28,7 @@
+   visible: { transition: { staggerChildren: 0.1 } },
+ };
+ 
+-const EXTERNAL_URL = "https://app.flowpoint.pro/signin.html";
++const EXTERNAL_URL = SIGNUP_URL;
+ 
+ export default function Pricing() {
+   usePageTitle("Pricing | FlowPoint");
+@@ -36,6 +37,7 @@
+ 
+   const plans = [
+     {
++      id: "standard" as const,
+       name: "Standard",
+       price: 29,
+       description: "For getting started and trying the platform",
+@@ -54,6 +56,7 @@
+       ],
+     },
+     {
++      id: "pro" as const,
+       name: "Pro",
+       price: 79,
+       description: "Our most popular plan",
+@@ -76,6 +79,7 @@
+       ],
+     },
+     {
++      id: "ultra" as const,
+       name: "Ultra",
+       price: 149,
+       description: "For local chains and multi-site teams",
+@@ -220,7 +224,7 @@
+                       }`}
+                     >
+                       <a
+-                        href={EXTERNAL_URL}
++                        href={signupUrlForPlan(plan.id)}
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         onClick={() =>

@@ -1,0 +1,147 @@
+diff -ruN a/client/src/pages/Benefits.tsx b/client/src/pages/Benefits.tsx
+--- a/client/src/pages/Benefits.tsx	2026-11-08 15:20:58.129623589 +0000
++++ b/client/src/pages/Benefits.tsx	2026-11-08 15:20:58.132533093 +0000
+@@ -2,10 +2,10 @@
+     {
+       icon: Globe,
+       title: "Multilingual interface",
+-      description: "A language selector with 30 options for using the platform.",
++      description: "The application is available in 10 languages; this website can be machine-translated in your browser.",
+     },
+     {
+       icon: Star,
+-      title: "Expert support",
+-      description: "A dedicated team to support your work.",
++      title: "Email support",
++      description: "Questions are answered by email at support@flowpoint.pro.",
+     },
+diff -ruN a/client/src/pages/Features.tsx b/client/src/pages/Features.tsx
+--- a/client/src/pages/Features.tsx	2026-11-08 15:20:58.129602840 +0000
++++ b/client/src/pages/Features.tsx	2026-11-08 15:20:58.132513545 +0000
+@@ -1,13 +1,13 @@
+ // [excerpt of Features.tsx: only the blocks touched by the pack]
+   const additionalFeatures = [
+-    { icon: Globe, title: "Multilingual", description: "Language selector with 30 available options" },
+-    { icon: Star, title: "Review management", description: "Monitor and reply to your Google reviews" },
++    { icon: Globe, title: "Multilingual", description: "The application is available in 10 languages; this website can be machine-translated in your browser" },
++    { icon: Star, title: "Review insights", description: "Follow your Google reviews and spot trends (Pro and Ultra)" },
+     { icon: MessageSquare, title: "24/7 AI support", description: "An intelligent assistant available at any time" },
+ // [...]
+               <ul className="space-y-3 mb-8">
+                 {[
+                   "Real-time Google Maps ranking tracking",
+-                  "Automated customer review management",
++                  "Google review monitoring and analysis (Pro and Ultra)",
+                   "Geographic visibility heatmap",
+                   "Keywords and competitor analysis",
+                 ].map((item, i) => (
+diff -ruN a/client/src/pages/Pricing.tsx b/client/src/pages/Pricing.tsx
+--- a/client/src/pages/Pricing.tsx	2026-11-08 15:20:58.129675139 +0000
++++ b/client/src/pages/Pricing.tsx	2026-11-08 15:20:58.132490063 +0000
+@@ -47,7 +47,7 @@
+         "Monitoring uptime",
+         "Dashboard IA",
+         "Local SEO & Google Business Profile",
+-        "Track 10 keywords",
++        "Track 50 keywords",
+         "Monthly PDF reports",
+         "Export CSV",
+         "Automated alerts",
+@@ -68,10 +68,9 @@
+         "AI Missions — personalized action plan",
+         "Google Analytics 4 connection",
+         "Advanced competitor analysis",
+-        "Track 50 keywords",
++        "Track 500 keywords",
+         "Revenue Leak AI",
+         "Automated weekly reports",
+-        "Priority support within 48 hours",
+         "Scheduled reports",
+         "Smart alerts",
+         "Extended history",
+@@ -90,15 +89,14 @@
+         "Full white-label reporting",
+         "AI Strategist",
+         "Custom domain",
+-        "Unlimited API access",
++        "API access (fair use)",
+         "Multi-site workspace",
+         "Advanced team management",
+         "Advanced AI reports",
+-        "Unlimited AI Missions",
++        "Up to 999 AI Missions per month",
+         "Local visibility heatmaps",
+         "Advanced competitor benchmarking",
+         "365-day data retention",
+-        "Priority support",
+       ],
+     },
+   ];
+@@ -236,6 +234,9 @@
+                         Try for free
+                       </a>
+                     </Button>
++                    <p className="mt-3 text-center text-xs text-slate-600 dark:text-slate-300">
++                      14-day free trial. A payment card is required to start it.
++                    </p>
+                   </CardContent>
+                 </Card>
+               </motion.div>
+@@ -253,6 +254,9 @@
+               <CheckCircle2 className="h-5 w-5 text-green-500" />
+               Payments processed securely by Stripe
+             </p>
++            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
++              A payment card is required to start the 14-day free trial. It is charged when the trial ends unless you cancel before.
++            </p>
+           </motion.div>
+         </div>
+       </section>
+diff -ruN a/server/replit_integrations/chat/flowpoint-context.ts b/server/replit_integrations/chat/flowpoint-context.ts
+--- a/server/replit_integrations/chat/flowpoint-context.ts	2026-11-08 15:20:58.129104655 +0000
++++ b/server/replit_integrations/chat/flowpoint-context.ts	2026-11-08 15:20:58.131916199 +0000
+@@ -8,7 +8,9 @@
+ clairement.
+ 3. Utiliser uniquement les tarifs, plans et limites indiqués dans ce contexte.
+ Ne jamais inventer un plan « Pro+ ».
+-4. Ne jamais révéler de fournisseurs, modèles, noms d'outils internes,
+-identifiants techniques ou détails d'implémentation.
++4. Ne jamais révéler de modèles d'IA, noms d'outils internes, identifiants
++techniques ou détails d'implémentation. Les sous-traitants nommés dans la
++politique de confidentialité (hébergement, paiement, e-mail, IA) peuvent être
++cités tels quels, avec un renvoi vers cette politique.
+ 5. Le support public ne peut pas consulter ni modifier le workspace d'un
+ utilisateur et ne doit jamais prétendre avoir effectué une action réelle.
+diff -ruN a/server/seo-metadata.ts b/server/seo-metadata.ts
+--- a/server/seo-metadata.ts	2026-11-08 15:20:58.129241181 +0000
++++ b/server/seo-metadata.ts	2026-11-08 15:20:58.132042165 +0000
+@@ -90,7 +90,7 @@
+   "/tarifs": {
+     title: "Pricing | Flowpoint",
+     description:
+-      "Choose the Flowpoint plan that fits your needs. Starter, Pro, and Agency plans with no commitment and a 14-day free trial.",
++      "Choose the Flowpoint plan that fits your needs: Standard (29 EUR), Pro (79 EUR) or Ultra (149 EUR) per month, with a 14-day free trial and no minimum commitment.",
+     canonical: `${BASE_URL}/tarifs`,
+   },
+   "/avantages": {
+diff -ruN a/shared/structured-data-content.ts b/shared/structured-data-content.ts
+--- a/shared/structured-data-content.ts	2026-11-08 15:20:58.129760413 +0000
++++ b/shared/structured-data-content.ts	2026-11-08 15:20:58.132624192 +0000
+@@ -13,7 +13,7 @@
+   {
+     question: "Can I change plans at any time?",
+     answer:
+-      "Yes. You can upgrade or downgrade at any time. The change will take effect at the start of your next billing period.",
++      "Yes. You can upgrade or downgrade at any time. An upgrade takes effect immediately and is billed pro rata; a downgrade takes effect at the end of the current billing period.",
+   },
+   {
+     question: "Is there a minimum commitment?",
+@@ -23,7 +23,7 @@
+   {
+     question: "What happens after the 14-day trial?",
+     answer:
+-      "After your 14-day trial, choose the plan that fits your needs. Your data is retained so you can pick up where you left off.",
++      "Your subscription starts automatically on the plan you selected, using the payment card you provided, unless you cancel before the 14 days end. Your data is retained.",
+   },
+   {
+     question: "Which payment methods do you accept?",

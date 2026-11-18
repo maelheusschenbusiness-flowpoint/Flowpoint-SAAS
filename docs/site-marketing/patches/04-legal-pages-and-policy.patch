@@ -1,0 +1,282 @@
+diff -ruN a/client/src/App.tsx b/client/src/App.tsx
+--- a/client/src/App.tsx	2026-11-08 15:20:58.111013162 +0000
++++ b/client/src/App.tsx	2026-11-08 15:20:58.115337749 +0000
+@@ -46,8 +46,22 @@
+       <Route path="/carrieres" component={Careers} />
+       <Route path="/legal-notice" component={Legal} />
+       <Route path="/mentions-legales" component={Legal} />
+-      <Route path="/legal-information" component={LegalInfo} />
+-      <Route path="/informations-legales" component={LegalInfo} />
++      {/* LegalInfo takes props now: render it through a function child rather
++          than handing it the router's own props. */}
++      <Route path="/legal-information">{() => <LegalInfo />}</Route>
++      <Route path="/informations-legales">{() => <LegalInfo />}</Route>
++      <Route path="/privacy-policy">
++        {() => <LegalInfo only={["confidentialite"]} heading="Privacy policy" intro="How FlowPoint collects and uses personal data." />}
++      </Route>
++      <Route path="/cookie-policy">
++        {() => <LegalInfo only={["cookies"]} heading="Cookie policy" intro="Which cookies and similar technologies FlowPoint uses, and how to choose." />}
++      </Route>
++      <Route path="/terms-of-sale">
++        {() => <LegalInfo only={["cgv", "essai-gratuit", "remboursement"]} heading="Terms of sale" intro="Subscriptions, payments, free trial and refunds." />}
++      </Route>
++      <Route path="/terms-of-service">
++        {() => <LegalInfo only={["cgu"]} heading="Terms of service" intro="The rules for using FlowPoint." />}
++      </Route>
+       <Route path="/updates" component={Updates} />
+       <Route path="/mises-a-jour" component={Updates} />
+       <Route path="/resources" component={Resources} />
+diff -ruN a/client/src/pages/LegalInfo.tsx b/client/src/pages/LegalInfo.tsx
+--- a/client/src/pages/LegalInfo.tsx	2026-11-08 15:20:58.110903453 +0000
++++ b/client/src/pages/LegalInfo.tsx	2026-11-08 15:20:58.115185576 +0000
+@@ -2,7 +2,7 @@
+ import { Navigation } from "@/components/Navigation";
+ import { Footer } from "@/components/Footer";
+ import { motion } from "framer-motion";
+-import { useState, useEffect, useRef } from "react";
++import { createContext, useContext, useState, useEffect, useRef } from "react";
+ import {
+   Shield, FileText, ShoppingCart, Lock, Cookie, Gift, RefreshCw, Bot, Database, Mail,
+   ChevronUp, ChevronRight, Activity, Code, Zap, Scale, Settings, Sliders
+@@ -35,9 +35,36 @@
+   { id: "contact-juridique", label: "Legal contact", icon: Mail },
+ ];
+ 
++// The same sections are served as one long page (/legal-information) and as
++// separate pages (/privacy-policy, /cookie-policy, /terms-of-sale,
++// /terms-of-service). A page passes `only`; cards of other sections render
++// nothing, anchors (#confidentialite, #cookies, #cgv, #cgu) keep working.
++type LegalInfoProps = { only?: readonly string[]; heading?: string; intro?: string };
++const OnlySectionsContext = createContext<readonly string[] | null>(null);
++
++// Placeholder shown where the publisher must fill in a fact that is not in the
++// source code. Never replace it with a guess.
++const TO_COMPLETE = "À COMPLÉTER PAR L'ÉDITEUR";
++
++const COOKIE_TABLE: ReadonlyArray<{ name: string; purpose: string; duration: string; party: string; consent: string }> = [
++  { name: "cookie_consent (localStorage)", purpose: "Remembers your cookie choice", duration: "Until you clear site data", party: "flowpoint.pro", consent: "Not required (strictly necessary)" },
++  { name: "fp_analytics_consent (cookie, domain .flowpoint.pro)", purpose: "Carries your cookie choice to app.flowpoint.pro", duration: "12 months", party: "flowpoint.pro", consent: "Not required (strictly necessary)" },
++  { name: "flowpoint-language (localStorage)", purpose: "Remembers the display language you chose", duration: "Until you clear site data", party: "flowpoint.pro", consent: "Not required (user-requested preference)" },
++  { name: `Theme preference (${TO_COMPLETE}: storage key name)`, purpose: "Remembers light or dark display", duration: "Until you clear site data", party: "flowpoint.pro", consent: "Not required (user-requested preference)" },
++  { name: "flowpoint_funnel_visitor, flowpoint_funnel_source, flowpoint_funnel_attribution (localStorage); fp_visitor_id, fp_source (cookies, domain .flowpoint.pro)", purpose: "Random visitor identifier, traffic source and campaign (utm_source, utm_medium, utm_campaign) used to measure the sign-up funnel across flowpoint.pro and app.flowpoint.pro", duration: `Until you withdraw consent or clear site data (cookies: ${TO_COMPLETE})`, party: "flowpoint.pro / app.flowpoint.pro", consent: "Required" },
++  { name: "flowpoint_funnel_seller_ref (localStorage)", purpose: "Keeps a seller referral code received in the link you followed", duration: "Until you withdraw consent or clear site data", party: "flowpoint.pro", consent: "Required" },
++  { name: "flowpoint:marketing:fp_lid (sessionStorage)", purpose: "Keeps the identifier of an outreach e-mail link for the current visit", duration: "End of the browser session", party: "flowpoint.pro", consent: "Required" },
++  { name: "_ga, _ga_32HPNSRLEM", purpose: "Google Analytics 4 audience measurement", duration: "Up to 2 years (Google default; confirm in the GA4 property settings)", party: "Google (third party)", consent: "Required" },
++  { name: "Apollo website tracker (assets.apollo.io)", purpose: "Identifies the company of a visitor for B2B prospecting", duration: `${TO_COMPLETE} (set by Apollo)`, party: "Apollo.io (third party)", consent: "Required" },
++  { name: "googtrans and Google Translate cookies", purpose: "Translates the page in your browser into the language you chose", duration: "Session / set by Google", party: "Google (third party)", consent: "Required" },
++  { name: "Hosting platform analytics script (i.replit.com)", purpose: `Page-view statistics of the hosting platform (${TO_COMPLETE}: confirm whether it is enabled on this site)`, duration: `${TO_COMPLETE}`, party: "Replit (third party)", consent: "Required" },
++];
++
+ function SectionCard({ id, icon: Icon, title, children }: {
+   id: string; icon: any; title: string; children: React.ReactNode;
+ }) {
++  const only = useContext(OnlySectionsContext);
++  if (only && !only.includes(id)) return null;
+   return (
+     <div id={id} className="scroll-mt-24">
+       <div className="flex items-center gap-3 mb-6">
+@@ -65,9 +92,10 @@
+   );
+ }
+ 
+-export default function LegalInfo() {
+-  usePageTitle("Legal information | FlowPoint");
+-  const [activeSection, setActiveSection] = useState("mentions-legales");
++export default function LegalInfo({ only, heading, intro }: LegalInfoProps = {}) {
++  usePageTitle(heading ? `${heading} | FlowPoint` : "Legal information | FlowPoint");
++  const visibleSections = only ? sections.filter((s) => only.includes(s.id)) : sections;
++  const [activeSection, setActiveSection] = useState(visibleSections[0]?.id ?? "mentions-legales");
+   const [showScrollTop, setShowScrollTop] = useState(false);
+   const navScrollRef = useRef<HTMLDivElement>(null);
+   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+@@ -75,7 +103,7 @@
+   useEffect(() => {
+     const handleScroll = () => {
+       setShowScrollTop(window.scrollY > 400);
+-      const offsets = sections.map(s => {
++      const offsets = visibleSections.map(s => {
+         const el = document.getElementById(s.id);
+         return { id: s.id, top: el ? el.getBoundingClientRect().top : Infinity };
+       });
+@@ -103,6 +131,7 @@
+   };
+ 
+   return (
++    <OnlySectionsContext.Provider value={only ?? null}>
+     <div className="min-h-screen bg-white dark:bg-slate-900">
+       <Navigation language="en" />
+ 
+@@ -117,22 +146,23 @@
+               Transparency & compliance
+             </span>
+             <h1 className="text-4xl sm:text-5xl font-display font-bold text-slate-900 dark:text-slate-100 mb-4">
+-              Legal information
++              {heading ?? "Legal information"}
+             </h1>
+             <p className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+-              FlowPoint's legal information, terms of service and policies in one place.
++              {intro ?? "FlowPoint's legal information, terms of service and policies in one place."}
+             </p>
+           </motion.div>
+         </div>
+       </section>
+ 
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+-        {/* Sticky section navigation */}
++        {/* Sticky section navigation (single-section pages do not need it) */}
++        {visibleSections.length > 1 && (
+         <div className="sticky top-20 z-40 -mx-4 sm:-mx-6 lg:-mx-8 mb-12">
+           <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 shadow-sm">
+             <div ref={navScrollRef} className="overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+               <div className="flex gap-1 py-2 px-4 sm:px-6 lg:px-8 min-w-max">
+-                {sections.map((s) => {
++                {visibleSections.map((s) => {
+                   const Icon = s.icon;
+                   return (
+                     <button
+@@ -154,6 +184,7 @@
+             </div>
+           </div>
+         </div>
++        )}
+ 
+         {/* Sections */}
+         <div className="space-y-12">
+@@ -164,6 +195,7 @@
+               <p><span className="font-medium text-slate-800 dark:text-slate-200">Company name:</span> FlowPoint</p>
+               <p><span className="font-medium text-slate-800 dark:text-slate-200">Operator:</span> Heusschen Maël</p>
+               <p><span className="font-medium text-slate-800 dark:text-slate-200">Company number:</span> BE1038.273.845</p>
++              <p><span className="font-medium text-slate-800 dark:text-slate-200">Registered address:</span> {TO_COMPLETE}</p>
+               <p><span className="font-medium text-slate-800 dark:text-slate-200">Email :</span>{" "}
+                 <a href="mailto:support@flowpoint.pro" className="text-blue-600 hover:underline">support@flowpoint.pro</a>
+               </p>
+@@ -172,7 +204,7 @@
+               </p>
+             </SubSection>
+             <SubSection title="Infrastructure">
+-              <p>The FlowPoint application is hosted by Render. The database is hosted by MongoDB Atlas. These providers process data needed to operate the service under the terms and safeguards applicable to their services.</p>
++              <p>The marketing website (flowpoint.pro) is hosted by Replit and stores its own data in a PostgreSQL database. The FlowPoint application (app.flowpoint.pro) is hosted by Render; its database providers are: {TO_COMPLETE} (list each provider actually used in production). These providers process data needed to operate the service under the terms and safeguards applicable to their services.</p>
+             </SubSection>
+             <SubSection title="Intellectual property">
+               <p>All content on this website (including software, interfaces, databases, text, illustrations, logos, graphics and other materials) is the exclusive property of FlowPoint and is protected by Belgian and international copyright law. Reproduction in whole or in part is prohibited without prior written permission.</p>
+@@ -188,8 +220,12 @@
+               <ul className="mt-2 space-y-1 list-none">
+                 {[
+                   "Google Cloud for OAuth authentication and Google API access",
+-                  "MongoDB Atlas for database hosting",
++                  `Database hosting for the application: ${TO_COMPLETE}`,
++                  "Replit for hosting of the marketing website and its PostgreSQL database",
+                   "Render for application hosting",
++                  "Google Analytics 4 (Google) for audience measurement on flowpoint.pro, only after you accept cookies",
++                  "Apollo.io for B2B visitor identification on flowpoint.pro, only after you accept cookies",
++                  "Google Translate (Google) for in-browser page translation, only after you accept cookies",
+                   "Stripe for billing and payment processing only",
+                   "Resend for transactional emails",
+                   "OpenAI for providing artificial intelligence features and generating analyses, recommendations, and other AI-assisted content requested through FlowPoint",
+@@ -208,20 +244,43 @@
+ 
+           {/* 5. Cookies */}
+           <SectionCard id="cookies" icon={Cookie} title="Cookie policy">
+-            <SubSection title="Essential cookies">
+-              <p>These cookies are required for the website to work, including user sessions, theme preferences and cookie consent. They cannot be disabled because the service depends on them.</p>
++            <SubSection title="Essential storage">
++              <p>Your cookie choice, your language and your display theme are stored so the website works as you asked. They do not require consent.</p>
+             </SubSection>
+-            <SubSection title="Analytics cookies">
+-              <p>These cookies help us measure website traffic and improve the user experience. They are used in aggregated and anonymized form and require your prior consent.</p>
++            <SubSection title="Measurement and third-party services (consent required)">
++              <p>Audience measurement (Google Analytics 4), B2B visitor identification (Apollo), in-browser translation (Google Translate), sign-up funnel measurement and the hosting platform statistics only run after you click Accept. These services use online identifiers and your IP address: the data is pseudonymised, not anonymous. If you click Refuse, none of these scripts is loaded and no visitor identifier is created.</p>
+             </SubSection>
+-            <SubSection title="Functional cookies">
+-              <p>These cookies remember preferences such as language, region and display settings for future visits.</p>
++            <SubSection title="Links to the application">
++              <p>Campaign parameters already present in the address you arrived with (utm_*, referral code) may be copied into the sign-up link when you click it. This only rewrites the link: nothing is stored on your device without your consent.</p>
+             </SubSection>
+             <SubSection title="Managing consent">
+-              <p>You can manage cookie preferences at any time through the consent banner or by clearing cookies in your browser. Refusing non-essential cookies does not affect access to the service.</p>
++              <p>You can change your choice at any time with the “Cookie preferences” button at the bottom of every page, or by clearing site data in your browser. Refusing non-essential cookies does not affect access to the service.</p>
+             </SubSection>
+             <SubSection title="Cookie list">
+-              <p>A detailed list of cookies is available through the consent settings or on request from <a href="mailto:support@flowpoint.pro" className="text-blue-600 hover:underline">support@flowpoint.pro</a>.</p>
++              <div className="overflow-x-auto">
++                <table className="w-full text-left text-xs">
++                  <thead>
++                    <tr className="border-b border-slate-200 dark:border-slate-700">
++                      <th scope="col" className="py-2 pr-3 font-semibold">Name</th>
++                      <th scope="col" className="py-2 pr-3 font-semibold">Purpose</th>
++                      <th scope="col" className="py-2 pr-3 font-semibold">Duration</th>
++                      <th scope="col" className="py-2 pr-3 font-semibold">Set by</th>
++                      <th scope="col" className="py-2 font-semibold">Consent</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    {COOKIE_TABLE.map((row) => (
++                      <tr key={row.name} className="border-b border-slate-100 align-top dark:border-slate-800">
++                        <td className="py-2 pr-3 break-words">{row.name}</td>
++                        <td className="py-2 pr-3">{row.purpose}</td>
++                        <td className="py-2 pr-3">{row.duration}</td>
++                        <td className="py-2 pr-3">{row.party}</td>
++                        <td className="py-2">{row.consent}</td>
++                      </tr>
++                    ))}
++                  </tbody>
++                </table>
++              </div>
+             </SubSection>
+           </SectionCard>
+ 
+@@ -232,5 +291,6 @@
+ 
+       <Footer language="en" />
+     </div>
++    </OnlySectionsContext.Provider>
+   );
+ }
+diff -ruN a/server/routes/public-paths.ts b/server/routes/public-paths.ts
+--- a/server/routes/public-paths.ts	2026-11-08 15:20:58.110249349 +0000
++++ b/server/routes/public-paths.ts	2026-11-08 15:20:58.112675015 +0000
+@@ -13,6 +13,10 @@
+   "/mentions-legales",
+   "/legal-information",
+   "/informations-legales",
++  "/privacy-policy",
++  "/cookie-policy",
++  "/terms-of-sale",
++  "/terms-of-service",
+   "/updates",
+   "/mises-a-jour",
+   "/resources",
+diff -ruN a/server/seo-metadata.ts b/server/seo-metadata.ts
+--- a/server/seo-metadata.ts	2026-11-08 15:20:58.110462906 +0000
++++ b/server/seo-metadata.ts	2026-11-08 15:20:58.114119938 +0000
+@@ -135,6 +135,30 @@
+       "Flowpoint terms of use, privacy policy, and legal information in one place.",
+     canonical: `${BASE_URL}/informations-legales`,
+   },
++  "/privacy-policy": {
++    title: "Privacy Policy | Flowpoint",
++    description:
++      "How Flowpoint collects, uses and protects personal data, the service providers involved and your GDPR rights.",
++    canonical: `${BASE_URL}/privacy-policy`,
++  },
++  "/cookie-policy": {
++    title: "Cookie Policy | Flowpoint",
++    description:
++      "The cookies and similar technologies used on flowpoint.pro, their purpose and duration, and how to accept or refuse them.",
++    canonical: `${BASE_URL}/cookie-policy`,
++  },
++  "/terms-of-sale": {
++    title: "Terms of Sale | Flowpoint",
++    description:
++      "Flowpoint subscriptions, payment terms, free trial and refund policy.",
++    canonical: `${BASE_URL}/terms-of-sale`,
++  },
++  "/terms-of-service": {
++    title: "Terms of Service | Flowpoint",
++    description:
++      "The terms that apply when you use the Flowpoint platform.",
++    canonical: `${BASE_URL}/terms-of-service`,
++  },
+   "/mises-a-jour": {
+     title: "Updates | Flowpoint",
+     description:
