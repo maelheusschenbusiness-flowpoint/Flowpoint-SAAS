@@ -9,7 +9,7 @@ function sha256hex(s: string): string {
 }
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { enregistrerEtape, normaliserAttributionFunnel } from "../services/funnel-events.js";
+import { cleIdempotenceInscription, enregistrerEtape, normaliserAttributionFunnel } from "../services/funnel-events.js";
 import { withCarriedParams } from "../lib/carry-params.js";
 
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
@@ -1172,7 +1172,7 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
       etape: "signup_form_completed",
       visiteurId: funnelAttribution.visiteurId,
       source: funnelAttribution.source,
-      cleIdempotence: `signup_form_completed:${preToken}`,
+      cleIdempotence: cleIdempotenceInscription(preToken),
     });
   }
 

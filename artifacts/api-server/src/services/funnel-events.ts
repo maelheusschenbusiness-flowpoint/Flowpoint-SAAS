@@ -29,6 +29,7 @@
  * autre jour sans que son retour soit efface.
  */
 
+import { createHash } from "node:crypto";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
@@ -191,6 +192,17 @@ export async function enregistrerEtape(ev: EvenementTunnel): Promise<boolean> {
     logger.warn({ err, etape: ev.etape }, "[Tunnel] enregistrement impossible (non fatal)");
     return false;
   }
+}
+
+/**
+ * Cle d'idempotence de `signup_form_completed`. Le jeton pre-register autorise
+ * la creation d'une session de paiement : il ne doit JAMAIS etre ecrit en clair
+ * dans la table de mesure. On ne garde qu'un condense SHA-256 tronque (128 bits),
+ * non reversible, stable : le meme jeton donne toujours la meme cle (dedoublonnage conserve).
+ */
+export function cleIdempotenceInscription(jetonPreRegister: string): string {
+  const condense = createHash("sha256").update(`signup_form_completed\0${jetonPreRegister}`).digest("hex").slice(0, 32);
+  return `signup_form_completed:h:${condense}`;
 }
 
 /** Borne la longueur : aucune valeur libre ne doit pouvoir gonfler la table. */
