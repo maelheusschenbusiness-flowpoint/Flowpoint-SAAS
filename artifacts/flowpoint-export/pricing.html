@@ -306,6 +306,15 @@
     }
   </style>
 <script src="/fp-locale.js"></script>
+<script>
+  /* Texte d'origine (francais) d'un element, meme une fois la page traduite : la logique de la page
+     compare des libelles francais. #476 appelait `_fpSource` sans jamais la definir (ReferenceError). */
+  function _fpSource(el) {
+    if (!el) return '';
+    if (typeof window.fpPublicSourceText === 'function') return window.fpPublicSourceText(el);
+    return el.textContent || '';
+  }
+</script>
 </head>
 <body>
 
