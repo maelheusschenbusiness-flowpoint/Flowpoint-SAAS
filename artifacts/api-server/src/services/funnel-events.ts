@@ -193,6 +193,16 @@ export async function enregistrerEtape(ev: EvenementTunnel): Promise<boolean> {
   }
 }
 
+/** Plans qu'une etape publique peut porter. Toute autre valeur est ecartee. */
+const PLANS_TUNNEL = new Set(["standard", "pro", "ultra"]);
+
+/** Liste fermee : un plan libre (jusqu'a 120 car.) ne doit pas polluer `funnel_events.plan`. */
+export function normaliserPlanFunnel(brut: unknown): string | null {
+  if (typeof brut !== "string") return null;
+  const p = brut.trim().toLowerCase();
+  return PLANS_TUNNEL.has(p) ? p : null;
+}
+
 /** Borne la longueur : aucune valeur libre ne doit pouvoir gonfler la table. */
 function tronquer(v: string | null | undefined): string | null {
   if (typeof v !== "string") return null;
