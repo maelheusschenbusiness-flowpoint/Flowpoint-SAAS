@@ -2294,7 +2294,11 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         const _etape  = _statut === "trialing" ? "trial_activated"
                       : _statut === "active"   ? "subscription_activated"
                       : null;
-        if (_etape) {
+        // L'abonnement des add-ons est un SECOND abonnement de la meme organisation
+        // (signup-subscription.ts, source `checkout_payment_addons`) : il ne s'agit
+        // ni d'un essai ni d'un abonnement de plan. Le compter doublerait l'organisation.
+        const _estAbonnementAddons = _meta["source"] === "checkout_payment_addons";
+        if (_etape && !_estAbonnementAddons) {
           void enregistrerEtape({
             etape: _etape,
             visiteurId: _attribution?.visiteurId ?? null,

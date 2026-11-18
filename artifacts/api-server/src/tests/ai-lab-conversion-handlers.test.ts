@@ -71,6 +71,12 @@ let metadataWrites: Record<string, unknown>[];
 // reponse, donc la seule qu'un arret du processus ne peut pas escamoter.
 let statusWrites: Record<string, unknown>[];
 
+const etapesTunnel = vi.hoisted(() => [] as Record<string, unknown>[]);
+vi.mock("../services/funnel-events.js", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../services/funnel-events.js")>();
+  return { ...mod, enregistrerEtape: vi.fn(async (e: Record<string, unknown>) => { etapesTunnel.push(e); return true; }) };
+});
+
 const emitted: Record<string, unknown>[] = [];
 let emitOutcome: string;
 
@@ -190,7 +196,7 @@ const checkout = () => ({
 });
 
 beforeEach(() => {
-  emitted.length = 0; metadataWrites = []; statusWrites = [];
+  emitted.length = 0; etapesTunnel.length = 0; metadataWrites = []; statusWrites = [];
   orgFpLid = FP_LID; billingClaim = true; emitOutcome = "sent";
   vi.clearAllMocks();
 });
@@ -589,5 +595,36 @@ describe("Stripe : aucun appel réseau réel", () => {
   it("les appels à l'API Stripe passent par le client simulé (401 déterministe), jamais par le réseau", () => {
     expect(stripeSimule.requetes.length).toBeGreaterThan(0);
     expect(stripeSimule.requetes.every((r) => r.chemin.startsWith("/v1/"))).toBe(true);
+  });
+});
+
+describe("D3 : les jalons du tunnel ne comptent qu'une activation de plan par organisation", () => {
+  const ADDON_META = { orgId: ORG, plan: "standard", source: "checkout_payment_addons" };
+
+  it("un vrai essai de plan emet trial_activated, une fois", async () => {
+    await deliver(subscription());
+    expect(etapesTunnel.map((e) => e["etape"])).toEqual(["trial_activated"]);
+    expect(etapesTunnel[0]).toMatchObject({ orgId: ORG, cleIdempotence: `trial_activated:${SUB}` });
+  });
+
+  it("un vrai abonnement payant de plan emet subscription_activated", async () => {
+    await deliver(subscription({ status: "active" }));
+    expect(etapesTunnel.map((e) => e["etape"])).toEqual(["subscription_activated"]);
+  });
+
+  it("l'abonnement des add-ons en essai n'emet pas trial_activated", async () => {
+    await deliver(subscription({ id: "sub_ADDONS", status: "trialing", metadata: ADDON_META }));
+    expect(etapesTunnel).toHaveLength(0);
+  });
+
+  it("l'abonnement des add-ons actif n'emet pas subscription_activated", async () => {
+    await deliver(subscription({ id: "sub_ADDONS", status: "active", metadata: ADDON_META }));
+    expect(etapesTunnel).toHaveLength(0);
+  });
+
+  it("plan + add-ons d'une meme organisation : un seul jalon", async () => {
+    await deliver(subscription());
+    await deliver(subscription({ id: "sub_ADDONS", metadata: ADDON_META }));
+    expect(etapesTunnel.filter((e) => e["etape"] === "trial_activated")).toHaveLength(1);
   });
 });
