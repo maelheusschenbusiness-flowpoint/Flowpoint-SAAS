@@ -101,9 +101,13 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
   const url = siteUrl ?? "default";
   const client = await pool.connect();
   try {
+    // Same read as before — same table, same parameters, same ordering, same limit —
+    // with one added condition: forecast_date is floored at the current UTC day, so the
+    // database and TypeScript below share a single reference point.
     const res = await client.query(
       `SELECT * FROM seo_forecasts
        WHERE org_id=$1 AND site_url=$2 AND source='gsc+ga4'
+       AND forecast_date >= (NOW() AT TIME ZONE 'UTC')::date
        ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
       [orgId, url]
     );
@@ -133,16 +137,30 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
           reason: "Les prévisions enregistrées contiennent des métriques invalides.",
         };
       }
-      const realistic = forecasts.filter(f => f.scenario === "realistic");
+      // Defence in depth: the read already floors forecast_date at the current UTC day,
+      // but a row left over from an earlier generation must never be counted as one of
+      // the first forecast days.
+      const today = new Date().toISOString().slice(0, 10);
+      const upcoming = forecasts.filter(point => point.date >= today);
+      if (upcoming.length === 0) {
+        return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
+      }
+      const realistic = upcoming.filter(f => f.scenario === "realistic");
       const in30 = realistic.slice(0, 30);
       const in90 = realistic.slice(0, 90);
       const realTraffic30  = in30.reduce((s, f) => s + f.predictedTraffic, 0);
       const realTraffic90  = in90.reduce((s, f) => s + f.predictedTraffic, 0);
-      const prev30 = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
-      const growthPct = prev30 > 0 ? Math.round(((realTraffic30 - prev30) / prev30) * 100) : 0;
+      // Days 31-60 lie further in the future than days 1-30: growth is measured forwards,
+      // (days 31-60 − days 1-30) / days 1-30, from the first month towards the second and
+      // never the other way round. Fewer than sixty upcoming realistic days, or a first
+      // month without traffic, means no measurable growth — never NaN, never Infinity.
+      const secondMonthTraffic = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
+      const growthPct = realistic.length >= 60 && realTraffic30 > 0
+        ? Math.round(((secondMonthTraffic - realTraffic30) / realTraffic30) * 100)
+        : 0;
       return {
         siteUrl: url,
-        forecasts,
+        forecasts: upcoming,
         available: realistic.length > 0,
         status: realistic.length > 0 ? "available" : "insufficient_data",
         minimumHistoryDays: MINIMUM_HISTORY_DAYS,
