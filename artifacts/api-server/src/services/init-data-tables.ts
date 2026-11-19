@@ -6,6 +6,7 @@ import { AI_USAGE_IDEMPOTENCY_STATEMENTS, AI_USAGE_IDEMPOTENCY_INDEX,
          aiUsageIdempotencyIndexExists } from "./ai-usage-idempotency-schema.js";
 import { logger } from "../lib/logger.js";
 import { ensureGbpPerformanceSettingsSchema } from "./init-gbp-performance-settings.js";
+import { ensureReplacementAddonTables } from "./init-replacement-addon-tables.js";
 
 // Structural type matching pg.PoolClient — avoids importing "pg" directly
 // (pg lives in @workspace/db's private node_modules and is not hoisted).
@@ -3580,6 +3581,9 @@ export async function initDataTables(): Promise<void> {
     // already recorded v3. Reconcile them here on full initialization; the
     // startup fast path runs the same helper directly from index.ts.
     await ensureGbpPerformanceSettingsSchema(client);
+    // Replacement add-on tables were added to the versioned block after v3 was
+    // already recorded on some databases (beta): reconcile them on every full init.
+    await ensureReplacementAddonTables(client);
 
     // ── Self-heal: competitor_map_results ──────────────────────────────────────
     // This table was added to the missing-production-tables-v3 block AFTER some
