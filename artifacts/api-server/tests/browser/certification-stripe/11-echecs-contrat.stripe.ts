@@ -15,10 +15,10 @@ test("carte refusee (4000 0000 0000 0002) : message d'erreur, aucune finalisatio
   expect(espion.souscriptions()).toHaveLength(0);
 });
 
-test("3-D Secure reussi (4000 0025 0000 3155) : une souscription", async ({ page, context }) => {
+test("3-D Secure reussi (4000 0027 6000 3184) : une souscription", async ({ page, context }) => {
   await consentement(context);
   const espion = await jusquAuPaiement(page, "standard", emailSynthetique("3ds-ok"), attributionDeTest());
-  await saisirCarte(page, CARTES.authentification3ds);
+  await saisirCarte(page, CARTES.authentification3dsToujours);
   await page.locator("#fp-pay-btn").click();
   await sauterSiHCaptcha(page);
   await repondre3ds(page, "reussir");
@@ -29,7 +29,7 @@ test("3-D Secure reussi (4000 0025 0000 3155) : une souscription", async ({ page
 test("3-D Secure echoue : erreur, aucune finalisation, aucune souscription", async ({ page, context }) => {
   await consentement(context);
   const espion = await jusquAuPaiement(page, "standard", emailSynthetique("3ds-ko"), attributionDeTest());
-  await saisirCarte(page, CARTES.authentification3ds);
+  await saisirCarte(page, CARTES.authentification3dsToujours);
   await page.locator("#fp-pay-btn").click();
   await sauterSiHCaptcha(page);
   await repondre3ds(page, "echouer");
