@@ -122,6 +122,14 @@ export async function disconnectCrmIntegration(adapter: CrmProviderAdapter, orgI
   );
 }
 
+/** Acces revoque chez le fournisseur : jetons effaces, reconnexion exigee. */
+async function markReauthRequired(orgId: string, provider: string): Promise<void> {
+  await pool.query(
+    `UPDATE crm_integrations SET status='reauth_required', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
+    [orgId, provider],
+  );
+}
+
 interface IntegrationRow {
   id: string; access_token: string | null; refresh_token: string | null; token_expires_at: Date | null; status: string;
 }
@@ -133,6 +141,10 @@ export async function getValidCrmToken(adapter: CrmProviderAdapter, orgId: strin
     [orgId, adapter.id],
   );
   const row = r.rows[0] as IntegrationRow | undefined;
+  // Etat distinct : « reconnexion requise » (acces revoque) n'est PAS « non connecte ».
+  if (row?.status === "reauth_required") {
+    throw new CrmError("CRM_REAUTH_REQUIRED", "CRM authorization expired: reconnect the CRM.", 409);
+  }
   if (!row || row.status !== "connected" || !row.access_token || !row.refresh_token) {
     throw new CrmError("CRM_NOT_CONNECTED", "This CRM is not connected.", 409);
   }
@@ -152,10 +164,24 @@ export async function getValidCrmToken(adapter: CrmProviderAdapter, orgId: strin
     if (error instanceof CrmProviderError && (error.status === 400 || error.status === 401 || error.status === 403)) {
       // 429 / 5xx : panne transitoire, les jetons sont conserves.
       // Refresh refuse (revocation) : jetons effaces, reconnexion exigee.
-      await pool.query(
-        `UPDATE crm_integrations SET status='reauth_required', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
-        [orgId, adapter.id],
-      );
+      await markReauthRequired(orgId, adapter.id);
+      throw new CrmError("CRM_REAUTH_REQUIRED", "CRM authorization expired: reconnect the CRM.", 409);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Test de connexion reel (1 contact lu). Un jeton rejete par le fournisseur n'est PAS une simple
+ * erreur 502 : l'integration passe en `reauth_required` (meme traitement que la synchronisation).
+ */
+export async function testCrmConnection(adapter: CrmProviderAdapter, orgId: string): Promise<void> {
+  const { accessToken } = await getValidCrmToken(adapter, orgId);
+  try {
+    await adapter.fetchContacts(accessToken, null, 1);
+  } catch (error) {
+    if (error instanceof CrmProviderError && error.code === "CRM_UNAUTHORIZED") {
+      await markReauthRequired(orgId, adapter.id);
       throw new CrmError("CRM_REAUTH_REQUIRED", "CRM authorization expired: reconnect the CRM.", 409);
     }
     throw error;
@@ -221,10 +247,7 @@ export async function syncCrmContacts(adapter: CrmProviderAdapter, orgId: string
     errorCode = error instanceof CrmProviderError ? error.code : "CRM_SYNC_FAILED";
     if (errorCode === "CRM_UNAUTHORIZED") {
       // Jeton rejete avant son expiration (acces revoque chez le fournisseur) : reconnexion exigee.
-      await pool.query(
-        `UPDATE crm_integrations SET status='reauth_required', access_token=NULL, refresh_token=NULL, updated_at=NOW() WHERE org_id=$1 AND provider=$2`,
-        [orgId, adapter.id],
-      );
+      await markReauthRequired(orgId, adapter.id);
     }
     logger.warn({ event: "crm_sync_failed", provider: adapter.id, code: errorCode }, "[crm] sync failed");
   }
@@ -271,10 +294,10 @@ export async function processCrmWebhook(
         if (contact) await upsertContact(orgId, adapter.id, contact);
       } catch (error) {
         // Evenement non traite : on le "libere" pour que la relivraison du fournisseur soit rejouee.
+        logger.warn({ event: "crm_webhook_fetch_failed", provider: adapter.id, code: (error as { code?: string }).code }, "[crm] webhook contact refresh failed");
         await pool.query(`DELETE FROM crm_webhook_events WHERE provider=$1 AND event_id=$2 AND org_id=$3`, [adapter.id, event.eventId, orgId]);
         retry++;
         continue;
-        logger.warn({ event: "crm_webhook_fetch_failed", provider: adapter.id, code: (error as { code?: string }).code }, "[crm] webhook contact refresh failed");
       }
     }
     processed++;

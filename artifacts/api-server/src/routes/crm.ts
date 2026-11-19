@@ -11,7 +11,7 @@ import { timingSafeEqual } from "node:crypto";
 import { logger } from "../lib/logger.js";
 import { getCrmAdapter, implementedCrmProviders } from "../services/crm/registry.js";
 import {
-  CrmError, completeCrmOAuth, disconnectCrmIntegration, getValidCrmToken, consumeCrmState, crmRedirectUri, processCrmWebhook, startCrmOAuth, syncCrmContacts,
+  CrmError, completeCrmOAuth, disconnectCrmIntegration, testCrmConnection, consumeCrmState, crmRedirectUri, processCrmWebhook, startCrmOAuth, syncCrmContacts,
 } from "../services/crm/crm-core.js";
 
 const router = Router();
@@ -82,10 +82,22 @@ crmPublicRouter.post("/crm/webhook/:provider", async (req, res) => {
   }
 });
 
+/** Echec reseau vers le fournisseur (delai depasse, connexion refusee, DNS) : indisponibilite, pas un bug serveur. */
+function isProviderNetworkFailure(err: unknown): boolean {
+  const e = err as { name?: string; message?: string; cause?: { code?: string } } | null;
+  if (e?.name === "TimeoutError" || e?.name === "AbortError") return true;
+  if (e instanceof TypeError && /fetch failed/i.test(e.message ?? "")) return true;
+  return typeof e?.cause?.code === "string" && /^(ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH)/.test(e.cause.code);
+}
+
 function crmFailure(res: import("express").Response, err: unknown): void {
   if (err instanceof CrmError) { res.status(err.httpStatus).json({ ok: false, code: err.code, error: err.message }); return; }
   const code = (err as { code?: string } | null)?.code;
+  if (code === "CRM_PROVIDER_NOT_CONFIGURED") { res.status(503).json({ ok: false, code, error: "This CRM provider is not configured." }); return; }
   if (typeof code === "string" && code.startsWith("CRM_")) { res.status(502).json({ ok: false, code, error: "The CRM provider rejected the request." }); return; }
+  if (isProviderNetworkFailure(err)) {
+    res.status(503).json({ ok: false, code: "CRM_PROVIDER_UNREACHABLE", error: "The CRM provider is temporarily unreachable." }); return;
+  }
   res.status(500).json({ ok: false, code: "CRM_INTERNAL_ERROR", error: safeErrMsg(err) });
 }
 
@@ -120,6 +132,7 @@ router.get("/crm/providers", (_req, res) => {
       id: p.id, name: p.name, color: p.color, icon: p.icon, scopes: adapter?.scopes ?? p.scopes,
       available: implemented.includes(p.id) && Boolean(adapter?.isConfigured()),
       implemented: implemented.includes(p.id),
+      configured: Boolean(adapter?.isConfigured()),
     };
   }) });
 });
@@ -139,7 +152,7 @@ router.get("/crm/status", async (req, res) => {
 
 router.post("/crm/connect/:provider", canAdmin, async (req, res) => {
   const provider = req.params.provider as CrmProvider;
-  if (!CRM_PROVIDERS.find(p => p.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
+  if (!CRM_PROVIDERS.find(p => p.id === provider)) { res.status(400).json({ ok: false, code: "CRM_PROVIDER_INVALID", error: "Provider invalide" }); return; }
   const adapter = getCrmAdapter(provider);
   if (!adapter) {
     res.status(501).json({
@@ -160,18 +173,24 @@ router.post("/crm/connect/:provider", canAdmin, async (req, res) => {
 });
 
 router.post("/crm/disconnect/:provider", canAdmin, async (req, res) => {
-  const adapter = getCrmAdapter(String(req.params.provider ?? ""));
+  const provider = String(req.params.provider ?? "");
+  if (!CRM_PROVIDERS.some((item) => item.id === provider)) {
+    res.status(400).json({ ok: false, code: "CRM_PROVIDER_INVALID", error: "Provider invalide" }); return;
+  }
+  const adapter = getCrmAdapter(provider);
   try {
     if (adapter) await disconnectCrmIntegration(adapter, org(req));
-    else await disconnectCrm(org(req), req.params.provider as CrmProvider);
+    else await disconnectCrm(org(req), provider as CrmProvider);
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch {
+    res.status(503).json({ ok: false, code: "CRM_DISCONNECT_UNAVAILABLE", error: "Unable to disconnect the CRM right now. Please retry." });
+  }
 });
 
 router.post("/crm/sync", async (req, res) => {
   const { provider, entityType = "contacts" } = req.body as { provider?: string; entityType?: string };
-  if (!provider) { res.status(400).json({ error: "provider requis" }); return; }
-  if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
+  if (!provider) { res.status(400).json({ ok: false, code: "CRM_PROVIDER_REQUIRED", error: "provider requis" }); return; }
+  if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ ok: false, code: "CRM_PROVIDER_INVALID", error: "Provider invalide" }); return; }
   const adapter = getCrmAdapter(provider);
   if (!adapter) {
     res.status(501).json({ ok: false, code: "CRM_SYNC_UNAVAILABLE", error: "Synchronization for this CRM is not implemented yet." });
@@ -195,8 +214,8 @@ router.get("/crm/logs", async (req, res) => {
 
 router.post("/crm/test", async (req, res) => {
   const { provider } = req.body as { provider?: string };
-  if (!provider) { res.status(400).json({ error: "provider requis" }); return; }
-  if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ error: "Provider invalide" }); return; }
+  if (!provider) { res.status(400).json({ ok: false, code: "CRM_PROVIDER_REQUIRED", error: "provider requis" }); return; }
+  if (!CRM_PROVIDERS.some((item) => item.id === provider)) { res.status(400).json({ ok: false, code: "CRM_PROVIDER_INVALID", error: "Provider invalide" }); return; }
   const adapter = getCrmAdapter(provider);
   if (!adapter) {
     res.status(501).json({
@@ -206,47 +225,74 @@ router.post("/crm/test", async (req, res) => {
     return;
   }
   try {
-    const { accessToken } = await getValidCrmToken(adapter, org(req));
-    await adapter.fetchContacts(accessToken, null, 1);
+    await testCrmConnection(adapter, org(req));
     res.json({ ok: true, provider });
   } catch (err) { crmFailure(res, err); }
 });
 
+const MAPPING_ENTITY_TYPES = ["contacts"] as const;
+const MAPPING_FIELD_RE = /^[A-Za-z0-9_.\-]{1,100}$/;
+const CRM_ID_RE = /^[A-Za-z0-9_.\-]{1,200}$/;
+
 router.get("/crm/field-mappings/:crmId", async (req, res) => {
+  const crmId = String(req.params.crmId ?? "");
+  if (!CRM_ID_RE.test(crmId)) { res.status(400).json({ ok: false, code: "CRM_MAPPING_INVALID", error: "Invalid integration id" }); return; }
   try {
-    const mappings = await getFieldMappings(org(req), req.params.crmId);
-    res.json({ mappings, count: mappings.length });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+    const mappings = await getFieldMappings(org(req), crmId);
+    // Les mappings sont enregistres mais la synchronisation actuelle ne les applique pas encore.
+    res.json({ mappings, count: mappings.length, applied: false });
+  } catch {
+    res.status(503).json({ ok: false, code: "CRM_MAPPINGS_UNAVAILABLE", error: "Unable to load field mappings." });
+  }
 });
 
 router.post("/crm/field-mappings/:crmId", async (req, res) => {
-  const { entityType, flowpointField, crmField } = req.body as {
-    entityType?: string; flowpointField?: string; crmField?: string;
+  const crmId = String(req.params.crmId ?? "");
+  const { entityType, flowpointField, crmField } = (req.body ?? {}) as {
+    entityType?: unknown; flowpointField?: unknown; crmField?: unknown;
   };
-  if (!entityType || !flowpointField || !crmField) {
-    res.status(400).json({ error: "entityType, flowpointField, crmField requis" }); return;
+  if (
+    !CRM_ID_RE.test(crmId)
+    || typeof entityType !== "string" || !(MAPPING_ENTITY_TYPES as readonly string[]).includes(entityType)
+    || typeof flowpointField !== "string" || !MAPPING_FIELD_RE.test(flowpointField)
+    || typeof crmField !== "string" || !MAPPING_FIELD_RE.test(crmField)
+  ) {
+    res.status(400).json({ ok: false, code: "CRM_MAPPING_INVALID", error: "entityType (contacts), flowpointField and crmField are required and must be simple field names." });
+    return;
   }
   try {
-    await upsertFieldMapping(org(req), req.params.crmId, entityType, flowpointField, crmField);
-    res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+    const saved = await upsertFieldMapping(org(req), crmId, entityType, flowpointField, crmField);
+    // Integration absente OU appartenant a une autre organisation : rien n'est ecrit, et on ne le cache pas.
+    if (!saved) { res.status(404).json({ ok: false, code: "CRM_INTEGRATION_NOT_FOUND", error: "CRM integration not found." }); return; }
+    // Honnetete : le mapping est enregistre mais pas encore applique par la synchronisation.
+    res.json({ ok: true, applied: false });
+  } catch {
+    res.status(503).json({ ok: false, code: "CRM_MAPPINGS_UNAVAILABLE", error: "Unable to save the field mapping." });
+  }
 });
 
 router.get("/crm/leads", async (req, res) => {
   try {
     const intg = await db(req)(
-      `SELECT id FROM crm_integrations WHERE org_id=$1 AND status='connected' LIMIT 1`,
-      [org(req)]
+      `SELECT provider FROM crm_integrations WHERE org_id=$1 AND status='connected' AND provider = ANY($2::text[])`,
+      [org(req), implementedCrmProviders()]
     );
-    if (!intg.rows[0]) {
-      res.json({ leads: [], total: 0, message: "No CRM connected" }); return;
+    const providers = intg.rows.map((r) => String(r["provider"]));
+    if (providers.length === 0) {
+      res.json({ leads: [], total: 0, code: "CRM_NOT_CONNECTED", message: "No CRM connected" }); return;
     }
+    // Uniquement les contacts des CRM actuellement connectes (pas ceux d'un CRM deconnecte ou a reconnecter).
     const rows = await db(req)(
       `SELECT id, name, email, phone, status, source, created_at
-       FROM crm_contacts WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
-      [org(req)]
+       FROM crm_contacts WHERE org_id=$1 AND provider = ANY($2::text[]) ORDER BY created_at DESC LIMIT 100`,
+      [org(req), providers]
     );
-    res.json({ leads: rows.rows, total: rows.rows.length });
+    const count = await db(req)(
+      `SELECT COUNT(*)::int AS n FROM crm_contacts WHERE org_id=$1 AND provider = ANY($2::text[])`,
+      [org(req), providers]
+    );
+    const total = Number((count.rows[0] as { n?: number } | undefined)?.n ?? rows.rows.length);
+    res.json({ leads: rows.rows, total, truncated: total > rows.rows.length });
   } catch {
     res.status(503).json({ error: "Impossible de charger les leads CRM.", code: "CRM_LEADS_UNAVAILABLE" });
   }

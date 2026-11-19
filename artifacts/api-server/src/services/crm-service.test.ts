@@ -54,6 +54,7 @@ describe("CRM service readiness boundaries", () => {
       name: "HubSpot",
       status: "connected",
       created_at: "2026-10-31T10:00:00.000Z",
+      implemented: true,
     });
     expect(queryMock.mock.calls[0]?.[0]).not.toContain("SELECT *");
     expect(releaseMock).toHaveBeenCalledOnce();
