@@ -10,7 +10,7 @@ function sha256hex(s: string): string {
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { enregistrerEtape, lireAttributionFunnel, metadataAttributionFunnel } from "../services/funnel-events.js";
-import { getPlanForPriceId, getPlanPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { getPlanForPriceId, getPlanPriceId, getAddonForPriceId, getAddonPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { createSubscriptionForAttempt } from "../services/checkout-subscription-create.js";
 import { mailer } from "../services/mailer.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
@@ -498,7 +498,9 @@ async function persistAddonsFromSubscription(
         // Never deactivate plan-included addons via subscription reconciliation
         if (planIncluded.has(key)) continue;
         // Only deactivate addons that have a Stripe price ID (paid add-ons)
-        if (!APIDS[key]) continue;
+        // En mode TEST, ADDON_PRICE_IDS (prix LIVE) peut etre vide : le prix actif
+        // (TEST ou LIVE selon la cle) fait foi, sinon aucun droit n'est retire.
+        if (!APIDS[key] && !getAddonPriceId(key)) continue;
         // If not found in ANY live subscription → deactivate
         if (!aggregateAddonQuantities.has(key)) {
           await deactivateAddon(key, orgId).catch(err =>
@@ -2397,7 +2399,14 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           "[Webhook] subscription event ignore (perime) — aucun ecrasement de plan/statut");
         break;
       }
-      await persistSubscriptionMeta(updatePayload);
+      // L'abonnement dedie d'un add-on ne doit JAMAIS remplacer l'abonnement
+      // principal de l'organisation (id, statut, fin de periode) : sinon la
+      // desactivation retire l'element de l'add-on en le prenant pour celui du plan.
+      if (isAddonMetadata(obj["metadata"])) {
+        logger.info({ orgId, subscriptionId }, "[Webhook] abonnement d'add-on : etat de l'abonnement principal inchange");
+      } else {
+        await persistSubscriptionMeta(updatePayload);
+      }
 
       // ── Verify DB plan after persist ─────────────────────────────────────
       if (newPlan) {

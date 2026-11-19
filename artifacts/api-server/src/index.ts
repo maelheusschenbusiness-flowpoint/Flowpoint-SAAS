@@ -20,6 +20,7 @@ import { initPhase1Users } from "./services/init-phase1-users.js";
 import { reportSchemaGateStatus } from "./services/schema-gate-status.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
 import { ensureGbpPerformanceSettingsSchema } from "./services/init-gbp-performance-settings.js";
+import { ensureReplacementAddonTables } from "./services/init-replacement-addon-tables.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { startGBPPostScheduler } from "./services/gbp-posting-service.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
@@ -209,6 +210,16 @@ async function main() {
       const client = await pool.connect();
       try {
         await ensureGbpPerformanceSettingsSchema(client);
+      } finally {
+        client.release();
+      }
+    });
+    // Same stale-marker repair for the replacement add-on tables (created only
+    // inside the one-time missing-production-tables-v3 block otherwise).
+    await runCriticalStartupStep("Replacement add-on tables schema", async () => {
+      const client = await pool.connect();
+      try {
+        await ensureReplacementAddonTables(client);
       } finally {
         client.release();
       }
