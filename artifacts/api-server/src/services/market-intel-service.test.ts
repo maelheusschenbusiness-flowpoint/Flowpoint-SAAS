@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveCompetitorMovements, deriveMarketOpportunities, deriveMarketTrends } from "./market-intel-service.js";
+import { deriveCompetitorMovements, deriveMarketOpportunities, deriveMarketTrends, localizeReportTitle, marketLang } from "./market-intel-service.js";
 
 describe("market intelligence uses measured observations only", () => {
   it("derives GSC trend rows and leaves growth unknown without a comparison period", () => {
@@ -58,5 +58,25 @@ describe("market intelligence uses measured observations only", () => {
       }),
       expect.objectContaining({ competitor: "other.example", type: "ranking_loss", previous_position: 4, current_position: 7 }),
     ]));
+  });
+});
+
+describe("langue des textes calculés", () => {
+  it("n'affiche du français que si le français est demandé", () => {
+    const trends = deriveMarketTrends([{ keyword: "growing query", recent_clicks: 30, previous_clicks: 10, recent_impressions: 400 }]);
+    const en = deriveMarketOpportunities(trends, "en")[0]!;
+    expect(en.title).toBe("Rising query: growing query");
+    expect(`${en.description}${en.estimated_impact}${en.timeframe}`).not.toMatch(/clics|contre|mesurer|jours/);
+    expect(deriveMarketOpportunities(trends, "es")[0]!.title).toBe("Consulta en alza: growing query");
+    expect(deriveMarketOpportunities(trends)[0]!.title).toBe("Requête en hausse : growing query");
+  });
+
+  it("marketLang retombe sur l'anglais hors fr/es", () => {
+    expect([marketLang("fr-FR"), marketLang("ES"), marketLang("de"), marketLang(undefined)]).toEqual(["fr", "es", "en", "en"]);
+  });
+
+  it("localizeReportTitle ne change que les titres au format par défaut", () => {
+    expect(localizeReportTitle("Mon titre", "2026-11-12", "en")).toBe("Mon titre");
+    expect(localizeReportTitle("Rapport Intelligence Marché — 12/11/2026", "pas une date", "en")).toBe("Rapport Intelligence Marché — 12/11/2026");
   });
 });
