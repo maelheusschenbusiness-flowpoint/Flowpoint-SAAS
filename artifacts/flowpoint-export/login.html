@@ -419,12 +419,28 @@
       });
     });
 
+    /* Lien Google : langue de l'interface publique (fp-locale.js, « en » par defaut,
+       jamais le navigateur) et fp_lid deja valide, comme signin.html. Sans la langue, le
+       serveur enregistrait l'anglais pour une inscription Google lancee depuis cette page.
+       Aucun plan ni montant n'est transmis d'ici. */
+    function fpGoogleLoginUrl(base) {
+      var lang = 'en';
+      try { lang = window.fpResolveLanguage ? window.fpResolveLanguage() : 'en'; } catch (_) { lang = 'en'; }
+      var qs = [];
+      try {
+        var lid = sessionStorage.getItem('fp_lid') || '';
+        if (/^[A-Za-z0-9_-]{22}$/.test(lid)) qs.push('fp_lid=' + encodeURIComponent(lid));
+      } catch (_) {}
+      qs.push('language=' + encodeURIComponent(lang || 'en'));
+      return base + (base.indexOf('?') === -1 ? '?' : '&') + qs.join('&');
+    }
+
     /* ── OAuth click handler ── */
     document.getElementById('fp-oauth-btns').addEventListener('click', function (e) {
       var btn = e.target.closest('button[data-loginurl]');
       if (!btn) return;
       var url = btn.getAttribute('data-loginurl');
-      if (url) { window.location.href = url; }
+      if (url) { window.location.href = fpGoogleLoginUrl(url); }
     });
 
     /* ── Load providers — show configured OAuth buttons ── */
