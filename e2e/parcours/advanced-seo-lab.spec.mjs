@@ -120,6 +120,14 @@ async function signIn(page, email) {
   return page.request.get("/api/me");
 }
 
+// Le controle CSRF (audit C-01, commit 017108b5) refuse tout POST authentifie
+// par cookie sans Origin/Referer. Un navigateur envoie toujours l'Origin : on
+// l'envoie aussi, sinon le 403 observe serait celui du CSRF et non celui de
+// l'add-on ou du role que ces assertions veulent prouver.
+function postAsBrowser(page, path, data) {
+  return page.request.post(path, { data, headers: { Origin: new URL(page.url()).origin } });
+}
+
 test("Advanced SEO Lab exposes real actions, enforces access, and persists generated missions", async ({ page, browser }) => {
   const ownerMeResponse = await signIn(page, ownerEmail);
   expect(ownerMeResponse.status()).toBe(200);
@@ -128,7 +136,9 @@ test("Advanced SEO Lab exposes real actions, enforces access, and persists gener
 
   // The local cert launcher strips provider credentials. This proves an
   // unconfigured provider fails explicitly and cannot fabricate a score.
-  const unavailable = await page.request.post("/api/seo/content-optimization", { data: { url: siteUrl } });
+  // Depuis d5273e03 le mot-cle cible est obligatoire (422 KEYWORD_REQUIRED sinon) :
+  // il faut en fournir un pour atteindre l'appel fournisseur.
+  const unavailable = await postAsBrowser(page, "/api/seo/content-optimization", { url: siteUrl, keyword: "contenu SEO Bruxelles" });
   expect(unavailable.status()).toBe(503);
   expect(await unavailable.json()).toMatchObject({ ok: false, code: "DATAFORSEO_NOT_CONFIGURED" });
 
@@ -246,16 +256,18 @@ test("Advanced SEO Lab exposes real actions, enforces access, and persists gener
   const viewerMeResponse = await signIn(viewerPage, viewerEmail);
   expect(viewerMeResponse.status()).toBe(200);
   expect((await viewerMeResponse.json()).addons?.advancedSeoLab).toBe(true);
-  const viewerAnalysis = await viewerPage.request.post("/api/seo/content-optimization", { data: { url: siteUrl } });
+  const viewerAnalysis = await postAsBrowser(viewerPage, "/api/seo/content-optimization", { url: siteUrl });
   expect(viewerAnalysis.status()).toBe(403);
-  const viewerMissions = await viewerPage.request.post("/api/seo/generate-missions", { data: { domain: "advanced-seo.qa-fixture.invalid" } });
+  expect(await viewerAnalysis.json()).not.toMatchObject({ code: "CSRF_ORIGIN_REJECTED" });
+  const viewerMissions = await postAsBrowser(viewerPage, "/api/seo/generate-missions", { domain: "advanced-seo.qa-fixture.invalid" });
   expect(viewerMissions.status()).toBe(403);
   await viewerContext.close();
 
   await db.query("DELETE FROM org_addons WHERE id=$1", [addonId]);
-  const deniedAnalysis = await page.request.post("/api/seo/content-optimization", { data: { url: siteUrl } });
+  const deniedAnalysis = await postAsBrowser(page, "/api/seo/content-optimization", { url: siteUrl });
   expect(deniedAnalysis.status()).toBe(403);
-  const deniedMissions = await page.request.post("/api/seo/generate-missions", { data: { domain: "advanced-seo.qa-fixture.invalid" } });
+  expect(await deniedAnalysis.json()).toMatchObject({ code: "ADDON_REQUIRED", addonKey: "advancedSeoLab" });
+  const deniedMissions = await postAsBrowser(page, "/api/seo/generate-missions", { domain: "advanced-seo.qa-fixture.invalid" });
   expect(deniedMissions.status()).toBe(402);
   expect(await deniedMissions.json()).toMatchObject({ code: "ADDON_REQUIRED", addonKey: "advancedSeoLab" });
 });
