@@ -503,6 +503,15 @@ describe("INVOICE_TRIAL_STATUS — invoice.payment_succeeded and €0 trial invo
     expect(statusWrites()).toEqual([]);
   });
 
+  it("REGRESSION D5 (Stripe TEST 2026-11-19): facture payee d'un add-on (12 EUR) ne fait pas passer le plan trialing -> active", async () => {
+    commitActivation();
+    const res = await deliver(invoice("evt_INV_ADDON_PAID", {
+      amount_paid: 1200, billing_reason: "subscription_create", subscription_details: { metadata: { addonSub: "true" } },
+    }));
+    expect(res.statusCode).toBe(200);
+    expect(statusWrites()).toEqual([]);
+  });
+
   it("first real payment after trial (subscription_cycle, €29) → active on the UUID org + one commission on 2900", async () => {
     commitActivation();
     orgSellerId = "11111111-2222-4333-8444-555555555555";
