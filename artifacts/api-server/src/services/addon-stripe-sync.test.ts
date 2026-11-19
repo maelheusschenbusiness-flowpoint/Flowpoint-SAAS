@@ -65,6 +65,8 @@ let mockAddonSub: null | {
 } = null;
 let mockAddonSubAfterDel: { items: { data: Array<unknown> } } | null = null;
 let mockStripeListThrows = false;
+let mockCreatePersists = false;
+let mockPlanSubMetadata: Record<string, string> = {};
 let mockStripeCreateThrows = false;
 let mockBillingCtx: {
   subscriptionStatus: string;
@@ -92,6 +94,15 @@ function mockStripeClient() {
         calls.subscriptionsCreate.push(params);
         // The first item IS the add-on item — return it in the new sub
         const items = (params["items"] as Array<{ price: string; quantity: number }>) ?? [];
+        if (mockCreatePersists) {
+          await new Promise(r => setTimeout(r, 15));
+          mockAddonSub = {
+            id: "sub_ADDON_EXISTING",
+            metadata: { addonSub: "true", orgId: "org-test-uuid" },
+            status: "active",
+            items: { data: items.map((it, i) => ({ id: `si_new_${i}`, price: { id: it.price }, quantity: it.quantity })) },
+          };
+        }
         return {
           id: "sub_ADDON_NEW",
           metadata: params["metadata"],
@@ -110,7 +121,7 @@ function mockStripeClient() {
         if (id === "sub_PLAN") {
           return {
             id: "sub_PLAN",
-            metadata: {},
+            metadata: mockPlanSubMetadata,
             items: { data: mockPlanSubItems },
           };
         }
@@ -241,6 +252,8 @@ beforeEach(() => {
   mockAddonSub = null;
   mockAddonSubAfterDel = null;
   mockStripeListThrows = false;
+  mockCreatePersists = false;
+  mockPlanSubMetadata = {};
   mockStripeCreateThrows = false;
   mockBillingCtx = {
     subscriptionStatus: "active",
@@ -456,6 +469,26 @@ describe("P0-B — syncAddonWithStripe() certification", () => {
     expect(calls.subscriptionItemsCreate).toHaveLength(1);
     expect((calls.subscriptionItemsCreate[0]!["subscription"] as string)).toBe("sub_ADDON_EXISTING");
     expect((calls.subscriptionItemsCreate[0]!["price"] as string)).toBe(priceId);
+  });
+
+
+  it("C-22 trois activations simultanees : un seul abonnement d'add-on cree (pas de triple facturation)", async () => {
+    mockCreatePersists = true;
+    const results = await Promise.all([sync("activate", 1), sync("activate", 1), sync("activate", 1)]);
+    expect(results.every(r => r.synced)).toBe(true);
+    expect(calls.subscriptionsCreate).toHaveLength(1);
+    expect(calls.subscriptionsCreate[0]).toBeDefined();
+  });
+
+  it("C-23 stripe_subscription_id ecrase par l'abonnement d'add-on : jamais pris pour le plan a la desactivation", async () => {
+    const { ADDON_PRICE_IDS } = await import("../lib/plans.js");
+    const priceId = ADDON_PRICE_IDS["monitorsPack10"]!;
+    mockBillingCtx.stripeSubscriptionId = "sub_PLAN";
+    mockPlanSubMetadata = { addonSub: "true", orgId: "org-test-uuid" };
+    mockPlanSubItems = [makePlanItem(priceId)];
+    const result = await sync("deactivate");
+    expect(result.synced).toBe(true);
+    expect(calls.subscriptionItemsDel).toHaveLength(0);
   });
 
   // ── C-13: Legacy backward-compat — item on plan sub → qty updated in place

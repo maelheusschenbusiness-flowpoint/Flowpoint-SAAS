@@ -1961,7 +1961,13 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         }
       }
 
-      await persistSubscriptionMeta(updatePayload);
+      // L'abonnement dedie d'un add-on ne doit JAMAIS remplacer l'abonnement
+      // principal de l'organisation (id, statut, fin de periode).
+      if (isAddonMetadata(obj["metadata"])) {
+        logger.info({ orgId, subscriptionId }, "[Webhook] abonnement d'add-on : etat de l'abonnement principal inchange");
+      } else {
+        await persistSubscriptionMeta(updatePayload);
+      }
 
       // ── Verify DB plan after persist ─────────────────────────────────────
       if (newPlan) {
