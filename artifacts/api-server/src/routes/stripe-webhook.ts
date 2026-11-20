@@ -1181,15 +1181,25 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const { pool: pgPool } = await import("@workspace/db");
       const c = await pgPool.connect();
       try {
+        // Montant reellement encaisse (centimes) pour les factures : la ligne
+        // etait creee a 0 et n'etait jamais renseignee, y compris pour une
+        // facture payee (ex. add-on a 12 EUR).
+        const _evObj = ((event as unknown as { data?: { object?: Record<string, unknown> } }).data?.object) ?? {};
+        const _evType = String((event as unknown as { type?: string }).type ?? "");
+        const _paid = _evType.startsWith("invoice.") ? Math.floor(Number(_evObj["amount_paid"] ?? 0)) : 0;
+        const _montant = status === "processed" && Number.isFinite(_paid) && _paid > 0 ? _paid : 0;
+        const _devise = typeof _evObj["currency"] === "string" ? String(_evObj["currency"]).toLowerCase() : "";
         await c.query(
           `UPDATE billing_events
            SET metadata = jsonb_set(
              COALESCE(metadata, '{}'::jsonb),
              '{status}', to_jsonb($2::text)
            ) || jsonb_build_object('processedAt', to_jsonb(NOW()::text))
-             || $3::jsonb
+             || $3::jsonb,
+             amount   = CASE WHEN $4::int > 0 THEN $4::int ELSE amount END,
+             currency = CASE WHEN $4::int > 0 AND $5::text <> '' THEN $5::text ELSE currency END
            WHERE stripe_event_id = $1`,
-          [eventId, status, JSON.stringify(extra ?? {})]
+          [eventId, status, JSON.stringify(extra ?? {}), _montant, _devise]
         );
       } finally { c.release(); }
     } catch (e) {
@@ -2184,8 +2194,10 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       if (_invAmountPaid > 0 && !isAddonInvoice(obj)) {
         await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
       } else {
-        logger.info({ orgId, billingReason: obj["billing_reason"] },
-          "[Webhook] invoice.payment_succeeded: €0 invoice — subscription status left to customer.subscription.* events");
+        logger.info({ orgId, billingReason: obj["billing_reason"], amountPaid: _invAmountPaid, addonInvoice: _invAmountPaid > 0 },
+          _invAmountPaid > 0
+            ? "[Webhook] invoice.payment_succeeded: add-on invoice paid — plan subscription status left unchanged"
+            : "[Webhook] invoice.payment_succeeded: €0 invoice — subscription status left to customer.subscription.* events");
       }
       store.broadcast({ type: "payment_succeeded" }, orgId);
       // Comptage transactionnel : un vrai paiement (montant > 0), une fois par facture.
