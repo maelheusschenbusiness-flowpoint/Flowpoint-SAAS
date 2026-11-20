@@ -2189,6 +2189,87 @@ export async function initDataTables(): Promise<void> {
     // legacy profile/billing compatibility paths still use raw pool queries.
     await applyTenantRls("org_settings");
 
+    // ── gsc_keyword_data : absente de la production (le bloc v3 ci-dessous y est deja
+    // enregistre comme applique et n'y est jamais rejoue). Lue par Organic Campaign
+    // Tracker, Forecasting et gsc-service. Additif et idempotent ; schema identique a
+    // celui du bloc v3 (CREATE ... IF NOT EXISTS : sans effet quand la table existe deja).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS gsc_keyword_data (
+        id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        keyword     TEXT        NOT NULL DEFAULT '',
+        date        TEXT        NOT NULL DEFAULT '',
+        impressions INTEGER     NOT NULL DEFAULT 0,
+        clicks      INTEGER     NOT NULL DEFAULT 0,
+        ctr         REAL        NOT NULL DEFAULT 0,
+        position    REAL        NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_keyword_data_org_kw_date_idx ON gsc_keyword_data(org_id, keyword, date)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS gsc_keyword_data_org_idx ON gsc_keyword_data(org_id)`);
+    await applyTenantRls("gsc_keyword_data");
+
+    // ── Add-ons du lot 1 : tables additives et idempotentes ───────────────────
+    // Hors du bloc `missing-production-tables-v3` : ce bloc est enregistre dans
+    // schema_migrations et n'est jamais rejoue sur une base de production deja
+    // migree. Ici tout s'execute a chaque migration (CREATE ... IF NOT EXISTS).
+    // Tables vides et inoffensives tant que l'add-on n'est pas vendu.
+    // [lot1:organicCampaignTracker]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS organic_campaign_goals (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        keyword TEXT NOT NULL,
+        target_position REAL NOT NULL CHECK (target_position > 0),
+        minimum_clicks INTEGER NOT NULL CHECK (minimum_clicks >= 0),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, keyword)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS organic_campaign_goals_org_idx ON organic_campaign_goals(org_id)`);
+    await applyTenantRls("organic_campaign_goals");
+
+    // [lot1:technicalSeoFixVerification]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS technical_seo_fix_verifications (
+        id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        before_audit_id TEXT NOT NULL,
+        after_audit_id TEXT NOT NULL,
+        before_issue_count INTEGER NOT NULL,
+        after_issue_count INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, before_audit_id, after_audit_id)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS technical_seo_fix_verifications_org_created_idx ON technical_seo_fix_verifications(org_id, created_at DESC)`);
+    await applyTenantRls("technical_seo_fix_verifications");
+
+    // [lot1:seoChangeImpact]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS seo_change_impact_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"lookbackDays":30,"minimumScoreChange":0}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("seo_change_impact_settings");
+
+    // [lot1:conversionOpportunityEngine]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS conversion_opportunity_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("conversion_opportunity_settings");
+
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
       await run(client, `DELETE FROM schema_migrations WHERE migration_id IN ('missing-production-tables-v1','missing-production-tables-v2')`);

@@ -1,0 +1,327 @@
+{
+  "mode": "avec",
+  "total": 52,
+  "ok": 52,
+  "results": [
+    {
+      "addon": "organicCampaignTracker",
+      "check": "present dans /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "present dans /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "present dans /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "present dans /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "catalogue",
+      "check": "add-on existant toujours present (keywordDomination)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "carte visible dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "carte visible dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "carte visible dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "carte visible dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "marche",
+      "check": "carte existante visible (Keyword Domination Engine)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "panneau affiche (1440px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "aucun debordement horizontal (1440px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "panneau affiche (1440px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "aucun debordement horizontal (1440px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "panneau affiche (1440px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "aucun debordement horizontal (1440px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "panneau affiche (1440px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "aucun debordement horizontal (1440px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "objectif enregistre puis relu apres rechargement (1440px)",
+      "ok": true,
+      "detail": "Suivi des campagnes organiques\n\nFixez des objectifs par requête et comparez-les aux données Search Console mesurées sur "
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "API : objectif relu exact (position/clics)",
+      "ok": true,
+      "detail": "{\"id\":\"eb5ae55b-d3db-4a1b-9cb9-7b3cf3bc9cd2\",\"keyword\":\"campagne test 1440\",\"targetPosition\":5,\"minimumClicks\":10,\"status\":\"no_data\",\"observedAt\":null,\"clicks\":null,\"impressions\":null,\"averagePosition"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "mesure GSC lue depuis gsc_keyword_data (12 clics, position 3.2, objectif atteint)",
+      "ok": true,
+      "detail": "{\"id\":\"fa2a8efb-9ee3-4184-9a3e-5268a9ec2680\",\"keyword\":\"dentiste urgence bruxelles\",\"targetPosition\":5,\"minimumClicks\":10,\"status\":\"goal_met\",\"observedAt\":\"2026-11-17\",\"clicks\":12,\"impressions\":300,\"a"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "reglages relus exacts apres rechargement (1440px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "comparaison d'audits mesuree 58 -> 78 (1440px)",
+      "ok": true,
+      "detail": "Impact des changements SEO\n\nComparez les scores et métriques mesurés entre les deux derniers audits terminés.\n\nPériode observée (jours) \nSeuil minimal de variat"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "verification enregistree puis relue (5 -> 2 problemes) apres rechargement (1440px)",
+      "ok": true,
+      "detail": "Vérification SEO technique\n\nComparez le nombre total de problèmes entre deux audits terminés de la même URL.\n\nLes audits enregistrent un total agrégé, pas le dé"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "reglages relus exacts apres rechargement (1440px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "panneau affiche (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "aucun debordement horizontal (390px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "panneau affiche (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "aucun debordement horizontal (390px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "panneau affiche (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "aucun debordement horizontal (390px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "panneau affiche (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "aucun debordement horizontal (390px)",
+      "ok": true,
+      "detail": "delta=0"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "objectif enregistre puis relu apres rechargement (390px)",
+      "ok": true,
+      "detail": "Suivi des campagnes organiques\n\nFixez des objectifs par requête et comparez-les aux données Search Console mesurées sur "
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "suppression d'un objectif (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "reglages relus exacts apres rechargement (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "comparaison d'audits mesuree 58 -> 78 (390px)",
+      "ok": true,
+      "detail": "Impact des changements SEO\n\nComparez les scores et métriques mesurés entre les deux derniers audits terminés.\n\nPériode observée (jours) \nSeuil minimal de variat"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "verification enregistree puis relue (5 -> 2 problemes) apres rechargement (390px)",
+      "ok": true,
+      "detail": "Vérification SEO technique\n\nComparez le nombre total de problèmes entre deux audits terminés de la même URL.\n\nLes audits enregistrent un total agrégé, pas le dé"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "reglages relus exacts apres rechargement (390px)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "droit retire -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "droit retire -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "droit retire -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "droit retire -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "console",
+      "check": "aucune erreur de script du tableau de bord",
+      "ok": true,
+      "detail": "Failed to load resource: the server responded with a status of 402 (Payment Required) | Failed to load resource: the server responded with a status of 402 (Payment Required) | Failed to load resource:"
+    }
+  ],
+  "errors": [
+    "Failed to load resource: the server responded with a status of 402 (Payment Required)",
+    "Failed to load resource: the server responded with a status of 402 (Payment Required)",
+    "Failed to load resource: the server responded with a status of 402 (Payment Required)",
+    "Failed to load resource: the server responded with a status of 402 (Payment Required)",
+    "Failed to load resource: the server responded with a status of 402 (Payment Required)",
+    "Failed to load resource: the server responded with a status of 402 (Payment Required)"
+  ]
+}
