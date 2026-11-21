@@ -345,6 +345,11 @@ export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
  * When an add-on ships, remove it from this set and add a Stripe price.
  */
 export const COMING_SOON_ADDONS = new Set<string>([
+  // ── Retrait temporaire de la vente (audit du 21/11/2026, aucune organisation concernee) ──
+  // gbpSlots10: la capacite « +10 emplacements GBP » n'est appliquee nulle part (vendue sans effet).
+  "gbpSlots10",
+  // reviewIntelligence: Pro/Ultra ont deja la fonction par leur plan ; l'achat ne debloque rien de plus.
+  "reviewIntelligence",
   // ── No requireAddon gate in any route ─────────────────────────────────────
   // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
   // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
@@ -426,7 +431,6 @@ export const BETA_ADDONS = new Set<string>([
   // Couverture données partielle / DFS non complète
   "aiForecasting",
   "marketIntelligence",
-  "reviewIntelligence",
   // Dépendance OAuth externe
   "aiGbpPosting",
   "zapierIntegration",
@@ -560,7 +564,6 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
 const _STANDARD_PURCHASABLE = new Set<string>([
   // Capacity packs — available on all plans
   "monitorsPack10", "monitorsPack50",
-  "gbpSlots10",
   "extraSeats",
   "auditsPack200", "auditsPack1000",
   "pdfPack200", "exportsPack1000",
@@ -574,7 +577,7 @@ const _PRO_EXCLUSIVE = new Set<string>([
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
   //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
   "keywordDomination",
-  "aiGbpPosting", "reviewIntelligence", "localDominationMaps",
+  "aiGbpPosting", "localDominationMaps",
   "aiCro", "behavioralAI", "revenueLeak",
   "zapierIntegration",
   "aiForecasting", "marketIntelligence",
