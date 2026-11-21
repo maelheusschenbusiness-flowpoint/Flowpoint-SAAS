@@ -951,7 +951,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
       // ── Fire-and-forget: ensure Stripe customer exists (deduplicates by orgId) ──────────
       // Uses ensureStripeCustomer which checks for an existing customer BEFORE creating,
       // preventing duplicate Stripe customers when the same email re-signs up.
-      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+      const stripeKey = getStripeKey();
       if (stripeKey) {
         const _fn = fn; const _ln = ln; const _company = company;
         const _selectedPlan = selectedPlan; const _orgId = orgId; const _email = normalizedEmail;
@@ -1361,7 +1361,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     "[Auth/CheckoutComplete] ML-0: received checkout-complete request");
 
   try {
-    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+    const stripeKey = getStripeKey();
     if (!stripeKey) {
       res.status(503).json({ error: "Service de paiement non configuré." });
       return;

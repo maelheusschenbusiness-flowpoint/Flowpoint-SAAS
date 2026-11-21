@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { getStripeKey as getResolvedStripeKey } from "../services/stripe-factory.js";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool } from "@workspace/db";
 import { cache } from "../lib/cache.js";
@@ -115,7 +116,7 @@ router.get("/healthz/deep", async (_req, res) => {
   }
 
   // ── Stripe — live /v1/balance probe ──────────────────────────────────────
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getResolvedStripeKey();
   if (stripeKey) {
     checks.stripe = await probeUrl(
       "https://api.stripe.com/v1/balance",

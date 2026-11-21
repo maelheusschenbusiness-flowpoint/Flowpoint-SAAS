@@ -190,6 +190,7 @@ export default defineConfig({
       // Checkout abandonné — gardes contre les mutations prématurées
       "src/tests/checkout-abandon-guards.test.ts",
       "src/tests/public-pages-fpsource.test.ts",
+      "src/services/stripe-factory-securite.test.ts",
       "src/lib/addon-masquage-temporaire.test.ts",
       "src/routes/integrations-connections-guard.test.ts",
       "src/tests/auth-login-verify-stripe-mode.test.ts",
