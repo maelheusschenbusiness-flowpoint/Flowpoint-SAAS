@@ -10187,6 +10187,7 @@ function renderBilling() {
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
       // [lot2:agencyPortfolioPriorities]
+      { key:'agencyPortfolioPriorities', gated:true, openFn:'fpOpenAgencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
 
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions 6 mois', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
@@ -15955,6 +15956,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'conversion-opportunity-engine',
 
   // [lot2:agencyPortfolioPriorities]
+  'agency-portfolio-priorities',
 
   // [lot2:localLandingOpportunities]
 
@@ -16174,6 +16176,14 @@ function _doRender() {
       break;
 
     // [lot2:agencyPortfolioPriorities]
+    case 'agency-portfolio-priorities':
+      html = '<div id="fp-addon-agency-portfolio-priorities"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-agency-portfolio-priorities');
+        const renderAddon = window.FP_ADDON_RENDERERS?.agencyPortfolioPriorities;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
 
     // [lot2:localLandingOpportunities]
 
@@ -65674,6 +65684,9 @@ window.fpOpenConversionOpportunityEngine = function () {
 };
 
 // [lot2:agencyPortfolioPriorities]
+window.fpOpenAgencyPortfolioPriorities = function () {
+  window.navigate('agency-portfolio-priorities');
+};
 
 // [lot2:localLandingOpportunities]
 

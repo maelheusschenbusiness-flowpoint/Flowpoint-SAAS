@@ -2293,6 +2293,15 @@ export async function initDataTables(): Promise<void> {
 
     // ── Add-ons du lot 2 : tables additives et idempotentes (hors bloc v3, comme le lot 1) ──
     // [lot2:agencyPortfolioPriorities]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS agency_portfolio_priority_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"priorityWeights":{}}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS agency_portfolio_priority_settings_updated_idx ON agency_portfolio_priority_settings(updated_at)`);
+    await applyTenantRls("agency_portfolio_priority_settings");
 
     // [lot2:localLandingOpportunities]
 

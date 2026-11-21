@@ -679,6 +679,11 @@ PRICE_GATED_ADDONS["conversionOpportunityEngine"] = {
 };
 
 // [lot2:agencyPortfolioPriorities]
+PRICE_GATED_ADDONS["agencyPortfolioPriorities"] = {
+  definition: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_AGENCY_PORTFOLIO_PRIORITIES",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"],
+};
 
 // [lot2:localLandingOpportunities]
 

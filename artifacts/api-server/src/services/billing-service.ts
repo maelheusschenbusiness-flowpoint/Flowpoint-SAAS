@@ -115,6 +115,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   conversionOpportunityEngine: { icon: "📈", unit: "opportunités conversion" },
   // ── Lot 2 (garde prix) ──
   // [lot2:agencyPortfolioPriorities]
+  agencyPortfolioPriorities: { icon: "🗂️", unit: "priorités portfolio" },
 
   // [lot2:localLandingOpportunities]
 

@@ -97,6 +97,9 @@ export default defineConfig({
       // Lot 2 add-ons : garde prix
       "src/lib/addon-price-gate-lot2.test.ts",
       // [lot2:agencyPortfolioPriorities]
+      "src/routes/agency-portfolio-priorities.test.ts",
+      "src/services/agency-portfolio-priorities.test.ts",
+      "src/lib/addon-agency-portfolio-priorities-gate.test.ts",
 
       // [lot2:localLandingOpportunities]
 

@@ -68,6 +68,7 @@ import seoChangeImpactRouter from "./seo-change-impact.js";
 import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 
 // [lot2:agencyPortfolioPriorities:import]
+import agencyPortfolioPrioritiesRouter from "./agency-portfolio-priorities.js";
 
 // [lot2:localLandingOpportunities:import]
 
@@ -280,6 +281,7 @@ router.use(conversionOpportunityEngineRouter);
 
 // Add-ons du lot 2 (garde prix) : routes protegees par requireAddon(<cle>) ; une section par add-on.
 // [lot2:agencyPortfolioPriorities]
+router.use(agencyPortfolioPrioritiesRouter);
 
 // [lot2:localLandingOpportunities]
 
