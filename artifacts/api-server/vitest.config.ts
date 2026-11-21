@@ -92,6 +92,15 @@ export default defineConfig({
       "src/routes/conversion-opportunity-engine.test.ts",
       "src/services/conversion-opportunity-engine.test.ts",
       "src/lib/addon-conversion-opportunity-engine-gate.test.ts",
+      // Lot 2 add-ons : garde prix
+      "src/lib/addon-price-gate-lot2.test.ts",
+      // [lot2:agencyPortfolioPriorities]
+
+      // [lot2:localLandingOpportunities]
+
+      // [lot2:localPresenceOptimizer]
+
+      // [lot2:gbpPerformanceLeads]
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",

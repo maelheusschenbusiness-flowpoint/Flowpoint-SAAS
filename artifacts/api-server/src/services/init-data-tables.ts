@@ -2270,6 +2270,15 @@ export async function initDataTables(): Promise<void> {
     `);
     await applyTenantRls("conversion_opportunity_settings");
 
+    // ── Add-ons du lot 2 : tables additives et idempotentes (hors bloc v3, comme le lot 1) ──
+    // [lot2:agencyPortfolioPriorities]
+
+    // [lot2:localLandingOpportunities]
+
+    // [lot2:localPresenceOptimizer]
+
+    // [lot2:gbpPerformanceLeads]
+
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
       await run(client, `DELETE FROM schema_migrations WHERE migration_id IN ('missing-production-tables-v1','missing-production-tables-v2')`);

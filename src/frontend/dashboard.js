@@ -10168,6 +10168,12 @@ function renderBilling() {
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'+42% engagement GBP',    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
       { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:!!(me.addons?.reviewIntelligence), tag:'Sentiment IA',    roi:'+38% note moyenne',    desc:'IA de sentiment sur vos avis Google. Réponses automatiques et alertes critiques.', features:['Analyse sentiment de chaque avis','Réponses IA personnalisées en 1 clic','Alertes avis négatifs en temps réel','Rapport tendance note mensuel','Score réputation par établissement'] },
       { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Visibilité Maps 360°',    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
+      // [lot2:localLandingOpportunities]
+
+      // [lot2:localPresenceOptimizer]
+
+      // [lot2:gbpPerformanceLeads]
+
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'+28% taux conversion',    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse comportement IA', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
@@ -10180,6 +10186,8 @@ function renderBilling() {
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
+      // [lot2:agencyPortfolioPriorities]
+
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions 6 mois', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
       { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Veille marché automatique',    desc:'Veille concurrentielle IA. Tendances marché, opportunités, et alertes sectorielles.', features:['Veille concurrentielle IA 24/7','Détection de tendances sectorielles','Alertes nouveaux entrants concurrents','Opportunités de marché automatiques','Newsletter IA hebdomadaire secteur'] },
@@ -15945,6 +15953,14 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
 
   // [lot1:conversionOpportunityEngine]
   'conversion-opportunity-engine',
+
+  // [lot2:agencyPortfolioPriorities]
+
+  // [lot2:localLandingOpportunities]
+
+  // [lot2:localPresenceOptimizer]
+
+  // [lot2:gbpPerformanceLeads]
 ]);
 function _doRender() {
   const page = $('#fp-page');
@@ -16156,6 +16172,14 @@ function _doRender() {
         if (root && renderAddon) renderAddon(root);
       }, 0);
       break;
+
+    // [lot2:agencyPortfolioPriorities]
+
+    // [lot2:localLandingOpportunities]
+
+    // [lot2:localPresenceOptimizer]
+
+    // [lot2:gbpPerformanceLeads]
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -65577,6 +65601,14 @@ window.fpOpenSEOChangeImpact = function () {
 window.fpOpenConversionOpportunityEngine = function () {
   window.navigate('conversion-opportunity-engine');
 };
+
+// [lot2:agencyPortfolioPriorities]
+
+// [lot2:localLandingOpportunities]
+
+// [lot2:localPresenceOptimizer]
+
+// [lot2:gbpPerformanceLeads]
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 

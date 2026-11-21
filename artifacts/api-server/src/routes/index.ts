@@ -67,6 +67,14 @@ import seoChangeImpactRouter from "./seo-change-impact.js";
 // [lot1:conversionOpportunityEngine:import]
 import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 
+// [lot2:agencyPortfolioPriorities:import]
+
+// [lot2:localLandingOpportunities:import]
+
+// [lot2:localPresenceOptimizer:import]
+
+// [lot2:gbpPerformanceLeads:import]
+
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
 import analyticsRouter from "./analytics.js";
@@ -269,5 +277,14 @@ router.use(seoChangeImpactRouter);
 
 // [lot1:conversionOpportunityEngine]
 router.use(conversionOpportunityEngineRouter);
+
+// Add-ons du lot 2 (garde prix) : routes protegees par requireAddon(<cle>) ; une section par add-on.
+// [lot2:agencyPortfolioPriorities]
+
+// [lot2:localLandingOpportunities]
+
+// [lot2:localPresenceOptimizer]
+
+// [lot2:gbpPerformanceLeads]
 
 export default router;
