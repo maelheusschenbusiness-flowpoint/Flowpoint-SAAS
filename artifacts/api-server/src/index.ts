@@ -1,6 +1,7 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { getStripeKey } from "./services/stripe-factory.js";
+import { attestResolvedPool } from "./services/db-startup-attestation.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -56,6 +57,19 @@ async function main() {
     }
     if (serverKey && browserKey && serverKey === browserKey) {
       logger.warn("[Maps] GOOGLE_MAPS_API_KEY and GOOGLE_MAPS_PUBLIC_KEY are identical — the server key must be a separate, non-referer-restricted credential");
+    }
+  }
+
+  // ── 0 bis. La base visee est-elle bien la base de TEST de ce service ? ─────
+  // Garde ajoutee pour la certification sur Flowpoint-Test : avant toute migration
+  // ou ecriture, l'identite de la base resolue est attestee (empreinte du projet).
+  // N'agit que sur le service `flowpoint-test` ; sans effet sur la production.
+  if (process.env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() === "flowpoint-test") {
+    const attestation = await attestResolvedPool(pool);
+    process.stdout.write(`${JSON.stringify(attestation)}\n`);
+    if (attestation.status !== "PASS") {
+      logger.fatal("[Base] FATAL : la base resolue n'est pas celle du service de test. Arret avant toute migration.");
+      process.exit(1);
     }
   }
 

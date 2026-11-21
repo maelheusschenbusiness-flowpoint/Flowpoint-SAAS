@@ -1,3 +1,6 @@
+// EN PREMIER : pose DATABASE_URL depuis les variables separees si besoin,
+// avant toute validation. Voir lib/url-base.ts.
+import "./url-base.js";
 import { z } from "zod";
 
 const envSchema = z.object({

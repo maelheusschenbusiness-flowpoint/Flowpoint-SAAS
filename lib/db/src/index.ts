@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { optionsSslPostgres } from "./ssl-supabase.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   pgTable, text, integer, boolean, timestamp, real, bigint, jsonb,
@@ -6,9 +7,20 @@ import {
 
 // ── Connection ────────────────────────────────────────────────────────────────
 
+// TLS : la racine Supabase est ajoutee au magasin (verification ACTIVE). Voir ssl-supabase.ts.
+const sslPostgres = optionsSslPostgres();
+
+// Taille du pool : 20 par defaut (inchange en production). Le pooler Supabase en mode
+// session plafonne a 15 clients : l'environnement de test pose PG_POOL_MAX (ex. 6).
+const TAILLE_POOL = (() => {
+  const brut = Number.parseInt(process.env["PG_POOL_MAX"] ?? "", 10);
+  return Number.isFinite(brut) && brut >= 1 ? brut : 20;
+})();
+
 export const pool = new Pool({
   connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
-  max: 20,
+  ...(sslPostgres === undefined ? {} : { ssl: sslPostgres }),
+  max: TAILLE_POOL,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
