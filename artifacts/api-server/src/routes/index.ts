@@ -74,6 +74,7 @@ import agencyPortfolioPrioritiesRouter from "./agency-portfolio-priorities.js";
 import localLandingOpportunitiesRouter from "./local-landing-opportunities.js";
 
 // [lot2:localPresenceOptimizer:import]
+import localPresenceOptimizerRouter from "./local-presence-optimizer.js";
 
 // [lot2:gbpPerformanceLeads:import]
 
@@ -288,6 +289,7 @@ router.use(agencyPortfolioPrioritiesRouter);
 router.use(localLandingOpportunitiesRouter);
 
 // [lot2:localPresenceOptimizer]
+router.use(localPresenceOptimizerRouter);
 
 // [lot2:gbpPerformanceLeads]
 

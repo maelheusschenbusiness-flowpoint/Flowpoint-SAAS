@@ -693,6 +693,13 @@ PRICE_GATED_ADDONS["localLandingOpportunities"] = {
 };
 
 // [lot2:localPresenceOptimizer]
+PRICE_GATED_ADDONS["localPresenceOptimizer"] = {
+  definition: { name: "Local Presence Optimizer", category: "Local SEO", description: "Priorisation des informations manquantes sur vos fiches GBP", priceEur: 9, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"],
+  // Test-Replit : _PRO_EXCLUSIVE (pas d'achat sur Standard).
+  plans: ["pro", "ultra", "agency"],
+};
 
 // [lot2:gbpPerformanceLeads]
 

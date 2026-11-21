@@ -2314,6 +2314,14 @@ export async function initDataTables(): Promise<void> {
     await applyTenantRls("local_landing_opportunity_settings");
 
     // [lot2:localPresenceOptimizer]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_presence_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("local_presence_settings");
 
     // [lot2:gbpPerformanceLeads]
 

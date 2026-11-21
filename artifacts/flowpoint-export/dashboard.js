@@ -10172,6 +10172,7 @@ function renderBilling() {
       { key:'localLandingOpportunities', gated:true, openFn:'fpOpenLocalLandingOpportunities', cat:'Local SEO', name:'Local Landing Opportunities', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localLandingOpportunities), tag:'Local SEO', roi:'Recherches locales propices à une page', desc:'Repérez les recherches locales réelles qui justifient une page de service ou de zone.', features:['Opportunités fondées sur les recherches disponibles','Pages de service ou de zone à examiner','Priorisation par opportunité locale'] },
 
       // [lot2:localPresenceOptimizer]
+      { key:'localPresenceOptimizer', gated:true, openFn:'fpOpenLocalPresenceOptimizer', cat:'Local SEO', name:'Local Presence Optimizer', icon:'📍', color:'#22c55e', active:!!(me.addons?.localPresenceOptimizer), tag:'GBP', roi:'Informations de fiches à compléter', desc:'Priorisez les informations manquantes ou incomplètes sur vos fiches Google Business Profile.', features:['État de complétude des fiches','Priorités fondées sur les données disponibles','Recommandations par établissement'] },
 
       // [lot2:gbpPerformanceLeads]
 
@@ -15963,6 +15964,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'local-landing-opportunities',
 
   // [lot2:localPresenceOptimizer]
+  'local-presence-optimizer',
 
   // [lot2:gbpPerformanceLeads]
 ]);
@@ -16198,6 +16200,14 @@ function _doRender() {
       break;
 
     // [lot2:localPresenceOptimizer]
+    case 'local-presence-optimizer':
+      html = '<div id="fp-addon-local-presence-optimizer"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-local-presence-optimizer');
+        const renderAddon = window.FP_ADDON_RENDERERS?.localPresenceOptimizer;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
 
     // [lot2:gbpPerformanceLeads]
     case 'alerts-center':  html = renderAlertsCenter(); break;
@@ -65704,6 +65714,9 @@ window.fpOpenLocalLandingOpportunities = function () {
 };
 
 // [lot2:localPresenceOptimizer]
+window.fpOpenLocalPresenceOptimizer = function () {
+  window.navigate('local-presence-optimizer');
+};
 
 // [lot2:gbpPerformanceLeads]
 window.navigateSub = navigateSub;

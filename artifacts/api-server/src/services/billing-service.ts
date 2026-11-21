@@ -121,6 +121,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   localLandingOpportunities: { icon: "📍", unit: "opportunités locales" },
 
   // [lot2:localPresenceOptimizer]
+  localPresenceOptimizer: { icon: "📍", unit: "optimisation fiches GBP" },
 
   // [lot2:gbpPerformanceLeads]
 };

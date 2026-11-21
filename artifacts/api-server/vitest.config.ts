@@ -107,6 +107,9 @@ export default defineConfig({
       "src/lib/addon-local-landing-opportunities-gate.test.ts",
 
       // [lot2:localPresenceOptimizer]
+      "src/routes/local-presence-optimizer.test.ts",
+      "src/services/local-presence-optimizer.test.ts",
+      "src/lib/addon-local-presence-optimizer-gate.test.ts",
 
       // [lot2:gbpPerformanceLeads]
       "src/services/billing-quote.test.ts",
