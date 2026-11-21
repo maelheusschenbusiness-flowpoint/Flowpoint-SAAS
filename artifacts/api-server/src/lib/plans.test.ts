@@ -192,7 +192,7 @@ describe("V1 add-on catalogue contract", () => {
   it("keeps the Local SEO offers priced but unavailable for purchase before approval", () => {
     const keys = ["aiGbpPosting", "reviewIntelligence", "localDominationMaps", "localPresenceOptimizer"];
     expect(Object.keys(CANONICAL_ADDON_DEFINITIONS)).toHaveLength(48);
-    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([12, 9, 15, 9]);
+    expect(keys.map(key => CANONICAL_ADDON_DEFINITIONS[key].priceEur)).toEqual([29, 19, 24, 9]);
     for (const key of keys) {
       expect(VALIDATION_REQUIRED_ADDONS.has(key)).toBe(true);
       expect(getAddonAvailability(key)).toBe("coming_soon");
