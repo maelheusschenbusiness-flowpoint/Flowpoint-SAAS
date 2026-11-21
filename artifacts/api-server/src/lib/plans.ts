@@ -222,6 +222,7 @@ export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
   globalMonitoring: ["STRIPE_TEST_PRICE_ID_ADDON_GLOBAL_MONITORING"],
   slaMonitoring: ["STRIPE_TEST_PRICE_ID_ADDON_SLA_MONITORING"],
   aiContentStrategist: ["STRIPE_TEST_PRICE_ID_ADDON_AI_CONTENT_STRATEGIST"],
+  seoContentDecayRadar: ["STRIPE_TEST_PRICE_ID_ADDON_SEO_CONTENT_DECAY_RADAR"],
   aiGbpPosting: ["STRIPE_TEST_PRICE_ID_ADDON_AI_GBP_POSTING"],
   agencyPacks: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"],
   crmIntegration: ["STRIPE_TEST_PRICE_ID_ADDON_CRM"],
@@ -345,6 +346,8 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   keywordDomination:    process.env["STRIPE_PRICE_ID_KEYBORD_DOMINATION_ENGINE"] ?? "price_1TYor69eqtbj6iPBWqq0GAK0",
   backlinkIntelligence: process.env["STRIPE_PRICE_ID_BACKLINK_INTELLIGENCE"]    ?? "price_1TYos19eqtbj6iPBTDIY2ROG",
   aiContentStrategist:  process.env["STRIPE_PRICE_ID_AI_CONTENT_STRATEGIST"]    ?? "price_1TYotM9eqtbj6iPBPxxtdisN",
+  // Cle propre au Radar (decouplee de aiContentStrategist) : aucun prix LIVE tant que le produit n'est pas cree.
+  seoContentDecayRadar: process.env["STRIPE_PRICE_ID_SEO_CONTENT_DECAY_RADAR"]   ?? "",
 
   // ── Local SEO ─────────────────────────────────────────────────────────────
   gbpSlots10:           process.env["STRIPE_PRICE_ID_10GBPLOCATIONS"]           ?? "price_1TYouI9eqtbj6iPBAykG6DyI",
@@ -440,7 +443,8 @@ export const ADDON_DEFINITIONS: Record<string, AddonDefinition> = {
   advancedSeoLab:       { name: "Advanced SEO Lab",         category: "SEO",          description: "Audit SEO avancé et recommandations IA", priceEur: 29, oneTime: false, quantity: false },
   keywordDomination:    { name: "Keyword Domination Engine",category: "SEO",          description: "Suivi et stratégie mots-clés avancée", priceEur: 39, oneTime: false, quantity: false },
   backlinkIntelligence: { name: "Backlink Intelligence",    category: "SEO",          description: "Analyse de backlinks", priceEur: 24, oneTime: false, quantity: false },
-  aiContentStrategist:  { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
+  aiContentStrategist:  { name: "AI Content Strategist",    category: "SEO",          description: "Stratégie de contenu assistée par IA", priceEur: 34, oneTime: false, quantity: false },
+  seoContentDecayRadar: { name: "SEO Content Decay Radar",   category: "SEO",          description: "Repère les baisses de clics, de position et les CTR faibles par rapport aux pages GSC comparables.", priceEur: 12, oneTime: false, quantity: false },
   seoChangeImpact:      { name: "SEO Change Impact",          category: "SEO",          description: "Comparez les variations réellement mesurées entre audits SEO terminés.", priceEur: 15, oneTime: false, quantity: false },
   agencyPortfolioPriorities: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
   technicalSeoFixVerification: { name: "Technical SEO Fix Verification", category: "SEO", description: "Comparez le nombre de problèmes signalés entre deux audits de la même URL.", priceEur: 19, oneTime: false, quantity: false },
@@ -495,7 +499,7 @@ export function getAddonDisplayPrice(addonKey: string, nodeEnv = process.env["NO
 
 export const FLAG_ADDONS = new Set([
   "globalMonitoring","slaMonitoring",
-  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoChangeImpact","conversionOpportunityEngine","agencyPortfolioPriorities","technicalSeoFixVerification","organicCampaignTracker",
+  "advancedSeoLab","keywordDomination","backlinkIntelligence","aiContentStrategist","seoContentDecayRadar","seoChangeImpact","conversionOpportunityEngine","agencyPortfolioPriorities","technicalSeoFixVerification","organicCampaignTracker",
   "aiGbpPosting","reviewIntelligence","localDominationMaps","gbpPerformanceLeads","localPresenceOptimizer","localLandingOpportunities",
   "aiCro","behavioralAI","revenueLeak","abTestingAI",
   "whiteLabel","agencyPacks","aiExecutiveReport","aiForecasting",
@@ -569,6 +573,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // requireAddon gate. DFS integration partial (backlinks endpoint live, citation
   // health fallback). Included in Pro & Ultra plans.
   "aiContentStrategist",
+  "seoContentDecayRadar",
   "abTestingAI",
   "agencyPacks",
   "aiExecutiveReport",
