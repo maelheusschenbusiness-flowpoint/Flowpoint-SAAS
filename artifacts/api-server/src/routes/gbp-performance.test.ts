@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
+  poolQuery: vi.fn(),
   getPerformance: vi.fn(),
   getValidToken: vi.fn(),
   addonAllowed: true,
@@ -11,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   addonGateCalls: [] as string[],
 }));
 
-vi.mock("@workspace/db", () => ({ pool: { query: mocks.query } }));
+vi.mock("@workspace/db", () => ({ pool: { query: mocks.poolQuery } }));
 vi.mock("../middlewares/requireRole.js", () => ({
   canWrite: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
@@ -43,7 +44,7 @@ function makeApp(orgId: string | null = "org-a") {
   app.use((req, _res, next) => {
     if (orgId) Object.assign(req, {
       orgContext: { orgId },
-      orgDb: vi.fn().mockResolvedValue({ rows: [] }),
+      orgDb: (...args: unknown[]) => (mocks.query as (...a: unknown[]) => unknown)(...args),
     });
     next();
   });
@@ -55,6 +56,8 @@ function makeApp(orgId: string | null = "org-a") {
 describe("GBP Performance & Leads API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.query.mockReset();
+    mocks.query.mockResolvedValue({ rows: [] });
     mocks.addonAllowed = true;
     mocks.addonAllowedByKey = {};
     mocks.addonGateCalls = [];
@@ -81,6 +84,8 @@ describe("GBP Performance & Leads API", () => {
       [expect.stringContaining("FROM google_locations"), ["org-a"]],
     ]);
     expect(mocks.getPerformance).not.toHaveBeenCalled();
+    // Isolation : aucune requete ne passe par le pool global (superuser, RLS contournee).
+    expect(mocks.poolQuery).not.toHaveBeenCalled();
   });
 
   it("persists valid settings only after confirming the location belongs to the organization", async () => {
@@ -102,6 +107,7 @@ describe("GBP Performance & Leads API", () => {
     expect(response.body).toMatchObject({ ok: true, settings });
     expect(mocks.query.mock.calls[0]?.[1]).toEqual(["loc-a", "org-a"]);
     expect(mocks.query.mock.calls[1]?.[1]).toEqual(["org-a", JSON.stringify(settings)]);
+    expect(mocks.poolQuery).not.toHaveBeenCalled();
   });
 
   it("rejects a location owned by another organization without saving settings", async () => {
