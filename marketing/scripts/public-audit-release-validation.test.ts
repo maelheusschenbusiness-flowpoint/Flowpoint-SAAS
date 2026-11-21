@@ -17,7 +17,10 @@ import {
   startPublicAuditQuotaCleanup,
 } from "../server/public-audit-quota";
 import { registerPublicAuditRoutes } from "../server/public-audit-routes";
-import { PUBLIC_AUDIT_STANDARD_SIGNUP_URL } from "../server/public-audit-report";
+import {
+  PUBLIC_AUDIT_PLAN_URLS,
+  PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
+} from "../server/public-audit-report";
 import type { PublicAuditReport } from "../shared/public-audit";
 
 const EXPECTED_DATABASE = "public_audit_release_test";
@@ -224,6 +227,12 @@ test(
             finalUrl: SYNTHETIC_URL,
             checkedAt: new Date().toISOString(),
             overallScore: 100,
+            coverage: {
+              measuredChecks: 0,
+              totalChecks: 0,
+              scoredCategories: 0,
+              totalCategories: 0,
+            },
             categories: [],
             actionPlan: [],
             recommendation: {
@@ -231,6 +240,12 @@ test(
               priceEur: 29,
               reason: "Synthetic release validation fixture.",
               href: PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
+              planLinks: Object.entries(PUBLIC_AUDIT_PLAN_URLS).map(
+                ([plan, href]) => ({
+                  plan: plan as keyof typeof PUBLIC_AUDIT_PLAN_URLS,
+                  href,
+                }),
+              ),
             },
             quota,
           };

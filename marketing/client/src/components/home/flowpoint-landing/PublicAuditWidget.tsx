@@ -231,7 +231,10 @@ export default function PublicAuditWidget({
 
             <div className="fp-audit__section-label">
               <h4>Website health</h4>
-              <span>8 areas reviewed</span>
+              <span>
+                {report.coverage.scoredCategories} of {report.coverage.totalCategories} areas scored ·{" "}
+                {report.coverage.measuredChecks} of {report.coverage.totalChecks} checks measured
+              </span>
             </div>
             <div className="fp-audit__category-list">
               {displayCategories.map(({ key, title, category }) => (
@@ -292,8 +295,14 @@ export default function PublicAuditWidget({
                   {report.actionPlan.map((action, index) => (
                     <li key={`${action.title}-${index}`}>
                       <span className="fp-audit__action-index">{String(index + 1).padStart(2, "0")}</span>
-                      <div><h5>{action.title}</h5><p>{action.reason}</p><small>{action.category}{action.difficulty ? ` · ${difficultyLabels[action.difficulty]} effort` : ""}</small></div>
-                      <span className="fp-audit__impact">{action.impact}</span>
+                      <div>
+                        <h5>{action.title}</h5>
+                        <p>{action.explanation}</p>
+                        {action.evidence && <small>Detected: {action.evidence}</small>}
+                        <p className="fp-audit__next-step"><b>Next step:</b> {action.reason}</p>
+                        <small>{action.category} · Severity: {action.severity}{action.difficulty ? ` · ${difficultyLabels[action.difficulty]} effort` : ""}</small>
+                      </div>
+                      <span className="fp-audit__impact">Impact: {action.impact}</span>
                     </li>
                   ))}
                 </ol>
@@ -303,18 +312,23 @@ export default function PublicAuditWidget({
             <aside className="fp-audit__recommendation">
               <div className="fp-audit__recommendation-copy">
                 <span className="fp-audit__eyebrow">A WAY TO KEEP GOING</span>
-                <h4>{report.recommendation.plan} may fit your needs</h4>
+                <h4>Compare FlowPoint plans</h4>
                 <p>{report.recommendation.reason}</p>
-                <small>{formatPrice(report.recommendation.priceEur)} / month</small>
+                <small>Standard starts at {formatPrice(report.recommendation.priceEur)} / month.</small>
               </div>
-              <a
-                href={report.recommendation.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={onRecommendationClick}
-              >
-                Explore {report.recommendation.plan} <ExternalLink size={15} aria-hidden="true" />
-              </a>
+              <div className="fp-audit__plan-links">
+                {report.recommendation.planLinks.map(({ plan, href }) => (
+                  <a
+                    href={href}
+                    key={plan}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={onRecommendationClick}
+                  >
+                    Explore {plan} <ExternalLink size={15} aria-hidden="true" />
+                  </a>
+                ))}
+              </div>
             </aside>
             <p className="fp-audit__report-foot"><ShieldCheck size={14} /> This report reflects the checks available at the time shown. PageSpeed Insights was not queried; Core Web Vitals are marked Not measured.</p>
           </div>

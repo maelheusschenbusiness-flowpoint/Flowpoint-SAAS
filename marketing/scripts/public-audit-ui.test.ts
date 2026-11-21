@@ -10,6 +10,10 @@ const landingStyles = readFileSync(
   "client/src/components/home/flowpoint-landing/LandingV2.css",
   "utf8",
 );
+const widgetSource = readFileSync(
+  "client/src/components/home/flowpoint-landing/PublicAuditWidget.tsx",
+  "utf8",
+);
 
 test("audit form and report switch to a single-column layout on narrow screens", () => {
   const mobileRules = styles.match(
@@ -20,11 +24,22 @@ test("audit form and report switch to a single-column layout on narrow screens",
   assert.match(mobileRules, /\.fp-audit__input-row button\s*\{\s*width:\s*100%;/);
   assert.match(mobileRules, /\.fp-audit__category-list\s*\{\s*grid-template-columns:\s*1fr;/);
   assert.match(mobileRules, /\.fp-audit__recommendation\s*\{[^}]*flex-direction:\s*column;/);
+  assert.match(mobileRules, /\.fp-audit__plan-links\s*\{\s*display:\s*grid;/);
 });
 
 test("audit controls keep keyboard focus and respect reduced-motion settings", () => {
   assert.match(styles, /\.fp-audit :is\(button, a, input, summary\):focus-visible/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("audit results show evidence coverage, problem severity, and all plan CTAs", () => {
+  assert.match(widgetSource, /report\.coverage\.measuredChecks/);
+  assert.match(widgetSource, /action\.severity/);
+  assert.match(widgetSource, /action\.evidence/);
+  assert.match(widgetSource, /action\.impact/);
+  assert.match(widgetSource, /action\.reason/);
+  assert.match(widgetSource, /report\.recommendation\.planLinks\.map/);
+  assert.match(widgetSource, /Explore \{plan\}/);
 });
 
 test("homepage hero glow stays within the viewport", () => {

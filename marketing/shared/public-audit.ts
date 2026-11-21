@@ -42,6 +42,10 @@ export type PublicAuditCategory = {
   title: string;
   score: number | null;
   status: "measured" | "partial" | "not_measured";
+  coverage: {
+    measuredChecks: number;
+    totalChecks: number;
+  };
   summary: string;
   checks: PublicAuditCheck[];
 };
@@ -50,6 +54,9 @@ export type PublicAuditAction = {
   title: string;
   category: string;
   priority: number;
+  severity: PublicAuditSeverity;
+  evidence: string | null;
+  explanation: string;
   impact: string;
   difficulty: PublicAuditDifficulty;
   reason: string;
@@ -66,6 +73,12 @@ export type PublicAuditReport = {
   finalUrl: string;
   checkedAt: string;
   overallScore: number | null;
+  coverage: {
+    measuredChecks: number;
+    totalChecks: number;
+    scoredCategories: number;
+    totalCategories: number;
+  };
   categories: PublicAuditCategory[];
   actionPlan: PublicAuditAction[];
   recommendation: {
@@ -73,6 +86,10 @@ export type PublicAuditReport = {
     priceEur: number;
     reason: string;
     href: string;
+    planLinks: Array<{
+      plan: "Standard" | "Pro" | "Ultra";
+      href: string;
+    }>;
   };
   quota: PublicAuditQuota;
 };
