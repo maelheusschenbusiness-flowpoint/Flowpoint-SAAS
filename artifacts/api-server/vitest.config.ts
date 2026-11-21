@@ -73,6 +73,8 @@ export default defineConfig({
       "src/lib/addon-price-gate.test.ts",
       // gsc_keyword_data creee hors du bloc v3 (absente de la production)
       "src/services/gsc-keyword-data-schema-db.test.ts",
+      // gsc_page_data creee hors du bloc v3 (absente de la production)
+      "src/services/gsc-page-data-schema-db.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",

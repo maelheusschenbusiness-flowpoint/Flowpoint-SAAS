@@ -2211,6 +2211,27 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS gsc_keyword_data_org_idx ON gsc_keyword_data(org_id)`);
     await applyTenantRls("gsc_keyword_data");
 
+    // ── gsc_page_data : meme situation que gsc_keyword_data (absente de la production, bloc v3
+    // deja enregistre). Lue par Agency Portfolio Priorities (clics GSC par page) et ecrite par
+    // gsc-service. Additif et idempotent ; schema identique a celui du bloc v3.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS gsc_page_data (
+        id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        page        TEXT        NOT NULL DEFAULT '',
+        date        TEXT        NOT NULL DEFAULT '',
+        impressions INTEGER     NOT NULL DEFAULT 0,
+        clicks      INTEGER     NOT NULL DEFAULT 0,
+        ctr         REAL        NOT NULL DEFAULT 0,
+        position    REAL        NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_page_data_org_page_date_idx ON gsc_page_data(org_id, page, date)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS gsc_page_data_org_idx ON gsc_page_data(org_id)`);
+    await applyTenantRls("gsc_page_data");
+
     // ── Add-ons du lot 1 : tables additives et idempotentes ───────────────────
     // Hors du bloc `missing-production-tables-v3` : ce bloc est enregistre dans
     // schema_migrations et n'est jamais rejoue sur une base de production deja
